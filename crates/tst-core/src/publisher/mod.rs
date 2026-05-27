@@ -94,16 +94,20 @@ mod tests {
             Ok(())
         }
         fn stats(&self) -> PublisherStats {
-            let mut s = PublisherStats::default();
-            s.segments_written = self.segments;
-            s.bytes_written = self.bytes;
-            s
+            PublisherStats {
+                segments_written: self.segments,
+                bytes_written: self.bytes,
+                ..Default::default()
+            }
         }
     }
 
     #[test]
     fn noop_round_trip() {
-        let mut p = NoopPublisher { segments: 0, bytes: 0 };
+        let mut p = NoopPublisher {
+            segments: 0,
+            bytes: 0,
+        };
         p.push_ts(&[0u8; 188]).unwrap();
         p.cut_segment().unwrap();
         let s = p.stats();

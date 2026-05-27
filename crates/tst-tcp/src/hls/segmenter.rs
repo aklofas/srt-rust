@@ -64,7 +64,9 @@ impl Segmenter {
     /// Append TS bytes to the current segment (opens one if none).
     pub(crate) fn push_ts(&mut self, ts_bytes: &[u8]) -> Result<(), HlsError> {
         if ts_bytes.len() % 188 != 0 {
-            return Err(HlsError::UnalignedPushTs { len: ts_bytes.len() });
+            return Err(HlsError::UnalignedPushTs {
+                len: ts_bytes.len(),
+            });
         }
         if self.current.is_none() {
             self.open_new()?;
@@ -110,10 +112,7 @@ impl Segmenter {
 
     /// First sequence number in `visible_segments`.
     pub(crate) fn media_sequence(&self) -> u64 {
-        self.visible_segments()
-            .first()
-            .map(|s| s.seq)
-            .unwrap_or(0)
+        self.visible_segments().first().map(|s| s.seq).unwrap_or(0)
     }
 
     /// Bytes in the segment currently being written (zero between cuts).

@@ -50,7 +50,8 @@ impl HlsPublisher {
             state.clone(),
             bind,
             basic_auth,
-            #[cfg(feature = "tls")] tls_config,
+            #[cfg(feature = "tls")]
+            tls_config,
         )?;
 
         Ok(Self {
@@ -90,7 +91,9 @@ impl Publisher for HlsPublisher {
             return Err(HlsError::Finished);
         }
         if ts_bytes.len() % 188 != 0 {
-            return Err(HlsError::UnalignedPushTs { len: ts_bytes.len() });
+            return Err(HlsError::UnalignedPushTs {
+                len: ts_bytes.len(),
+            });
         }
         let mut s = self.state.lock().expect("HlsPublisher poisoned");
         s.segmenter.tick()?;
@@ -210,7 +213,8 @@ mod tests {
         // Blocking HTTP GET using std::net.
         use std::io::{Read, Write};
         let mut sock = std::net::TcpStream::connect(addr).unwrap();
-        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
+            .unwrap();
         let mut resp = String::new();
         sock.read_to_string(&mut resp).unwrap();
         assert!(resp.contains("200 OK"));
@@ -218,7 +222,8 @@ mod tests {
         assert!(resp.contains("segment_00000.ts"));
 
         let mut sock = std::net::TcpStream::connect(addr).unwrap();
-        sock.write_all(b"GET /segment_00000.ts HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        sock.write_all(b"GET /segment_00000.ts HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
+            .unwrap();
         let mut resp = Vec::new();
         sock.read_to_end(&mut resp).unwrap();
         let s = String::from_utf8_lossy(&resp);
@@ -242,7 +247,8 @@ mod tests {
 
         use std::io::{Read, Write};
         let mut sock = std::net::TcpStream::connect(addr).unwrap();
-        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
+            .unwrap();
         let mut resp = String::new();
         sock.read_to_string(&mut resp).unwrap();
         assert!(resp.contains("401 Unauthorized"));

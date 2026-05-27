@@ -19,7 +19,9 @@ pub struct HlsPublisherBuilder {
 impl HlsPublisherBuilder {
     /// Start an empty builder using [`HlsConfig::default`].
     pub fn new() -> Self {
-        Self { config: HlsConfig::default() }
+        Self {
+            config: HlsConfig::default(),
+        }
     }
 
     /// Parse an `hls://` or `hlss://` URL and seed the config from it.
@@ -111,7 +113,8 @@ mod tests {
 
     #[test]
     fn from_url_seeds_config() {
-        let b = HlsPublisherBuilder::from_url("hls://127.0.0.1:9100?mode=vod&playlist_window=10").unwrap();
+        let b = HlsPublisherBuilder::from_url("hls://127.0.0.1:9100?mode=vod&playlist_window=10")
+            .unwrap();
         assert_eq!(b.config.mode, HlsMode::Vod);
         assert_eq!(b.config.playlist_window, 10);
     }

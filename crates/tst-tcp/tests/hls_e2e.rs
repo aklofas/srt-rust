@@ -114,13 +114,7 @@ fn hls_pipeline_via_ffmpeg_validates_playlist() {
 
     let url = format!("http://{}/playlist.m3u8", addr);
     let out = Command::new("ffmpeg")
-        .args(&[
-            "-y",
-            "-i", &url,
-            "-c", "copy",
-            "-f", "mpegts",
-            "-t", "1",
-        ])
+        .args(["-y", "-i", &url, "-c", "copy", "-f", "mpegts", "-t", "1"])
         .arg(dir.join("ffmpeg_out.ts"))
         .output()
         .expect("ffmpeg failed to spawn");

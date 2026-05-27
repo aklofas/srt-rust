@@ -124,22 +124,28 @@ mod tests {
 
     #[test]
     fn zero_duration_invalid() {
-        let mut cfg = HlsConfig::default();
-        cfg.segment_duration = Duration::from_secs(0);
+        let cfg = HlsConfig {
+            segment_duration: Duration::from_secs(0),
+            ..HlsConfig::default()
+        };
         assert!(cfg.validate().is_some());
     }
 
     #[test]
     fn live_zero_window_invalid() {
-        let mut cfg = HlsConfig::default();
-        cfg.playlist_window = 0;
+        let cfg = HlsConfig {
+            playlist_window: 0,
+            ..HlsConfig::default()
+        };
         assert!(cfg.validate().is_some());
     }
 
     #[test]
     fn merge_overlay() {
         let mut cfg = HlsConfig::default();
-        let u = HlsUrl::parse("hls://127.0.0.1:9000?segment_duration=6&playlist_window=10&mode=vod").unwrap();
+        let u =
+            HlsUrl::parse("hls://127.0.0.1:9000?segment_duration=6&playlist_window=10&mode=vod")
+                .unwrap();
         cfg.merge_from_url(&u);
         assert_eq!(cfg.segment_duration, Duration::from_secs(6));
         assert_eq!(cfg.playlist_window, 10);

@@ -31,8 +31,13 @@ use tst_tcp::hls::{HlsMode, HlsPublisherBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let input = args.next().expect("usage: mux_to_hls <input.ts> <out_dir> <bind>");
-    let out_dir = PathBuf::from(args.next().expect("usage: mux_to_hls <input.ts> <out_dir> <bind>"));
+    let input = args
+        .next()
+        .expect("usage: mux_to_hls <input.ts> <out_dir> <bind>");
+    let out_dir = PathBuf::from(
+        args.next()
+            .expect("usage: mux_to_hls <input.ts> <out_dir> <bind>"),
+    );
     let bind: SocketAddr = args
         .next()
         .expect("usage: mux_to_hls <input.ts> <out_dir> <bind>")
@@ -79,7 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let stats = pub_shell.stats();
-    eprintln!("pushed {} bytes through {} drain calls", stats.bytes_pushed, stats.drain_calls);
+    eprintln!(
+        "pushed {} bytes through {} drain calls",
+        stats.bytes_pushed, stats.drain_calls
+    );
 
     let publisher = pub_shell.finish()?;
     publisher.finish()?;

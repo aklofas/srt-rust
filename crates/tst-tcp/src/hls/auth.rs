@@ -15,7 +15,10 @@ pub(crate) fn check_basic_auth(
         Some(h) => h,
         None => return false,
     };
-    let Some(b64) = header.strip_prefix("Basic ").or_else(|| header.strip_prefix("basic ")) else {
+    let Some(b64) = header
+        .strip_prefix("Basic ")
+        .or_else(|| header.strip_prefix("basic "))
+    else {
         return false;
     };
     let Ok(decoded) = STANDARD.decode(b64.trim()) else {

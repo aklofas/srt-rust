@@ -4,12 +4,12 @@
 use std::sync::Mutex;
 
 use tracing::info_span;
-use tst_core::mpegts::common::Pts90khz;
 use tst_core::error::MuxError;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 use tst_core::publisher::{Publisher, PublisherStats};
 
-use crate::shell_error::{kind_from_mux, ShellErrorKind};
+use crate::shell_error::{ShellErrorKind, kind_from_mux};
 
 /// Cumulative stats for a single `MuxPublisher`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -47,7 +47,10 @@ impl<P: Publisher> std::fmt::Debug for MuxPublisher<P> {
                 .field("cut_calls", &inner.stats.cut_calls)
                 .field("closed", &inner.closed)
                 .finish(),
-            Err(_) => f.debug_struct("MuxPublisher").field("locked", &true).finish(),
+            Err(_) => f
+                .debug_struct("MuxPublisher")
+                .field("locked", &true)
+                .finish(),
         }
     }
 }

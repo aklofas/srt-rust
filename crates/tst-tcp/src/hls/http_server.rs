@@ -51,11 +51,13 @@ impl ServerHandle {
         #[cfg(feature = "tls")]
         let acceptor = tls_config.map(tokio_rustls::TlsAcceptor::from);
 
-        let (listener, local_addr) = runtime.block_on(async {
-            let l = TcpListener::bind(bind).await?;
-            let a = l.local_addr()?;
-            Ok::<_, std::io::Error>((l, a))
-        }).map_err(|e| HlsError::BindFailed(e.to_string()))?;
+        let (listener, local_addr) = runtime
+            .block_on(async {
+                let l = TcpListener::bind(bind).await?;
+                let a = l.local_addr()?;
+                Ok::<_, std::io::Error>((l, a))
+            })
+            .map_err(|e| HlsError::BindFailed(e.to_string()))?;
 
         runtime.spawn(async move {
             loop {

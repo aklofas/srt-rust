@@ -40,7 +40,11 @@ pub enum HlsUrlError {
     #[error("host '{0}' is not a literal IPv4/IPv6 address")]
     BadHost(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
-    BadQueryValue { key: String, value: String, detail: String },
+    BadQueryValue {
+        key: String,
+        value: String,
+        detail: String,
+    },
     #[error("URL parse failed: {0}")]
     Parse(#[from] tst_core::url::common::UrlError),
 }

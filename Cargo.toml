@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/rist-sys",
     "crates/srt-sys",
     "crates/tst-core",
     "crates/tst-pipeline",

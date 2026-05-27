@@ -1,0 +1,211 @@
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn main() {
+    println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=RIST_NO_PKG_CONFIG");
+    println!("cargo:rerun-if-env-changed=RIST_FORCE_VENDORED");
+
+    // Same symbol-hygiene recipe as srt-sys: hide librist's static-library
+    // exports from downstream cdylib export tables (tst-c, future tst-jni).
+    if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-arg-cdylib=-Wl,--exclude-libs=ALL");
+    }
+
+    let force_vendored = env::var_os("RIST_FORCE_VENDORED").is_some();
+    let no_pkg_config = env::var_os("RIST_NO_PKG_CONFIG").is_some();
+    let feat_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();
+
+    let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
+        build_vendored(feat_mbedtls)
+    } else {
+        match pkg_config::Config::new()
+            .atleast_version("0.2.10")
+            .probe("librist")
+        {
+            Ok(lib) => lib.include_paths,
+            Err(_) => build_vendored(feat_mbedtls),
+        }
+    };
+
+    // ===== Generate bindings =====
+    let mut builder = bindgen::Builder::default()
+        .header("wrapper.h")
+        .rust_edition(bindgen::RustEdition::Edition2024)
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .ctypes_prefix("libc")
+        .derive_debug(true)
+        .derive_default(true)
+        .derive_copy(true)
+        .layout_tests(false)
+        // Allowlist librist symbols + macros.
+        .allowlist_function("rist_.*")
+        .allowlist_function("librist_.*")
+        .allowlist_type("rist_.*")
+        .allowlist_var("RIST_.*")
+        .allowlist_var("LIBRIST_.*");
+
+    // librist's logging.h exposes `FILE *log_stream` inside
+    // `rist_logging_settings`, so bindgen needs a `FILE` type in scope.
+    // Substitute libc's FILE on Unix; let bindgen emit an opaque FILE on
+    // Windows (libc doesn't export FILE under windows-msvc).
+    let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+    if target_family == "unix" {
+        builder = builder
+            .blocklist_type("FILE")
+            .blocklist_type("__sFILE")
+            .blocklist_type("fpos_t")
+            .raw_line("use libc::FILE;");
+    }
+
+    for inc in &include_paths {
+        builder = builder.clang_arg(format!("-I{}", inc.display()));
+    }
+
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    builder
+        .generate()
+        .expect("Failed to generate librist bindings")
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Failed to write bindings.rs to OUT_DIR");
+}
+
+/// Build librist from `vendor/librist` via meson + ninja.
+///
+/// Unlike srt-sys (which uses cmake), librist is a meson project. We invoke
+/// `meson setup` + `meson compile` via `std::process::Command`. Both `meson`
+/// and `ninja` must be on `$PATH` (Debian: `apt install meson ninja-build`).
+fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let vendor_dir = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("vendor/librist"))
+        .expect("Cannot resolve vendor/librist path from CARGO_MANIFEST_DIR");
+
+    if !vendor_dir.join("meson.build").exists() {
+        panic!(
+            "Vendored librist not found at {}. \
+             Run `git submodule update --init --recursive` from the workspace root.",
+            vendor_dir.display()
+        );
+    }
+
+    require_tool("meson");
+    require_tool("ninja");
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let build_dir = out_dir.join("librist-build");
+
+    // ===== meson setup =====
+    //
+    // Args:
+    //   --default-library=static  static lib only
+    //   --buildtype=release       optimized build
+    //   -Dbuilt_tools=false       skip CLI tools (faster build)
+    //   -Dtest=false              skip test suite
+    //   -Dbuiltin_cjson=true      bundle contrib/cjson (avoids system cjson dep)
+    //   -Dbuiltin_mbedtls=<bool>  bundle contrib/mbedtls when mbedtls feature is on
+    //   -Duse_mbedtls=<bool>      enable/disable encryption entirely
+    let mut args: Vec<String> = vec![
+        "setup".into(),
+        build_dir.to_string_lossy().into_owned(),
+        vendor_dir.to_string_lossy().into_owned(),
+        "--default-library=static".into(),
+        "--buildtype=release".into(),
+        "-Dbuilt_tools=false".into(),
+        "-Dtest=false".into(),
+        "-Dbuiltin_cjson=true".into(),
+    ];
+    if want_mbedtls {
+        args.push("-Dbuiltin_mbedtls=true".into());
+        args.push("-Duse_mbedtls=true".into());
+    } else {
+        args.push("-Duse_mbedtls=false".into());
+    }
+
+    // If a previous build exists, reconfigure it instead of erroring.
+    if build_dir.join("build.ninja").exists() {
+        args[0] = "setup".into();
+        args.insert(1, "--reconfigure".into());
+    }
+
+    run_cmd("meson", &args, &vendor_dir);
+
+    // ===== meson compile =====
+    run_cmd(
+        "meson",
+        &[
+            "compile".to_string(),
+            "-C".to_string(),
+            build_dir.to_string_lossy().into_owned(),
+        ],
+        &vendor_dir,
+    );
+
+    // librist's meson outputs `librist.a` directly in builddir (with
+    // --default-library=static). Headers stay in source tree under
+    // `vendor/librist/include/`.
+    println!(
+        "cargo:rustc-link-search=native={}",
+        build_dir.to_string_lossy()
+    );
+    println!("cargo:rustc-link-lib=static=rist");
+
+    // Platform link needs. librist is pure C; no C++ stdlib link required.
+    // mbedTLS symbols (when builtin_mbedtls=true) are pulled into librist.a
+    // directly, so no extra mbedtls/mbedx509/mbedcrypto link line.
+    if cfg!(target_os = "linux") {
+        // Some librist sources call pthread fns; the link line needs -pthread.
+        println!("cargo:rustc-link-lib=dylib=pthread");
+    }
+
+    // librist's build also generates `librist_config.h` (and vcs_version.h)
+    // into <build_dir>/include/librist/. peer.h `#include`s this generated
+    // header via a relative include (`#include "librist_config.h"`), so the
+    // include path must reach the librist/ subdirectory directly.
+    vec![
+        vendor_dir.join("include"),
+        build_dir.join("include").join("librist"),
+        build_dir.join("include"),
+    ]
+}
+
+fn require_tool(name: &str) {
+    if which(name).is_none() {
+        panic!(
+            "Required build tool `{name}` not found on $PATH. \
+             librist requires meson + ninja for the vendored build path. \
+             Debian/Ubuntu: `sudo apt install meson ninja-build`. \
+             macOS: `brew install meson ninja`."
+        );
+    }
+}
+
+fn which(name: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    for dir in env::split_paths(&path) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn run_cmd(prog: &str, args: &[String], cwd: &Path) {
+    let status = Command::new(prog)
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .unwrap_or_else(|e| panic!("Failed to spawn `{prog}`: {e}"));
+    if !status.success() {
+        panic!(
+            "Command `{prog} {}` exited with status {status} (cwd={})",
+            args.join(" "),
+            cwd.display()
+        );
+    }
+}

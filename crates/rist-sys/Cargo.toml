@@ -1,0 +1,37 @@
+[package]
+name        = "rist-sys"
+description = "Raw FFI bindings to VideoLAN librist 0.2.x"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+links       = "rist"
+
+[lib]
+crate-type = ["rlib"]
+doctest    = false
+
+[dependencies]
+libc = { workspace = true }
+
+[build-dependencies]
+bindgen    = { workspace = true }
+pkg-config = { workspace = true }
+
+[dev-dependencies]
+libc = { workspace = true }
+
+[features]
+default = ["mbedtls"]
+
+# Enable AES-128/192/256 PSK encryption by building librist with mbedTLS
+# bundled (librist's `builtin_mbedtls=true` meson option, which uses its own
+# contrib/mbedtls copy). Disabling this feature builds librist with
+# `use_mbedtls=false` — no encryption available.
+#
+# Note: unlike srt-sys (which shares the workspace-level vendor/mbedtls/
+# submodule), rist-sys uses librist's own contrib/mbedtls for v1 to sidestep
+# meson dep-injection. Cross-crate mbedTLS reuse is a v2 follow-up.
+mbedtls = []

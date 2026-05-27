@@ -26,11 +26,7 @@ pub mod url;
 
 mod transport_recv_knobs;
 
-// builder `pub use` stays commented until Phase 9 lands — keeps the
-// crate compiling against the empty stub module.
-//
-// pub use builder::{UdpRecvTransportBuilder, UdpTransportBuilder};
-
+pub use builder::{UdpRecvTransportBuilder, UdpTransportBuilder};
 pub use config::SocketConfig;
 pub use error::{UdpError, UdpErrorKind};
 pub use recv::UdpRecvTransport;

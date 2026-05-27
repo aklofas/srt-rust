@@ -15,4 +15,5 @@ libc = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
+tst-pipeline = { path = "../tst-pipeline" }
 tst-test-helpers = { path = "../tst-test-helpers" }

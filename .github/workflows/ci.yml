@@ -274,7 +274,7 @@ jobs:
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet
-          for crate in tst-core tst-pipeline tst-srt tst-rtp; do
+          for crate in tst-core tst-pipeline tst-rtp tst-srt tst-udp; do
             SRT_FORCE_VENDORED=1 cargo public-api -p $crate --simplified > /tmp/public-api-current-$crate.txt
             if ! diff -u crates/$crate/public-api.txt /tmp/public-api-current-$crate.txt; then
               echo "Public API drift in $crate. Update crates/$crate/public-api.txt or revert the change." >&2
@@ -288,7 +288,7 @@ jobs:
         # build). On adding a new error enum, bump the BASELINE constant.
         if: matrix.name == 'linux-x86_64'
         run: |
-          BASELINE=209
+          BASELINE=215
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2

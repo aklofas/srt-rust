@@ -208,6 +208,24 @@ transports out of the box.
 
 ---
 
+## [Unreleased] — tst-udp: raw MPEG-TS over UDP (2026-05-27)
+
+### Added
+
+- New crate `tst-udp` — raw MPEG-TS over UDP unicast + multicast
+  (IPv4 + IPv6). `UdpTransport` (sender) + `UdpRecvTransport` (receiver)
+  implement the existing `tst_core::transport::{Transport, RecvTransport}`
+  traits and slot into `MuxSender<T>` / `DemuxReceiver<T>` shells.
+  ffmpeg-compatible URL semantics (`udp://host:port`, `udp://@group:port`,
+  `udp://group:port?iface=eth0&ttl=8`).
+- New shared module `tst_core::net::udp_socket` — bind helpers + multicast
+  knob helpers, extracted from previously-private code in `tst-rtp` and
+  reused by `tst-udp`. Non-breaking refactor for `tst-rtp` callers.
+- New workspace dependency `socket2 0.5` for cross-platform socket knobs
+  (TOS, RCVBUF, SNDBUF) on `tst-udp`.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 4 Stage 3 follow-up: RtspServer::stop FIN on write halves (2026-05-26)
 
 ### Fixed

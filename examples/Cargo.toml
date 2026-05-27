@@ -9,8 +9,9 @@ description = "Runnable examples for the ts-transformer libraries. Not published
 [dependencies]
 tst-core = { path = "../crates/tst-core" }
 tst-pipeline = { path = "../crates/tst-pipeline" }
-tst-srt = { path = "../crates/tst-srt" }
 tst-rtp = { path = "../crates/tst-rtp" }
+tst-srt = { path = "../crates/tst-srt" }
+tst-udp = { path = "../crates/tst-udp" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.
 
@@ -161,6 +162,14 @@ path = "codec-parsing/extract_h266_sps_to_rbsp.rs"
 [[example]]
 name = "managed_reconnect"
 path = "operations/managed_reconnect.rs"
+
+[[example]]
+name = "recv_udp"
+path = "receiving/recv_udp.rs"
+
+[[example]]
+name = "send_udp"
+path = "sending/send_udp.rs"
 
 [[example]]
 name = "tee_disk_and_demux"

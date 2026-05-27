@@ -1,1 +1,225 @@
 //! Parsing of `tcp://` and `tcps://` URLs.
+//!
+//! - `tcp://host:port` — plain TCP caller
+//! - `tcps://host:port` — TLS caller
+//! - `tcp://0.0.0.0:port?listen=1` — listener (plain)
+//! - `tcps://0.0.0.0:port?listen=1&cert=...&key=...` — listener (TLS)
+
+use std::net::IpAddr;
+use std::time::Duration;
+
+use thiserror::Error;
+
+/// Parsed TCP URL.
+#[derive(Debug, Clone)]
+pub struct TcpUrl {
+    /// Destination address (for caller) or bind address (for listener).
+    pub addr: IpAddr,
+    /// Port.
+    pub port: u16,
+    /// True for `tcps://`.
+    pub tls: bool,
+    /// True if the URL had `?listen=1` (listener intent).
+    pub listen: bool,
+    /// TCP_NODELAY override.
+    pub nodelay: Option<bool>,
+    /// SO_KEEPALIVE idle time (None = disabled, Some(d) = enabled with idle d).
+    pub keepalive: Option<Duration>,
+    /// SO_RCVBUF size.
+    pub rcvbuf: Option<usize>,
+    /// SO_SNDBUF size.
+    pub sndbuf: Option<usize>,
+    /// Connect timeout (caller only).
+    pub connect_timeout: Option<Duration>,
+    /// Server cert path (TLS listener only).
+    pub cert: Option<String>,
+    /// Server key path (TLS listener only).
+    pub key: Option<String>,
+    /// Custom CA bundle path (TLS caller only; if None uses native roots).
+    pub ca: Option<String>,
+}
+
+/// Errors from `TcpUrl::parse`.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum TcpUrlError {
+    #[error("URL scheme must be 'tcp' or 'tcps', got '{0}'")]
+    BadScheme(String),
+    #[error("URL must include a port")]
+    MissingPort,
+    #[error("host '{0}' is not a literal IPv4/IPv6 address")]
+    BadHost(String),
+    #[error("query param '{key}' has invalid value '{value}': {detail}")]
+    BadQueryValue { key: String, value: String, detail: String },
+    #[error("URL parse failed: {0}")]
+    Parse(#[from] tst_core::url::common::UrlError),
+}
+
+impl TcpUrl {
+    pub fn parse(s: &str) -> Result<Self, TcpUrlError> {
+        use tst_core::url::common::parse_url;
+
+        let parsed = parse_url(s)?;
+        let tls = match parsed.scheme {
+            "tcp" => false,
+            "tcps" => true,
+            other => return Err(TcpUrlError::BadScheme(other.to_string())),
+        };
+        let port = parsed.port.ok_or(TcpUrlError::MissingPort)?;
+
+        // Strip IPv6 brackets if present.
+        let host_str = parsed.host.trim_start_matches('[').trim_end_matches(']');
+        let addr: IpAddr = host_str
+            .parse()
+            .map_err(|_| TcpUrlError::BadHost(host_str.to_string()))?;
+
+        let mut listen = false;
+        let mut nodelay = None;
+        let mut keepalive = None;
+        let mut rcvbuf = None;
+        let mut sndbuf = None;
+        let mut connect_timeout = None;
+        let mut cert = None;
+        let mut key = None;
+        let mut ca = None;
+
+        for (k, v) in &parsed.query {
+            let key_str = k.as_ref();
+            let value = v.as_ref();
+            match key_str {
+                "listen" => listen = parse_bool(key_str, value)?,
+                "nodelay" => nodelay = Some(parse_bool(key_str, value)?),
+                "keepalive" => keepalive = Some(parse_duration_secs(key_str, value)?),
+                "rcvbuf" => rcvbuf = Some(parse_byte_size(key_str, value)?),
+                "sndbuf" => sndbuf = Some(parse_byte_size(key_str, value)?),
+                "connect_timeout" => connect_timeout = Some(parse_duration_secs(key_str, value)?),
+                "cert" => cert = Some(value.to_string()),
+                "key" => key = Some(value.to_string()),
+                "ca" => ca = Some(value.to_string()),
+                _ => { /* ignore unknown params */ }
+            }
+        }
+
+        Ok(Self {
+            addr,
+            port,
+            tls,
+            listen,
+            nodelay,
+            keepalive,
+            rcvbuf,
+            sndbuf,
+            connect_timeout,
+            cert,
+            key,
+            ca,
+        })
+    }
+}
+
+fn parse_bool(key: &str, value: &str) -> Result<bool, TcpUrlError> {
+    match value {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => Err(TcpUrlError::BadQueryValue {
+            key: key.to_string(),
+            value: other.to_string(),
+            detail: "expected one of: 1/0/true/false/yes/no/on/off".into(),
+        }),
+    }
+}
+
+fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> {
+    let secs: u64 = value
+        .parse()
+        .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
+            key: key.to_string(),
+            value: value.to_string(),
+            detail: e.to_string(),
+        })?;
+    Ok(Duration::from_secs(secs))
+}
+
+fn parse_byte_size(key: &str, value: &str) -> Result<usize, TcpUrlError> {
+    let (num, mul) = match value.chars().last() {
+        Some('K') | Some('k') => (&value[..value.len() - 1], 1024usize),
+        Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
+        _ => (value, 1usize),
+    };
+    let n: usize = num.parse().map_err(|e: std::num::ParseIntError| {
+        TcpUrlError::BadQueryValue {
+            key: key.to_string(),
+            value: value.to_string(),
+            detail: e.to_string(),
+        }
+    })?;
+    Ok(n * mul)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_caller() {
+        let u = TcpUrl::parse("tcp://192.168.1.5:7001").unwrap();
+        assert!(!u.tls);
+        assert!(!u.listen);
+        assert_eq!(u.port, 7001);
+    }
+
+    #[test]
+    fn tls_caller() {
+        let u = TcpUrl::parse("tcps://192.168.1.5:7001").unwrap();
+        assert!(u.tls);
+        assert!(!u.listen);
+    }
+
+    #[test]
+    fn plain_listener() {
+        let u = TcpUrl::parse("tcp://0.0.0.0:7001?listen=1").unwrap();
+        assert!(!u.tls);
+        assert!(u.listen);
+    }
+
+    #[test]
+    fn tls_listener_with_cert_key() {
+        let u = TcpUrl::parse(
+            "tcps://0.0.0.0:7001?listen=1&cert=server.crt&key=server.key",
+        )
+        .unwrap();
+        assert!(u.tls);
+        assert!(u.listen);
+        assert_eq!(u.cert.as_deref(), Some("server.crt"));
+        assert_eq!(u.key.as_deref(), Some("server.key"));
+    }
+
+    #[test]
+    fn rejects_bad_scheme() {
+        assert!(matches!(
+            TcpUrl::parse("udp://host:7001"),
+            Err(TcpUrlError::BadScheme(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_port() {
+        assert!(matches!(
+            TcpUrl::parse("tcp://1.2.3.4"),
+            Err(TcpUrlError::MissingPort)
+        ));
+    }
+
+    #[test]
+    fn knobs_parse() {
+        let u = TcpUrl::parse(
+            "tcp://1.2.3.4:7001?nodelay=1&keepalive=30&rcvbuf=8M&sndbuf=2M&connect_timeout=10",
+        )
+        .unwrap();
+        assert_eq!(u.nodelay, Some(true));
+        assert_eq!(u.keepalive, Some(Duration::from_secs(30)));
+        assert_eq!(u.rcvbuf, Some(8 * 1024 * 1024));
+        assert_eq!(u.sndbuf, Some(2 * 1024 * 1024));
+        assert_eq!(u.connect_timeout, Some(Duration::from_secs(10)));
+    }
+}

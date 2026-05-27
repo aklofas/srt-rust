@@ -38,7 +38,7 @@ mod recv_knobs;
 // its line as the corresponding type lands.
 //
 // pub use builder::{TcpTransportBuilder, TcpListenerBuilder};
-// pub use config::SocketConfig;
+pub use config::SocketConfig;
 // pub use listener::TcpListener;
-// pub use stats::TcpStats;
+pub use stats::TcpStats;
 // pub use transport::TcpTransport;

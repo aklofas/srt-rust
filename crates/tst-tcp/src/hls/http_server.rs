@@ -35,6 +35,7 @@ impl ServerHandle {
         state: Arc<Mutex<State>>,
         bind: std::net::SocketAddr,
         basic_auth: Option<(String, String)>,
+        #[cfg(feature = "tls")] tls_config: Option<Arc<rustls::ServerConfig>>,
     ) -> Result<Self, HlsError> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -46,6 +47,9 @@ impl ServerHandle {
         let cancel = CancellationToken::new();
         let cancel_for_task = cancel.clone();
         let state_for_task = state.clone();
+
+        #[cfg(feature = "tls")]
+        let acceptor = tls_config.map(tokio_rustls::TlsAcceptor::from);
 
         let (listener, local_addr) = runtime.block_on(async {
             let l = TcpListener::bind(bind).await?;
@@ -65,7 +69,30 @@ impl ServerHandle {
                         let state = state_for_task.clone();
                         let auth = basic_auth.clone();
                         let conn_cancel = cancel_for_task.clone();
+                        #[cfg(feature = "tls")]
+                        let acceptor_clone = acceptor.clone();
+
                         tokio::spawn(async move {
+                            #[cfg(feature = "tls")]
+                            if let Some(acc) = &acceptor_clone {
+                                match acc.accept(sock).await {
+                                    Ok(tls_sock) => {
+                                        let io = TokioIo::new(tls_sock);
+                                        let svc = service_fn(move |req| {
+                                            let state = state.clone();
+                                            let auth = auth.clone();
+                                            async move { Ok::<_, Infallible>(serve(req, state, auth).await) }
+                                        });
+                                        let _ = tokio::select! {
+                                            _ = conn_cancel.cancelled() => Ok(()),
+                                            r = http1::Builder::new().serve_connection(io, svc) => r,
+                                        };
+                                    }
+                                    Err(_) => {} // bad TLS handshake — drop
+                                }
+                                return;
+                            }
+                            // Plain HTTP path (no TLS feature OR TLS feature but no config)
                             let io = TokioIo::new(sock);
                             let svc = service_fn(move |req| {
                                 let state = state.clone();

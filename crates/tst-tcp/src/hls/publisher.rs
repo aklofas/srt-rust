@@ -29,12 +29,30 @@ impl HlsPublisher {
         }
         let bind = config.bind;
         let basic_auth = config.basic_auth.clone();
+
+        #[cfg(feature = "tls")]
+        let tls_config = match (&config.tls_cert, &config.tls_key) {
+            (Some(cert), Some(key)) => Some(crate::hls::tls::load_server_config(cert, key)?),
+            _ => None,
+        };
+        #[cfg(not(feature = "tls"))]
+        if config.tls_cert.is_some() || config.tls_key.is_some() {
+            return Err(HlsError::TlsDisabled);
+        }
+
         let segmenter = Segmenter::new(config)?;
         let state = Arc::new(Mutex::new(State {
             segmenter,
             bytes_pushed_total: 0,
         }));
-        let server = crate::hls::http_server::ServerHandle::start(state.clone(), bind, basic_auth)?;
+
+        let server = crate::hls::http_server::ServerHandle::start(
+            state.clone(),
+            bind,
+            basic_auth,
+            #[cfg(feature = "tls")] tls_config,
+        )?;
+
         Ok(Self {
             state,
             finished: false,

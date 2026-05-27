@@ -10,38 +10,41 @@ use crate::hls::playlist;
 use crate::hls::segmenter::Segmenter;
 use crate::hls::stats::HlsStats;
 
-/// HLS publisher. Owns a [`Segmenter`] that writes `.ts` segments to disk +
-/// a playlist renderer. Phase 10 (HTTP server) lands separately.
-///
-/// Build via [`HlsPublisher::with_config`] or
-/// [`crate::hls::HlsPublisherBuilder`].
+/// HLS publisher.
 pub struct HlsPublisher {
     pub(crate) state: Arc<Mutex<State>>,
     pub(crate) finished: bool,
-    // server: Option<crate::hls::http_server::ServerHandle>,  // wired in Phase 10
+    pub(crate) server: Option<crate::hls::http_server::ServerHandle>,
 }
 
-/// Shared mutable state between Publisher impl + HTTP server reader.
 pub(crate) struct State {
     pub(crate) segmenter: Segmenter,
     pub(crate) bytes_pushed_total: u64,
 }
 
 impl HlsPublisher {
-    /// Build a publisher with an explicit config.  Does NOT yet bind the
-    /// HTTP server (Phase 10 wires that in).
     pub fn with_config(config: HlsConfig) -> Result<Self, HlsError> {
         if let Some(msg) = config.validate() {
             return Err(HlsError::InvalidConfig(msg));
         }
+        let bind = config.bind;
+        let basic_auth = config.basic_auth.clone();
         let segmenter = Segmenter::new(config)?;
+        let state = Arc::new(Mutex::new(State {
+            segmenter,
+            bytes_pushed_total: 0,
+        }));
+        let server = crate::hls::http_server::ServerHandle::start(state.clone(), bind, basic_auth)?;
         Ok(Self {
-            state: Arc::new(Mutex::new(State {
-                segmenter,
-                bytes_pushed_total: 0,
-            })),
+            state,
             finished: false,
+            server: Some(server),
         })
+    }
+
+    /// Local socket address the HTTP server bound to.
+    pub fn local_addr(&self) -> Option<std::net::SocketAddr> {
+        self.server.as_ref().map(|s| s.local_addr())
     }
 
     /// Snapshot of richer per-impl stats.
@@ -98,6 +101,9 @@ impl Publisher for HlsPublisher {
             (s.segmenter.output_dir().to_path_buf(), pl)
         };
         std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)?;
+        if let Some(server) = self.server.take() {
+            server.shutdown();
+        }
         Ok(())
     }
 
@@ -136,6 +142,7 @@ mod tests {
         let dir = tmpdir("ok");
         let cfg = HlsConfig {
             output_dir: dir.clone(),
+            bind: "127.0.0.1:0".parse().unwrap(),
             ..HlsConfig::default()
         };
         let mut p = HlsPublisher::with_config(cfg).unwrap();
@@ -157,11 +164,69 @@ mod tests {
     #[test]
     fn unaligned_push_rejected() {
         let dir = tmpdir("unalign");
-        let cfg = HlsConfig { output_dir: dir, ..HlsConfig::default() };
+        let cfg = HlsConfig {
+            output_dir: dir,
+            bind: "127.0.0.1:0".parse().unwrap(),
+            ..HlsConfig::default()
+        };
         let mut p = HlsPublisher::with_config(cfg).unwrap();
         assert!(matches!(
             p.push_ts(&[0u8; 187]),
             Err(HlsError::UnalignedPushTs { len: 187 })
         ));
+    }
+
+    #[test]
+    fn http_serves_playlist_and_segment() {
+        let dir = tmpdir("http");
+        let cfg = HlsConfig {
+            output_dir: dir.clone(),
+            bind: "127.0.0.1:0".parse().unwrap(),
+            ..HlsConfig::default()
+        };
+        let mut p = HlsPublisher::with_config(cfg).unwrap();
+        p.push_ts(&[0x47u8; 376]).unwrap();
+        p.cut_segment().unwrap();
+        let addr = p.local_addr().unwrap();
+
+        // Blocking HTTP GET using std::net.
+        use std::io::{Read, Write};
+        let mut sock = std::net::TcpStream::connect(addr).unwrap();
+        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        let mut resp = String::new();
+        sock.read_to_string(&mut resp).unwrap();
+        assert!(resp.contains("200 OK"));
+        assert!(resp.contains("#EXTM3U"));
+        assert!(resp.contains("segment_00000.ts"));
+
+        let mut sock = std::net::TcpStream::connect(addr).unwrap();
+        sock.write_all(b"GET /segment_00000.ts HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        let mut resp = Vec::new();
+        sock.read_to_end(&mut resp).unwrap();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("200 OK"));
+        assert!(s.contains("video/mp2t"));
+
+        p.finish().unwrap();
+    }
+
+    #[test]
+    fn basic_auth_rejects_unauthorized() {
+        let dir = tmpdir("auth");
+        let cfg = HlsConfig {
+            output_dir: dir,
+            bind: "127.0.0.1:0".parse().unwrap(),
+            basic_auth: Some(("alice".into(), "s3cret".into())),
+            ..HlsConfig::default()
+        };
+        let p = HlsPublisher::with_config(cfg).unwrap();
+        let addr = p.local_addr().unwrap();
+
+        use std::io::{Read, Write};
+        let mut sock = std::net::TcpStream::connect(addr).unwrap();
+        sock.write_all(b"GET /playlist.m3u8 HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n").unwrap();
+        let mut resp = String::new();
+        sock.read_to_string(&mut resp).unwrap();
+        assert!(resp.contains("401 Unauthorized"));
     }
 }

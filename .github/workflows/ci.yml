@@ -437,6 +437,12 @@ jobs:
         # string is a member of the Python NonConformantKind enum.
         run: bash scripts/check-py-non-conformant-kind-coverage.sh
 
+      - name: check-py-srt-error-mapping-coverage
+        # Phase 8 T1 Bootstrap stub — Wave A T4 lands the real coverage
+        # check for SrtErrorKind variants against make_srt_error call
+        # sites in crates/tst-py/src/srt/.
+        run: bash scripts/check-py-srt-error-mapping-coverage.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

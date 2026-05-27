@@ -14,6 +14,8 @@ mod mpegts;
 mod mux;
 #[cfg(feature = "rtp")]
 mod rtp;
+#[cfg(feature = "srt")]
+mod srt;
 
 use pyo3::prelude::*;
 
@@ -28,6 +30,10 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     {
         m.add_function(wrap_pyfunction!(errors::raise_rtsp_error_for_test, m)?)?;
         m.add_function(wrap_pyfunction!(errors::raise_rtp_error_for_test, m)?)?;
+    }
+    #[cfg(feature = "srt")]
+    {
+        m.add_function(wrap_pyfunction!(errors::raise_srt_error_for_test, m)?)?;
     }
     mpegts::register(m)?;
     klv::register(m)?;
@@ -55,5 +61,9 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // contents).
     #[cfg(feature = "rtp")]
     rtp::register(m)?;
+    // srt submodule — SRT transport bindings (Wave A populates the
+    // contents).
+    #[cfg(feature = "srt")]
+    srt::register(m)?;
     Ok(())
 }

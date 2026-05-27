@@ -303,6 +303,38 @@ class RtpError(TstError):
         self.message = message
 
 
+class SrtErrorKind(enum.IntEnum):
+    """Mirrors `tst_srt::IoError` / `ConnectError` / `AcceptError`
+    + `tst_pipeline::TransportError` variants collapsed to user-facing
+    buckets. Raised by `tstrans.srt` socket / sender / receiver
+    operations.
+
+    Available only when tstrans was built with the `srt` cargo
+    feature (default-on in published wheels).
+    """
+
+    CONNECT_FAILED = 0
+    ACCEPT_FAILED = 1
+    WOULD_BLOCK = 2
+    TIMEOUT = 3
+    CLOSED = 4
+    BROKEN = 5
+    CONFIG_INVALID = 6
+    IO = 7
+
+
+class SrtError(TstError):
+    """Raised by `tstrans.srt` operations. Discriminate via `.kind`."""
+
+    kind: SrtErrorKind
+    message: str
+
+    def __init__(self, *, kind: SrtErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
 class CodecError(TstError):
     """Codec parser failure. See `CodecErrorKind` for the variant set.
 
@@ -373,4 +405,6 @@ __all__ = [
     "RtspErrorKind",
     "RtpError",
     "RtpErrorKind",
+    "SrtError",
+    "SrtErrorKind",
 ]

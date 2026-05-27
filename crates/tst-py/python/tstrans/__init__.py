@@ -26,6 +26,16 @@ try:
 except ImportError:
     _RTP_AVAILABLE = False
 
+# `srt` import is conditional on the `srt` cargo feature (default-on,
+# so published wheels always include it). Same shape as `_RTP_AVAILABLE`
+# above — surface the failure at package-import time rather than
+# first-use time.
+try:
+    from tstrans import srt  # noqa: F401
+    _SRT_AVAILABLE = True
+except ImportError:
+    _SRT_AVAILABLE = False
+
 __version__: str = _native.__version__
 
 __all__: list[str] = [
@@ -39,3 +49,5 @@ __all__: list[str] = [
 ]
 if _RTP_AVAILABLE:
     __all__.append("rtp")
+if _SRT_AVAILABLE:
+    __all__.append("srt")

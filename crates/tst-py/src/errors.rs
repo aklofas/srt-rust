@@ -211,6 +211,43 @@ pub fn make_rtp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
     }
 }
 
+/// Build an `SrtError` Python exception. Mirror of `make_rtp_error`
+/// targeting `tstrans.exceptions.SrtError` + `SrtErrorKind`.
+///
+/// `kind_variant` must be a Python-side `SrtErrorKind` Enum variant
+/// name (e.g. `"CONNECT_FAILED"`, `"ACCEPT_FAILED"`, `"WOULD_BLOCK"`,
+/// `"TIMEOUT"`, `"CLOSED"`, `"BROKEN"`, `"CONFIG_INVALID"`, `"IO"`).
+#[cfg(feature = "srt")]
+pub fn make_srt_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "SrtErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let srt_error_cls = match exceptions.getattr(intern!(py, "SrtError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match srt_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
 /// Test helper: forces a `MuxError` raise from Rust, used by
 /// `test_error_wiring.py` to confirm end-to-end wiring. Exposed only
 /// under the `_native._raise_mux_error_for_test` name.
@@ -238,6 +275,17 @@ pub fn raise_rtsp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> P
 #[pyo3(name = "_raise_rtp_error_for_test")]
 pub fn raise_rtp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
     Err(make_rtp_error(py, kind, message))
+}
+
+/// Test helper: forces an `SrtError` raise from Rust, exposed as
+/// `_native._raise_srt_error_for_test` so the
+/// `check-py-srt-error-mapping-coverage.sh` ratchet sees at least
+/// one call site for `make_srt_error` per kind variant during Wave A.
+#[cfg(feature = "srt")]
+#[pyfunction]
+#[pyo3(name = "_raise_srt_error_for_test")]
+pub fn raise_srt_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
+    Err(make_srt_error(py, kind, message))
 }
 
 // ---------------------------------------------------------------------------

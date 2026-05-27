@@ -2096,6 +2096,7 @@ dependencies = [
  "tst-core",
  "tst-pipeline",
  "tst-rtp",
+ "tst-srt",
 ]
 
 [[package]]

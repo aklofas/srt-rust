@@ -613,6 +613,49 @@ impl RtspServer {
         // per-session cancel, flush, and exit within this time.
         let drain = self.state.builder.graceful_shutdown_drain + Duration::from_secs(1);
         std::thread::sleep(drain);
+        // Explicitly shutdown each per-session TCP write half so peers
+        // see FIN immediately instead of relying on Arc-drop. Without
+        // this, lingering `Arc<AsyncMutex<OwnedWriteHalf>>` clones (held
+        // by `state.sessions`, the fanout task, and any in-flight
+        // handler) keep the write half open after the per-session task
+        // returns — the kernel never sends FIN, and clients block in
+        // their pump's `read()` until their own read timeout fires.
+        // `RtspClient::Drop`'s 500 ms `teardown_with_deadline` masks the
+        // symptom but the root cause is here. Each shutdown is bounded
+        // by a 500 ms timeout to keep `stop()` sync-bounded.
+        if let Some(rt) = self.runtime.as_ref() {
+            use tokio::io::AsyncWriteExt;
+            for s in &sessions {
+                let Some(write_half) = s.tcp_write.lock().ok().and_then(|g| g.clone()) else {
+                    continue;
+                };
+                let peer = s.peer;
+                rt.block_on(async {
+                    let shutdown_fut = async {
+                        let mut guard = write_half.lock().await;
+                        guard.shutdown().await
+                    };
+                    match tokio::time::timeout(Duration::from_millis(500), shutdown_fut).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            tracing::debug!(
+                                target: "tst_rtp::server",
+                                peer = %peer,
+                                error = %e,
+                                "graceful shutdown: write half shutdown returned error (peer likely gone)"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                target: "tst_rtp::server",
+                                peer = %peer,
+                                "graceful shutdown: write half shutdown timed out"
+                            );
+                        }
+                    }
+                });
+            }
+        }
         Ok(())
     }
 

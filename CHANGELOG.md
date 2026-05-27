@@ -7,6 +7,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 4 Stage 3 follow-up: RtspServer::stop FIN on write halves (2026-05-26)
+
+### Fixed
+
+- **`RtspServer::stop` now explicitly shuts down each per-session TCP
+  write half.** Prior to this fix, `stop()` only signaled per-session
+  cancellation; the per-session task dropped only its `OwnedReadHalf` on
+  exit, while the `OwnedWriteHalf` stayed open through lingering
+  `Arc<AsyncMutex<OwnedWriteHalf>>` clones held by `state.sessions` and
+  the fanout task. No FIN reached the client, so client pumps blocked in
+  `read()` until their own read timeout fired — and any in-Drop
+  `RtspClient::teardown()` had to wait out the bounded 500 ms deadline
+  before the pump's mpsc disconnected. After this fix, `stop()`'s final
+  pass locks each `tcp_write` and calls `guard.shutdown().await` (bounded
+  by 500 ms per session), sending FIN immediately. Client pumps observe
+  EOF promptly; client teardown returns `Disconnected` instead of
+  `TimedOut`.
+
+  This closes the long-term root cause that Stage 3 T29's
+  `teardown_with_deadline` sidestepped. The client-side deadline stays
+  in place as defense-in-depth (peers that disappear without graceful
+  shutdown still need it).
+
+  Visible improvement: `tcp_interleaved_end_to_end_round_trips_ts_bytes`
+  now runs in ~1.1 s wall (was 2.97 s with only the client-side fix in
+  place).
+
+### Tests
+
+- New regression test
+  `rtsp_server_notice_5402::stop_shuts_down_per_session_write_half_so_client_sees_eof_promptly`
+  pins the EOF-arrives-promptly behavior so any future regression
+  (anyone removing the explicit shutdown loop in `RtspServer::stop`)
+  trips immediately.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 4 Stage 3: TCP-aware RTCP ingest (2026-05-26)
 
 ### Fixed

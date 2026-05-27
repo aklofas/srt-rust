@@ -175,6 +175,83 @@ fn stop_sends_notice_5402_announce_to_active_session() {
     drop(server);
 }
 
+/// Regression test for the Phase 4 Stage 3 follow-up: after
+/// `server.stop()` returns, the per-session TCP write half is
+/// explicitly shut down (FIN sent), so the client's next read
+/// observes EOF promptly instead of timing out.
+///
+/// Before the follow-up, the per-session task's cancellation dropped
+/// only the read half — the write half stayed open through Arc clones
+/// held by `state.sessions` and the fanout task, so the client's pump
+/// kept timing out on reads until its own teardown deadline. This
+/// test pins the EOF-arrives-promptly behavior so future regressions
+/// (anyone removing the explicit shutdown loop in `stop()`) trip the
+/// test.
+#[test]
+fn stop_shuts_down_per_session_write_half_so_client_sees_eof_promptly() {
+    let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+    let _mount = server.add_mount("/live", make_muxer_cfg()).unwrap();
+    server.start().unwrap();
+    let port = server.local_addr().unwrap().port();
+
+    let mut tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    tcp.set_nodelay(true).unwrap();
+    // Drive through SETUP so the server registers an ActiveSession with
+    // a populated `tcp_write` — the new shutdown loop only fires on
+    // sessions present in the registry at stop() time.
+    let _ = send_and_read_response(
+        &mut tcp,
+        format!("OPTIONS rtsp://127.0.0.1:{port}/live RTSP/1.0\r\nCSeq: 1\r\n\r\n").as_bytes(),
+    );
+    let _ = send_and_read_response(
+        &mut tcp,
+        format!(
+            "SETUP rtsp://127.0.0.1:{port}/live RTSP/1.0\r\nCSeq: 2\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+
+    // Call stop() in the foreground — it blocks for the full graceful
+    // drain (~1.1 s default + 500 ms shutdown timeout per session)
+    // before returning.
+    server.stop().unwrap();
+
+    // After stop() returns, the server should have shutdown the write
+    // half — so a read here should return Ok(0) (EOF) within a tight
+    // budget (50 ms is conservative; FIN should have already landed).
+    tcp.set_read_timeout(Some(Duration::from_millis(500)))
+        .unwrap();
+    let mut buf = [0u8; 1024];
+    let started = Instant::now();
+    loop {
+        match tcp.read(&mut buf) {
+            Ok(0) => break, // FIN observed — fix is working.
+            Ok(_) => {
+                // The notice 5402 ANNOUNCE arrived first; keep reading
+                // until we hit FIN (which the follow-up fix guarantees).
+                continue;
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                panic!(
+                    "expected EOF on read after server.stop() — got read-timeout after \
+                     {:?}. The server-side per-session TCP write half is leaking open \
+                     (regression: removing the explicit shutdown loop in RtspServer::stop?)",
+                    started.elapsed()
+                );
+            }
+            Err(_) => break, // Connection reset is also acceptable.
+        }
+    }
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "EOF observation took too long: {:?}",
+        started.elapsed()
+    );
+}
+
 #[test]
 fn stop_without_active_sessions_is_clean_noop_path() {
     // Smoke test: stop() with zero active sessions should not iterate

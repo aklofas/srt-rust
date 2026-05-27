@@ -49,6 +49,7 @@ pub mod error;
 pub mod io_file;
 pub mod klv;
 pub mod mpegts;
+pub mod net;
 pub mod transport;
 pub mod url;
 

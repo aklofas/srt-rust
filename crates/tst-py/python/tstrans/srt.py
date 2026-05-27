@@ -50,6 +50,10 @@ ReconnectPolicy = _srt.ReconnectPolicy
 ManagedSender = _srt.ManagedSender
 ManagedReceiver = _srt.ManagedReceiver
 
+# Wave C T8 — auto-reconnect MuxSender + DemuxReceiver convenience wrappers.
+ManagedMuxSender = _srt.ManagedMuxSender
+ManagedDemuxReceiver = _srt.ManagedDemuxReceiver
+
 
 __all__: list[str] = [
     # T2 transport
@@ -72,4 +76,7 @@ __all__: list[str] = [
     # T7 managed basic
     "ManagedSender",
     "ManagedReceiver",
+    # T8 managed convenience wrappers
+    "ManagedMuxSender",
+    "ManagedDemuxReceiver",
 ]

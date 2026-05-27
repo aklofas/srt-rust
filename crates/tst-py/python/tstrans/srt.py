@@ -37,6 +37,11 @@ Builder = _srt.Builder
 Socket = _srt.Socket
 Listener = _srt.Listener
 
+# Wave B T6 — reconnect policy ergonomics.
+BackoffStrategy = _srt.BackoffStrategy
+OverflowPolicy = _srt.OverflowPolicy
+ReconnectPolicy = _srt.ReconnectPolicy
+
 
 __all__: list[str] = [
     # T2 transport
@@ -49,4 +54,8 @@ __all__: list[str] = [
     "Builder",
     "Socket",
     "Listener",
+    # T6 policy
+    "BackoffStrategy",
+    "OverflowPolicy",
+    "ReconnectPolicy",
 ]

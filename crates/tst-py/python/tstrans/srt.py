@@ -37,6 +37,10 @@ Builder = _srt.Builder
 Socket = _srt.Socket
 Listener = _srt.Listener
 
+# Wave B T5 — MuxSender + DemuxReceiver convenience wrappers.
+MuxSender = _srt.MuxSender
+DemuxReceiver = _srt.DemuxReceiver
+
 # Wave B T6 — reconnect policy ergonomics.
 BackoffStrategy = _srt.BackoffStrategy
 OverflowPolicy = _srt.OverflowPolicy
@@ -54,6 +58,9 @@ __all__: list[str] = [
     "Builder",
     "Socket",
     "Listener",
+    # T5 mux/demux convenience wrappers
+    "MuxSender",
+    "DemuxReceiver",
     # T6 policy
     "BackoffStrategy",
     "OverflowPolicy",

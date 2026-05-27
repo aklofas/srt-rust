@@ -8,9 +8,9 @@
 //!   `UrlOverlay::apply_to_{socket,listener}` AFTER so the overlay's
 //!   unconditional overwrites give the URL final say.
 //! - `Socket` is a handle that promotes via `into_sender` /
-//!   `into_receiver` into T2's PySender / PyReceiver. The
-//!   `into_mux_sender` / `into_demux_receiver` paths are stubbed with
-//!   `NotImplementedError` until Wave B T5.
+//!   `into_receiver` into T2's PySender / PyReceiver, and via
+//!   `into_mux_sender` / `into_demux_receiver` into T5's PyMuxSender /
+//!   PyDemuxReceiver. Each consumes the socket handle.
 //! - `Listener` exposes both blocking `accept(timeout_ms=...)` and a
 //!   Python iterator (`for sock in listener: ...`). The iterator
 //!   converts `AcceptError::ListenerClosed` to `StopIteration` so a
@@ -37,7 +37,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use pyo3::Py;
-use pyo3::exceptions::{PyNotImplementedError, PyStopIteration};
+use pyo3::exceptions::PyStopIteration;
 use pyo3::prelude::*;
 
 use tst_core::transport::TransportCancel;
@@ -526,33 +526,50 @@ impl PySocket {
         Ok(PyReceiver::from_socket(socket))
     }
 
-    /// Convenience promotion to a `MuxSender`. **Not yet implemented**
-    /// — lands in Wave B T5. Raises `NotImplementedError`.
-    #[pyo3(signature = (program_config = None))]
+    /// Consume this socket and produce a `MuxSender` for the given
+    /// single-program `MuxerProgramConfig`. The socket handle moves into
+    /// the new MuxSender; subsequent calls on `self` raise
+    /// `SrtError(kind=CLOSED)`.
+    ///
+    /// Raises `MuxError(CONFIG_INVALID)` if the program config fails the
+    /// muxer's validation.
     fn into_mux_sender(
         &mut self,
         py: Python<'_>,
-        program_config: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyObject> {
-        let _ = (py, program_config);
-        Err(PyNotImplementedError::new_err(
-            "into_mux_sender lands in Wave B Task 5",
-        ))
+        program_config: PyRef<'_, crate::mux::PyMuxerProgramConfig>,
+    ) -> PyResult<crate::srt::mux_sender::PyMuxSender> {
+        let socket = self
+            .inner
+            .take()
+            .ok_or_else(|| make_srt_error(py, "CLOSED", "socket is closed"))?;
+        crate::srt::mux_sender::PyMuxSender::from_pipeline_mux(py, socket, &program_config)
     }
 
-    /// Convenience promotion to a `DemuxReceiver`. **Not yet
-    /// implemented** — lands in Wave B T5. Raises
-    /// `NotImplementedError`.
-    #[pyo3(signature = (demux_config = None))]
+    /// Consume this socket and produce a `DemuxReceiver`. Optional
+    /// `demux_config` is a `tstrans.mpegts.DemuxerConfig` dataclass; if
+    /// `None`, defaults are used. Same consumption semantics as
+    /// `into_mux_sender`.
+    #[pyo3(signature = (*, demux_config = None))]
     fn into_demux_receiver(
         &mut self,
         py: Python<'_>,
         demux_config: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyObject> {
-        let _ = (py, demux_config);
-        Err(PyNotImplementedError::new_err(
-            "into_demux_receiver lands in Wave B Task 5",
-        ))
+    ) -> PyResult<crate::srt::demux_receiver::PyDemuxReceiver> {
+        let socket = self
+            .inner
+            .take()
+            .ok_or_else(|| make_srt_error(py, "CLOSED", "socket is closed"))?;
+        match demux_config {
+            None => Ok(crate::srt::demux_receiver::PyDemuxReceiver::from_pipeline_demux(socket)),
+            Some(cfg) => {
+                let opts = crate::mpegts::build_demuxer_config(py, cfg)?;
+                Ok(
+                    crate::srt::demux_receiver::PyDemuxReceiver::from_pipeline_demux_with_config(
+                        socket, opts,
+                    ),
+                )
+            }
+        }
     }
 
     /// Local bound address as `(host, port)`. Useful when the URL

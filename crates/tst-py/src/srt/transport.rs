@@ -756,6 +756,17 @@ impl PyCancelHandle {
             flag: AtomicBool::new(false),
         }
     }
+
+    /// Build a `PyCancelHandle` from an already-trait-erased
+    /// `Arc<dyn TransportCancel>`. Used by `PyDemuxReceiver::cancel_handle`
+    /// (T5) where the pipeline shell already returns the trait-erased
+    /// shape — no need to re-wrap.
+    pub(crate) fn from_arc(inner: Arc<dyn TransportCancel + Send + Sync>) -> Self {
+        Self {
+            inner,
+            flag: AtomicBool::new(false),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

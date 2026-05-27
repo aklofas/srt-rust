@@ -275,16 +275,23 @@ def test_socket_into_sender_consumes_handle() -> None:
         lst.close()
 
 
-def test_socket_into_mux_sender_not_implemented() -> None:
-    """`Socket.into_mux_sender()` lands in Wave B T5 — raises
-    NotImplementedError until then."""
+def test_socket_into_demux_receiver_consumes_socket() -> None:
+    """`Socket.into_demux_receiver()` consumes the socket — the
+    NotImplementedError stub from T3 is replaced by a real
+    implementation in T5. After consumption, the original socket
+    handle reports closed.
+
+    The mux-side promotion is covered by
+    `test_srt_mux_demux.py::test_socket_into_mux_sender_promotion`.
+    """
+    from tstrans.mpegts import (
+        MuxerProgramConfigBuilder,
+        VideoCodec,
+    )
+
     b = tstrans.srt.Builder("srt://0.0.0.0:0?mode=listener")
     with b.listen() as lst:
-        # We need a Socket — synthesize one via accept-with-timeout that
-        # errors instead. Use a different path: get a Socket via a fast
-        # caller/listener handshake on loopback.
         port = lst.local_addr()[1]
-
         accepted_box: list[Optional[tstrans.srt.Socket]] = [None]
 
         def accept_worker() -> None:
@@ -295,13 +302,27 @@ def test_socket_into_mux_sender_not_implemented() -> None:
         time.sleep(0.1)
         caller = _connect_caller(port)
         t.join(timeout=5.0)
-
         try:
-            with pytest.raises(NotImplementedError):
-                caller.into_mux_sender()
-            with pytest.raises(NotImplementedError):
-                caller.into_demux_receiver()
+            # Demote the listener-accepted socket into a DemuxReceiver.
+            assert accepted_box[0] is not None
+            rx = accepted_box[0].into_demux_receiver()
+            # The original Socket handle is now consumed.
+            assert not accepted_box[0].is_alive()
+            assert "open" in repr(rx)
+            rx.close()
+            # Mux-side promotion: take a fresh socket pair.
+            program = (
+                MuxerProgramConfigBuilder(1, 0x100)
+                .add_video(0x101, VideoCodec.H264)
+                .build()
+            )
+            # The caller-side socket from above is still alive; promote it.
+            tx = caller.into_mux_sender(program)
+            assert not caller.is_alive()
+            assert "open" in repr(tx)
+            tx.close()
         finally:
+            # Idempotent close of already-consumed handles.
             caller.close()
             if accepted_box[0] is not None:
                 accepted_box[0].close()

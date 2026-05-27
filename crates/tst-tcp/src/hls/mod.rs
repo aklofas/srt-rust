@@ -24,6 +24,6 @@ mod tls;
 // pub use builder::HlsPublisherBuilder;
 pub use config::{HlsConfig, HlsMode};
 pub use error::{HlsError, HlsErrorKind};
-// pub use publisher::HlsPublisher;
-// pub use stats::HlsStats;
+pub use publisher::HlsPublisher;
+pub use stats::HlsStats;
 pub use url::{HlsUrl, HlsUrlError};

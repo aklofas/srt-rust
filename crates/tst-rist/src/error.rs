@@ -85,7 +85,10 @@ mod tests {
 
     #[test]
     fn ffi_error_carries_code_and_function() {
-        let e = RistError::Ffi { code: -3, function: "rist_peer_create" };
+        let e = RistError::Ffi {
+            code: -3,
+            function: "rist_peer_create",
+        };
         assert_eq!(e.kind(), RistErrorKind::Ffi);
         assert!(e.to_string().contains("-3"));
         assert!(e.to_string().contains("rist_peer_create"));

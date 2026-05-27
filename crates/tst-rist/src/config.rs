@@ -27,15 +27,27 @@ pub struct EncryptionKey {
 impl EncryptionKey {
     /// AES-128 PSK.
     pub fn aes128(secret: impl Into<String>) -> Self {
-        Self { size_bits: 128, secret: secret.into(), rotation: 0 }
+        Self {
+            size_bits: 128,
+            secret: secret.into(),
+            rotation: 0,
+        }
     }
     /// AES-192 PSK.
     pub fn aes192(secret: impl Into<String>) -> Self {
-        Self { size_bits: 192, secret: secret.into(), rotation: 0 }
+        Self {
+            size_bits: 192,
+            secret: secret.into(),
+            rotation: 0,
+        }
     }
     /// AES-256 PSK.
     pub fn aes256(secret: impl Into<String>) -> Self {
-        Self { size_bits: 256, secret: secret.into(), rotation: 0 }
+        Self {
+            size_bits: 256,
+            secret: secret.into(),
+            rotation: 0,
+        }
     }
     /// Set the key-rotation packet count.
     pub fn rotation(mut self, count: u32) -> Self {

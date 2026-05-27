@@ -14,9 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use tst_core::transport::{RecvTransport, Transport, TransportError};
-use tst_rist::{
-    EncryptionKey, RistProfile, RistRecvTransportBuilder, RistTransportBuilder,
-};
+use tst_rist::{EncryptionKey, RistProfile, RistRecvTransportBuilder, RistTransportBuilder};
 
 /// Serializes RIST loopback tests within this test binary. (Cross-binary
 /// serialization isn't needed because each test in this file uses a distinct
@@ -106,7 +104,8 @@ fn simple_profile_unicast_loopback_round_trip() {
         send.send_bytes(p).expect("send");
     }
 
-    let collected = rx_payloads.recv_timeout(Duration::from_secs(10))
+    let collected = rx_payloads
+        .recv_timeout(Duration::from_secs(10))
         .expect("recv thread didn't return in time");
 
     // librist's first few packets sometimes go missing during the
@@ -169,7 +168,8 @@ fn main_profile_aes256_loopback_round_trip() {
         send.send_bytes(p).expect("send");
     }
 
-    let collected = rx_payloads.recv_timeout(Duration::from_secs(15))
+    let collected = rx_payloads
+        .recv_timeout(Duration::from_secs(15))
         .expect("recv thread didn't return in time");
     assert!(
         collected.len() >= 3,

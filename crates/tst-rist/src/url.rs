@@ -51,7 +51,11 @@ pub enum RistUrlError {
     #[error("host '{0}' is not a literal IPv4/IPv6 address")]
     BadHost(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
-    BadQueryValue { key: String, value: String, detail: String },
+    BadQueryValue {
+        key: String,
+        value: String,
+        detail: String,
+    },
     #[error("aes-type must be 128, 192, or 256; got {0}")]
     BadAesType(u32),
     #[error("URL parse failed: {0}")]

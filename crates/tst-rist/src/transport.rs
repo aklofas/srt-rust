@@ -9,7 +9,7 @@ use tst_core::transport::{Transport, TransportError};
 
 use crate::config::{EncryptionKey, RistConfig, RistProfile};
 use crate::error::RistError;
-use crate::init::{ensure_init, GLOBAL_LOGGING};
+use crate::init::{GLOBAL_LOGGING, ensure_init};
 use crate::stats::RistStats;
 use crate::url::RistUrl;
 
@@ -58,9 +58,7 @@ impl RistTransport {
 
         // ===== Create sender context =====
         let mut ctx: *mut rist_sys::rist_ctx = std::ptr::null_mut();
-        let rc = unsafe {
-            rist_sys::rist_sender_create(&mut ctx, profile, 0, logging_settings)
-        };
+        let rc = unsafe { rist_sys::rist_sender_create(&mut ctx, profile, 0, logging_settings) };
         if rc != 0 || ctx.is_null() {
             return Err(RistError::ContextCreateFailed);
         }
@@ -71,11 +69,11 @@ impl RistTransport {
             .map_err(|e| RistError::InvalidConfig(format!("bad peer URL: {e}")))?;
 
         let mut peer_config: *mut rist_sys::rist_peer_config = std::ptr::null_mut();
-        let rc = unsafe {
-            rist_sys::rist_parse_address2(peer_url_c.as_ptr(), &mut peer_config)
-        };
+        let rc = unsafe { rist_sys::rist_parse_address2(peer_url_c.as_ptr(), &mut peer_config) };
         if rc != 0 || peer_config.is_null() {
-            unsafe { rist_sys::rist_destroy(ctx); }
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
             return Err(RistError::Ffi {
                 code: rc,
                 function: "rist_parse_address2",
@@ -102,18 +100,27 @@ impl RistTransport {
         let rc = unsafe { rist_sys::rist_peer_create(ctx, &mut peer, peer_config) };
         // peer_config is now owned by librist (or freed internally); per
         // librist docs we still free the wrapper.
-        unsafe { rist_sys::rist_peer_config_free2(&mut peer_config); }
+        unsafe {
+            rist_sys::rist_peer_config_free2(&mut peer_config);
+        }
 
         if rc != 0 {
-            unsafe { rist_sys::rist_destroy(ctx); }
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
             return Err(RistError::PeerCreateFailed);
         }
 
         // ===== Start the session =====
         let rc = unsafe { rist_sys::rist_start(ctx) };
         if rc != 0 {
-            unsafe { rist_sys::rist_destroy(ctx); }
-            return Err(RistError::Ffi { code: rc, function: "rist_start" });
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
+            return Err(RistError::Ffi {
+                code: rc,
+                function: "rist_start",
+            });
         }
 
         Ok(Self {
@@ -185,7 +192,9 @@ impl Transport for RistTransport {
 
     fn close(&mut self) {
         if self.alive.swap(false, Ordering::AcqRel) && !self.ctx.is_null() {
-            unsafe { rist_sys::rist_destroy(self.ctx); }
+            unsafe {
+                rist_sys::rist_destroy(self.ctx);
+            }
             self.ctx = std::ptr::null_mut();
         }
     }
@@ -211,7 +220,10 @@ pub(crate) fn rist_profile_to_c(profile: RistProfile) -> rist_sys::rist_profile 
 /// Return the global logging-settings pointer registered in init.rs, or
 /// NULL if logging registration failed earlier.
 pub(crate) fn global_logging_ptr() -> *mut rist_sys::rist_logging_settings {
-    GLOBAL_LOGGING.get().map(|p| p.0).unwrap_or(std::ptr::null_mut())
+    GLOBAL_LOGGING
+        .get()
+        .map(|p| p.0)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Apply [`RistConfig`] overlays onto the parsed `rist_peer_config`. Shared
@@ -250,7 +262,10 @@ pub(crate) fn apply_peer_overrides(
     Ok(())
 }
 
-fn apply_encryption(pc: &mut rist_sys::rist_peer_config, key: &EncryptionKey) -> Result<(), RistError> {
+fn apply_encryption(
+    pc: &mut rist_sys::rist_peer_config,
+    key: &EncryptionKey,
+) -> Result<(), RistError> {
     if !matches!(key.size_bits, 128 | 192 | 256) {
         return Err(RistError::InvalidConfig(format!(
             "encryption key_size must be 128/192/256, got {}",
@@ -311,8 +326,14 @@ mod tests {
 
     #[test]
     fn rist_profile_to_c_maps_correctly() {
-        assert_eq!(rist_profile_to_c(RistProfile::Simple), rist_sys::rist_profile_RIST_PROFILE_SIMPLE);
-        assert_eq!(rist_profile_to_c(RistProfile::Main), rist_sys::rist_profile_RIST_PROFILE_MAIN);
+        assert_eq!(
+            rist_profile_to_c(RistProfile::Simple),
+            rist_sys::rist_profile_RIST_PROFILE_SIMPLE
+        );
+        assert_eq!(
+            rist_profile_to_c(RistProfile::Main),
+            rist_sys::rist_profile_RIST_PROFILE_MAIN
+        );
     }
 
     #[test]

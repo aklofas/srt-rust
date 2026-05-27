@@ -10,10 +10,7 @@ fn version_string_is_nonempty() {
         .to_str()
         .expect("librist_version() returned non-UTF-8");
     assert!(!s.is_empty(), "librist_version() returned empty string");
-    assert!(
-        s.contains("0."),
-        "expected librist 0.x version, got: {s}"
-    );
+    assert!(s.contains("0."), "expected librist 0.x version, got: {s}");
 }
 
 #[test]

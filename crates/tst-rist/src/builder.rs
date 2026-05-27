@@ -39,7 +39,10 @@ impl RistTransportBuilder {
         }
         let mut config = RistConfig::default();
         config.merge_from_url(&parsed);
-        Ok(Self { url: parsed, config })
+        Ok(Self {
+            url: parsed,
+            config,
+        })
     }
 
     /// Override profile. Forced to [`RistProfile::Main`] if encryption is set.
@@ -137,7 +140,10 @@ impl RistRecvTransportBuilder {
         }
         let mut config = RistConfig::default();
         config.merge_from_url(&parsed);
-        Ok(Self { url: parsed, config })
+        Ok(Self {
+            url: parsed,
+            config,
+        })
     }
 
     /// Override profile. Forced to [`RistProfile::Main`] if encryption is set.
@@ -194,7 +200,8 @@ mod tests {
 
     #[test]
     fn sender_builder_chains_config() {
-        let b = RistTransportBuilder::new("rist://1.2.3.4:8000").unwrap()
+        let b = RistTransportBuilder::new("rist://1.2.3.4:8000")
+            .unwrap()
             .profile(RistProfile::Main)
             .buffer(Duration::from_millis(500))
             .bandwidth_kbps(10_000)
@@ -210,7 +217,8 @@ mod tests {
 
     #[test]
     fn sender_builder_encryption_forces_main_profile() {
-        let b = RistTransportBuilder::new("rist://1.2.3.4:8000").unwrap()
+        let b = RistTransportBuilder::new("rist://1.2.3.4:8000")
+            .unwrap()
             .profile(RistProfile::Simple)
             .encryption(EncryptionKey::aes256("psk"));
         assert_eq!(b.config().profile, RistProfile::Main);
@@ -231,7 +239,8 @@ mod tests {
 
     #[test]
     fn recv_builder_chains_config() {
-        let b = RistRecvTransportBuilder::new("rist://@0.0.0.0:8000").unwrap()
+        let b = RistRecvTransportBuilder::new("rist://@0.0.0.0:8000")
+            .unwrap()
             .profile(RistProfile::Main)
             .buffer(Duration::from_millis(300))
             .cname("recv-1");

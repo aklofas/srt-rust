@@ -65,9 +65,7 @@ impl RistRecvTransport {
 
         // ===== Create receiver context =====
         let mut ctx: *mut rist_sys::rist_ctx = std::ptr::null_mut();
-        let rc = unsafe {
-            rist_sys::rist_receiver_create(&mut ctx, profile, logging_settings)
-        };
+        let rc = unsafe { rist_sys::rist_receiver_create(&mut ctx, profile, logging_settings) };
         if rc != 0 || ctx.is_null() {
             return Err(RistError::ContextCreateFailed);
         }
@@ -78,11 +76,11 @@ impl RistRecvTransport {
             .map_err(|e| RistError::InvalidConfig(format!("bad bind URL: {e}")))?;
 
         let mut peer_config: *mut rist_sys::rist_peer_config = std::ptr::null_mut();
-        let rc = unsafe {
-            rist_sys::rist_parse_address2(bind_url_c.as_ptr(), &mut peer_config)
-        };
+        let rc = unsafe { rist_sys::rist_parse_address2(bind_url_c.as_ptr(), &mut peer_config) };
         if rc != 0 || peer_config.is_null() {
-            unsafe { rist_sys::rist_destroy(ctx); }
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
             return Err(RistError::Ffi {
                 code: rc,
                 function: "rist_parse_address2",
@@ -107,17 +105,26 @@ impl RistRecvTransport {
         // ===== Add peer (bind endpoint) =====
         let mut peer: *mut rist_sys::rist_peer = std::ptr::null_mut();
         let rc = unsafe { rist_sys::rist_peer_create(ctx, &mut peer, peer_config) };
-        unsafe { rist_sys::rist_peer_config_free2(&mut peer_config); }
+        unsafe {
+            rist_sys::rist_peer_config_free2(&mut peer_config);
+        }
         if rc != 0 {
-            unsafe { rist_sys::rist_destroy(ctx); }
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
             return Err(RistError::PeerCreateFailed);
         }
 
         // ===== Start the session =====
         let rc = unsafe { rist_sys::rist_start(ctx) };
         if rc != 0 {
-            unsafe { rist_sys::rist_destroy(ctx); }
-            return Err(RistError::Ffi { code: rc, function: "rist_start" });
+            unsafe {
+                rist_sys::rist_destroy(ctx);
+            }
+            return Err(RistError::Ffi {
+                code: rc,
+                function: "rist_start",
+            });
         }
 
         Ok(Self {
@@ -147,9 +154,8 @@ impl RecvTransport for RistRecvTransport {
         }
 
         let mut block: *mut rist_sys::rist_data_block = std::ptr::null_mut();
-        let rc = unsafe {
-            rist_sys::rist_receiver_data_read2(self.ctx, &mut block, POLL_TIMEOUT_MS)
-        };
+        let rc =
+            unsafe { rist_sys::rist_receiver_data_read2(self.ctx, &mut block, POLL_TIMEOUT_MS) };
 
         if rc < 0 {
             self.alive.store(false, Ordering::Release);
@@ -170,9 +176,8 @@ impl RecvTransport for RistRecvTransport {
         // SAFETY: block is non-null per rc > 0; payload + payload_len come
         // from librist's internal ringbuffer and are valid until we call
         // rist_receiver_data_block_free2.
-        let (payload_ptr, payload_len) = unsafe {
-            ((*block).payload as *const u8, (*block).payload_len)
-        };
+        let (payload_ptr, payload_len) =
+            unsafe { ((*block).payload as *const u8, (*block).payload_len) };
 
         let copy_n = payload_len.min(buf.len());
         if copy_n > 0 && !payload_ptr.is_null() {
@@ -183,7 +188,9 @@ impl RecvTransport for RistRecvTransport {
 
         // Always release the block back to librist. After this call block is
         // NULL'd by librist.
-        unsafe { rist_sys::rist_receiver_data_block_free2(&mut block); }
+        unsafe {
+            rist_sys::rist_receiver_data_block_free2(&mut block);
+        }
 
         if payload_len > buf.len() {
             // Caller's buffer was too small. librist gives us no partial-read
@@ -213,7 +220,9 @@ impl RecvTransport for RistRecvTransport {
 
     fn close(&mut self) {
         if self.alive.swap(false, Ordering::AcqRel) && !self.ctx.is_null() {
-            unsafe { rist_sys::rist_destroy(self.ctx); }
+            unsafe {
+                rist_sys::rist_destroy(self.ctx);
+            }
             self.ctx = std::ptr::null_mut();
         }
     }
@@ -235,10 +244,7 @@ mod tests {
         let r = RistRecvTransport::listen("rist://1.2.3.4:0");
         match r {
             Err(RistError::InvalidConfig(msg)) => {
-                assert!(
-                    msg.contains('@'),
-                    "expected '@' diagnostic, got: {msg}"
-                );
+                assert!(msg.contains('@'), "expected '@' diagnostic, got: {msg}");
             }
             Err(_) => { /* other error acceptable (port=0 etc.) */ }
             Ok(_) => panic!("expected error for non-bind URL"),

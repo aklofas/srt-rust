@@ -39,7 +39,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .profile(RistProfile::Simple)
         .buffer(Duration::from_millis(200))
         .connect()?;
-    println!("connected to {} (max_payload={})", tx.peer_url(), tx.max_payload());
+    println!(
+        "connected to {} (max_payload={})",
+        tx.peer_url(),
+        tx.max_payload()
+    );
 
     // 2. Give librist a moment to settle. Without this the first ~2-3
     //    packets often get dropped on the floor while the session
@@ -53,15 +57,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     //    send_bytes` path is shown here for clarity.
     for i in 0u8..100 {
         let mut pkt = [0u8; 188];
-        pkt[0] = 0x47;             // TS sync byte
-        pkt[1] = i;                // identifying counter
+        pkt[0] = 0x47; // TS sync byte
+        pkt[1] = i; // identifying counter
         pkt[2..].fill(0xab);
         tx.send_bytes(&pkt)?;
     }
 
     // 4. Stats snapshot — bytes_sent + packets_sent cumulative counters.
     let stats = tx.stats();
-    println!("sent: {} packets, {} bytes", stats.packets_sent, stats.bytes_sent);
+    println!(
+        "sent: {} packets, {} bytes",
+        stats.packets_sent, stats.bytes_sent
+    );
 
     Ok(())
 }

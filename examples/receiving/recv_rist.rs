@@ -29,7 +29,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut rx = RistRecvTransportBuilder::new(url)?
         .profile(RistProfile::Simple)
         .listen()?;
-    println!("listening on {} (max_payload={})", rx.bind_url(), rx.max_payload());
+    println!(
+        "listening on {} (max_payload={})",
+        rx.bind_url(),
+        rx.max_payload()
+    );
 
     // 2. Read loop. librist's internal poll returns timeout (mapped to
     //    `TransportError::Backpressure`) every 100ms when no data arrives,
@@ -47,19 +51,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 total_bytes += n as u64;
                 println!(
                     "recv #{:>4}: {n} bytes, first sync={:#04x}, counter={}",
-                    total_packets,
-                    buf[0],
-                    buf[1],
+                    total_packets, buf[0], buf[1],
                 );
             }
             Err(TransportError::Backpressure { .. }) => {
                 idle += 1;
                 if idle >= MAX_IDLE_TICKS {
-                    eprintln!(
-                        "no data for {} ticks ({}ms); exiting",
-                        idle,
-                        idle * 100
-                    );
+                    eprintln!("no data for {} ticks ({}ms); exiting", idle, idle * 100);
                     break;
                 }
             }

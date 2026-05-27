@@ -14,6 +14,7 @@
 //!
 //! Error mapping lives in `crate::errors::make_srt_error` (Wave A T4).
 
+mod lowlevel;
 mod transport;
 
 use pyo3::prelude::*;
@@ -21,6 +22,7 @@ use pyo3::prelude::*;
 pub(crate) fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let m = PyModule::new_bound(parent.py(), "srt")?;
     transport::register(&m)?;
+    lowlevel::register(&m)?;
     parent.add_submodule(&m)?;
     Ok(())
 }

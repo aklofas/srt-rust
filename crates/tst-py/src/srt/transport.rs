@@ -766,6 +766,74 @@ enum AcceptOrBindError {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-task helpers used by T3 (`lowlevel.rs`) to promote a low-level
+// `Socket` / concrete `SrtCancelHandle` into the T2 PyClass shapes.
+// ---------------------------------------------------------------------------
+
+impl PySender {
+    /// Build a `PySender` from a connected libsrt `Socket`. Used by
+    /// `Socket::into_sender` (T3) so the Builder→Socket→Sender promotion
+    /// path doesn't have to know about T2's internal field shape.
+    pub(crate) fn from_socket(socket: Socket) -> Self {
+        let transport = SrtTransport::new(socket);
+        let inner = PlSender::new(transport, SenderConfig::default());
+        let cancel = inner
+            .cancel_handle()
+            .expect("SrtTransport with a live socket always returns Some(cancel_handle)");
+        Self {
+            inner: Some(inner),
+            cancel,
+        }
+    }
+}
+
+impl PyReceiver {
+    /// Build a `PyReceiver` from a connected libsrt `Socket`. Used by
+    /// `Socket::into_receiver` (T3). The caller has already done the
+    /// accept (listener side) or completed the handshake (caller side).
+    pub(crate) fn from_socket(socket: Socket) -> Self {
+        let transport = SrtTransport::new(socket);
+        let cancel = <SrtTransport as tst_core::transport::Transport>::cancel_handle(&transport)
+            .expect("SrtTransport with a live socket always returns Some(cancel_handle)");
+        let inner = PlReceiver::new(transport, ReceiverConfig::default());
+        Self {
+            inner: Some(inner),
+            cancel,
+        }
+    }
+}
+
+/// Adapter: wraps a concrete `tst_core::SrtCancelHandle` (returned by
+/// `Socket::cancel_handle` / `Listener::cancel_handle`) as a
+/// `TransportCancel` so it can be stored in `PyCancelHandle`'s
+/// trait-erased `Arc<dyn TransportCancel + Send + Sync>` slot.
+///
+/// The internal `SrtCancel` adapter inside `tst-srt::transport` is
+/// crate-private; this is the same shape, local to the binding so we
+/// don't reach across crate boundaries for it.
+struct LowLevelSrtCancel(tst_core::SrtCancelHandle);
+
+impl TransportCancel for LowLevelSrtCancel {
+    fn cancel(&self) {
+        self.0.cancel();
+    }
+}
+
+impl PyCancelHandle {
+    /// Build a `PyCancelHandle` from a concrete `SrtCancelHandle` (the
+    /// type `Listener::cancel_handle()` returns directly). Wraps it in a
+    /// thin `TransportCancel` adapter so the rest of the binding can
+    /// treat it like any other transport's cancel handle.
+    pub(crate) fn from_concrete(inner: tst_core::SrtCancelHandle) -> Self {
+        let adapter: Arc<dyn TransportCancel + Send + Sync> = Arc::new(LowLevelSrtCancel(inner));
+        Self {
+            inner: adapter,
+            flag: AtomicBool::new(false),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Touch sites for every SrtErrorKind variant.
 // ---------------------------------------------------------------------------
 //

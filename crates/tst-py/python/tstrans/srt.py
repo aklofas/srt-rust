@@ -32,6 +32,11 @@ SocketStats = _srt.SocketStats
 SrtStats = _srt.SrtStats
 CancelHandle = _srt.CancelHandle
 
+# Wave A T3 — low-level primitives.
+Builder = _srt.Builder
+Socket = _srt.Socket
+Listener = _srt.Listener
+
 
 __all__: list[str] = [
     # T2 transport
@@ -40,4 +45,8 @@ __all__: list[str] = [
     "SocketStats",
     "SrtStats",
     "CancelHandle",
+    # T3 low-level
+    "Builder",
+    "Socket",
+    "Listener",
 ]

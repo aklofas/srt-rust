@@ -11,6 +11,7 @@ tst-core = { path = "../crates/tst-core" }
 tst-pipeline = { path = "../crates/tst-pipeline" }
 tst-rtp = { path = "../crates/tst-rtp" }
 tst-srt = { path = "../crates/tst-srt" }
+tst-tcp = { path = "../crates/tst-tcp" }
 tst-udp = { path = "../crates/tst-udp" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.
@@ -164,8 +165,16 @@ name = "managed_reconnect"
 path = "operations/managed_reconnect.rs"
 
 [[example]]
+name = "recv_tcp"
+path = "receiving/recv_tcp.rs"
+
+[[example]]
 name = "recv_udp"
 path = "receiving/recv_udp.rs"
+
+[[example]]
+name = "send_tcp"
+path = "sending/send_tcp.rs"
 
 [[example]]
 name = "send_udp"

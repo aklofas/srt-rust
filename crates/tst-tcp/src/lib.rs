@@ -37,7 +37,7 @@ mod recv_knobs;
 // Re-exports populated by subsequent phase tasks. Each phase task uncomments
 // its line as the corresponding type lands.
 //
-// pub use builder::{TcpTransportBuilder, TcpListenerBuilder};
+pub use builder::{TcpListenerBuilder, TcpTransportBuilder};
 pub use config::SocketConfig;
 pub use listener::TcpListener;
 pub use stats::TcpStats;

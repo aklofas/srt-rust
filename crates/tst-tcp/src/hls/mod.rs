@@ -21,7 +21,7 @@ mod segmenter;
 mod tls;
 
 // pub use lines uncommented as each phase lands its types.
-// pub use builder::HlsPublisherBuilder;
+pub use builder::HlsPublisherBuilder;
 pub use config::{HlsConfig, HlsMode};
 pub use error::{HlsError, HlsErrorKind};
 pub use publisher::HlsPublisher;

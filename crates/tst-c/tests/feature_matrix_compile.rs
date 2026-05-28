@@ -53,3 +53,43 @@ fn rtp_feature_exposes_rtsp_server_builder() {
     use tstrans::tst_rtsp_server_builder_new;
     let _ = tst_rtsp_server_builder_new;
 }
+
+// Plan A5a — udp / tcp / hls / rist feature gates. Each test is a pure
+// compile-time existence check: the symbol resolving proves the cfg gate
+// is wired correctly for that feature.
+
+#[cfg(feature = "udp")]
+#[test]
+fn udp_feature_exposes_open_function() {
+    let _ = tstrans::tst_udp_sender_open;
+}
+
+#[cfg(feature = "tcp")]
+#[test]
+fn tcp_feature_exposes_open_function() {
+    let _ = tstrans::tst_tcp_sender_open;
+}
+
+#[cfg(feature = "hls")]
+#[test]
+fn hls_feature_exposes_publisher_builder() {
+    let _ = tstrans::tst_hls_publisher_builder_new;
+}
+
+#[cfg(feature = "rist")]
+#[test]
+fn rist_feature_exposes_open_function() {
+    let _ = tstrans::tst_rist_sender_open;
+}
+
+// Combined-feature sanity: the four new transports compose without
+// symbol-resolution conflicts (no rist here — see the dual-mbedTLS note
+// in build.rs; srt+rist in one binary is unsupported, and this test runs
+// under whatever feature set the build selected).
+#[cfg(all(feature = "udp", feature = "tcp", feature = "hls"))]
+#[test]
+fn udp_tcp_hls_features_compose() {
+    let _ = tstrans::tst_udp_sender_open;
+    let _ = tstrans::tst_tcp_sender_open;
+    let _ = tstrans::tst_hls_publisher_builder_new;
+}

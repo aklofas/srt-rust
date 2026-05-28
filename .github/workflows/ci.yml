@@ -268,6 +268,23 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --all-features
 
+      - name: Build tst-c per-feature (udp/tcp/hls/rist) — catch single-feature breakage
+        # Plan A5a: the four new transport features are default-off, so the
+        # default + all-features builds above don't exercise each one in
+        # isolation. These explicit single-feature builds catch cross-feature
+        # dep leakage (e.g., a udp path that accidentally references srt) that
+        # would only surface at a consumer's `--features udp` build time.
+        # udp/tcp/hls are pure-Rust (no vendored C); rist links vendored librist.
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: |
+          cargo build -p tst-c --no-default-features --features udp
+          cargo build -p tst-c --no-default-features --features tcp
+          cargo build -p tst-c --no-default-features --features hls
+          cargo build -p tst-c --no-default-features --features rist
+          cargo build -p tst-c --no-default-features --features udp,tcp,hls,rist
+
       - name: cargo test (all features)
         # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
         # `file` on tst-core) is identical to defaults, so this rail is

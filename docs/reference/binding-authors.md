@@ -289,6 +289,22 @@ three-tier scheme exposed through `tstrans.h`:
       `tst_rtsp_server_builder_*` + start + add_*_mount + mount push family
       + stats + cancel + stop (~37). 11 new error codes
       (`TST_E_RTP_TRANSPORT` through `TST_E_RTSP_MOUNT`, -15..-25).
+    - `7` (Plan A5a, 2026-05-27): UDP + TCP (+ listener) + HLS publisher
+      + RIST C ABI surface. Four new cargo features `udp` / `tcp` / `hls` /
+      `rist` (all default-**off** — embedded `libtstrans.so` size stays
+      unchanged for existing consumers); `TST_HAS_UDP` / `TST_HAS_TCP` /
+      `TST_HAS_HLS` / `TST_HAS_RIST` `#define`s gate the surfaces. ~137 new
+      C entry points: `tst_udp_*` (34) + `tst_tcp_*` (39, incl. listener) +
+      `tst_hls_publisher_*` / `tst_publisher_*` / `tst_mux_publisher_*` (30,
+      incl. the abstract `Publisher` trait projection + `MuxPublisher<P>`
+      shell) + `tst_rist_*` (34) — each transport mirrors the RTP per-handle
+      data-path surface (open/close/send_ts|recv_ts/push_*/next_event/stats)
+      minus cancel (these transports expose no `cancel_handle()`). 18 new
+      error codes (`TST_E_UDP_IO` through `TST_E_RIST_IO`, -26..-43) +
+      `TstPublisherKind` enum. **Note:** building with both `srt` and `rist`
+      links two static mbedTLS copies; the cdylib build adds
+      `-Wl,--allow-multiple-definition` (Linux) to collapse them onto one —
+      see `crates/tst-c/build.rs`.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

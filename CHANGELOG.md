@@ -9,6 +9,47 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
 
+### Added — tst-c bindings for UDP / TCP / HLS / RIST (Plan A5a, 2026-05-27)
+
+Four new cargo features on `tst-c`: `udp`, `tcp`, `hls`, `rist` — all
+**default-OFF** (keeps embedded `libtstrans.so` size unchanged for existing
+SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
+`cargo build -p tst-c --features udp,tcp,hls,rist`.
+
+- **~137 new C entry points**, each transport mirroring the RTP per-handle
+  data-path surface (open / close / send_ts | recv_ts / push_{video,klv,audio,
+  subtitle}[_to] / next_event / get_stats / get_socket_stats / reset_stats),
+  **minus cancel** (these transports expose no `cancel_handle()`):
+  - `tst_udp_*` — 34 (sender / receiver / mux_sender / demux_receiver).
+  - `tst_tcp_*` — 39 (same four families + a `tst_tcp_listener_*` accept
+    surface; the single `TcpTransport` impls both send + recv).
+  - `tst_hls_publisher_*` / `tst_publisher_*` / `tst_mux_publisher_*` — 30:
+    the HLS publisher (builder + concrete handle running an internal tokio
+    HTTP server) + the abstract `Publisher` trait projection (`TstPublisher`,
+    enum-dispatched) + the new `MuxPublisher<P>` shell. KLV stays in-band in
+    the `.ts` segments.
+  - `tst_rist_*` — 34 (RIST Simple + Main profiles via librist; AES-128/192/256
+    encryption + profile + buffer carried in URL query params).
+- 4 new `TST_HAS_UDP` / `TST_HAS_TCP` / `TST_HAS_HLS` / `TST_HAS_RIST`
+  compile-time defines (always emitted; 0 when the feature is off).
+- 18 new `TstError` codes (`TST_E_UDP_IO` … `TST_E_RIST_IO`, -26..-43) +
+  the `TstPublisherKind` enum.
+- 5 new bash ratchets (count 26 → 31): `check-{udp,tcp,hls,rist}-error-mapping-coverage.sh`
+  + `check-publisher-trait-mirror.sh`.
+- 8 new C examples (2 per protocol) + 4 new smoke-test integration tests.
+
+### Changed
+
+- `tst-c` ABI version bumped: `TST_ABI_VERSION_MINOR` 6 → 7 (additive; no
+  breaking C-side change — existing consumers do not need to rebuild).
+- **Known limitation — SRT + RIST in one binary:** libsrt (`vendor/mbedtls`)
+  and librist (its own `contrib/mbedtls`) each statically link mbedTLS, so a
+  build with both the `srt` and `rist` features (e.g. `--all-features`) has
+  duplicate `mbedtls_*` symbols. The cdylib build resolves this on Linux with
+  `-Wl,--allow-multiple-definition` (collapses onto libsrt's copy; verified
+  link + runtime). A clean single-mbedTLS build (cross-crate reuse) is a
+  follow-up. Most consumers enable a single transport and are unaffected.
+
 ### Added — new transport: RIST (Plan A4, 2026-05-27)
 
 - **New crates `rist-sys` + `tst-rist`** — VideoLAN librist 0.2.10 bindings

@@ -34,7 +34,7 @@ srt     = ["dep:tst-srt", "dep:tst-pipeline", "dep:secrecy"]
 # tst-pipeline (MuxPublisher shell). `rist` pulls secrecy for AES PSK wrapping.
 udp     = ["dep:tst-udp"]
 tcp     = ["dep:tst-tcp"]
-hls     = ["dep:tst-tcp", "dep:tst-pipeline"]
+hls     = ["dep:tst-tcp", "tst-tcp?/hls", "dep:tst-pipeline"]
 rist    = ["dep:tst-rist", "dep:secrecy"]
 
 [dependencies]

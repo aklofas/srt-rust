@@ -1,13 +1,544 @@
 //! Python bindings for tst-udp (`tstrans.udp`). Gated on `feature = "udp"`.
 //!
-//! Populated by Plan A5b. Bootstrap ships an empty submodule scaffold; the
-//! wave adds the transport / publisher PyClasses + builders + error mapping.
+//! Populated by Plan A5b Wave A (Tasks 3-5). Mirrors the rtp/ module
+//! structure: concrete transport wrappers + builder PyClasses + SocketStats
+//! + error mapping.
+//!
+//! GIL boundaries:
+//! - `send`, `recv`, builder `build` → `py.allow_threads(...)` so concurrent
+//!   Python threads can keep running while UDP I/O blocks on the kernel.
+//! - `stats`, `local_addr_port`, `close` → fast read-only / atomic ops; no
+//!   GIL release needed.
+//!
+//! Bytes-like extraction in `Transport.send(payload)` follows the abi3-py310
+//! two-path pattern from rtp/transport.rs: fast zero-copy `&[u8]` extract
+//! for `bytes`, fallback through Python `bytes()` builtin for
+//! `bytearray`/`memoryview`.
+//!
+//! Error mapping: `tst_udp::UdpError` → `tstrans.exceptions.UdpError` with
+//! `.kind` set to one of the seven `UdpErrorKind` variants. The Rust
+//! `UdpErrorKind` numeric codes are 1-indexed; the Python `UdpErrorKind`
+//! enum is 0-indexed — the mapping uses enum *names*, not numeric codes,
+//! so there is no off-by-one issue.
+//!
+//! The 27th bash ratchet `scripts/check-py-udp-error-mapping-coverage.sh`
+//! enforces that every `UdpErrorKind` variant has at least one literal
+//! `make_udp_error(py, "<VARIANT>", ...)` call site in this crate.
 
+#![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
+
+use pyo3::exceptions::PyValueError;
+use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
+
+use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportError};
+use tst_udp::{UdpError, UdpErrorKind, UdpRecvTransport, UdpTransport};
+
+use crate::errors::make_udp_error;
+
+// ---------------------------------------------------------------------------
+// Error mapping
+// ---------------------------------------------------------------------------
+
+/// Map a `tst_udp::UdpError` to a `tstrans.exceptions.UdpError` PyErr.
+///
+/// `UdpErrorKind` is `#[non_exhaustive]`; the wildcard arm routes any
+/// unknown future variant to `IO` so this fn never panics on a Rust-side
+/// enum addition. The bash ratchet will surface the omission in CI.
+///
+/// Each of the seven `UdpErrorKind` variants gets a literal call site below
+/// so the `check-py-udp-error-mapping-coverage.sh` ratchet stays green.
+fn map_udp_error(py: Python<'_>, e: UdpError) -> PyErr {
+    let msg = e.to_string();
+    match e.kind() {
+        UdpErrorKind::Url => make_udp_error(py, "URL", &msg),
+        UdpErrorKind::HostNotLiteral => make_udp_error(py, "HOST_NOT_LITERAL", &msg),
+        UdpErrorKind::Io => make_udp_error(py, "IO", &msg),
+        UdpErrorKind::IfaceUnsupported => make_udp_error(py, "IFACE_UNSUPPORTED", &msg),
+        UdpErrorKind::PayloadTooLarge => make_udp_error(py, "PAYLOAD_TOO_LARGE", &msg),
+        UdpErrorKind::Closed => make_udp_error(py, "CLOSED", &msg),
+        UdpErrorKind::InvalidConfig => make_udp_error(py, "INVALID_CONFIG", &msg),
+        // Wildcard for #[non_exhaustive] additions not yet mapped.
+        _ => make_udp_error(py, "IO", &msg),
+    }
+}
+
+/// Map a `tst_udp::url::UdpUrlError` (from builder `from_url`) to a
+/// `tstrans.exceptions.UdpError` with `kind=URL`.
+fn map_udp_url_error(py: Python<'_>, e: tst_udp::UdpUrlError) -> PyErr {
+    make_udp_error(py, "URL", &e.to_string())
+}
+
+/// Map a `tst_core::transport::TransportError` from `send_bytes` to a
+/// `tstrans.exceptions.UdpError`. Routing:
+/// - `Closed` / `ExplicitClose` → `CLOSED`
+/// - `TooLarge` → `PAYLOAD_TOO_LARGE`
+/// - all others (`Broken`, `Backpressure`) → `IO`
+fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
+    match e {
+        TransportError::Closed | TransportError::ExplicitClose => {
+            make_udp_error(py, "CLOSED", "transport closed by caller")
+        }
+        TransportError::TooLarge { len, max } => {
+            let msg = format!("payload {len} exceeds max {max} bytes per datagram");
+            make_udp_error(py, "PAYLOAD_TOO_LARGE", &msg)
+        }
+        other => make_udp_error(py, "IO", &other.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyUdpStats — frozen mirror of UdpStats
+// ---------------------------------------------------------------------------
+
+/// Cumulative stats snapshot for a UDP transport handle.
+///
+/// Returned by `Transport.stats()` and `RecvTransport.stats()`. Send-side
+/// counters are zero on a receive-only handle and vice-versa.
+#[pyclass(frozen, get_all, name = "SocketStats", module = "tstrans.udp")]
+pub(crate) struct PyUdpStats {
+    /// Datagrams successfully sent (sender only).
+    pub datagrams_sent: u64,
+    /// Bytes successfully sent (sender only).
+    pub bytes_sent: u64,
+    /// Datagrams successfully received (receiver only).
+    pub datagrams_received: u64,
+    /// Bytes successfully received (receiver only).
+    pub bytes_received: u64,
+    /// Send-side I/O errors (sender only).
+    pub send_errors: u64,
+    /// Receive-side I/O errors (receiver only).
+    pub recv_errors: u64,
+}
+
+impl From<tst_udp::UdpStats> for PyUdpStats {
+    fn from(s: tst_udp::UdpStats) -> Self {
+        Self {
+            datagrams_sent: s.datagrams_sent,
+            bytes_sent: s.bytes_sent,
+            datagrams_received: s.datagrams_received,
+            bytes_received: s.bytes_received,
+            send_errors: s.send_errors,
+            recv_errors: s.recv_errors,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl PyUdpStats {
+    fn from_core(s: SocketStats) -> Self {
+        Self {
+            datagrams_sent: s.packets_sent,
+            bytes_sent: s.bytes_sent,
+            datagrams_received: s.packets_received,
+            bytes_received: s.bytes_received,
+            send_errors: s.packets_dropped_send,
+            recv_errors: s.packets_dropped_recv,
+        }
+    }
+}
+
+#[pymethods]
+impl PyUdpStats {
+    fn __repr__(&self) -> String {
+        format!(
+            "SocketStats(datagrams_sent={}, bytes_sent={}, \
+             datagrams_received={}, bytes_received={})",
+            self.datagrams_sent, self.bytes_sent, self.datagrams_received, self.bytes_received,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyUdpTransport — wraps tst_udp::UdpTransport
+// ---------------------------------------------------------------------------
+
+/// Raw UDP sender — wraps `tst_udp::UdpTransport`.
+///
+/// Construct via `Transport.builder().url("udp://host:port").build()`.
+/// A single transport sends to a fixed peer; to change the destination
+/// close this one and build a new transport.
+///
+/// GIL is released during `send` so other Python threads remain live while
+/// the kernel `sendto` blocks.
+#[pyclass(name = "Transport", module = "tstrans.udp")]
+pub(crate) struct PyUdpTransport {
+    inner: Option<UdpTransport>,
+}
+
+#[pymethods]
+impl PyUdpTransport {
+    /// Return a builder for configuring and constructing a `Transport`.
+    #[staticmethod]
+    fn builder() -> PyUdpTransportBuilder {
+        PyUdpTransportBuilder::default()
+    }
+
+    /// Send one datagram payload. Accepts any bytes-like object:
+    /// `bytes`, `bytearray`, `memoryview`, or any buffer-protocol object.
+    ///
+    /// Raises `UdpError(kind=PAYLOAD_TOO_LARGE)` if `len(payload)` exceeds
+    /// the configured `pkt_size` (default 1316 bytes / 7 TS packets).
+    ///
+    /// Releases the GIL during the kernel send call.
+    fn send(&mut self, py: Python<'_>, payload: &Bound<'_, PyAny>) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| make_udp_error(py, "CLOSED", "transport closed"))?;
+        // Fast path: `bytes` → zero-copy &[u8] borrow.
+        if let Ok(slice) = payload.extract::<&[u8]>() {
+            let res = py.allow_threads(|| inner.send_bytes(slice));
+            return res.map_err(|e| transport_error_to_pyerr(py, e));
+        }
+        // Fallback: bytearray / memoryview / etc. — coerce through Python
+        // `bytes()` builtin (one C copy). Required under abi3-py310 since
+        // PyBuffer is gated on not(Py_LIMITED_API) in PyO3 0.22.
+        let coerced: Bound<'_, PyBytes> = py
+            .import_bound("builtins")?
+            .getattr(intern!(py, "bytes"))?
+            .call1((payload,))?
+            .downcast_into::<PyBytes>()?;
+        let slice: &[u8] = coerced.as_bytes();
+        let res = py.allow_threads(|| inner.send_bytes(slice));
+        res.map_err(|e| transport_error_to_pyerr(py, e))
+    }
+
+    /// Close the sender. Idempotent — further `.send()` calls raise
+    /// `UdpError(kind=CLOSED)`.
+    fn close(&mut self) {
+        if let Some(mut t) = self.inner.take() {
+            t.close();
+        }
+    }
+
+    /// Snapshot of wire-level statistics. `datagrams_sent` / `bytes_sent`
+    /// tick on each successful `.send()`.
+    fn stats(&self, py: Python<'_>) -> PyResult<Py<PyUdpStats>> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_udp_error(py, "CLOSED", "transport closed"))?;
+        Py::new(py, PyUdpStats::from(inner.stats()))
+    }
+
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __exit__(
+        &mut self,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> bool {
+        self.close();
+        false
+    }
+
+    fn __repr__(&self) -> String {
+        match &self.inner {
+            Some(_) => "Transport(open)".to_string(),
+            None => "Transport(closed)".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyUdpTransportBuilder — builder for PyUdpTransport
+// ---------------------------------------------------------------------------
+
+/// Builder for `Transport`. Chain setter calls, then call `.build()`.
+///
+/// Example:
+/// ```python
+/// tx = udp.Transport.builder() \
+///     .url("udp://127.0.0.1:5004") \
+///     .pkt_size(1316) \
+///     .build()
+/// ```
+#[pyclass(name = "TransportBuilder", module = "tstrans.udp")]
+#[derive(Default)]
+pub(crate) struct PyUdpTransportBuilder {
+    url: Option<String>,
+    pkt_size: Option<usize>,
+    tos: Option<u8>,
+    sndbuf: Option<usize>,
+    ttl: Option<u8>,
+}
+
+#[pymethods]
+impl PyUdpTransportBuilder {
+    /// Set the destination URL. Required. Must be `udp://host:port`.
+    fn url<'py>(mut slf: PyRefMut<'py, Self>, s: &str) -> PyRefMut<'py, Self> {
+        slf.url = Some(s.to_string());
+        slf
+    }
+
+    /// Override UDP datagram payload size (default 1316 = 7 × 188 TS bytes).
+    fn pkt_size(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
+        slf.pkt_size = Some(v);
+        slf
+    }
+
+    /// IP TOS / DSCP byte (e.g. `0xb8` for Expedited Forwarding).
+    fn tos(mut slf: PyRefMut<'_, Self>, v: u8) -> PyRefMut<'_, Self> {
+        slf.tos = Some(v);
+        slf
+    }
+
+    /// `SO_SNDBUF` size in bytes.
+    fn sndbuf(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
+        slf.sndbuf = Some(v);
+        slf
+    }
+
+    /// Multicast TTL / IPv6 hop limit (1–255).
+    fn ttl(mut slf: PyRefMut<'_, Self>, v: u8) -> PyRefMut<'_, Self> {
+        slf.ttl = Some(v);
+        slf
+    }
+
+    /// Build the `Transport`. Raises `UdpError(kind=URL)` for a bad URL,
+    /// `UdpError(kind=IO)` for socket bind/connect failures.
+    fn build(&self, py: Python<'_>) -> PyResult<PyUdpTransport> {
+        let url_str = self
+            .url
+            .as_ref()
+            .ok_or_else(|| PyValueError::new_err("url(...) is required before build()"))?;
+        let mut b = tst_udp::UdpTransportBuilder::from_url(url_str)
+            .map_err(|e| map_udp_url_error(py, e))?;
+        if let Some(v) = self.pkt_size {
+            b.pkt_size(v);
+        }
+        if let Some(v) = self.tos {
+            b.tos(v);
+        }
+        if let Some(v) = self.sndbuf {
+            b.sndbuf(v);
+        }
+        if let Some(v) = self.ttl {
+            b.ttl(v);
+        }
+        let t = b.build().map_err(|e| map_udp_error(py, e))?;
+        Ok(PyUdpTransport { inner: Some(t) })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("TransportBuilder(url={:?})", self.url)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyUdpRecvTransport — wraps tst_udp::UdpRecvTransport
+// ---------------------------------------------------------------------------
+
+/// Raw UDP receiver — wraps `tst_udp::UdpRecvTransport`.
+///
+/// Construct via `RecvTransport.builder().bind_url("udp://0.0.0.0:0").build()`.
+/// Binding to port 0 lets the kernel pick a free port; read it back via
+/// `.local_addr_port()`.
+///
+/// GIL is released during `recv` so other Python threads remain live while
+/// waiting for a datagram.
+#[pyclass(name = "RecvTransport", module = "tstrans.udp")]
+pub(crate) struct PyUdpRecvTransport {
+    inner: Option<UdpRecvTransport>,
+    /// Per-recv scratch buffer. Reused across calls to avoid per-recv malloc.
+    scratch: Vec<u8>,
+}
+
+#[pymethods]
+impl PyUdpRecvTransport {
+    /// Return a builder for configuring and constructing a `RecvTransport`.
+    #[staticmethod]
+    fn builder() -> PyUdpRecvTransportBuilder {
+        PyUdpRecvTransportBuilder::default()
+    }
+
+    /// Receive one datagram. Returns `(payload_bytes, sender_addr_str)`.
+    ///
+    /// `timeout_ms`: milliseconds to wait. `None` (default) blocks until a
+    /// datagram arrives. On timeout, raises `UdpError(kind=IO)` with the
+    /// message "recv timed out".
+    ///
+    /// Note: `sender_addr_str` is currently always an empty string; the
+    /// underlying `recv_bytes` API does not expose the sender address.
+    ///
+    /// Releases the GIL while waiting on the kernel.
+    #[pyo3(signature = (timeout_ms = None))]
+    fn recv(&mut self, py: Python<'_>, timeout_ms: Option<u64>) -> PyResult<(Py<PyBytes>, String)> {
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| make_udp_error(py, "CLOSED", "transport closed"))?;
+        let scratch: &mut [u8] = self.scratch.as_mut_slice();
+        let n = match timeout_ms {
+            None => {
+                let res = py.allow_threads(|| inner.recv_bytes(scratch));
+                res.map_err(|e| transport_error_to_pyerr(py, e))?
+            }
+            Some(ms) => {
+                let deadline = std::time::Duration::from_millis(ms);
+                let res = py.allow_threads(|| inner.recv_timeout(scratch, deadline));
+                match res {
+                    Ok(Some(n)) => n,
+                    Ok(None) => return Err(make_udp_error(py, "IO", "recv timed out")),
+                    Err(e) => return Err(map_udp_error(py, e)),
+                }
+            }
+        };
+        let bytes = PyBytes::new_bound(py, &self.scratch[..n]).unbind();
+        // recv_bytes doesn't expose the sender address; callers that need
+        // the source addr should use a raw socket or filter at the IP layer.
+        Ok((bytes, String::new()))
+    }
+
+    /// Local bound port. Useful when the transport was bound to port 0
+    /// (kernel picks a free port).
+    fn local_addr_port(&self, py: Python<'_>) -> PyResult<u16> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_udp_error(py, "CLOSED", "transport closed"))?;
+        Ok(inner.local_addr().port())
+    }
+
+    /// Close the receiver. Idempotent — further `.recv()` calls raise
+    /// `UdpError(kind=CLOSED)`.
+    fn close(&mut self) {
+        if let Some(mut r) = self.inner.take() {
+            r.close();
+        }
+    }
+
+    /// Snapshot of wire-level statistics. `datagrams_received` /
+    /// `bytes_received` tick on each successful `.recv()`.
+    fn stats(&self, py: Python<'_>) -> PyResult<Py<PyUdpStats>> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_udp_error(py, "CLOSED", "transport closed"))?;
+        Py::new(py, PyUdpStats::from(inner.stats()))
+    }
+
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __exit__(
+        &mut self,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> bool {
+        self.close();
+        false
+    }
+
+    fn __repr__(&self) -> String {
+        match &self.inner {
+            Some(_) => "RecvTransport(open)".to_string(),
+            None => "RecvTransport(closed)".to_string(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyUdpRecvTransportBuilder — builder for PyUdpRecvTransport
+// ---------------------------------------------------------------------------
+
+/// Builder for `RecvTransport`. Chain setter calls, then call `.build()`.
+///
+/// Example:
+/// ```python
+/// rx = udp.RecvTransport.builder() \
+///     .bind_url("udp://0.0.0.0:5004") \
+///     .rcvbuf(8 * 1024 * 1024) \
+///     .build()
+/// ```
+#[pyclass(name = "RecvTransportBuilder", module = "tstrans.udp")]
+#[derive(Default)]
+pub(crate) struct PyUdpRecvTransportBuilder {
+    url: Option<String>,
+    rcvbuf: Option<usize>,
+    pkt_size: Option<usize>,
+    iface: Option<String>,
+}
+
+#[pymethods]
+impl PyUdpRecvTransportBuilder {
+    /// Set the bind URL. Required. Must be `udp://bind_addr:port` or
+    /// `udp://@group:port` for multicast recv.
+    fn bind_url<'py>(mut slf: PyRefMut<'py, Self>, s: &str) -> PyRefMut<'py, Self> {
+        slf.url = Some(s.to_string());
+        slf
+    }
+
+    /// `SO_RCVBUF` size in bytes.
+    fn rcvbuf(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
+        slf.rcvbuf = Some(v);
+        slf
+    }
+
+    /// Override the recv scratch-buffer size (must be ≥ max expected datagram).
+    fn pkt_size(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
+        slf.pkt_size = Some(v);
+        slf
+    }
+
+    /// Multicast interface name or literal IP for the join call.
+    fn iface<'py>(mut slf: PyRefMut<'py, Self>, s: &str) -> PyRefMut<'py, Self> {
+        slf.iface = Some(s.to_string());
+        slf
+    }
+
+    /// Build the `RecvTransport`. Raises `UdpError(kind=URL)` for a bad
+    /// bind URL, `UdpError(kind=IO)` for socket bind failures.
+    fn build(&self, py: Python<'_>) -> PyResult<PyUdpRecvTransport> {
+        let url_str = self
+            .url
+            .as_ref()
+            .ok_or_else(|| PyValueError::new_err("bind_url(...) is required before build()"))?;
+        let mut b = tst_udp::UdpRecvTransportBuilder::from_url(url_str)
+            .map_err(|e| map_udp_url_error(py, e))?;
+        if let Some(v) = self.rcvbuf {
+            b.rcvbuf(v);
+        }
+        if let Some(v) = self.pkt_size {
+            b.pkt_size(v);
+        }
+        if let Some(ref s) = self.iface {
+            b.iface(s.as_str());
+        }
+        let t = b.build().map_err(|e| map_udp_error(py, e))?;
+        // Size the scratch buffer to hold the largest legal datagram.
+        // max_payload() reflects the pkt_size knob; 65_536 is the
+        // hard upper bound for a UDP datagram payload.
+        let scratch_len = t.max_payload().max(65_536);
+        Ok(PyUdpRecvTransport {
+            inner: Some(t),
+            scratch: vec![0u8; scratch_len],
+        })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("RecvTransportBuilder(url={:?})", self.url)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module registration
+// ---------------------------------------------------------------------------
 
 pub(crate) fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let m = PyModule::new_bound(parent.py(), "udp")?;
-    // Populated by later wave tasks.
+    m.add_class::<PyUdpStats>()?;
+    m.add_class::<PyUdpTransport>()?;
+    m.add_class::<PyUdpTransportBuilder>()?;
+    m.add_class::<PyUdpRecvTransport>()?;
+    m.add_class::<PyUdpRecvTransportBuilder>()?;
     parent.add_submodule(&m)?;
     Ok(())
 }

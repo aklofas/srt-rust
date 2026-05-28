@@ -83,6 +83,44 @@ impl UdpRecvTransport {
     pub fn stats(&self) -> UdpStats {
         self.stats
     }
+
+    /// Receive one datagram with a deadline. Returns `None` on timeout
+    /// (no data arrived within `deadline`). Returns `Some(n)` on success.
+    ///
+    /// Implemented by setting `SO_RCVTIMEO` on the underlying socket for
+    /// the duration of this call, then restoring it to no-timeout. Not
+    /// concurrency-safe — callers must ensure no concurrent `recv_bytes`
+    /// is in progress on the same transport handle (the `Mutex<Option<…>>`
+    /// in the Python binding guarantees this).
+    pub fn recv_timeout(
+        &mut self,
+        buf: &mut [u8],
+        deadline: std::time::Duration,
+    ) -> Result<Option<usize>, crate::error::UdpError> {
+        self.socket
+            .set_read_timeout(Some(deadline))
+            .map_err(crate::error::UdpError::Io)?;
+        let result = self.socket.recv(buf);
+        // Restore no-timeout; ignore error (best-effort).
+        let _ = self.socket.set_read_timeout(None);
+        match result {
+            Ok(n) => {
+                self.stats.datagrams_received = self.stats.datagrams_received.saturating_add(1);
+                self.stats.bytes_received = self.stats.bytes_received.saturating_add(n as u64);
+                Ok(Some(n))
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                Ok(None)
+            }
+            Err(e) => {
+                self.stats.recv_errors = self.stats.recv_errors.saturating_add(1);
+                Err(crate::error::UdpError::Io(e))
+            }
+        }
+    }
 }
 
 impl RecvTransport for UdpRecvTransport {

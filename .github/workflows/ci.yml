@@ -494,6 +494,16 @@ jobs:
         # tstrans.exceptions has a make_tcp_error call site in tst-py/src/.
         run: bash scripts/check-py-tcp-error-mapping-coverage.sh
 
+      - name: check-py-hls-error-mapping-coverage
+        # Plan A5b Wave C T14 — verifies every HlsErrorKind variant in
+        # tstrans.exceptions has a make_hls_error call site in tst-py/src/.
+        run: bash scripts/check-py-hls-error-mapping-coverage.sh
+
+      - name: check-py-publisher-class-mirror
+        # Plan A5b Wave C T14 — verifies the Python Publisher ABC method
+        # list (tstrans/hls.pyi) mirrors the Rust tst_core Publisher trait.
+        run: bash scripts/check-py-publisher-class-mirror.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

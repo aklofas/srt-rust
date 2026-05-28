@@ -75,12 +75,12 @@ pub use sender::ts_sender::tst_sender_open;
 // canonical feature-mode builds succeed against the empty stub modules.
 #[cfg(feature = "hls")]
 pub use hls::builder::tst_hls_publisher_builder_new;
+#[cfg(feature = "rist")]
+pub use rist::tst_rist_sender_open;
 #[cfg(feature = "tcp")]
 pub use tcp::{tst_tcp_mux_sender_open, tst_tcp_recv_open, tst_tcp_sender_open};
 #[cfg(feature = "udp")]
 pub use udp::{tst_udp_mux_sender_open, tst_udp_recv_open, tst_udp_sender_open};
-// #[cfg(feature = "rist")]
-// pub use rist::tst_rist_sender_open;
 
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: libc::c_int = 0;

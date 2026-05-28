@@ -519,6 +519,11 @@ jobs:
         # list (tstrans/hls.pyi) mirrors the Rust tst_core Publisher trait.
         run: bash scripts/check-py-publisher-class-mirror.sh
 
+      - name: check-py-rist-error-mapping-coverage
+        # Plan A5b Wave D T17 — verifies every RistErrorKind variant in
+        # tstrans.exceptions has a make_rist_error call site in tst-py/src/.
+        run: bash scripts/check-py-rist-error-mapping-coverage.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

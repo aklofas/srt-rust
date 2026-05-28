@@ -431,6 +431,55 @@ pub fn raise_hls_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_hls_error(py, kind, message))
 }
 
+/// Build a `RistError` Python exception. Mirror of `make_hls_error`
+/// targeting `tstrans.exceptions.RistError` + `RistErrorKind`.
+///
+/// `kind_variant` must be a Python-side `RistErrorKind` Enum variant name
+/// (e.g. `"URL"`, `"FFI"`, `"PAYLOAD_TOO_LARGE"`, `"CLOSED"`,
+/// `"INVALID_CONFIG"`, `"ENCRYPTION_DISABLED"`, `"CONTEXT_CREATE_FAILED"`,
+/// `"PEER_CREATE_FAILED"`, `"RECV_TIMEOUT"`, `"IO"`).
+#[cfg(feature = "rist")]
+pub fn make_rist_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "RistErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let rist_error_cls = match exceptions.getattr(intern!(py, "RistError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match rist_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
+/// Test helper: forces a `RistError` raise from Rust, exposed as
+/// `_native._raise_rist_error_for_test` so the
+/// `check-py-rist-error-mapping-coverage.sh` ratchet sees at least one
+/// call site for `make_rist_error` per kind variant during Wave D.
+#[cfg(feature = "rist")]
+#[pyfunction]
+#[pyo3(name = "_raise_rist_error_for_test")]
+pub fn raise_rist_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
+    Err(make_rist_error(py, kind, message))
+}
+
 // ---------------------------------------------------------------------------
 // Rust-typed → PyErr mappers
 // ---------------------------------------------------------------------------

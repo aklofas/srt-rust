@@ -37,6 +37,18 @@ trailer = """
 #if !defined(TST_HAS_RTP)
 #define TST_HAS_RTP 0
 #endif
+#if !defined(TST_HAS_UDP)
+#define TST_HAS_UDP 0
+#endif
+#if !defined(TST_HAS_TCP)
+#define TST_HAS_TCP 0
+#endif
+#if !defined(TST_HAS_HLS)
+#define TST_HAS_HLS 0
+#endif
+#if !defined(TST_HAS_RIST)
+#define TST_HAS_RIST 0
+#endif
 
 /* ABI layout guards — trip the C compiler at consumer-build time if
  * the Rust-side struct sizes drift from their pinned baselines. Layouts
@@ -76,6 +88,11 @@ include = ["tst-core", "tst-pipeline", "tst-srt"]
 # cfg-gated symbols in the corresponding #ifdef / #endif block.
 "feature = srt" = "TST_HAS_SRT"
 "feature = rtp" = "TST_HAS_RTP"
+# Plan A5a — udp / tcp / hls / rist (all default-off).
+"feature = udp"  = "TST_HAS_UDP"
+"feature = tcp"  = "TST_HAS_TCP"
+"feature = hls"  = "TST_HAS_HLS"
+"feature = rist" = "TST_HAS_RIST"
 
 [export]
 include = [

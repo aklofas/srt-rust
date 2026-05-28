@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 6` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 7` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -82,8 +82,13 @@
  *   cbindgen `TST_HAS_SRT` / `TST_HAS_RTP` conditional emission.
  *   Existing SRT surface now gated on `feature = "srt"` (default-on).
  *   New RTP/RTSP entry points land in Tasks 2-16 behind `feature = "rtp"`.
+ * - `7` (Plan A5a, 2026-05-27): UDP + TCP + HLS + RIST entry points
+ *   plus cargo feature flags `udp`/`tcp`/`hls`/`rist` (all default-OFF
+ *   per the network-protocol-stack-expansion design — embedded
+ *   `libtstrans.so` size stays unchanged for existing consumers).
+ *   Adds 4 new `TST_HAS_*` defines and ~95 new `tst_*` entry points.
  */
-#define TST_ABI_VERSION_MINOR 6
+#define TST_ABI_VERSION_MINOR 7
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -6139,6 +6144,18 @@ int tst_rtsp_session_play(struct TstRtspSession *session);
 #endif
 #if !defined(TST_HAS_RTP)
 #define TST_HAS_RTP 0
+#endif
+#if !defined(TST_HAS_UDP)
+#define TST_HAS_UDP 0
+#endif
+#if !defined(TST_HAS_TCP)
+#define TST_HAS_TCP 0
+#endif
+#if !defined(TST_HAS_HLS)
+#define TST_HAS_HLS 0
+#endif
+#if !defined(TST_HAS_RIST)
+#define TST_HAS_RIST 0
 #endif
 
 /* ABI layout guards — trip the C compiler at consumer-build time if

@@ -2150,9 +2150,12 @@ dependencies = [
  "thiserror",
  "tst-core",
  "tst-pipeline",
+ "tst-rist",
  "tst-rtp",
  "tst-srt",
+ "tst-tcp",
  "tst-test-helpers",
+ "tst-udp",
 ]
 
 [[package]]

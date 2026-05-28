@@ -110,9 +110,10 @@ fn main() {
     println!("cargo:rerun-if-changed=tstrans.pc.in");
 }
 
-/// Inject `#define TST_HAS_SRT 1` / `#define TST_HAS_RTP 1` into the
-/// generated header immediately after the `#define TSTRANS_H` include-guard
-/// line. cbindgen's `[defines]` block wraps cfg-gated items in
+/// Inject `#define TST_HAS_<FEATURE> 1` lines (SRT / RTP / UDP / TCP /
+/// HLS / RIST) into the generated header immediately after the
+/// `#define TSTRANS_H` include-guard line, one per cargo feature active
+/// for this build. cbindgen's `[defines]` block wraps cfg-gated items in
 /// `#if defined(TST_HAS_SRT)` guards but does not emit the matching
 /// `#define TST_HAS_SRT 1` — this function bridges the gap.
 ///
@@ -130,6 +131,19 @@ fn inject_feature_defines(header_path: &std::path::Path) {
     }
     if std::env::var("CARGO_FEATURE_RTP").is_ok() {
         defines.push_str("#define TST_HAS_RTP 1\n");
+    }
+    // Plan A5a: udp / tcp / hls / rist transports (all default-off).
+    if std::env::var("CARGO_FEATURE_UDP").is_ok() {
+        defines.push_str("#define TST_HAS_UDP 1\n");
+    }
+    if std::env::var("CARGO_FEATURE_TCP").is_ok() {
+        defines.push_str("#define TST_HAS_TCP 1\n");
+    }
+    if std::env::var("CARGO_FEATURE_HLS").is_ok() {
+        defines.push_str("#define TST_HAS_HLS 1\n");
+    }
+    if std::env::var("CARGO_FEATURE_RIST").is_ok() {
+        defines.push_str("#define TST_HAS_RIST 1\n");
     }
     if defines.is_empty() {
         return; // nothing to inject

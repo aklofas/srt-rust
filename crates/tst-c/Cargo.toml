@@ -18,10 +18,20 @@ default = ["srt", "rtp", "mbedtls"]
 srt     = ["dep:tst-srt"]
 rtp     = ["dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
+# Plan A5a additions — default-off to keep embedded libtstrans.so size
+# unchanged for existing SRT-only / RTP-only consumers. Linux distros
+# that want everything can `cargo build --features udp,tcp,hls,rist`.
+udp     = ["dep:tst-udp"]
+tcp     = ["dep:tst-tcp"]
+hls     = ["dep:tst-tcp", "tst-tcp?/hls"] # HLS lives in tst-tcp; needs the hls sub-feature
+rist    = ["dep:tst-rist"]
 
 [dependencies]
 tst-srt      = { path = "../tst-srt", default-features = false, optional = true }
 tst-rtp      = { path = "../tst-rtp", default-features = false, optional = true }
+tst-udp      = { path = "../tst-udp", default-features = false, optional = true }
+tst-tcp      = { path = "../tst-tcp", default-features = false, optional = true }
+tst-rist     = { path = "../tst-rist", default-features = false, optional = true }
 tst-pipeline = { path = "../tst-pipeline" }
 tst-core     = { path = "../tst-core" }
 libc      = { workspace = true }

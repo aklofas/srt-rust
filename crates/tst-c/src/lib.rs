@@ -9,7 +9,7 @@
 //! `tst_ts_receiver_*` / `tst_receiver_*` / `tst_demux_receiver_*`),
 //! along with the reconnecting `tst_managed_*` variants. RTP and RTSP
 //! transport surfaces are gated on the `rtp` cargo feature. ABI minor is
-//! `0.6` (see [`TST_ABI_VERSION_MINOR`]).
+//! `0.7` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
@@ -36,6 +36,16 @@ pub mod receiver;
 pub mod rtp;
 #[cfg(feature = "rtp")]
 mod rtsp;
+
+// Plan A5a — udp / tcp / hls / rist transport surfaces (all default-off):
+#[cfg(feature = "udp")]
+pub mod udp;
+#[cfg(feature = "tcp")]
+pub mod tcp;
+#[cfg(feature = "hls")]
+pub mod hls;
+#[cfg(feature = "rist")]
+pub mod rist;
 /// Re-exports of internal error helpers for integration tests. These are not
 /// `extern "C"` and do not appear in `tstrans.h`. Named with `test_` prefix
 /// to mark their test-only intent; not gated on `#[cfg(test)]` because
@@ -58,6 +68,19 @@ pub use rtsp::client::builder::tst_rtsp_client_builder_new;
 pub use rtsp::server::builder::tst_rtsp_server_builder_new;
 #[cfg(feature = "srt")]
 pub use sender::ts_sender::tst_sender_open;
+
+// Plan A5a — feature_matrix_compile re-exports. Each Wave uncomments its
+// line once the corresponding open function lands (Wave A: udp, Wave B:
+// tcp, Wave C: hls, Wave D: rist). Bootstrap keeps them commented so the
+// canonical feature-mode builds succeed against the empty stub modules.
+// #[cfg(feature = "udp")]
+// pub use udp::tst_udp_sender_open;
+// #[cfg(feature = "tcp")]
+// pub use tcp::tst_tcp_sender_open;
+// #[cfg(feature = "hls")]
+// pub use hls::publisher::tst_hls_publisher_builder_new;
+// #[cfg(feature = "rist")]
+// pub use rist::tst_rist_sender_open;
 
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: libc::c_int = 0;
@@ -98,7 +121,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 6` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 7` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -124,7 +147,12 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   cbindgen `TST_HAS_SRT` / `TST_HAS_RTP` conditional emission.
 ///   Existing SRT surface now gated on `feature = "srt"` (default-on).
 ///   New RTP/RTSP entry points land in Tasks 2-16 behind `feature = "rtp"`.
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 6;
+/// - `7` (Plan A5a, 2026-05-27): UDP + TCP + HLS + RIST entry points
+///   plus cargo feature flags `udp`/`tcp`/`hls`/`rist` (all default-OFF
+///   per the network-protocol-stack-expansion design — embedded
+///   `libtstrans.so` size stays unchanged for existing consumers).
+///   Adds 4 new `TST_HAS_*` defines and ~95 new `tst_*` entry points.
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 7;
 
 // =========================================================================
 // Runtime version accessors

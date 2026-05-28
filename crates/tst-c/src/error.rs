@@ -619,9 +619,27 @@ pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
 }
 
 #[cfg(feature = "hls")]
-#[allow(dead_code, unused_variables)] // Wave C T15 fills in the body + calls it.
+#[allow(dead_code)] // called by Wave C's HLS entry points (another agent, parallel)
 pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
-    TstError::HlsIo
+    use tst_tcp::hls::HlsErrorKind;
+    // Exhaustive match — every HlsErrorKind variant maps to a single TstError
+    // code. CI ratchet scripts/check-hls-error-mapping-coverage.sh enforces
+    // this completeness.
+    match e.kind() {
+        HlsErrorKind::Url => TstError::HlsConfig,
+        HlsErrorKind::Io => TstError::HlsIo,
+        HlsErrorKind::BindFailed => TstError::HlsIo,
+        HlsErrorKind::InvalidConfig => TstError::HlsConfig,
+        HlsErrorKind::UnalignedPushTs => TstError::HlsConfig,
+        HlsErrorKind::Finished => TstError::HlsFinished,
+        HlsErrorKind::TlsDisabled => TstError::HlsTls,
+        HlsErrorKind::Tls => TstError::HlsTls,
+        HlsErrorKind::Internal => TstError::Internal, // reuse global Internal = -10
+        // Required by #[non_exhaustive]. CI ratchet allows this arm only
+        // when HlsErrorKind is non_exhaustive; verifies all 9 named
+        // variants above are still explicit.
+        _ => TstError::HlsIo,
+    }
 }
 
 #[cfg(feature = "rist")]

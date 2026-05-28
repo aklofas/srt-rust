@@ -487,7 +487,9 @@ mod tests {
 
     #[test]
     fn write_cstr_too_small_rejected() {
-        let mut buf = [0i8; 3];
+        // `c_char`, not `i8`: c_char is u8 on aarch64, so a hard-coded i8
+        // buffer fails to coerce to the `*mut c_char` parameter there.
+        let mut buf = [0 as c_char; 3];
         let rc = unsafe { write_cstr_to_buf("hello", buf.as_mut_ptr(), buf.len()) };
         assert_eq!(rc, TstError::HlsConfig as i32);
     }
@@ -495,7 +497,8 @@ mod tests {
     #[test]
     fn write_cstr_exact_fit_writes_and_nul_terminates() {
         // "hi" needs 3 bytes (2 + NUL); a 3-byte buffer is exactly enough.
-        let mut buf = [0i8; 3];
+        // `c_char` (u8 on aarch64), not `i8` — see write_cstr_too_small_rejected.
+        let mut buf = [0 as c_char; 3];
         let rc = unsafe { write_cstr_to_buf("hi", buf.as_mut_ptr(), buf.len()) };
         assert_eq!(rc, 2);
         assert_eq!(buf[0], b'h' as c_char);

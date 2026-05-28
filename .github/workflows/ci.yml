@@ -56,7 +56,11 @@ jobs:
         if: startsWith(matrix.name, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
+          # ripgrep (`rg`) backs the two scrub-guard steps below; the GHA
+          # ubuntu image no longer ships it preinstalled, so install it
+          # explicitly (a missing `rg` made the denylist guard fail closed
+          # and silently no-op'd the pre-rename guard).
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build ripgrep
 
       - name: Install build prerequisites (macOS)
         # librist's vendored build is meson-driven and needs both `meson` and
@@ -95,10 +99,10 @@ jobs:
         # `srt-c`, `TsSender`, `TsReceiver`) or internal codeword (`v0`)
         # leaks into the published tree. CLAUDE.md is the documented
         # exception (per the repo-standalone guardrail); vendor/, target/,
-        # and Cargo.lock are excluded. Ubuntu's GHA image ships ripgrep
-        # preinstalled. Linux-only — rg / bash invocation differs on
-        # Windows and this is a workspace-state check, so running it once
-        # is enough.
+        # and Cargo.lock are excluded. `rg` is installed in the Linux
+        # prerequisites step above (the GHA image no longer ships it).
+        # Linux-only — rg / bash invocation differs on Windows and this is
+        # a workspace-state check, so running it once is enough.
         if: matrix.name == 'linux-x86_64'
         run: |
           if rg 'srt[_-]core|srt[_-]rust|\bsrt[_-]c\b|TsSender|TsReceiver|\bv0\b' \

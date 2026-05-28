@@ -1,34 +1,3 @@
-   Compiling proc-macro2 v1.0.106
-   Compiling unicode-ident v1.0.24
-   Compiling quote v1.0.45
-   Compiling glob v0.3.3
-   Compiling prettyplease v0.2.37
-   Compiling libc v0.2.186
-   Compiling cfg-if v1.0.4
-   Compiling regex-syntax v0.8.10
-   Compiling minimal-lexical v0.2.1
-   Compiling memchr v2.8.0
-   Compiling either v1.15.0
-   Compiling bindgen v0.72.1
-   Compiling log v0.4.29
-   Compiling bitflags v2.11.1
-   Compiling rustc-hash v2.1.2
-   Compiling shlex v1.3.0
-   Compiling pkg-config v0.3.33
-   Compiling libloading v0.8.9
-   Compiling itertools v0.12.1
-   Compiling clang-sys v1.8.1
-   Compiling nom v7.1.3
-   Compiling syn v2.0.117
-   Compiling regex-automata v0.4.14
-   Compiling cexpr v0.6.0
-   Compiling regex v1.12.3
-   Compiling rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys)
-warning: rist-sys@0.1.0: cargo:rustc-link-arg-cdylib was specified in the build script of rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys), but that package does not contain a cdylib target
-
-Allowing this was an unintended change in the 1.50 release, and may become an error in the future. For more information, see <https://github.com/rust-lang/cargo/issues/9562>.
- Documenting rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.93s
 pub mod rist_sys
 #[repr(C)] pub union rist_sys::rist_stats__bindgen_ty_1
 pub rist_sys::rist_stats__bindgen_ty_1::receiver_flow: rist_sys::rist_stats_receiver_flow

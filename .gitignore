@@ -39,6 +39,10 @@ Thumbs.db
 # affect tests/fixtures/**/*.ts.
 /*.ts
 
+# Local-only test fixtures — never commit. Only synthetic/generated
+# fixtures are tracked in this repo.
+**/tests/fixtures/local/
+
 # Parallel-subagent worktrees (see CLAUDE.md feedback_per_subagent_worktree_for_parallel_code_changes.md)
 /.worktrees/
 

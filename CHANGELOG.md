@@ -1151,8 +1151,8 @@ differs.
 ### Rationale: this is an industry-wide encoder bug, not a vendor defect
 
 Corpus-wide validation against the local 251-file / 37 GB STANAG 4609
-testfiles tree (multi-platform: CI641, N4717V, N77HS, bench-11,
-test-fixtures) found ~99% of demuxer `NonConformant` events under
+local corpus (multiple platforms and captures) found ~99% of demuxer
+`NonConformant` events under
 tolerance mode are `MalformedAuCellCfiTolerated`. The producers ship
 `cell_fragment_indication = 0b00` (Middle) on cells that are actually
 single complete metadata Access Units (`0b11` Complete). Investigation
@@ -1265,8 +1265,8 @@ crates (tst-core / tst-pipeline / tst-srt) are unaffected.
 
 **Cross-refs:**
 
-- Corpus walk: `testfiles/notebooks/07-corpus-validation.ipynb`
-  (outside-repo; sensitive). 251 files / 37 GB, 0 parse errors,
+- Corpus walk: outside-repo corpus-validation notebook
+  (sensitive). 251 files / 37 GB, 0 parse errors,
   381,211 NonConformant events (~99% CFI tolerated).
 - Industry survey memo (outside-repo; agent memory):
   `reference_cfi_industry_state.md`.

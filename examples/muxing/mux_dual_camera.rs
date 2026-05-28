@@ -53,9 +53,9 @@ fn main() -> std::io::Result<()> {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x1011, VideoCodec::H264); // EO (visible-light)
         // Tag 0xFF (user_private) is the de-facto label slot used in the
-        // wild — it's ISO-reserved, but every ARS-shape sender in real
-        // corpus files (CI641, 0SM) puts the human-readable stream name
-        // here. Our own Demuxer's `extract_user_label` reads it first.
+        // wild — it's ISO-reserved, but real-world senders of this shape
+        // put the human-readable stream name here. Our own Demuxer's
+        // `extract_user_label` reads it first.
         // TSDuck will flag it as "Forbidden Descriptor Id 0xFF" — that's
         // expected; the bytes are still parsed. See
         // docs/guides/mpegts-mux.md for the full descriptor builder menu

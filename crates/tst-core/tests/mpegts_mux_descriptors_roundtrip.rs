@@ -139,7 +139,7 @@ fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
 
 #[test]
 fn family_a_hdmv_video_registration_round_trips() {
-    // Replicate the bench-11 / N4717V / N77HS shape: video PID with
+    // Replicate a real-world capture shape: video PID with
     // Registration "HDMV" + 4 trailing bytes.
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

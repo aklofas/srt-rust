@@ -108,6 +108,39 @@ jobs:
             exit 1
           fi
 
+      - name: Scrub guard — sensitive denylist (supplied out-of-tree)
+        # Enforces a denylist of sensitive private-corpus identifiers
+        # (aircraft tail numbers, capture IDs) supplied via the SCRUB_DENYLIST
+        # repo secret, so the tokens themselves never live in this public repo.
+        # The secret value is a ripgrep alternation, e.g. 'AAA|BBB|CCC'. The
+        # step is a no-op when the secret is unset (e.g. fork PRs). `rg -q`
+        # prints nothing on a match, so a hit never echoes the token into the
+        # build log — and GitHub masks registered secret values regardless.
+        # Populate via: Settings → Secrets and variables → Actions → New
+        # repository secret → SCRUB_DENYLIST.
+        #
+        # Fails CLOSED: branch on ripgrep's exit code so a malformed regex
+        # (rg exit 2) reds the build instead of silently disabling the guard.
+        # 0 = match → fail; 1 = clean → pass; anything else = error → fail.
+        # `|| rc=$?` keeps the non-match/error path from tripping `set -e`.
+        if: matrix.name == 'linux-x86_64'
+        env:
+          SCRUB_DENYLIST: ${{ secrets.SCRUB_DENYLIST }}
+        run: |
+          if [ -z "$SCRUB_DENYLIST" ]; then
+            echo "note: SCRUB_DENYLIST unset — denylist guard inactive" >&2
+            exit 0
+          fi
+          rc=0
+          rg -q "$SCRUB_DENYLIST" \
+            --glob '!target' --glob '!CLAUDE.md' \
+            --glob '!**/Cargo.lock' --glob '!vendor' || rc=$?
+          case "$rc" in
+            0) echo "Sensitive denylisted identifier detected in tree" >&2; exit 1 ;;
+            1) : ;;
+            *) echo "denylist scan errored (rc=$rc; malformed regex?) — failing closed" >&2; exit 1 ;;
+          esac
+
       - name: check-c-abi-rustdoc-coverage
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-c-abi-rustdoc-coverage.sh

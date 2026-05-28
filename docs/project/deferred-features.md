@@ -485,7 +485,7 @@ the trigger that would unblock it.
   PIDs it can't classify from the PMT (unregistered stream_types, missing
   descriptors). No heuristic inspection is applied.
 - **Why deferred:** Heuristics (looks-like-ADTS, looks-like-UL+BER,
-  looks-like-Annex-B H.264, etc.) are useful for the `testfiles/local/`
+  looks-like-Annex-B H.264, etc.) are useful for the local-capture
   exploration use case — feeding in an unfamiliar capture and learning what's
   in it — but they add complexity and false-positive risk. A dedicated
   inspection plan is the right home.

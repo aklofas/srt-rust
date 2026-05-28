@@ -189,8 +189,8 @@ pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Result<Vec<u8>, Descrip
 }
 
 /// Component descriptor (tag 0x50) — ETSI EN 300 468 §6.2.8.
-/// Carries language-tagged free text. Not seen in the testfiles
-/// corpus; included because it's the textbook "human label" slot
+/// Carries language-tagged free text. Not seen in real-world
+/// captures; included because it's the textbook "human label" slot
 /// that [`crate::mpegts::demux::low_level::extract_user_label`] reads first.
 ///
 /// `text` is UTF-8; receivers conventionally treat the body as
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn registration_hdmv_with_trailing_bytes() {
-        // Family A's video PID shape from the testfiles corpus.
+        // Family A's video PID shape from a real-world capture.
         let bytes = registration(*b"HDMV", &[0xFF, 0x1B, 0x44, 0x3F]).expect("within length cap");
         assert_eq!(
             bytes,

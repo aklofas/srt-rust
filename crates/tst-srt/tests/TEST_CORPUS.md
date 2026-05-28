@@ -308,8 +308,8 @@ Test goals (planned, alongside `mpegts::demux`):
 
 KLV records are emitted at roughly 25–30 Hz, so a 30-second file carries
 ~750 PESs on the KLV PID, and a 30-minute file carries ~50 000. The
-streaming probe binary in `testfiles/_tools/probe_ts/` (workspace-internal
-scratch, not part of this repo) exercises this end-to-end and stops after
+streaming probe binary (an outside-repo, workspace-internal scratch
+tool, not part of this repo) exercises this end-to-end and stops after
 a configurable record count.
 
 Test goals (for `mpegts::demux`):

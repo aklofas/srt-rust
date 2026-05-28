@@ -306,6 +306,103 @@ enum tst_e
    * (underlying MuxError, backpressure, closed).
    */
   TST_E_RTSP_MOUNT = -25,
+  /**
+   * (-26) UDP transport I/O failure (bind, connect, send, recv).
+   * Maps from `tst_udp::UdpErrorKind::Io`.
+   */
+  TST_E_UDP_IO = -26,
+  /**
+   * (-27) UDP URL/config parse failure or invalid host literal.
+   * Maps from `UdpErrorKind::{Url, HostNotLiteral, InvalidConfig}`.
+   */
+  TST_E_UDP_CONFIG = -27,
+  /**
+   * (-28) UDP payload too large for the configured MTU / pkt_size.
+   * Maps from `UdpErrorKind::PayloadTooLarge`.
+   */
+  TST_E_UDP_PAYLOAD_TOO_LARGE = -28,
+  /**
+   * (-29) UDP multicast interface not supported (e.g., requested
+   * `?iface=eth0` on a platform where `tst-udp` can't apply it).
+   * Maps from `UdpErrorKind::IfaceUnsupported`.
+   */
+  TST_E_UDP_IFACE_UNSUPPORTED = -29,
+  /**
+   * (-30) TCP transport I/O failure (connect, accept, send, recv).
+   * Maps from `tst_tcp::TcpErrorKind::Io`.
+   */
+  TST_E_TCP_IO = -30,
+  /**
+   * (-31) TCP URL/config parse failure.
+   * Maps from `TcpErrorKind::{Url, InvalidConfig}`.
+   */
+  TST_E_TCP_CONFIG = -31,
+  /**
+   * (-32) TCP connect timeout (default 10s, override via `?connect_timeout=`).
+   * Maps from `TcpErrorKind::ConnectTimeout`.
+   */
+  TST_E_TCP_CONNECT_TIMEOUT = -32,
+  /**
+   * (-33) TCP TLS handshake or certificate validation failure;
+   * or TLS requested but `tst-tcp` built without `tls` feature.
+   * Maps from `TcpErrorKind::{Tls, TlsDisabled}`.
+   */
+  TST_E_TCP_TLS = -33,
+  /**
+   * (-34) HLS HTTP server bind/listen failure.
+   * Maps from `tst_tcp::hls::HlsErrorKind::{BindFailed, Io}`.
+   */
+  TST_E_HLS_IO = -34,
+  /**
+   * (-35) HLS configuration invalid (bad output_dir, segment_duration < 1s, etc.).
+   * Maps from `HlsErrorKind::{Url, InvalidConfig, UnalignedPushTs}`.
+   */
+  TST_E_HLS_CONFIG = -35,
+  /**
+   * (-36) HLS publisher already finished (terminal state after
+   * `tst_hls_publisher_finish`); subsequent push/cut calls fail here.
+   * Maps from `HlsErrorKind::Finished`.
+   */
+  TST_E_HLS_FINISHED = -36,
+  /**
+   * (-37) HLS TLS error (cert load, handshake) or TLS requested
+   * but disabled at build time.
+   * Maps from `HlsErrorKind::{Tls, TlsDisabled}`.
+   */
+  TST_E_HLS_TLS = -37,
+  /**
+   * (-38) RIST librist FFI failure; check the message for the
+   * underlying librist function name + error code.
+   * Maps from `tst_rist::RistErrorKind::{Ffi, ContextCreateFailed, PeerCreateFailed}`.
+   */
+  TST_E_RIST_FFI = -38,
+  /**
+   * (-39) RIST URL/config parse failure or invalid AES type.
+   * Maps from `RistErrorKind::{Url, InvalidConfig}`.
+   */
+  TST_E_RIST_CONFIG = -39,
+  /**
+   * (-40) RIST payload too large for the configured pkt_size
+   * (default 1316 bytes; STANAG-4609-aligned).
+   * Maps from `RistErrorKind::PayloadTooLarge`.
+   */
+  TST_E_RIST_PAYLOAD_TOO_LARGE = -40,
+  /**
+   * (-41) RIST encryption requested but `tst-rist` built without
+   * `mbedtls` feature (uncrypted librist build cannot apply AES).
+   * Maps from `RistErrorKind::EncryptionDisabled`.
+   */
+  TST_E_RIST_ENCRYPTION_DISABLED = -41,
+  /**
+   * (-42) RIST receive timeout exceeded the session_timeout.
+   * Maps from `RistErrorKind::RecvTimeout`.
+   */
+  TST_E_RIST_RECV_TIMEOUT = -42,
+  /**
+   * (-43) RIST socket I/O failure underlying the librist transport.
+   * Maps from `RistErrorKind::Io`.
+   */
+  TST_E_RIST_IO = -43,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;

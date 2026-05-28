@@ -101,6 +101,75 @@ pub enum TstError {
     /// (-25) MountError variants from RtspServer mount surface
     /// (underlying MuxError, backpressure, closed).
     RtspMount = -25,
+
+    // Plan A5a — UDP error codes (-26..=-29).
+    /// (-26) UDP transport I/O failure (bind, connect, send, recv).
+    /// Maps from `tst_udp::UdpErrorKind::Io`.
+    UdpIo = -26,
+    /// (-27) UDP URL/config parse failure or invalid host literal.
+    /// Maps from `UdpErrorKind::{Url, HostNotLiteral, InvalidConfig}`.
+    UdpConfig = -27,
+    /// (-28) UDP payload too large for the configured MTU / pkt_size.
+    /// Maps from `UdpErrorKind::PayloadTooLarge`.
+    UdpPayloadTooLarge = -28,
+    /// (-29) UDP multicast interface not supported (e.g., requested
+    /// `?iface=eth0` on a platform where `tst-udp` can't apply it).
+    /// Maps from `UdpErrorKind::IfaceUnsupported`.
+    UdpIfaceUnsupported = -29,
+
+    // Plan A5a — TCP error codes (-30..=-33).
+    /// (-30) TCP transport I/O failure (connect, accept, send, recv).
+    /// Maps from `tst_tcp::TcpErrorKind::Io`.
+    TcpIo = -30,
+    /// (-31) TCP URL/config parse failure.
+    /// Maps from `TcpErrorKind::{Url, InvalidConfig}`.
+    TcpConfig = -31,
+    /// (-32) TCP connect timeout (default 10s, override via `?connect_timeout=`).
+    /// Maps from `TcpErrorKind::ConnectTimeout`.
+    TcpConnectTimeout = -32,
+    /// (-33) TCP TLS handshake or certificate validation failure;
+    /// or TLS requested but `tst-tcp` built without `tls` feature.
+    /// Maps from `TcpErrorKind::{Tls, TlsDisabled}`.
+    TcpTls = -33,
+
+    // Plan A5a — HLS error codes (-34..=-37).
+    /// (-34) HLS HTTP server bind/listen failure.
+    /// Maps from `tst_tcp::hls::HlsErrorKind::{BindFailed, Io}`.
+    HlsIo = -34,
+    /// (-35) HLS configuration invalid (bad output_dir, segment_duration < 1s, etc.).
+    /// Maps from `HlsErrorKind::{Url, InvalidConfig, UnalignedPushTs}`.
+    HlsConfig = -35,
+    /// (-36) HLS publisher already finished (terminal state after
+    /// `tst_hls_publisher_finish`); subsequent push/cut calls fail here.
+    /// Maps from `HlsErrorKind::Finished`.
+    HlsFinished = -36,
+    /// (-37) HLS TLS error (cert load, handshake) or TLS requested
+    /// but disabled at build time.
+    /// Maps from `HlsErrorKind::{Tls, TlsDisabled}`.
+    HlsTls = -37,
+
+    // Plan A5a — RIST error codes (-38..=-43).
+    /// (-38) RIST librist FFI failure; check the message for the
+    /// underlying librist function name + error code.
+    /// Maps from `tst_rist::RistErrorKind::{Ffi, ContextCreateFailed, PeerCreateFailed}`.
+    RistFfi = -38,
+    /// (-39) RIST URL/config parse failure or invalid AES type.
+    /// Maps from `RistErrorKind::{Url, InvalidConfig}`.
+    RistConfig = -39,
+    /// (-40) RIST payload too large for the configured pkt_size
+    /// (default 1316 bytes; STANAG-4609-aligned).
+    /// Maps from `RistErrorKind::PayloadTooLarge`.
+    RistPayloadTooLarge = -40,
+    /// (-41) RIST encryption requested but `tst-rist` built without
+    /// `mbedtls` feature (uncrypted librist build cannot apply AES).
+    /// Maps from `RistErrorKind::EncryptionDisabled`.
+    RistEncryptionDisabled = -41,
+    /// (-42) RIST receive timeout exceeded the session_timeout.
+    /// Maps from `RistErrorKind::RecvTimeout`.
+    RistRecvTimeout = -42,
+    /// (-43) RIST socket I/O failure underlying the librist transport.
+    /// Maps from `RistErrorKind::Io`.
+    RistIo = -43,
 }
 
 thread_local! {
@@ -496,6 +565,38 @@ pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstErro
         // Required by #[non_exhaustive].
         _ => TstError::RtspServer,
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Plan A5a — per-protocol error converters. Bootstrap ships these as
+// placeholder stubs returning the family-default code; each protocol
+// wave's first task (Wave A T5 / Wave B T10 / Wave C T15 / Wave D T20)
+// replaces the body with an exhaustive `match e.kind() { ... }` and the
+// matching `scripts/check-<proto>-error-mapping-coverage.sh` ratchet.
+// ─────────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "udp")]
+#[allow(dead_code, unused_variables)] // Wave A T5 fills in the body + calls it.
+pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
+    TstError::UdpIo
+}
+
+#[cfg(feature = "tcp")]
+#[allow(dead_code, unused_variables)] // Wave B T10 fills in the body + calls it.
+pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
+    TstError::TcpIo
+}
+
+#[cfg(feature = "hls")]
+#[allow(dead_code, unused_variables)] // Wave C T15 fills in the body + calls it.
+pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
+    TstError::HlsIo
+}
+
+#[cfg(feature = "rist")]
+#[allow(dead_code, unused_variables)] // Wave D T20 fills in the body + calls it.
+pub(crate) fn rist_error_to_code(e: &tst_rist::RistError) -> TstError {
+    TstError::RistFfi
 }
 
 /// Expose `record_shell_error` to integration tests that cannot access

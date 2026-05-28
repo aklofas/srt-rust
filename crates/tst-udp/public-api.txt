@@ -130,6 +130,7 @@ pub struct tst_udp::recv::UdpRecvTransport
 impl tst_udp::recv::UdpRecvTransport
 pub fn tst_udp::recv::UdpRecvTransport::listen(&str) -> core::result::Result<Self, tst_udp::error::UdpError>
 pub fn tst_udp::recv::UdpRecvTransport::local_addr(&self) -> core::net::socket_addr::SocketAddr
+pub fn tst_udp::recv::UdpRecvTransport::recv_timeout(&mut self, &mut [u8], core::time::Duration) -> core::result::Result<core::option::Option<usize>, tst_udp::error::UdpError>
 pub fn tst_udp::recv::UdpRecvTransport::stats(&self) -> tst_udp::stats::UdpStats
 pub fn tst_udp::recv::UdpRecvTransport::with_config(&tst_udp::url::UdpUrl, &tst_udp::config::SocketConfig) -> core::result::Result<Self, tst_udp::error::UdpError>
 impl tst_core::transport::RecvTransport for tst_udp::recv::UdpRecvTransport
@@ -355,6 +356,7 @@ pub struct tst_udp::UdpRecvTransport
 impl tst_udp::recv::UdpRecvTransport
 pub fn tst_udp::recv::UdpRecvTransport::listen(&str) -> core::result::Result<Self, tst_udp::error::UdpError>
 pub fn tst_udp::recv::UdpRecvTransport::local_addr(&self) -> core::net::socket_addr::SocketAddr
+pub fn tst_udp::recv::UdpRecvTransport::recv_timeout(&mut self, &mut [u8], core::time::Duration) -> core::result::Result<core::option::Option<usize>, tst_udp::error::UdpError>
 pub fn tst_udp::recv::UdpRecvTransport::stats(&self) -> tst_udp::stats::UdpStats
 pub fn tst_udp::recv::UdpRecvTransport::with_config(&tst_udp::url::UdpUrl, &tst_udp::config::SocketConfig) -> core::result::Result<Self, tst_udp::error::UdpError>
 impl tst_core::transport::RecvTransport for tst_udp::recv::UdpRecvTransport

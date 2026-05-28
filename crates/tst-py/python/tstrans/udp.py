@@ -1,11 +1,30 @@
-"""tstrans.udp — tst-udp bindings.
+"""tstrans.udp — raw UDP transport bindings (Plan A5b Wave A).
 
 Available when tstrans was built with the `udp` cargo feature (default-on
-in published wheels). A source build without `--features udp` will fail to
-import this submodule.
+in published wheels). Raises `ImportError` on a source build without
+``--features udp``.
 
-Contents are populated by `tstrans._native.udp` (Plan A5b). The native
-submodule's classes are re-exported here as the wave lands them.
+Classes
+-------
+Transport
+    Raw UDP sender. Construct via ``Transport.builder().url(...).build()``.
+RecvTransport
+    Raw UDP receiver. Construct via
+    ``RecvTransport.builder().bind_url(...).build()``.
+TransportBuilder
+    Builder for ``Transport`` — supports ``url``, ``pkt_size``, ``tos``,
+    ``sndbuf``, ``ttl`` knobs before ``build()``.
+RecvTransportBuilder
+    Builder for ``RecvTransport`` — supports ``bind_url``, ``rcvbuf``,
+    ``pkt_size``, ``iface`` knobs before ``build()``.
+SocketStats
+    Frozen stats snapshot returned by ``Transport.stats()`` /
+    ``RecvTransport.stats()``.
+UdpError
+    Base exception for all ``tstrans.udp`` errors; available in
+    ``tstrans.exceptions`` as well.
+UdpErrorKind
+    ``IntEnum`` discriminator on ``UdpError.kind``.
 """
 
 from __future__ import annotations
@@ -14,7 +33,23 @@ from . import _native
 
 _udp = _native.udp
 
-# Wave udp re-exports the native classes here (Sender / RecvTransport /
-# builders / stats / etc.). Until then the native submodule is empty.
+# Re-export native classes so users can write ``from tstrans.udp import Transport``.
+Transport = _udp.Transport
+RecvTransport = _udp.RecvTransport
+TransportBuilder = _udp.TransportBuilder
+RecvTransportBuilder = _udp.RecvTransportBuilder
+SocketStats = _udp.SocketStats
 
-__all__: list[str] = []
+# UdpError + UdpErrorKind live in tstrans.exceptions but are also exposed
+# here for convenience (mirrors the rtp/srt pattern).
+from .exceptions import UdpError, UdpErrorKind  # noqa: E402
+
+__all__: list[str] = [
+    "Transport",
+    "RecvTransport",
+    "TransportBuilder",
+    "RecvTransportBuilder",
+    "SocketStats",
+    "UdpError",
+    "UdpErrorKind",
+]

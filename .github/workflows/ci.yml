@@ -484,6 +484,11 @@ jobs:
         # sites in crates/tst-py/src/srt/.
         run: bash scripts/check-py-srt-error-mapping-coverage.sh
 
+      - name: check-py-udp-error-mapping-coverage
+        # Plan A5b Wave A T5 — verifies every UdpErrorKind variant in
+        # tstrans.exceptions has a make_udp_error call site in tst-py/src/.
+        run: bash scripts/check-py-udp-error-mapping-coverage.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

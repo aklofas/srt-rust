@@ -169,6 +169,21 @@ jobs:
         # `receiver-surface ... pending` wording in tst-c crate docs.
         run: bash scripts/check-doc-abi-and-st1910-currency.sh
 
+      - name: Check udp/tcp/hls/rist C ABI error-mapping coverage
+        # Plan A5a — each new tst-c transport family's *_error_to_code
+        # converter must exhaustively map its upstream *ErrorKind (wildcard
+        # arm allowed only because those enums are #[non_exhaustive]).
+        run: |
+          bash scripts/check-udp-error-mapping-coverage.sh
+          bash scripts/check-tcp-error-mapping-coverage.sh
+          bash scripts/check-hls-error-mapping-coverage.sh
+          bash scripts/check-rist-error-mapping-coverage.sh
+
+      - name: Check Publisher trait C mirror
+        # Plan A5a — every tst_core::publisher::Publisher trait method has a
+        # corresponding tst_publisher_* C entry point in the generated header.
+        run: bash scripts/check-publisher-trait-mirror.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

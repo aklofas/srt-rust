@@ -29,18 +29,26 @@ use pyo3::prelude::*;
 ///   `finish()`.
 #[pyclass(name = "HlsMode", module = "tstrans.hls", eq, eq_int, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+// SHOUTY_SNAKE variant names match the tst-py IntEnum-pyclass convention
+// (cf. rtp's TransportPref); this allow covers the lint that would demand
+// CamelCase `Live`/`Event`/`Vod`.
+#[allow(clippy::upper_case_acronyms)]
 pub(crate) enum PyHlsMode {
-    Live,
-    Event,
-    Vod,
+    // SCREAMING_SNAKE variant names so Python sees `HlsMode.LIVE` etc.
+    // (matches the tst-py pyclass-enum convention — cf. rtp's TransportPref
+    // `AUTO`/`UDP`/`TCP`). The upstream `tst_tcp::hls::HlsMode` uses
+    // `Live`/`Event`/`Vod`; the `From` impls bridge the two namings.
+    LIVE,
+    EVENT,
+    VOD,
 }
 
 impl From<PyHlsMode> for tst_tcp::hls::HlsMode {
     fn from(m: PyHlsMode) -> Self {
         match m {
-            PyHlsMode::Live => Self::Live,
-            PyHlsMode::Event => Self::Event,
-            PyHlsMode::Vod => Self::Vod,
+            PyHlsMode::LIVE => Self::Live,
+            PyHlsMode::EVENT => Self::Event,
+            PyHlsMode::VOD => Self::Vod,
         }
     }
 }
@@ -48,9 +56,9 @@ impl From<PyHlsMode> for tst_tcp::hls::HlsMode {
 impl From<tst_tcp::hls::HlsMode> for PyHlsMode {
     fn from(m: tst_tcp::hls::HlsMode) -> Self {
         match m {
-            tst_tcp::hls::HlsMode::Live => Self::Live,
-            tst_tcp::hls::HlsMode::Event => Self::Event,
-            tst_tcp::hls::HlsMode::Vod => Self::Vod,
+            tst_tcp::hls::HlsMode::Live => Self::LIVE,
+            tst_tcp::hls::HlsMode::Event => Self::EVENT,
+            tst_tcp::hls::HlsMode::Vod => Self::VOD,
         }
     }
 }
@@ -59,9 +67,9 @@ impl From<tst_tcp::hls::HlsMode> for PyHlsMode {
 impl PyHlsMode {
     fn __repr__(&self) -> &'static str {
         match self {
-            PyHlsMode::Live => "HlsMode.LIVE",
-            PyHlsMode::Event => "HlsMode.EVENT",
-            PyHlsMode::Vod => "HlsMode.VOD",
+            PyHlsMode::LIVE => "HlsMode.LIVE",
+            PyHlsMode::EVENT => "HlsMode.EVENT",
+            PyHlsMode::VOD => "HlsMode.VOD",
         }
     }
 }

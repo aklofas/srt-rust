@@ -597,9 +597,26 @@ pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
 }
 
 #[cfg(feature = "tcp")]
-#[allow(dead_code, unused_variables)] // Wave B T10 fills in the body + calls it.
+#[allow(dead_code)] // called by TCP entry points in other modules
 pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
-    TstError::TcpIo
+    use tst_tcp::error::TcpErrorKind;
+    // Exhaustive match — every TcpErrorKind variant maps to a single
+    // TstError code. CI ratchet scripts/check-tcp-error-mapping-coverage.sh
+    // enforces this completeness.
+    match e.kind() {
+        TcpErrorKind::Url => TstError::TcpConfig,
+        TcpErrorKind::Io => TstError::TcpIo,
+        TcpErrorKind::PayloadTooLarge => TstError::TooLarge, // reuse global TooLarge = -6
+        TcpErrorKind::Closed => TstError::Closed,            // reuse global Closed = -7
+        TcpErrorKind::ConnectTimeout => TstError::TcpConnectTimeout,
+        TcpErrorKind::InvalidConfig => TstError::TcpConfig,
+        TcpErrorKind::Tls => TstError::TcpTls,
+        TcpErrorKind::TlsDisabled => TstError::TcpTls,
+        // Required by #[non_exhaustive]. CI ratchet allows this arm only
+        // when TcpErrorKind is non_exhaustive; verifies all 8 named
+        // variants above are still explicit.
+        _ => TstError::TcpIo,
+    }
 }
 
 #[cfg(feature = "hls")]

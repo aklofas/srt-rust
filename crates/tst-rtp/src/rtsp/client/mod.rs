@@ -422,26 +422,40 @@ impl RtspClient {
 
 impl Drop for RtspClient {
     fn drop(&mut self) {
-        // Best-effort TEARDOWN if a session is still active. Bounded to
-        // 500 ms via teardown_with_deadline so Drop stays fast even when
-        // the peer silently half-closed (e.g. RtspServer::stop cancels
-        // per-session tasks but leaves the write half open via lingering
-        // ActiveSession Arcs — TEARDOWN write succeeds into the kernel
-        // buffer but no response ever comes back).
+        // Signal cancel to the pump + keepalive threads FIRST, before the
+        // best-effort TEARDOWN. The interleaved pump's `SharedStreamReader`
+        // re-acquires the shared `Mutex<Stream>` on every read cycle
+        // (~100 ms); if we attempt TEARDOWN while the pump is running, the
+        // TEARDOWN write-lock acquisition is starved for a variable,
+        // *unbounded* time — `std::sync::Mutex` is unfair and the lock
+        // acquisition happens before (and so is not covered by) the
+        // teardown deadline. That stalls Drop for seconds locally and >60 s
+        // on the slower CI runners (it cancelled linux-aarch64's job and
+        // unmasked on x86_64 once the cdylib-clobber fix let the test run).
+        // Setting cancel first lets the pump exit at its next loop-top check
+        // (within one read cycle) and stop re-locking, so the TEARDOWN write
+        // acquires the lock promptly and Drop stays bounded.
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(pump) = self.pump_state.as_ref() {
+            pump.cancel.store(true, Ordering::Relaxed);
+        }
+        // Best-effort TEARDOWN if a session is still active, now on the
+        // uncontended stream. Bounded to 500 ms via teardown_with_deadline
+        // so Drop stays fast even when the peer silently half-closed (e.g.
+        // RtspServer::stop cancels per-session tasks but leaves the write
+        // half open via lingering ActiveSession Arcs — TEARDOWN write
+        // succeeds into the kernel buffer but no response ever comes back).
         if self.session_id.is_some() {
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
             let _ = self.teardown_with_deadline(Some(deadline));
         }
-        // Flip cancel so the keepalive + pump threads break out of their
-        // wake loops at the next poll. Then take + join the handles so
-        // the threads are reaped before the TcpStream FD they hold is
-        // closed by the main thread's `Drop`.
-        self.cancel.store(true, Ordering::Relaxed);
+        // Reap the threads (already winding down from the cancel above) so
+        // they're joined before the TcpStream FD they hold is closed by the
+        // main thread's `Drop`.
         if let Some(t) = self.keepalive_thread.take() {
             let _ = t.join();
         }
         if let Some(mut pump) = self.pump_state.take() {
-            pump.cancel.store(true, Ordering::Relaxed);
             if let Some(t) = pump.thread.take() {
                 let _ = t.join();
             }

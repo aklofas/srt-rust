@@ -576,9 +576,25 @@ pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstErro
 // ─────────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "udp")]
-#[allow(dead_code, unused_variables)] // Wave A T5 fills in the body + calls it.
+#[allow(dead_code)] // called by Wave A UDP entry points; not yet wired in --no-default-features --features udp
 pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
-    TstError::UdpIo
+    use tst_udp::UdpErrorKind;
+    // Exhaustive match — every UdpErrorKind variant maps to a single
+    // TstError code. CI ratchet scripts/check-udp-error-mapping-coverage.sh
+    // enforces this completeness.
+    match e.kind() {
+        UdpErrorKind::Url => TstError::UdpConfig,
+        UdpErrorKind::HostNotLiteral => TstError::UdpConfig,
+        UdpErrorKind::Io => TstError::UdpIo,
+        UdpErrorKind::IfaceUnsupported => TstError::UdpIfaceUnsupported,
+        UdpErrorKind::PayloadTooLarge => TstError::UdpPayloadTooLarge,
+        UdpErrorKind::Closed => TstError::Closed, // reuse global Closed = -7
+        UdpErrorKind::InvalidConfig => TstError::UdpConfig,
+        // Required by #[non_exhaustive]. CI ratchet allows this arm only
+        // when UdpErrorKind is non_exhaustive; verifies all 7 named
+        // variants above are still explicit.
+        _ => TstError::UdpIo,
+    }
 }
 
 #[cfg(feature = "tcp")]

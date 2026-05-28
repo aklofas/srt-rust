@@ -18,6 +18,7 @@ libc = { workspace = true }
 
 [build-dependencies]
 bindgen    = { workspace = true }
+cmake      = { workspace = true }
 pkg-config = { workspace = true }
 
 [dev-dependencies]
@@ -26,12 +27,19 @@ libc = { workspace = true }
 [features]
 default = ["mbedtls"]
 
-# Enable AES-128/192/256 PSK encryption by building librist with mbedTLS
-# bundled (librist's `builtin_mbedtls=true` meson option, which uses its own
-# contrib/mbedtls copy). Disabling this feature builds librist with
-# `use_mbedtls=false` — no encryption available.
+# Enable AES-128/192/256 PSK encryption by building librist against the
+# SHARED workspace-level `vendor/mbedtls` submodule (mbedTLS 3.6.x — the same
+# copy srt-sys links). rist-sys builds vendor/mbedtls via cmake to a private
+# prefix, then drives librist's meson with `-Dbuiltin_mbedtls=false` +
+# `PKG_CONFIG_PATH` pointing at that prefix so librist links the 3.6.x
+# mbedcrypto instead of its bundled `contrib/mbedtls` 2.26.0. Disabling this
+# feature builds librist with `use_mbedtls=false` — no encryption.
 #
-# Note: unlike srt-sys (which shares the workspace-level vendor/mbedtls/
-# submodule), rist-sys uses librist's own contrib/mbedtls for v1 to sidestep
-# meson dep-injection. Cross-crate mbedTLS reuse is a v2 follow-up.
+# Why shared (not librist's builtin contrib/mbedtls): linking librist's
+# mbedTLS 2.26.0 alongside libsrt's mbedTLS 3.6.x in one binary (tst-c /
+# tst-py with both `srt`+`rist`) produced duplicate `mbedtls_*` symbols with
+# incompatible layouts → SRT-encryption segfaulted at runtime. Sharing one
+# mbedTLS version (3.6.x) makes the two static copies byte-identical, so the
+# downstream cdylib's `-Wl,--allow-multiple-definition` collapses them safely.
+# librist 0.2.10 supports mbedTLS 3.x (srp.c includes <mbedtls/compat-2.x.h>).
 mbedtls = []

@@ -2,6 +2,38 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Build the workspace-shared vendored mbedTLS (`vendor/mbedtls`, 3.6.x) to a
+/// private install prefix and return that prefix. Mirrors
+/// `srt-sys::build_mbedtls` so librist links the SAME mbedTLS version libsrt
+/// does (see the `mbedtls` feature note in Cargo.toml). Only called when the
+/// `mbedtls` feature is on + the vendored build path is taken.
+fn build_mbedtls() -> PathBuf {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let mbedtls_dir = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("vendor/mbedtls"))
+        .expect("Cannot resolve vendor/mbedtls path from CARGO_MANIFEST_DIR");
+
+    if !mbedtls_dir.join("CMakeLists.txt").exists() {
+        panic!(
+            "Vendored mbedTLS not found at {}. \
+             Run `git submodule update --init --recursive` from the workspace root.",
+            mbedtls_dir.display()
+        );
+    }
+
+    cmake::Config::new(&mbedtls_dir)
+        .define("ENABLE_PROGRAMS", "OFF")
+        .define("ENABLE_TESTING", "OFF")
+        .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
+        .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
+        .define("MBEDTLS_FATAL_WARNINGS", "OFF")
+        // Hide mbedTLS from -Wall sweeps; we don't author this code.
+        .define("CMAKE_C_FLAGS", "-w")
+        .build()
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
@@ -119,12 +151,28 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         "-Dtest=false".into(),
         "-Dbuiltin_cjson=true".into(),
     ];
-    if want_mbedtls {
-        args.push("-Dbuiltin_mbedtls=true".into());
+    // When encryption is wanted, build the SHARED workspace vendor/mbedtls
+    // (3.6.x) and point librist's meson at it via PKG_CONFIG_PATH so it links
+    // that `mbedcrypto` (`-Dbuiltin_mbedtls=false`) instead of its bundled
+    // contrib/mbedtls 2.26.0 — see the `mbedtls` feature note in Cargo.toml.
+    let mut meson_envs: Vec<(String, String)> = Vec::new();
+    let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
+        let prefix = build_mbedtls();
+        let pc_dir = prefix.join("lib").join("pkgconfig");
+        let pkg_path = match env::var("PKG_CONFIG_PATH") {
+            Ok(existing) if !existing.is_empty() => {
+                format!("{}:{}", pc_dir.display(), existing)
+            }
+            _ => pc_dir.to_string_lossy().into_owned(),
+        };
+        meson_envs.push(("PKG_CONFIG_PATH".to_string(), pkg_path));
+        args.push("-Dbuiltin_mbedtls=false".into());
         args.push("-Duse_mbedtls=true".into());
+        Some(prefix)
     } else {
         args.push("-Duse_mbedtls=false".into());
-    }
+        None
+    };
 
     // If a previous build exists, reconfigure it instead of erroring.
     if build_dir.join("build.ninja").exists() {
@@ -132,7 +180,7 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         args.insert(1, "--reconfigure".into());
     }
 
-    run_cmd("meson", &args, &vendor_dir);
+    run_cmd("meson", &args, &vendor_dir, &meson_envs);
 
     // ===== meson compile =====
     run_cmd(
@@ -143,6 +191,7 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
             build_dir.to_string_lossy().into_owned(),
         ],
         &vendor_dir,
+        &meson_envs,
     );
 
     // librist's meson outputs `librist.a` directly in builddir (with
@@ -154,9 +203,25 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     );
     println!("cargo:rustc-link-lib=static=rist");
 
+    // With `-Dbuiltin_mbedtls=false`, librist.a does NOT bundle mbedTLS — its
+    // `mbedtls_*` references resolve against the shared vendor/mbedtls 3.6.x
+    // static libs we built above. Link them after librist.a (link order:
+    // mbedtls -> mbedx509 -> mbedcrypto, matching srt-sys). The downstream
+    // cdylib's `-Wl,--allow-multiple-definition` collapses these with libsrt's
+    // identical 3.6.x copy.
+    if let Some(prefix) = &mbedtls_prefix {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            prefix.join("lib").to_string_lossy()
+        );
+        println!("cargo:rustc-link-lib=static=mbedtls");
+        println!("cargo:rustc-link-lib=static=mbedx509");
+        println!("cargo:rustc-link-lib=static=mbedcrypto");
+    }
+
     // Platform link needs. librist is pure C; no C++ stdlib link required.
-    // mbedTLS symbols (when builtin_mbedtls=true) are pulled into librist.a
-    // directly, so no extra mbedtls/mbedx509/mbedcrypto link line.
+    // (The mbedTLS link line, when encryption is enabled, is emitted above —
+    // the shared vendor/mbedtls static libs, since builtin_mbedtls=false.)
     if cfg!(target_os = "linux") {
         // Some librist sources call pthread fns; the link line needs -pthread.
         println!("cargo:rustc-link-lib=dylib=pthread");
@@ -195,10 +260,13 @@ fn which(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn run_cmd(prog: &str, args: &[String], cwd: &Path) {
-    let status = Command::new(prog)
-        .args(args)
-        .current_dir(cwd)
+fn run_cmd(prog: &str, args: &[String], cwd: &Path, envs: &[(String, String)]) {
+    let mut cmd = Command::new(prog);
+    cmd.args(args).current_dir(cwd);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let status = cmd
         .status()
         .unwrap_or_else(|e| panic!("Failed to spawn `{prog}`: {e}"));
     if !status.success() {

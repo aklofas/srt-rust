@@ -86,7 +86,7 @@ jobs:
           # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
-          args: --release --out dist --features rtp,srt
+          args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
           before-script-linux: |
             # AlmaLinux 8 (manylinux_2_28) — dnf-based.
             if command -v dnf >/dev/null 2>&1; then
@@ -148,7 +148,7 @@ jobs:
           # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
-          args: --release --out dist --features rtp,srt
+          args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
         env:
           SRT_FORCE_VENDORED: "1"
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -189,7 +189,7 @@ jobs:
           # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
-          args: --release --out dist --features rtp,srt
+          args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
         env:
           SRT_FORCE_VENDORED: "1"
 

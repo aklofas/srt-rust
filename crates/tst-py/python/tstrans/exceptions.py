@@ -335,6 +335,118 @@ class SrtError(TstError):
         self.message = message
 
 
+# ── Plan A5b — udp / tcp / hls / rist transport error classes ────────────
+# Kind enums mirror the Rust `*ErrorKind` variant sets (SCREAMING_SNAKE).
+# The Rust side raises these via `errors::make_<proto>_error(py, "VARIANT",
+# message)` (import-based, mirroring make_rtsp_error — NOT create_exception!).
+
+
+class UdpErrorKind(enum.IntEnum):
+    """Mirrors `tst_udp::UdpErrorKind`. Raised by `tstrans.udp` operations
+    (built with the `udp` cargo feature, default-on)."""
+
+    URL = 0
+    HOST_NOT_LITERAL = 1
+    IO = 2
+    IFACE_UNSUPPORTED = 3
+    PAYLOAD_TOO_LARGE = 4
+    CLOSED = 5
+    INVALID_CONFIG = 6
+
+
+class UdpError(TstError):
+    """Raised by `tstrans.udp` operations. Discriminate via `.kind`."""
+
+    kind: UdpErrorKind
+    message: str
+
+    def __init__(self, *, kind: UdpErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+class TcpErrorKind(enum.IntEnum):
+    """Mirrors `tst_tcp::TcpErrorKind`. Raised by `tstrans.tcp` operations
+    (built with the `tcp` cargo feature, default-on)."""
+
+    URL = 0
+    IO = 1
+    PAYLOAD_TOO_LARGE = 2
+    CLOSED = 3
+    CONNECT_TIMEOUT = 4
+    INVALID_CONFIG = 5
+    TLS = 6
+    TLS_DISABLED = 7
+
+
+class TcpError(TstError):
+    """Raised by `tstrans.tcp` operations. Discriminate via `.kind`."""
+
+    kind: TcpErrorKind
+    message: str
+
+    def __init__(self, *, kind: TcpErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+class HlsErrorKind(enum.IntEnum):
+    """Mirrors `tst_tcp::hls::HlsErrorKind`. Raised by `tstrans.hls`
+    operations (built with the `hls` cargo feature, default-on)."""
+
+    URL = 0
+    IO = 1
+    BIND_FAILED = 2
+    INVALID_CONFIG = 3
+    UNALIGNED_PUSH_TS = 4
+    FINISHED = 5
+    TLS_DISABLED = 6
+    TLS = 7
+    INTERNAL = 8
+
+
+class HlsError(TstError):
+    """Raised by `tstrans.hls` operations. Discriminate via `.kind`."""
+
+    kind: HlsErrorKind
+    message: str
+
+    def __init__(self, *, kind: HlsErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+class RistErrorKind(enum.IntEnum):
+    """Mirrors `tst_rist::RistErrorKind`. Raised by `tstrans.rist`
+    operations (built with the `rist` cargo feature, default-on)."""
+
+    URL = 0
+    FFI = 1
+    PAYLOAD_TOO_LARGE = 2
+    CLOSED = 3
+    INVALID_CONFIG = 4
+    ENCRYPTION_DISABLED = 5
+    CONTEXT_CREATE_FAILED = 6
+    PEER_CREATE_FAILED = 7
+    RECV_TIMEOUT = 8
+    IO = 9
+
+
+class RistError(TstError):
+    """Raised by `tstrans.rist` operations. Discriminate via `.kind`."""
+
+    kind: RistErrorKind
+    message: str
+
+    def __init__(self, *, kind: RistErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
 class CodecError(TstError):
     """Codec parser failure. See `CodecErrorKind` for the variant set.
 

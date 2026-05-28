@@ -16,6 +16,15 @@ mod mux;
 mod rtp;
 #[cfg(feature = "srt")]
 mod srt;
+// Plan A5b — udp / tcp / hls / rist transport bindings (default-on).
+#[cfg(feature = "udp")]
+mod udp;
+#[cfg(feature = "tcp")]
+mod tcp;
+#[cfg(feature = "hls")]
+mod hls;
+#[cfg(feature = "rist")]
+mod rist;
 
 use pyo3::prelude::*;
 
@@ -65,5 +74,14 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // contents).
     #[cfg(feature = "srt")]
     srt::register(m)?;
+    // Plan A5b — udp / tcp / hls / rist submodules (waves populate contents).
+    #[cfg(feature = "udp")]
+    udp::register(m)?;
+    #[cfg(feature = "tcp")]
+    tcp::register(m)?;
+    #[cfg(feature = "hls")]
+    hls::register(m)?;
+    #[cfg(feature = "rist")]
+    rist::register(m)?;
     Ok(())
 }

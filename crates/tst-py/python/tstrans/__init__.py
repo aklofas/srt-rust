@@ -36,6 +36,30 @@ try:
 except ImportError:
     _SRT_AVAILABLE = False
 
+# Plan A5b — udp / tcp / hls / rist submodules (each default-on; same
+# conditional-import shape as rtp/srt to surface a feature-off build at
+# package-import time).
+try:
+    from tstrans import udp  # noqa: F401
+    _UDP_AVAILABLE = True
+except ImportError:
+    _UDP_AVAILABLE = False
+try:
+    from tstrans import tcp  # noqa: F401
+    _TCP_AVAILABLE = True
+except ImportError:
+    _TCP_AVAILABLE = False
+try:
+    from tstrans import hls  # noqa: F401
+    _HLS_AVAILABLE = True
+except ImportError:
+    _HLS_AVAILABLE = False
+try:
+    from tstrans import rist  # noqa: F401
+    _RIST_AVAILABLE = True
+except ImportError:
+    _RIST_AVAILABLE = False
+
 __version__: str = _native.__version__
 
 __all__: list[str] = [
@@ -51,3 +75,11 @@ if _RTP_AVAILABLE:
     __all__.append("rtp")
 if _SRT_AVAILABLE:
     __all__.append("srt")
+if _UDP_AVAILABLE:
+    __all__.append("udp")
+if _TCP_AVAILABLE:
+    __all__.append("tcp")
+if _HLS_AVAILABLE:
+    __all__.append("hls")
+if _RIST_AVAILABLE:
+    __all__.append("rist")

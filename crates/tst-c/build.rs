@@ -71,6 +71,23 @@ fn main() {
     #[cfg(target_os = "linux")]
     {
         println!("cargo:rustc-link-arg=-Wl,--exclude-libs=ALL");
+
+        // Dual-mbedTLS coexistence (Plan A5a). When BOTH the `srt` feature
+        // (libsrt links the workspace `vendor/mbedtls`) AND the `rist` feature
+        // (librist links its own `contrib/mbedtls`) are active, the two static
+        // mbedTLS copies export the same `mbedtls_*` symbols → duplicate
+        // definition → link failure. This combination is UNSUPPORTED at
+        // runtime in v1 (the two copies' state is incompatible — using SRT
+        // encryption + RIST in one process corrupts/segfaults), but the
+        // `--all-features` CI build must still LINK. `--allow-multiple-definition`
+        // lets the linker take the first definition (libsrt's) so the cdylib
+        // links. Scoped to the srt+rist combo so single-transport builds keep
+        // strict duplicate-symbol checking. Proper fix = cross-crate mbedTLS
+        // reuse (documented v2 follow-up in crates/rist-sys/Cargo.toml).
+        if std::env::var("CARGO_FEATURE_SRT").is_ok() && std::env::var("CARGO_FEATURE_RIST").is_ok()
+        {
+            println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
+        }
     }
 
     #[cfg(target_os = "macos")]

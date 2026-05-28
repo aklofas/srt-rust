@@ -9,6 +9,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
 
+### Added — tst-py bindings for UDP / TCP / HLS / RIST (Plan A5b, 2026-05-27)
+
+Four new Python submodules on the `tstrans` extension, all behind cargo
+features default-**ON** (matching `rtp`/`srt`; PyPI wheels ship everything).
+No C ABI change — this is tst-py-only (`tst-py` wraps the Rust crates
+directly, not through `tst-c`).
+
+- `tstrans.udp` — `Transport` (`send`) + `RecvTransport` (`recv`) + builders
+  + `SocketStats`. Compose with `tstrans.mpegts` for muxing/demuxing.
+- `tstrans.tcp` — dual-role `Transport` (`send`+`recv` on one handle) +
+  `Listener` (`accept_blocking`) + `TransportBuilder`/`ListenerBuilder` +
+  forward-compat `TlsConfig`/`ClientCert` (the `tcp` feature builds without
+  TLS; `tcps://` raises `TcpError(TLS_DISABLED)`).
+- `tstrans.hls` — `HlsPublisher` (builder → internal tokio HTTP server,
+  `push_ts`/`cut_segment`/`finish`/`stats`/`hls_stats`/`local_addr`/
+  `render_playlist`) + `MuxPublisher` (push video/KLV/audio/subtitle →
+  HLS, `finish_into_publisher`) + a `Publisher` ABC mirroring the Rust
+  `tst_core::publisher::Publisher` trait + `HlsMode`/`HlsStats`. KLV stays
+  in-band in the `.ts` segments.
+- `tstrans.rist` — `Transport`/`RecvTransport` + builders + `EncryptionKey`
+  (AES-128/192/256 PSK; the secret is wrapped at the FFI boundary and never
+  re-exposed) + `RistProfile` (SIMPLE/MAIN) + `RistStats`.
+- 4 new exception classes (`UdpError`/`TcpError`/`HlsError`/`RistError`) +
+  `*ErrorKind` IntEnums in `tstrans.exceptions`, raised Rust-side via the
+  import-based `make_<x>_error` helpers (not `create_exception!`).
+- 5 new bash ratchets (`check-py-{udp,tcp,hls,rist}-error-mapping-coverage.sh`
+  + `check-py-publisher-class-mirror.sh`); 4 new `*.pyi` stubs (mypy
+  `--strict` clean); ~80 new pytest tests.
+- `tst-udp` gains an additive `recv_timeout(&mut buf, Duration)` (SO_RCVTIMEO)
+  for the Python `RecvTransport.recv(timeout_ms=...)`; `tst-udp/public-api.txt`
+  baseline updated. No other upstream crate API change.
+- `python-wheels.yml` maturin feature list extended to
+  `rtp,srt,udp,tcp,hls,rist` (workflow stays parked behind tst-jni).
+- **SRT + RIST in one process:** the default wheel links libsrt + librist
+  (two static mbedTLS copies); `crates/tst-py/build.rs` adds
+  `-Wl,--allow-multiple-definition` (Linux, scoped srt&&rist) to collapse
+  onto one mbedTLS — same fix as `tst-c`. Verified link + runtime.
+
 ### Added — tst-c bindings for UDP / TCP / HLS / RIST (Plan A5a, 2026-05-27)
 
 Four new cargo features on `tst-c`: `udp`, `tcp`, `hls`, `rist` — all

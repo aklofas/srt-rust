@@ -642,7 +642,6 @@ pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
 }
 
 #[cfg(feature = "rist")]
-#[allow(dead_code)] // called by Wave D RIST entry points (another agent, parallel)
 pub(crate) fn rist_error_to_code(e: &tst_rist::RistError) -> TstError {
     use tst_rist::RistErrorKind;
     // Exhaustive match — every RistErrorKind variant maps to a single

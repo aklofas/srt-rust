@@ -933,6 +933,46 @@ typedef struct tst_receiver_t tst_receiver_t;
 
 typedef struct tst_reconnect_policy_t tst_reconnect_policy_t;
 
+#if defined(TST_HAS_RIST)
+/**
+ * Opaque handle for a RIST-backed demux receiver.
+ *
+ * Returned by [`tst_rist_demux_receiver_open`]. Freed with
+ * [`tst_rist_demux_receiver_close`].
+ */
+typedef struct TstRistDemuxReceiver TstRistDemuxReceiver;
+#endif
+
+#if defined(TST_HAS_RIST)
+/**
+ * Opaque handle for a RIST-backed mux sender.
+ *
+ * Returned by [`tst_rist_mux_sender_open`]. Freed with
+ * [`tst_rist_mux_sender_close`].
+ */
+typedef struct TstRistMuxSender TstRistMuxSender;
+#endif
+
+#if defined(TST_HAS_RIST)
+/**
+ * Opaque handle for a RIST-backed raw TS byte receiver.
+ *
+ * Returned by [`tst_rist_recv_open`]. Freed with
+ * [`tst_rist_receiver_close`].
+ */
+typedef struct TstRistReceiver TstRistReceiver;
+#endif
+
+#if defined(TST_HAS_RIST)
+/**
+ * Opaque handle for a RIST-backed raw TS byte sender.
+ *
+ * Returned by [`tst_rist_sender_open`]. Freed with
+ * [`tst_rist_sender_close`].
+ */
+typedef struct TstRistSender TstRistSender;
+#endif
+
 #if defined(TST_HAS_RTP)
 /**
  * Opaque handle for an RTP-backed demux receiver.
@@ -4473,6 +4513,65 @@ void tst_publisher_free(struct TstPublisher *p);
  */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Close and free a `tst_rist_demux_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRistDemuxReceiver`
+ * returned by `tst_rist_demux_receiver_open`.
+ */
+void tst_rist_demux_receiver_close(struct TstRistDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Close and free a `tst_rist_mux_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRistMuxSender` returned
+ * by `tst_rist_mux_sender_open`.
+ */
+void tst_rist_mux_sender_close(struct TstRistMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Close and free a `tst_rist_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op). See `tst_rist_sender_close` for
+ * the ownership semantics.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRistReceiver` returned
+ * by `tst_rist_recv_open`.
+ */
+void tst_rist_receiver_close(struct TstRistReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Close and free a `tst_rist_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRistSender` returned
+ * by `tst_rist_sender_open`.
+ */
+void tst_rist_sender_close(struct TstRistSender *p);
+#endif
+
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a `tst_rtp_demux_receiver_t`. Signals the underlying RTP socket
@@ -5448,6 +5547,679 @@ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int3
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Read wire-level transport stats for the underlying RIST transport.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistDemuxReceiver` opened via
+ * `tst_rist_demux_receiver_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_rist_demux_receiver_get_socket_stats(struct TstRistDemuxReceiver *p,
+                                             struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot aggregate stats for a `tst_rist_demux_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * NOTE: per-PID counters are NOT included here — call
+ * `tst_rist_demux_receiver_get_stream_stats` to retrieve them.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistDemuxReceiver` opened via
+ * `tst_rist_demux_receiver_open`. `out` must point to a writable
+ * `TstDemuxReceiverStats`.
+ */
+
+int tst_rist_demux_receiver_get_stats(struct TstRistDemuxReceiver *p,
+                                      struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot codec-specific stats for one PID on a
+ * `tst_rist_demux_receiver_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_rist_demux_receiver_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_rist_demux_receiver_get_stream_codec_stats(struct TstRistDemuxReceiver *p,
+                                                   uint16_t pid,
+                                                   struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot per-PID stats for a `tst_rist_demux_receiver_t` into the
+ * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+ * pair borrowing that buffer.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+ * until the next `_get_stream_stats` / `_reset_stats` / `_close`
+ * call on the same handle. Callers wanting longer lifetime memcpy
+ * the array out.
+ *
+ * Capped at `TST_STATS_MAX_STREAMS = 64` entries (ascending PID order).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+ * arg, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistDemuxReceiver` opened via
+ * `tst_rist_demux_receiver_open`. `out_array` and `out_count` must be
+ * valid non-null pointers.
+ */
+
+int tst_rist_demux_receiver_get_stream_stats(struct TstRistDemuxReceiver *p,
+                                             const struct tst_stream_stats_t **out_array,
+                                             size_t *out_count);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Block until one typed `TstEvent` is ready, then populate
+ * `*out_event` with the converted event.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** pointer fields on
+ * `*out_event` borrow from this handle's `EventArena`. They are
+ * valid until the next `_next_event` / `_close` call on the same
+ * handle. Callers wanting longer lifetime memcpy out before the
+ * next call.
+ *
+ * Returns:
+ * - `0` on success (`*out_event` populated)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_TS` (-3) on a demuxer error
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistDemuxReceiver`. `out_event`
+ * must be a valid writable `*mut TstEvent`.
+ */
+
+int tst_rist_demux_receiver_next_event(struct TstRistDemuxReceiver *p,
+                                       struct tst_event_t *out_event);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Open a RIST-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
+ * which case default demux options apply (lenient / CFI-tolerant mode).
+ * Returns `NULL` on error.
+ *
+ * URL grammar (receiver always uses `@` bind prefix):
+ * - `rist://@0.0.0.0:port` — bind on all interfaces
+ * - `rist://@host:port` — bind on a specific interface address
+ * - Query params: `?profile=simple|main`, `?buffer=N` (recovery buffer ms),
+ *   `?cname=...`
+ * - Encryption: `?aes-type=128|192|256&secret=<psk>` (forces Main Profile)
+ *
+ * WHY the `?buffer=N` parameter matters:
+ *   The RIST recovery buffer determines how long the receiver holds on to
+ *   out-of-order / retransmitted packets before surfacing them. Larger
+ *   values tolerate more link RTT + jitter at the cost of latency.
+ *   200 ms is a typical value for terrestrial links; use 400-800 ms for
+ *   high-latency or satellite links.
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
+ * valid `tst_demux_config_t*`. The returned handle must eventually be
+ * freed with `tst_rist_demux_receiver_close`.
+ */
+
+struct TstRistDemuxReceiver *tst_rist_demux_receiver_open(const char *url,
+                                                          const struct tst_demux_config_t *demux_cfg);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Reset stats counters for a `tst_rist_demux_receiver_t` to zero.
+ * Also invalidates the borrowed `_get_stream_stats` snapshot
+ * (design §4.5).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistDemuxReceiver` opened via
+ * `tst_rist_demux_receiver_open`.
+ */
+int tst_rist_demux_receiver_reset_stats(struct TstRistDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot mux-sender-level stats for a `tst_rist_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistMuxSender` opened via
+ * `tst_rist_mux_sender_open`. `out` must point to a writable
+ * `TstMuxSenderStats`.
+ */
+
+int tst_rist_mux_sender_get_mux_sender_stats(struct TstRistMuxSender *p,
+                                             struct tst_mux_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Read wire-level transport stats for the underlying RIST transport.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistMuxSender` opened via
+ * `tst_rist_mux_sender_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_rist_mux_sender_get_socket_stats(struct TstRistMuxSender *p,
+                                         struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_rist_mux_sender_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_rist_mux_sender_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_rist_mux_sender_get_stream_codec_stats(struct TstRistMuxSender *p,
+                                               uint16_t pid,
+                                               struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Open a RIST-backed `MuxSender` that muxes MPEG-TS in real time and
+ * sends over RIST. `mux_cfg` must be a valid `tst_mux_config_t`
+ * (constructed via `tst_mux_config_new`). Returns `NULL` on error.
+ *
+ * The mux config is borrowed — the caller still owns it and must free
+ * it. The returned handle is independent of the config after this call.
+ *
+ * URL grammar:
+ * - `rist://host:port` — unicast send (Simple Profile by default)
+ * - `rist://group:port` (group ∈ 224.0.0.0/4) — multicast send
+ * - Query params: `?profile=simple|main`, `?buffer=N` (recovery ms),
+ *   `?bandwidth=N` (kbps), `?cname=...`
+ * - Encryption: `?aes-type=128|192|256&secret=<psk>` (forces Main Profile)
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
+ * pointer to a `tst_mux_config_t` valid for this call. The returned
+ * handle must eventually be freed with `tst_rist_mux_sender_close`.
+ */
+
+struct TstRistMuxSender *tst_rist_mux_sender_open(const char *url,
+                                                  const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one audio frame buffer through the muxer's single audio stream
+ * and out the RIST transport (single-stream shorthand).
+ *
+ * `frames` must point to `len` bytes of pre-framed audio data (one or
+ * more ADTS frames or MPEG audio frames concatenated). `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_audio(struct TstRistMuxSender *p,
+                                   const uint8_t *frames,
+                                   size_t len,
+                                   int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_rist_mux_sender_push_audio`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_audio_to(struct TstRistMuxSender *p,
+                                      tst_audio_stream_handle_t stream_handle,
+                                      const uint8_t *frames,
+                                      size_t len,
+                                      int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one raw KLV blob through the muxer's single KLV stream and out
+ * the RIST transport (single-stream shorthand).
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams
+ * configured as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer
+ * prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9
+ * §2.12.4.2. **Do not pre-wrap the AU cell on the caller side.**
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_klv(struct TstRistMuxSender *p,
+                                 const uint8_t *klv,
+                                 size_t len,
+                                 int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header (do not pre-wrap).
+ * On a single-stream sender, prefer `tst_rist_mux_sender_push_klv`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_klv_to(struct TstRistMuxSender *p,
+                                    tst_klv_stream_handle_t stream_handle,
+                                    const uint8_t *klv,
+                                    size_t len,
+                                    int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one subtitle PES unit through the muxer's single subtitle stream
+ * and out the RIST transport (single-stream shorthand).
+ *
+ * `payload` is one complete logical subtitle unit. `pts_90khz` is the
+ * presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_subtitle(struct TstRistMuxSender *p,
+                                      const uint8_t *payload,
+                                      size_t len,
+                                      int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one subtitle PES unit targeting a specific subtitle elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_rist_mux_sender_push_subtitle`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_subtitle_to(struct TstRistMuxSender *p,
+                                         tst_subtitle_stream_handle_t stream_handle,
+                                         const uint8_t *payload,
+                                         size_t len,
+                                         int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one Annex-B NAL through the muxer's single video stream and
+ * out the RIST transport (single-stream shorthand).
+ *
+ * `nal` must point to `len` bytes of Annex-B NAL data. `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks. `key_frame` is `true`
+ * for IDR / key frames (used to set the random-access indicator in the
+ * MPEG-TS adaptation field).
+ *
+ * Resolves only when exactly one video stream is configured; otherwise
+ * rejects with `TST_E_INVALID_USAGE`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_video(struct TstRistMuxSender *p,
+                                   const uint8_t *nal,
+                                   size_t len,
+                                   int64_t pts_90khz,
+                                   bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE`.
+ *
+ * On a single-stream sender, prefer `tst_rist_mux_sender_push_video` —
+ * same effect, no handle required.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_rist_mux_sender_push_video_to(struct TstRistMuxSender *p,
+                                      tst_video_stream_handle_t stream_handle,
+                                      const uint8_t *nal,
+                                      size_t len,
+                                      int64_t pts_90khz,
+                                      bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Reset stats counters for a `tst_rist_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistMuxSender` opened via
+ * `tst_rist_mux_sender_open`.
+ */
+int tst_rist_mux_sender_reset_stats(struct TstRistMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Read wire-level transport stats for the underlying RIST transport.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live socket stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_rist_receiver_get_socket_stats(struct TstRistReceiver *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot stats for a `tst_rist_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
+ * `out` must point to a writable `TstReceiverStats`.
+ */
+int tst_rist_receiver_get_stats(struct TstRistReceiver *p, struct tst_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Block until one 188-byte MPEG-TS packet is ready, then copy it
+ * into the caller's buffer.
+ *
+ * `buf` MUST point to a buffer of at least `buf_len` bytes (at least
+ * 188 bytes). On success, `*out_n` is set to the number of bytes
+ * written (always 188). On failure the contents of `buf` are
+ * unspecified.
+ *
+ * RIST delivers TS bytes with ARQ-based reliability. If the sender
+ * drops a packet and the retransmission window (`?buffer=N` ms) has
+ * not expired, RIST will request a retransmit before surfacing the
+ * packet here. Once the window expires, a lost packet is skipped and
+ * the next available packet is returned. Set `buffer` large enough
+ * for your link RTT + jitter.
+ *
+ * Returns:
+ * - `0` on success (188 bytes written to `buf`, `*out_n` = 188)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments or too-small buffer
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistReceiver`. `buf` must be
+ * writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
+ */
+
+int tst_rist_receiver_recv_ts(struct TstRistReceiver *p,
+                              uint8_t *buf,
+                              size_t buf_len,
+                              size_t *out_n);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Reset stats counters for a `tst_rist_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
+ */
+int tst_rist_receiver_reset_stats(struct TstRistReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Open a RIST receiver listening on the bind endpoint described by
+ * `url`. Returns `NULL` on error.
+ *
+ * URL grammar (receiver always uses `@` bind prefix):
+ * - `rist://@0.0.0.0:port` — bind on all interfaces
+ * - `rist://@host:port` — bind on a specific interface address
+ * - Query params: `?profile=simple|main`, `?buffer=N` (recovery buffer ms,
+ *   controls the retransmission window), `?cname=...`
+ *
+ * Encryption (requires mbedtls feature, forces Main Profile):
+ * - `?aes-type=128|192|256&secret=<psk>` — AES PSK decryption.
+ *   Returns `TST_E_RIST_ENCRYPTION_DISABLED (-41)` if the mbedtls
+ *   feature was disabled at build time.
+ *
+ * Port `0` causes the kernel to assign an ephemeral port.
+ *
+ * WHY the `@` prefix?
+ *   RIST and MPEG-TS-over-UDP share the ffmpeg convention: `@host:port`
+ *   means "bind/listen" while `host:port` (no `@`) means "connect/send".
+ *   A RIST receiver always binds and waits for a sender to connect it.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string. The returned handle must
+ * eventually be freed with `tst_rist_receiver_close`.
+ */
+struct TstRistReceiver *tst_rist_recv_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Read wire-level transport stats for the underlying RIST transport.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if the transport has no live stats
+ * (e.g., transport not yet connected or already closed), or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistSender` opened via `tst_rist_sender_open`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_rist_sender_get_socket_stats(struct TstRistSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Snapshot stats for a `tst_rist_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistSender` opened via `tst_rist_sender_open`.
+ * `out` must point to a writable `TstSenderStats`.
+ */
+int tst_rist_sender_get_stats(struct TstRistSender *p, struct tst_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Open a RIST sender to the unicast or multicast endpoint described by
+ * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
+ * negative error code and `tst_get_last_error_str()` for a detail message.
+ *
+ * URL grammar:
+ * - `rist://host:port` — unicast send (Simple Profile by default)
+ * - `rist://group:port` (group ∈ 224.0.0.0/4) — multicast send
+ * - Query params: `?profile=simple|main`, `?buffer=N` (recovery buffer ms),
+ *   `?bandwidth=N` (kbps), `?cname=...` (RTCP CNAME)
+ *
+ * Encryption (Main Profile only, requires mbedtls feature):
+ * - `?aes-type=128|192|256&secret=<psk>` — AES PSK; forces Main Profile.
+ *   Returns `TST_E_RIST_ENCRYPTION_DISABLED (-41)` when built without
+ *   the `mbedtls` feature.
+ *
+ * Example URLs:
+ * - `rist://192.168.1.100:8000?buffer=200&profile=main` — Main Profile, 200 ms recovery.
+ * - `rist://239.0.0.1:8000?aes-type=256&secret=my-psk&buffer=200` — AES-256, multicast.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string valid for the duration of
+ * this call. The returned handle must eventually be freed with
+ * `tst_rist_sender_close`.
+ */
+struct TstRistSender *tst_rist_sender_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Reset stats counters for a `tst_rist_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstRistSender` opened via `tst_rist_sender_open`.
+ */
+int tst_rist_sender_reset_stats(struct TstRistSender *p);
+#endif
+
+#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+/**
+ * Push pre-muxed TS bytes through the RIST sender.
+ *
+ * `bytes` must point to a buffer of `len` bytes. `len` SHOULD be a
+ * multiple of 188 (one or more MPEG-TS packets); the underlying
+ * sender will accept any non-zero length but non-aligned buffers
+ * may cause sync issues at the receiver.
+ *
+ * RIST adds reliability via its ARQ (Automatic Repeat Request)
+ * retransmission layer — the recovery buffer size (set in the URL via
+ * `?buffer=N` ms) determines how aggressively the sender caches packets
+ * for retransmission on a peer's NACK.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstRistSender`. `bytes` must be
+ * readable for `len` bytes.
+ */
+int tst_rist_sender_send_ts(struct TstRistSender *p, const uint8_t *bytes, size_t len);
+#endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**

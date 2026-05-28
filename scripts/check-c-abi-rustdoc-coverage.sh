@@ -423,6 +423,45 @@ ALLOWLIST=(
     "tst_mux_publisher_get_publisher_stats"
     "tst_mux_publisher_free"
 
+    # --- Plan A5a RIST entry points (full RTP parity, minus cancel) ---
+    #     tst-c-only projections of the generic pipeline shells typed on
+    #     tst_rist::Rist{,Recv}Transport (move-style builder: new()+connect()/
+    #     listen()). No cancel (no cancel_handle). Same rationale as UDP/TCP/RTP.
+    "tst_rist_sender_open"
+    "tst_rist_sender_close"
+    "tst_rist_sender_send_ts"
+    "tst_rist_sender_get_stats"
+    "tst_rist_sender_get_socket_stats"
+    "tst_rist_sender_reset_stats"
+    "tst_rist_recv_open"
+    "tst_rist_receiver_close"
+    "tst_rist_receiver_recv_ts"
+    "tst_rist_receiver_get_stats"
+    "tst_rist_receiver_get_socket_stats"
+    "tst_rist_receiver_reset_stats"
+    "tst_rist_mux_sender_open"
+    "tst_rist_mux_sender_close"
+    "tst_rist_mux_sender_push_video"
+    "tst_rist_mux_sender_push_video_to"
+    "tst_rist_mux_sender_push_klv"
+    "tst_rist_mux_sender_push_klv_to"
+    "tst_rist_mux_sender_push_audio"
+    "tst_rist_mux_sender_push_audio_to"
+    "tst_rist_mux_sender_push_subtitle"
+    "tst_rist_mux_sender_push_subtitle_to"
+    "tst_rist_mux_sender_get_mux_sender_stats"
+    "tst_rist_mux_sender_get_socket_stats"
+    "tst_rist_mux_sender_get_stream_codec_stats"
+    "tst_rist_mux_sender_reset_stats"
+    "tst_rist_demux_receiver_open"
+    "tst_rist_demux_receiver_close"
+    "tst_rist_demux_receiver_next_event"
+    "tst_rist_demux_receiver_get_stats"
+    "tst_rist_demux_receiver_get_socket_stats"
+    "tst_rist_demux_receiver_get_stream_codec_stats"
+    "tst_rist_demux_receiver_get_stream_stats"
+    "tst_rist_demux_receiver_reset_stats"
+
     # --- Phase 4 RTSP session entry points (Task 6, Wave B) ---
     #     TstRtspSession is the C-language projection of (RtspClient, RtspSession)
     #     combined; into_demux_receiver bridges to the existing TstRtpDemuxReceiver.

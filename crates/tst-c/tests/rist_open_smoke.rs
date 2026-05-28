@@ -29,7 +29,8 @@ use tstrans::error::{TstError, tst_get_last_error};
 use tstrans::event::TstEvent;
 use tstrans::rist::{
     tst_rist_demux_receiver_close, tst_rist_demux_receiver_next_event,
-    tst_rist_demux_receiver_open, tst_rist_receiver_close, tst_rist_recv_open, tst_rist_sender_open,
+    tst_rist_demux_receiver_open, tst_rist_receiver_close, tst_rist_recv_open,
+    tst_rist_sender_open,
 };
 
 // ---------------------------------------------------------------------------

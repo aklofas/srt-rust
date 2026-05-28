@@ -284,11 +284,32 @@ impl RtspClient {
         deadline: Option<std::time::Instant>,
     ) -> Result<RtspResponse, RtspError> {
         let req_cseq = parse_cseq_from_request(request_bytes);
-        {
+        // Ask the interleaved pump to yield the shared stream lock while we
+        // write this request. `SharedStreamReader::read` holds the mutex
+        // across each blocking ~100 ms socket read, so without this hand-off
+        // the pump monopolizes the lock and this write-lock acquisition can
+        // be starved unboundedly on a contended runner (the in-session
+        // sibling of the teardown starvation bounded in `RtspClient::Drop`).
+        // The pump skips its next read while the gate is set, so we acquire
+        // within at most one in-flight read cycle. The gate is cleared after
+        // the lock is released (including on write error).
+        let write_gate = self
+            .pump_state
+            .as_ref()
+            .expect("pump_state is Some — checked by caller")
+            .write_gate
+            .clone();
+        write_gate.store(true, std::sync::atomic::Ordering::Relaxed);
+        let write_result = {
             let mut s = self.stream.lock().expect("stream mutex poisoned");
-            s.write_all(request_bytes)
-                .map_err(|e| RtspError::Io(e.kind()))?;
-        }
+            let r = s
+                .write_all(request_bytes)
+                .map_err(|e| RtspError::Io(e.kind()));
+            drop(s);
+            r
+        };
+        write_gate.store(false, std::sync::atomic::Ordering::Relaxed);
+        write_result?;
         let pump = self
             .pump_state
             .as_ref()

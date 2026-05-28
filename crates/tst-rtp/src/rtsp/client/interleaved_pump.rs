@@ -60,6 +60,11 @@ pub(crate) struct PumpStats {
     /// too small to contain an RTP header, or had a non-UTF8 RTSP
     /// header line.
     pub(crate) malformed_frames: AtomicU64,
+    /// Count of read attempts the pump actually performed (i.e. loop
+    /// iterations where it was not yielding the lock to a control-path
+    /// writer). Used by the back-off regression test to assert the pump
+    /// stops reading while `write_gate` is set.
+    pub(crate) reads_attempted: AtomicU64,
 }
 
 /// SETUP-allocated channel pair. The SETUP handler assigns these (the
@@ -87,6 +92,13 @@ pub(crate) struct InterleavedChannels {
 /// - `channels`: SETUP-allocated channel pair.
 /// - `cancel`: flipped by `RtspClient::drop` or
 ///   [`crate::rtsp::client::RtspCancelHandle::cancel`].
+/// - `write_gate`: set by a control-path writer
+///   ([`crate::rtsp::client::RtspClient::send_and_read_via_pump_with_deadline`])
+///   right before it acquires the stream mutex to write a request. While
+///   it is set, the pump skips its read (and so does not re-acquire the
+///   mutex), letting the writer in promptly. Without this the pump — which
+///   holds the mutex across each blocking ~100 ms read — monopolizes the
+///   lock and starves in-session writes on contended runners.
 /// - `stats`: observable counters.
 ///
 /// The pump exits cleanly when:
@@ -103,6 +115,7 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     ctrl_tx: mpsc::Sender<Bytes>,
     channels: InterleavedChannels,
     cancel: Arc<AtomicBool>,
+    write_gate: Arc<AtomicBool>,
     stats: Arc<PumpStats>,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
@@ -114,6 +127,17 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                 if cancel.load(Ordering::Relaxed) {
                     return;
                 }
+                // Yield the stream lock to a control-path writer that is
+                // about to (or is) waiting for it. We hold the mutex across
+                // the blocking read below, so re-acquiring it every cycle
+                // would starve the writer; skipping the read for one cycle
+                // (~1 ms) lets it acquire promptly. Bounds an in-session
+                // PLAY/PAUSE write to at most one in-flight read cycle.
+                if write_gate.load(Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
+                }
+                stats.reads_attempted.fetch_add(1, Ordering::Relaxed);
                 let n = match reader.read(&mut chunk) {
                     Ok(0) => return, // Clean EOF.
                     Ok(n) => n,
@@ -305,6 +329,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         // Pump should deliver one payload, then EOF and exit.
@@ -326,6 +351,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let payload = rr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -345,6 +371,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let msg = cr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -367,6 +394,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let msg = cr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -388,6 +416,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let _ = handle.join();
@@ -409,6 +438,7 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let _ = handle.join();
@@ -432,8 +462,97 @@ mod tests {
             ct,
             InterleavedChannels { rtp: 0, rtcp: 1 },
             cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
             stats.clone(),
         );
         let _ = handle.join();
+    }
+
+    /// Regression guard for the 2026-05-28 CI hang in
+    /// `client_setup_with_transport_tcp_round_trips_ts` (both Linux gates,
+    /// run 26602244548): the pump holds the stream mutex across each
+    /// blocking ~100 ms read, so without yielding to `write_gate` an
+    /// in-session control write (PLAY/PAUSE) is starved indefinitely on a
+    /// contended runner. This asserts the pump STOPS reading while the gate
+    /// is set — the precondition that lets a control writer acquire the
+    /// lock promptly. Deterministic on any kernel: an un-gated pump keeps
+    /// reading (counter climbs); a gated pump freezes.
+    #[test]
+    fn pump_stops_reading_while_write_gate_set() {
+        use std::net::{TcpListener, TcpStream};
+        use std::time::{Duration, Instant};
+
+        // Loopback pair whose server side never sends, so every pump read
+        // blocks for the full 100 ms read timeout while holding the lock —
+        // the idle-control-connection case that monopolizes the mutex.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_srv = done.clone();
+        let server = std::thread::spawn(move || {
+            let _conn = listener.accept().unwrap();
+            // Hold the connection open (never send) until the test is done.
+            while !done_srv.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let client = TcpStream::connect(addr).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let stream = Arc::new(Mutex::new(Stream::Plain(client)));
+
+        let (dt, _dr) = mpsc::channel();
+        let (rt, _rr) = mpsc::channel();
+        let (ct, _cr) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let write_gate = Arc::new(AtomicBool::new(false));
+        let stats = Arc::new(PumpStats::default());
+        let reader = SharedStreamReader::new(stream.clone());
+        let handle = spawn_client_pump(
+            reader,
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            write_gate.clone(),
+            stats.clone(),
+        );
+
+        // Let the pump take a few read cycles.
+        std::thread::sleep(Duration::from_millis(50));
+        // Ask it to yield, then wait past one in-flight read (100 ms) so any
+        // read in progress when we set the gate has drained.
+        write_gate.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(200));
+        let baseline = stats.reads_attempted.load(Ordering::Relaxed);
+        // Over the next 300 ms (~3 read cycles) the pump must not read.
+        std::thread::sleep(Duration::from_millis(300));
+        let after = stats.reads_attempted.load(Ordering::Relaxed);
+
+        // And a control writer must acquire the lock promptly while gated.
+        let t0 = Instant::now();
+        {
+            let _g = stream.lock().unwrap();
+        }
+        let lock_wait = t0.elapsed();
+
+        cancel.store(true, Ordering::Relaxed);
+        write_gate.store(false, Ordering::Relaxed);
+        done.store(true, Ordering::Relaxed);
+        let _ = handle.join();
+        let _ = server.join();
+
+        assert_eq!(
+            after,
+            baseline,
+            "pump performed {} reads while write_gate was set — it must yield the lock",
+            after - baseline
+        );
+        assert!(
+            lock_wait < Duration::from_millis(500),
+            "control writer waited {lock_wait:?} for the stream lock while the gate was set"
+        );
     }
 }

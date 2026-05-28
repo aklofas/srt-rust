@@ -150,6 +150,13 @@ pub(crate) struct InterleavedPumpState {
     /// can stop the pump without stopping the rest of the client; in
     /// practice they're flipped together at `Drop`).
     pub(crate) cancel: Arc<AtomicBool>,
+    /// Control-write hand-off gate. A control-path writer
+    /// ([`RtspClient::send_and_read_via_pump_with_deadline`]) sets this
+    /// before acquiring the stream mutex to write a request; the pump
+    /// skips its read while it is set so the writer is not starved by the
+    /// pump's per-read re-locking. Cleared by the writer after it releases
+    /// the lock.
+    pub(crate) write_gate: Arc<AtomicBool>,
     /// Receiver for RTSP responses parsed by the pump. The pump pushes
     /// each `CRLFCRLF`+body-bounded RTSP response here; `send_and_read`
     /// polls this matching by CSeq once pump mode is active.
@@ -386,6 +393,7 @@ impl RtspClient {
         let (rtcp_tx, rtcp_rx) = mpsc::channel::<Bytes>();
         let (ctrl_tx, ctrl_rx) = mpsc::channel::<Bytes>();
         let pump_cancel = Arc::new(AtomicBool::new(false));
+        let write_gate = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(interleaved_pump::PumpStats::default());
 
         let reader = interleaved_pump::SharedStreamReader::new(self.stream.clone());
@@ -396,11 +404,13 @@ impl RtspClient {
             ctrl_tx,
             channels,
             pump_cancel.clone(),
+            write_gate.clone(),
             stats.clone(),
         );
 
         self.pump_state = Some(InterleavedPumpState {
             cancel: pump_cancel,
+            write_gate,
             ctrl_rx,
             thread: Some(thread),
             stats,

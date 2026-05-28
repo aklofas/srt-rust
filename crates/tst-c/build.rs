@@ -305,12 +305,37 @@ fn add_section_dividers(header_path: &std::path::Path) {
                 chunk.push_str(lines[i]);
                 chunk.push('\n');
             }
+            // Keep a feature-guard close (`#endif`) attached to the
+            // declaration it guards, so reordering this chunk into its
+            // section carries the guard along. Only a bare `#endif`
+            // qualifies — the cpp-compat `#endif // __cplusplus` and the
+            // ABI-assert `#endif` stay in the prelude/trailer. The matching
+            // `#if defined(TST_HAS_*)` open is buffered into `pending` by the
+            // branch below, so the chunk is a self-contained guarded unit.
+            // Without this, default-OFF feature guards (udp/tcp/hls/rist) get
+            // detached during reordering and a stray open guard wraps the
+            // whole section block — silently excluding every declaration in a
+            // default build (the guard macro is 0). Latent for default-ON
+            // srt/rtp (guard evaluates 1); fatal for default-OFF features.
+            if i + 1 < lines.len() && lines[i + 1].trim() == "#endif" {
+                i += 1;
+                chunk.push_str(lines[i]);
+                chunk.push('\n');
+            }
             chunks.push((section, chunk));
             saw_first_chunk = true;
         } else if is_chunk_prelude_line(line) {
             // Doc-comment, attribute, or blank-line-immediately-before-decl:
             // buffer it; it will travel with the next declaration (or be
             // flushed to header/trailer if no declaration follows).
+            pending.push_str(line);
+            pending.push('\n');
+        } else if line.trim_start().starts_with("#if") && line.contains("TST_HAS_") {
+            // Feature-guard open (`#if defined(TST_HAS_X)`): buffer like a
+            // prelude so it travels with the next declaration chunk and stays
+            // paired with its `#endif` (absorbed above) through section
+            // reordering. See the `#endif` comment above for why detaching it
+            // breaks default-OFF feature builds.
             pending.push_str(line);
             pending.push('\n');
         } else {

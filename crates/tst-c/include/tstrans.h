@@ -1022,6 +1022,46 @@ typedef struct tst_sender_t tst_sender_t;
 
 typedef struct tst_sender_config_t tst_sender_config_t;
 
+#if defined(TST_HAS_UDP)
+/**
+ * Opaque handle for a UDP-backed demux receiver.
+ *
+ * Returned by [`tst_udp_demux_receiver_open`]. Freed with
+ * [`tst_udp_demux_receiver_close`].
+ */
+typedef struct TstUdpDemuxReceiver TstUdpDemuxReceiver;
+#endif
+
+#if defined(TST_HAS_UDP)
+/**
+ * Opaque handle for a UDP-backed mux sender.
+ *
+ * Returned by [`tst_udp_mux_sender_open`]. Freed with
+ * [`tst_udp_mux_sender_close`].
+ */
+typedef struct TstUdpMuxSender TstUdpMuxSender;
+#endif
+
+#if defined(TST_HAS_UDP)
+/**
+ * Opaque handle for a UDP-backed raw TS byte receiver.
+ *
+ * Returned by [`tst_udp_recv_open`]. Freed with
+ * [`tst_udp_receiver_close`].
+ */
+typedef struct TstUdpReceiver TstUdpReceiver;
+#endif
+
+#if defined(TST_HAS_UDP)
+/**
+ * Opaque handle for a UDP-backed raw TS byte sender.
+ *
+ * Returned by [`tst_udp_sender_open`]. Freed with
+ * [`tst_udp_sender_close`].
+ */
+typedef struct TstUdpSender TstUdpSender;
+#endif
+
 /**
  * `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
  *
@@ -1607,662 +1647,6 @@ typedef struct tst_server_stats_t {
 extern "C" {
 #endif // __cplusplus
 
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if defined(TST_HAS_RTP)
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-#endif
-
-#if defined(TST_HAS_SRT)
-
 // ─── INTROSPECTION ─────────────────────────────────────────
 
 /**
@@ -2429,6 +1813,8 @@ uint32_t tst_get_version_patch(void);
 const char *tst_get_version_string(void);
 
 // ─── MUX SENDER ────────────────────────────────────────────
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_mux_sender_t`. Same semantics as
  * `tst_mux_sender_cancel`; reaches the currently-active inner
@@ -2438,6 +1824,9 @@ const char *tst_get_version_string(void);
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_mux_sender_t`.
  *
@@ -2446,6 +1835,9 @@ int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * See [`tst_mux_sender_get_socket_stats`]. The managed variant returns
  * `TST_E_NOT_AVAILABLE` whenever the reconnect loop currently has no
@@ -2460,6 +1852,9 @@ void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
 
 int tst_managed_mux_sender_get_socket_stats(struct tst_managed_mux_sender_t *p,
                                             struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
  *
@@ -2469,6 +1864,9 @@ int tst_managed_mux_sender_get_socket_stats(struct tst_managed_mux_sender_t *p,
 
 int tst_managed_mux_sender_get_stats(struct tst_managed_mux_sender_t *p,
                                      struct tst_mux_sender_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_mux_sender_get_stream_codec_stats`]. Returns
  * the same values — codec stats live on the inner `Muxer`, so they
@@ -2490,6 +1888,9 @@ int tst_managed_mux_sender_get_stats(struct tst_managed_mux_sender_t *p,
 int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_t *p,
                                                   uint16_t pid,
                                                   struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_mux_sender_t` connected via SRT.
  *
@@ -2508,6 +1909,9 @@ int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_
 struct tst_managed_mux_sender_t *tst_managed_mux_sender_open(const char *srt_url,
                                                              struct tst_mux_config_t *cfg,
                                                              const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_managed_mux_sender_t` to zero.
  *
@@ -2515,6 +1919,9 @@ struct tst_managed_mux_sender_t *tst_managed_mux_sender_open(const char *srt_url
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_managed_mux_sender_reset_stats(struct tst_managed_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
  * through the inner reconnecting transport.
@@ -2524,6 +1931,9 @@ int tst_managed_mux_sender_send_audio(struct tst_managed_mux_sender_t *p,
                                       const uint8_t *frames,
                                       size_t len,
                                       int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
  * `stream_handle` is stable across reconnects.
@@ -2534,6 +1944,9 @@ int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
                                          const uint8_t *frames,
                                          size_t len,
                                          int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one KLV blob through the managed mux sender's single KLV stream
  * and out the underlying reconnecting transport.
@@ -2565,6 +1978,9 @@ int tst_managed_mux_sender_send_klv(struct tst_managed_mux_sender_t *p,
                                     const uint8_t *klv,
                                     size_t len,
                                     int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream on
  * a managed (auto-reconnecting) sender.
@@ -2584,6 +2000,9 @@ int tst_managed_mux_sender_send_klv_to(struct tst_managed_mux_sender_t *p,
                                        const uint8_t *klv,
                                        size_t len,
                                        int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
  * through the inner reconnecting transport.
@@ -2593,6 +2012,9 @@ int tst_managed_mux_sender_send_subtitle(struct tst_managed_mux_sender_t *p,
                                          const uint8_t *payload,
                                          size_t len,
                                          int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
  * `stream_handle` is stable across reconnects.
@@ -2603,12 +2025,18 @@ int tst_managed_mux_sender_send_subtitle_to(struct tst_managed_mux_sender_t *p,
                                             const uint8_t *payload,
                                             size_t len,
                                             int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 
 int tst_managed_mux_sender_send_video(struct tst_managed_mux_sender_t *p,
                                       const uint8_t *nal,
                                       size_t len,
                                       int64_t pts_90khz,
                                       bool key_frame);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream on a
  * managed (auto-reconnecting) sender.
@@ -2628,6 +2056,7 @@ int tst_managed_mux_sender_send_video_to(struct tst_managed_mux_sender_t *p,
                                          size_t len,
                                          int64_t pts_90khz,
                                          bool key_frame);
+#endif
 
 /**
  * Append one PMT descriptor to an audio stream's per-PID descriptor list.
@@ -2969,6 +2398,8 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
                                                     const uint8_t *tlv_bytes,
                                                     size_t tlv_total_len,
                                                     size_t tlv_count);
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_mux_sender_t`. Unblocks a thread parked in any `_send_*`
  * entry point within one libsrt I/O cycle (~3-10 ms) by closing the
@@ -2980,6 +2411,9 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
  * handle must still be `_close`'d to free.
  */
 int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_mux_sender_t`.
  *
@@ -2988,6 +2422,9 @@ int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_mux_sender_close(struct tst_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats (RTT, packet loss, bandwidth, queue
  * depths) for the underlying libsrt socket. Cumulative since connect.
@@ -3008,6 +2445,9 @@ void tst_mux_sender_close(struct tst_mux_sender_t *p);
  * `tst_mux_sender_open` and `out` points to a writable `TstSocketStats`.
  */
 int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_mux_sender_t` into `*out`.
  *
@@ -3015,6 +2455,9 @@ int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socke
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
  *
@@ -3039,6 +2482,9 @@ int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_s
 int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
                                           uint16_t pid,
                                           struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_mux_sender_t` connected via SRT.
  *
@@ -3054,6 +2500,9 @@ int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
  * `tst_get_last_error_str()` describes the specific problem.
  */
 struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_mux_sender_t` to zero.
  *
@@ -3061,6 +2510,9 @@ struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_mux_sender_reset_stats(struct tst_mux_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one audio frame buffer (single-stream shorthand).
  *
@@ -3076,6 +2528,9 @@ int tst_mux_sender_send_audio(struct tst_mux_sender_t *p,
                               const uint8_t *frames,
                               size_t len,
                               int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -3093,6 +2548,9 @@ int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
                                  const uint8_t *frames,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one KLV blob through the muxer's single KLV stream and out the
  * transport.
@@ -3132,6 +2590,9 @@ int tst_mux_sender_send_klv(struct tst_mux_sender_t *p,
                             const uint8_t *klv,
                             size_t len,
                             int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream.
  *
@@ -3150,6 +2611,9 @@ int tst_mux_sender_send_klv_to(struct tst_mux_sender_t *p,
                                const uint8_t *klv,
                                size_t len,
                                int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one subtitle PES unit (single-stream shorthand).
  *
@@ -3167,6 +2631,9 @@ int tst_mux_sender_send_subtitle(struct tst_mux_sender_t *p,
                                  const uint8_t *payload,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Send one subtitle PES unit targeting a specific subtitle elementary
  * stream.
@@ -3185,12 +2652,18 @@ int tst_mux_sender_send_subtitle_to(struct tst_mux_sender_t *p,
                                     const uint8_t *payload,
                                     size_t len,
                                     int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 
 int tst_mux_sender_send_video(struct tst_mux_sender_t *p,
                               const uint8_t *nal,
                               size_t len,
                               int64_t pts_90khz,
                               bool key_frame);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -3209,6 +2682,9 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
                                  size_t len,
                                  int64_t pts_90khz,
                                  bool key_frame);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free the muxer.
  *
@@ -3217,6 +2693,9 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_muxer_close(struct tst_muxer_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_muxer_t` into `*out`.
  *
@@ -3224,6 +2703,9 @@ void tst_muxer_close(struct tst_muxer_t *p);
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
 int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
  *
@@ -3249,12 +2731,18 @@ int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
 int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
                                      uint16_t pid,
                                      struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a standalone muxer. Builds the config from `cfg` so the caller may
  * free it immediately after this returns. Returns NULL on failure with
  * last-error set.
  */
 struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
  * of bytes written; 0 means nothing was ready or the buffer was too
@@ -3262,6 +2750,9 @@ struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
  * value.
  */
 size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one audio frame buffer (single-stream shorthand).
  *
@@ -3278,6 +2769,9 @@ int tst_muxer_push_audio(struct tst_muxer_t *p,
                          const uint8_t *frames,
                          size_t len,
                          int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -3295,6 +2789,9 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
                             const uint8_t *frames,
                             size_t len,
                             int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one KLV blob onto the muxer's single KLV stream.
  *
@@ -3327,6 +2824,9 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
  * `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
  */
 int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream.
  *
@@ -3345,6 +2845,9 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
                           const uint8_t *klv,
                           size_t len,
                           int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one subtitle PES unit (single-stream shorthand).
  *
@@ -3362,6 +2865,9 @@ int tst_muxer_push_subtitle(struct tst_muxer_t *p,
                             const uint8_t *payload,
                             size_t len,
                             int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -3379,6 +2885,9 @@ int tst_muxer_push_subtitle_to(struct tst_muxer_t *p,
                                const uint8_t *payload,
                                size_t len,
                                int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B-framed video access unit. Returns 0 on success or a
  * negative TST_E_* code.
@@ -3389,6 +2898,9 @@ int tst_muxer_push_video(struct tst_muxer_t *p,
                          size_t len,
                          int64_t pts_90khz,
                          bool key_frame);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -3407,6 +2919,9 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
                             size_t len,
                             int64_t pts_90khz,
                             bool key_frame);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_muxer_t` to zero.
  *
@@ -3417,8 +2932,11 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
 int tst_muxer_reset_stats(struct tst_muxer_t *p);
+#endif
 
 // ─── TS SENDER ─────────────────────────────────────────────
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_sender_t`. Same semantics as
  * `tst_sender_cancel`; reaches the currently-active inner
@@ -3428,6 +2946,9 @@ int tst_muxer_reset_stats(struct tst_muxer_t *p);
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_sender_t`.
  *
@@ -3436,7 +2957,13 @@ int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_sender_close(struct tst_managed_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_sender_flush(struct tst_managed_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
@@ -3451,7 +2978,13 @@ int tst_managed_sender_flush(struct tst_managed_sender_t *p);
 
 int tst_managed_sender_get_socket_stats(struct tst_managed_sender_t *p,
                                         struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_sender_t` connected via SRT.
  *
@@ -3470,8 +3003,17 @@ int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_send
 struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
                                                      const struct tst_sender_config_t *cfg,
                                                      const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *bytes, size_t len);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
  * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
@@ -3483,6 +3025,9 @@ int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *by
  * be `_close`'d to free.
  */
 int tst_sender_cancel(struct tst_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_sender_t`.
  *
@@ -3491,6 +3036,7 @@ int tst_sender_cancel(struct tst_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_sender_close(struct tst_sender_t *p);
+#endif
 
 /**
  * Free a sender config previously returned by `tst_sender_config_new`.
@@ -3508,7 +3054,12 @@ int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
                                        enum tst_ts_framing_mode mode);
 
 int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
+
+#if defined(TST_HAS_SRT)
 int tst_sender_flush(struct tst_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
  * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
@@ -3522,7 +3073,13 @@ int tst_sender_flush(struct tst_sender_t *p);
 
 int tst_sender_get_socket_stats(struct tst_sender_t *p,
                                 struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_sender_t` connected via SRT.
  *
@@ -3538,10 +3095,19 @@ int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out)
  * `tst_get_last_error_str()` describes the specific problem.
  */
 struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_sender_reset_stats(struct tst_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);
+#endif
 
 // ─── RAW SENDER ────────────────────────────────────────────
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_raw_sender_t`. Same semantics as
  * `tst_raw_sender_cancel`; reaches the currently-active inner
@@ -3551,6 +3117,9 @@ int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len)
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_raw_sender_t`.
  *
@@ -3559,6 +3128,9 @@ int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_raw_sender_get_socket_stats`]. Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
@@ -3573,6 +3145,9 @@ void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
 
 int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
                                             struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_managed_raw_sender_t` into `*out`.
  *
@@ -3582,6 +3157,9 @@ int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
 
 int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
                                      struct tst_raw_send_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_raw_sender_t` connected via SRT.
  *
@@ -3600,6 +3178,9 @@ int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
 struct tst_managed_raw_sender_t *tst_managed_raw_sender_open(const char *srt_url,
                                                              const struct tst_raw_sender_config_t *cfg,
                                                              const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_managed_raw_sender_t` to zero.
  *
@@ -3607,10 +3188,16 @@ struct tst_managed_raw_sender_t *tst_managed_raw_sender_open(const char *srt_url
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_managed_raw_sender_reset_stats(struct tst_managed_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 
 int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
                                 const uint8_t *bytes,
                                 size_t len);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_raw_sender_t`. Unblocks a thread parked in `_send`
  * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
@@ -3622,6 +3209,9 @@ int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
  * be `_close`'d to free.
  */
 int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_raw_sender_t`.
  *
@@ -3630,6 +3220,7 @@ int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_raw_sender_close(struct tst_raw_sender_t *p);
+#endif
 
 /**
  * Free a raw sender config previously returned by
@@ -3642,6 +3233,8 @@ void tst_raw_sender_close(struct tst_raw_sender_t *p);
 void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
 
 struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
  * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
@@ -3655,6 +3248,9 @@ struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
 
 int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p,
                                     struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_raw_sender_t` into `*out`.
  *
@@ -3662,6 +3258,9 @@ int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p,
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_raw_sender_t` connected via SRT.
  *
@@ -3679,6 +3278,9 @@ int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_sta
 
 struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
                                              const struct tst_raw_sender_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_raw_sender_t` to zero.
  *
@@ -3686,7 +3288,11 @@ struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 int tst_raw_sender_reset_stats(struct tst_raw_sender_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_raw_sender_send(struct tst_raw_sender_t *p, const uint8_t *bytes, size_t len);
+#endif
 
 // ─── DEMUX RECEIVER ────────────────────────────────────────
 
@@ -3822,6 +3428,8 @@ int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid,
  * unrecognized `mode`.
  */
 int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
  * `_recv_event` within one libsrt I/O cycle (~3-10 ms) by closing
@@ -3834,6 +3442,9 @@ int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
 int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_demux_receiver_t`.
  *
@@ -3842,6 +3453,9 @@ int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
  * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
@@ -3856,6 +3470,9 @@ void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
 
 int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
                                         struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_demux_receiver_t` into `*out`.
  *
@@ -3868,6 +3485,9 @@ int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
 
 int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
                                  struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
  * into `*out`.
@@ -3893,6 +3513,9 @@ int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
 int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
                                               uint16_t pid,
                                               struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot per-PID stats for a `tst_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -3915,16 +3538,25 @@ int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
 int tst_demux_receiver_get_stream_stats(struct tst_demux_receiver_t *p,
                                         const struct tst_stream_stats_t **out_array,
                                         size_t *out_count);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_demux_receiver_t` with default demux options.
  * Accepts `srt://host:port?...` URLs; `?mode=listener` routes through
  * the listener path (equivalent to `_open_listener`).
  */
 struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open with default demux options.
  */
 struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open with a caller-supplied
  * `tst_demux_config_t`.
@@ -3932,6 +3564,9 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_ur
 
 struct tst_demux_receiver_t *tst_demux_receiver_open_listener_with_config(const char *srt_url,
                                                                           const struct tst_demux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_demux_receiver_t` with a caller-supplied
  * `tst_demux_config_t`. The config is cloned-from at open time;
@@ -3940,6 +3575,9 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_listener_with_config(const 
 
 struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt_url,
                                                                  const struct tst_demux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -3962,6 +3600,9 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt
  * On any non-zero return the contents of `*out_event` are unspecified.
  */
 int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -3971,6 +3612,9 @@ int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_eve
  * null, `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_demux_receiver_t`. Same shape as the plain
  * sibling — side-channel cancel, no Mutex acquisition. Safe from
@@ -3982,6 +3626,9 @@ int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
 int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_demux_receiver_t`.
  *
@@ -3990,6 +3637,9 @@ int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_demux_receiver_get_socket_stats`](super::stats::tst_demux_receiver_get_socket_stats). Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
@@ -4004,9 +3654,15 @@ void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
 
 int tst_managed_demux_receiver_get_socket_stats(struct tst_managed_demux_receiver_t *p,
                                                 struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 
 int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
                                          struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`](super::stats::tst_demux_receiver_get_stream_codec_stats).
  * Returns the same values — codec stats live on the inner `Demuxer`,
@@ -4029,10 +3685,16 @@ int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
 int tst_managed_demux_receiver_get_stream_codec_stats(struct tst_managed_demux_receiver_t *p,
                                                       uint16_t pid,
                                                       struct tst_stream_codec_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 
 int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receiver_t *p,
                                                 const struct tst_stream_stats_t **out_array,
                                                 size_t *out_count);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_demux_receiver_t` with default demux options.
  * URL-driven mode dispatch matches `tst_demux_receiver_open`.
@@ -4041,12 +3703,18 @@ int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receive
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char *srt_url,
                                                                      const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open for the managed demux receiver.
  */
 
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(const char *srt_url,
                                                                               const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open with a TstDemuxConfig override.
  */
@@ -4054,6 +3722,9 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(co
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_with_config(const char *srt_url,
                                                                                           const struct tst_reconnect_policy_t *policy,
                                                                                           const struct tst_demux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open with a TstDemuxConfig override. URL-driven mode dispatch.
  */
@@ -4061,6 +3732,9 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_wi
 struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config(const char *srt_url,
                                                                                  const struct tst_reconnect_policy_t *policy,
                                                                                  const struct tst_demux_config_t *cfg);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one typed `TstEvent` is ready.
  *
@@ -4074,9 +3748,15 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config
 
 int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,
                                           struct tst_event_t *out_event);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
+#endif
 
 // ─── TS RECEIVER ───────────────────────────────────────────
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_receiver_t`. Unblocks a thread parked in
  * `_recv_packet` within one libsrt I/O cycle (~3-10 ms). Safe from
@@ -4084,6 +3764,9 @@ int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *
  * `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
  */
 int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_receiver_t`.
  *
@@ -4092,6 +3775,9 @@ int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Managed sibling of [`tst_receiver_get_socket_stats`]. Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
@@ -4106,6 +3792,9 @@ void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
 
 int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
                                           struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_managed_receiver_t` into `*out`.
  *
@@ -4115,6 +3804,9 @@ int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
 
 int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
                                    struct tst_receiver_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_receiver_t`. URL-driven mode dispatch
  * matches `tst_receiver_open` semantics: `?mode=listener` routes
@@ -4131,6 +3823,9 @@ int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
 
 struct tst_managed_receiver_t *tst_managed_receiver_open(const char *srt_url,
                                                          const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open for the managed receiver. Forces
  * listener mode regardless of any `?mode=` URL value — the
@@ -4146,6 +3841,9 @@ struct tst_managed_receiver_t *tst_managed_receiver_open(const char *srt_url,
 
 struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *srt_url,
                                                                   const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one 188-byte MPEG-TS packet is ready. Semantics match
  * `tst_receiver_recv_packet`; on transport failure the managed
@@ -4163,6 +3861,9 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
  */
 int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_managed_receiver_t` to zero.
  *
@@ -4170,6 +3871,9 @@ int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_receiver_t`. Unblocks a thread parked in
  * `_recv_packet` within one libsrt I/O cycle (~3-10 ms) by closing
@@ -4182,6 +3886,9 @@ int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
 int tst_receiver_cancel(struct tst_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_receiver_t`.
  *
@@ -4190,6 +3897,9 @@ int tst_receiver_cancel(struct tst_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_receiver_close(struct tst_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
  * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
@@ -4203,6 +3913,9 @@ void tst_receiver_close(struct tst_receiver_t *p);
 
 int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
                                   struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_receiver_t` into `*out`.
  *
@@ -4210,6 +3923,9 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_receiver_t`. Accepts `srt://host:port?...` URLs;
  * URL with `?mode=listener` is routed through the listener path
@@ -4220,6 +3936,9 @@ int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
 struct tst_receiver_t *tst_receiver_open(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open. Forces listener mode regardless of any
  * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
@@ -4230,6 +3949,9 @@ struct tst_receiver_t *tst_receiver_open(const char *srt_url);
  * the entry-point name is already the authoritative listener signal.
  */
 struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it into
  * the caller's `out_packet` buffer.
@@ -4250,6 +3972,9 @@ struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
  * On any non-zero return the contents of `out_packet` are unspecified.
  */
 int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_receiver_t` to zero. Does not
  * affect transport state or the syncer state machine.
@@ -4258,8 +3983,11 @@ int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_receiver_reset_stats(struct tst_receiver_t *p);
+#endif
 
 // ─── RAW RECEIVER ──────────────────────────────────────────
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_managed_raw_receiver_t`. Unblocks a thread parked in
  * `_recv` within one libsrt I/O cycle (~3-10 ms). Safe from any thread.
@@ -4267,6 +3995,9 @@ int tst_receiver_reset_stats(struct tst_receiver_t *p);
  * must still be `_close`'d to free memory.
  */
 int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_managed_raw_receiver_t`.
  *
@@ -4275,6 +4006,9 @@ int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
  *
@@ -4293,6 +4027,9 @@ void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
 
 int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t *p,
                                               struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_managed_raw_receiver_t` into `*out`.
  *
@@ -4302,6 +4039,9 @@ int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t 
 
 int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
                                        struct tst_raw_recv_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_managed_raw_receiver_t`. URL-driven mode dispatch
  * matches `tst_raw_receiver_open` semantics: `?mode=listener` routes
@@ -4318,6 +4058,9 @@ int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
 
 struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open(const char *srt_url,
                                                                  const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open for the managed receiver. Forces
  * listener mode regardless of any `?mode=` URL value — the
@@ -4336,6 +4079,9 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open(const char *srt
 
 struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open_listener(const char *srt_url,
                                                                           const struct tst_reconnect_policy_t *policy);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one message arrives. Semantics match `tst_raw_receiver_recv`;
  * on transport failure the managed inner reconnects transparently before
@@ -4356,7 +4102,13 @@ int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
                                   uint8_t *buf,
                                   size_t len,
                                   size_t *out_len);
+#endif
+
+#if defined(TST_HAS_SRT)
 int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
  * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
@@ -4368,6 +4120,9 @@ int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
  * The handle must still be `_close`'d to free.
  */
 int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Close and free a `tst_raw_receiver_t`.
  *
@@ -4376,6 +4131,9 @@ int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
  * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
@@ -4389,6 +4147,9 @@ void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
 
 int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
                                       struct tst_socket_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_raw_receiver_t` into `*out`.
  *
@@ -4396,6 +4157,9 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Open a `tst_raw_receiver_t`. Accepts `srt://host:port?...` URLs;
  * URL with `?mode=listener` is routed through the listener path
@@ -4406,6 +4170,9 @@ int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
 struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Explicit listener-mode open. Forces listener mode regardless of any
  * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
@@ -4422,6 +4189,9 @@ struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
  * can land later if a consumer asks.)
  */
 struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Block until one message arrives. Copies up to `len` bytes into `buf`
  * and writes the actual length to `*out_len`.
@@ -4438,6 +4208,9 @@ struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
  */
 int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
+#endif
+
+#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_raw_receiver_t` to zero.
  *
@@ -4445,6 +4218,7 @@ int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
 int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
+#endif
 
 // ─── LIFETIME ──────────────────────────────────────────────
 
@@ -4457,6 +4231,8 @@ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a `tst_rtp_demux_receiver_t`. Signals the underlying RTP socket
  * to stop, unblocking any thread parked in `_next_event`. Safe to call
@@ -4472,6 +4248,9 @@ void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
  * `p` must be NULL or a valid non-freed `*mut TstRtpDemuxReceiver`.
  */
 int tst_rtp_demux_receiver_cancel(struct TstRtpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Close and free a `tst_rtp_demux_receiver_t`.
  *
@@ -4483,6 +4262,9 @@ int tst_rtp_demux_receiver_cancel(struct TstRtpDemuxReceiver *p);
  * returned by `tst_rtp_demux_receiver_open`.
  */
 void tst_rtp_demux_receiver_close(struct TstRtpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a `tst_rtp_mux_sender_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in a `_push_*` entry point. Safe to
@@ -4498,6 +4280,9 @@ void tst_rtp_demux_receiver_close(struct TstRtpDemuxReceiver *p);
  * `p` must be NULL or a valid non-freed `*mut TstRtpMuxSender`.
  */
 int tst_rtp_mux_sender_cancel(struct TstRtpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Close and free a `tst_rtp_mux_sender_t`.
  *
@@ -4509,6 +4294,9 @@ int tst_rtp_mux_sender_cancel(struct TstRtpMuxSender *p);
  * by `tst_rtp_mux_sender_open`.
  */
 void tst_rtp_mux_sender_close(struct TstRtpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a `tst_rtp_receiver_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in `_recv_ts`. Safe to call from
@@ -4524,6 +4312,9 @@ void tst_rtp_mux_sender_close(struct TstRtpMuxSender *p);
  * `p` must be NULL or a valid non-freed `*mut TstRtpReceiver`.
  */
 int tst_rtp_receiver_cancel(struct TstRtpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Close and free a `tst_rtp_receiver_t`.
  *
@@ -4536,6 +4327,9 @@ int tst_rtp_receiver_cancel(struct TstRtpReceiver *p);
  * by `tst_rtp_recv_open`.
  */
 void tst_rtp_receiver_close(struct TstRtpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a `tst_rtp_sender_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in `_send_ts`. Safe to call from
@@ -4550,6 +4344,9 @@ void tst_rtp_receiver_close(struct TstRtpReceiver *p);
  * `p` must be NULL or a valid non-freed `*mut TstRtpSender`.
  */
 int tst_rtp_sender_cancel(struct TstRtpSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Close and free a `tst_rtp_sender_t`.
  *
@@ -4563,6 +4360,9 @@ int tst_rtp_sender_cancel(struct TstRtpSender *p);
  * by `tst_rtp_sender_open`.
  */
 void tst_rtp_sender_close(struct TstRtpSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Fire the hard cancel on a cancel handle.
  *
@@ -4579,6 +4379,9 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
  *   `tst_rtsp_server_cancel_handle`.
  */
 void tst_rtsp_cancel_handle_cancel(struct tst_rtsp_cancel_handle_t *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Free a cancel handle obtained from `tst_rtsp_server_cancel_handle`.
  *
@@ -4593,6 +4396,9 @@ void tst_rtsp_cancel_handle_cancel(struct tst_rtsp_cancel_handle_t *handle);
  *   `tst_rtsp_server_cancel_handle`.
  */
 void tst_rtsp_cancel_handle_free(struct tst_rtsp_cancel_handle_t *handle);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Free a builder without connecting.
  *
@@ -4610,6 +4416,9 @@ void tst_rtsp_cancel_handle_free(struct tst_rtsp_cancel_handle_t *handle);
  * `_connect`.
  */
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel a mount handle. All subsequent `push_*` calls on this handle will
  * return `TST_E_CLOSED` immediately without entering the muxer.
@@ -4630,6 +4439,9 @@ void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
  * `handle` must be NULL or a valid non-freed `*mut tst_rtsp_mount_handle_t`.
  */
 int tst_rtsp_mount_cancel(struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Free an RTSP mount handle.
  *
@@ -4647,6 +4459,9 @@ int tst_rtsp_mount_cancel(struct TstRtspMountHandle *handle);
  * that has not yet been freed.
  */
 void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Free a builder without starting the server.
  *
@@ -4664,6 +4479,9 @@ void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
  * `_start`.
  */
 void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Free the RTSP server handle.
  *
@@ -4683,6 +4501,9 @@ void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
  *   `tst_rtsp_server_builder_start`.
  */
 void tst_rtsp_server_free(struct TstRtspServer *server);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Cancel any blocking RTSP I/O on the control channel.
  *
@@ -4701,6 +4522,9 @@ void tst_rtsp_server_free(struct TstRtspServer *server);
  * `session` must be NULL or a valid non-freed `*mut TstRtspSession`.
  */
 int tst_rtsp_session_cancel(struct TstRtspSession *session);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Send TEARDOWN and free the session handle.
  *
@@ -4719,6 +4543,66 @@ int tst_rtsp_session_cancel(struct TstRtspSession *session);
  * consumed by [`tst_rtsp_session_into_demux_receiver`].
  */
 int tst_rtsp_session_teardown_and_free(struct TstRtspSession *session);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Close and free a `tst_udp_demux_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstUdpDemuxReceiver`
+ * returned by `tst_udp_demux_receiver_open`.
+ */
+void tst_udp_demux_receiver_close(struct TstUdpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Close and free a `tst_udp_mux_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstUdpMuxSender` returned
+ * by `tst_udp_mux_sender_open`.
+ */
+void tst_udp_mux_sender_close(struct TstUdpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Close and free a `tst_udp_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op). See `tst_udp_sender_close` for
+ * the ownership semantics.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstUdpReceiver` returned
+ * by `tst_udp_recv_open`.
+ */
+void tst_udp_receiver_close(struct TstUdpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Close and free a `tst_udp_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstUdpSender` returned
+ * by `tst_udp_sender_open`.
+ */
+void tst_udp_sender_close(struct TstUdpSender *p);
+#endif
 
 // ─── OTHER ─────────────────────────────────────────────────
 
@@ -4741,6 +4625,8 @@ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int3
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -4760,6 +4646,9 @@ int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
 
 int tst_rtp_demux_receiver_get_socket_stats(struct TstRtpDemuxReceiver *p,
                                             struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot aggregate stats for a `tst_rtp_demux_receiver_t` into `*out`.
  *
@@ -4778,6 +4667,9 @@ int tst_rtp_demux_receiver_get_socket_stats(struct TstRtpDemuxReceiver *p,
 
 int tst_rtp_demux_receiver_get_stats(struct TstRtpDemuxReceiver *p,
                                      struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot codec-specific stats for one PID on a
  * `tst_rtp_demux_receiver_t`.
@@ -4801,6 +4693,9 @@ int tst_rtp_demux_receiver_get_stats(struct TstRtpDemuxReceiver *p,
 int tst_rtp_demux_receiver_get_stream_codec_stats(struct TstRtpDemuxReceiver *p,
                                                   uint16_t pid,
                                                   struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot per-PID stats for a `tst_rtp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -4826,6 +4721,9 @@ int tst_rtp_demux_receiver_get_stream_codec_stats(struct TstRtpDemuxReceiver *p,
 int tst_rtp_demux_receiver_get_stream_stats(struct TstRtpDemuxReceiver *p,
                                             const struct tst_stream_stats_t **out_array,
                                             size_t *out_count);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -4852,6 +4750,9 @@ int tst_rtp_demux_receiver_get_stream_stats(struct TstRtpDemuxReceiver *p,
 
 int tst_rtp_demux_receiver_next_event(struct TstRtpDemuxReceiver *p,
                                       struct tst_event_t *out_event);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Open an RTP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
  * which case default demux options apply (lenient / CFI-tolerant mode).
@@ -4869,6 +4770,9 @@ int tst_rtp_demux_receiver_next_event(struct TstRtpDemuxReceiver *p,
 
 struct TstRtpDemuxReceiver *tst_rtp_demux_receiver_open(const char *url,
                                                         const struct tst_demux_config_t *demux_cfg);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Reset stats counters for a `tst_rtp_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -4883,6 +4787,9 @@ struct TstRtpDemuxReceiver *tst_rtp_demux_receiver_open(const char *url,
  * `tst_rtp_demux_receiver_open`.
  */
 int tst_rtp_demux_receiver_reset_stats(struct TstRtpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot mux-sender-level stats for a `tst_rtp_mux_sender_t` into `*out`.
  *
@@ -4898,6 +4805,9 @@ int tst_rtp_demux_receiver_reset_stats(struct TstRtpDemuxReceiver *p);
 
 int tst_rtp_mux_sender_get_mux_sender_stats(struct TstRtpMuxSender *p,
                                             struct tst_mux_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -4915,6 +4825,9 @@ int tst_rtp_mux_sender_get_mux_sender_stats(struct TstRtpMuxSender *p,
  * `TstSocketStats`.
  */
 int tst_rtp_mux_sender_get_socket_stats(struct TstRtpMuxSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot codec-specific stats for one PID on a `tst_rtp_mux_sender_t`.
  *
@@ -4937,6 +4850,9 @@ int tst_rtp_mux_sender_get_socket_stats(struct TstRtpMuxSender *p, struct tst_so
 int tst_rtp_mux_sender_get_stream_codec_stats(struct TstRtpMuxSender *p,
                                               uint16_t pid,
                                               struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Open an RTP-backed `MuxSender` that muxes MPEG-TS in real time and
  * sends over UDP/RTP. `mux_cfg` must be a valid `tst_mux_config_t`
@@ -4956,6 +4872,9 @@ int tst_rtp_mux_sender_get_stream_codec_stats(struct TstRtpMuxSender *p,
 
 struct TstRtpMuxSender *tst_rtp_mux_sender_open(const char *url,
                                                 const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one audio frame buffer through the muxer's single audio stream
  * and out the RTP transport (single-stream shorthand).
@@ -4974,6 +4893,9 @@ int tst_rtp_mux_sender_push_audio(struct TstRtpMuxSender *p,
                                   const uint8_t *frames,
                                   size_t len,
                                   int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -4990,6 +4912,9 @@ int tst_rtp_mux_sender_push_audio_to(struct TstRtpMuxSender *p,
                                      const uint8_t *frames,
                                      size_t len,
                                      int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one raw KLV blob through the muxer's single KLV stream and out
  * the RTP transport (single-stream shorthand).
@@ -5010,6 +4935,9 @@ int tst_rtp_mux_sender_push_klv(struct TstRtpMuxSender *p,
                                 const uint8_t *klv,
                                 size_t len,
                                 int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one KLV blob targeting a specific KLV elementary stream.
  *
@@ -5028,6 +4956,9 @@ int tst_rtp_mux_sender_push_klv_to(struct TstRtpMuxSender *p,
                                    const uint8_t *klv,
                                    size_t len,
                                    int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one subtitle PES unit through the muxer's single subtitle stream
  * and out the RTP transport (single-stream shorthand).
@@ -5045,6 +4976,9 @@ int tst_rtp_mux_sender_push_subtitle(struct TstRtpMuxSender *p,
                                      const uint8_t *payload,
                                      size_t len,
                                      int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -5061,6 +4995,9 @@ int tst_rtp_mux_sender_push_subtitle_to(struct TstRtpMuxSender *p,
                                         const uint8_t *payload,
                                         size_t len,
                                         int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one Annex-B NAL through the muxer's single video stream and
  * out the RTP transport (single-stream shorthand).
@@ -5084,6 +5021,9 @@ int tst_rtp_mux_sender_push_video(struct TstRtpMuxSender *p,
                                   size_t len,
                                   int64_t pts_90khz,
                                   bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -5106,6 +5046,9 @@ int tst_rtp_mux_sender_push_video_to(struct TstRtpMuxSender *p,
                                      size_t len,
                                      int64_t pts_90khz,
                                      bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Reset stats counters for a `tst_rtp_mux_sender_t` to zero.
  *
@@ -5118,6 +5061,9 @@ int tst_rtp_mux_sender_push_video_to(struct TstRtpMuxSender *p,
  * `tst_rtp_mux_sender_open`.
  */
 int tst_rtp_mux_sender_reset_stats(struct TstRtpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -5134,6 +5080,9 @@ int tst_rtp_mux_sender_reset_stats(struct TstRtpMuxSender *p);
  * `out` must point to a writable `TstSocketStats`.
  */
 int tst_rtp_receiver_get_socket_stats(struct TstRtpReceiver *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot stats for a `tst_rtp_receiver_t` into `*out`.
  *
@@ -5146,6 +5095,9 @@ int tst_rtp_receiver_get_socket_stats(struct TstRtpReceiver *p, struct tst_socke
  * `out` must point to a writable `TstReceiverStats`.
  */
 int tst_rtp_receiver_get_stats(struct TstRtpReceiver *p, struct tst_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it
  * into the caller's buffer.
@@ -5172,6 +5124,9 @@ int tst_rtp_receiver_recv_ts(struct TstRtpReceiver *p,
                              uint8_t *buf,
                              size_t buf_len,
                              size_t *out_n);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Reset stats counters for a `tst_rtp_receiver_t` to zero.
  *
@@ -5183,6 +5138,9 @@ int tst_rtp_receiver_recv_ts(struct TstRtpReceiver *p,
  * `p` must be a valid `*mut TstRtpReceiver` opened via `tst_rtp_recv_open`.
  */
 int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Open an RTP receiver listening on the unicast or multicast endpoint
  * described by `url`. Returns `NULL` on error.
@@ -5200,6 +5158,9 @@ int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
  * eventually be freed with `tst_rtp_receiver_close`.
  */
 struct TstRtpReceiver *tst_rtp_recv_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -5217,6 +5178,9 @@ struct TstRtpReceiver *tst_rtp_recv_open(const char *url);
  * `out` must point to a writable `TstSocketStats`.
  */
 int tst_rtp_sender_get_socket_stats(struct TstRtpSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot stats for a `tst_rtp_sender_t` into `*out`.
  *
@@ -5229,6 +5193,9 @@ int tst_rtp_sender_get_socket_stats(struct TstRtpSender *p, struct tst_socket_st
  * `out` must point to a writable `TstSenderStats`.
  */
 int tst_rtp_sender_get_stats(struct TstRtpSender *p, struct tst_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Open an RTP sender to the unicast or multicast endpoint described by
  * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
@@ -5247,6 +5214,9 @@ int tst_rtp_sender_get_stats(struct TstRtpSender *p, struct tst_sender_stats_t *
  * `tst_rtp_sender_close`.
  */
 struct TstRtpSender *tst_rtp_sender_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Reset stats counters for a `tst_rtp_sender_t` to zero.
  *
@@ -5258,6 +5228,9 @@ struct TstRtpSender *tst_rtp_sender_open(const char *url);
  * `p` must be a valid `*mut TstRtpSender` opened via `tst_rtp_sender_open`.
  */
 int tst_rtp_sender_reset_stats(struct TstRtpSender *p);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push pre-muxed TS bytes through the RTP sender.
  *
@@ -5274,6 +5247,9 @@ int tst_rtp_sender_reset_stats(struct TstRtpSender *p);
  * readable for `len` bytes.
  */
 int tst_rtp_sender_send_ts(struct TstRtpSender *p, const uint8_t *bytes, size_t len);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Configure HTTP Basic credentials (RFC 7617) for this builder.
  *
@@ -5298,6 +5274,9 @@ int tst_rtp_sender_send_ts(struct TstRtpSender *p, const uint8_t *bytes, size_t 
 void tst_rtsp_client_builder_auth_basic(struct tst_rtsp_client_builder_t *builder,
                                         const char *user,
                                         const char *pass);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Configure HTTP Digest MD5 credentials (RFC 7616 §3.4) for this builder.
  *
@@ -5322,6 +5301,9 @@ void tst_rtsp_client_builder_auth_basic(struct tst_rtsp_client_builder_t *builde
 void tst_rtsp_client_builder_auth_digest_md5(struct tst_rtsp_client_builder_t *builder,
                                              const char *user,
                                              const char *pass);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Configure HTTP Digest SHA-256 credentials (RFC 7616 §3.4) for this
  * builder.
@@ -5347,6 +5329,9 @@ void tst_rtsp_client_builder_auth_digest_md5(struct tst_rtsp_client_builder_t *b
 void tst_rtsp_client_builder_auth_digest_sha256(struct tst_rtsp_client_builder_t *builder,
                                                 const char *user,
                                                 const char *pass);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Consume a builder and open a live RTSP session (OPTIONS → DESCRIBE → SETUP).
  *
@@ -5376,6 +5361,9 @@ void tst_rtsp_client_builder_auth_digest_sha256(struct tst_rtsp_client_builder_t
  * `tst_rtsp_client_builder_new` that has not yet been freed or consumed.
  */
 struct TstRtspSession *tst_rtsp_client_builder_connect(struct tst_rtsp_client_builder_t *builder);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Enable or disable the auto-keepalive background thread.
  *
@@ -5394,6 +5382,9 @@ struct TstRtspSession *tst_rtsp_client_builder_connect(struct tst_rtsp_client_bu
  * `tst_rtsp_client_builder_new` and not yet freed or consumed.
  */
 void tst_rtsp_client_builder_keepalive(struct tst_rtsp_client_builder_t *builder, bool enabled);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Allocate a new RTSP client builder targeting `url`.
  *
@@ -5416,6 +5407,9 @@ void tst_rtsp_client_builder_keepalive(struct tst_rtsp_client_builder_t *builder
  * and must not be aliased.
  */
 struct tst_rtsp_client_builder_t *tst_rtsp_client_builder_new(const char *url);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Supply a PEM-encoded CA certificate bundle for `rtsps://` connections.
  *
@@ -5447,6 +5441,9 @@ struct tst_rtsp_client_builder_t *tst_rtsp_client_builder_new(const char *url);
 void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t *builder,
                                                const uint8_t *cert_pem,
                                                size_t cert_len);
+#endif
+
+#if defined(TST_HAS_RTP)
 /**
  * Set the RTSP transport preference.
  *
@@ -5467,6 +5464,9 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Return the first configured audio stream handle for this mount.
  *
@@ -5479,6 +5479,9 @@ void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *bu
  *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
  */
 tst_audio_stream_handle_t tst_rtsp_mount_audio_handle(const struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Drain any TS packets buffered in the mount's inner muxer and broadcast
  * them through the mount's fanout channel.
@@ -5495,6 +5498,9 @@ tst_audio_stream_handle_t tst_rtsp_mount_audio_handle(const struct TstRtspMountH
  * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
  */
 int tst_rtsp_mount_flush(struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot per-mount stats into `*out`.
  *
@@ -5514,6 +5520,9 @@ int tst_rtsp_mount_flush(struct TstRtspMountHandle *handle);
 
 int tst_rtsp_mount_get_stats(const struct TstRtspMountHandle *handle,
                              struct tst_mount_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Return the first configured KLV stream handle for this mount.
  *
@@ -5526,6 +5535,9 @@ int tst_rtsp_mount_get_stats(const struct TstRtspMountHandle *handle,
  *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
  */
 tst_klv_stream_handle_t tst_rtsp_mount_klv_handle(const struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one audio frame buffer through the mount's single audio stream
  * (single-stream shorthand).
@@ -5548,6 +5560,9 @@ int tst_rtsp_mount_push_audio(struct TstRtspMountHandle *handle,
                               const uint8_t *frames,
                               size_t len,
                               int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -5564,6 +5579,9 @@ int tst_rtsp_mount_push_audio_to(struct TstRtspMountHandle *handle,
                                  const uint8_t *frames,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one raw KLV blob through the mount's single KLV stream (single-stream
  * shorthand).
@@ -5588,6 +5606,9 @@ int tst_rtsp_mount_push_klv(struct TstRtspMountHandle *handle,
                             const uint8_t *klv,
                             size_t len,
                             int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one raw KLV blob targeting a specific KLV elementary stream.
  *
@@ -5608,6 +5629,9 @@ int tst_rtsp_mount_push_klv_to(struct TstRtspMountHandle *handle,
                                const uint8_t *klv,
                                size_t len,
                                int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one subtitle payload through the mount's single subtitle stream
  * (single-stream shorthand).
@@ -5630,6 +5654,9 @@ int tst_rtsp_mount_push_subtitle(struct TstRtspMountHandle *handle,
                                  const uint8_t *payload,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one subtitle payload targeting a specific subtitle elementary stream.
  *
@@ -5646,6 +5673,9 @@ int tst_rtsp_mount_push_subtitle_to(struct TstRtspMountHandle *handle,
                                     const uint8_t *payload,
                                     size_t len,
                                     int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one Annex-B NAL through the mount's single video stream and out the
  * RTSP broadcast fanout (single-stream shorthand).
@@ -5674,6 +5704,9 @@ int tst_rtsp_mount_push_video(struct TstRtspMountHandle *handle,
                               size_t len,
                               int64_t pts_90khz,
                               bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -5696,6 +5729,9 @@ int tst_rtsp_mount_push_video_to(struct TstRtspMountHandle *handle,
                                  size_t len,
                                  int64_t pts_90khz,
                                  bool key_frame);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Reset all flow counters on the mount to zero.
  *
@@ -5712,6 +5748,9 @@ int tst_rtsp_mount_push_video_to(struct TstRtspMountHandle *handle,
  * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
  */
 int tst_rtsp_mount_reset_stats(struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Return the first configured subtitle stream handle for this mount.
  *
@@ -5725,6 +5764,9 @@ int tst_rtsp_mount_reset_stats(struct TstRtspMountHandle *handle);
  */
 
 tst_subtitle_stream_handle_t tst_rtsp_mount_subtitle_handle(const struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Return the first configured video stream handle for this mount.
  *
@@ -5742,6 +5784,9 @@ tst_subtitle_stream_handle_t tst_rtsp_mount_subtitle_handle(const struct TstRtsp
  *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
  */
 tst_video_stream_handle_t tst_rtsp_mount_video_handle(const struct TstRtspMountHandle *handle);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Register a **multicast** mount on a started RTSP server.
  *
@@ -5787,6 +5832,9 @@ struct TstRtspMountHandle *tst_rtsp_server_add_multicast_mount(struct TstRtspSer
                                                                uint8_t ttl,
                                                                const char *iface_name,
                                                                const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Register a **unicast** mount on a started RTSP server.
  *
@@ -5822,6 +5870,9 @@ struct TstRtspMountHandle *tst_rtsp_server_add_multicast_mount(struct TstRtspSer
 struct TstRtspMountHandle *tst_rtsp_server_add_unicast_mount(struct TstRtspServer *server,
                                                              const char *path,
                                                              const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Require HTTP Basic authentication (RFC 7617) from connecting clients.
  *
@@ -5847,6 +5898,9 @@ struct TstRtspMountHandle *tst_rtsp_server_add_unicast_mount(struct TstRtspServe
 void tst_rtsp_server_builder_auth_basic(struct TstRtspServerBuilder *builder,
                                         const char *user,
                                         const char *pass);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Require HTTP Digest MD5 authentication (RFC 7616 §3.4) from connecting
  * clients.
@@ -5872,6 +5926,9 @@ void tst_rtsp_server_builder_auth_basic(struct TstRtspServerBuilder *builder,
 void tst_rtsp_server_builder_auth_digest_md5(struct TstRtspServerBuilder *builder,
                                              const char *user,
                                              const char *pass);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Require HTTP Digest SHA-256 authentication (RFC 7616 §3.4) from
  * connecting clients.
@@ -5897,6 +5954,9 @@ void tst_rtsp_server_builder_auth_digest_md5(struct TstRtspServerBuilder *builde
 void tst_rtsp_server_builder_auth_digest_sha256(struct TstRtspServerBuilder *builder,
                                                 const char *user,
                                                 const char *pass);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Change or override the bind address.
  *
@@ -5917,6 +5977,9 @@ void tst_rtsp_server_builder_auth_digest_sha256(struct TstRtspServerBuilder *bui
  * - `addr` must be a valid, NUL-terminated C string valid for this call.
  */
 void tst_rtsp_server_builder_bind(struct TstRtspServerBuilder *builder, const char *addr);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Set the per-mount broadcast channel capacity (frame count).
  *
@@ -5935,6 +5998,9 @@ void tst_rtsp_server_builder_bind(struct TstRtspServerBuilder *builder, const ch
  * and not yet freed or consumed.
  */
 void tst_rtsp_server_builder_fanout_capacity(struct TstRtspServerBuilder *builder, uint32_t cap);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Set the graceful-shutdown drain window in milliseconds.
  *
@@ -5954,6 +6020,9 @@ void tst_rtsp_server_builder_fanout_capacity(struct TstRtspServerBuilder *builde
 
 void tst_rtsp_server_builder_graceful_shutdown_drain_ms(struct TstRtspServerBuilder *builder,
                                                         uint32_t ms);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Set the maximum number of concurrent client sessions.
  *
@@ -5971,6 +6040,9 @@ void tst_rtsp_server_builder_graceful_shutdown_drain_ms(struct TstRtspServerBuil
  * and not yet freed or consumed.
  */
 void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, uint32_t n);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Allocate a new RTSP server builder for binding to `addr`.
  *
@@ -5998,6 +6070,9 @@ void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, 
  * and must not be aliased.
  */
 struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Set the session timeout in seconds.
  *
@@ -6016,6 +6091,9 @@ struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
  * and not yet freed or consumed.
  */
 void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builder, uint32_t secs);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Consume a builder and start the RTSP server.
  *
@@ -6050,6 +6128,9 @@ void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builde
  * failure.
  */
 struct TstRtspServer *tst_rtsp_server_builder_start(struct TstRtspServerBuilder *builder);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Supply a PEM-encoded TLS certificate chain and private key for
  * `rtsps://` binds.
@@ -6089,6 +6170,9 @@ void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
                                           size_t cert_len,
                                           const uint8_t *key,
                                           size_t key_len);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Obtain a hard-cancel handle for this server.
  *
@@ -6110,6 +6194,9 @@ void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
  *   `tst_rtsp_server_builder_start`.
  */
 struct tst_rtsp_cancel_handle_t *tst_rtsp_server_cancel_handle(struct TstRtspServer *server);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Snapshot aggregate server stats into `*out`.
  *
@@ -6130,6 +6217,9 @@ struct tst_rtsp_cancel_handle_t *tst_rtsp_server_cancel_handle(struct TstRtspSer
  *   that is valid for this call. The caller retains ownership.
  */
 int tst_rtsp_server_get_stats(struct TstRtspServer *server, struct tst_server_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Graceful shutdown — two-phase (stop then free).
  *
@@ -6157,6 +6247,9 @@ int tst_rtsp_server_get_stats(struct TstRtspServer *server, struct tst_server_st
  *   `tst_rtsp_server_builder_start`.
  */
 int tst_rtsp_server_stop(struct TstRtspServer *server, uint32_t _drain_ms);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Consume the session's data-plane transport and return a
  * `tst_rtp_demux_receiver_t` ready for event iteration.
@@ -6193,6 +6286,9 @@ int tst_rtsp_server_stop(struct TstRtspServer *server, uint32_t _drain_ms);
 
 struct TstRtpDemuxReceiver *tst_rtsp_session_into_demux_receiver(struct TstRtspSession *session,
                                                                  const struct tst_demux_config_t *demux_cfg);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Send an RTSP PAUSE request on the session.
  *
@@ -6207,6 +6303,9 @@ struct TstRtpDemuxReceiver *tst_rtsp_session_into_demux_receiver(struct TstRtspS
  * `tst_rtsp_client_builder_connect`.
  */
 int tst_rtsp_session_pause(struct TstRtspSession *session);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 /**
  * Send an RTSP PLAY request on the session.
  *
@@ -6222,6 +6321,633 @@ int tst_rtsp_session_pause(struct TstRtspSession *session);
  * `tst_rtsp_client_builder_connect`.
  */
 int tst_rtsp_session_play(struct TstRtspSession *session);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Read wire-level transport stats for the underlying UDP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+ * `tst_udp_demux_receiver_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_udp_demux_receiver_get_socket_stats(struct TstUdpDemuxReceiver *p,
+                                            struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot aggregate stats for a `tst_udp_demux_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * NOTE: per-PID counters are NOT included here — call
+ * `tst_udp_demux_receiver_get_stream_stats` to retrieve them.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+ * `tst_udp_demux_receiver_open`. `out` must point to a writable
+ * `TstDemuxReceiverStats`.
+ */
+
+int tst_udp_demux_receiver_get_stats(struct TstUdpDemuxReceiver *p,
+                                     struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot codec-specific stats for one PID on a
+ * `tst_udp_demux_receiver_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_udp_demux_receiver_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_udp_demux_receiver_get_stream_codec_stats(struct TstUdpDemuxReceiver *p,
+                                                  uint16_t pid,
+                                                  struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot per-PID stats for a `tst_udp_demux_receiver_t` into the
+ * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+ * pair borrowing that buffer.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+ * until the next `_get_stream_stats` / `_reset_stats` / `_close`
+ * call on the same handle. Callers wanting longer lifetime memcpy
+ * the array out.
+ *
+ * Capped at `TST_STATS_MAX_STREAMS = 64` entries (ascending PID order).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+ * arg, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+ * `tst_udp_demux_receiver_open`. `out_array` and `out_count` must be
+ * valid non-null pointers.
+ */
+
+int tst_udp_demux_receiver_get_stream_stats(struct TstUdpDemuxReceiver *p,
+                                            const struct tst_stream_stats_t **out_array,
+                                            size_t *out_count);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Block until one typed `TstEvent` is ready, then populate
+ * `*out_event` with the converted event.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** pointer fields on
+ * `*out_event` borrow from this handle's `EventArena`. They are
+ * valid until the next `_next_event` / `_close` call on the same
+ * handle. Callers wanting longer lifetime memcpy out before the
+ * next call.
+ *
+ * Returns:
+ * - `0` on success (`*out_event` populated)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_TS` (-3) on a demuxer error
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpDemuxReceiver`. `out_event`
+ * must be a valid writable `*mut TstEvent`.
+ */
+
+int tst_udp_demux_receiver_next_event(struct TstUdpDemuxReceiver *p,
+                                      struct tst_event_t *out_event);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Open a UDP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
+ * which case default demux options apply (lenient / CFI-tolerant mode).
+ * Returns `NULL` on error.
+ *
+ * For unicast, pass `udp://0.0.0.0:port`. For multicast, pass the group
+ * address with the ffmpeg `@` prefix (`udp://@239.0.0.1:port?iface=eth0`).
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
+ * valid `tst_demux_config_t*`. The returned handle must eventually be
+ * freed with `tst_udp_demux_receiver_close`.
+ */
+
+struct TstUdpDemuxReceiver *tst_udp_demux_receiver_open(const char *url,
+                                                        const struct tst_demux_config_t *demux_cfg);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Reset stats counters for a `tst_udp_demux_receiver_t` to zero.
+ * Also invalidates the borrowed `_get_stream_stats` snapshot
+ * (design §4.5).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
+ * `tst_udp_demux_receiver_open`.
+ */
+int tst_udp_demux_receiver_reset_stats(struct TstUdpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot mux-sender-level stats for a `tst_udp_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpMuxSender` opened via
+ * `tst_udp_mux_sender_open`. `out` must point to a writable
+ * `TstMuxSenderStats`.
+ */
+
+int tst_udp_mux_sender_get_mux_sender_stats(struct TstUdpMuxSender *p,
+                                            struct tst_mux_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Read wire-level transport stats for the underlying UDP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpMuxSender` opened via
+ * `tst_udp_mux_sender_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+int tst_udp_mux_sender_get_socket_stats(struct TstUdpMuxSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_udp_mux_sender_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_udp_mux_sender_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_udp_mux_sender_get_stream_codec_stats(struct TstUdpMuxSender *p,
+                                              uint16_t pid,
+                                              struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Open a UDP-backed `MuxSender` that muxes MPEG-TS in real time and
+ * sends over UDP. `mux_cfg` must be a valid `tst_mux_config_t`
+ * (constructed via `tst_mux_config_new`). Returns `NULL` on error.
+ *
+ * The mux config is borrowed — the caller still owns it and must free
+ * it. The returned handle is independent of the config after this call.
+ *
+ * URL grammar:
+ * - `udp://host:port` — unicast send
+ * - `udp://group:port` (group ∈ 224.0.0.0/4 or ff00::/8) — multicast send
+ * - Query params: `?ttl=N`, `?iface=eth0`, `?tos=0xb8`, `?sndbuf=2M`,
+ *   `?pkt_size=1316`, `?localaddr=...`
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
+ * pointer to a `tst_mux_config_t` valid for this call. The returned
+ * handle must eventually be freed with `tst_udp_mux_sender_close`.
+ */
+
+struct TstUdpMuxSender *tst_udp_mux_sender_open(const char *url,
+                                                const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one audio frame buffer through the muxer's single audio stream
+ * and out the UDP transport (single-stream shorthand).
+ *
+ * `frames` must point to `len` bytes of pre-framed audio data (one or
+ * more ADTS frames or MPEG audio frames concatenated). `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_audio(struct TstUdpMuxSender *p,
+                                  const uint8_t *frames,
+                                  size_t len,
+                                  int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_udp_mux_sender_push_audio`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_audio_to(struct TstUdpMuxSender *p,
+                                     tst_audio_stream_handle_t stream_handle,
+                                     const uint8_t *frames,
+                                     size_t len,
+                                     int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one raw KLV blob through the muxer's single KLV stream and out
+ * the UDP transport (single-stream shorthand).
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams
+ * configured as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer
+ * prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9
+ * §2.12.4.2. **Do not pre-wrap the AU cell on the caller side.**
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_klv(struct TstUdpMuxSender *p,
+                                const uint8_t *klv,
+                                size_t len,
+                                int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header (do not pre-wrap).
+ * On a single-stream sender, prefer `tst_udp_mux_sender_push_klv`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_klv_to(struct TstUdpMuxSender *p,
+                                   tst_klv_stream_handle_t stream_handle,
+                                   const uint8_t *klv,
+                                   size_t len,
+                                   int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one subtitle PES unit through the muxer's single subtitle stream
+ * and out the UDP transport (single-stream shorthand).
+ *
+ * `payload` is one complete logical subtitle unit. `pts_90khz` is the
+ * presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_subtitle(struct TstUdpMuxSender *p,
+                                     const uint8_t *payload,
+                                     size_t len,
+                                     int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one subtitle PES unit targeting a specific subtitle elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_udp_mux_sender_push_subtitle`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_subtitle_to(struct TstUdpMuxSender *p,
+                                        tst_subtitle_stream_handle_t stream_handle,
+                                        const uint8_t *payload,
+                                        size_t len,
+                                        int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one Annex-B NAL through the muxer's single video stream and
+ * out the UDP transport (single-stream shorthand).
+ *
+ * `nal` must point to `len` bytes of Annex-B NAL data. `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks. `key_frame` is `true`
+ * for IDR / key frames (used to set the random-access indicator in the
+ * MPEG-TS adaptation field).
+ *
+ * Resolves only when exactly one video stream is configured; otherwise
+ * rejects with `TST_E_INVALID_USAGE`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_video(struct TstUdpMuxSender *p,
+                                  const uint8_t *nal,
+                                  size_t len,
+                                  int64_t pts_90khz,
+                                  bool key_frame);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE`.
+ *
+ * On a single-stream sender, prefer `tst_udp_mux_sender_push_video` —
+ * same effect, no handle required.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_udp_mux_sender_push_video_to(struct TstUdpMuxSender *p,
+                                     tst_video_stream_handle_t stream_handle,
+                                     const uint8_t *nal,
+                                     size_t len,
+                                     int64_t pts_90khz,
+                                     bool key_frame);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Reset stats counters for a `tst_udp_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpMuxSender` opened via
+ * `tst_udp_mux_sender_open`.
+ */
+int tst_udp_mux_sender_reset_stats(struct TstUdpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Read wire-level transport stats for the underlying UDP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live socket stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_udp_receiver_get_socket_stats(struct TstUdpReceiver *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot stats for a `tst_udp_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
+ * `out` must point to a writable `TstReceiverStats`.
+ */
+int tst_udp_receiver_get_stats(struct TstUdpReceiver *p, struct tst_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Block until one 188-byte MPEG-TS packet is ready, then copy it
+ * into the caller's buffer.
+ *
+ * `buf` MUST point to a buffer of at least `buf_len` bytes (at least
+ * 188 bytes). On success, `*out_n` is set to the number of bytes
+ * written (always 188). On failure the contents of `buf` are
+ * unspecified.
+ *
+ * Returns:
+ * - `0` on success (188 bytes written to `buf`, `*out_n` = 188)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments or too-small buffer
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpReceiver`. `buf` must be
+ * writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
+ */
+
+int tst_udp_receiver_recv_ts(struct TstUdpReceiver *p,
+                             uint8_t *buf,
+                             size_t buf_len,
+                             size_t *out_n);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Reset stats counters for a `tst_udp_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
+ */
+int tst_udp_receiver_reset_stats(struct TstUdpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Open a UDP receiver listening on the unicast or multicast endpoint
+ * described by `url`. Returns `NULL` on error.
+ *
+ * URL grammar:
+ * - `udp://host:port` — unicast bind on host:port
+ * - `udp://@group:port` (`@` prefix is ffmpeg convention) — multicast recv
+ * - Query params: `?iface=eth0`, `?rcvbuf=8M`
+ *
+ * Port `0` causes the kernel to assign an ephemeral port.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string. The returned handle must
+ * eventually be freed with `tst_udp_receiver_close`.
+ */
+struct TstUdpReceiver *tst_udp_recv_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Read wire-level transport stats for the underlying UDP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if the transport has no live stats
+ * (e.g., socket not yet connected or already closed), or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_udp_sender_get_socket_stats(struct TstUdpSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Snapshot stats for a `tst_udp_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
+ * `out` must point to a writable `TstSenderStats`.
+ */
+int tst_udp_sender_get_stats(struct TstUdpSender *p, struct tst_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Open a UDP sender to the unicast or multicast endpoint described by
+ * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
+ * negative error code and `tst_get_last_error_str()` for a detail message.
+ *
+ * URL grammar:
+ * - `udp://host:port` — unicast send
+ * - `udp://group:port` (group ∈ 224.0.0.0/4 or ff00::/8) — multicast send
+ * - Query params: `?ttl=N`, `?iface=eth0`, `?tos=0xb8`, `?sndbuf=2M`,
+ *   `?pkt_size=1316`, `?localaddr=...`
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string valid for the duration of
+ * this call. The returned handle must eventually be freed with
+ * `tst_udp_sender_close`.
+ */
+struct TstUdpSender *tst_udp_sender_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Reset stats counters for a `tst_udp_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
+ */
+int tst_udp_sender_reset_stats(struct TstUdpSender *p);
+#endif
+
+#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+/**
+ * Push pre-muxed TS bytes through the UDP sender.
+ *
+ * `bytes` must point to a buffer of `len` bytes. `len` SHOULD be a
+ * multiple of 188 (one or more MPEG-TS packets); the underlying
+ * sender will accept any non-zero length but non-aligned buffers
+ * may cause sync issues at the receiver.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstUdpSender`. `bytes` must be
+ * readable for `len` bytes.
+ */
+int tst_udp_sender_send_ts(struct TstUdpSender *p, const uint8_t *bytes, size_t len);
 #endif
 
 #ifdef __cplusplus

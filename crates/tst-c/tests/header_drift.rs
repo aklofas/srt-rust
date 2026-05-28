@@ -185,9 +185,22 @@ fn add_section_dividers(original: &str) -> String {
                 chunk.push_str(lines[i]);
                 chunk.push('\n');
             }
+            // Keep a feature-guard close attached to its declaration (see
+            // build.rs for the rationale — default-OFF features break
+            // otherwise). Bare `#endif` only. Lock-step with build.rs.
+            if i + 1 < lines.len() && lines[i + 1].trim() == "#endif" {
+                i += 1;
+                chunk.push_str(lines[i]);
+                chunk.push('\n');
+            }
             chunks.push((section, chunk));
             saw_first_chunk = true;
         } else if is_chunk_prelude_line(line) {
+            pending.push_str(line);
+            pending.push('\n');
+        } else if line.trim_start().starts_with("#if") && line.contains("TST_HAS_") {
+            // Feature-guard open — buffer so it travels with the next
+            // declaration chunk (lock-step with build.rs).
             pending.push_str(line);
             pending.push('\n');
         } else {

@@ -289,6 +289,51 @@ ALLOWLIST=(
     "tst_rtp_demux_receiver_get_stream_stats"
     "tst_rtp_demux_receiver_reset_stats"
 
+    # --- Plan A5a UDP entry points (full RTP parity, minus cancel) ---
+    #     tst-c–only projections of pipeline Sender/Receiver/MuxSender/
+    #     DemuxReceiver typed on tst_udp::Udp{,Recv}Transport. Same rationale
+    #     as the RTP block above — they delegate to the same pipeline methods
+    #     the SRT variants call. UDP exposes no cancel (no cancel_handle on
+    #     the transport), so the _cancel entry points are absent.
+    # TstUdpSender
+    "tst_udp_sender_open"
+    "tst_udp_sender_close"
+    "tst_udp_sender_send_ts"
+    "tst_udp_sender_get_stats"
+    "tst_udp_sender_get_socket_stats"
+    "tst_udp_sender_reset_stats"
+    # TstUdpReceiver
+    "tst_udp_recv_open"
+    "tst_udp_receiver_close"
+    "tst_udp_receiver_recv_ts"
+    "tst_udp_receiver_get_stats"
+    "tst_udp_receiver_get_socket_stats"
+    "tst_udp_receiver_reset_stats"
+    # TstUdpMuxSender
+    "tst_udp_mux_sender_open"
+    "tst_udp_mux_sender_close"
+    "tst_udp_mux_sender_push_video"
+    "tst_udp_mux_sender_push_video_to"
+    "tst_udp_mux_sender_push_klv"
+    "tst_udp_mux_sender_push_klv_to"
+    "tst_udp_mux_sender_push_audio"
+    "tst_udp_mux_sender_push_audio_to"
+    "tst_udp_mux_sender_push_subtitle"
+    "tst_udp_mux_sender_push_subtitle_to"
+    "tst_udp_mux_sender_get_mux_sender_stats"
+    "tst_udp_mux_sender_get_socket_stats"
+    "tst_udp_mux_sender_get_stream_codec_stats"
+    "tst_udp_mux_sender_reset_stats"
+    # TstUdpDemuxReceiver
+    "tst_udp_demux_receiver_open"
+    "tst_udp_demux_receiver_close"
+    "tst_udp_demux_receiver_next_event"
+    "tst_udp_demux_receiver_get_stats"
+    "tst_udp_demux_receiver_get_socket_stats"
+    "tst_udp_demux_receiver_get_stream_codec_stats"
+    "tst_udp_demux_receiver_get_stream_stats"
+    "tst_udp_demux_receiver_reset_stats"
+
     # --- Phase 4 RTSP session entry points (Task 6, Wave B) ---
     #     TstRtspSession is the C-language projection of (RtspClient, RtspSession)
     #     combined; into_demux_receiver bridges to the existing TstRtpDemuxReceiver.

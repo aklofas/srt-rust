@@ -576,7 +576,6 @@ pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstErro
 // ─────────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "udp")]
-#[allow(dead_code)] // called by Wave A UDP entry points; not yet wired in --no-default-features --features udp
 pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
     use tst_udp::UdpErrorKind;
     // Exhaustive match — every UdpErrorKind variant maps to a single

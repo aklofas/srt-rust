@@ -582,6 +582,116 @@ const _TST_MOUNT_STATS_SIZE: () = assert!(
     "TstMountStats must be 32 bytes (4 × u64)"
 );
 
+// ---------------------------------------------------------------------------
+// Plan A5a — HLS publisher stats (hls feature)
+// ---------------------------------------------------------------------------
+
+/// `repr(C)` mirror of `tst_core::publisher::PublisherStats` — the
+/// universal cross-publisher stats subset. Returned by
+/// `tst_publisher_get_stats` and `tst_mux_publisher_get_publisher_stats`.
+/// Size 32 B.
+///
+/// The two `Option<Duration>` source fields are flattened to whole
+/// milliseconds; `None` is encoded as `-1` (a duration is never negative),
+/// so C callers branch on `< 0` to detect "no segment open" / "no
+/// completed segment yet".
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstPublisherStats {
+    /// Total bytes pushed to the publisher's sink (for HLS: bytes written
+    /// across all `.ts` segments).
+    pub bytes_written: u64,
+    /// Total completed segments written.
+    pub segments_written: u64,
+    /// Wall-clock age of the segment currently open for writes, in
+    /// milliseconds. `-1` when no segment is open (between cuts / before
+    /// the first push).
+    pub current_segment_age_ms: i64,
+    /// Wall-clock duration of the most recently completed segment, in
+    /// milliseconds. `-1` when no segment has completed yet.
+    pub last_segment_duration_ms: i64,
+}
+
+const _TST_PUBLISHER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstPublisherStats>() == 32,
+    "TstPublisherStats must be 32 bytes (2 × u64 + 2 × i64)"
+);
+
+impl From<&tst_core::publisher::PublisherStats> for TstPublisherStats {
+    fn from(s: &tst_core::publisher::PublisherStats) -> Self {
+        // Option<Duration> → i64 millis; None → -1. Durations cannot be
+        // negative, so -1 is an unambiguous "not present" sentinel.
+        fn ms(d: Option<std::time::Duration>) -> i64 {
+            d.map(|d| d.as_millis().min(i64::MAX as u128) as i64)
+                .unwrap_or(-1)
+        }
+        Self {
+            bytes_written: s.bytes_written,
+            segments_written: s.segments_written,
+            current_segment_age_ms: ms(s.current_segment_age),
+            last_segment_duration_ms: ms(s.last_segment_duration),
+        }
+    }
+}
+
+/// `repr(C)` mirror of `tst_tcp::hls::HlsStats` — HLS-specific richer
+/// stats. Returned by `tst_hls_publisher_get_hls_stats`. Size 24 B.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstHlsStats {
+    /// Total bytes accepted by `push_ts` (sum across all segments).
+    pub bytes_pushed_total: u64,
+    /// Bytes in the currently-open segment (0 between cuts).
+    pub open_segment_bytes: u64,
+    /// Total completed segments (history + current run).
+    pub segments_written: u64,
+}
+
+const _TST_HLS_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstHlsStats>() == 24,
+    "TstHlsStats must be 24 bytes (3 × u64)"
+);
+
+#[cfg(feature = "hls")]
+impl From<&tst_tcp::hls::HlsStats> for TstHlsStats {
+    fn from(s: &tst_tcp::hls::HlsStats) -> Self {
+        Self {
+            bytes_pushed_total: s.bytes_pushed_total,
+            open_segment_bytes: s.open_segment_bytes,
+            segments_written: s.segments_written,
+        }
+    }
+}
+
+/// `repr(C)` mirror of `tst_pipeline::MuxPublisherStats` — cumulative
+/// counters for a `MuxPublisher` shell. Returned by
+/// `tst_mux_publisher_get_stats`. Size 24 B.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstMuxPublisherStats {
+    /// Total TS bytes drained from the muxer and handed to the publisher.
+    pub bytes_pushed: u64,
+    /// Total explicit + auto `cut_segment()` calls.
+    pub cut_calls: u64,
+    /// Total muxer drain calls that produced ≥1 chunk.
+    pub drain_calls: u64,
+}
+
+const _TST_MUX_PUBLISHER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstMuxPublisherStats>() == 24,
+    "TstMuxPublisherStats must be 24 bytes (3 × u64)"
+);
+
+impl From<&tst_pipeline::MuxPublisherStats> for TstMuxPublisherStats {
+    fn from(s: &tst_pipeline::MuxPublisherStats) -> Self {
+        Self {
+            bytes_pushed: s.bytes_pushed,
+            cut_calls: s.cut_calls,
+            drain_calls: s.drain_calls,
+        }
+    }
+}
+
 /// Fill a `TstMountStats` from a Rust `tst_rtp::MountStats` snapshot.
 #[cfg(feature = "rtp")]
 pub(crate) fn fill_mount_stats(dst: &mut TstMountStats, src: &tst_rtp::MountStats) {

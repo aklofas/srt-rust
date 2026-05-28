@@ -2147,6 +2147,7 @@ dependencies = [
  "cc",
  "libc",
  "secrecy",
+ "tempfile",
  "thiserror",
  "tst-core",
  "tst-pipeline",

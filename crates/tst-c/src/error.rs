@@ -642,9 +642,28 @@ pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
 }
 
 #[cfg(feature = "rist")]
-#[allow(dead_code, unused_variables)] // Wave D T20 fills in the body + calls it.
+#[allow(dead_code)] // called by Wave D RIST entry points (another agent, parallel)
 pub(crate) fn rist_error_to_code(e: &tst_rist::RistError) -> TstError {
-    TstError::RistFfi
+    use tst_rist::RistErrorKind;
+    // Exhaustive match — every RistErrorKind variant maps to a single
+    // TstError code. CI ratchet scripts/check-rist-error-mapping-coverage.sh
+    // enforces this completeness.
+    match e.kind() {
+        RistErrorKind::Url => TstError::RistConfig,
+        RistErrorKind::Ffi => TstError::RistFfi,
+        RistErrorKind::PayloadTooLarge => TstError::RistPayloadTooLarge,
+        RistErrorKind::Closed => TstError::Closed, // reuse global Closed = -7
+        RistErrorKind::InvalidConfig => TstError::RistConfig,
+        RistErrorKind::EncryptionDisabled => TstError::RistEncryptionDisabled,
+        RistErrorKind::ContextCreateFailed => TstError::RistFfi,
+        RistErrorKind::PeerCreateFailed => TstError::RistFfi,
+        RistErrorKind::RecvTimeout => TstError::RistRecvTimeout,
+        RistErrorKind::Io => TstError::RistIo,
+        // Required by #[non_exhaustive]. CI ratchet allows this arm only
+        // when RistErrorKind is non_exhaustive; verifies all 10 named
+        // variants above are still explicit.
+        _ => TstError::RistFfi,
+    }
 }
 
 /// Expose `record_shell_error` to integration tests that cannot access

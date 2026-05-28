@@ -489,6 +489,11 @@ jobs:
         # tstrans.exceptions has a make_udp_error call site in tst-py/src/.
         run: bash scripts/check-py-udp-error-mapping-coverage.sh
 
+      - name: check-py-tcp-error-mapping-coverage
+        # Plan A5b Wave B T9 — verifies every TcpErrorKind variant in
+        # tstrans.exceptions has a make_tcp_error call site in tst-py/src/.
+        run: bash scripts/check-py-tcp-error-mapping-coverage.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

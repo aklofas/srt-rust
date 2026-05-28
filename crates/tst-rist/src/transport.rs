@@ -352,6 +352,11 @@ mod tests {
     }
 
     #[test]
+    // `c_char` is `i8` on x86_64 (signed char) but `u8` on aarch64 (unsigned
+    // char). The casts below are necessary on x86_64 to compare against `u8`
+    // byte literals, but redundant on aarch64 — clippy::unnecessary_cast trips
+    // on the aarch64 build of the same code. Tell clippy this is intentional.
+    #[allow(clippy::unnecessary_cast)]
     fn write_c_string_field_writes_and_null_terminates() {
         let mut buf = [0xFF_u8 as c_char; 16];
         write_c_string_field(&mut buf, "hello", "test").unwrap();

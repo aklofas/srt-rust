@@ -17,6 +17,12 @@ jobs:
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.continue }}
+    # Backstop against a hung test (no test should be able to block CI
+    # indefinitely). A healthy build job is ~33 min on x86_64; this caps a
+    # deadlocked network/loopback test instead of letting it burn the
+    # 6-hour default — on 2026-05-28 a hang ran linux-aarch64 for 235 min
+    # before the runner killed it. Tune down once aarch64 has a green baseline.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -268,28 +274,23 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo test --workspace --no-default-features
 
-      - name: cargo build (all crate types, all-features)
-        # `cargo test` only rebuilds the rlib of crates with multiple
-        # crate-types, so the cdylib at target/debug/libtstrans.{so,dylib}
-        # is whatever the LAST explicit `cargo build` left it — which is
-        # the --no-default-features build above. tst-c's `smoke.rs` test
-        # then re-links smoke.c against that stripped cdylib under the
-        # --all-features run and fails ("Undefined symbols for architecture
-        # arm64: _tst_sender_close, ..."). Surfaced 2026-05-26 on
-        # macos-arm64 in `26479673047`. Explicit build re-syncs the cdylib
-        # to the active feature set before the test step runs.
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
-        run: cargo build --workspace --all-features
-
       - name: Build tst-c per-feature (udp/tcp/hls/rist) — catch single-feature breakage
         # Plan A5a: the four new transport features are default-off, so the
-        # default + all-features builds above don't exercise each one in
-        # isolation. These explicit single-feature builds catch cross-feature
-        # dep leakage (e.g., a udp path that accidentally references srt) that
-        # would only surface at a consumer's `--features udp` build time.
-        # udp/tcp/hls are pure-Rust (no vendored C); rist links vendored librist.
+        # default build above and the all-features build below don't exercise
+        # each one in isolation. These explicit single-feature builds catch
+        # cross-feature dep leakage (e.g., a udp path that accidentally
+        # references srt) that would only surface at a consumer's `--features
+        # udp` build time. udp/tcp/hls are pure-Rust (no vendored C); rist
+        # links vendored librist.
+        #
+        # MUST run BEFORE the all-features build below. Each `cargo build -p
+        # tst-c --no-default-features` overwrites target/debug/libtstrans.{so,
+        # dylib} with an srt-LESS cdylib. If this step ran AFTER the
+        # all-features build (as it did 2026-05-28, when A5a appended it there),
+        # the subsequent `cargo test --all-features` smoke test links smoke.c
+        # against the stripped cdylib and fails with `undefined reference to
+        # tst_muxer_open`. Keeping the all-features build last re-syncs the
+        # cdylib to the test's feature set.
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
@@ -299,6 +300,22 @@ jobs:
           cargo build -p tst-c --no-default-features --features hls
           cargo build -p tst-c --no-default-features --features rist
           cargo build -p tst-c --no-default-features --features udp,tcp,hls,rist
+
+      - name: cargo build (all crate types, all-features)
+        # `cargo test` only rebuilds the rlib of crates with multiple
+        # crate-types, so the cdylib at target/debug/libtstrans.{so,dylib}
+        # is whatever the LAST explicit `cargo build` left it — which is the
+        # per-feature --no-default-features build above. tst-c's `smoke.rs`
+        # test then re-links smoke.c against that stripped cdylib under the
+        # --all-features run and fails ("undefined reference to tst_muxer_open"
+        # / "Undefined symbols for architecture arm64: _tst_sender_close").
+        # Surfaced 2026-05-26 on macos-arm64 (`26479673047`) and 2026-05-28
+        # across the whole matrix after A5a added the per-feature step. This
+        # build MUST stay the last cdylib-producing build before the test step.
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: cargo build --workspace --all-features
 
       - name: cargo test (all features)
         # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,

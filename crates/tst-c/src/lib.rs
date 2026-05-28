@@ -73,8 +73,8 @@ pub use sender::ts_sender::tst_sender_open;
 // line once the corresponding open function lands (Wave A: udp, Wave B:
 // tcp, Wave C: hls, Wave D: rist). Bootstrap keeps them commented so the
 // canonical feature-mode builds succeed against the empty stub modules.
-// #[cfg(feature = "udp")]
-// pub use udp::tst_udp_sender_open;
+#[cfg(feature = "udp")]
+pub use udp::{tst_udp_mux_sender_open, tst_udp_recv_open, tst_udp_sender_open};
 // #[cfg(feature = "tcp")]
 // pub use tcp::tst_tcp_sender_open;
 // #[cfg(feature = "hls")]

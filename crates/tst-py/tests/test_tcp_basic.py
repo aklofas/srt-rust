@@ -115,19 +115,31 @@ def test_tcp_caller_bidirectional_echo() -> None:
 
 
 def test_tcp_multiple_send_recv_round_trips() -> None:
-    """Multiple sequential sends from caller, multiple recvs on listener."""
+    """Caller sends N packets; listener reads the full byte stream.
+
+    TCP is a byte stream with no message framing — multiple `send` calls
+    may coalesce into fewer (or split across more) `recv` reads. The
+    listener accumulates until it has the full expected length, then
+    verifies the concatenated stream rather than asserting a 1:1
+    send->recv correspondence.
+    """
     n_packets = 5
+    total = n_packets * 188
     listener, port = _listener_and_port()
-    received: list[bytes] = []
+    received = bytearray()
     ready = threading.Event()
 
     def server_thread() -> None:
         ready.set()
         peer = listener.accept_blocking()
-        for _ in range(n_packets):
+        # Read until the full payload arrives (TCP delivers all buffered
+        # bytes before the peer's FIN, so we never recv past `total`).
+        while len(received) < total:
             buf = bytearray(4096)
             n = peer.recv(buf)
-            received.append(bytes(buf[:n]))
+            if n == 0:
+                break
+            received.extend(buf[:n])
         peer.close()
 
     t = threading.Thread(target=server_thread, daemon=True)
@@ -135,15 +147,14 @@ def test_tcp_multiple_send_recv_round_trips() -> None:
     ready.wait(timeout=2.0)
 
     caller = tcp.Transport.builder().url(f"tcp://127.0.0.1:{port}").build()
+    expected = b"".join(bytes([i]) * 188 for i in range(n_packets))
     for i in range(n_packets):
         caller.send(bytes([i]) * 188)
     caller.close()
     t.join(timeout=10.0)
     listener.close()
 
-    assert len(received) == n_packets
-    for i, chunk in enumerate(received):
-        assert chunk == bytes([i]) * 188
+    assert bytes(received) == expected
 
 
 def test_tcp_send_bytearray() -> None:

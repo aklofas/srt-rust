@@ -695,7 +695,7 @@ impl PyTcpListenerBuilder {
 /// `tcps://` URL will still raise `TcpError(kind=TLS_DISABLED)` at
 /// `build()` time. These classes exist for forward compatibility and for
 /// code written against a full-TLS wheel.
-#[pyclass(name = "TlsConfig", module = "tstrans.tcp", frozen, get_all)]
+#[pyclass(name = "TlsConfig", module = "tstrans.tcp", frozen)]
 #[derive(Clone)]
 pub(crate) struct PyTlsConfig {
     /// PEM-encoded CA certificate bundle. Used for server certificate
@@ -724,6 +724,21 @@ impl PyTlsConfig {
         }
     }
 
+    // Explicit getters — `ca_pem` returns `bytes` (a `get_all` auto-getter
+    // would expose the `Vec<u8>` as `list[int]`, mismatching the stub + tests).
+    #[getter]
+    fn ca_pem<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, pyo3::types::PyBytes> {
+        pyo3::types::PyBytes::new_bound(py, &self.ca_pem)
+    }
+    #[getter]
+    fn verify_hostname(&self) -> bool {
+        self.verify_hostname
+    }
+    #[getter]
+    fn client_cert(&self) -> Option<PyClientCert> {
+        self.client_cert.clone()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "TlsConfig(ca_pem=<{} bytes>, verify_hostname={})",
@@ -734,7 +749,7 @@ impl PyTlsConfig {
 }
 
 /// Client certificate for mutual TLS authentication.
-#[pyclass(name = "ClientCert", module = "tstrans.tcp", frozen, get_all)]
+#[pyclass(name = "ClientCert", module = "tstrans.tcp", frozen)]
 #[derive(Clone)]
 pub(crate) struct PyClientCert {
     /// PEM-encoded client certificate.
@@ -751,6 +766,17 @@ impl PyClientCert {
             cert_pem: cert_pem.to_vec(),
             key_pem: key_pem.to_vec(),
         }
+    }
+
+    // Explicit getters returning `bytes` (not the `list[int]` a `get_all`
+    // auto-getter would expose for a `Vec<u8>` field).
+    #[getter]
+    fn cert_pem<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, pyo3::types::PyBytes> {
+        pyo3::types::PyBytes::new_bound(py, &self.cert_pem)
+    }
+    #[getter]
+    fn key_pem<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, pyo3::types::PyBytes> {
+        pyo3::types::PyBytes::new_bound(py, &self.key_pem)
     }
 
     fn __repr__(&self) -> String {

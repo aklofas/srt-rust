@@ -1,11 +1,36 @@
-"""tstrans.tcp — tst-tcp bindings.
+"""tstrans.tcp -- raw TCP transport bindings (Plan A5b Wave B).
 
 Available when tstrans was built with the `tcp` cargo feature (default-on
-in published wheels). A source build without `--features tcp` will fail to
-import this submodule.
+in published wheels). Raises `ImportError` on a source build without
+``--features tcp``.
 
-Contents are populated by `tstrans._native.tcp` (Plan A5b). The native
-submodule's classes are re-exported here as the wave lands them.
+Classes
+-------
+Transport
+    Raw TCP transport (send + recv on one handle). Construct via
+    ``Transport.builder().url("tcp://host:port").build()``.
+TransportBuilder
+    Builder for ``Transport`` -- supports ``url``, ``nodelay``,
+    ``keepalive_ms``, ``rcvbuf``, ``sndbuf``, ``pkt_size``,
+    ``connect_timeout_ms`` knobs before ``build()``.
+Listener
+    TCP listener. Construct via
+    ``Listener.builder().bind("host:port").build()``, then call
+    ``accept_blocking()`` per inbound connection.
+ListenerBuilder
+    Builder for ``Listener`` -- supports ``bind``, ``nodelay``,
+    ``rcvbuf``, ``sndbuf``, ``pkt_size`` knobs before ``build()``.
+SocketStats
+    Frozen stats snapshot returned by ``Transport.stats()``.
+TlsConfig
+    Forward-compat TLS configuration dataclass for ``tcps://`` URLs.
+ClientCert
+    PEM-encoded client certificate + key for mutual TLS.
+TcpError
+    Base exception for all ``tstrans.tcp`` errors; available in
+    ``tstrans.exceptions`` as well.
+TcpErrorKind
+    ``IntEnum`` discriminator on ``TcpError.kind``.
 """
 
 from __future__ import annotations
@@ -14,7 +39,27 @@ from . import _native
 
 _tcp = _native.tcp
 
-# Wave tcp re-exports the native classes here (Sender / RecvTransport /
-# builders / stats / etc.). Until then the native submodule is empty.
+# Re-export native classes so users can write ``from tstrans.tcp import Transport``.
+Transport = _tcp.Transport
+TransportBuilder = _tcp.TransportBuilder
+Listener = _tcp.Listener
+ListenerBuilder = _tcp.ListenerBuilder
+SocketStats = _tcp.SocketStats
+TlsConfig = _tcp.TlsConfig
+ClientCert = _tcp.ClientCert
 
-__all__: list[str] = []
+# TcpError + TcpErrorKind live in tstrans.exceptions but are also exposed
+# here for convenience (mirrors the rtp/srt/udp pattern).
+from .exceptions import TcpError, TcpErrorKind  # noqa: E402
+
+__all__: list[str] = [
+    "Transport",
+    "TransportBuilder",
+    "Listener",
+    "ListenerBuilder",
+    "SocketStats",
+    "TlsConfig",
+    "ClientCert",
+    "TcpError",
+    "TcpErrorKind",
+]

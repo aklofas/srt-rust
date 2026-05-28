@@ -48,6 +48,10 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     {
         m.add_function(wrap_pyfunction!(errors::raise_udp_error_for_test, m)?)?;
     }
+    #[cfg(feature = "tcp")]
+    {
+        m.add_function(wrap_pyfunction!(errors::raise_tcp_error_for_test, m)?)?;
+    }
     mpegts::register(m)?;
     klv::register(m)?;
     // Stream handle newtypes. Registered here (not in mux::register)

@@ -335,6 +335,53 @@ pub fn raise_udp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_udp_error(py, kind, message))
 }
 
+/// Build a `TcpError` Python exception. Mirror of `make_udp_error`
+/// targeting `tstrans.exceptions.TcpError` + `TcpErrorKind`.
+///
+/// `kind_variant` must be a Python-side `TcpErrorKind` Enum variant name
+/// (e.g. `"IO"`, `"PAYLOAD_TOO_LARGE"`, `"CLOSED"`, `"TLS_DISABLED"`).
+#[cfg(feature = "tcp")]
+pub fn make_tcp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "TcpErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let tcp_error_cls = match exceptions.getattr(intern!(py, "TcpError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match tcp_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
+/// Test helper: forces a `TcpError` raise from Rust, exposed as
+/// `_native._raise_tcp_error_for_test` so the
+/// `check-py-tcp-error-mapping-coverage.sh` ratchet sees at least one
+/// call site for `make_tcp_error` per kind variant during Wave B.
+#[cfg(feature = "tcp")]
+#[pyfunction]
+#[pyo3(name = "_raise_tcp_error_for_test")]
+pub fn raise_tcp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
+    Err(make_tcp_error(py, kind, message))
+}
+
 // ---------------------------------------------------------------------------
 // Rust-typed → PyErr mappers
 // ---------------------------------------------------------------------------

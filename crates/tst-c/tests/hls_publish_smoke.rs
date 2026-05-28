@@ -17,7 +17,7 @@ use tstrans::hls::{
     TstPublisherKind, tst_hls_publisher_builder_bind, tst_hls_publisher_builder_build,
     tst_hls_publisher_builder_new, tst_hls_publisher_builder_output_dir,
     tst_hls_publisher_builder_segment_duration_ms, tst_publisher_cut_segment, tst_publisher_finish,
-    tst_publisher_free, tst_publisher_kind, tst_publisher_push_ts,
+    tst_publisher_free, tst_publisher_get_kind, tst_publisher_push_ts,
 };
 
 const TS_PACKET_SIZE: usize = 188;
@@ -69,7 +69,7 @@ fn hls_publish_round_trip() {
 
     // Kind discriminator.
     assert_eq!(
-        unsafe { tst_publisher_kind(publisher) },
+        unsafe { tst_publisher_get_kind(publisher) },
         TstPublisherKind::Hls as u32
     );
 

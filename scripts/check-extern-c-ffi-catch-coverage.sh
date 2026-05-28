@@ -108,8 +108,11 @@ for entry in "${ENTRIES[@]}"; do
         }
     ' "$file")
 
-    # Step 3: scan body for one of the three panic-isolation patterns.
-    if echo "$body" | grep -qE 'crate::panic::ffi_catch\(|^\s*ffi_catch\(|\.with_inner_(mut|ref)\('; then
+    # Step 3: scan body for one of the panic-isolation patterns. The
+    # `with_mux_publisher(` HLS helper (crates/tst-c/src/hls/mux_publisher.rs)
+    # wraps its closure in crate::panic::ffi_catch internally — same contract
+    # as Handle::with_inner_mut — so callers delegating through it are isolated.
+    if echo "$body" | grep -qE 'crate::panic::ffi_catch\(|^\s*ffi_catch\(|\.with_inner_(mut|ref)\(|with_mux_publisher\('; then
         checked=$((checked + 1))
         continue
     fi

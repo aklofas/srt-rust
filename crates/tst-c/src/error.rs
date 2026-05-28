@@ -619,7 +619,6 @@ pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
 }
 
 #[cfg(feature = "hls")]
-#[allow(dead_code)] // called by Wave C's HLS entry points (another agent, parallel)
 pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
     use tst_tcp::hls::HlsErrorKind;
     // Exhaustive match — every HlsErrorKind variant maps to a single TstError

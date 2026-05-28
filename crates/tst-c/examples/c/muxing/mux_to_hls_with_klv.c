@@ -15,7 +15,7 @@
  *   segments recovers BOTH the video frames AND the per-frame KLV — platform
  *   lat/lon, sensor pointing angles, slant range, etc. There is no separate
  *   metadata channel to correlate, and no WebVTT sidecar: the KLV stays
- *   inside the .ts (in-band) exactly as ST 1402 / ST 1910 specify. This is
+ *   inside the .ts (in-band) exactly as ST 1402 / ST 1910.1 specify. This is
  *   the canonical "FMV with embedded metadata over HTTP" delivery shape.
  *
  * Pipeline:
@@ -128,7 +128,7 @@ int main(void) {
      * senders: one program with a video elementary stream + a KLV stream.
      *
      * The KLV stream is SYNCHRONOUS_METADATA (stream_type 0x15, carries_pts
-     * true) — the ST 1402 / ST 1910 shape where each KLV unit is AU-cell
+     * true) — the ST 1402 / ST 1910.1 shape where each KLV unit is AU-cell
      * wrapped and PTS-aligned to the video. (Use PRIVATE_DATA / 0x06 for
      * asynchronous KLV that does not carry per-unit PTS.)
      */

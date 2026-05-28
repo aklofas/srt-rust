@@ -385,6 +385,44 @@ ALLOWLIST=(
     "tst_tcp_listener_accept_receiver"
     "tst_tcp_listener_free"
 
+    # --- Plan A5a HLS publisher entry points ---
+    #     tst-c-only projections: TstPublisher (enum-dispatch over the
+    #     tst_core::publisher::Publisher trait), TstHlsPublisherBuilder
+    #     (wraps tst_tcp::hls::HlsPublisherBuilder), TstMuxPublisher
+    #     (wraps tst_pipeline::MuxPublisher<HlsPublisher>). The universal
+    #     tst_publisher_* trait-mirror symbols are separately enforced by
+    #     check-publisher-trait-mirror.sh.
+    "tst_publisher_push_ts"
+    "tst_publisher_cut_segment"
+    "tst_publisher_finish"
+    "tst_publisher_get_stats"
+    "tst_publisher_get_kind"
+    "tst_publisher_free"
+    "tst_hls_publisher_get_hls_stats"
+    "tst_hls_publisher_local_addr"
+    "tst_hls_publisher_render_playlist"
+    "tst_hls_publisher_builder_new"
+    "tst_hls_publisher_builder_bind"
+    "tst_hls_publisher_builder_output_dir"
+    "tst_hls_publisher_builder_segment_duration_ms"
+    "tst_hls_publisher_builder_playlist_window"
+    "tst_hls_publisher_builder_mode"
+    "tst_hls_publisher_builder_basic_auth"
+    "tst_hls_publisher_builder_enable_tls"
+    "tst_hls_publisher_builder_from_url"
+    "tst_hls_publisher_builder_free"
+    "tst_hls_publisher_builder_build"
+    "tst_mux_publisher_with_config_hls"
+    "tst_mux_publisher_send_video"
+    "tst_mux_publisher_send_klv"
+    "tst_mux_publisher_send_audio"
+    "tst_mux_publisher_send_subtitle"
+    "tst_mux_publisher_cut_segment"
+    "tst_mux_publisher_finish_into_publisher"
+    "tst_mux_publisher_get_stats"
+    "tst_mux_publisher_get_publisher_stats"
+    "tst_mux_publisher_free"
+
     # --- Phase 4 RTSP session entry points (Task 6, Wave B) ---
     #     TstRtspSession is the C-language projection of (RtspClient, RtspSession)
     #     combined; into_demux_receiver bridges to the existing TstRtpDemuxReceiver.

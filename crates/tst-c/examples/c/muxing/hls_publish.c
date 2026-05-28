@@ -154,7 +154,7 @@ int main(void) {
         return 2;
     }
     fprintf(stderr, "[hls_publish] publisher kind: %u (0 == HLS)\n",
-            tst_publisher_kind(pub));
+            tst_publisher_get_kind(pub));
 
     /*
      * ── Step 3: Report the bound address ─────────────────────────────────

@@ -10,7 +10,7 @@
 //! The four universal symbols — `tst_publisher_push_ts`,
 //! `tst_publisher_cut_segment`, `tst_publisher_finish`, and
 //! `tst_publisher_get_stats` — mirror the `Publisher` trait method-for-
-//! method and work against any future publisher kind. `tst_publisher_kind`
+//! method and work against any future publisher kind. `tst_publisher_get_kind`
 //! discriminates the concrete kind; the `tst_hls_publisher_*` accessors
 //! reach the HLS-specific surface (richer stats, the bound socket address,
 //! the rendered playlist).
@@ -42,7 +42,7 @@ pub(crate) enum PublisherImpl {
 }
 
 /// Discriminator for the concrete publisher behind a `TstPublisher`,
-/// returned by [`tst_publisher_kind`].
+/// returned by [`tst_publisher_get_kind`].
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TstPublisherKind {
@@ -233,7 +233,7 @@ pub unsafe extern "C" fn tst_publisher_get_stats(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstPublisher`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_publisher_kind(p: *mut TstPublisher) -> u32 {
+pub unsafe extern "C" fn tst_publisher_get_kind(p: *mut TstPublisher) -> u32 {
     crate::panic::ffi_catch(TstPublisherKind::Hls as u32, || {
         // Only one kind exists today; even a finished (inner == None)
         // handle was built as HLS. Future kinds will branch here.
@@ -482,7 +482,7 @@ mod tests {
     fn kind_is_hls() {
         assert_eq!(TstPublisherKind::Hls as u32, 0);
         // A null pointer still reports the (static) HLS kind.
-        assert_eq!(unsafe { tst_publisher_kind(std::ptr::null_mut()) }, 0);
+        assert_eq!(unsafe { tst_publisher_get_kind(std::ptr::null_mut()) }, 0);
     }
 
     #[test]

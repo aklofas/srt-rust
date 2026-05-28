@@ -160,6 +160,8 @@ include = [
     "TstAudioCodec",
     "TstSubtitleCodec",
     "TstAv1CarriageMode",
+    # Plan A5a HLS publisher-kind discriminator (hls feature)
+    "TstPublisherKind",
     # RTSP client builder handle (rtp feature — emitted inside #if defined(TST_HAS_RTP))
     "TstRtspClientBuilder",
     # T10: RTSP server stats structs (rtp feature)
@@ -243,6 +245,9 @@ include = [
 "TstAudioCodec"             = "tst_audio_codec"
 "TstSubtitleCodec"          = "tst_subtitle_codec"
 "TstAv1CarriageMode"        = "tst_av1_carriage_mode"
+# HLS publisher-kind discriminator — no _t suffix so prefix_with_name
+# yields clean TST_PUBLISHER_KIND_* variants
+"TstPublisherKind"          = "tst_publisher_kind"
 # RTSP client builder opaque handle
 "TstRtspClientBuilder"      = "tst_rtsp_client_builder_t"
 # T10: RTSP server stats structs

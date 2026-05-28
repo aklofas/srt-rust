@@ -799,6 +799,28 @@ enum tst_av1_carriage_mode
 typedef int32_t tst_av1_carriage_mode;
 #endif // __cplusplus
 
+#if defined(TST_HAS_HLS)
+/**
+ * Discriminator for the concrete publisher behind a `TstPublisher`,
+ * returned by [`tst_publisher_get_kind`].
+ */
+enum tst_publisher_kind
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+ {
+#if defined(TST_HAS_HLS)
+  /**
+   * HLS publisher.
+   */
+  TST_PUBLISHER_KIND_HLS = 0,
+#endif
+};
+#ifndef __cplusplus
+typedef uint32_t tst_publisher_kind;
+#endif // __cplusplus
+#endif
+
 /**
  * Opaque demux-config builder. Heap-allocated via `_new`, mutated
  * in place via setters, released via `_free`. The receiver clones
@@ -811,6 +833,18 @@ typedef struct tst_demux_config_t tst_demux_config_t;
 
 #if defined(TST_HAS_SRT)
 typedef struct tst_demux_receiver_t tst_demux_receiver_t;
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Opaque accumulator for HLS publisher configuration.
+ *
+ * Allocated by [`tst_hls_publisher_builder_new`], mutated by the
+ * `_builder_*` setters, and consumed by
+ * [`tst_hls_publisher_builder_build`] (or freed by
+ * [`tst_hls_publisher_builder_free`]).
+ */
+typedef struct TstHlsPublisherBuilder TstHlsPublisherBuilder;
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -849,12 +883,38 @@ typedef struct tst_managed_sender_t tst_managed_sender_t;
  */
 typedef struct tst_mux_config_t tst_mux_config_t;
 
+#if defined(TST_HAS_HLS)
+/**
+ * Opaque handle for an HLS-backed `MuxPublisher`.
+ *
+ * Returned by [`tst_mux_publisher_with_config_hls`]. Freed with
+ * [`tst_mux_publisher_free`]. The inner is `None` only after
+ * [`tst_mux_publisher_finish_into_publisher`] moves the publisher out.
+ */
+typedef struct TstMuxPublisher TstMuxPublisher;
+#endif
+
 #if defined(TST_HAS_SRT)
 typedef struct tst_mux_sender_t tst_mux_sender_t;
 #endif
 
 #if defined(TST_HAS_SRT)
 typedef struct tst_muxer_t tst_muxer_t;
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Opaque handle for a segment-aware publisher sink.
+ *
+ * Returned by [`crate::hls::builder::tst_hls_publisher_builder_build`] (and
+ * by `tst_mux_publisher_finish_into_publisher`). Freed with
+ * [`tst_publisher_free`].
+ *
+ * `inner` is `None` only after [`tst_publisher_finish`] consumes the
+ * publisher (terminal state); push/cut/stats on a finished handle return
+ * `TST_E_HLS_FINISHED`.
+ */
+typedef struct TstPublisher TstPublisher;
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -1519,6 +1579,25 @@ typedef struct tst_event_t {
 } tst_event_t;
 
 /**
+ * `repr(C)` mirror of `tst_tcp::hls::HlsStats` — HLS-specific richer
+ * stats. Returned by `tst_hls_publisher_get_hls_stats`. Size 24 B.
+ */
+typedef struct TstHlsStats {
+  /**
+   * Total bytes accepted by `push_ts` (sum across all segments).
+   */
+  uint64_t bytes_pushed_total;
+  /**
+   * Bytes in the currently-open segment (0 between cuts).
+   */
+  uint64_t open_segment_bytes;
+  /**
+   * Total completed segments (history + current run).
+   */
+  uint64_t segments_written;
+} TstHlsStats;
+
+/**
  * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6192 B
  * (4×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see
  * the `_TST_MUX_SENDER_STATS_SIZE` const assertion below.
@@ -1626,6 +1705,60 @@ typedef struct tst_sender_stats_t {
  * config→open boundary — the same index applies after `tst_muxer_open`.
  */
 typedef uint32_t tst_program_handle_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::publisher::PublisherStats` — the
+ * universal cross-publisher stats subset. Returned by
+ * `tst_publisher_get_stats` and `tst_mux_publisher_get_publisher_stats`.
+ * Size 32 B.
+ *
+ * The two `Option<Duration>` source fields are flattened to whole
+ * milliseconds; `None` is encoded as `-1` (a duration is never negative),
+ * so C callers branch on `< 0` to detect "no segment open" / "no
+ * completed segment yet".
+ */
+typedef struct TstPublisherStats {
+  /**
+   * Total bytes pushed to the publisher's sink (for HLS: bytes written
+   * across all `.ts` segments).
+   */
+  uint64_t bytes_written;
+  /**
+   * Total completed segments written.
+   */
+  uint64_t segments_written;
+  /**
+   * Wall-clock age of the segment currently open for writes, in
+   * milliseconds. `-1` when no segment is open (between cuts / before
+   * the first push).
+   */
+  int64_t current_segment_age_ms;
+  /**
+   * Wall-clock duration of the most recently completed segment, in
+   * milliseconds. `-1` when no segment has completed yet.
+   */
+  int64_t last_segment_duration_ms;
+} TstPublisherStats;
+
+/**
+ * `repr(C)` mirror of `tst_pipeline::MuxPublisherStats` — cumulative
+ * counters for a `MuxPublisher` shell. Returned by
+ * `tst_mux_publisher_get_stats`. Size 24 B.
+ */
+typedef struct TstMuxPublisherStats {
+  /**
+   * Total TS bytes drained from the muxer and handed to the publisher.
+   */
+  uint64_t bytes_pushed;
+  /**
+   * Total explicit + auto `cut_segment()` calls.
+   */
+  uint64_t cut_calls;
+  /**
+   * Total muxer drain calls that produced ≥1 chunk.
+   */
+  uint64_t drain_calls;
+} TstMuxPublisherStats;
 
 /**
  * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6176 B
@@ -4277,6 +4410,59 @@ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
 
 // ─── LIFETIME ──────────────────────────────────────────────
 
+#if defined(TST_HAS_HLS)
+/**
+ * Free an HLS publisher builder previously returned by
+ * `tst_hls_publisher_builder_new`.
+ *
+ * Safe to call with `NULL` (no-op). Not needed after a successful
+ * `tst_hls_publisher_builder_build` — that call consumes the builder.
+ *
+ * # Safety
+ *
+ * `b` must be NULL or a valid non-freed `*mut TstHlsPublisherBuilder`.
+ */
+void tst_hls_publisher_builder_free(struct TstHlsPublisherBuilder *b);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Free a `tst_mux_publisher_t`.
+ *
+ * Dropping a live mux publisher drops its inner HLS publisher, which
+ * shuts down the HTTP server (no `#EXT-X-ENDLIST`). For a clean close,
+ * call `tst_mux_publisher_finish_into_publisher` then
+ * `tst_publisher_finish` first.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstMuxPublisher`.
+ */
+void tst_mux_publisher_free(struct TstMuxPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Close and free a `tst_publisher_t`.
+ *
+ * If the publisher has not been finished, dropping it shuts down the
+ * internal HTTP server (no `#EXT-X-ENDLIST` is written — call
+ * `tst_publisher_finish` first for a clean VOD/event close).
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined behavior
+ * (use-after-free on the consumed `Box`).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstPublisher` returned by a
+ * builder-build or mux-publisher-finish entry point.
+ */
+void tst_publisher_free(struct TstPublisher *p);
+#endif
+
 /**
  * Free a reconnect policy previously returned by
  * `tst_reconnect_policy_new`.
@@ -4738,6 +4924,510 @@ void tst_udp_sender_close(struct TstUdpSender *p);
 #endif
 
 // ─── OTHER ─────────────────────────────────────────────────
+
+#if defined(TST_HAS_HLS)
+/**
+ * Enable HTTP Basic auth on the playlist + segment endpoints.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` if `user` / `pass` is null / not valid UTF-8.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder. `user` and `pass` must be
+ * NUL-terminated C strings valid for this call.
+ */
+
+int tst_hls_publisher_builder_basic_auth(struct TstHlsPublisherBuilder *b,
+                                         const char *user,
+                                         const char *pass);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Set the HTTP server bind address (e.g., `"127.0.0.1:8080"`,
+ * `"0.0.0.0:0"` for an ephemeral port, or an IPv6 literal in brackets).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` if `bind_addr` is not a parseable socket address.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder. `bind_addr` must be a
+ * NUL-terminated C string valid for this call.
+ */
+int tst_hls_publisher_builder_bind(struct TstHlsPublisherBuilder *b, const char *bind_addr);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Consume the builder and construct the HLS publisher (binds the HTTP
+ * server immediately). Returns `NULL` on error; check
+ * `tst_get_last_error()` for the negative code.
+ *
+ * On success the builder is consumed — do **not** call
+ * `tst_hls_publisher_builder_free` afterward. On failure the builder is
+ * still consumed (the `Box` is reclaimed); allocate a fresh one to retry.
+ * The returned `TstPublisher` must be freed with `tst_publisher_free`.
+ *
+ * A builder configured with `enable_tls` fails here with
+ * `TST_E_HLS_TLS` because `tst-c` does not enable the `tst-tcp` `tls`
+ * feature.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed `*mut TstHlsPublisherBuilder`. The
+ * returned handle must eventually be freed with `tst_publisher_free`.
+ */
+struct TstPublisher *tst_hls_publisher_builder_build(struct TstHlsPublisherBuilder *b);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Enable HTTPS by supplying PEM cert + key paths.
+ *
+ * **Note:** the `tst-tcp` `tls` cargo feature is not enabled in `tst-c`,
+ * so `tst_hls_publisher_builder_build` will reject a TLS-configured
+ * builder with `TST_E_HLS_TLS`. This setter is wired for forward-
+ * compatibility once a `tls` feature lights up in `tst-c`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` if either path is null / not valid UTF-8.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder. `cert_path` and `key_path` must
+ * be NUL-terminated C strings valid for this call.
+ */
+
+int tst_hls_publisher_builder_enable_tls(struct TstHlsPublisherBuilder *b,
+                                         const char *cert_path,
+                                         const char *key_path);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Replace the builder's accumulated config by parsing an `hls://` or
+ * `hlss://` URL (e.g., `"hls://127.0.0.1:9100?mode=vod&playlist_window=10"`).
+ *
+ * Any prior setter calls on this builder are discarded — `from_url`
+ * reseeds the whole config from the URL.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` if `url` is null / not valid UTF-8 / not a valid
+ * HLS URL (the builder's prior inner is preserved on parse failure).
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder. `url` must be a NUL-terminated C
+ * string valid for this call.
+ */
+int tst_hls_publisher_builder_from_url(struct TstHlsPublisherBuilder *b, const char *url);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Set the playlist mode: `0` = LIVE, `1` = EVENT, `2` = VOD.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` for an out-of-range `mode` (the builder is left
+ * unchanged in that case).
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder.
+ */
+int tst_hls_publisher_builder_mode(struct TstHlsPublisherBuilder *b, uint32_t mode);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Create a new HLS publisher builder seeded with library defaults
+ * (LIVE mode, 6 s segments, bind `0.0.0.0:0`, no output dir). Returns
+ * `NULL` only on allocation failure.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation. The returned builder must eventually
+ * be consumed by `tst_hls_publisher_builder_build` or released with
+ * `tst_hls_publisher_builder_free`.
+ */
+struct TstHlsPublisherBuilder *tst_hls_publisher_builder_new(void);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Set the filesystem directory for `.ts` segments + `playlist.m3u8`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
+ * `TST_E_HLS_CONFIG` if `path` is null / not valid UTF-8.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder. `path` must be a NUL-terminated
+ * C string valid for this call.
+ */
+int tst_hls_publisher_builder_output_dir(struct TstHlsPublisherBuilder *b, const char *path);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Set the rolling playlist window size (segment count) used in LIVE mode.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder.
+ */
+int tst_hls_publisher_builder_playlist_window(struct TstHlsPublisherBuilder *b, uint32_t n);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Set the target segment duration in milliseconds.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder.
+ */
+int tst_hls_publisher_builder_segment_duration_ms(struct TstHlsPublisherBuilder *b, uint32_t ms);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Snapshot the HLS-specific richer stats into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * or `TST_E_HLS_CONFIG` if the publisher is not an HLS publisher / has
+ * been finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstPublisher`. `out` must point to a writable
+ * `TstHlsStats`.
+ */
+int tst_hls_publisher_get_hls_stats(struct TstPublisher *p, struct TstHlsStats *out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Write the bound HTTP server socket address (`"ip:port"`) as a
+ * NUL-terminated string into `buf` (capacity `buf_len`).
+ *
+ * Returns the number of bytes written **excluding** the NUL terminator on
+ * success, or a negative `TST_E_*` code on failure: `TST_E_INVALID_CONFIG`
+ * if `buf` is null, `TST_E_HLS_CONFIG` if the address is unavailable
+ * (server not bound / publisher finished / not an HLS publisher), or
+ * `TST_E_HLS_CONFIG` with a "buffer too small" message if `buf_len` cannot
+ * hold the address plus its NUL terminator.
+ *
+ * Useful when the publisher was bound to an ephemeral port (`:0`) and the
+ * caller needs the OS-assigned port to hand out the playlist URL.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstPublisher`. `buf` must be writable for
+ * `buf_len` bytes.
+ */
+int tst_hls_publisher_local_addr(struct TstPublisher *p, char *buf, size_t buf_len);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Render the current playlist as a NUL-terminated string into `buf`
+ * (capacity `buf_len`).
+ *
+ * `is_event` selects the terminal-tag flavor: pass `true` to render the
+ * final playlist with `#EXT-X-ENDLIST` (as `finish` would write), `false`
+ * for the live rolling playlist.
+ *
+ * Returns the number of bytes written **excluding** the NUL terminator on
+ * success, or a negative `TST_E_*` code: `TST_E_INVALID_CONFIG` if `buf`
+ * is null, `TST_E_HLS_CONFIG` if the publisher is finished / not HLS, or
+ * `TST_E_HLS_CONFIG` with a "buffer too small" message if `buf_len` cannot
+ * hold the playlist plus its NUL terminator.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstPublisher`. `buf` must be writable for
+ * `buf_len` bytes.
+ */
+
+int tst_hls_publisher_render_playlist(struct TstPublisher *p,
+                                      bool is_event,
+                                      char *buf,
+                                      size_t buf_len);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Explicit segment-cut hint — start a new HLS segment on the next push.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`.
+ */
+int tst_mux_publisher_cut_segment(struct TstMuxPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Consume the mux publisher, flush the muxer, and return the owned HLS
+ * publisher wrapped in a fresh `TstPublisher`.
+ *
+ * The caller can then `tst_publisher_finish` the returned handle for a
+ * clean `#EXT-X-ENDLIST` close, and must eventually `tst_publisher_free`
+ * it. This call consumes `p` — the `TstMuxPublisher` pointer is freed
+ * (do not free it again). After this the mux publisher handle is dead.
+ *
+ * Returns `NULL` on error: `TST_E_INVALID_CONFIG` if `p` is null, or
+ * `TST_E_HLS_FINISHED` if the mux publisher was already finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`. The returned
+ * handle must eventually be freed with `tst_publisher_free`.
+ */
+struct TstPublisher *tst_mux_publisher_finish_into_publisher(struct TstMuxPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Snapshot the universal publisher-side stats into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * or `TST_E_HLS_FINISHED` if the mux publisher was finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstMuxPublisher`. `out` must point to a
+ * writable `TstPublisherStats`.
+ */
+
+int tst_mux_publisher_get_publisher_stats(struct TstMuxPublisher *p,
+                                          struct TstPublisherStats *out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Snapshot the mux-publisher cumulative stats into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * or `TST_E_HLS_FINISHED` if the mux publisher was finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstMuxPublisher`. `out` must point to a
+ * writable `TstMuxPublisherStats`.
+ */
+int tst_mux_publisher_get_stats(struct TstMuxPublisher *p, struct TstMuxPublisherStats *out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Push one audio frame buffer through the muxer's single audio stream.
+ *
+ * `payload` is one or more pre-framed audio frames (ADTS / MPEG audio)
+ * concatenated. `pts` is in 90 kHz ticks.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`. `payload` must be
+ * readable for `len` bytes.
+ */
+
+int tst_mux_publisher_send_audio(struct TstMuxPublisher *p,
+                                 const uint8_t *payload,
+                                 size_t len,
+                                 int64_t pts);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Push one raw MISB KLV Local Set blob through a KLV stream.
+ *
+ * **Pass raw KLV LS bytes** — for streams configured as synchronous
+ * metadata the muxer prepends the 5-byte `Metadata_AU_cell` header per
+ * ITU-T H.222.0 V9 §2.12.4.2; do not pre-wrap. `stream_index` selects the
+ * KLV stream when multiple KLV PIDs are configured (`0` for single-stream
+ * configs). `pts` is in 90 kHz ticks.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_mux_publisher_send_klv(struct TstMuxPublisher *p,
+                               const uint8_t *klv,
+                               size_t len,
+                               int64_t pts,
+                               uint8_t stream_index);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Push one subtitle PES unit through the muxer's single subtitle stream.
+ *
+ * `payload` is one complete logical subtitle unit. `pts` is in 90 kHz
+ * ticks.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`. `payload` must be
+ * readable for `len` bytes.
+ */
+
+int tst_mux_publisher_send_subtitle(struct TstMuxPublisher *p,
+                                    const uint8_t *payload,
+                                    size_t len,
+                                    int64_t pts);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Push one Annex-B NAL through the muxer's single video stream.
+ *
+ * `pts` is the presentation timestamp in 90 kHz ticks. `key_frame` is
+ * `true` for IDR / key frames; on a key frame the publisher auto-cuts a
+ * new HLS segment so each segment is decodable from its first byte.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstMuxPublisher`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_mux_publisher_send_video(struct TstMuxPublisher *p,
+                                 const uint8_t *nal,
+                                 size_t len,
+                                 int64_t pts,
+                                 bool key_frame);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Build an HLS-backed `MuxPublisher` from a `TstPublisher` (which must
+ * currently hold an HLS publisher) + a `tst_mux_config_t`.
+ *
+ * Consumes `hls` — the `TstPublisher` pointer is freed by this call (do
+ * not free it again). `program_cfg` is borrowed; the caller still owns it
+ * and must free it with `tst_mux_config_free`.
+ *
+ * Returns `NULL` on error: `TST_E_HLS_CONFIG` if `hls` is null / finished
+ * / not an HLS publisher, `TST_E_INVALID_CONFIG` if `program_cfg` is
+ * null, or a muxer-config error code if the program config is invalid.
+ *
+ * # Safety
+ *
+ * `hls` must be a valid non-freed `*mut TstPublisher`. `program_cfg` must
+ * be a non-null `*const TstMuxConfig` valid for this call. The returned
+ * handle must eventually be freed with `tst_mux_publisher_free`.
+ */
+
+struct TstMuxPublisher *tst_mux_publisher_with_config_hls(struct TstPublisher *hls,
+                                                          const struct tst_mux_config_t *program_cfg);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Hint that the next `tst_publisher_push_ts` should start a new segment.
+ *
+ * Call this on keyframe boundaries so segments are decodable from byte
+ * zero. May be a no-op for publishers that segment purely on duration.
+ *
+ * Returns 0 on success, `TST_E_HLS_FINISHED` if finished, or another
+ * negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstPublisher`.
+ */
+int tst_publisher_cut_segment(struct TstPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Cleanly finalize the publisher: flush the pending segment, write the
+ * terminating playlist tag (HLS `#EXT-X-ENDLIST`), and tear down the
+ * internal HTTP server + file handles.
+ *
+ * This consumes the inner publisher but leaves the handle allocated —
+ * the caller must still `tst_publisher_free` it. After finish the handle
+ * is terminal: subsequent push/cut/stats calls return
+ * `TST_E_HLS_FINISHED`. Calling `_finish` twice returns
+ * `TST_E_HLS_FINISHED` the second time.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstPublisher`.
+ */
+int tst_publisher_finish(struct TstPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Return the concrete publisher kind ([`TstPublisherKind`]) as a `u32`.
+ *
+ * Returns `0` (`TstPublisherKind::Hls`) for an HLS publisher. On a null
+ * or finished handle, still returns `0` and records nothing — the kind is
+ * a static property of the handle's construction, not its liveness.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstPublisher`.
+ */
+uint32_t tst_publisher_get_kind(struct TstPublisher *p);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Snapshot the universal cross-publisher stats into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * or `TST_E_HLS_FINISHED` if the publisher has been finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstPublisher`. `out` must point to a writable
+ * `TstPublisherStats`.
+ */
+int tst_publisher_get_stats(struct TstPublisher *p, struct TstPublisherStats *out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Push pre-muxed MPEG-TS bytes for the current segment.
+ *
+ * `bytes` MUST be a whole multiple of 188 (one or more MPEG-TS packets);
+ * the HLS publisher rejects unaligned buffers with `TST_E_HLS_CONFIG`.
+ * `(NULL, 0)` is accepted and is a no-op.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ * `TST_E_HLS_FINISHED` (-36) if the publisher has been finished.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstPublisher`. `bytes` must be
+ * readable for `len` bytes.
+ */
+int tst_publisher_push_ts(struct TstPublisher *p, const uint8_t *bytes, size_t len);
+#endif
 
 struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
 

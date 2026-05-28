@@ -41,5 +41,5 @@ pub use mux_publisher::{
 pub use publisher::{
     TstPublisher, TstPublisherKind, tst_hls_publisher_get_hls_stats, tst_hls_publisher_local_addr,
     tst_hls_publisher_render_playlist, tst_publisher_cut_segment, tst_publisher_finish,
-    tst_publisher_free, tst_publisher_get_stats, tst_publisher_kind, tst_publisher_push_ts,
+    tst_publisher_free, tst_publisher_get_kind, tst_publisher_get_stats, tst_publisher_push_ts,
 };

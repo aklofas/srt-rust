@@ -1022,6 +1022,61 @@ typedef struct tst_sender_t tst_sender_t;
 
 typedef struct tst_sender_config_t tst_sender_config_t;
 
+#if defined(TST_HAS_TCP)
+/**
+ * Opaque handle for a TCP-backed demux receiver.
+ *
+ * Returned by [`tst_tcp_demux_receiver_open`]. Freed with
+ * [`tst_tcp_demux_receiver_close`].
+ */
+typedef struct TstTcpDemuxReceiver TstTcpDemuxReceiver;
+#endif
+
+#if defined(TST_HAS_TCP)
+/**
+ * Opaque handle for a TCP listener.
+ *
+ * Returned by [`tst_tcp_listener_bind`] or [`tst_tcp_listener_from_url`].
+ * Freed with [`tst_tcp_listener_free`].
+ *
+ * A single listener can accept multiple connections in sequence by calling
+ * `_accept_sender` / `_accept_receiver` repeatedly. Each accepted handle is
+ * an independent `tst_tcp_sender_t` or `tst_tcp_receiver_t` that must be
+ * closed via its own `_close` function.
+ */
+typedef struct TstTcpListener TstTcpListener;
+#endif
+
+#if defined(TST_HAS_TCP)
+/**
+ * Opaque handle for a TCP-backed mux sender.
+ *
+ * Returned by [`tst_tcp_mux_sender_open`]. Freed with
+ * [`tst_tcp_mux_sender_close`].
+ */
+typedef struct TstTcpMuxSender TstTcpMuxSender;
+#endif
+
+#if defined(TST_HAS_TCP)
+/**
+ * Opaque handle for a TCP-backed raw TS byte receiver.
+ *
+ * Returned by [`tst_tcp_recv_open`]. Freed with
+ * [`tst_tcp_receiver_close`].
+ */
+typedef struct TstTcpReceiver TstTcpReceiver;
+#endif
+
+#if defined(TST_HAS_TCP)
+/**
+ * Opaque handle for a TCP-backed raw TS byte sender.
+ *
+ * Returned by [`tst_tcp_sender_open`]. Freed with
+ * [`tst_tcp_sender_close`].
+ */
+typedef struct TstTcpSender TstTcpSender;
+#endif
+
 #if defined(TST_HAS_UDP)
 /**
  * Opaque handle for a UDP-backed demux receiver.
@@ -4545,6 +4600,84 @@ int tst_rtsp_session_cancel(struct TstRtspSession *session);
 int tst_rtsp_session_teardown_and_free(struct TstRtspSession *session);
 #endif
 
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Close and free a `tst_tcp_demux_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstTcpDemuxReceiver`
+ * returned by `tst_tcp_demux_receiver_open` or
+ * `tst_tcp_listener_accept_receiver` (via the DemuxReceiver variant).
+ */
+void tst_tcp_demux_receiver_close(struct TstTcpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Close the listening socket and free the `tst_tcp_listener_t`.
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; any blocked `_accept_*` call on the same listener will
+ * unblock with an error.
+ *
+ * Previously accepted sender/receiver handles are NOT affected by freeing
+ * the listener — they remain valid until individually closed.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstTcpListener`.
+ */
+void tst_tcp_listener_free(struct TstTcpListener *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Close and free a `tst_tcp_mux_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstTcpMuxSender` returned
+ * by `tst_tcp_mux_sender_open`.
+ */
+void tst_tcp_mux_sender_close(struct TstTcpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Close and free a `tst_tcp_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op). See `tst_tcp_sender_close` for
+ * the ownership semantics.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstTcpReceiver` returned
+ * by `tst_tcp_recv_open` or `tst_tcp_listener_accept_receiver`.
+ */
+void tst_tcp_receiver_close(struct TstTcpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Close and free a `tst_tcp_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstTcpSender` returned
+ * by `tst_tcp_sender_open` or `tst_tcp_listener_accept_sender`.
+ */
+void tst_tcp_sender_close(struct TstTcpSender *p);
+#endif
+
 #if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
 /**
  * Close and free a `tst_udp_demux_receiver_t`.
@@ -6321,6 +6454,744 @@ int tst_rtsp_session_pause(struct TstRtspSession *session);
  * `tst_rtsp_client_builder_connect`.
  */
 int tst_rtsp_session_play(struct TstRtspSession *session);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Read wire-level transport stats for the underlying TCP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpDemuxReceiver` opened via
+ * `tst_tcp_demux_receiver_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_tcp_demux_receiver_get_socket_stats(struct TstTcpDemuxReceiver *p,
+                                            struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot aggregate stats for a `tst_tcp_demux_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * NOTE: per-PID counters are NOT included here — call
+ * `tst_tcp_demux_receiver_get_stream_stats` to retrieve them.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpDemuxReceiver` opened via
+ * `tst_tcp_demux_receiver_open`. `out` must point to a writable
+ * `TstDemuxReceiverStats`.
+ */
+
+int tst_tcp_demux_receiver_get_stats(struct TstTcpDemuxReceiver *p,
+                                     struct tst_demux_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot codec-specific stats for one PID on a
+ * `tst_tcp_demux_receiver_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_tcp_demux_receiver_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_tcp_demux_receiver_get_stream_codec_stats(struct TstTcpDemuxReceiver *p,
+                                                  uint16_t pid,
+                                                  struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot per-PID stats for a `tst_tcp_demux_receiver_t` into the
+ * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+ * pair borrowing that buffer.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+ * until the next `_get_stream_stats` / `_reset_stats` / `_close`
+ * call on the same handle. Callers wanting longer lifetime memcpy
+ * the array out.
+ *
+ * Capped at `TST_STATS_MAX_STREAMS = 64` entries (ascending PID order).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+ * arg, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpDemuxReceiver` opened via
+ * `tst_tcp_demux_receiver_open`. `out_array` and `out_count` must be
+ * valid non-null pointers.
+ */
+
+int tst_tcp_demux_receiver_get_stream_stats(struct TstTcpDemuxReceiver *p,
+                                            const struct tst_stream_stats_t **out_array,
+                                            size_t *out_count);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Block until one typed `TstEvent` is ready, then populate
+ * `*out_event` with the converted event.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** pointer fields on
+ * `*out_event` borrow from this handle's `EventArena`. They are
+ * valid until the next `_next_event` / `_close` call on the same
+ * handle. Callers wanting longer lifetime memcpy out before the
+ * next call.
+ *
+ * Returns:
+ * - `0` on success (`*out_event` populated)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_TS` (-3) on a demuxer error
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpDemuxReceiver`. `out_event`
+ * must be a valid writable `*mut TstEvent`.
+ */
+
+int tst_tcp_demux_receiver_next_event(struct TstTcpDemuxReceiver *p,
+                                      struct tst_event_t *out_event);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Open a TCP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
+ * which case default demux options apply (lenient / CFI-tolerant mode).
+ * Returns `NULL` on error.
+ *
+ * The TCP connection is established synchronously (caller-side). For a
+ * listener-accepted connection, use `tst_tcp_listener_accept_receiver`.
+ *
+ * URL grammar:
+ * - `tcp://host:port` — connect to a plain TCP listener
+ * - `tcps://host:port` — connect with TLS (disabled if built without `tls` feature)
+ * - Query params: `?nodelay=1`, `?rcvbuf=N`, `?sndbuf=N`, `?pkt_size=N`,
+ *   `?connect_timeout=Ns`
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
+ * valid `tst_demux_config_t*`. The returned handle must eventually be
+ * freed with `tst_tcp_demux_receiver_close`.
+ */
+
+struct TstTcpDemuxReceiver *tst_tcp_demux_receiver_open(const char *url,
+                                                        const struct tst_demux_config_t *demux_cfg);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Reset stats counters for a `tst_tcp_demux_receiver_t` to zero.
+ * Also invalidates the borrowed `_get_stream_stats` snapshot
+ * (design §4.5).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpDemuxReceiver` opened via
+ * `tst_tcp_demux_receiver_open`.
+ */
+int tst_tcp_demux_receiver_reset_stats(struct TstTcpDemuxReceiver *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Block until one inbound TCP connection arrives and return it wrapped
+ * as a `tst_tcp_receiver_t`.
+ *
+ * The accepted handle must be freed with `tst_tcp_receiver_close` when done.
+ * The listener remains open and can be used to accept further connections.
+ *
+ * Returns `NULL` on error. Check `tst_get_last_error()`.
+ *
+ * Use this when the connecting peer is a sender — the listener side
+ * receives TS bytes from the accepted receiver handle.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpListener`.
+ */
+struct TstTcpReceiver *tst_tcp_listener_accept_receiver(struct TstTcpListener *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Block until one inbound TCP connection arrives and return it wrapped
+ * as a `tst_tcp_sender_t`.
+ *
+ * The accepted handle must be freed with `tst_tcp_sender_close` when done.
+ * The listener remains open and can be used to accept further connections.
+ *
+ * Returns `NULL` on error (e.g., the listener was closed from another
+ * thread, or an OS accept error occurred). Check `tst_get_last_error()`.
+ *
+ * Use this when the connecting peer is a receiver — the listener side
+ * pushes TS bytes (or muxes and pushes) into the accepted sender handle.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpListener`.
+ */
+struct TstTcpSender *tst_tcp_listener_accept_sender(struct TstTcpListener *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Bind a TCP listener on the socket address `bind_addr` (e.g.
+ * `"0.0.0.0:7001"` or `"[::]:7001"` for dual-stack). Returns `NULL` on
+ * error; check `tst_get_last_error()` + `tst_get_last_error_str()`.
+ *
+ * `bind_addr` is parsed with `std::net::SocketAddr::from_str` — it must
+ * be in `host:port` form without a URL scheme. For URL-based construction,
+ * use `tst_tcp_listener_from_url` with a `tcp://addr:port?listen=1` URL.
+ *
+ * Port `0` causes the kernel to assign an ephemeral port; use
+ * `tst_tcp_listener_local_addr` (not yet exported) to retrieve it.
+ *
+ * # Safety
+ *
+ * `bind_addr` must be a NUL-terminated C string valid for the duration of
+ * this call. The returned handle must eventually be freed with
+ * `tst_tcp_listener_free`.
+ */
+struct TstTcpListener *tst_tcp_listener_bind(const char *bind_addr);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Bind a TCP listener from a `tcp://addr:port?listen=1` URL.
+ * Returns `NULL` on error; check `tst_get_last_error()` for the code and
+ * `tst_get_last_error_str()` for a detail message.
+ *
+ * The URL MUST include `?listen=1`; omitting it routes to the caller-side
+ * path and returns `TST_E_TCP_CONFIG`.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string valid for the duration of this
+ * call. The returned handle must eventually be freed with
+ * `tst_tcp_listener_free`.
+ */
+struct TstTcpListener *tst_tcp_listener_from_url(const char *url);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot mux-sender-level stats for a `tst_tcp_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpMuxSender` opened via
+ * `tst_tcp_mux_sender_open`. `out` must point to a writable
+ * `TstMuxSenderStats`.
+ */
+
+int tst_tcp_mux_sender_get_mux_sender_stats(struct TstTcpMuxSender *p,
+                                            struct tst_mux_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Read wire-level transport stats for the underlying TCP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpMuxSender` opened via
+ * `tst_tcp_mux_sender_open`. `out` must point to a writable
+ * `TstSocketStats`.
+ */
+int tst_tcp_mux_sender_get_socket_stats(struct TstTcpMuxSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_tcp_mux_sender_t`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_tcp_mux_sender_open`.
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_tcp_mux_sender_get_stream_codec_stats(struct TstTcpMuxSender *p,
+                                              uint16_t pid,
+                                              struct tst_stream_codec_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Open a TCP-backed `MuxSender` that muxes MPEG-TS in real time and
+ * sends over TCP. `mux_cfg` must be a valid `tst_mux_config_t`
+ * (constructed via `tst_mux_config_new`). Returns `NULL` on error.
+ *
+ * The mux config is borrowed — the caller still owns it and must free
+ * it. The returned handle is independent of the config after this call.
+ *
+ * The TCP connection is established synchronously before this function
+ * returns. Default connect timeout is 10 seconds.
+ *
+ * URL grammar:
+ * - `tcp://host:port` — connect to a plain TCP listener
+ * - `tcps://host:port` — connect with TLS (disabled if built without `tls` feature)
+ * - Query params: `?nodelay=1`, `?rcvbuf=N`, `?sndbuf=N`, `?pkt_size=N`,
+ *   `?connect_timeout=Ns`
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
+ * pointer to a `tst_mux_config_t` valid for this call. The returned
+ * handle must eventually be freed with `tst_tcp_mux_sender_close`.
+ */
+
+struct TstTcpMuxSender *tst_tcp_mux_sender_open(const char *url,
+                                                const struct tst_mux_config_t *mux_cfg);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one audio frame buffer through the muxer's single audio stream
+ * and out the TCP transport (single-stream shorthand).
+ *
+ * `frames` must point to `len` bytes of pre-framed audio data (one or
+ * more ADTS frames or MPEG audio frames concatenated). `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_audio(struct TstTcpMuxSender *p,
+                                  const uint8_t *frames,
+                                  size_t len,
+                                  int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_tcp_mux_sender_push_audio`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `frames` must
+ * be readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_audio_to(struct TstTcpMuxSender *p,
+                                     tst_audio_stream_handle_t stream_handle,
+                                     const uint8_t *frames,
+                                     size_t len,
+                                     int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one raw KLV blob through the muxer's single KLV stream and out
+ * the TCP transport (single-stream shorthand).
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams
+ * configured as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer
+ * prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9
+ * §2.12.4.2. **Do not pre-wrap the AU cell on the caller side.**
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_klv(struct TstTcpMuxSender *p,
+                                const uint8_t *klv,
+                                size_t len,
+                                int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header (do not pre-wrap).
+ * On a single-stream sender, prefer `tst_tcp_mux_sender_push_klv`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `klv` must be
+ * readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_klv_to(struct TstTcpMuxSender *p,
+                                   tst_klv_stream_handle_t stream_handle,
+                                   const uint8_t *klv,
+                                   size_t len,
+                                   int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one subtitle PES unit through the muxer's single subtitle stream
+ * and out the TCP transport (single-stream shorthand).
+ *
+ * `payload` is one complete logical subtitle unit. `pts_90khz` is the
+ * presentation timestamp in 90 kHz ticks.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_subtitle(struct TstTcpMuxSender *p,
+                                     const uint8_t *payload,
+                                     size_t len,
+                                     int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one subtitle PES unit targeting a specific subtitle elementary stream.
+ *
+ * On a single-stream sender, prefer `tst_tcp_mux_sender_push_subtitle`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `payload` must
+ * be readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_subtitle_to(struct TstTcpMuxSender *p,
+                                        tst_subtitle_stream_handle_t stream_handle,
+                                        const uint8_t *payload,
+                                        size_t len,
+                                        int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one Annex-B NAL through the muxer's single video stream and
+ * out the TCP transport (single-stream shorthand).
+ *
+ * `nal` must point to `len` bytes of Annex-B NAL data. `pts_90khz` is
+ * the presentation timestamp in 90 kHz ticks. `key_frame` is `true`
+ * for IDR / key frames (used to set the random-access indicator in the
+ * MPEG-TS adaptation field).
+ *
+ * Resolves only when exactly one video stream is configured; otherwise
+ * rejects with `TST_E_INVALID_USAGE`.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_video(struct TstTcpMuxSender *p,
+                                  const uint8_t *nal,
+                                  size_t len,
+                                  int64_t pts_90khz,
+                                  bool key_frame);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE`.
+ *
+ * On a single-stream sender, prefer `tst_tcp_mux_sender_push_video` —
+ * same effect, no handle required.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpMuxSender`. `nal` must be
+ * readable for `len` bytes.
+ */
+
+int tst_tcp_mux_sender_push_video_to(struct TstTcpMuxSender *p,
+                                     tst_video_stream_handle_t stream_handle,
+                                     const uint8_t *nal,
+                                     size_t len,
+                                     int64_t pts_90khz,
+                                     bool key_frame);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Reset stats counters for a `tst_tcp_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpMuxSender` opened via
+ * `tst_tcp_mux_sender_open`.
+ */
+int tst_tcp_mux_sender_reset_stats(struct TstTcpMuxSender *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Read wire-level transport stats for the underlying TCP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if no live socket stats are available, or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpReceiver` opened via `tst_tcp_recv_open`
+ * or `tst_tcp_listener_accept_receiver`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_tcp_receiver_get_socket_stats(struct TstTcpReceiver *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot stats for a `tst_tcp_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpReceiver` opened via `tst_tcp_recv_open`
+ * or `tst_tcp_listener_accept_receiver`.
+ * `out` must point to a writable `TstReceiverStats`.
+ */
+int tst_tcp_receiver_get_stats(struct TstTcpReceiver *p, struct tst_receiver_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Block until one 188-byte MPEG-TS packet is ready, then copy it
+ * into the caller's buffer.
+ *
+ * `buf` MUST point to a buffer of at least `buf_len` bytes (at least
+ * 188 bytes). On success, `*out_n` is set to the number of bytes
+ * written (always 188). On failure the contents of `buf` are
+ * unspecified.
+ *
+ * TCP is a reliable bytestream: the library accumulates incoming bytes
+ * until it has a complete 188-byte TS packet (synchronised on the 0x47
+ * sync byte). Backpressure is handled by the OS TCP flow-control window —
+ * this call blocks until the receiver buffer fills or the peer closes.
+ *
+ * Returns:
+ * - `0` on success (188 bytes written to `buf`, `*out_n` = 188)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close / EOF
+ * - `TST_E_CLOSED` (-7) if the handle was `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments or too-small buffer
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpReceiver`. `buf` must be
+ * writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
+ */
+
+int tst_tcp_receiver_recv_ts(struct TstTcpReceiver *p,
+                             uint8_t *buf,
+                             size_t buf_len,
+                             size_t *out_n);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Reset stats counters for a `tst_tcp_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpReceiver` opened via `tst_tcp_recv_open`
+ * or `tst_tcp_listener_accept_receiver`.
+ */
+int tst_tcp_receiver_reset_stats(struct TstTcpReceiver *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Open a TCP receiver connecting to the endpoint described by `url`.
+ * Returns `NULL` on error.
+ *
+ * URL grammar:
+ * - `tcp://host:port` — connect to a plain TCP listener
+ * - `tcps://host:port` — connect with TLS (disabled if built without `tls` feature)
+ * - Query params: `?nodelay=1`, `?rcvbuf=N`, `?sndbuf=N`, `?pkt_size=N`,
+ *   `?connect_timeout=Ns`
+ *
+ * For a listener-accepted connection, use `tst_tcp_listener_accept_receiver`
+ * instead.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string. The returned handle must
+ * eventually be freed with `tst_tcp_receiver_close`.
+ */
+struct TstTcpReceiver *tst_tcp_recv_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Read wire-level transport stats for the underlying TCP socket.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * `TST_E_NOT_AVAILABLE` if the transport has no live stats
+ * (e.g., socket not yet connected or already closed), or
+ * `TST_E_CLOSED` if the handle was closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
+ * or `tst_tcp_listener_accept_sender`.
+ * `out` must point to a writable `TstSocketStats`.
+ */
+int tst_tcp_sender_get_socket_stats(struct TstTcpSender *p, struct tst_socket_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Snapshot stats for a `tst_tcp_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
+ * or `tst_tcp_listener_accept_sender`.
+ * `out` must point to a writable `TstSenderStats`.
+ */
+int tst_tcp_sender_get_stats(struct TstTcpSender *p, struct tst_sender_stats_t *out);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Open a TCP sender to the endpoint described by `url`. Returns `NULL`
+ * on error; check `tst_get_last_error()` for the negative error code and
+ * `tst_get_last_error_str()` for a detail message.
+ *
+ * URL grammar:
+ * - `tcp://host:port` — plain TCP caller
+ * - `tcps://host:port` — TLS caller (disabled if built without `tls` feature)
+ * - Query params: `?nodelay=1`, `?rcvbuf=N`, `?sndbuf=N`, `?pkt_size=N`,
+ *   `?connect_timeout=Ns`
+ *
+ * The connection is established synchronously. Default connect timeout is
+ * 10 seconds; override via `?connect_timeout=`.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string valid for the duration of
+ * this call. The returned handle must eventually be freed with
+ * `tst_tcp_sender_close`.
+ */
+struct TstTcpSender *tst_tcp_sender_open(const char *url);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Reset stats counters for a `tst_tcp_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the sender has been closed.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
+ * or `tst_tcp_listener_accept_sender`.
+ */
+int tst_tcp_sender_reset_stats(struct TstTcpSender *p);
+#endif
+
+#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+/**
+ * Push pre-muxed TS bytes through the TCP sender.
+ *
+ * `bytes` must point to a buffer of `len` bytes. `len` SHOULD be a
+ * multiple of 188 (one or more MPEG-TS packets); the underlying
+ * sender will accept any non-zero length but non-aligned buffers
+ * may cause sync issues at the receiver.
+ *
+ * TCP is a reliable bytestream: the library writes all `len` bytes before
+ * returning (or returns an error). Unlike UDP there is no datagram
+ * boundary, so the receiver MUST have its own framing — this library's
+ * TCP receiver re-synchronises on the 0x47 sync byte.
+ *
+ * Returns 0 on success, a negative `TST_E_*` code on failure.
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstTcpSender`. `bytes` must be
+ * readable for `len` bytes.
+ */
+int tst_tcp_sender_send_ts(struct TstTcpSender *p, const uint8_t *bytes, size_t len);
 #endif
 
 #if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))

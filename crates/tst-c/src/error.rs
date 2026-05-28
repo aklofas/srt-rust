@@ -597,7 +597,6 @@ pub(crate) fn udp_error_to_code(e: &tst_udp::UdpError) -> TstError {
 }
 
 #[cfg(feature = "tcp")]
-#[allow(dead_code)] // called by TCP entry points in other modules
 pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
     use tst_tcp::error::TcpErrorKind;
     // Exhaustive match — every TcpErrorKind variant maps to a single

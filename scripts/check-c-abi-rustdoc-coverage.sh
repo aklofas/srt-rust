@@ -334,6 +334,57 @@ ALLOWLIST=(
     "tst_udp_demux_receiver_get_stream_stats"
     "tst_udp_demux_receiver_reset_stats"
 
+    # --- Plan A5a TCP entry points (full RTP parity, minus cancel; + listener) ---
+    #     Same rationale as the UDP/RTP blocks — tst-c-only projections of the
+    #     generic pipeline shells typed on tst_tcp::TcpTransport (which impls
+    #     both Transport + RecvTransport). No cancel (no cancel_handle). The
+    #     listener family has no Rust 1:1 counterpart (it wraps
+    #     tst_tcp::TcpListener::{bind,from_url,accept_blocking}).
+    # TstTcpSender
+    "tst_tcp_sender_open"
+    "tst_tcp_sender_close"
+    "tst_tcp_sender_send_ts"
+    "tst_tcp_sender_get_stats"
+    "tst_tcp_sender_get_socket_stats"
+    "tst_tcp_sender_reset_stats"
+    # TstTcpReceiver
+    "tst_tcp_recv_open"
+    "tst_tcp_receiver_close"
+    "tst_tcp_receiver_recv_ts"
+    "tst_tcp_receiver_get_stats"
+    "tst_tcp_receiver_get_socket_stats"
+    "tst_tcp_receiver_reset_stats"
+    # TstTcpMuxSender
+    "tst_tcp_mux_sender_open"
+    "tst_tcp_mux_sender_close"
+    "tst_tcp_mux_sender_push_video"
+    "tst_tcp_mux_sender_push_video_to"
+    "tst_tcp_mux_sender_push_klv"
+    "tst_tcp_mux_sender_push_klv_to"
+    "tst_tcp_mux_sender_push_audio"
+    "tst_tcp_mux_sender_push_audio_to"
+    "tst_tcp_mux_sender_push_subtitle"
+    "tst_tcp_mux_sender_push_subtitle_to"
+    "tst_tcp_mux_sender_get_mux_sender_stats"
+    "tst_tcp_mux_sender_get_socket_stats"
+    "tst_tcp_mux_sender_get_stream_codec_stats"
+    "tst_tcp_mux_sender_reset_stats"
+    # TstTcpDemuxReceiver
+    "tst_tcp_demux_receiver_open"
+    "tst_tcp_demux_receiver_close"
+    "tst_tcp_demux_receiver_next_event"
+    "tst_tcp_demux_receiver_get_stats"
+    "tst_tcp_demux_receiver_get_socket_stats"
+    "tst_tcp_demux_receiver_get_stream_codec_stats"
+    "tst_tcp_demux_receiver_get_stream_stats"
+    "tst_tcp_demux_receiver_reset_stats"
+    # TstTcpListener
+    "tst_tcp_listener_bind"
+    "tst_tcp_listener_from_url"
+    "tst_tcp_listener_accept_sender"
+    "tst_tcp_listener_accept_receiver"
+    "tst_tcp_listener_free"
+
     # --- Phase 4 RTSP session entry points (Task 6, Wave B) ---
     #     TstRtspSession is the C-language projection of (RtspClient, RtspSession)
     #     combined; into_demux_receiver bridges to the existing TstRtpDemuxReceiver.

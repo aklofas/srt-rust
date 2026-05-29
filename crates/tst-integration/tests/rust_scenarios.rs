@@ -77,79 +77,51 @@ fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
     demux_to_core_events(input)
 }
 
-/// Run a `roundtrip` scenario: re-mux the same synthetic payload and compare
-/// sha256 of output bytes.
+/// Run a `roundtrip` scenario: re-run the generator's single-source-of-truth
+/// mux recipe and assert byte-identity against the committed artifact.
 ///
-/// For the `video-roundtrip` scenario the golden `core` holds a single Video
-/// event whose `payload_sha256` is the sha256 of the full mux output bytes.
-/// We reproduce the mux identically and assert byte-identity.
-fn run_roundtrip(_input: &[u8], golden: &Golden) -> Vec<CoreEvent> {
+/// The roundtrip golden has `core: []` and an `extensions.output_sha256` hex
+/// digest of the whole TS output. This asserts:
+///  1. The freshly-muxed bytes are byte-identical to the committed `output.ts`.
+///  2. Their sha256 equals the golden's `extensions.output_sha256`.
+///
+/// `committed_output_ts` is the committed `output.ts` artifact (the scenario's
+/// `input`). Returns `core: []` (roundtrip carries no media events).
+fn run_roundtrip(committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> {
     use sha2::{Digest, Sha256};
-    use tst_core::mpegts::common::Pts90khz;
-    use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+    use tst_integration::scenarios::video_roundtrip_ts_bytes;
 
-    // Re-run the same mux that `VideoRoundtrip::generate` ran.
-    let cfg = {
-        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
-        prog.add_video(0x1011, VideoCodec::H264);
-        let mut b = MuxerConfig::builder();
-        b.add_program(prog.build());
-        b.build().expect("valid config")
-    };
-    let mut mux = Muxer::new(cfg).expect("muxer init");
+    // Re-run the generator's exact recipe — no hand-retyped mux.
+    let fresh = video_roundtrip_ts_bytes();
 
-    // Synthetic IDR: same bytes as the generator produces.
-    let video_au = {
-        let mut buf = Vec::with_capacity(20);
-        buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        buf.push(0x65);
-        for i in 0u8..15 {
-            buf.push(0xA5 ^ i);
-        }
-        buf
-    };
-    mux.push_video(&video_au, Pts90khz::new(0), true)
-        .expect("push_video");
+    // 1. Byte-identity against the committed artifact.
+    assert_eq!(
+        fresh, committed_output_ts,
+        "roundtrip TS output changed: fresh mux bytes differ from committed output.ts"
+    );
 
-    let mut ts_bytes = Vec::new();
-    let mut buf = vec![0u8; 1316];
-    loop {
-        let n = mux.pull(&mut buf);
-        if n == 0 {
-            break;
-        }
-        ts_bytes.extend_from_slice(&buf[..n]);
-    }
-
+    // 2. sha256 against the golden's stored output digest.
     let digest: String = {
         use std::fmt::Write;
-        Sha256::digest(&ts_bytes)
+        Sha256::digest(&fresh)
             .iter()
             .fold(String::new(), |mut s, b| {
                 write!(s, "{b:02x}").unwrap();
                 s
             })
     };
-
-    // Expect the golden to have a single Video event whose payload_sha256
-    // matches the freshly-computed digest.
+    let expected = golden
+        .extensions
+        .get("output_sha256")
+        .and_then(|v| v.as_str())
+        .expect("roundtrip golden must carry extensions.output_sha256");
     assert_eq!(
-        golden.core.len(),
-        1,
-        "roundtrip golden must have exactly 1 core event"
+        digest, expected,
+        "roundtrip sha256 mismatch: TS output changed"
     );
-    match &golden.core[0] {
-        CoreEvent::Video { payload_sha256, .. } => {
-            assert_eq!(
-                &digest, payload_sha256,
-                "roundtrip sha256 mismatch: TS output changed"
-            );
-        }
-        other => panic!("roundtrip golden unexpected event: {other:?}"),
-    }
 
-    // Return the actual events for assertion downstream.
-    golden.core.clone()
+    // Roundtrip scenarios carry no media events.
+    vec![]
 }
 
 /// Run a `binding_contract` scenario: exercise the non-media contract.
@@ -173,7 +145,7 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
                 // If the garbage happened to not trigger Unrecoverable (e.g.
                 // the random bytes contained a valid-looking sync sequence),
                 // flush and check for any queued NonConformant that maps to error.
-                // For 2048 bytes of 0xFF this should never happen — the
+                // For 8192 bytes of 0xFF this should never happen — the
                 // sync-search window will be exhausted.
                 panic!("expected feed to return Err on garbage input, got Ok");
             }

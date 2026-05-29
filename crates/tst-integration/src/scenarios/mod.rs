@@ -49,7 +49,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Drain all buffered TS packets from `mux` into a `Vec<u8>`.
-fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
+pub(crate) fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
     let mut buf = vec![0u8; 1316]; // 7 × 188
     loop {
@@ -196,52 +196,53 @@ impl Scenario for VideoRoundtrip {
 
     fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
         // Single-program, single-video muxer (no KLV) for simplest possible
-        // deterministic output.
+        // deterministic output. Produced via the shared single-source-of-truth
+        // helper so the adapter test can re-run the identical recipe.
         // This generator NEVER reads from testfiles/ or local/ directories.
-        let cfg = {
-            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
-            prog.add_video(0x1011, VideoCodec::H264);
-            let mut b = MuxerConfig::builder();
-            b.add_program(prog.build());
-            b.build().expect("valid muxer config")
-        };
-        let mut mux = Muxer::new(cfg).expect("muxer init");
-
-        let video_au = synthetic_h264_idr();
-        let pts = Pts90khz::new(0);
-        mux.push_video(&video_au, pts, /*key_frame=*/ true)
-            .expect("push_video");
-
-        let ts_bytes = drain_mux(&mut mux);
+        let ts_bytes = video_roundtrip_ts_bytes();
         let digest = sha256_hex(&ts_bytes);
 
-        // Write input artifact (the TS output IS the input for roundtrip verification).
+        // Write input artifact (the TS output IS the golden artifact for
+        // roundtrip verification).
         let artifact_rel = PathBuf::from(self.id()).join("output.ts");
         let artifact_abs = out_dir.join(&artifact_rel);
         write_file(&artifact_abs, &ts_bytes);
 
-        // For a roundtrip scenario the golden holds a single Error-free payload
-        // identity event in extensions, and a single Video event in core.
-        // The byte-identity check is the sha256 in the Video event's
-        // payload_sha256; the adapter rebuilds the TS and compares sha256.
-        // stream_type is the wire PMT byte (H.264 = 0x1B), binding-neutral.
-        let core = vec![CoreEvent::Video {
-            program: 1,
-            pid: 0x1011,
-            stream_type: "0x1b".to_string(),
-            pts: 0,
-            key: true,
-            payload_sha256: digest,
-        }];
-
+        // A roundtrip scenario carries no media events — the whole-stream
+        // byte-identity digest lives under `extensions.output_sha256` (the
+        // demux-path `payload_sha256` field means "NAL payload hash" and must
+        // not be overloaded). The adapter re-muxes and compares both the raw
+        // bytes against `output.ts` and the digest against `output_sha256`.
         let golden = Golden {
             schema_version: 0,
             lossy: false,
-            core,
-            extensions: serde_json::Value::Null,
+            core: vec![],
+            extensions: serde_json::json!({ "output_sha256": digest }),
         };
         (artifact_rel, golden)
     }
+}
+
+/// Re-run the `video-roundtrip` mux and return the deterministic TS bytes.
+///
+/// Single source of truth shared by [`VideoRoundtrip::generate`] and the Rust
+/// adapter test — no hand-retyped mux recipe.
+pub fn video_roundtrip_ts_bytes() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let mut mux = Muxer::new(cfg).expect("muxer init");
+    mux.push_video(
+        &synthetic_h264_idr(),
+        Pts90khz::new(0),
+        /*key_frame=*/ true,
+    )
+    .expect("push_video");
+    drain_mux(&mut mux)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ impl Scenario for StrictRejection {
 ///
 /// 4-byte start code + 1-byte NAL header (IDR nal_unit_type = 5,
 /// nal_ref_idc = 3) + 15 deterministic filler bytes.
-fn synthetic_h264_idr() -> Vec<u8> {
+pub(crate) fn synthetic_h264_idr() -> Vec<u8> {
     let mut buf = Vec::with_capacity(20);
     buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Annex-B start code
     buf.push(0x65); // forbidden_zero=0, nal_ref_idc=11, nal_unit_type=5 (IDR)
@@ -550,12 +551,9 @@ pub fn demux_error_code_pub(e: &tst_core::error::DemuxError) -> String {
     demux_error_code(e)
 }
 
-fn demux_error_code(e: &tst_core::error::DemuxError) -> String {
-    use tst_core::error::DemuxError;
-    match e {
-        DemuxError::StrictRejection(_) => "STRICT_REJECTION".to_string(),
-        DemuxError::Unrecoverable { .. } => "STRICT_REJECTION".to_string(),
-        DemuxError::SyncBufExhausted { .. } => "STRICT_REJECTION".to_string(),
-        _ => "STRICT_REJECTION".to_string(),
-    }
+// Umbrella public code for the pilot — every fatal demux error maps to the
+// single binding-neutral reject code.
+// TODO: distinct public codes when non-strict binding_contract scenarios land.
+fn demux_error_code(_e: &tst_core::error::DemuxError) -> String {
+    "STRICT_REJECTION".into()
 }

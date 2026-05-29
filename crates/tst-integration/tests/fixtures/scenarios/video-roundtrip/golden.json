@@ -1,16 +1,8 @@
 {
   "schema_version": 0,
   "lossy": false,
-  "core": [
-    {
-      "event": "video",
-      "program": 1,
-      "pid": 4113,
-      "stream_type": "0x1b",
-      "pts": 0,
-      "key": true,
-      "payload_sha256": "2aa000852931462b875ec9b2548dd8bf5846fef36e5a1084d149cdd636d09a24"
-    }
-  ],
-  "extensions": null
+  "core": [],
+  "extensions": {
+    "output_sha256": "2aa000852931462b875ec9b2548dd8bf5846fef36e5a1084d149cdd636d09a24"
+  }
 }

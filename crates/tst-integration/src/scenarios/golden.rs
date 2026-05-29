@@ -12,8 +12,9 @@
 //!   `#[serde(other)]` absent deliberately).  An older consumer encountering
 //!   a `CoreEvent` variant it doesn't recognise will fail loudly, never skip
 //!   silently.
-//! - `roundtrip` scenarios include a `payload_sha256` of the full mux output
-//!   so byte-identity is checked.
+//! - `roundtrip` scenarios carry no media events (`core: []`); the whole-stream
+//!   byte-identity digest lives under `extensions.output_sha256`. The demux-path
+//!   `payload_sha256` field (NAL payload hash) is never overloaded for this.
 //! - Comparison between an observed `Golden` and a committed `Golden` is a
 //!   simple struct `PartialEq`; the JSON round-trip (`serde_json`) preserves
 //!   all fields, so `assert_eq!` catches every difference.

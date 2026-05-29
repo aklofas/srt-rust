@@ -1,0 +1,21 @@
+//! Domain harness: C ABI muxing: multi-program/stream, audio+subtitle, codec stats, demux config parity
+//! (consolidated from the former per-file tests/*.rs — see tests/MOVEMENT_MAP.md).
+//!
+//! Each `mod` below is one former top-level integration-test file, now
+//! compiled into this single binary. Test bodies are unchanged; only the
+//! module path gained a `muxing::<file>::` prefix. Per-file `#![cfg(feature=…)]`
+//! gates still apply (a gated-out member compiles to an empty module).
+#[path = "muxing/audio_subtitle.rs"]
+mod audio_subtitle;
+#[path = "muxing/codec_stats.rs"]
+mod codec_stats;
+#[path = "muxing/demux_config_av1_parity.rs"]
+mod demux_config_av1_parity;
+#[path = "muxing/multi_program.rs"]
+mod multi_program;
+#[path = "muxing/multi_program_event_identity.rs"]
+mod multi_program_event_identity;
+#[path = "muxing/multi_stream.rs"]
+mod multi_stream;
+#[path = "muxing/stats.rs"]
+mod stats;

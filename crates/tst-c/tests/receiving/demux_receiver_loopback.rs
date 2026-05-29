@@ -44,9 +44,12 @@ fn last_error_msg() -> String {
 
 #[test]
 fn loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos() {
-    // Pick a port in the ephemeral range, offset by pid to reduce
-    // collisions when tests run concurrently or restart quickly.
-    let port: u16 = 28_500 + (std::process::id() as u16 % 500);
+    // Pick a port offset by pid to reduce collisions across test processes.
+    // The base (29_000) is kept in a distinct 1000-wide band from the sibling
+    // receiver loopbacks (raw 27_000, ts 28_000) so they never bind the same
+    // port when run concurrently inside one consolidated test binary — the old
+    // 28_500 + pid%500 band overlapped ts's 28_000 + pid%1000 for half of pids.
+    let port: u16 = 29_000 + (std::process::id() as u16 % 1000);
 
     // ready_tx fires after open_listener unblocks (peer accepted),
     // telling the sender that the receiver is past accept and ready to

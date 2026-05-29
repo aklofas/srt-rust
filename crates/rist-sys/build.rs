@@ -151,6 +151,17 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         "-Dtest=false".into(),
         "-Dbuiltin_cjson=true".into(),
     ];
+    // On Windows, librist's `have_mingw_pthreads` option defaults off, which
+    // leaves `HAVE_CLOCK_GETTIME` unset so `contrib/time-shim.c` compiles its
+    // own `clock_gettime` — colliding with the inline definition that newer
+    // mingw `<time.h>` now pulls in via winpthreads (`pthread_time.h`), failing
+    // the build with "redefinition of 'clock_gettime'". Enabling the option
+    // makes meson detect the toolchain's `clock_gettime` (winpthreads is part
+    // of the mingw toolchain on the runner) and skip the shim. This is also
+    // librist's intended Windows threading configuration.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        args.push("-Dhave_mingw_pthreads=true".into());
+    }
     // When encryption is wanted, build the SHARED workspace vendor/mbedtls
     // (3.6.x) and point librist's meson at it via PKG_CONFIG_PATH so it links
     // that `mbedcrypto` (`-Dbuiltin_mbedtls=false`) instead of its bundled

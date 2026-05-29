@@ -666,7 +666,7 @@ jobs:
           cd crates/tst-py
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install maturin pytest
+          .venv/bin/pip install maturin pytest pytest-timeout
 
       - name: Build tst-py (maturin develop --release)
         env:
@@ -738,7 +738,7 @@ jobs:
           cd crates/tst-py
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install maturin pytest 'numpy>=1.24' 'pandas>=2.0'
+          .venv/bin/pip install maturin pytest pytest-timeout 'numpy>=1.24' 'pandas>=2.0'
 
       - name: Build tst-py (maturin develop --release)
         env:

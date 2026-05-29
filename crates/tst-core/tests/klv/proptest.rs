@@ -6,10 +6,7 @@
 //! fuzz targets' job) — they catch encode/decode asymmetries on the
 //! happy path.
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::imapb_tol;
+use crate::common::imapb_tol;
 use proptest::prelude::*;
 use tst_core::klv::imapb::{ImapbParams, decode_imapb, encode_imapb};
 use tst_core::klv::length::{

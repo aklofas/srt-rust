@@ -5,8 +5,6 @@
 //! v4+v6 dispatch in tst_srt::addr (Task 5.1, commit 5c577d8) works
 //! against a real libsrt socket.
 
-mod common;
-
 use std::net::IpAddr;
 use std::thread;
 use std::time::Duration;
@@ -38,7 +36,7 @@ fn ipv6_loopback_round_trip() {
         buf[..n].to_vec()
     });
 
-    common::settle();
+    crate::common::settle();
 
     let mut sender = SocketBuilder::new()
         .recv_timeout(Duration::from_secs(5))

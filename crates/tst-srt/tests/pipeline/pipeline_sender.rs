@@ -1,7 +1,5 @@
 //! End-to-end integration test: pipeline::MuxSender over a real Socket pair.
 
-mod common;
-
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::common::Pts90khz;
@@ -14,7 +12,7 @@ use tst_test_helpers::synthetic_nal;
 #[test]
 fn sender_round_trip_one_frame() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     // Recv thread: receive bytes until peer closes; return total received.

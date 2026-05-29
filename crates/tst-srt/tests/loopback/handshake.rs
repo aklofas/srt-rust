@@ -7,8 +7,6 @@
 
 #![cfg(feature = "mbedtls")]
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::error::ConnectError;
 use tst_srt::error::RejectReason;
@@ -27,7 +25,7 @@ const PASS: &str = "0123456789abcdef0123456789abcdef";
 #[test]
 fn unencrypted_handshake_succeeds() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {
@@ -51,7 +49,7 @@ fn matching_passphrase_succeeds() {
     builder
         .passphrase(Passphrase::new(PASS).unwrap())
         .recv_timeout(Duration::from_secs(5));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {
@@ -82,7 +80,7 @@ fn mismatched_passphrase_rejects_connect() {
         .expect("bind");
     let port = listener.local_addr().unwrap().port();
 
-    common::settle();
+    crate::common::settle();
 
     let result = SocketBuilder::new()
         .passphrase(Passphrase::new("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").unwrap())

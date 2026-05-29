@@ -1,4 +1,4 @@
-//! Domain harness: MPEG-TS mux/demux integration tests
+//! Domain harness: MPEG-TS container mux/demux + local-corpus integration tests
 //! (consolidated from the former per-file tests/*.rs — see tests/MOVEMENT_MAP.md).
 //!
 //! Each `mod` below is one former top-level integration-test file, now
@@ -20,6 +20,8 @@ mod demux;
 mod demux_audio;
 #[path = "mpegts/demux_caps.rs"]
 mod demux_caps;
+#[path = "mpegts/demux_local.rs"]
+mod demux_local;
 #[path = "mpegts/demux_multi_program.rs"]
 mod demux_multi_program;
 #[path = "mpegts/demux_pes_validation.rs"]
@@ -50,8 +52,12 @@ mod mux_dvb_subtitle_pes;
 mod mux_dvb_teletext_pes;
 #[path = "mpegts/mux_error_kind_routing.rs"]
 mod mux_error_kind_routing;
+#[path = "mpegts/mux_ffprobe.rs"]
+mod mux_ffprobe;
 #[path = "mpegts/mux_klv_pes.rs"]
 mod mux_klv_pes;
+#[path = "mpegts/mux_local.rs"]
+mod mux_local;
 #[path = "mpegts/mux_multi_program.rs"]
 mod mux_multi_program;
 #[path = "mpegts/mux_multi_stream.rs"]

@@ -7,15 +7,13 @@
 //! `Unlimited` variant, which maps to libsrt's sentinel `0` — through a real
 //! handshake against a local listener.
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::{MaxBandwidth, SocketBuilder};
 
 #[test]
 fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

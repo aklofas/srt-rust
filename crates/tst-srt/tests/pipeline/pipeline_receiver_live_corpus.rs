@@ -40,8 +40,6 @@
 
 #![cfg(target_os = "linux")]
 
-mod common;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -213,7 +211,7 @@ fn run_one(path: &Path) -> RunOutcome {
     // at the right file in the test report.
     let mut builder = ListenerBuilder::new();
     builder.recv_latency(LATENCY);
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     let payload = aligned.to_vec();

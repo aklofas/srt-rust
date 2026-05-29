@@ -727,11 +727,7 @@ fn ffprobe_agrees_on_mp2_sample_rate_and_channels() {
         return;
     }
 
-    let tst_core_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tst-core");
-    let path = tst_core_manifest.join("tests/fixtures/audio/mp2.ts");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/audio/mp2.ts");
     let bytes = std::fs::read(&path).unwrap();
     let path_str = path.to_str().unwrap();
 

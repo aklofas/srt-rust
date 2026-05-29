@@ -66,7 +66,7 @@ macro_rules! require_loopback {
 ///     let socket = listener.accept().unwrap();
 ///     // ...
 /// });
-/// common::wait_for_ready(&ready);
+/// crate::common::wait_for_ready(&ready);
 /// // ... main thread connect ...
 /// ```
 pub fn wait_for_ready(ready: &AtomicBool) {
@@ -102,7 +102,7 @@ pub fn wait_for_ready(ready: &AtomicBool) {
 /// #[test]
 /// fn round_trip() {
 ///     require_loopback!();
-///     let lb = common::Loopback::bind();
+///     let lb = crate::common::Loopback::bind();
 ///     let port = lb.port;
 ///
 ///     let accept = lb.spawn_accept(|mut sock| {

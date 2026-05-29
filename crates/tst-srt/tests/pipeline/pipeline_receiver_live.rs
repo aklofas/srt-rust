@@ -20,8 +20,6 @@
 
 #![cfg(target_os = "linux")]
 
-mod common;
-
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::common::Pts90khz;
@@ -76,7 +74,7 @@ fn end_to_end_sender_to_receiver() {
     // box; matches the sender side's `latency` for symmetry.
     let mut builder = ListenerBuilder::new();
     builder.recv_latency(Duration::from_millis(120));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     // Receiver runs in the accept-thread closure: wrap the accepted Socket

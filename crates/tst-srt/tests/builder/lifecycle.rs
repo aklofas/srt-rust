@@ -1,14 +1,12 @@
 //! Drop semantics + explicit close.
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::SocketBuilder;
 
 #[test]
 fn drop_closes_cleanly() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {
@@ -30,7 +28,7 @@ fn drop_closes_cleanly() {
 #[test]
 fn explicit_close_succeeds() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

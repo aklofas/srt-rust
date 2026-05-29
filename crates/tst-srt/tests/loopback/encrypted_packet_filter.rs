@@ -1,7 +1,5 @@
 //! Reed-Solomon FEC config applies. Doesn't assert recovery quality.
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, PacketFilter, SocketBuilder};
 
@@ -15,7 +13,7 @@ fn fec_config_applies() {
     builder
         .packet_filter(pf_listener)
         .recv_timeout(Duration::from_secs(5));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

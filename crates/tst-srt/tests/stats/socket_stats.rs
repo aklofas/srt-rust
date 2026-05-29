@@ -2,8 +2,6 @@
 //! libsrt's `CBytePerfMon` into `tst_core::transport::SocketStats` and return
 //! `None` after the socket is closed.
 
-mod common;
-
 use crate::common::Loopback;
 use std::time::Duration;
 use tst_core::transport::{RecvTransport, Transport};

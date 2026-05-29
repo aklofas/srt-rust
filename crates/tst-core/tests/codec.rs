@@ -1,4 +1,4 @@
-//! Domain harness: codec parser + carriage integration tests (H.264/H.265/H.266, AV1, audio)
+//! Domain harness: codec parser + carriage integration tests (H.264/H.265/H.266, AV1, audio) + corpus cross-checks
 //! (consolidated from the former per-file tests/*.rs — see tests/MOVEMENT_MAP.md).
 //!
 //! Each `mod` below is one former top-level integration-test file, now
@@ -14,6 +14,10 @@ mod av1_carriage_roundtrip;
 mod av1_codec_integration;
 #[path = "codec/av1_no_panic.rs"]
 mod av1_no_panic;
+#[path = "codec/codec_av1_corpus.rs"]
+mod codec_av1_corpus;
+#[path = "codec/codec_h266_corpus.rs"]
+mod codec_h266_corpus;
 #[path = "codec/codec_parameter_sets.rs"]
 mod codec_parameter_sets;
 #[path = "codec/codec_stats.rs"]
@@ -28,3 +32,5 @@ mod h266_carriage_roundtrip;
 mod h266_codec_integration;
 #[path = "codec/h266_real_encoder_round_trip.rs"]
 mod h266_real_encoder_round_trip;
+#[path = "codec/local_codec_corpus.rs"]
+mod local_codec_corpus;

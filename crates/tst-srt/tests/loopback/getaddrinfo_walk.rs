@@ -1,8 +1,6 @@
 //! Verifies connect/bind walk past failing resolved addresses.
 //! Audit Issues 3 + 10.
 
-mod common;
-
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tst_srt::SocketBuilder;
@@ -13,7 +11,7 @@ fn connect_walks_to_v4_when_v6_first_and_unbindable() {
     // Bind a listener on 127.0.0.1 only. If we walk the addr iterator,
     // we should reach the v4 address even if ::1 comes first when
     // resolving "localhost".
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     // Sanity: confirm "localhost:<port>" resolves to multiple addresses.

@@ -1,8 +1,6 @@
 //! Verifies `PayloadTooLarge` reports the actual configured limit, not 1316.
 //! Regression for audit Issue 5.
 
-mod common;
-
 use std::time::Duration;
 use tst_core::transport::Transport;
 use tst_srt::error::SendError;
@@ -15,7 +13,7 @@ fn payload_too_large_reports_configured_limit() {
     builder
         .payload_size(1456)
         .recv_timeout(Duration::from_secs(5));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| sock);
@@ -61,7 +59,7 @@ fn srt_transport_inherits_configured_payload_size() {
     builder
         .payload_size(1456)
         .recv_timeout(Duration::from_secs(5));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     // Accept side: wrap the accepted Socket in SrtTransport and report
@@ -101,7 +99,7 @@ fn srt_transport_inherits_configured_payload_size() {
 #[test]
 fn srt_transport_default_payload_when_unconfigured() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

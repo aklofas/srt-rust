@@ -1,7 +1,5 @@
 //! Listener bind errors.
 
-mod common;
-
 use tst_srt::ListenerBuilder;
 use tst_srt::error::BindError;
 

@@ -5,6 +5,10 @@ into **6 domain harnesses** to cut per-file binary link/startup overhead. Each
 domain is now a single binary `tests/<domain>.rs` that `#[path]`-includes its
 member files from `tests/<domain>/`.
 
+In the same pass, **7 corpus/codec tests were relocated here from `tst-srt`**
+(an ownership cleanup — they only ever touched `tst_core`, never SRT). They are
+folded into the relevant domains and listed in their own section below.
+
 ## What changed (and what did not)
 
 - **Test bodies are unchanged.** This was a pure relocation: `git mv` plus a
@@ -28,11 +32,30 @@ member files from `tests/<domain>/`.
 
 ## Equivalence check
 
-Verified the consolidation added/dropped/renamed **no test**: the whole-crate
-`cargo test -- --list` count is unchanged (1399), and the multiset of test
+The within-crate consolidation added/dropped/renamed **no test** (it preserved
+the crate's 1399-test inventory exactly). The 7-test intake from `tst-srt` then
+raised tst-core's `cargo test -- --list` count to 1415. Across the whole
+workspace, nothing was lost: the total `--list` count and the multiset of test
 leaf-names (the segment after the last `::`, invariant under the module-prefix
-change) is byte-identical before and after — for both the active list and the
-`--ignored` list, in both feature modes.
+change) are byte-identical before and after — active + `--ignored`, both feature
+modes. Per-crate counts shift only by the cross-crate moves (tst-core +16,
+tst-pipeline +3, tst-srt -19; net zero).
+
+## Files received from tst-srt (ownership cleanup)
+
+These were misfiled in the SRT transport crate; their imports prove they only
+exercise `tst_core`. (`tests/fixtures/{av1,h266,local}/` are gitignored/absent,
+so these corpus checks skip in CI exactly as they did under `tst-srt`.)
+
+| old `tst-srt/tests/…` | new `tests/…` |
+| --- | --- |
+| `codec_av1_corpus.rs` | `codec/codec_av1_corpus.rs` |
+| `codec_h266_corpus.rs` | `codec/codec_h266_corpus.rs` |
+| `local_codec_corpus.rs` | `codec/local_codec_corpus.rs` |
+| `local_fixtures.rs` | `klv/local_fixtures.rs` |
+| `mpegts_demux_local.rs` | `mpegts/demux_local.rs` |
+| `mpegts_mux_local.rs` | `mpegts/mux_local.rs` |
+| `mpegts_mux_ffprobe.rs` | `mpegts/mux_ffprobe.rs` |
 
 ## Movement table
 

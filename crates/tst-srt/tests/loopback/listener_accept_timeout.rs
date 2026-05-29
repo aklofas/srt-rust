@@ -1,7 +1,5 @@
 //! Tests for `Listener::accept_timeout`. Requires libsrt loopback.
 
-mod common;
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -47,7 +45,7 @@ fn accept_timeout_succeeds_when_peer_connects() {
     let ready = Arc::new(AtomicBool::new(false));
     let r = ready.clone();
     let connector = std::thread::spawn(move || {
-        common::wait_for_ready(&r);
+        crate::common::wait_for_ready(&r);
         let socket = tst_srt::SocketBuilder::new()
             .connect(format!("127.0.0.1:{port}"))
             .expect("connect");

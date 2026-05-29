@@ -1,7 +1,5 @@
 //! Verifies SRTO_SENDER=1 is set when role=Sender. Audit Issue 2.
 
-mod common;
-
 use std::ffi::c_int;
 use std::time::Duration;
 use tst_srt::{Role, SocketBuilder};
@@ -27,7 +25,7 @@ fn read_srto_sender(handle: srt_sys::SRTSOCKET) -> i32 {
 #[test]
 fn role_sender_sets_srto_sender_on_caller() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| sock);
@@ -51,7 +49,7 @@ fn role_sender_sets_srto_sender_on_caller() {
 #[test]
 fn role_receiver_leaves_srto_sender_at_default() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| sock);

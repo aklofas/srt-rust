@@ -1,14 +1,12 @@
 //! Stream ID negotiation: caller-set ID is visible on the accepted Socket.
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::{SocketBuilder, StreamId};
 
 #[test]
 fn stream_id_round_trips() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| sock.stream_id().map(|s| s.to_string()));

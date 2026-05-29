@@ -1,7 +1,5 @@
 //! Send/recv round-trip; timeouts; buffer-too-small.
 
-mod common;
-
 use std::time::Duration;
 use tst_srt::SocketBuilder;
 use tst_srt::error::RecvError;
@@ -9,7 +7,7 @@ use tst_srt::error::RecvError;
 #[test]
 fn small_payload_round_trips() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
     let payload: &[u8] = b"hello, ts-transformer";
     let expected = payload.to_vec();
@@ -35,7 +33,7 @@ fn small_payload_round_trips() {
 #[test]
 fn recv_timeout_trips_typed_error() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

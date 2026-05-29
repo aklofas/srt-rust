@@ -1,15 +1,13 @@
 //! Verifies SRTO_LINGER setter reaches libsrt and short-linger lets Drop
 //! return promptly. Audit Issue 4.
 
-mod common;
-
 use std::time::{Duration, Instant};
 use tst_srt::SocketBuilder;
 
 #[test]
 fn drop_with_zero_linger_does_not_block() {
     require_loopback!();
-    let lb = common::Loopback::bind();
+    let lb = crate::common::Loopback::bind();
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| {

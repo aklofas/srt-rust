@@ -13,8 +13,6 @@
 //! 5. Calling `s.close()` from the main thread; the parked thread must
 //!    return within a generous timeout.
 
-mod common;
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tst_core::mpegts::common::Pts90khz;
@@ -31,7 +29,7 @@ fn close_unblocks_libsrt_parked_send() {
     builder
         .recv_buf_packets(8) // tiny — back-pressure kicks in fast
         .latency(Duration::from_millis(120));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     // Accept thread returns the socket immediately; main thread holds it

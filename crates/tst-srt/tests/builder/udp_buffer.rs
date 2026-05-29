@@ -1,8 +1,6 @@
 //! Verifies SRTO_UDP_RCVBUF / SRTO_UDP_SNDBUF setters reach libsrt.
 //! Audit Issue 9.
 
-mod common;
-
 use std::ffi::c_int;
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -25,7 +23,7 @@ fn udp_buffer_sizes_round_trip() {
     builder
         .udp_recv_buffer_bytes(2_000_000)
         .recv_timeout(Duration::from_secs(5));
-    let lb = common::Loopback::bind_with(builder);
+    let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
 
     let accept = lb.spawn_accept(|sock| sock);

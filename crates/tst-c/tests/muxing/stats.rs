@@ -102,6 +102,13 @@ fn mux_sender_stats_round_trip() {
     use tstrans::stats::TstMuxSenderStats;
 
     let (port_tx, port_rx) = mpsc::channel::<u16>();
+    // `done` lets the sender tell the accept thread when it has finished all
+    // its stats reads, so the receiver holds the accepted connection open for
+    // exactly that long. The old code did `let _ = listener.accept()` (which
+    // drops the accepted socket IMMEDIATELY, closing the connection) then slept
+    // a fixed 2s on the listener — so the sender's send_video / get_*_stats
+    // raced the close and intermittently saw rc!=0 under CI load (flaky gate).
+    let (done_tx, done_rx) = mpsc::channel::<()>();
 
     let _accept_thread = std::thread::spawn(move || {
         let mut listener = ListenerBuilder::new()
@@ -110,8 +117,10 @@ fn mux_sender_stats_round_trip() {
             .expect("bind");
         let port = listener.local_addr().expect("local_addr").port();
         port_tx.send(port).expect("send port");
-        let _ = listener.accept();
-        std::thread::sleep(Duration::from_secs(2));
+        // Bind (not `_`) so the accepted socket stays alive; drop only after
+        // the sender signals done (bounded so a missed signal can't hang).
+        let _accepted = listener.accept();
+        let _ = done_rx.recv_timeout(Duration::from_secs(10));
     });
 
     let port = port_rx
@@ -153,6 +162,8 @@ fn mux_sender_stats_round_trip() {
             .expect("video entry after reset");
         assert_eq!(video_entry2.items, 0);
 
+        // Sender done with its reads — let the accept thread release the peer.
+        let _ = done_tx.send(());
         tst_mux_sender_close(s);
         tst_mux_config_free(cfg);
     }
@@ -177,6 +188,13 @@ fn mux_sender_socket_stats_round_trip() {
     use tstrans::stats::TstSocketStats;
 
     let (port_tx, port_rx) = mpsc::channel::<u16>();
+    // `done` lets the sender tell the accept thread when it has finished all
+    // its stats reads, so the receiver holds the accepted connection open for
+    // exactly that long. The old code did `let _ = listener.accept()` (which
+    // drops the accepted socket IMMEDIATELY, closing the connection) then slept
+    // a fixed 2s on the listener — so the sender's send_video / get_*_stats
+    // raced the close and intermittently saw rc!=0 under CI load (flaky gate).
+    let (done_tx, done_rx) = mpsc::channel::<()>();
 
     let _accept_thread = std::thread::spawn(move || {
         let mut listener = ListenerBuilder::new()
@@ -185,8 +203,10 @@ fn mux_sender_socket_stats_round_trip() {
             .expect("bind");
         let port = listener.local_addr().expect("local_addr").port();
         port_tx.send(port).expect("send port");
-        let _ = listener.accept();
-        std::thread::sleep(Duration::from_secs(2));
+        // Bind (not `_`) so the accepted socket stays alive; drop only after
+        // the sender signals done (bounded so a missed signal can't hang).
+        let _accepted = listener.accept();
+        let _ = done_rx.recv_timeout(Duration::from_secs(10));
     });
 
     let port = port_rx
@@ -224,6 +244,8 @@ fn mux_sender_socket_stats_round_trip() {
         let rc = tst_mux_sender_get_socket_stats(s, std::ptr::null_mut());
         assert_ne!(rc, 0);
 
+        // Sender done with its reads — let the accept thread release the peer.
+        let _ = done_tx.send(());
         // POST-CLOSE: get_socket_stats returns TST_E_NOT_AVAILABLE (-13)
         // because SrtTransport's inner Socket goes to None on close.
         tst_mux_sender_close(s);

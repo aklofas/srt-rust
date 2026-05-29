@@ -777,7 +777,10 @@ jobs:
         # Integration test that imports feature-gated symbols by Rust path.
         # default  → 5 tests; srt-only → 1 test; rtp-only → 4 tests;
         # neither  → 0 tests (compile succeeds, no test bodies active).
+        # feature_matrix_compile now lives in the consolidated `abi` test
+        # binary (see crates/tst-c/tests/MOVEMENT_MAP.md); build that binary
+        # and filter to its tests — the per-mode counts above are unchanged.
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test -p tst-c ${{ matrix.cargo_flags }} --test feature_matrix_compile
+        run: cargo test -p tst-c ${{ matrix.cargo_flags }} --test abi feature_matrix_compile

@@ -439,7 +439,11 @@ jobs:
             -o /tmp/run_scenarios_c_adapter \
             crates/tst-c/examples/c/scenarios/run_scenarios.c \
             -ltstrans
-          LD_LIBRARY_PATH=target/debug /tmp/run_scenarios_c_adapter \
+          # `timeout 60` bounds the standalone C binary the way nextest's
+          # terminate-after bounds the Rust tests — the C adapter is the one
+          # test path that isn't a Rust test under nextest, so a hang here would
+          # otherwise only be caught by the 75-min job cap.
+          LD_LIBRARY_PATH=target/debug timeout 60 /tmp/run_scenarios_c_adapter \
             crates/tst-integration/tests/fixtures/scenarios
 
       - name: Public-API ratchet (no unintended SemVer breaks)

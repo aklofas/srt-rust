@@ -28,6 +28,11 @@ fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    drop(socket);
+    // Join the accept thread BEFORE dropping the connecting socket. Dropping it
+    // first tears the connection down while the listener is still inside
+    // accept(); under the consolidated loopback binary's parallelism the accept
+    // thread loses the CPU race and accept() returns "Connection was broken".
+    // Sibling tests (e.g. getaddrinfo_walk) already join-then-drop for this reason.
     accept.join();
+    drop(socket);
 }

@@ -244,17 +244,31 @@ fn require_tool(name: &str) {
             "Required build tool `{name}` not found on $PATH. \
              librist requires meson + ninja for the vendored build path. \
              Debian/Ubuntu: `sudo apt install meson ninja-build`. \
-             macOS: `brew install meson ninja`."
+             macOS: `brew install meson ninja`. \
+             Windows: `choco install meson ninja`."
         );
     }
 }
 
 fn which(name: &str) -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
+    // On Windows an executable carries an extension (meson.exe, ninja.exe, and
+    // meson is often a .cmd/.bat shim), so the bare `name` is rarely a file on
+    // disk. Probe `name` plus each PATHEXT extension. On Unix the candidate
+    // list is just the bare name, preserving the original behaviour.
+    let mut names = vec![name.to_string()];
+    if cfg!(windows) {
+        let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.BAT;.CMD".to_string());
+        for ext in pathext.split(';').filter(|e| !e.is_empty()) {
+            names.push(format!("{name}{ext}"));
+        }
+    }
     for dir in env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
+        for candidate_name in &names {
+            let candidate = dir.join(candidate_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
     None

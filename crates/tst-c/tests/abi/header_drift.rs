@@ -39,6 +39,13 @@ fn committed_header_matches_cbindgen_output() {
     let generated = inject_feature_defines(&generated);
     let generated = add_section_dividers(&generated);
 
+    // Normalize line endings before comparing: on Windows the committed header
+    // is checked out with CRLF (default core.autocrlf, no .gitattributes pins
+    // it to LF), while cbindgen emits LF — so a raw compare spuriously reports
+    // drift. The drift check is about CONTENT, not EOL, so compare LF-normalized.
+    let expected = expected.replace("\r\n", "\n");
+    let generated = generated.replace("\r\n", "\n");
+
     if generated != expected {
         eprintln!(
             "Drift between crates/tst-c/include/tstrans.h and cbindgen output. \

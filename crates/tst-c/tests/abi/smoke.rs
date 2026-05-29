@@ -8,7 +8,14 @@
 // because the in-place rebuild produced a stripped dylib; the linux side
 // happened to find a cached default-features dylib so the test had been
 // passing falsely under reduced feature sets.
-#![cfg(feature = "srt")]
+//
+// Gated off windows-msvc: this test GNU-links the C example with
+// `cc -ltstrans`, but on the Windows runner `cc` is Strawberry's mingw gcc
+// (`collect2.exe`), which cannot link against the MSVC-ABI `tstrans.dll` /
+// `tstrans.dll.lib` import library. C examples are Linux-only by build
+// convention (see CLAUDE.md); verifying MSVC C-consumption of the cdylib
+// (compile with `cl`, link `tstrans.dll.lib`) is a separate follow-up.
+#![cfg(all(feature = "srt", not(target_os = "windows")))]
 
 use std::env;
 use std::path::PathBuf;

@@ -23,15 +23,26 @@ fn build_mbedtls() -> PathBuf {
         );
     }
 
-    cmake::Config::new(&mbedtls_dir)
-        .define("ENABLE_PROGRAMS", "OFF")
+    let mut cfg = cmake::Config::new(&mbedtls_dir);
+    cfg.define("ENABLE_PROGRAMS", "OFF")
         .define("ENABLE_TESTING", "OFF")
         .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
         .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
         // Hide mbedTLS from -Wall sweeps; we don't author this code.
-        .define("CMAKE_C_FLAGS", "-w")
-        .build()
+        .define("CMAKE_C_FLAGS", "-w");
+
+    // On windows-msvc, Rust links the dynamic release UCRT (`/MD`) regardless
+    // of the cargo profile, but cmake defaults to `/MDd` for a Debug build —
+    // mixing the two trips LNK2038 (RuntimeLibrary mismatch). Pin mbedTLS to
+    // the dynamic release CRT so it matches Rust and the cl-built librist
+    // (which uses `-Db_vscrt=md`). No-op off MSVC.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        cfg.define("CMAKE_POLICY_DEFAULT_CMP0091", "NEW")
+            .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
+    }
+
+    cfg.build()
 }
 
 fn main() {
@@ -151,22 +162,30 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         "-Dtest=false".into(),
         "-Dbuiltin_cjson=true".into(),
     ];
-    // On Windows, librist's `have_mingw_pthreads` option defaults off, which
-    // leaves `HAVE_CLOCK_GETTIME` unset so `contrib/time-shim.c` compiles its
-    // own `clock_gettime` — colliding with the inline definition that newer
-    // mingw `<time.h>` now pulls in via winpthreads (`pthread_time.h`), failing
-    // the build with "redefinition of 'clock_gettime'". Enabling the option
-    // makes meson detect the toolchain's `clock_gettime` (winpthreads is part
-    // of the mingw toolchain on the runner) and skip the shim. This is also
-    // librist's intended Windows threading configuration.
+    let mut meson_envs: Vec<(String, String)> = Vec::new();
+
+    // On Windows the Rust target is `x86_64-pc-windows-msvc`, so librist (and
+    // its bundled contrib/mbedtls + cJSON) MUST be compiled with MSVC `cl` —
+    // not the mingw `gcc` that meson would otherwise pick up from Strawberry
+    // Perl on PATH. A mingw-built `librist.a` references mingw/winpthreads
+    // runtime symbols (`__mingw_printf`, `___chkstk_ms`, `pthread_once`, ...)
+    // that the MSVC linker can't resolve (LNK1120). Force `cl` via CC/CXX (the
+    // MSVC dev environment, incl. `cl` on PATH + INCLUDE/LIB, is set up by the
+    // `ilammy/msvc-dev-cmd` step in CI). With `cl`, MSVC's `<time.h>` has no
+    // `clock_gettime`, so librist's `contrib/time-shim.c` shim compiles cleanly
+    // (no redefinition) and its Windows-native threading path needs no
+    // winpthreads — hence we do NOT enable `have_mingw_pthreads` here.
+    // `-Db_vscrt=md` matches Rust's dynamic UCRT (Rust links `/MD` even in
+    // debug) so the CRTs don't clash at link time.
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        args.push("-Dhave_mingw_pthreads=true".into());
+        meson_envs.push(("CC".to_string(), "cl".to_string()));
+        meson_envs.push(("CXX".to_string(), "cl".to_string()));
+        args.push("-Db_vscrt=md".into());
     }
     // When encryption is wanted, build the SHARED workspace vendor/mbedtls
     // (3.6.x) and point librist's meson at it via PKG_CONFIG_PATH so it links
     // that `mbedcrypto` (`-Dbuiltin_mbedtls=false`) instead of its bundled
     // contrib/mbedtls 2.26.0 — see the `mbedtls` feature note in Cargo.toml.
-    let mut meson_envs: Vec<(String, String)> = Vec::new();
     let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
         let prefix = build_mbedtls();
         let pc_dir = prefix.join("lib").join("pkgconfig");

@@ -111,7 +111,16 @@ fn mux_via_tcp_demux_round_trip_recovers_program_map() {
     let au = synthetic_h264_au();
     for i in 0i64..5 {
         let pts = Pts90khz::new(i * 9001);
-        sender.send_video(&au, pts, true).expect("send_video");
+        // The receiver thread returns the instant it sees a ProgramMap, which
+        // drops its socket. On fast runners that can happen before this loop
+        // finishes, so a later send hits a TCP RST ("connection reset by
+        // peer"). That's benign here — the receiver already has what it needs.
+        // Stop sending on the first broken-transport error; the real assertion
+        // is the channel result below, which reports `false` if the connection
+        // broke *before* a ProgramMap was recovered.
+        if sender.send_video(&au, pts, true).is_err() {
+            break;
+        }
     }
 
     // -----------------------------------------------------------------------

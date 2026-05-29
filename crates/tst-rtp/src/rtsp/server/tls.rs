@@ -156,21 +156,21 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    /// Generate a self-signed cert + key PEM in a tempdir; load them via
-    /// [`TlsServerConfig::load`]; verify build succeeds.
-    ///
-    /// We would use rcgen here to keep the test self-contained (no
-    /// external cert fixture file). rcgen is a dev-dep if not already
-    /// present — the actual cert fixture lives at
-    /// `tests/fixtures/tls_certs.rs` (Wave F Task 24). This unit test is
-    /// a placeholder to confirm the `TlsServerConfig::load` surface
-    /// compiles.
+    /// Generate a self-signed cert + key PEM in a tempdir with rcgen (a
+    /// dev-dep), load them via [`TlsServerConfig::load`], and verify the
+    /// acceptor config builds.
     #[test]
-    #[ignore = "requires rcgen dev-dep; activate when fixture is ready"]
     fn load_self_signed_cert_succeeds() {
-        // Implementation note for Wave F integration tests:
-        // The actual cert fixture lives at tests/fixtures/tls_certs.rs
-        // (Wave F Task 24).
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+            .expect("rcgen self-signed cert");
+        let dir = tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::write(&cert_path, cert.cert.pem()).unwrap();
+        std::fs::write(&key_path, cert.key_pair.serialize_pem()).unwrap();
+
+        TlsServerConfig::load(&cert_path, &key_path)
+            .expect("loading a valid self-signed cert + key should succeed");
     }
 
     /// Load with a non-existent cert file — surfaces

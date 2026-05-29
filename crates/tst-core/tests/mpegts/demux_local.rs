@@ -14,7 +14,8 @@
 //!
 //! KLV presence and non-conformant event counts are tallied per file
 //! and reported via `eprintln!` for visibility (not asserted: shape A
-//! captures may be KLV-bearing, shape C may not be — see TEST_CORPUS.md).
+//! captures may be KLV-bearing, shape C may not be — see
+//! tests/coverage/TEST_CORPUS.md).
 //!
 //! `Demuxer::flush()` is invoked after the last `feed` to surface the
 //! trailing video AU that real-corpus files almost always end mid-emit

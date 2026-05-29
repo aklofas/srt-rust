@@ -19,7 +19,7 @@ The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 
 KLV over SRT** (with RTP and raw TCP / UDP transports in active development; RIST
 may follow). Other containers (MP4 / CMAF), other transports (RTMP / WebRTC), and
 raw elementary streams remain out of scope until a consumer asks. See
-`crates/tst-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
+`tests/coverage/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
 ---

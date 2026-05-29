@@ -1,0 +1,48 @@
+# Stream coverage matrix — ADVISORY. Captures coverage *intent* across the
+# stream-shape axes. Not enforced (scripts/check-test-manifests.sh only checks
+# that `status` values are recognized). Drives cross-binding scenario selection
+# and flags known gaps.
+#
+# status ∈ { covered | partial | gap }
+
+[video]
+h264 = "covered"   # carriage + slice-header-light parse + conformance param sets
+h265 = "covered"   # carriage + parse + real-x265 round trip (Tier C)
+h266 = "covered"   # carriage + parse + JVET conformance param sets
+av1  = "partial"   # binding-conformant carriage; raw-OBU interop is a known variant
+
+[audio]
+mp2      = "covered"
+mp3      = "covered"   # on 0x03 and 0x0F mislabeled PIDs
+aac_adts = "covered"
+aac_latm = "covered"
+ac3      = "partial"   # carriage validated; deep parse is a gap
+
+[subtitle]
+dvb_subtitle = "covered"
+dvb_teletext = "covered"
+webvtt_in_ts = "covered"
+cea708       = "partial"   # standalone fixture present; full decode path is a gap
+
+[klv]
+st0601 = "covered"   # typed decode/encode + AU-cell sync/async + CFI tolerance
+st0102 = "covered"   # via 0601 security metadata
+st0605 = "covered"
+st0903 = "covered"   # VMTI; standalone + via-0601
+
+[program]
+single_program = "covered"
+multi_program  = "covered"
+
+[descriptor]
+klva                = "covered"   # KLV stream KLVA descriptor
+subtitle_descriptor = "covered"   # DVB subtitling / teletext descriptors
+registration        = "partial"
+
+# Known gaps to drive future scenario / fixture work (Tier D):
+[gaps]
+notes = [
+  "AV1 raw-OBU interop decode (not just binding-conformant carriage)",
+  "AC3 / CEA-708 deep parse beyond carriage",
+  "registration-descriptor edge cases",
+]

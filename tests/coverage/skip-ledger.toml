@@ -1,0 +1,61 @@
+# Skip ledger — every intentional skip / #[ignore], with a class and rationale.
+# Advisory: scripts/check-test-manifests.sh checks only that each entry has a
+# recognized `class` and that placeholder/blocked_bug entries carry an
+# `expires_after` (or, for already-resolved blocked_bug entries, a `resolved`).
+#
+# class ∈ { placeholder | external_tool | environmental | slow | diagnostic | blocked_bug }
+#   placeholder   — stub awaiting real coverage (expires_after REQUIRED)
+#   external_tool — needs ffmpeg/ffprobe/tsduck/dav1d/vlc on PATH
+#   environmental — timing/scheduler/network sensitive; flaky off the happy path
+#   slow          — too slow for PR CI (soak, long fuzz)
+#   diagnostic    — produces artifacts / informational matrices for a human
+#   blocked_bug   — disabled pending a fix (expires_after REQUIRED, or resolved)
+
+# --- Resolved (history; no longer an active skip) ---------------------------
+
+[[skip]]
+test = "auto_fallback_udp_to_tcp_on_461"
+crate = "tst-rtp"
+class = "blocked_bug"
+resolved = "2026-05-28"
+note = """
+The WS-1 CI-hang quarantine. Un-ignored in 0368fc8f and now passes on Linux
+x86_64 + aarch64 (run 26607873300). Root cause was the in-session RTSP PLAY
+write-lock starvation, fixed by the write_gate in 6de05208. Recorded here so
+the ledger preserves the history without normalizing an active skip.
+"""
+
+# --- External-tool tests (Tier B / C — need a decoder or muxer on PATH) -----
+
+[[skip]]
+test = "ffprobe/ffmpeg/dav1d round-trip + conformance cross-checks"
+crate = "tst-core"
+class = "external_tool"
+note = """
+Family of #[ignore]d tests that shell out to ffprobe/ffmpeg/dav1d:
+audio_corpus_cross_check, ffprobe_validates_* / *_ffprobe_agrees (subtitles),
+dav1d_handles_extracted_binding_bitstream_without_crashing,
+ffmpeg_copy_extracts_ts_obu_framed_bitstream_from_binding_mode,
+ffprobe_deep_classification_diff_binding_vs_interop. Run via
+scripts/release-validation.sh, which installs the tools first.
+"""
+
+[[skip]]
+test = "diagnostic_dump_for_results_doc"
+crate = "tst-core"
+class = "diagnostic"
+note = "Writes AV1 binding/interop artifacts + tool reports for the results doc; run on demand with --ignored."
+
+[[skip]]
+test = "wave_i1_matrix_no_regression"
+crate = "tst-core"
+class = "diagnostic"
+note = "Strict subtitle-interop regression guard; run explicitly before tagging a release (informational variant runs in PR CI)."
+
+# --- Environmental (timing / scheduler sensitive) ---------------------------
+
+[[skip]]
+test = "slow_peer_does_not_block_muxer"
+crate = "tst-srt"
+class = "environmental"
+note = "Backpressure timing test; sensitive to scheduler latency, so kept off the always-on path."

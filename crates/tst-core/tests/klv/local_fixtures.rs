@@ -3,7 +3,7 @@
 //! passes silently in CI.
 //!
 //! The shape variants this test slot is meant to exercise are documented
-//! in `TEST_CORPUS.md` (alongside this file). Filename prefixes drive
+//! in `tests/coverage/TEST_CORPUS.md`. Filename prefixes drive
 //! per-shape assertions:
 //!
 //! - `multi-record-pes-*.klv` — PES payload with a wrapper UL preceding

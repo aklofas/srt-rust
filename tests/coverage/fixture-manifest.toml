@@ -1,0 +1,63 @@
+# Fixture provenance manifest. Every committed fixture GROUP declares where it
+# came from so a reviewer can confirm nothing private leaked in. Advisory:
+# scripts/check-test-manifests.sh enforces that each `root` exists, each
+# `origin` is recognized, `no_private_corpus` is true, and no path is absolute
+# or escapes the repo (no leading `/`, no `..`). It does NOT re-hash files
+# (integrity enforcement is deferred).
+#
+# origin ∈ { synthetic | public | derived }
+#   synthetic — generated from scratch by one of our tools / regen scripts
+#   public    — verbatim from a public, redistributable source
+#   derived   — extracted/transformed from a public source (e.g. a param-set
+#               body stripped from an official conformance bitstream)
+#
+# The private real-world corpus lives ONLY under crates/*/tests/fixtures/local/
+# (gitignored) and is NEVER catalogued here — committed fixtures only.
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/st0601"
+origin = "synthetic"
+generator = "cargo run -p tst-core --bin gen_synthetic_fixtures"
+no_private_corpus = true
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/subtitles"
+origin = "synthetic"
+generator = "cargo run -p tst-core --bin gen_subtitle_fixtures (+ fixtures/subtitles/regen.sh)"
+no_private_corpus = true
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/audio"
+origin = "synthetic"
+generator = "crates/tst-core/tests/fixtures/audio/regen.sh (ffmpeg-synthesized)"
+no_private_corpus = true
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/codec/av1"
+origin = "synthetic"
+generator = "cargo run -p tst-core --bin gen_av1_fixtures"
+no_private_corpus = true
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/codec"
+origin = "synthetic"
+generator = "crates/tst-core/tests/fixtures/codec/_regen.sh (real-encoder param sets)"
+no_private_corpus = true
+
+[[group]]
+root = "crates/tst-core/tests/fixtures/conformance"
+origin = "derived"
+generator = "cargo run -p tst-core --bin strip_conformance_parameter_sets (RBSP bodies stripped from official ITU-T JVT/JCT-VC/JVET + AOMedia conformance bitstreams; see conformance/manifest.toml for upstream URLs + sha256)"
+no_private_corpus = true
+
+# Generated inventory of fuzz targets (provenance: our fuzz harnesses).
+[[group]]
+root = "tests/coverage/fuzz-targets.toml"
+origin = "synthetic"
+generator = "scripts/gen-fuzz-targets.sh"
+no_private_corpus = true
+
+# NOTE: when the cross-binding scenario harness (crates/tst-integration) lands,
+# add its generated goldens here:
+#   root = "crates/tst-integration/tests/fixtures/scenarios"
+#   origin = "synthetic", generator = "cargo run -p tst-integration --bin gen_scenarios"

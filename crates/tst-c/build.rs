@@ -94,6 +94,21 @@ fn main() {
         }
     }
 
+    // MSVC equivalent of the Linux dual-mbedTLS dedup above. libsrt + librist
+    // each link the shared vendor/mbedtls 3.6.x (rist-sys finds it via
+    // pkg-config rather than bundling contrib/mbedtls), so two byte-identical
+    // static copies export duplicate `mbedtls_*` symbols and link.exe errors
+    // (LNK2005/LNK1169) without an override. `/FORCE:MULTIPLE` collapses onto
+    // the first definition — the same effect `--allow-multiple-definition`
+    // gives on Linux, safe because the two copies are the identical 3.6.x.
+    #[cfg(target_os = "windows")]
+    {
+        if std::env::var("CARGO_FEATURE_SRT").is_ok() && std::env::var("CARGO_FEATURE_RIST").is_ok()
+        {
+            println!("cargo:rustc-link-arg=/FORCE:MULTIPLE");
+        }
+    }
+
     #[cfg(target_os = "macos")]
     {
         let crate_dir_path = PathBuf::from(&crate_dir);

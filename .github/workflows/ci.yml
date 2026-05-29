@@ -81,7 +81,11 @@ jobs:
         # already on PATH, sidestepping the MSI PATH-refresh problem entirely.
         if: matrix.name == 'windows-msvc'
         run: |
-          choco install -y --no-progress ninja ripgrep
+          # pkgconfiglite provides pkg-config so librist's meson can find the
+          # shared vendor/mbedtls 3.6.x via PKG_CONFIG_PATH (rist-sys build.rs)
+          # instead of falling back to its bundled contrib/mbedtls 2.26.0 — a
+          # version mismatch with libsrt's mbedTLS would corrupt shared state.
+          choco install -y --no-progress ninja ripgrep pkgconfiglite
           python -m pip install --upgrade meson
 
       - name: Install Rust toolchain

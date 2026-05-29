@@ -288,6 +288,21 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         println!("cargo:rustc-link-lib=dylib=pthread");
     }
 
+    // librist's `src/network.c` calls the Windows IP Helper API
+    // (`GetAdaptersInfo`, in iphlpapi.dll) and Winsock (`ws2_32.dll`) — the
+    // same system libs librist's own meson.build lists for Windows. Our static
+    // link line doesn't inherit those, so emit them here or the cdylib link
+    // fails with `unresolved external symbol __imp_GetAdaptersInfo` (LNK1120).
+    // bcrypt covers mbedTLS's BCryptGenRandom entropy when encryption is on
+    // (mirrors srt-sys).
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rustc-link-lib=dylib=iphlpapi");
+        println!("cargo:rustc-link-lib=dylib=ws2_32");
+        if want_mbedtls {
+            println!("cargo:rustc-link-lib=dylib=bcrypt");
+        }
+    }
+
     // librist's build also generates `librist_config.h` (and vcs_version.h)
     // into <build_dir>/include/librist/. peer.h `#include`s this generated
     // header via a relative include (`#include "librist_config.h"`), so the

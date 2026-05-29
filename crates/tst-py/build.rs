@@ -19,4 +19,19 @@ fn main() {
             println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
         }
     }
+
+    // MSVC equivalent of the Linux block above. libsrt and librist each link
+    // the shared vendor/mbedtls 3.6.x (rist-sys uses pkg-config to avoid its
+    // bundled copy), giving two byte-identical static mbedTLS copies with
+    // duplicate `mbedtls_*` symbols; link.exe errors (LNK2005/LNK1169) without
+    // an override. `/FORCE:MULTIPLE` collapses onto the first definition, the
+    // same outcome `--allow-multiple-definition` gives on Linux. Safe only
+    // because both copies are the identical 3.6.x version.
+    #[cfg(target_os = "windows")]
+    {
+        if std::env::var("CARGO_FEATURE_SRT").is_ok() && std::env::var("CARGO_FEATURE_RIST").is_ok()
+        {
+            println!("cargo:rustc-link-arg=/FORCE:MULTIPLE");
+        }
+    }
 }

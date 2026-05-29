@@ -1,0 +1,23 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "klv",
+      "program": 1,
+      "pid": 4145,
+      "stream_type": "klv_async",
+      "set": "async"
+    },
+    {
+      "event": "video",
+      "program": 1,
+      "pid": 4113,
+      "stream_type": "h264",
+      "pts": 90000,
+      "key": true,
+      "payload_sha256": "9b3800ff229e938456ed26839bfcf4db05a2ad618be5aa08ef4b9756a20b9be3"
+    }
+  ],
+  "extensions": null
+}

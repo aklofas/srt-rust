@@ -1,0 +1,26 @@
+[[scenario]]
+id = "h264-st0601-mp"
+kind = "demux"
+input = "h264-st0601-mp/input.ts"
+golden = "h264-st0601-mp/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "video-roundtrip"
+kind = "roundtrip"
+input = "video-roundtrip/output.ts"
+golden = "video-roundtrip/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "strict-rejection"
+kind = "binding_contract"
+input = "strict-rejection/input.bin"
+golden = "strict-rejection/golden.json"
+features = []
+tier = "A"
+schema_version = 0

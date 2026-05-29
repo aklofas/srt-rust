@@ -2194,6 +2194,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tst-integration"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml 0.8.23",
+ "tst-core",
+ "tst-test-helpers",
+]
+
+[[package]]
 name = "tst-pipeline"
 version = "0.1.0"
 dependencies = [

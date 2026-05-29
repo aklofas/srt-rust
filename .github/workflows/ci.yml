@@ -288,12 +288,13 @@ jobs:
         run: cargo +nightly doc --workspace --no-deps --all-features
 
       - name: cargo test --doc
-        # Skipped on Windows MSVC pending plan #65 follow-up: doctest
-        # binaries link against libsrt; runtime tests using SRT loopback
-        # hang on Windows (different EOS / close semantics than Linux /
-        # macOS). Compile + link is verified via the cargo build steps
-        # below.
-        if: matrix.name != 'windows-msvc'
+        # Enabled on windows-msvc 2026-05-29: the plan #65 SRT-loopback hang
+        # did NOT reproduce on the cl-built libsrt (diag_win_srt_close showed
+        # blocking recv wakes on peer-close immediately, same as Linux), so the
+        # old "hangs on Windows" deferral no longer applies. `timeout-minutes`
+        # bounds any residual hang; windows-msvc is continue-on-error so a
+        # failure there stays non-gating.
+        timeout-minutes: 15
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
@@ -309,12 +310,11 @@ jobs:
         run: cargo build --workspace
 
       - name: cargo test (default features, with mbedtls)
-        # Skipped on Windows MSVC pending plan #65 follow-up — see
-        # cargo test --doc comment above. Runtime loopback tests
-        # surface different EOS / cancellation semantics on Windows;
-        # the test corpus needs dedicated triage before flipping back
-        # on. Compile + link verified via the cargo build step above.
-        if: matrix.name != 'windows-msvc'
+        # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment
+        # above. This is the step that originally hung at demux_receiver_loopback
+        # (plan #65); the cl-built libsrt no longer hangs. timeout-minutes bounds
+        # any residual hang; windows-msvc stays non-gating.
+        timeout-minutes: 15
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
@@ -327,9 +327,8 @@ jobs:
         run: cargo build --workspace --no-default-features
 
       - name: cargo test (no-default-features, no encryption)
-        # Skipped on Windows MSVC pending plan #65 follow-up — see
-        # cargo test --doc comment above.
-        if: matrix.name != 'windows-msvc'
+        # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
+        timeout-minutes: 15
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
@@ -400,8 +399,8 @@ jobs:
         # as a guard against silent breakage when a future feature gets
         # added that isn't in the default set — the audit (Phase 6 Theme O)
         # called out this rail as a coverage gap.
-        # Skipped on Windows MSVC pending plan #65 follow-up.
-        if: matrix.name != 'windows-msvc'
+        # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
+        timeout-minutes: 15
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"

@@ -391,8 +391,12 @@ jobs:
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles
         # crates/tst-c/examples/c/scenarios/run_scenarios.c against the
-        # libtstrans.so built by the `cargo build --workspace --all-features`
-        # step above, then runs it against the committed golden fixtures.
+        # libtstrans.so produced by the "cargo build (all crate types,
+        # all-features)" step above (the last cdylib-producing build; the
+        # intervening "cargo test (all features)" step only rebuilds rlibs and
+        # leaves the cdylib intact). tst_demuxer_* is unconditional (not
+        # feature-gated), so any of the build steps would suffice, but this is
+        # the freshest. Then runs the adapter against the committed goldens.
         #
         # Exit 0 = all 3 scenarios matched committed goldens (C ABI parity).
         # Exit non-zero = C adapter output diverged from a golden — signals a

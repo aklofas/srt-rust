@@ -672,14 +672,24 @@ typedef struct {
     size_t pmt_stream_count;
 } raw_event_t;
 
-/* Compute the sha256 of all NAL payloads for a VIDEO sample event.
+/* Compute the sha256 of a SAMPLE event's payload (video OR audio).
  *
- * WHY concatenation: the Rust normaliser's video_payload_bytes() concatenates
- * all NAL unit payloads (RBSP bytes, Annex-B start codes already stripped) and
- * sha256s the result. The C ABI exposes the same RBSP bytes on nals[i].payload.
- * For AV1 it uses obus[i].payload. We mirror that exactly here.
+ * MUST be called in Pass 1, while the borrowed arena pointers
+ * (nals[i].payload / obus[i].payload / sample.payload) are still valid —
+ * i.e. before the next tst_demuxer_next_event or tst_demuxer_close call.
+ * Pass 2 reads the precomputed digest; it must NEVER touch the arena
+ * pointers after the demuxer is closed (arena-lifetime contract).
+ *
+ * Video — WHY concatenation: the Rust normaliser's video_payload_bytes()
+ * concatenates all NAL unit payloads (RBSP bytes, Annex-B start codes already
+ * stripped) and sha256s the result. The C ABI exposes the same RBSP bytes on
+ * nals[i].payload. For AV1 it uses obus[i].payload. We mirror that exactly.
+ *
+ * Audio — the Rust normaliser hashes the raw `frames` bytes from
+ * SamplePayload::Audio; the C ABI surfaces the same raw frame bytes on
+ * sample.payload/payload_len (post-PES stripping).
  */
-static void compute_video_sha256(const tst_event_t *ev, char out_hex[65]) {
+static void compute_sample_sha256(const tst_event_t *ev, char out_hex[65]) {
     sha256_ctx_t ctx;
     sha256_init(&ctx);
     if (ev->u.sample.stream_kind == TST_STREAM_KIND_VIDEO) {
@@ -705,6 +715,10 @@ static void compute_video_sha256(const tst_event_t *ev, char out_hex[65]) {
              * well-formed H.264/H.265/H.266/AV1 streams). */
             sha256_update(&ctx, ev->u.sample.payload, ev->u.sample.payload_len);
         }
+    } else if (ev->u.sample.stream_kind == TST_STREAM_KIND_AUDIO) {
+        /* Audio — hash the raw frame bytes (same bytes the Rust normaliser
+         * hashes from SamplePayload::Audio's `frames`). */
+        sha256_update(&ctx, ev->u.sample.payload, ev->u.sample.payload_len);
     }
     uint8_t digest[32];
     sha256_final(&ctx, digest);
@@ -789,11 +803,13 @@ static int run_demux(const char *scenarios_dir_path,
         /* Per-kind payload capture while pointers are still valid. */
         switch (ev.kind) {
             case TST_EVENT_KIND_SAMPLE:
-                /* Compute sha256 of concatenated NAL/OBU payloads NOW,
-                 * before the next next_event call invalidates the borrowed
-                 * arena pointers. */
-                if (ev.u.sample.stream_kind == TST_STREAM_KIND_VIDEO) {
-                    compute_video_sha256(&ev, re->sample_payload_sha256);
+                /* Compute sha256 of the sample payload (video NAL/OBU bytes or
+                 * audio frame bytes) NOW, before the next next_event call — and
+                 * crucially before tst_demuxer_close — invalidates the borrowed
+                 * arena pointers. Pass 2 reads only this precomputed digest. */
+                if (ev.u.sample.stream_kind == TST_STREAM_KIND_VIDEO
+                    || ev.u.sample.stream_kind == TST_STREAM_KIND_AUDIO) {
+                    compute_sample_sha256(&ev, re->sample_payload_sha256);
                 }
                 break;
 
@@ -902,12 +918,11 @@ static int run_demux(const char *scenarios_dir_path,
                     snprintf(cev.stream_type, sizeof(cev.stream_type), "0x%02x", st);
                     cev.kind = CE_AUDIO;
                     cev.pts  = e->u.sample.pts;
-                    /* Audio payload sha256: the C ABI surfaces the raw audio frame
-                     * bytes on sample.payload/payload_len (post-PES stripping).
-                     * The Rust normaliser hashes `frames` which is the raw frame
-                     * bytes from SamplePayload::Audio — the same bytes. */
-                    sha256_hex(e->u.sample.payload, e->u.sample.payload_len,
-                               cev.payload_sha256);
+                    /* Read the digest precomputed in Pass 1. The arena pointers
+                     * (e->u.sample.payload) are already freed by tst_demuxer_close;
+                     * we must NEVER dereference them here. */
+                    strncpy(cev.payload_sha256, re->sample_payload_sha256,
+                            sizeof(cev.payload_sha256) - 1);
                     core_event_list_push(out_events, &cev);
 
                 } else if (sk == TST_STREAM_KIND_UNKNOWN) {
@@ -1319,6 +1334,16 @@ static int compare_core_events(const char *scenario_id,
                     fprintf(stderr, "FAIL [%s] error[%d]: code '%s' != '%s'\n",
                             scenario_id, i, o->code, e->code); ok = 0;
                 }
+                break;
+
+            default:
+                /* Defensive: an out-of-range kind must fail loudly rather than
+                 * compare equal. Unreachable today (unknown golden tags are
+                 * rejected in parse_golden_core), but a silent pass on a future
+                 * kind would be a parity hole. */
+                fprintf(stderr, "FAIL [%s] event[%d]: unhandled core event "
+                        "kind %d\n", scenario_id, i, o->kind);
+                ok = 0;
                 break;
         }
     }

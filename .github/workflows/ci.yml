@@ -84,18 +84,6 @@ jobs:
           choco install -y --no-progress ninja ripgrep
           python -m pip install --upgrade meson
 
-      - name: Set up MSVC developer environment (Windows)
-        # rist-sys builds librist via meson, which compiles with whatever C
-        # compiler is on PATH. The runner ships Strawberry Perl's mingw `gcc`,
-        # so meson would build a mingw-ABI `librist.a` that the MSVC linker
-        # can't resolve (LNK1120: __mingw_printf / ___chkstk_ms / ...). This
-        # action puts MSVC `cl` + INCLUDE/LIB on PATH for the rest of the job;
-        # build.rs forces meson to use `cl` via CC/CXX. (srt-sys uses cmake,
-        # which finds MSVC via its VS generator without this — only the meson
-        # path needs `cl` explicitly on PATH.)
-        if: matrix.name == 'windows-msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

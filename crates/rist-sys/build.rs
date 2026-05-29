@@ -169,17 +169,48 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     // not the mingw `gcc` that meson would otherwise pick up from Strawberry
     // Perl on PATH. A mingw-built `librist.a` references mingw/winpthreads
     // runtime symbols (`__mingw_printf`, `___chkstk_ms`, `pthread_once`, ...)
-    // that the MSVC linker can't resolve (LNK1120). Force `cl` via CC/CXX (the
-    // MSVC dev environment, incl. `cl` on PATH + INCLUDE/LIB, is set up by the
-    // `ilammy/msvc-dev-cmd` step in CI). With `cl`, MSVC's `<time.h>` has no
-    // `clock_gettime`, so librist's `contrib/time-shim.c` shim compiles cleanly
-    // (no redefinition) and its Windows-native threading path needs no
-    // winpthreads — hence we do NOT enable `have_mingw_pthreads` here.
+    // that the MSVC linker can't resolve (LNK1120).
+    //
+    // We locate `cl` and its environment (INCLUDE/LIB/PATH) via the same MSVC
+    // registry discovery the `cmake` crate uses for srt-sys, and inject it into
+    // ONLY the meson/ninja subprocesses (see `run_cmd`). This deliberately does
+    // NOT pollute the whole process env (the earlier `ilammy/msvc-dev-cmd`
+    // approach did, which made bindgen's libclang pick up MSVC's bundled
+    // clang headers and fail parsing `__m64` in `mmintrin.h`). With `cl`, MSVC's
+    // `<time.h>` has no `clock_gettime`, so librist's `contrib/time-shim.c`
+    // shim compiles cleanly (no redefinition) and its Windows-native threading
+    // path needs no winpthreads — hence we do NOT enable `have_mingw_pthreads`.
     // `-Db_vscrt=md` matches Rust's dynamic UCRT (Rust links `/MD` even in
     // debug) so the CRTs don't clash at link time.
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        meson_envs.push(("CC".to_string(), "cl".to_string()));
-        meson_envs.push(("CXX".to_string(), "cl".to_string()));
+        let target = env::var("TARGET").unwrap_or_default();
+        let cl = cc::windows_registry::find_tool(&target, "cl.exe").unwrap_or_else(|| {
+            panic!(
+                "Could not locate MSVC `cl.exe` for target `{target}`. \
+                 librist's meson build needs the MSVC toolchain on windows-msvc; \
+                 ensure Visual Studio Build Tools (VC++) are installed."
+            )
+        });
+        // Tool::env() yields the INCLUDE/LIB/PATH (and friends) the MSVC
+        // compiler needs; forward each into the meson subprocess env. For PATH
+        // we APPEND the discovered MSVC dirs to the inherited PATH rather than
+        // replacing it, so meson + ninja (installed on the original PATH) stay
+        // findable by the `meson compile` step.
+        for (k, v) in cl.env() {
+            let key = k.to_string_lossy().into_owned();
+            let mut val = v.to_string_lossy().into_owned();
+            if key.eq_ignore_ascii_case("path") {
+                if let Some(existing) = env::var_os(&key) {
+                    val.push(';');
+                    val.push_str(&existing.to_string_lossy());
+                }
+            }
+            meson_envs.push((key, val));
+        }
+        // Point meson at the discovered cl.exe explicitly so it doesn't fall
+        // back to the mingw gcc that is also on PATH.
+        meson_envs.push(("CC".to_string(), cl.path().to_string_lossy().into_owned()));
+        meson_envs.push(("CXX".to_string(), cl.path().to_string_lossy().into_owned()));
         args.push("-Db_vscrt=md".into());
     }
     // When encryption is wanted, build the SHARED workspace vendor/mbedtls

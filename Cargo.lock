@@ -1488,6 +1488,7 @@ name = "rist-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+ "cc",
  "cmake",
  "libc",
  "pkg-config",

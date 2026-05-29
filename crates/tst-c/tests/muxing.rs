@@ -19,3 +19,5 @@ mod multi_program_event_identity;
 mod multi_stream;
 #[path = "muxing/stats.rs"]
 mod stats;
+#[path = "muxing/demuxer_offline.rs"]
+mod demuxer_offline;

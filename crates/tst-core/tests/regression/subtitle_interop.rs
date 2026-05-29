@@ -542,8 +542,8 @@ fn print_matrix(rows: &[ProbeResult]) {
 /// that the harness itself runs). Cells where the tool is missing
 /// become `skip` rows — they don't fail the test.
 ///
-/// Run with `cargo test -p tst-core --test wave_i1_subtitle_interop
-/// -- --nocapture` to view the matrix.
+/// Run with `cargo test -p tst-core --test regression
+/// subtitle_interop::wave_i1_matrix_informational -- --nocapture` to view the matrix.
 #[test]
 fn wave_i1_matrix_informational() {
     let rows = run_matrix();
@@ -566,8 +566,8 @@ fn wave_i1_matrix_informational() {
 /// so PR CI doesn't break when ffmpeg builds drift behavior, but
 /// run explicitly before tagging a release.
 ///
-/// `cargo test -p tst-core --test wave_i1_subtitle_interop
-/// wave_i1_matrix_no_regression -- --ignored --nocapture`
+/// `cargo test -p tst-core --test regression
+/// subtitle_interop::wave_i1_matrix_no_regression -- --ignored --nocapture`
 #[test]
 #[ignore = "Strict — run explicitly before release; PR CI uses informational variant"]
 fn wave_i1_matrix_no_regression() {

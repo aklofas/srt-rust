@@ -15,7 +15,7 @@ use tst_core::codec::ChromaFormat;
 use tst_core::codec::h266::{H266Sps, parse_sps};
 
 const REAL_VVENC_SPS: &[u8] =
-    include_bytes!("fixtures/codec/h266/h266_320x240_main10_real_sps.bin");
+    include_bytes!("../fixtures/codec/h266/h266_320x240_main10_real_sps.bin");
 
 #[test]
 fn parse_real_vvenc_main10_sps_recovers_dimensions_and_frame_rate() {

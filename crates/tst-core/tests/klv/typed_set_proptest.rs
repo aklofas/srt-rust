@@ -37,6 +37,7 @@
 //! recording the bug — silent suppression defeats the point of the
 //! property test.
 
+#[path = "../common/mod.rs"]
 mod common;
 
 use common::imapb_tol;

@@ -4,7 +4,7 @@
 //! each outcome bucket for visibility.
 //!
 //! Run:
-//!   cargo test --test audio_corpus_cross_check -- --include-ignored
+//!   cargo test -p tst-core --test codec audio_corpus_cross_check:: -- --include-ignored
 //!
 //! The corpus has known shapes the parser must survive cleanly:
 //! - Silent audio (header-valid frames carrying constant samples) →

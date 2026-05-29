@@ -11,8 +11,8 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 
-const SPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
-const PPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
+const SPS_RBSP: &[u8] = include_bytes!("../fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
+const PPS_RBSP: &[u8] = include_bytes!("../fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
 
 /// Build a minimal Annex-B access unit: SPS NAL + PPS NAL + IDR slice NAL.
 ///

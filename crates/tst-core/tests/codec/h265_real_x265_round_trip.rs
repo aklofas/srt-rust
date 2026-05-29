@@ -15,9 +15,9 @@
 use tst_core::codec::h265::{H265Sps, parse_sps};
 use tst_core::codec::{ColourPrimaries, MatrixCoefficients, TransferCharacteristics};
 
-const REAL_MAIN40_SPS: &[u8] = include_bytes!("fixtures/codec/h265/h265_1080p_main40_sps.bin");
+const REAL_MAIN40_SPS: &[u8] = include_bytes!("../fixtures/codec/h265/h265_1080p_main40_sps.bin");
 const REAL_MAIN10_PQ_SPS: &[u8] =
-    include_bytes!("fixtures/codec/h265/h265_1080p_main10_50_pq_sps.bin");
+    include_bytes!("../fixtures/codec/h265/h265_1080p_main10_50_pq_sps.bin");
 
 #[test]
 fn parse_real_x265_main40_sps_produces_full_field_set() {

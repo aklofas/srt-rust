@@ -613,8 +613,8 @@ fn dav1d_handles_extracted_binding_bitstream_without_crashing() {
 /// interop streams to /tmp + runs every available external tool,
 /// captures all outputs to a single report file.
 ///
-/// Run with: `cargo test --test wave_i2_av1_external_decoder
-///   diagnostic_dump_for_results_doc -- --ignored --nocapture`
+/// Run with: `cargo test -p tst-core --test regression
+///   av1_external_decoder::diagnostic_dump_for_results_doc -- --ignored --nocapture`
 #[test]
 #[ignore = "diagnostic — generates artifacts for docs/validate-1/13b-i2-av1-conformant-results.md"]
 fn diagnostic_dump_for_results_doc() {

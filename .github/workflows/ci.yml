@@ -65,15 +65,16 @@ jobs:
       - name: Install build prerequisites (macOS)
         # librist's vendored build is meson-driven and needs both `meson` and
         # `ninja` on PATH; macOS runners ship neither by default. cmake is
-        # pre-installed.
+        # pre-installed. ripgrep backs check-no-direct-not-available-not-found-cast.sh
+        # (which now fails closed if `rg` is missing instead of silently passing).
         if: matrix.name == 'macos-arm64'
-        run: brew install meson ninja
+        run: brew install meson ninja ripgrep
 
       - name: Install build prerequisites (Windows)
         # Same meson + ninja requirement as macOS. windows-latest ships cmake
-        # + MSVC + Strawberry Perl; meson and ninja install cleanly via choco.
+        # + MSVC + Strawberry Perl; meson, ninja, and ripgrep install via choco.
         if: matrix.name == 'windows-msvc'
-        run: choco install -y --no-progress meson ninja
+        run: choco install -y --no-progress meson ninja ripgrep
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

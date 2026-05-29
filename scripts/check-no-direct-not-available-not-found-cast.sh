@@ -23,7 +23,28 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BYPASS=$(rg -n "TstError::(NotAvailable|NotFound) as i32" crates/tst-c/src/ \
+# Fail closed if ripgrep is absent. The previous `rg ... | grep ... || true`
+# shape masked rg's own failure: with pipefail the pipeline status is the
+# rightmost grep (exit 1, "no match"), and `|| true` swallowed even that — so
+# on a runner without `rg` the guard printed OK without scanning anything.
+if ! command -v rg >/dev/null 2>&1; then
+    echo "FAIL: ripgrep (rg) is required by $(basename "$0") but is not on PATH." >&2
+    echo "  Install it (apt install ripgrep / brew install ripgrep / choco install ripgrep)." >&2
+    exit 1
+fi
+
+# Drive pass/fail off rg's own exit code: 0 = matches, 1 = no matches (healthy),
+# >=2 = a real rg error that must red the build rather than be filtered away.
+set +e
+matches=$(rg -n "TstError::(NotAvailable|NotFound) as i32" crates/tst-c/src/)
+rg_rc=$?
+set -e
+if [ "$rg_rc" -ge 2 ]; then
+    echo "FAIL: ripgrep errored (exit $rg_rc) scanning crates/tst-c/src/." >&2
+    exit 1
+fi
+
+BYPASS=$(printf '%s' "$matches" \
     | grep -v "assert_eq" \
     | grep -v "^crates/tst-c/src/error.rs:" \
     || true)

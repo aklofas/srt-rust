@@ -63,12 +63,18 @@ jobs:
           sudo apt-get install -y build-essential cmake pkg-config meson ninja-build ripgrep
 
       - name: Install build prerequisites (macOS)
-        # librist's vendored build is meson-driven and needs both `meson` and
-        # `ninja` on PATH; macOS runners ship neither by default. cmake is
-        # pre-installed. ripgrep backs check-no-direct-not-available-not-found-cast.sh
-        # (which now fails closed if `rg` is missing instead of silently passing).
+        # librist's vendored build is meson-driven and needs `meson` + `ninja`
+        # on PATH; cmake is pre-installed. ripgrep backs
+        # check-no-direct-not-available-not-found-cast.sh (fails closed if `rg`
+        # is missing). Install only what's absent: `ninja` (and sometimes others)
+        # is now pre-installed on the macos-14 image, and `brew install` on an
+        # already-present formula emits a `::warning::` — guard with `brew list`
+        # to keep the log clean.
         if: matrix.name == 'macos-arm64'
-        run: brew install meson ninja ripgrep
+        run: |
+          for pkg in meson ninja ripgrep; do
+            brew list --formula "$pkg" >/dev/null 2>&1 || brew install "$pkg"
+          done
 
       - name: Install build prerequisites (Windows)
         # Same meson + ninja requirement as macOS. windows-latest ships cmake

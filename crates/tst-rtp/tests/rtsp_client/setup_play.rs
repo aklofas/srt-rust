@@ -1,5 +1,4 @@
-mod fixtures;
-use fixtures::rtsp_loopback_server::*;
+use crate::fixtures::rtsp_loopback_server::*;
 
 #[test]
 fn setup_play_udp_succeeds() {

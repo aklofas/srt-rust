@@ -1,8 +1,7 @@
 //! Validate that RTCP rides the interleaved channel pair (N=0 RTP, N+1=1 RTCP)
 //! when SETUP negotiates TCP-interleaved.
 
-mod fixtures;
-use fixtures::rtsp_loopback_server::*;
+use crate::fixtures::rtsp_loopback_server::*;
 
 #[test]
 fn interleaved_session_uses_tcp_transport_kind() {

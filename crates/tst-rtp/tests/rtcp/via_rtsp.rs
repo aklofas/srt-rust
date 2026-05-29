@@ -1,8 +1,7 @@
 //! Validate that RTCP rides the SETUP-negotiated UDP port pair when
 //! the transport is UDP.
 
-mod fixtures;
-use fixtures::rtsp_loopback_server::*;
+use crate::fixtures::rtsp_loopback_server::*;
 
 #[test]
 fn rtcp_endpoint_extracted_from_session() {

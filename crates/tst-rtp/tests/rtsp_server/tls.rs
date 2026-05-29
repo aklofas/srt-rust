@@ -17,12 +17,10 @@
 
 #![cfg(feature = "tls")]
 
-mod fixtures;
-
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_rtp::RtspServerBuilder;
 
-use fixtures::tls_certs::SelfSignedCert;
+use crate::fixtures::tls_certs::SelfSignedCert;
 
 fn make_muxer_cfg() -> MuxerConfig {
     let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

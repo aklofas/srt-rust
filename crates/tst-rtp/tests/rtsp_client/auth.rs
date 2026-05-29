@@ -1,7 +1,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
-mod fixtures;
-use fixtures::rtsp_loopback_server::*;
+use crate::fixtures::rtsp_loopback_server::*;
 
 #[test]
 fn basic_auth_succeeds() {

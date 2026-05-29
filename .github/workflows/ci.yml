@@ -72,9 +72,17 @@ jobs:
 
       - name: Install build prerequisites (Windows)
         # Same meson + ninja requirement as macOS. windows-latest ships cmake
-        # + MSVC + Strawberry Perl; meson, ninja, and ripgrep install via choco.
+        # + MSVC + Strawberry Perl. ninja + ripgrep install via choco and land
+        # on PATH for the running job. meson, however, must come via pip: the
+        # choco meson package runs an MSI that updates only the *registry* PATH,
+        # which the already-running job never re-reads — so a later step's
+        # rist-sys build.rs couldn't find `meson` on $PATH and panicked (CI red
+        # 2026-05-29). pip drops meson.exe into the Python Scripts dir that is
+        # already on PATH, sidestepping the MSI PATH-refresh problem entirely.
         if: matrix.name == 'windows-msvc'
-        run: choco install -y --no-progress meson ninja ripgrep
+        run: |
+          choco install -y --no-progress ninja ripgrep
+          python -m pip install --upgrade meson
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

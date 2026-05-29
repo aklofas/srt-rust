@@ -474,11 +474,25 @@ pub(crate) fn set_string(
     Ok(())
 }
 
-/// 2-field POD wire-compatible with both POSIX `struct linger` and
-/// Win32 `LINGER`. Hand-rolled rather than depending on
-/// `libc::linger` because the `libc` crate doesn't expose `linger`
-/// on `*-pc-windows-msvc`. The memory layout is POSIX-defined
-/// (predates the BSD / Win32 split) so the same struct serves both.
+/// `struct linger` for `SRTO_LINGER`, hand-rolled because the `libc` crate
+/// doesn't expose `linger` on `*-pc-windows-msvc`.
+///
+/// The ABI is NOT the same across platforms, and libsrt uses each platform's
+/// native definition: POSIX `struct linger` is two `int` (8 bytes), but
+/// Win32/Winsock `LINGER` is two `u_short` (4 bytes). libsrt validates the
+/// option length with `cast_optval<linger>` which throws `MJ_NOTSUP/MN_INVAL`
+/// ("Operation not supported: Bad parameters") when `optlen != sizeof(linger)`
+/// (socketconfig.h:368-371) — so a POSIX-sized 8-byte struct is rejected on
+/// Windows, breaking every sender connect (sender_defaults sets `linger`).
+/// Match the field widths per platform so `size_of::<LingerOpt>()` equals the
+/// `sizeof(linger)` libsrt expects.
+#[cfg(windows)]
+#[repr(C)]
+struct LingerOpt {
+    l_onoff: core::ffi::c_ushort,
+    l_linger: core::ffi::c_ushort,
+}
+#[cfg(not(windows))]
 #[repr(C)]
 struct LingerOpt {
     l_onoff: c_int,
@@ -491,10 +505,23 @@ struct LingerOpt {
 /// causing `srt_close` to return immediately and discard any unsent
 /// payload. Non-zero seconds are clamped into `i32` range.
 pub(crate) fn set_linger(handle: srt_sys::SRTSOCKET, d: Duration) -> Result<(), OptionError> {
-    let secs = d.as_secs().min(i32::MAX as u64) as c_int;
-    let lin = LingerOpt {
-        l_onoff: if secs > 0 { 1 } else { 0 },
-        l_linger: secs,
+    // Field types differ per platform (see `LingerOpt`): Win32 LINGER fields
+    // are `u_short` (cap at u16::MAX seconds), POSIX `int`.
+    #[cfg(windows)]
+    let lin = {
+        let secs = d.as_secs().min(u16::MAX as u64) as core::ffi::c_ushort;
+        LingerOpt {
+            l_onoff: if secs > 0 { 1 } else { 0 },
+            l_linger: secs,
+        }
+    };
+    #[cfg(not(windows))]
+    let lin = {
+        let secs = d.as_secs().min(i32::MAX as u64) as c_int;
+        LingerOpt {
+            l_onoff: if secs > 0 { 1 } else { 0 },
+            l_linger: secs,
+        }
     };
     let rc = unsafe {
         srt_sys::srt_setsockopt(

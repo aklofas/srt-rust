@@ -38,6 +38,12 @@ tracing    = { version = "0.1", default-features = false, features = ["std"] }
 [target.'cfg(unix)'.dependencies]
 libc       = { workspace = true }
 
+# IP_MULTICAST_IF on Windows for the RTSP multicast-mount send socket. std/tokio
+# expose no setter; socket2's SockRef borrows the tokio UdpSocket and issues the
+# cross-platform setsockopt. Unix uses the libc path above.
+[target.'cfg(windows)'.dependencies]
+socket2    = { workspace = true }
+
 [features]
 default = []
 # Enable `rtsps://` support. The Phase 2 client uses sync rustls 0.23 directly

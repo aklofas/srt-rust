@@ -23,6 +23,12 @@ serde_json   = "1"
 toml         = "0.8"
 sha2         = "0.10"
 
+# IP_MULTICAST_IF on Windows: std::net exposes no setter and libc's socket layer
+# is Unix-shaped, so we use socket2's cross-platform setsockopt via SockRef.
+# Unix keeps the libc path; only Windows pulls socket2.
+[target.'cfg(windows)'.dependencies]
+socket2      = { workspace = true }
+
 [dev-dependencies]
 proptest         = { workspace = true }
 tracing-test     = { version = "0.2", features = ["no-env-filter"] }

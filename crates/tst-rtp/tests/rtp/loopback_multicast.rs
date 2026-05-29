@@ -6,13 +6,13 @@
 //! (typically `EADDRINUSE` or `ENODEV`), we skip with `#[ignore]`
 //! semantics by short-circuiting.
 //!
-//! Gated off windows-msvc: on the Windows GHA runner the multicast join
-//! succeeds but loopback delivery doesn't happen (Windows doesn't loop
-//! multicast back the way Linux does), so the round-trip fails instead of
-//! skipping. Same class as the already-deferred IPv6 multicast tests;
-//! multicast-on-Windows runtime is a deferred follow-up
-//! (project_plan_65_windows_runtime_test_deferral).
-#![cfg(not(target_os = "windows"))]
+//! Runs on Windows too since 2026-05-29: the prior failure was our
+//! `set_multicast_if_v4` being Unix-only (the send-side `?iface=127.0.0.1`
+//! errored), plus IP_MULTICAST_LOOP being receiver-side on Windows. Both are
+//! fixed in `tst_core::net::udp_socket` (socket2 IP_MULTICAST_IF + Windows
+//! receiver-loop), and CI `diag_win_multicast` confirmed loopback multicast
+//! delivers on the GHA runner. The `try_listen` skip-on-error path still
+//! degrades gracefully where multicast routing is genuinely absent.
 
 use std::thread;
 use std::time::Duration;

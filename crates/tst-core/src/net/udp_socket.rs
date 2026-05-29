@@ -160,12 +160,24 @@ pub fn set_multicast_if_v4(socket: &UdpSocket, addr: Ipv4Addr) -> io::Result<()>
     Ok(())
 }
 
-/// Non-Unix fallback: surface the iface knob as unsupported.
-#[cfg(not(unix))]
+/// Windows `IP_MULTICAST_IF` via socket2's cross-platform setsockopt.
+///
+/// std::net exposes no `set_multicast_if_v4`; `socket2::SockRef` borrows the
+/// underlying OS socket (no ownership transfer) and issues the same
+/// `IP_MULTICAST_IF` setsockopt Winsock supports. CI confirmed Winsock accepts
+/// both a real NIC IP and `127.0.0.1` here (`diag_win_multicast`).
+#[cfg(windows)]
+pub fn set_multicast_if_v4(socket: &UdpSocket, addr: Ipv4Addr) -> io::Result<()> {
+    socket2::SockRef::from(socket).set_multicast_if_v4(&addr)
+}
+
+/// Fallback for the rare non-Unix, non-Windows target: surface the iface knob
+/// as unsupported rather than silently ignoring it.
+#[cfg(not(any(unix, windows)))]
 pub fn set_multicast_if_v4(_socket: &UdpSocket, addr: Ipv4Addr) -> io::Result<()> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        format!("IP_MULTICAST_IF via raw setsockopt is Unix-only in Phase 1 (addr={addr})"),
+        format!("IP_MULTICAST_IF via raw setsockopt is unsupported on this platform (addr={addr})"),
     ))
 }
 
@@ -196,6 +208,15 @@ pub fn apply_multicast_recv_join(
                 None => Ipv4Addr::UNSPECIFIED, // 0.0.0.0 — OS default
             };
             socket.join_multicast_v4(&v4_group, &iface_v4)?;
+            // On Windows, IP_MULTICAST_LOOP is a RECEIVE-side option (the
+            // opposite of BSD/Linux, where it gates the sender). Loopback
+            // multicast delivery only happens when it is enabled on the
+            // receiver — set it explicitly so loopback round-trips work
+            // regardless of the OS default (CI `diag_win_multicast`:
+            // delivery iff receiver loop is on). No-op on Unix where the
+            // option lives on the sender, so it stays Windows-gated.
+            #[cfg(windows)]
+            socket.set_multicast_loop_v4(true)?;
         }
         IpAddr::V6(v6_group) => {
             let scope_id = match iface {

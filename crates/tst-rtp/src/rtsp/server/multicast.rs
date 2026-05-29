@@ -136,11 +136,11 @@ pub(crate) async fn build_multicast_send_socket(
     if let Some(iface_str) = iface {
         match group {
             SocketAddr::V4(_) => {
-                // Parse + bind iface_ip only on unix where setsockopt is
-                // available. On windows the cfg(not(unix)) early-return
-                // below surfaces the gap, but parsing was previously
-                // unconditional → unused-variable warning.
-                #[cfg(unix)]
+                // IP_MULTICAST_IF takes the local interface's IPv4 address.
+                // Parse on the platforms that can apply it (unix via libc,
+                // windows via socket2); the bare fallback below surfaces the
+                // gap on exotic targets without an unused-variable warning.
+                #[cfg(any(unix, windows))]
                 let iface_ip: std::net::Ipv4Addr =
                     iface_str.parse().map_err(|e: std::net::AddrParseError| {
                         RtspServerError::InvalidMulticastGroup {
@@ -175,12 +175,25 @@ pub(crate) async fn build_multicast_send_socket(
                         });
                     }
                 }
-                #[cfg(not(unix))]
+                #[cfg(windows)]
+                {
+                    // socket2's SockRef borrows the tokio UdpSocket (no
+                    // ownership transfer) and issues the cross-platform
+                    // IP_MULTICAST_IF setsockopt. CI confirmed Winsock
+                    // accepts both a real NIC IP and 127.0.0.1.
+                    socket2::SockRef::from(&socket)
+                        .set_multicast_if_v4(&iface_ip)
+                        .map_err(|e| RtspServerError::InvalidMulticastGroup {
+                            addr: group.to_string(),
+                            detail: format!("IP_MULTICAST_IF setsockopt failed: {e}"),
+                        })?;
+                }
+                #[cfg(not(any(unix, windows)))]
                 {
                     return Err(RtspServerError::InvalidMulticastGroup {
                         addr: group.to_string(),
                         detail: format!(
-                            "IP_MULTICAST_IF setsockopt is Unix-only in v1 (requested iface '{iface_str}')"
+                            "IP_MULTICAST_IF setsockopt is unsupported on this platform (requested iface '{iface_str}')"
                         ),
                     });
                 }
@@ -324,12 +337,9 @@ mod tests {
         // No assert — caller is expected to validate via MulticastGroup::parse.
     }
 
-    // Gated off windows: setting IP_MULTICAST_IF to the loopback address is
-    // permitted (no-op) on Unix but rejected by Winsock, so this returns Err on
-    // windows-msvc. Multicast-on-Windows is a deferred follow-up
-    // (project_plan_65_windows_runtime_test_deferral); the no-iface sibling
-    // tests above still cover the v4 send-socket path on Windows.
-    #[cfg(not(target_os = "windows"))]
+    // Setting IP_MULTICAST_IF to the loopback address is permitted on both Unix
+    // (libc) and Windows (socket2) — CI `diag_win_multicast` confirmed Winsock
+    // returns Ok for IP_MULTICAST_IF=127.0.0.1, so this runs on all platforms.
     #[tokio::test]
     async fn build_multicast_with_iface_v4() {
         let group: SocketAddr = "239.0.0.1:5004".parse().unwrap();

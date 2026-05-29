@@ -4,12 +4,12 @@
 //! lacks multicast support (CI runners on certain providers), the test
 //! prints a skip message and returns rather than failing.
 //!
-//! Gated off windows-msvc: the IPv4 multicast loopback round-trip fails on the
-//! Windows GHA runner (multicast loopback delivery doesn't work there); the
-//! IPv6 case was already deferred. Multicast-on-Windows runtime is a deferred
-//! follow-up (project_plan_65_windows_runtime_test_deferral). This whole-file
-//! gate supersedes the per-test windows gates below.
-#![cfg(not(target_os = "windows"))]
+//! The IPv4 round-trip runs on Windows since 2026-05-29 (the send-side
+//! `?iface=127.0.0.1` no longer errors now that `set_multicast_if_v4` has a
+//! socket2 Windows path, and the receiver-side IP_MULTICAST_LOOP is set on
+//! Windows; CI `diag_win_multicast` confirmed delivery). The IPv6 case stays
+//! gated off Windows: `IPV6_MULTICAST_IF` takes an interface index there
+//! (not yet wired) and IPv6 multicast loopback is unverified on the runner.
 
 use std::sync::mpsc;
 use std::thread;

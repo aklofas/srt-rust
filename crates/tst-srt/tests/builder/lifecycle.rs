@@ -14,15 +14,19 @@ fn drop_closes_cleanly() {
     });
     accept.wait_ready();
 
-    {
-        let socket = SocketBuilder::new()
-            .recv_timeout(Duration::from_secs(5))
-            .connect(format!("127.0.0.1:{port}"))
-            .expect("connect");
-        // Drop here.
-        drop(socket);
-    }
+    let socket = SocketBuilder::new()
+        .recv_timeout(Duration::from_secs(5))
+        .connect(format!("127.0.0.1:{port}"))
+        .expect("connect");
+    // Join the accept thread BEFORE dropping the connecting socket. Dropping it
+    // first can tear the connection down while the listener is still inside
+    // accept(); under the consolidated builder binary's parallelism the accept
+    // thread loses the CPU race and accept() returns "Connection was broken".
+    // Matches the maxbw_roundtrip fix (812892ac) and sibling loopback tests.
+    // The test still verifies a connected socket drops cleanly — just after the
+    // peer has finished accepting.
     accept.join();
+    drop(socket);
 }
 
 #[test]

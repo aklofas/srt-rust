@@ -315,6 +315,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 ///    inside this function before the wildcard arm.
 /// 2. The in-file unit test `every_known_mux_error_variant_maps_to_expected_code`
 ///    verifies all 32 variants produce the expected `TstError` code.
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_mux_error(e: &MuxError) {
     use tst_core::error::MuxSenderErrorKind;
 
@@ -432,6 +433,7 @@ pub(crate) fn record_demux_error(e: &DemuxError) -> i32 {
     code as i32
 }
 
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_transport_error(e: &TransportError) {
     // D5 follow-up: helper to render the optional errno suffix. `SrtErrno::Bad.raw_code() == 0`,
     // which would read as "(errno 0)" — i.e., "no error" in libsrt's idiom.
@@ -496,6 +498,7 @@ pub(crate) fn record_panic_caught(detail: &str) {
 
 /// Record an end-of-stream condition. Used by receivers when the transport
 /// reports a graceful peer close and the call was not caller-initiated.
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_eos() {
     set_last_error(TstError::EndOfStream, "end of stream (peer disconnected)");
 }
@@ -519,6 +522,7 @@ pub(crate) fn record_not_available(msg: &str) -> i32 {
 ///
 /// Replaces the direct `TstError::NotFound as i32` pattern that leaves
 /// stale last-error state visible to `tst_get_last_error()`.
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_not_found(msg: &str) -> i32 {
     set_last_error(TstError::NotFound, msg);
     TstError::NotFound as i32

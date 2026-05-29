@@ -83,6 +83,7 @@ impl<T> Handle<T> {
     /// the panic could have left external state (global mutexes, file
     /// descriptors, etc.) in an indeterminate state — defense-in-depth
     /// drops the inner anyway.
+    #[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
     pub(crate) fn with_inner_ref<F>(&self, f: F) -> i32
     where
         F: FnOnce(&T) -> i32,

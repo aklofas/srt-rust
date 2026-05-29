@@ -90,6 +90,7 @@ pub unsafe extern "C" fn tst_sender_config_set_max_unsynced_bytes(
 // ------------------------------------------------------------------
 
 pub struct TstRawSenderConfig {
+    #[allow(dead_code)] // read only by transport-feature-gated paths; unused in minimal builds
     pub(crate) inner: RawSenderConfig,
 }
 

@@ -388,6 +388,35 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo test --workspace --all-features
 
+      - name: C scenario adapter (cross-binding parity check)
+        # WS-5: C adapter for the cross-binding scenario harness. Compiles
+        # crates/tst-c/examples/c/scenarios/run_scenarios.c against the
+        # libtstrans.so built by the `cargo build --workspace --all-features`
+        # step above, then runs it against the committed golden fixtures.
+        #
+        # Exit 0 = all 3 scenarios matched committed goldens (C ABI parity).
+        # Exit non-zero = C adapter output diverged from a golden — signals a
+        # real C-binding bug or a golden that needs regeneration via gen_scenarios.
+        #
+        # Linux-only: libtstrans.so is a Linux cdylib (macOS/Windows use dylib/dll);
+        # gcc + LD_LIBRARY_PATH conventions are Linux-specific in this step.
+        # The cross-binding signal (byte-level parity) is platform-independent —
+        # one platform run is sufficient.
+        if: matrix.name == 'linux-x86_64'
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: |
+          gcc \
+            -I crates/tst-c/include \
+            -L target/debug \
+            -Wall -Werror \
+            -o /tmp/run_scenarios_c_adapter \
+            crates/tst-c/examples/c/scenarios/run_scenarios.c \
+            -ltstrans
+          LD_LIBRARY_PATH=target/debug /tmp/run_scenarios_c_adapter \
+            crates/tst-integration/tests/fixtures/scenarios
+
       - name: Public-API ratchet (no unintended SemVer breaks)
         # Checks tst-core, tst-pipeline, and tst-srt against the committed
         # public-api.txt baselines. tst-c is excluded: its ABI surface is a

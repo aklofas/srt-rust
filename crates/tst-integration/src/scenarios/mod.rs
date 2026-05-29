@@ -224,10 +224,11 @@ impl Scenario for VideoRoundtrip {
         // identity event in extensions, and a single Video event in core.
         // The byte-identity check is the sha256 in the Video event's
         // payload_sha256; the adapter rebuilds the TS and compares sha256.
+        // stream_type is the wire PMT byte (H.264 = 0x1B), binding-neutral.
         let core = vec![CoreEvent::Video {
             program: 1,
             pid: 0x1011,
-            stream_type: "h264".to_string(),
+            stream_type: "0x1b".to_string(),
             pts: 0,
             key: true,
             payload_sha256: digest,
@@ -355,25 +356,49 @@ fn minimal_st0601_ls() -> Vec<u8> {
 /// Errors from `feed` are mapped to `CoreEvent::Error { code }` using the
 /// stable public code.
 pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
+    use std::collections::HashMap;
     use tst_core::mpegts::demux::event::SamplePayload;
     use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 
     let mut demuxer = Demuxer::new();
-    let mut events = Vec::new();
 
-    match demuxer.feed(ts_bytes) {
-        Ok(()) => {}
-        Err(e) => {
-            events.push(CoreEvent::Error {
-                code: demux_error_code(&e),
-            });
-            return events;
-        }
+    if let Err(e) = demuxer.feed(ts_bytes) {
+        return vec![CoreEvent::Error {
+            code: demux_error_code(&e),
+        }];
     }
 
     demuxer.flush();
 
+    // Drain all events first so we can build a pid → PMT stream_type byte map
+    // from the ProgramMap events before emitting Sample / Metadata events.
+    // The golden's `stream_type` is the raw PMT byte (e.g. "0x1b"), which is
+    // binding-neutral — a C / Python adapter sees the wire byte, not a Rust
+    // enum name.
+    let mut raw_events = Vec::new();
     while let Some(ev) = demuxer.next_event() {
+        raw_events.push(ev);
+    }
+
+    let mut stream_type_by_pid: HashMap<u16, u8> = HashMap::new();
+    for ev in &raw_events {
+        if let DemuxEvent::ProgramMap(pm) = ev {
+            for si in &pm.streams {
+                stream_type_by_pid.insert(si.pid, si.stream_type.as_byte());
+            }
+        }
+    }
+
+    // Hex-format a PMT stream_type byte for `pid`, e.g. "0x1b". Falls back to
+    // mapping the codec/kind to its canonical PMT byte if the PID was never
+    // seen in a ProgramMap (defensive — should not happen for well-formed TS).
+    let stream_type_hex = |pid: u16, fallback: u8| -> String {
+        let byte = stream_type_by_pid.get(&pid).copied().unwrap_or(fallback);
+        format!("0x{byte:02x}")
+    };
+
+    let mut events = Vec::new();
+    for ev in raw_events {
         match ev {
             DemuxEvent::ProgramMap(_) => { /* skip — topology, not media */ }
             DemuxEvent::Sample {
@@ -392,7 +417,7 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                         events.push(CoreEvent::Video {
                             program: stream.program_number,
                             pid: stream.pid,
-                            stream_type: format!("{codec:?}").to_lowercase(),
+                            stream_type: stream_type_hex(stream.pid, video_codec_pmt_byte(codec)),
                             pts: pts.as_ticks(),
                             key: random_access_indicator,
                             payload_sha256: sha256_hex(&raw),
@@ -402,7 +427,7 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                         events.push(CoreEvent::Audio {
                             program: stream.program_number,
                             pid: stream.pid,
-                            stream_type: format!("{codec:?}").to_lowercase(),
+                            stream_type: stream_type_hex(stream.pid, audio_codec_pmt_byte(codec)),
                             pts: pts.as_ticks(),
                             payload_sha256: sha256_hex(&frames),
                         });
@@ -413,13 +438,22 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                     }
                 }
             }
-            DemuxEvent::Metadata { stream, kind, .. } => {
-                let set = metadata_kind_str(&kind);
+            DemuxEvent::Metadata {
+                stream,
+                payload,
+                kind,
+                ..
+            } => {
+                // `set` is the MISB set identity derived from the KLV
+                // Universal Label key (binding-neutral). Framing info
+                // (sync_au_cell vs async) is NOT in the frozen core — it
+                // lives under `extensions` if a scenario needs it.
+                let _ = &kind;
                 events.push(CoreEvent::Klv {
                     program: stream.program_number,
                     pid: stream.pid,
-                    stream_type: stream_kind_str(&stream.kind),
-                    set,
+                    stream_type: stream_type_hex(stream.pid, klv_kind_pmt_byte(&stream.kind)),
+                    set: klv_set_from_ul(&payload),
                 });
             }
             DemuxEvent::Discontinuity { .. }
@@ -455,24 +489,59 @@ fn video_payload_bytes(vp: &tst_core::mpegts::demux::event::VideoPayload) -> Vec
     }
 }
 
-fn metadata_kind_str(kind: &tst_core::mpegts::demux::event::MetadataKind) -> String {
-    use tst_core::mpegts::demux::event::MetadataKind;
-    match kind {
-        MetadataKind::KlvSyncAuCell { .. } => "sync_au_cell".to_string(),
-        MetadataKind::KlvAsync => "async".to_string(),
-        MetadataKind::Unknown(_) => "unknown".to_string(),
+// Canonical PMT `stream_type` bytes per ISO/IEC 13818-1 Table 2-34 + the
+// codec/metadata extensions tst-core supports.  Used only as a fallback when
+// the PID was not seen in a ProgramMap; the primary source is the parsed PMT
+// (`StreamInfo::stream_type.as_byte()`).
+//   H.264 = 0x1B, H.265 = 0x24, H.266 = 0x33, AV1 = 0x06 (with AV01 reg-desc).
+fn video_codec_pmt_byte(codec: tst_core::mpegts::demux::event::VideoCodec) -> u8 {
+    use tst_core::mpegts::demux::event::VideoCodec;
+    match codec {
+        VideoCodec::H264 => 0x1B,
+        VideoCodec::H265 => 0x24,
+        VideoCodec::H266 => 0x33,
+        VideoCodec::Av1 => 0x06,
     }
 }
 
-fn stream_kind_str(kind: &tst_core::mpegts::demux::event::StreamKind) -> String {
+//   MP2 = 0x03/0x04, AAC ADTS = 0x0F, AAC LATM = 0x11, AC-3 = 0x81.
+fn audio_codec_pmt_byte(codec: tst_core::mpegts::demux::event::AudioCodec) -> u8 {
+    use tst_core::mpegts::demux::event::AudioCodec;
+    match codec {
+        AudioCodec::Mp2 => 0x03,
+        AudioCodec::Aac => 0x0F,
+        AudioCodec::AacLatm => 0x11,
+        AudioCodec::Ac3 => 0x81,
+    }
+}
+
+//   KLV sync metadata = 0x15, KLV async (private_data) = 0x06.
+fn klv_kind_pmt_byte(kind: &tst_core::mpegts::demux::event::StreamKind) -> u8 {
     use tst_core::mpegts::demux::event::StreamKind;
     match kind {
-        StreamKind::KlvSync { .. } => "klv_sync".to_string(),
-        StreamKind::KlvAsync => "klv_async".to_string(),
-        StreamKind::Video(c) => format!("{c:?}").to_lowercase(),
-        StreamKind::Audio(c) => format!("{c:?}").to_lowercase(),
-        StreamKind::Subtitle(c) => format!("{c:?}").to_lowercase(),
-        StreamKind::Unknown(b) => format!("unknown_0x{b:02x}"),
+        StreamKind::KlvSync { .. } => 0x15,
+        StreamKind::KlvAsync => 0x06,
+        _ => 0x06,
+    }
+}
+
+/// Detect the MISB KLV set identity from the Universal Label key prefix of the
+/// raw KLV LS bytes.  Binding-neutral: the same 16-byte UL is visible to a C /
+/// Python adapter.  Returns `"st0601"` for the ST 0601 UAS Datalink LS UL,
+/// else `"unknown"`.
+fn klv_set_from_ul(payload: &[u8]) -> String {
+    // MISB ST 0601 UAS Datalink LS Universal Label (SMPTE 336M 16-byte key).
+    // The first 13 bytes are the canonical ST 0601 designator; bytes 14-16
+    // carry the version, which varies, so we match on the stable prefix.
+    const ST0601_UL_PREFIX: [u8; 13] = [
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01,
+    ];
+    if payload.len() >= ST0601_UL_PREFIX.len()
+        && payload[..ST0601_UL_PREFIX.len()] == ST0601_UL_PREFIX
+    {
+        "st0601".to_string()
+    } else {
+        "unknown".to_string()
     }
 }
 

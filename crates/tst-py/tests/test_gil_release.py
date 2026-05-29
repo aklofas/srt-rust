@@ -178,13 +178,13 @@ def _muxer_config_video_only() -> MuxerConfig:
     return MuxerConfigBuilder().add_program(prog).buffer_packets(1_000_000).build()
 
 
-def _huge_h264_nal() -> bytes:
-    """30 MB Annex-B NAL — one push_video call takes ~50ms.
+def _huge_h264_nal(mb: int = 30) -> bytes:
+    """`mb` MB Annex-B NAL — a 30 MB push_video call takes ~50ms.
 
     Bigger is more discriminating: 5 MB took ~13ms (below threshold);
-    30 MB lands at ~50ms reliably; 50 MB at ~75ms.
+    30 MB lands at ~50ms (borderline on fast hardware); 50 MB at ~75ms.
     """
-    return b"\x00\x00\x00\x01\x09" + b"\xA0" * (30 * 1024 * 1024)
+    return b"\x00\x00\x00\x01\x09" + b"\xA0" * (mb * 1024 * 1024)
 
 
 def _huge_aac_buf() -> bytes:
@@ -228,9 +228,12 @@ def _build_ts_stream(target_mb: int = 50) -> bytes:
 
 @pytest.mark.timeout(20)
 def test_push_video_releases_gil(solo_throughput: float) -> None:
-    """One push_video of a 30 MB NAL must let other Python threads run."""
+    """One push_video of a 50 MB NAL must let other Python threads run."""
     m = Muxer(_muxer_config_video_only())
-    nal = _huge_h264_nal()
+    # 50 MB (~75ms) rather than 30 MB (~50ms): a single 30 MB call clocked at
+    # 49.6ms on a CI runner, just under the 50ms _MIN_WORKLOAD_MS guard. The
+    # larger NAL keeps the single call comfortably above the discriminator.
+    nal = _huge_h264_nal(50)
 
     with _PyWorker() as worker:
         m.push_video(nal, pts=Pts90khz.from_raw(900_000))

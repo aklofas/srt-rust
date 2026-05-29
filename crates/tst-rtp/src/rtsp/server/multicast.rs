@@ -324,6 +324,12 @@ mod tests {
         // No assert — caller is expected to validate via MulticastGroup::parse.
     }
 
+    // Gated off windows: setting IP_MULTICAST_IF to the loopback address is
+    // permitted (no-op) on Unix but rejected by Winsock, so this returns Err on
+    // windows-msvc. Multicast-on-Windows is a deferred follow-up
+    // (project_plan_65_windows_runtime_test_deferral); the no-iface sibling
+    // tests above still cover the v4 send-socket path on Windows.
+    #[cfg(not(target_os = "windows"))]
     #[tokio::test]
     async fn build_multicast_with_iface_v4() {
         let group: SocketAddr = "239.0.0.1:5004".parse().unwrap();

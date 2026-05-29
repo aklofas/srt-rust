@@ -3,6 +3,13 @@
 //! Uses the established try_listen pattern from tst-rtp — if the host
 //! lacks multicast support (CI runners on certain providers), the test
 //! prints a skip message and returns rather than failing.
+//!
+//! Gated off windows-msvc: the IPv4 multicast loopback round-trip fails on the
+//! Windows GHA runner (multicast loopback delivery doesn't work there); the
+//! IPv6 case was already deferred. Multicast-on-Windows runtime is a deferred
+//! follow-up (project_plan_65_windows_runtime_test_deferral). This whole-file
+//! gate supersedes the per-test windows gates below.
+#![cfg(not(target_os = "windows"))]
 
 use std::sync::mpsc;
 use std::thread;

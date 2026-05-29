@@ -5,6 +5,14 @@
 //! gracefully degrades: if `join_multicast_v4` returns an error
 //! (typically `EADDRINUSE` or `ENODEV`), we skip with `#[ignore]`
 //! semantics by short-circuiting.
+//!
+//! Gated off windows-msvc: on the Windows GHA runner the multicast join
+//! succeeds but loopback delivery doesn't happen (Windows doesn't loop
+//! multicast back the way Linux does), so the round-trip fails instead of
+//! skipping. Same class as the already-deferred IPv6 multicast tests;
+//! multicast-on-Windows runtime is a deferred follow-up
+//! (project_plan_65_windows_runtime_test_deferral).
+#![cfg(not(target_os = "windows"))]
 
 use std::thread;
 use std::time::Duration;

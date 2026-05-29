@@ -1,0 +1,23 @@
+# cargo-nextest configuration.
+#
+# The feature we rely on is `terminate-after`: unlike libtest (`cargo test`),
+# which lets a hung test block forever, nextest runs each test in its own
+# process and KILLS one that exceeds its timeout, reports it as a timeout
+# failure, and continues the run. This stops a single hung network test (e.g.
+# an unproven transport on a newly-enabled platform) from stalling the whole
+# CI job — and surfaces every failure in one run instead of one-per-rerun.
+
+[profile.default]
+# Global safety net. Any test still running after 60s (2 x 30s) is terminated
+# and reported as a failure. Non-network tests finish in well under a second,
+# so this only ever fires on a genuine hang.
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+# Network / loopback tests talk over 127.0.0.1 and complete in a few seconds at
+# most (the slowest are SRT/RIST encrypted handshakes, ~1-5s). Give them a
+# tighter bound so a hang dies fast rather than burning the global 60s. Matched
+# by test-name substring across every crate; `period` x `terminate-after` = the
+# kill deadline (here 20s), with generous headroom over the ~5s legitimate max.
+[[profile.default.overrides]]
+filter = "test(loopback) | test(round_trip) | test(pairing) | test(rtsp) | test(multicast) | test(reconnect) | test(cancellation) | test(live_pair) | test(stats_round_trip) | test(hls) | test(e2e)"
+slow-timeout = { period = "10s", terminate-after = 2 }

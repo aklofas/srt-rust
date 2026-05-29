@@ -94,6 +94,19 @@ jobs:
           toolchain: "1.85"
           components: rustfmt, clippy
 
+      - name: Install cargo-nextest (Windows)
+        # On windows-msvc the runtime test steps run under nextest (not
+        # `cargo test`) so that `terminate-after` in .config/nextest.toml kills
+        # any hung test and continues the run — a single hung network test
+        # (e.g. an unproven transport) can't stall the whole job, and all
+        # failures surface in one run. Scoped to Windows: the gating Linux/macOS
+        # jobs stay on `cargo test` (proven green; nextest's process-per-test
+        # model is a behavioral change not yet validated on the gating path).
+        if: matrix.name == 'windows-msvc'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Cache cargo + cmake artifacts
         uses: actions/cache@v5
         with:
@@ -310,23 +323,16 @@ jobs:
         run: cargo build --workspace
 
       - name: cargo test (default features, with mbedtls)
-        # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment
-        # above. This is the step that originally hung at demux_receiver_loopback
-        # (plan #65); the cl-built libsrt no longer hangs. timeout-minutes bounds
-        # any residual hang; windows-msvc stays non-gating.
-        #
-        # --no-fail-fast: surface the FULL failure set per run (cargo otherwise
-        # stops at the first failing test binary) — needed while stabilizing the
-        # windows suite. On windows only, `--test-threads=1` serializes: the
-        # consolidated per-domain binaries run many SRT loopback tests at once
-        # and intra-binary parallelism flakes on the 2-core windows runners (see
-        # feedback_test_binary_consolidation_concurrency). The GHA expression
-        # leaves the gating platforms' default parallelism untouched.
+        # On windows-msvc this runs under nextest so per-test `terminate-after`
+        # (.config/nextest.toml) kills any hung test and keeps going — one hang
+        # can't stall the job and every failure surfaces in one run. The gating
+        # Linux/macOS jobs use `cargo test` (proven). --no-fail-fast = run all
+        # tests (both runners). timeout-minutes is a coarse backstop.
         timeout-minutes: 20
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
+        run: ${{ matrix.name == 'windows-msvc' && 'cargo nextest run --test-threads 1' || 'cargo test' }} --workspace --no-fail-fast
 
       - name: cargo build (all crate types, no-default-features)
         env:
@@ -340,7 +346,7 @@ jobs:
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace --no-default-features --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
+        run: ${{ matrix.name == 'windows-msvc' && 'cargo nextest run --test-threads 1' || 'cargo test' }} --workspace --no-default-features --no-fail-fast
 
       - name: Build tst-c per-feature (udp/tcp/hls/rist) — catch single-feature breakage
         # Plan A5a: the four new transport features are default-off, so the
@@ -397,7 +403,7 @@ jobs:
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace --all-features --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
+        run: ${{ matrix.name == 'windows-msvc' && 'cargo nextest run --test-threads 1' || 'cargo test' }} --workspace --all-features --no-fail-fast
 
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles

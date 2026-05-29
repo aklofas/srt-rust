@@ -298,7 +298,7 @@ jobs:
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --doc --workspace
+        run: cargo test --doc --workspace --no-fail-fast
 
       # `cargo test` only builds the rlib of crates with multiple crate-types.
       # tst-c's smoke test asserts on target/debug/libtstrans.so, so we need an
@@ -314,11 +314,19 @@ jobs:
         # above. This is the step that originally hung at demux_receiver_loopback
         # (plan #65); the cl-built libsrt no longer hangs. timeout-minutes bounds
         # any residual hang; windows-msvc stays non-gating.
-        timeout-minutes: 15
+        #
+        # --no-fail-fast: surface the FULL failure set per run (cargo otherwise
+        # stops at the first failing test binary) — needed while stabilizing the
+        # windows suite. On windows only, `--test-threads=1` serializes: the
+        # consolidated per-domain binaries run many SRT loopback tests at once
+        # and intra-binary parallelism flakes on the 2-core windows runners (see
+        # feedback_test_binary_consolidation_concurrency). The GHA expression
+        # leaves the gating platforms' default parallelism untouched.
+        timeout-minutes: 20
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
 
       - name: cargo build (all crate types, no-default-features)
         env:
@@ -328,11 +336,11 @@ jobs:
 
       - name: cargo test (no-default-features, no encryption)
         # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace --no-default-features
+        run: cargo test --workspace --no-default-features --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
 
       - name: Build tst-c per-feature (udp/tcp/hls/rist) — catch single-feature breakage
         # Plan A5a: the four new transport features are default-off, so the
@@ -377,21 +385,6 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --all-features
 
-      - name: Windows SRT loopback diagnostic (plan #65 root-cause)
-        # TEMPORARY: streams a bounded timeline of what srt_recv returns after a
-        # peer close, to localize the windows-msvc SRT-loopback hang (plan #65 /
-        # project_ci_known_flakes_2026_05_29). Isolates the SRT layer from the
-        # mux/demux pipeline. windows-msvc is continue-on-error, so this never
-        # gates; --nocapture streams the eprintln timeline into the job log and
-        # the test's internal watchdogs + timeout-minutes bound any hang. Remove
-        # together with crates/tst-srt/tests/diag_win_srt_close.rs once fixed.
-        if: matrix.name == 'windows-msvc'
-        timeout-minutes: 6
-        env:
-          SRT_FORCE_VENDORED: "1"
-          RIST_FORCE_VENDORED: "1"
-        run: cargo test -p tst-srt --test diag_win_srt_close -- --nocapture --test-threads=1
-
       - name: cargo test (all features)
         # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
         # `file` on tst-core) is identical to defaults, so this rail is
@@ -400,11 +393,11 @@ jobs:
         # added that isn't in the default set — the audit (Phase 6 Theme O)
         # called out this rail as a coverage gap.
         # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --no-fail-fast ${{ matrix.name == 'windows-msvc' && '-- --test-threads=1' || '' }}
 
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles

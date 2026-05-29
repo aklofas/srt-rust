@@ -213,14 +213,12 @@ jobs:
         run: bash scripts/check-doc-abi-and-st1910-currency.sh
 
       - name: Check udp/tcp/hls/rist C ABI error-mapping coverage
-        # Plan A5a — each new tst-c transport family's *_error_to_code
-        # converter must exhaustively map its upstream *ErrorKind (wildcard
-        # arm allowed only because those enums are #[non_exhaustive]).
-        run: |
-          bash scripts/check-udp-error-mapping-coverage.sh
-          bash scripts/check-tcp-error-mapping-coverage.sh
-          bash scripts/check-hls-error-mapping-coverage.sh
-          bash scripts/check-rist-error-mapping-coverage.sh
+        # Each tst-c transport family's *_error_to_code converter must
+        # exhaustively map its upstream *ErrorKind (wildcard arm allowed only
+        # because those enums are #[non_exhaustive]). Driven by
+        # scripts/ratchets/error-mapping.tsv (consolidated from the former
+        # per-protocol check-*-error-mapping-coverage.sh clones).
+        run: bash scripts/check-rust-error-mapping-coverage.sh
 
       - name: Check Publisher trait C mirror
         # Plan A5a — every tst_core::publisher::Publisher trait method has a
@@ -550,36 +548,18 @@ jobs:
         # string is a member of the Python NonConformantKind enum.
         run: bash scripts/check-py-non-conformant-kind-coverage.sh
 
-      - name: check-py-srt-error-mapping-coverage
-        # Phase 8 T1 Bootstrap stub — Wave A T4 lands the real coverage
-        # check for SrtErrorKind variants against make_srt_error call
-        # sites in crates/tst-py/src/srt/.
-        run: bash scripts/check-py-srt-error-mapping-coverage.sh
-
-      - name: check-py-udp-error-mapping-coverage
-        # Plan A5b Wave A T5 — verifies every UdpErrorKind variant in
-        # tstrans.exceptions has a make_udp_error call site in tst-py/src/.
-        run: bash scripts/check-py-udp-error-mapping-coverage.sh
-
-      - name: check-py-tcp-error-mapping-coverage
-        # Plan A5b Wave B T9 — verifies every TcpErrorKind variant in
-        # tstrans.exceptions has a make_tcp_error call site in tst-py/src/.
-        run: bash scripts/check-py-tcp-error-mapping-coverage.sh
-
-      - name: check-py-hls-error-mapping-coverage
-        # Plan A5b Wave C T14 — verifies every HlsErrorKind variant in
-        # tstrans.exceptions has a make_hls_error call site in tst-py/src/.
-        run: bash scripts/check-py-hls-error-mapping-coverage.sh
+      - name: check-py-error-mapping-coverage
+        # Consolidated: every <Proto>ErrorKind in tstrans.exceptions
+        # (srt/udp/tcp/rtp/rtsp/hls/rist) has a make_<proto>_error call site
+        # under crates/tst-py/src/. Driven by scripts/ratchets/error-mapping.tsv
+        # (replaces the former per-protocol check-py-*-error-mapping clones;
+        # also brings rtp/rtsp under CI, which were previously local-only).
+        run: bash scripts/check-py-error-mapping-coverage.sh
 
       - name: check-py-publisher-class-mirror
         # Plan A5b Wave C T14 — verifies the Python Publisher ABC method
         # list (tstrans/hls.pyi) mirrors the Rust tst_core Publisher trait.
         run: bash scripts/check-py-publisher-class-mirror.sh
-
-      - name: check-py-rist-error-mapping-coverage
-        # Plan A5b Wave D T17 — verifies every RistErrorKind variant in
-        # tstrans.exceptions has a make_rist_error call site in tst-py/src/.
-        run: bash scripts/check-py-rist-error-mapping-coverage.sh
 
       - name: Install build prerequisites
         run: |

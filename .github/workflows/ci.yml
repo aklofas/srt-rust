@@ -378,6 +378,21 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --all-features
 
+      - name: Windows SRT loopback diagnostic (plan #65 root-cause)
+        # TEMPORARY: streams a bounded timeline of what srt_recv returns after a
+        # peer close, to localize the windows-msvc SRT-loopback hang (plan #65 /
+        # project_ci_known_flakes_2026_05_29). Isolates the SRT layer from the
+        # mux/demux pipeline. windows-msvc is continue-on-error, so this never
+        # gates; --nocapture streams the eprintln timeline into the job log and
+        # the test's internal watchdogs + timeout-minutes bound any hang. Remove
+        # together with crates/tst-srt/tests/diag_win_srt_close.rs once fixed.
+        if: matrix.name == 'windows-msvc'
+        timeout-minutes: 6
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: cargo test -p tst-srt --test diag_win_srt_close -- --nocapture --test-threads=1
+
       - name: cargo test (all features)
         # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
         # `file` on tst-core) is identical to defaults, so this rail is

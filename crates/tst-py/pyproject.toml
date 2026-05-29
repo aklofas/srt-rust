@@ -42,7 +42,11 @@ module-name   = "tstrans._native"
 markers = [
     "pandas: tests that require the [pandas] extra (skipped by default)",
 ]
-addopts = "-m 'not pandas'"
+# --strict-markers / --strict-config: an unknown or typo'd mark (or a config
+# option from a plugin that isn't installed) becomes a hard ERROR instead of a
+# silently-ignored warning. This is what turns "@pytest.mark.timeout silently
+# does nothing because pytest-timeout isn't installed" into an immediate failure.
+addopts = "-m 'not pandas' --strict-markers --strict-config"
 # Hang safety net (requires the pytest-timeout plugin, in the `dev` extra): any
 # test exceeding this is killed and reported as a failure instead of stalling
 # the job. Per-test `@pytest.mark.timeout(N)` overrides this default. Mirrors

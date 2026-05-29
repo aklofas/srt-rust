@@ -470,6 +470,9 @@ jobs:
           # cfg-gated). Fresh resolution picks tempfile 3.27+ → rustix 1.x.
           cargo +nightly install cargo-fuzz --quiet
 
+      - name: check-fuzz-targets (manifest matches fuzz dirs)
+        run: bash scripts/check-fuzz-targets.sh
+
       # `cargo +nightly fuzz check` (compile-only) catches fuzz-target
       # rot when a public API change breaks one. Compile-only because
       # corpus replay on every PR would burn CI minutes for low

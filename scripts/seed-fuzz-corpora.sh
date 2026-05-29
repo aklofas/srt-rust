@@ -8,8 +8,10 @@
 # into the corpus tree without clobbering accumulated runtime corpus.
 #
 # Idempotent — safe to run repeatedly. Used by:
-#   - local pre-push fuzz check (recommended before `cargo +nightly fuzz check`)
-#   - CI fuzz job (`.github/workflows/ci.yml`)
+#   - local fuzzing, run before `cargo +nightly fuzz run` so cold-start
+#     runs begin from the tracked seeds (the CI fuzz job is compile-only
+#     via `cargo +nightly fuzz check` and does not seed corpora).
+# It seeds every target it discovers under `crates/*/fuzz/seeds/<target>/`.
 #
 # Exit codes: 0 = ok; non-zero = a seeds/ entry exists but cp failed.
 

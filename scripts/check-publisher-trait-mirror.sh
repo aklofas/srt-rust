@@ -40,23 +40,29 @@ if [[ -z "$TRAIT_METHODS" ]]; then
 fi
 
 # Hardcoded map: trait method name -> required C symbol.
+# bash 3.2 (the /bin/bash macOS still ships) has no associative arrays, so a
+# `case` lookup stands in for `declare -A`.
 # MAINTAINER NOTE: When a new method is added to the Publisher trait, this
 # ratchet will fail. To fix: add a new C entry point in src/hls/ (and ensure
 # cbindgen regenerates the header), then extend this map.
-declare -A EXPECTED_SYMS
-EXPECTED_SYMS[push_ts]="tst_publisher_push_ts"
-EXPECTED_SYMS[cut_segment]="tst_publisher_cut_segment"
-EXPECTED_SYMS[finish]="tst_publisher_finish"
-EXPECTED_SYMS[stats]="tst_publisher_get_stats"
+expected_sym() { # <trait method> -> required C symbol, or empty if undocumented
+    case "$1" in
+        push_ts)     echo "tst_publisher_push_ts" ;;
+        cut_segment) echo "tst_publisher_cut_segment" ;;
+        finish)      echo "tst_publisher_finish" ;;
+        stats)       echo "tst_publisher_get_stats" ;;
+        *)           echo "" ;;
+    esac
+}
 
 MISSING=""
 for m in $TRAIT_METHODS; do
-    if [[ -z "${EXPECTED_SYMS[$m]:-}" ]]; then
-        MISSING="${MISSING}  - trait method '${m}' has no documented C mirror in EXPECTED_SYMS"$'\n'
-        MISSING="${MISSING}    (add an entry to EXPECTED_SYMS in this script AND add the C entry point)"$'\n'
+    sym="$(expected_sym "$m")"
+    if [[ -z "$sym" ]]; then
+        MISSING="${MISSING}  - trait method '${m}' has no documented C mirror in expected_sym"$'\n'
+        MISSING="${MISSING}    (add a case to expected_sym in this script AND add the C entry point)"$'\n'
         continue
     fi
-    sym="${EXPECTED_SYMS[$m]}"
     if ! grep -qr "$sym" "$HLS_DIR"/; then
         MISSING="${MISSING}  - trait method '${m}': C entry point '${sym}' not found in ${HLS_DIR}/"$'\n'
     fi

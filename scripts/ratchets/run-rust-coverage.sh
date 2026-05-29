@@ -23,6 +23,7 @@ rows=0
 while IFS=$'\t' read -r lang name enum src arm_fn; do
     [[ "$lang" == \#* || -z "${lang:-}" ]] && continue
     [[ "$lang" != "rust" ]] && continue
+    arm_fn="${arm_fn%$'\r'}"  # tolerate a CRLF checkout (arm_fn is the last field)
     rows=$((rows + 1))
     if ! assert_rust_row "$enum" "$src" "$arm_fn" "$ARM_FILE"; then
         rc=1

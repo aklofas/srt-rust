@@ -1,0 +1,7 @@
+# Ratchet scripts and their config must check out with LF endings even on
+# Windows CI (git-bash). With the default core.autocrlf=true, error-mapping.tsv
+# was checked out CRLF, leaving a trailing \r on the last tab-separated field
+# (arm_fn); the `awk "/fn $arm_fn/,/^}/"` range then never matched and every
+# enum variant was falsely reported as missing a C mapping.
+*.sh  text eol=lf
+*.tsv text eol=lf

@@ -225,7 +225,7 @@ impl Scenario for VideoRoundtrip {
 
 /// Re-run the `video-roundtrip` mux and return the deterministic TS bytes.
 ///
-/// Single source of truth shared by [`VideoRoundtrip::generate`] and the Rust
+/// Single source of truth shared by `VideoRoundtrip::generate` and the Rust
 /// adapter test — no hand-retyped mux recipe.
 pub fn video_roundtrip_ts_bytes() -> Vec<u8> {
     let cfg = {

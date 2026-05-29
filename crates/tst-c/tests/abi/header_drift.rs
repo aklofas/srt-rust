@@ -133,6 +133,7 @@ fn add_section_dividers(original: &str) -> String {
                 "tst_demux_receiver_",
                 "tst_managed_demux_receiver_",
                 "tst_demux_config_",
+                "tst_demuxer_",
             ],
             "DEMUX RECEIVER",
         ),

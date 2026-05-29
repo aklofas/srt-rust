@@ -50,7 +50,8 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 /// | Kotlin | Drain via `flush()` + `nextEvent()`, then let GC reclaim |
 /// | Swift | `deinit` calls drop; explicit `flush()` + drain before exit |
 /// | Python | `demuxer.flush()` + drain at end-of-stream; let GC reclaim |
-/// | C | `tst_demux_receiver_recv_event(p, &out_event)` drains into an arena-lifetime `tst_event_t`; `tst_demux_receiver_close(p)` releases the handle |
+/// | C (transport) | `tst_demux_receiver_recv_event(p, &out_event)` drains into an arena-lifetime `tst_event_t`; `tst_demux_receiver_close(p)` releases the handle |
+/// | C (offline) | `tst_demuxer_feed(d, buf, n)` + `tst_demuxer_flush(d)`, then drain with `tst_demuxer_next_event` until `TST_E_NOT_AVAILABLE`, then `tst_demuxer_close(d)` |
 #[derive(Debug)]
 pub struct Demuxer {
     pub(super) options: DemuxerConfig,
@@ -148,10 +149,20 @@ pub struct Demuxer {
 }
 
 impl Demuxer {
+    /// Create a demuxer with the default [`DemuxerConfig`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demuxer_open` — see `crates/tst-c/include/tstrans.h`.
     pub fn new() -> Self {
         Self::with_config(DemuxerConfig::default())
     }
 
+    /// Create a demuxer with an explicit [`DemuxerConfig`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demuxer_open_with_config` — see `crates/tst-c/include/tstrans.h`.
     pub fn with_config(config: DemuxerConfig) -> Self {
         let cap_per_pid = config.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
         let cap_total = config.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
@@ -202,6 +213,10 @@ impl Demuxer {
     /// corresponding `NonConformant` event has already been pushed onto the
     /// internal queue. Drain `next_event()` after the error to retrieve the
     /// structured issue alongside the human-readable error string.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demuxer_feed` — see `crates/tst-c/include/tstrans.h`.
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
         self.sync_buf.extend_from_slice(bytes);
         // Enforce the hard ceiling immediately — the inner sync-search-window
@@ -388,6 +403,11 @@ impl Demuxer {
 
     /// Pull the next available event. Returns `None` if no event is
     /// currently queued — feed more bytes and try again.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demuxer_next_event` — see `crates/tst-c/include/tstrans.h`.
+    /// The `None` case maps to the `TST_E_NOT_AVAILABLE` sentinel (-13).
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         self.queue.pop_front()
     }
@@ -400,6 +420,10 @@ impl Demuxer {
     ///
     /// Idempotent: calling twice with no further `feed` between them is safe
     /// and a no-op the second time.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demuxer_flush` — see `crates/tst-c/include/tstrans.h`.
     pub fn flush(&mut self) {
         let partials = self.pes.drain_partial();
         for pes in partials {

@@ -8,14 +8,16 @@
 //! and typed demux-event surfaces all ship today (`tst_raw_receiver_*` /
 //! `tst_ts_receiver_*` / `tst_receiver_*` / `tst_demux_receiver_*`),
 //! along with the reconnecting `tst_managed_*` variants. RTP and RTSP
-//! transport surfaces are gated on the `rtp` cargo feature. ABI minor is
-//! `0.7` (see [`TST_ABI_VERSION_MINOR`]).
+//! transport surfaces are gated on the `rtp` cargo feature. The
+//! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
+//! feature gate). ABI minor is `0.8` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
 // Cross-cutting (shared by both sender and receiver):
 pub mod config;
 pub mod demux_config;
+pub mod demuxer;
 pub mod error;
 pub mod event;
 pub mod handle;
@@ -121,7 +123,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 7` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 8` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -152,7 +154,11 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   per the network-protocol-stack-expansion design — embedded
 ///   `libtstrans.so` size stays unchanged for existing consumers).
 ///   Adds 4 new `TST_HAS_*` defines and ~95 new `tst_*` entry points.
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 7;
+/// - `8` — added the offline `tst_demuxer_*` byte-feeding demuxer surface.
+///   Wraps `tst_core::Demuxer` directly (no transport URL); callers feed
+///   raw TS bytes and pull typed `TstEvent`s. Unconditional (no feature
+///   gate — `tst-core` is a non-optional dep).
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 8;
 
 // =========================================================================
 // Runtime version accessors

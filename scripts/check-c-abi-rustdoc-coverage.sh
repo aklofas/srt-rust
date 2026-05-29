@@ -168,6 +168,11 @@ ALLOWLIST=(
     "tst_demux_config_set_au_cell_cap_per_pid"
     "tst_demux_config_set_lenient_psi_reassembly"
 
+    # --- Offline demuxer close (no 1:1 Rust counterpart — tst_demuxer_close
+    #     is purely a Box::from_raw + Handle::close + drop; there is no
+    #     Demuxer::close method to cross-ref) ---
+    "tst_demuxer_close"
+
     # --- Phase 3 mux-config descriptor wrappers (mirror existing
     #     tst_mux_config_set_*_descriptors / set_program_descriptors
     #     pattern: C-side TLV assembly + opaque-ptr forwarding) ---

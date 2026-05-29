@@ -256,7 +256,7 @@ pub unsafe extern "C" fn tst_clear_last_error() {
     });
 }
 
-use tst_core::error::MuxError;
+use tst_core::error::{DemuxError, MuxError};
 #[cfg(test)]
 use tst_core::mpegts::mux::StreamKind;
 use tst_pipeline::{ShellError, ShellErrorKind, TransportError};
@@ -388,6 +388,48 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     // #[error("...")] attribute already produces a spec-rich diagnostic
     // string.
     set_last_error(code, &e.to_string());
+}
+
+/// Map a [`DemuxError`] to a code + message and record it to the per-thread
+/// last-error slot.
+///
+/// Used by the standalone offline demuxer path (`tst_demuxer_feed`). The
+/// transport-coupled `tst_demux_receiver_*` surface uses `record_shell_error`
+/// for `DemuxError`-rooted failures because those arrive wrapped in a
+/// `ShellError`. This mapper handles the raw demuxer path where no shell wraps
+/// the error.
+///
+/// **Variant coverage (DemuxError is `#[non_exhaustive]`):** all four known
+/// variants have explicit arms; the wildcard arm maps future additions to
+/// `TST_E_INVALID_TS` (the demux-parse error bucket) and surfaces the
+/// `Display` string so the message is still informative.
+pub(crate) fn record_demux_error(e: &DemuxError) -> i32 {
+    // Per-variant code routing. All four known DemuxError variants are listed
+    // explicitly before the wildcard. The check-raw-c-mapper-coverage.sh
+    // ratchet intentionally does NOT scan DemuxError (it is `#[non_exhaustive]`
+    // from tst-core; the mux/transport raw mappers it covers predate this
+    // function). The explicit arms below give the same coverage guarantee
+    // without an automated ratchet row.
+    //
+    //   DemuxError::StrictRejection(_)   → TstError::InvalidTs (-3)
+    //   DemuxError::Unrecoverable{..}    → TstError::InvalidTs (-3)
+    //   DemuxError::MalformedPsi{..}     → TstError::InvalidTs (-3)
+    //   DemuxError::MalformedPes{..}     → TstError::InvalidTs (-3)
+    //   DemuxError::SyncBufExhausted{..} → TstError::TooLarge  (-6)
+    let code = match e {
+        DemuxError::StrictRejection(_) => TstError::InvalidTs,
+        DemuxError::Unrecoverable { .. } => TstError::InvalidTs,
+        DemuxError::MalformedPsi { .. } => TstError::InvalidTs,
+        DemuxError::MalformedPes { .. } => TstError::InvalidTs,
+        // Fired when the caller feeds a pathologically large byte stream with
+        // no 0x47 sync bytes — the sync buffer hit its 4 MiB cap.
+        DemuxError::SyncBufExhausted { .. } => TstError::TooLarge,
+        // Required by #[non_exhaustive]. Future variants map to InvalidTs
+        // (the most generic demux-parse error bucket) until explicitly added.
+        _ => TstError::InvalidTs,
+    };
+    set_last_error(code, &e.to_string());
+    code as i32
 }
 
 pub(crate) fn record_transport_error(e: &TransportError) {

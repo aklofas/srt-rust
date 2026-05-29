@@ -255,6 +255,7 @@ fn add_section_dividers(header_path: &std::path::Path) {
                 "tst_demux_receiver_",
                 "tst_managed_demux_receiver_",
                 "tst_demux_config_",
+                "tst_demuxer_",
             ],
             "DEMUX RECEIVER",
         ),

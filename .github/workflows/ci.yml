@@ -338,6 +338,23 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo nextest run --workspace --no-fail-fast
 
+      - name: "[temp] Windows multicast + RIST diagnostics (--no-capture)"
+        # TEMPORARY (fully-green test-suite arc): surfaces diag_win_multicast +
+        # diag_win_rist probe output to localize the multicast-loopback recipe
+        # and the librist Windows hang point. `always()` so a red prior test
+        # step doesn't skip it; continue-on-error so its own nonzero exit (e.g.
+        # a RIST hang killed by nextest's per-test timeout) is ignored.
+        # `--no-capture` streams the probe report live regardless of pass/fail.
+        # DELETE this step together with the diag_win_* test files once the
+        # recipe is known + the hang is resolved/documented.
+        if: always() && matrix.name == 'windows-msvc'
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
+        run: cargo nextest run -p tst-udp -p tst-rist --no-capture --no-fail-fast -E 'test(diag_win)'
+
       - name: cargo build (all crate types, no-default-features)
         env:
           SRT_FORCE_VENDORED: "1"

@@ -536,7 +536,9 @@ pub(crate) fn handle_play(
         return error_response(req, 454, "Session Not Found");
     };
     use crate::rtsp::client::transport_negotiation::RtspTransportKind;
-    let drop_counter = crate::rtsp::server::fanout::PeerDropCounter::new();
+    let drop_counter = crate::rtsp::server::fanout::PeerDropCounter::with_mount_total(
+        std::sync::Arc::clone(&mount.frames_dropped),
+    );
     let rx = mount.fanout.subscribe();
     let peer_transport = match transport.kind {
         RtspTransportKind::Udp => {
@@ -566,15 +568,16 @@ pub(crate) fn handle_play(
             // the `Arc` so both the session's response writer and the
             // fanout task can share the underlying writer via the
             // `AsyncMutex` (serializes RTSP responses vs §14 interleaved
-            // RTP frames). The `expect` is sound: every real session
-            // populates `tcp_write` before any handler runs; only
-            // synthetic unit-test sessions leave it `None`, and those
-            // never reach PLAY with TcpInterleaved transport (SETUP
-            // wires the channel pair but the test asserts at SETUP).
-            let writer = session
-                .tcp_write
-                .clone()
-                .expect("tcp_write populated by handle_connection_inner before dispatch");
+            // RTP frames). Plain `rtsp://` sessions always populate
+            // `tcp_write`; `rtsps://` (TLS) sessions do NOT — the §14
+            // interleaved fanout writer is typed to the plain TCP
+            // `OwnedWriteHalf`, so TCP-interleaved PLAY over a TLS control
+            // channel is not supported and returns 461 (rtsps:// control
+            // plane + UDP-transport PLAY both work). Synthetic unit-test
+            // sessions also leave it `None` but assert at SETUP.
+            let Some(writer) = session.tcp_write.clone() else {
+                return error_response(req, 461, "Unsupported Transport");
+            };
             let (rtp_channel, _rtcp_channel) = session
                 .interleaved_channels
                 .expect("SETUP populated interleaved_channels for TcpInterleaved transport");

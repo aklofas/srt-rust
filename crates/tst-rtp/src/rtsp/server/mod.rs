@@ -412,7 +412,9 @@ impl RtspServer {
         let group = mcast.addr;
         let ttl = mcast.ttl;
         let iface = mcast.iface.clone();
-        let drop_counter = crate::rtsp::server::fanout::PeerDropCounter::new();
+        let drop_counter = crate::rtsp::server::fanout::PeerDropCounter::with_mount_total(
+            std::sync::Arc::clone(&mount_state.frames_dropped),
+        );
         rt.spawn(async move {
             match crate::rtsp::server::multicast::build_multicast_send_socket(
                 group,

@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
 use tokio::sync::broadcast;
@@ -57,6 +58,14 @@ pub(crate) struct MountState {
     /// are created by Task 13's per-session subscriber task on PLAY.
     pub(crate) fanout: broadcast::Sender<Bytes>,
     pub(crate) stats: Mutex<MountStatsInner>,
+    /// Mount-level dropped-frame total, summed across all peers' fanout
+    /// tasks in real time (each peer's [`PeerDropCounter`] is linked here
+    /// via `with_mount_total`). Lives outside `stats` so a lagging peer's
+    /// fanout task can bump it without contending on the push-path stats
+    /// mutex. Surfaced as `MountStats::frames_dropped_total`.
+    ///
+    /// [`PeerDropCounter`]: crate::rtsp::server::fanout::PeerDropCounter
+    pub(crate) frames_dropped: Arc<AtomicU64>,
 }
 
 /// Internal stats accumulator. Public `MountStats` snapshot derived from this.
@@ -65,7 +74,6 @@ pub(crate) struct MountState {
 pub(crate) struct MountStatsInner {
     pub(crate) bytes_pushed: u64,
     pub(crate) packets_pushed: u64,
-    pub(crate) frames_dropped_total: u64,
     pub(crate) per_stream: BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
 }
 
@@ -90,6 +98,7 @@ impl MountState {
             muxer: Mutex::new(muxer),
             fanout: tx,
             stats: Mutex::new(MountStatsInner::default()),
+            frames_dropped: Arc::new(AtomicU64::new(0)),
         }))
     }
 
@@ -163,7 +172,7 @@ impl MountHandle {
             bytes_pushed: stats_lock.bytes_pushed,
             packets_pushed: stats_lock.packets_pushed,
             peer_count: self.state.fanout.receiver_count(),
-            frames_dropped_total: stats_lock.frames_dropped_total,
+            frames_dropped_total: self.state.frames_dropped.load(Ordering::Relaxed),
             per_stream: stats_lock.per_stream.clone(),
         }
     }
@@ -413,8 +422,8 @@ impl MountHandle {
         if let Ok(mut s) = self.state.stats.lock() {
             s.bytes_pushed = 0;
             s.packets_pushed = 0;
-            s.frames_dropped_total = 0;
         }
+        self.state.frames_dropped.store(0, Ordering::Relaxed);
     }
 
     // ── Stream-handle accessors ──────────────────────────────────────────

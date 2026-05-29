@@ -53,17 +53,16 @@ fn tls_server_binds_and_starts() {
 }
 
 /// Full `rtsps://` handshake against the in-process server with a
-/// self-signed cert trusted via a custom rustls root store.
+/// self-signed cert trusted via a custom rustls root store, then an
+/// OPTIONS round-trip over the encrypted channel.
 ///
-/// Currently `#[ignore]`d: the Phase 2 client's
-/// `RtspClient::connect_with` hardcodes `root_certs = None` when
-/// constructing the `TlsStream`, and `RtspClientBuilder::tls_root_certs`
-/// stores the override but the builder's `connect()` does not forward
-/// it. Un-ignore once the client-side wiring lands (one-line change in
-/// `crates/tst-rtp/src/rtsp/client/mod.rs::connect_with` to thread a
-/// `root_certs: Option<RootCertStore>` arg through from the builder).
+/// Exercises the client-side custom-root wiring
+/// (`RtspClientBuilder::tls_root_certs` → `connect_with_roots` →
+/// `TlsStream::connect`) AND the server-side TLS session loop
+/// (`handle_connection_tls` → `serve_requests`). Before the session loop
+/// landed, the server completed the handshake then dropped the
+/// connection, so this OPTIONS read returned `Io(UnexpectedEof)`.
 #[test]
-#[ignore = "client-side custom root-store wiring not yet present; RtspClientBuilder::tls_root_certs is stored but unused"]
 fn rtsps_handshake_succeeds_with_trusted_root() {
     let certs = SelfSignedCert::generate();
     let mut b = RtspServerBuilder::new("rtsps://127.0.0.1:0").expect("URL parse");

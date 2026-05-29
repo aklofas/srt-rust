@@ -10,20 +10,12 @@
 //! `Stream::Tls`. Pre-T21 the TLS variant was silently a no-op because
 //! rustls `ClientConnection` isn't clonable.
 //!
-//! # Why ignored
-//!
-//! The test stays `#[ignore]` because running it requires a real
-//! `rtsps://` fixture server (cert + key + matching root cert in the
-//! client's trust store). The repo doesn't carry a checked-in cert
-//! fixture and the `rcgen` self-signed-cert generator is not a dev-dep
-//! today — same situation as `tests/rtsp_client_tls.rs::rtsps_handshake_smoke`.
-//! When the cert fixture lands (planned at `tests/fixtures/tls_certs.rs`
-//! per the comments in `crates/tst-rtp/src/rtsp/server/tls.rs:165`), set
-//! `RTSP_TLS_FIXTURE=1` and remove the `#[ignore]` to activate.
-//!
-//! The test does compile under `--features tls`, which protects against
-//! a regression that removes `RtspClientBuilder::tls_root_certs` or
-//! breaks the keepalive-on-TLS public surface.
+//! Drives a real in-process `rtsps://` server using the
+//! [`SelfSignedCert`](crate::fixtures::tls_certs::SelfSignedCert) rcgen
+//! fixture (cert + key + matching root for the client trust store), so
+//! the keepalive thread is exercised over a live TLS session — verifying
+//! both the client's TLS keepalive (T21 `Arc<Mutex<Stream>>` share) and
+//! the server's TLS session loop handle periodic GET_PARAMETER pings.
 
 #![cfg(feature = "tls")]
 
@@ -54,32 +46,21 @@ fn make_muxer_cfg() -> MuxerConfig {
 /// `spawn_keepalive_if_needed`) because the builder is the public
 /// keepalive-spawn path the public-API consumers will hit.
 #[test]
-#[ignore = "needs rtsps:// cert fixture (rcgen dev-dep not present); \
-             un-ignore once tests/fixtures/tls_certs.rs lands"]
 fn rtsps_keepalive_thread_spawns_on_connect() {
-    // Build the TLS server. Cert + key paths come from the fixture-to-be.
-    // Until that lands, these paths are intentionally non-existent so
-    // any accidental un-ignore fails loudly at build() rather than
-    // silently passing.
-    let cert_pem = std::path::PathBuf::from("tests/fixtures/tls_certs/server.crt");
-    let key_pem = std::path::PathBuf::from("tests/fixtures/tls_certs/server.key");
+    // Fresh self-signed cert (SANs: localhost + 127.0.0.1) from the rcgen
+    // fixture; the tempdir lives as long as `certs`.
+    let certs = crate::fixtures::tls_certs::SelfSignedCert::generate();
     let mut sb = RtspServerBuilder::new("rtsps://127.0.0.1:0").unwrap();
-    sb.tls_cert(cert_pem, key_pem);
+    sb.tls_cert(certs.cert_path.clone(), certs.key_path.clone());
     let server = sb.build().unwrap();
     let _mount = server.add_mount("/live", make_muxer_cfg()).unwrap();
     server.start().unwrap();
     let port = server.local_addr().unwrap().port();
     let url = format!("rtsps://127.0.0.1:{port}/live");
 
-    // Build a client trusting the test cert. The fixture is expected to
-    // export the root PEM bytes used to sign the server cert.
-    //
-    // Using runtime fs read rather than `include_bytes!` so the test
-    // file compiles when the fixture isn't present yet — the `#[ignore]`
-    // attribute keeps it from running.
-    let root_pem = std::fs::read("tests/fixtures/tls_certs/root.pem").unwrap();
+    // Build a client trusting the fixture's self-signed cert as a root.
     let mut roots = rustls::RootCertStore::empty();
-    for cert in rustls_pemfile::certs(&mut root_pem.as_slice()) {
+    for cert in rustls_pemfile::certs(&mut certs.root_pem.as_bytes()) {
         roots.add(cert.unwrap()).unwrap();
     }
 

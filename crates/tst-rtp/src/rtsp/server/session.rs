@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::Mutex as AsyncMutex;
@@ -133,7 +133,7 @@ async fn handle_connection_inner(
     // RTP frames on the same TCP as the RTSP control responses. The
     // mutex serializes the two writers so an RTSP response is never
     // intermixed mid-bytes with a `$<channel><len><payload>` frame.
-    let (mut read_half, write_half) = tcp.into_split();
+    let (read_half, write_half) = tcp.into_split();
     let write_half = Arc::new(AsyncMutex::new(write_half));
 
     let mut session = ServerSessionState::new();
@@ -150,6 +150,31 @@ async fn handle_connection_inner(
         *g = Some(write_half.clone());
     }
 
+    serve_requests(state, peer, session_entry, session, read_half, write_half).await
+}
+
+/// The RTSP request/response loop, generic over the underlying byte
+/// stream's split halves so the plain `rtsp://` (TCP) and `rtsps://`
+/// (TLS) sessions share one implementation — the "shared generic over
+/// `AsyncRead + AsyncWrite`" shape the plain/TLS handlers were always
+/// meant to converge on.
+///
+/// Reads requests, dispatches each to its handler, writes the response,
+/// and enforces the auth-failure + TEARDOWN close semantics. The caller
+/// owns whether `session.tcp_write` is populated (plain TCP stashes its
+/// `OwnedWriteHalf` for §14 interleaved fanout; TLS leaves it `None`).
+async fn serve_requests<R, W>(
+    state: Arc<ServerState>,
+    peer: SocketAddr,
+    session_entry: Arc<crate::rtsp::server::ActiveSession>,
+    mut session: ServerSessionState,
+    mut read_half: R,
+    write_half: Arc<AsyncMutex<W>>,
+) -> Result<(), RtspServerError>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     // Bounded read buffer — RTSP requests are typically << 4 KiB.
     let mut buf: Vec<u8> = Vec::with_capacity(8192);
 
@@ -263,28 +288,49 @@ fn dispatch(
     }
 }
 
-/// TLS-variant of [`handle_connection`]. Same shape, takes a tokio-rustls
-/// `TlsStream<TcpStream>` instead of plain `TcpStream`. Stubbed for now;
-/// the full TLS-session loop mirrors `handle_connection_inner` over
-/// `TokioTlsServerStream` (Wave D refactors into a shared generic over
-/// `AsyncRead + AsyncWrite`).
+/// TLS-variant of [`handle_connection`]. Takes a tokio-rustls
+/// `TlsStream<TcpStream>` instead of plain `TcpStream` and drives the
+/// same [`serve_requests`] loop after splitting it via
+/// [`tokio::io::split`].
+///
+/// `rtsps://` covers the full control plane (OPTIONS / DESCRIBE / SETUP /
+/// PLAY / PAUSE / TEARDOWN / GET_PARAMETER) plus UDP-transport PLAY (the
+/// RTP fanout goes over independent UDP sockets). It does NOT stash a
+/// control-stream write half, so RFC 7826 §14 TCP-interleaved PLAY over a
+/// TLS session is unsupported and returns 461 (see `handle_play`): the
+/// interleaved fanout writer is typed to the plain TCP `OwnedWriteHalf`.
 ///
 /// Listener (Task 8) calls this when the bind URL scheme is `rtsps://`.
 #[cfg(feature = "tls")]
-#[allow(dead_code, unused_variables, unused_mut)]
 pub(crate) async fn handle_connection_tls(
     state: Arc<ServerState>,
-    mut tls: crate::rtsp::server::tls::TokioTlsServerStream,
+    tls: crate::rtsp::server::tls::TokioTlsServerStream,
     peer: SocketAddr,
 ) -> Result<(), RtspServerError> {
     state.active_sessions.fetch_add(1, Ordering::Relaxed);
-    tracing::info!(target: "tst_rtp::server", peer = %peer, "TLS session opened (stub)");
-    // Wave D wires the full TLS-session loop. For now, drain the stream
-    // until the client disconnects; no RTSP request handling. This stub
-    // exists so the listener's TLS branch compiles + so rtsps:// CONNECT
-    // tests pass at the handshake level.
+    let entry = crate::rtsp::server::register_session(&state, peer);
+    let res = handle_connection_tls_inner(state.clone(), tls, peer, entry.clone()).await;
+    crate::rtsp::server::unregister_session(&state, &entry);
     state.active_sessions.fetch_sub(1, Ordering::Relaxed);
-    Ok(())
+    res
+}
+
+#[cfg(feature = "tls")]
+async fn handle_connection_tls_inner(
+    state: Arc<ServerState>,
+    tls: crate::rtsp::server::tls::TokioTlsServerStream,
+    peer: SocketAddr,
+    session_entry: Arc<crate::rtsp::server::ActiveSession>,
+) -> Result<(), RtspServerError> {
+    tracing::info!(target: "tst_rtp::server", peer = %peer, "TLS session opened");
+    let (read_half, write_half) = tokio::io::split(tls);
+    let write_half = Arc::new(AsyncMutex::new(write_half));
+    // NOTE: `session.tcp_write` is intentionally left `None` for TLS — the
+    // §14 interleaved fanout writer is typed to the plain TCP
+    // `OwnedWriteHalf`. `RtspServer::stop`'s Notice 5402 ANNOUNCE path
+    // skips sessions whose `tcp_write` is `None` (let-else in mod.rs).
+    let session = ServerSessionState::new();
+    serve_requests(state, peer, session_entry, session, read_half, write_half).await
 }
 
 #[cfg(test)]

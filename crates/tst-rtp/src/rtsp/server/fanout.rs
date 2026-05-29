@@ -42,10 +42,18 @@ pub(crate) enum PeerTransport {
 }
 
 /// Per-peer dropped-frame counter, observable from outside the task.
-/// `MountStats::frames_dropped_total` sums these across peers.
+///
+/// When constructed with [`Self::with_mount_total`], every `add` also
+/// bumps a shared mount-level total so `MountStats::frames_dropped_total`
+/// sums the drops across all of a mount's peers in real time. Constructed
+/// via [`Self::new`] (no mount link) the per-peer count is still tracked
+/// but not aggregated — used by the fanout unit tests.
 #[derive(Default)]
 pub(crate) struct PeerDropCounter {
     pub(crate) dropped: AtomicU64,
+    /// Shared mount-level dropped-frame total; `None` for unlinked
+    /// counters (unit tests). Bumped alongside `dropped` on every `add`.
+    mount_total: Option<Arc<AtomicU64>>,
 }
 
 #[allow(dead_code)]
@@ -53,8 +61,18 @@ impl PeerDropCounter {
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self::default())
     }
+    /// Construct a counter linked to a mount's shared dropped-frame total.
+    pub(crate) fn with_mount_total(mount_total: Arc<AtomicU64>) -> Arc<Self> {
+        Arc::new(Self {
+            dropped: AtomicU64::new(0),
+            mount_total: Some(mount_total),
+        })
+    }
     pub(crate) fn add(&self, n: u64) {
         self.dropped.fetch_add(n, Ordering::Relaxed);
+        if let Some(total) = &self.mount_total {
+            total.fetch_add(n, Ordering::Relaxed);
+        }
     }
     pub(crate) fn get(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
@@ -245,6 +263,52 @@ mod tests {
 
         let dropped = drop_counter.get();
         assert!(dropped > 0, "expected drop counter to tick; got {dropped}");
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    /// A peer counter built with `with_mount_total` aggregates its drops
+    /// into the shared mount-level total in real time — the wiring behind
+    /// `MountStats::frames_dropped_total`. Same deterministic push-before-
+    /// drain setup as `drop_counter_ticks_on_lag`.
+    #[tokio::test]
+    async fn mount_total_aggregates_peer_drops() {
+        let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+        let (tx, rx) = broadcast::channel::<Bytes>(2);
+        let cancel = CancellationToken::new();
+        let mount_total = Arc::new(AtomicU64::new(0));
+        let drop_counter = PeerDropCounter::with_mount_total(mount_total.clone());
+        let transport = PeerTransport::Udp {
+            socket: send_sock,
+            peer_addr,
+        };
+
+        for i in 0..5u8 {
+            let _ = tx.send(Bytes::from(vec![i; 8]));
+        }
+        let handle = spawn_peer_fanout(
+            rx,
+            transport,
+            cancel.clone(),
+            0xCAFEBABE,
+            1,
+            drop_counter.clone(),
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let peer_dropped = drop_counter.get();
+        let mount_dropped = mount_total.load(Ordering::Relaxed);
+        assert!(
+            peer_dropped > 0,
+            "per-peer drop counter should tick; got {peer_dropped}"
+        );
+        assert_eq!(
+            mount_dropped, peer_dropped,
+            "mount total should equal the single peer's drops"
+        );
 
         cancel.cancel();
         let _ = handle.await;

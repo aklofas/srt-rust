@@ -1156,42 +1156,63 @@ the trigger that would unblock it.
   with `continue-on-error: true` initially, mirroring the
   Tier 1 phase-in pattern.
 
-## Windows MSVC runtime test stabilization
+## Windows MSVC runtime tests — RESOLVED 2026-05-29 (sub-deferrals remain)
 
-- **Status:** Plan #65 (2026-05-16) ported `tst-srt` to compile +
-  link on `*-pc-windows-msvc` (sockaddr abstraction via
-  `os_socketaddr`, `srt_static.lib` linkage, `bcrypt.lib` for
-  mbedTLS entropy). The 4 `cargo test` steps (default features,
-  no-default-features, all-features, doctests) are SKIPPED on the
-  windows-msvc matrix entry pending dedicated runtime triage —
-  SRT loopback tests hang on Windows (at least
-  `tst-c::demux_receiver_loopback` observed at 18+ min before
-  cancellation; expect the whole loopback test family to be
-  affected).
-- **Why deferred:** Diagnosing the hang requires Windows hardware
-  on hand to iterate. Each GHA Windows CI cycle is ~12-18 min just
-  to reach the hang, which is impractical for the kind of
-  print-trace + retry debug loop the issue likely needs. The hang
-  most plausibly reflects different EOS / cancellation semantics
-  between winsock and BSD sockets — libsrt's `srt_close` may not
-  trigger the same peer-side broken/EOS path on Windows, leaving
-  loopback receivers parked forever in `srt_recv`. May also be
-  buffer-flush ordering. Without Windows hardware to attach a
-  debugger, the diagnosis is guesswork.
-- **Trigger to revisit:** A contributor with Windows hardware on
-  hand picks it up, OR a Windows consumer reports a real (non-test)
-  bug in the runtime path. Until then, Linux x86_64 + Linux
-  aarch64 + macOS arm64 cover the runtime behavior; the Windows
-  matrix entry gates compile + link only.
-- **Scope when revisited:** New plan in the shape of plan #66
-  (macOS loopback stabilization) — audit hanging tests, identify
-  root cause (likely a difference in `srt_close` propagation on
-  winsock vs BSD), apply the appropriate fix (test-side timeout,
-  explicit `srt_setflag`-based cancellation, or library-side
-  workaround in `tst-srt`). Once the test suite passes on Windows,
-  the 4 `if: matrix.name != 'windows-msvc'` gates in
-  `.github/workflows/ci.yml` get removed and windows-msvc rejoins
-  the gating cohort.
+- **Status:** RESOLVED. windows-msvc now runs the full runtime test
+  suite and is green across all four platforms. Plan #65's "SRT
+  loopback hangs on Windows" diagnosis turned out STALE — it was an
+  artifact of the pre-MSVC-`cl` librist build; on the cl-built libsrt
+  the blocking `srt_recv` wakes on peer-close immediately (proven by a
+  bounded diagnostic), same as Linux. The actual blocker was a real
+  `SRTO_LINGER` struct-ABI product bug: `LingerOpt` was two `int`
+  (8 bytes), but Winsock `struct linger` is two `u_short` (4 bytes), so
+  libsrt's `cast_optval<linger>` rejected the size (`MJ_NOTSUP/MN_INVAL`)
+  → every sender connect failed → receiver-accept hangs. Fixed
+  per-platform in `crates/tst-srt/src/socket.rs`. CI now runs all
+  platforms under cargo-nextest, so per-test timeouts bound any future
+  hang (one hang can no longer stall the job).
+- **Remaining sub-deferrals** (each gated `#[cfg(not(target_os =
+  "windows"))]`; tracked in ROADMAP "Fully-green test suite") —
+  1. **Promote windows-msvc to gating:** still
+     `continue-on-error: true`; flip to `continue: false` in the
+     `ci.yml` build matrix once it has several consecutive green runs.
+  2. **RIST runtime on Windows:** `tst-rist/tests/{loopback,
+     pipeline_round_trip}.rs` are gated off windows — librist's
+     Main-Profile AES-256 encrypted handshake hangs there (genuine
+     investigation needed; compile + link stay covered by the build
+     steps + the tst-c `rist` feature build).
+  3. **Multicast on Windows:** `tst-rtp`/`tst-udp` `loopback_multicast`
+     + the `tst-rtp` `build_multicast_with_iface_v4` unit test are gated
+     off windows — GHA Windows runners don't loop multicast back and
+     Winsock rejects `IP_MULTICAST_IF=loopback`. Most likely a
+     runner-environment limitation rather than a code bug; confirm, then
+     either un-gate on a multicast-capable runner or document permanent.
+- **Trigger to revisit:** the next-session "fully-green test suite"
+  pass (RIST + multicast investigations), then the gating promotion.
+
+## RTSP server/client deferred test surface (`#[ignore]`d)
+
+- **Status:** Four `tst-rtp` RTSP tests are `#[ignore]`d pending a
+  feature, a fixture, or a harness — not platform-gated, just not yet
+  runnable in CI:
+  1. `rtsp_server/tls.rs` — client-side custom root-store wiring not
+     implemented (`RtspClientBuilder::tls_root_certs` is stored but
+     unused), so the end-to-end `rtsps://` handshake can't be asserted.
+  2. `rtsp_client/tls_keepalive.rs` — needs an `rtsps://` cert fixture
+     (rcgen dev-dep not present); activate with `RTSP_TLS_FIXTURE=1`.
+  3. `rtsp_server/lagging_peer.rs` — deterministic slow-consumer
+     reproduction needs a throttled test harness (the underlying
+     drop-counter behavior is unit-tested in `fanout.rs`).
+  4. `rtsp_client/interleaved_e2e.rs`
+     (`tcp_interleaved_end_to_end_round_trips_ts_bytes`) — re-ignored
+     post-merge (hangs in the post-PLAY drop sequence in the merged
+     state); the interleaved wire-up is covered by
+     `rtsp_server_loopback_interleaved` + `rtsp_server_notice_5402`.
+- **Why deferred:** each is a self-contained follow-up (TLS root-store
+  plumbing, a cert fixture, a throttle harness, an interleaved-drop
+  shutdown fix) carved out of the tst-rtp Phase 2/3 waves.
+- **Trigger to revisit:** the next-session "fully-green test suite"
+  pass folds these in alongside the Windows un-gating.
 
 ## Audio frame iterators for LATM + AC-3
 

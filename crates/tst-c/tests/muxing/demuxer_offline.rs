@@ -4,6 +4,8 @@
 //! network. Builds TS bytes in-process with the C muxer, then feeds
 //! them through the new `tst_demuxer_*` surface.
 
+// Only used to build TS bytes via the C muxer, which is `srt`-gated below.
+#[cfg(feature = "srt")]
 use tstrans::config::{
     TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
     tst_mux_config_free, tst_mux_config_new,
@@ -13,8 +15,10 @@ use tstrans::demuxer::{
     tst_demuxer_open, tst_demuxer_open_with_config,
 };
 use tstrans::error::TstError;
-use tstrans::event::{TstEvent, TstEventKind};
-// TstEventKind variants used via `as i32` cast in comparisons below.
+use tstrans::event::TstEvent;
+// TstEventKind variants are compared only in the `srt`-gated event-check block.
+#[cfg(feature = "srt")]
+use tstrans::event::TstEventKind;
 
 // Pull in the muxer open/pull/close for building TS bytes offline.
 #[cfg(feature = "srt")]
@@ -26,6 +30,8 @@ use tstrans::sender::muxer::{
 use tstrans::demux_config::{tst_demux_config_free, tst_demux_config_new};
 
 // A minimal Annex-B IDR NAL unit (SPS + IDR slice stub) accepted by the muxer.
+// Only fed to the `srt`-gated C muxer below.
+#[cfg(feature = "srt")]
 const NAL_IDR: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xAA, 0xAA, 0xAA];
 
 /// Build TS bytes offline: one H.264 IDR AU through a single-stream muxer.

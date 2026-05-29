@@ -1,23 +1,47 @@
 # cargo-nextest configuration.
 #
-# The feature we rely on is `terminate-after`: unlike libtest (`cargo test`),
-# which lets a hung test block forever, nextest runs each test in its own
-# process and KILLS one that exceeds its timeout, reports it as a timeout
-# failure, and continues the run. This stops a single hung network test (e.g.
-# an unproven transport on a newly-enabled platform) from stalling the whole
-# CI job — and surfaces every failure in one run instead of one-per-rerun.
+# Two things we rely on, neither of which `cargo test` (libtest) can do:
+#
+#   1. Per-test timeouts (`terminate-after`): nextest runs each test in its own
+#      process and KILLS one that exceeds its deadline, reports it as a failure,
+#      and continues the run. A hung test can't stall the whole job, and every
+#      failure surfaces in one run.
+#
+#   2. Concurrency control per test-group: the bulk of the suite runs at full
+#      parallelism, while network/loopback tests are funnelled through a
+#      single-threaded group so they never contend on 127.0.0.1 ports or CPU
+#      timing. The capped group does NOT hold back the rest — non-network tests
+#      keep filling the other worker threads.
 
 [profile.default]
-# Global safety net. Any test still running after 60s (2 x 30s) is terminated
+# Full parallelism for the bulk (nextest defaults test-threads to num-cpus).
+# Global safety net: any test still running after 60s (2 x 30s) is terminated
 # and reported as a failure. Non-network tests finish in well under a second,
 # so this only ever fires on a genuine hang.
 slow-timeout = { period = "30s", terminate-after = 2 }
 
-# Network / loopback tests talk over 127.0.0.1 and complete in a few seconds at
-# most (the slowest are SRT/RIST encrypted handshakes, ~1-5s). Give them a
-# tighter bound so a hang dies fast rather than burning the global 60s. Matched
-# by test-name substring across every crate; `period` x `terminate-after` = the
-# kill deadline (here 20s), with generous headroom over the ~5s legitimate max.
+[test-groups]
+# Network/loopback tests bind 127.0.0.1 ports and are timing-sensitive; run
+# them one-at-a-time across the whole workspace so cross-test port/CPU
+# contention can't cause flakes. Cost is small (serialising fast tests is
+# negligible; only the ~handful of multi-second loopback tests actually
+# serialise), and they overlap with the parallel non-network tests.
+network = { max-threads = 1 }
+
 [[profile.default.overrides]]
-filter = "test(loopback) | test(round_trip) | test(pairing) | test(rtsp) | test(multicast) | test(reconnect) | test(cancellation) | test(live_pair) | test(stats_round_trip) | test(hls) | test(e2e)"
+# Assign network tests to the capped group + give them a tight timeout (20s;
+# the slowest legitimate loopback is an SRT/RIST encrypted handshake at ~1-5s).
+# Matched broadly by the integration binaries that do loopback plus loopback-
+# style test names: over-matching a fast test is harmless (it just serialises),
+# missing a network test is not (it would contend). `binary(...)` / `test(...)`
+# are substring matches.
+filter = """
+    binary(loopback) | binary(loopback_multicast) | binary(pipeline_round_trip)
+  | binary(hls_e2e) | binary(pipeline) | binary(stats) | binary(receiving)
+  | binary(muxing) | binary(transports) | binary(url_open) | binary(rtp)
+  | binary(rtcp) | binary(rtsp_client) | binary(rtsp_server)
+  | test(loopback) | test(round_trip) | test(roundtrip) | test(pairing)
+  | test(multicast) | test(reconnect) | test(rtsp) | test(live_pair)
+"""
+test-group = "network"
 slow-timeout = { period = "10s", terminate-after = 2 }

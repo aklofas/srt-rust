@@ -30,13 +30,20 @@ Notes:
 
 ## tst-integration CI modes
 
-The cross-binding scenario harness crate (`crates/tst-integration`, when present)
-runs in pinned modes so it never slows the default workspace run or pulls in
-built bindings it doesn't need:
+The cross-binding scenario harness crate (`crates/tst-integration`, shipped
+WS-5 2026-05-29) is Rust-canonical: Rust generates the goldens + `scenarios.toml`
+manifest, and all three bindings consume that same committed set. As shipped,
+the three adapters run in these places (the `c`/`python` cargo features on
+`tst-integration` are reserved for future in-crate adapters but are currently
+empty — the C/Python adapters live in their own crates' test/example surfaces):
 
-- **default features (Rust-only)** — the Rust scenario adapter; Tier A.
-- **`c` feature** — the C adapter; needs `libtstrans` built first; explicit CI job.
-- **`python` feature** — the Python adapter; needs the `tstrans` wheel; explicit CI job.
+- **Rust adapter** — `crates/tst-integration/tests/rust_scenarios.rs`; runs in the
+  default workspace test (Tier A) + `scripts/check-scenarios.sh` (`gen_scenarios
+  --check`) guards golden/manifest drift.
+- **C adapter** — `crates/tst-c/examples/c/scenarios/run_scenarios.c`; compiled +
+  run against `libtstrans` in a dedicated linux-x86_64 CI step.
+- **Python adapter** — `crates/tst-py/tests/test_scenarios.py`; runs in the existing
+  `tst-py` pytest CI job (picked up by `pytest tests/`).
 
 ## Files here
 

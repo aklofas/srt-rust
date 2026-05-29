@@ -57,7 +57,12 @@ origin = "synthetic"
 generator = "scripts/gen-fuzz-targets.sh"
 no_private_corpus = true
 
-# NOTE: when the cross-binding scenario harness (crates/tst-integration) lands,
-# add its generated goldens here:
-#   root = "crates/tst-integration/tests/fixtures/scenarios"
-#   origin = "synthetic", generator = "cargo run -p tst-integration --bin gen_scenarios"
+# Cross-binding scenario harness goldens (WS-5). Committed input artifacts +
+# golden.json per scenario + the generated scenarios.toml manifest. Regenerate
+# with the generator below; gen_scenarios --check (scripts/check-scenarios.sh)
+# fails CI if the committed set drifts. Synthetic-only by construction.
+[[group]]
+root = "crates/tst-integration/tests/fixtures/scenarios"
+origin = "synthetic"
+generator = "cargo run -p tst-integration --bin gen_scenarios"
+no_private_corpus = true

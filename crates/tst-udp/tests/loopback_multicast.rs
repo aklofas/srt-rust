@@ -21,6 +21,7 @@ fn try_listen_v4(url: &str) -> Option<UdpRecvTransport> {
     }
 }
 
+#[cfg(not(target_os = "windows"))] // sole caller is windows-gated below
 fn try_listen_v6(url: &str) -> Option<UdpRecvTransport> {
     match UdpRecvTransport::listen(url) {
         Ok(t) => Some(t),

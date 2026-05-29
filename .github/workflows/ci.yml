@@ -636,7 +636,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -709,7 +709,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 

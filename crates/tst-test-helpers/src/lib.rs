@@ -5,5 +5,6 @@
 
 pub mod mock_recv_transport;
 pub mod mock_transport;
+pub mod ports;
 pub mod synthetic_nal;
 pub mod ts_parser;

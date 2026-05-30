@@ -323,7 +323,7 @@ impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> 
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
 impl<E: core::fmt::Debug + core::error::Error + core::marker::Send + core::marker::Sync + 'static> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherError<E>
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
+impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::error::Error + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E> core::fmt::Display for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::fmt::Display + core::error::Error + core::marker::Send + core::marker::Sync + 'static
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1173,7 +1173,7 @@ impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> 
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
 impl<E: core::fmt::Debug + core::error::Error + core::marker::Send + core::marker::Sync + 'static> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherError<E>
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
+impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::error::Error + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E> core::fmt::Display for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::fmt::Display + core::error::Error + core::marker::Send + core::marker::Sync + 'static
 pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

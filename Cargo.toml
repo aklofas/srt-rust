@@ -33,7 +33,7 @@ cbindgen      = "0.29"
 cc            = "1.0"
 cmake         = "0.1"
 pkg-config    = "0.3"
-thiserror     = "1.0"
+thiserror     = { version = "2", default-features = false }
 secrecy       = "0.10"
 socket2       = "0.5"
 log           = "0.4"

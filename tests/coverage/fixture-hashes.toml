@@ -220,7 +220,7 @@ sha256 = "9dbf9b422d60b3db9b5fa691cafd35ba22fa5f54a5bb15ea7ffda53f2a12ab39"
 
 [[file]]
 path = "crates/tst-core/tests/fixtures/st0601/README.md"
-sha256 = "0a43cf29a339968ab566925882509c5ce4eb2e2a52be3dfebefc685e07367ac1"
+sha256 = "77237a7a4ae035bd6ea86ee9462fb1e4f18f12d8d98bb810902012d56da12910"
 
 [[file]]
 path = "crates/tst-core/tests/fixtures/st0601/synthetic_field_errors.klv"

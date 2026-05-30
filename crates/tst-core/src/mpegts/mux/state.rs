@@ -12,7 +12,9 @@ use super::{AudioCodec, KlvStreamType, MuxerProgramConfig, StreamSpec, SubtitleC
 use crate::error::MuxError;
 use crate::mpegts::common::{StreamType, StreamTypeCode};
 use crate::mpegts::stats::StreamStats;
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Per-video-stream cached state. Built once at `Muxer::new` time.
 pub(super) struct VideoStreamState {
@@ -440,7 +442,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
                         "caller-supplied Registration descriptor on KLV PID has \
                          non-KLVA format_identifier ({:?}); receivers may not \
                          recognize the stream as KLV",
-                        std::str::from_utf8(&tlv[2..6]).unwrap_or("?")
+                        core::str::from_utf8(&tlv[2..6]).unwrap_or("?")
                     );
                 }
             }

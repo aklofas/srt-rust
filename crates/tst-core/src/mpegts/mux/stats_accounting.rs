@@ -9,7 +9,7 @@
 //! `per_stream` / `stream_codec_counters` fields back this module's
 //! operations; they stay in the struct definition (`mod.rs`).
 
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
 
 use super::Muxer;
 

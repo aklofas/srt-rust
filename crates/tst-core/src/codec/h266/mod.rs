@@ -49,7 +49,8 @@ pub use vps::{H266Vps, parse_vps};
 
 use crate::codec::CodecParseError;
 use crate::mpegts::demux::event::NalUnit;
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 /// Convenience collector — walks `Vec<NalUnit>` and groups recognized
 /// VPS / SPS / PPS by id. Partial-success-tolerant: bad NALs emit

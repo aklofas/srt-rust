@@ -5,7 +5,9 @@
 //! codec, AV1 codec) is additive: add the variant to the appropriate
 //! enum, no other public type changes.
 
-use std::time::Duration;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::time::Duration;
 
 use crate::mpegts::common::{Pts90khz, StreamTypeCode};
 pub use crate::mpegts::demux::ts::PcrMalformedKind;
@@ -857,8 +859,8 @@ pub fn pts_to_duration(pts: Pts90khz) -> Duration {
     Duration::from_micros((pts.as_ticks() as i128 * 1_000_000 / 90_000) as u64)
 }
 
-impl std::fmt::Display for NonConformantIssue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NonConformantIssue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid => {
                 write!(f, "stream_type=0x06 carries sync KLV on async PID")

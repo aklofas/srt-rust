@@ -22,6 +22,7 @@ mod push_subtitle;
 mod push_video;
 
 use crate::error::MuxError;
+use alloc::vec::Vec;
 
 mod types;
 pub use types::*;
@@ -78,7 +79,7 @@ pub mod _detail {
 // `Muxer::new` body that did was extracted into `state.rs` (Wave 6 fix).
 #[allow(unused_imports)]
 use crate::mpegts::common::{StreamType, StreamTypeCode};
-use std::collections::{BTreeMap, VecDeque};
+use alloc::collections::{BTreeMap, VecDeque};
 
 use self::pes::MAX_PES_HEADER_SIZE;
 use self::state::{AudioStreamState, KlvStreamState, SubtitleStreamState, VideoStreamState};

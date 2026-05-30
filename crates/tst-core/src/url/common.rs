@@ -2,8 +2,11 @@
 //!
 //! See [the module docs](super) for the URL shape we accept.
 
-use std::borrow::Cow;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use alloc::borrow::Cow;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use thiserror::Error;
 
@@ -257,12 +260,12 @@ fn hex_nibble(b: u8) -> Result<u8, UrlError> {
 pub fn parse_host_port(s: &str) -> Result<(IpAddr, u16), UrlError> {
     let (host, port) = split_host_port(s)?;
     let port = port.ok_or(UrlError::MissingPort)?;
-    let ip: IpAddr = host
-        .parse()
-        .map_err(|e: std::net::AddrParseError| UrlError::InvalidPort {
-            got: host.to_string(),
-            detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
-        })?;
+    let ip: IpAddr =
+        host.parse()
+            .map_err(|e: core::net::AddrParseError| UrlError::InvalidPort {
+                got: host.to_string(),
+                detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
+            })?;
     Ok((ip, port))
 }
 

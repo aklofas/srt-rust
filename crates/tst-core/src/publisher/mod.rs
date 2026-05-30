@@ -7,12 +7,12 @@
 //! receive from. Unlike a simple byte sink, a `Publisher` is aware of segment
 //! boundaries (e.g., HLS .ts segment cuts, .m3u8 playlist rotation).
 
-use std::time::Duration;
+use core::time::Duration;
 
 /// A sink for MPEG-TS bytes that produces a segmented output stream.
 pub trait Publisher {
     /// Concrete error type returned by this publisher.
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: core::error::Error + Send + Sync + 'static;
 
     /// Push MPEG-TS bytes for the current segment.
     ///

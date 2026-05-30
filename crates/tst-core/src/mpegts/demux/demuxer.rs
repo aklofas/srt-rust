@@ -23,8 +23,9 @@ use crate::mpegts::demux::types::{
     DEFAULT_AU_CELL_CAP_PER_PID, DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig,
     DemuxerStats, ProgramTracker,
 };
+use alloc::collections::{BTreeMap, VecDeque};
+use alloc::vec::Vec;
 use hashbrown::{HashMap, HashSet};
-use std::collections::{BTreeMap, VecDeque};
 
 /// MPEG-TS demuxer.
 ///
@@ -1696,7 +1697,7 @@ mod tests {
         };
         let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
         let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
-        au.extend(std::iter::repeat(0xAB).take(64));
+        au.extend(core::iter::repeat(0xAB).take(64));
         mux.push_video(&au, Pts90khz::new(9_000), true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = mux.pull(&mut buf);
@@ -1967,7 +1968,7 @@ mod tests {
 
         // Push a video AU first so PCR fires and PSI emits.
         let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
-        au.extend(std::iter::repeat_n(0xAB, 64));
+        au.extend(core::iter::repeat_n(0xAB, 64));
         mux.push_video(&au, Pts90khz::new(9_000), true).unwrap();
 
         // Push raw DVB-sub segment bytes; muxer auto-prepends §6.2 envelope.

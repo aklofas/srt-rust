@@ -18,7 +18,7 @@
 //! deliberately permissive: `UniversalLabel::new` accepts any 16 bytes;
 //! validation is opt-in via `decode_strict` in the typed layer.
 
-use std::fmt;
+use core::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UniversalLabel(pub [u8; 16]);

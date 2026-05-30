@@ -1,6 +1,7 @@
 //! Public types for H.264 / AVC parameter-set parsing.
 
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use crate::codec::{ChromaFormat, ColorInfo, Rational};
 

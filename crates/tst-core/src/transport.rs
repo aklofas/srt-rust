@@ -4,7 +4,9 @@
 //! Concrete implementations (SRT, file-replay, in-memory channels) live
 //! in their own crates; only the abstract contract lives here.
 
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::sync::Arc;
 use thiserror::Error;
 
 // ============================================================

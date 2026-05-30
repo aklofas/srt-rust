@@ -3,6 +3,8 @@
 //! Each scenario is a self-contained unit that:
 //!  1. Generates a deterministic synthetic input artifact (`.ts` bytes or
 //!     similar) into `out_dir/<id>/`.
+//!     (`out_dir` is the crate-local `crates/tst-integration/tests/fixtures/scenarios/`
+//!     directory — canonical; all adapters resolve here, not workspace-root.)
 //!  2. Returns a `Golden` envelope that the Rust adapter test verifies against.
 //!
 //! # Synthetic data only

@@ -1,9 +1,12 @@
 //! Generate or check cross-binding scenario fixtures.
 //!
 //! Default mode: iterate all scenarios, write input artifacts and
-//! `golden.json` files under
-//! `tests/fixtures/scenarios/<id>/`, and regenerate
-//! `tests/fixtures/scenarios/scenarios.toml`.
+//! `golden.json` files under the crate-local
+//! `crates/tst-integration/tests/fixtures/scenarios/<id>/` (resolved from
+//! `CARGO_MANIFEST_DIR`), and regenerate
+//! `crates/tst-integration/tests/fixtures/scenarios/scenarios.toml`.
+//! This crate-local path — not a workspace-root `tests/fixtures/scenarios` — is
+//! the canonical location all binding adapters (Rust/C/Python) resolve against.
 //!
 //! `--check` mode: regenerate into a temp dir, diff the manifest and every
 //! golden by content (sha256), exit non-zero with a clear message on any

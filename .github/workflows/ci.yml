@@ -553,6 +553,48 @@ jobs:
       - name: cargo test (tst-core + tst-pipeline, musl)
         run: cargo test -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl
 
+  no-std-baremetal:
+    name: build (no_std bare-metal, tst-core)
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "1.85"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain + bare-metal targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          targets: thumbv7em-none-eabihf, riscv32imac-unknown-none-elf
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-nostd-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-nostd-${{ runner.os }}-
+
+      # A `*-none-*` target has no std at all, so a successful library build
+      # IS the no_std proof: any `use std::` or std-only dependency fails to
+      # compile. Library builds need no #[global_allocator] (only final
+      # binaries do). thumbv7em-none-eabihf = Cortex-M4F/M7F (STM32F4/F7/H7);
+      # riscv32imac-unknown-none-elf proves the code is arch-agnostic no_std
+      # (e.g. ESP32-P4 bare-metal). Mirrored locally by
+      # scripts/check-no-std-baremetal.sh.
+      - name: cargo build (tst-core, thumbv7em-none-eabihf)
+        run: cargo build -p tst-core --no-default-features --target thumbv7em-none-eabihf
+
+      - name: cargo build (tst-core, riscv32imac-unknown-none-elf)
+        run: cargo build -p tst-core --no-default-features --target riscv32imac-unknown-none-elf
+
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
     runs-on: ubuntu-latest

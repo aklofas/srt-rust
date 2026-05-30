@@ -1,7 +1,17 @@
-# Skip ledger — every intentional skip / #[ignore], with a class and rationale.
-# Advisory: scripts/check-test-manifests.sh checks only that each entry has a
-# recognized `class` and that placeholder/blocked_bug entries carry an
-# `expires_after` (or, for already-resolved blocked_bug entries, a `resolved`).
+# Skip ledger — one entry per intentional Rust `#[ignore]`, with a class and
+# rationale. Kept in sync with the tree by scripts/check-skip-ledger-sync.sh:
+#
+#   * every active `#[ignore]` test function must have a NON-resolved entry here
+#     whose `test` is the exact function name;
+#   * every non-resolved entry must still correspond to a real active `#[ignore]`
+#     (a `#[ignore]` that was removed must be marked `resolved`, not left dangling);
+#   * placeholder/blocked_bug entries must carry a future-dated `expires_after`
+#     (or `resolved`).
+#
+# Module-level Python skips are out of scope for the sync checker for now: the
+# two that exist (test_demux_audio_gil, test_contract_collection) are
+# `pytest.mark.skipif` capability guards that fail open when a fixture/parser is
+# absent, not deferrals — tracking them here would add friction without value.
 #
 # class ∈ { placeholder | external_tool | environmental | slow | diagnostic | blocked_bug }
 #   placeholder   — stub awaiting real coverage (expires_after REQUIRED)
@@ -25,37 +35,113 @@ write-lock starvation, fixed by the write_gate in 6de05208. Recorded here so
 the ledger preserves the history without normalizing an active skip.
 """
 
+[[skip]]
+test = "slow_peer_does_not_block_muxer"
+crate = "tst-rtp"
+class = "environmental"
+resolved = "2026-05-29"
+note = """
+Was an environmental #[ignore]; now a plain #[test] in
+crates/tst-rtp/tests/rtsp_server/lagging_peer.rs that runs in CI (the real
+lagging-peer harness landed with the 2026-05-29 RTSP-ignore resolution). Kept
+as history; the prior ledger entry wrongly attributed it to tst-srt.
+"""
+
 # --- External-tool tests (Tier B / C — need a decoder or muxer on PATH) -----
+# Family of #[ignore]d tests that shell out to ffprobe/ffmpeg/dav1d. Run via
+# scripts/release-validation.sh, which installs the tools first.
 
 [[skip]]
-test = "ffprobe/ffmpeg/dav1d round-trip + conformance cross-checks"
+test = "ffprobe_validates_dvb_subtitling_round_trip"
 crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/mux_ffprobe.rs"
 class = "external_tool"
-note = """
-Family of #[ignore]d tests that shell out to ffprobe/ffmpeg/dav1d:
-audio_corpus_cross_check, ffprobe_validates_* / *_ffprobe_agrees (subtitles),
-dav1d_handles_extracted_binding_bitstream_without_crashing,
-ffmpeg_copy_extracts_ts_obu_framed_bitstream_from_binding_mode,
-ffprobe_deep_classification_diff_binding_vs_interop. Run via
-scripts/release-validation.sh, which installs the tools first.
-"""
+note = "ffprobe round-trip check for DVB subtitling carriage."
+
+[[skip]]
+test = "ffprobe_validates_dvb_teletext_round_trip"
+crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/mux_ffprobe.rs"
+class = "external_tool"
+note = "ffprobe round-trip check for DVB teletext carriage."
+
+[[skip]]
+test = "ffprobe_validates_webvtt_in_ts_round_trip"
+crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/mux_ffprobe.rs"
+class = "external_tool"
+note = "ffprobe round-trip check for WebVTT-in-TS carriage."
+
+[[skip]]
+test = "dvb_subtitling_ffprobe_agrees"
+crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/subtitle_fixtures.rs"
+class = "external_tool"
+note = "ffprobe agrees with our DVB subtitling fixture classification."
+
+[[skip]]
+test = "dvb_teletext_ffprobe_agrees"
+crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/subtitle_fixtures.rs"
+class = "external_tool"
+note = "ffprobe agrees with our DVB teletext fixture classification."
+
+[[skip]]
+test = "webvtt_in_ts_ffprobe_agrees"
+crate = "tst-core"
+path = "crates/tst-core/tests/mpegts/subtitle_fixtures.rs"
+class = "external_tool"
+note = "ffprobe agrees with our WebVTT-in-TS fixture classification."
+
+[[skip]]
+test = "ffprobe_deep_classification_diff_binding_vs_interop"
+crate = "tst-core"
+path = "crates/tst-core/tests/regression/av1_external_decoder.rs"
+class = "external_tool"
+note = "Deep ffprobe classification diff: AV1 binding mode vs interop mode."
+
+[[skip]]
+test = "ffmpeg_copy_extracts_ts_obu_framed_bitstream_from_binding_mode"
+crate = "tst-core"
+path = "crates/tst-core/tests/regression/av1_external_decoder.rs"
+class = "external_tool"
+note = "ffmpeg -c copy extracts the OBU-framed bitstream from binding-mode TS."
+
+[[skip]]
+test = "dav1d_handles_extracted_binding_bitstream_without_crashing"
+crate = "tst-core"
+path = "crates/tst-core/tests/regression/av1_external_decoder.rs"
+class = "external_tool"
+note = "dav1d decodes the extracted binding bitstream without crashing (non-crash assert only)."
+
+[[skip]]
+test = "audio_corpus_cross_check"
+crate = "tst-core"
+path = "crates/tst-core/tests/codec/audio_corpus_cross_check.rs"
+class = "external_tool"
+note = "Cross-checks the audio corpus against an external decoder."
+
+# --- Diagnostic (artifact/matrix generation for humans) ---------------------
 
 [[skip]]
 test = "diagnostic_dump_for_results_doc"
 crate = "tst-core"
+path = "crates/tst-core/tests/regression/av1_external_decoder.rs"
 class = "diagnostic"
-note = "Writes AV1 binding/interop artifacts + tool reports for the results doc; run on demand with --ignored."
+note = "Writes AV1 binding/interop artifacts + tool reports for docs/validate-1/13b-i2-av1-conformant-results.md; run on demand with --ignored."
 
 [[skip]]
 test = "wave_i1_matrix_no_regression"
 crate = "tst-core"
+path = "crates/tst-core/tests/regression/subtitle_interop.rs"
 class = "diagnostic"
 note = "Strict subtitle-interop regression guard; run explicitly before tagging a release (informational variant runs in PR CI)."
 
-# --- Environmental (timing / scheduler sensitive) ---------------------------
+# --- Environmental / live-resource unit tests -------------------------------
 
 [[skip]]
-test = "slow_peer_does_not_block_muxer"
+test = "cancel_handle_some_when_alive"
 crate = "tst-srt"
+path = "crates/tst-srt/src/transport.rs"
 class = "environmental"
-note = "Backpressure timing test; sensitive to scheduler latency, so kept off the always-on path."
+note = "Unit-test placeholder needing a live SRT socket; behavior is covered by tests/cancellation_loopback.rs."

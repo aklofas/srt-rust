@@ -49,8 +49,10 @@ empty — the C/Python adapters live in their own crates' test/example surfaces)
 
 - **`fuzz-targets.toml`** — generated inventory of every libFuzzer target;
   `scripts/gen-fuzz-targets.sh --check` fails CI if it drifts from the tree.
-- **`skip-ledger.toml`** — every intentional skip / `#[ignore]`, with a class
-  and (for placeholders / blocked bugs) an expiry.
+- **`skip-ledger.toml`** — every intentional `#[ignore]`, with a class and (for
+  placeholders / blocked bugs) an expiry. **Sync-enforced** by
+  `scripts/check-skip-ledger-sync.sh`: it fails CI if an active `#[ignore]` has
+  no entry, an entry no longer maps to a real `#[ignore]`, or a deferral expired.
 - **`stream-matrix.toml`** — advisory coverage intent across codec / audio /
   subtitle / KLV / program / descriptor axes; marks known gaps.
 - **`fixture-manifest.toml`** — provenance for every committed fixture group:

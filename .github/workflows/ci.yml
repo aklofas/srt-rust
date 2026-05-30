@@ -267,6 +267,13 @@ jobs:
         # in-tree files. Not a coverage gate.
         run: bash scripts/check-test-manifests.sh
 
+      - name: check-skip-ledger-sync (ledger matches real #[ignore]s)
+        # Every active Rust #[ignore] has a non-resolved skip-ledger entry and
+        # vice-versa; placeholder/blocked_bug deferrals carry a future expiry.
+        # Gated to linux-x86_64: the scan is platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-skip-ledger-sync.sh
+
       - name: check-fixture-hashes (per-file SHA-256 closure)
         # Per-file SHA-256 closure over committed fixtures. Gated to linux-x86_64:
         # the hashes are platform-independent and sha256sum is GNU-only (absent on

@@ -10,7 +10,7 @@ fn version_string_is_nonempty() {
         .to_str()
         .expect("librist_version() returned non-UTF-8");
     assert!(!s.is_empty(), "librist_version() returned empty string");
-    // Format is environment-dependent: a "v0.2.10"-style tag when the submodule
+    // Format is environment-dependent: a "v0.2.16"-style tag when the submodule
     // clone includes tags, or an abbreviated commit hash (e.g. "1e80550") when
     // it doesn't (GHA's `actions/checkout` with `submodules: recursive` is
     // shallow and skips tags). The smoke test only needs to confirm the symbol

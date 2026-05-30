@@ -214,9 +214,24 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         args.push("-Db_vscrt=md".into());
     }
     // When encryption is wanted, build the SHARED workspace vendor/mbedtls
-    // (3.6.x) and point librist's meson at it via PKG_CONFIG_PATH so it links
-    // that `mbedcrypto` (`-Dbuiltin_mbedtls=false`) instead of its bundled
-    // contrib/mbedtls 2.26.0 — see the `mbedtls` feature note in Cargo.toml.
+    // (3.6.x) and point librist's meson at it so it links that `mbedcrypto`
+    // (`-Dbuiltin_mbedtls=false`) instead of its bundled contrib/mbedtls — see
+    // the `mbedtls` feature note in Cargo.toml.
+    //
+    // librist 0.2.16's `contrib/mbedtls/meson.build` resolves the external
+    // mbedTLS via the CMAKE method FIRST (`dependency('MbedTLS', method:
+    // 'cmake', modules: ['MbedTLS::mbedcrypto'])`), then a bare
+    // `cc.find_library('mbedcrypto')`. PKG_CONFIG_PATH alone is NOT consulted
+    // by the cmake method, so we export CMAKE_PREFIX_PATH pointing at our
+    // mbedTLS install (which ships `lib/cmake/MbedTLS/MbedTLSConfig.cmake`).
+    // Without this, both lookups miss and librist SILENTLY falls back to its
+    // bundled contrib/mbedtls (2.28.x) headers — which, being < 3.0, skip the
+    // `srp.c` `#include <mbedtls/compat-2.x.h>` shim and emit calls to the
+    // removed 2.x `mbedtls_sha256_ret`/`*_starts_ret`/`*_update_ret`/
+    // `*_finish_ret` symbols, breaking the link against our 3.6.x `mbedcrypto`.
+    // `-Dfallback_builtin=false` turns that silent fallback into a hard meson
+    // error (it sets librist's internal `required_library = true`), so a future
+    // detection regression fails loudly instead of mis-linking.
     let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
         let prefix = build_mbedtls();
         let pc_dir = prefix.join("lib").join("pkgconfig");
@@ -227,7 +242,15 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
             _ => pc_dir.to_string_lossy().into_owned(),
         };
         meson_envs.push(("PKG_CONFIG_PATH".to_string(), pkg_path));
+        let cmake_path = match env::var("CMAKE_PREFIX_PATH") {
+            Ok(existing) if !existing.is_empty() => {
+                format!("{}:{}", prefix.display(), existing)
+            }
+            _ => prefix.to_string_lossy().into_owned(),
+        };
+        meson_envs.push(("CMAKE_PREFIX_PATH".to_string(), cmake_path));
         args.push("-Dbuiltin_mbedtls=false".into());
+        args.push("-Dfallback_builtin=false".into());
         args.push("-Duse_mbedtls=true".into());
         Some(prefix)
     } else {

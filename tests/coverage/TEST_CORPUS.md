@@ -3,7 +3,7 @@
 Real-world MPEG-TS captures from gimbaled platforms exhibit more variation
 than the synthetic golden fixtures cover. This document catalogs the
 structural shapes and content variants we've observed in the wild, so
-fixtures dropped into the gitignored `tests/fixtures/local/` slot can be
+fixtures dropped into the gitignored `crates/tst-core/tests/fixtures/local/` slot can be
 named and asserted against shape rather than against any specific recording.
 
 This file ships with the public repo. It is intentionally anonymized: no
@@ -13,11 +13,16 @@ structural signature, not by who recorded it.
 
 ## How fixtures are loaded
 
-`tests/local_fixtures.rs` walks `tests/fixtures/local/` at test time:
+Local corpus files belong under `crates/tst-core/tests/fixtures/local/` (gitignored
+via the repo-level `**/tests/fixtures/local/` rule). They are consumed crate-relative,
+not workspace-root-relative:
 
-- `*.klv` files are decoded directly through `tst_core::klv::st0601::decode`
-  (with `decode_unchecked` as a checksum-relaxed fallback).
-- `*.ts` files exercise the streaming demux path (planned: `mpegts::demux`).
+- `*.klv` files are decoded by `crates/tst-core/tests/klv/local_fixtures.rs`
+  through `tst_core::klv::st0601::decode` (with `decode_unchecked` as a
+  checksum-relaxed fallback).
+- `*.ts` files exercise the streaming demux/mux paths via
+  `crates/tst-core/tests/mpegts/demux_local.rs` and
+  `crates/tst-core/tests/mpegts/mux_local.rs`.
 
 The directory is gitignored. Tests pass silently with zero fixtures — the
 corpus is for opt-in real-world coverage, not a CI gate.

@@ -23,5 +23,6 @@ provenance. Total budget: a few hundred KB across all fixtures.
 ## Local-only fixtures (sensitive)
 
 Real-world `.ts` and `.klv` extractions from operational captures live at
-`tests/fixtures/local/` (gitignored). The `tests/local_fixtures.rs` test
-discovers and exercises them when present.
+`crates/tst-core/tests/fixtures/local/` (gitignored). The
+`crates/tst-core/tests/klv/local_fixtures.rs` test discovers and exercises
+them when present.

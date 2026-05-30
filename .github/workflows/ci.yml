@@ -35,10 +35,10 @@ jobs:
             continue: false
           - name: macos-arm64
             runner: macos-14
-            continue: true
+            continue: false
           - name: windows-msvc
             runner: windows-latest
-            continue: true
+            continue: false
     # Pin to MSRV via env so rust-toolchain.toml ("stable" for local dev)
     # doesn't relax the verification done in CI.
     env:
@@ -337,8 +337,8 @@ jobs:
         # did NOT reproduce on the cl-built libsrt (diag_win_srt_close showed
         # blocking recv wakes on peer-close immediately, same as Linux), so the
         # old "hangs on Windows" deferral no longer applies. `timeout-minutes`
-        # bounds any residual hang; windows-msvc is continue-on-error so a
-        # failure there stays non-gating.
+        # bounds any residual hang (windows-msvc is gating as of 2026-05-30
+        # after a multi-run green streak).
         timeout-minutes: 15
         env:
           SRT_FORCE_VENDORED: "1"

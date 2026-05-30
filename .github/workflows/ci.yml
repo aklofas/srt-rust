@@ -275,6 +275,13 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-scenarios.sh
 
+      - name: check-scenario-generator-privacy (synthetic-only)
+        # Scans the scenario generator sources (comments stripped) for reads of
+        # testfiles/ or any local/ corpus path. Gated to linux-x86_64 — source
+        # scan is platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-scenario-generator-privacy.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

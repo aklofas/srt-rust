@@ -42,7 +42,37 @@ fn build_mbedtls() -> PathBuf {
             .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
     }
 
-    cfg.build()
+    let prefix = cfg.build();
+
+    // librist 0.2.16's `src/crypto/random.c` unconditionally does
+    // `#include <mbedtls/entropy_poll.h>`. That header was PUBLIC in mbedTLS 2.x
+    // but is PRIVATE in 3.x (it lives in `library/`, not `include/mbedtls/`), so
+    // `cmake --install` does NOT ship it. random.c doesn't actually use any
+    // symbol from it — the include is vestigial — but the compile still fails
+    // without the file present (it only surfaced on CI; a developer box with
+    // system `libmbedtls-dev` 2.x on the default include path masks it). Stage
+    // the private header into our install's public include dir so librist's
+    // cmake-resolved `-I<prefix>/include` finds it. It only needs the public
+    // `mbedtls/build_info.h`, so it is self-contained against the 3.x install.
+    let src = mbedtls_dir.join("library").join("entropy_poll.h");
+    let dst = prefix
+        .join("include")
+        .join("mbedtls")
+        .join("entropy_poll.h");
+    if src.exists() {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::copy(&src, &dst).unwrap_or_else(|e| {
+            panic!(
+                "Failed to stage private mbedTLS header {} -> {}: {e}",
+                src.display(),
+                dst.display()
+            )
+        });
+    }
+
+    prefix
 }
 
 fn main() {

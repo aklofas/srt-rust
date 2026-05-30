@@ -242,11 +242,12 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     let chroma_format = chroma_format_from(chroma_format_idc)?;
 
     let log2_max_frame_num_minus4_raw = br.read_ue()?;
-    let log2_max_frame_num_minus4 =
-        u8::try_from(log2_max_frame_num_minus4_raw).map_err(|_| CodecParseError::ReservedValue {
+    let log2_max_frame_num_minus4 = u8::try_from(log2_max_frame_num_minus4_raw).map_err(|_| {
+        CodecParseError::ReservedValue {
             field: "log2_max_frame_num_minus4",
             value: log2_max_frame_num_minus4_raw,
-        })?;
+        }
+    })?;
 
     let pic_order_cnt_type = br.read_ue()?;
     match pic_order_cnt_type {

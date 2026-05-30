@@ -37,6 +37,8 @@ deferred — see `deferred-features.md` for triggers to revisit.
 | macOS arm64 (Apple Silicon)  | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `macos-14`; native build; Intel not supported |
 | Windows x86_64 (MSVC)        | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `windows-latest`; MSVC toolchain only      |
 | Linux x86_64 (musl)          | Tier 2                  | `tst-core` + `tst-pipeline` only  | libsrt-bound crates not supported under musl   |
+| Bare-metal `thumbv7em-none-eabihf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | Cortex-M4F/M7F (STM32F4/F7/H7); `#![no_std]`+`alloc` |
+| Bare-metal `riscv32imac-unknown-none-elf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | RISC-V (e.g. ESP32-P4 bare-metal); `#![no_std]`+`alloc` |
 | iOS / Android                | Deferred                | —                                 | See `deferred-features.md`                     |
 | Windows MinGW (gcc)          | Deferred                | —                                 | See `deferred-features.md`                     |
 | macOS x86_64 (Intel)         | Deferred                | —                                 | See `deferred-features.md`                     |
@@ -45,6 +47,20 @@ deferred — see `deferred-features.md` for triggers to revisit.
 build failures do NOT block PR merge. After ~14 consecutive green
 nightly days the platform is promoted to "gating" via a separate
 follow-up plan, at which point build failures DO block merge.
+
+**Bare-metal `no_std` (compile-gate only):** `tst-core` builds under
+`#![no_std]` + `alloc` with `--no-default-features` — the MPEG-TS
+mux/demux engine, KLV, the in-crate codec parameter-set parsers, and the
+transport traits. The `std` feature (default-on) gates the `net` helpers,
+the thread/`Barrier` cancel path, and `serde_json`/`toml` export. CI
+compiles the crate for `thumbv7em-none-eabihf` and
+`riscv32imac-unknown-none-elf`; a `*-none-*` target has no `std`, so the
+build itself is the guard. This is a **compile**-gate, not a runtime test
+— the embedding binary supplies a `#[global_allocator]`, and on 32-bit
+cores `portable-atomic` backs the 64-bit cancel atomic (its
+critical-section/fallback impl is the embedder's responsibility). Runtime
+verification (QEMU), `tst-pipeline`/transport `no_std`, and the
+libsrt-on-FreeRTOS port are tracked as a future milestone in `ROADMAP.md`.
 
 ---
 

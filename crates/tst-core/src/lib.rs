@@ -36,8 +36,22 @@
 //!
 //! # Cargo features
 //!
-//! - `file` (default-on) — enables std::fs-using helpers in `io_file`.
-//!   Embedded users without a filesystem disable via
+//! - `std` (default-on) — pulls in the standard library: the `net`
+//!   helpers, the blocking thread/`Barrier` cancel path, and JSON/TOML
+//!   (`serde_json`/`toml`) export. With `--no-default-features` the crate
+//!   is `#![no_std]` + `alloc`: MPEG-TS mux/demux, KLV (incl. the in-crate
+//!   H.264/H.265/H.266/AV1 parameter-set parsers), codec parsers, and the
+//!   transport traits all compile for bare-metal / FreeRTOS senders. The
+//!   embedding binary must supply a `#[global_allocator]`. Verified in CI
+//!   against `thumbv7em-none-eabihf` (Cortex-M4F/M7F = STM32F4/F7/H7) and
+//!   `riscv32imac-unknown-none-elf` (e.g. ESP32-P4 bare-metal). On 32-bit
+//!   cores the cancel handle's 64-bit atomic is provided by
+//!   `portable-atomic` (its `fallback`/critical-section impl is the
+//!   embedder's responsibility at link time), and KLV IMAP float math uses
+//!   `libm`. (The MPEG-TS PTS/PCR pacing math is integer-only and needs no
+//!   FPU; only KLV coordinate IMAP-B mapping uses `f64`.)
+//! - `file` (default-on, implies `std`) — enables std::fs-using helpers in
+//!   `io_file`. Embedded users without a filesystem disable via
 //!   `tst-core = { default-features = false }`.
 
 #![cfg_attr(not(feature = "std"), no_std)]

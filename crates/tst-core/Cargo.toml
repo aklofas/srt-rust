@@ -9,8 +9,12 @@ repository   = { workspace = true }
 description  = "TS Transformer core: pure MPEG-TS mux/demux, KLV (MISB ST 0601), codec parameter-set parsers, and transport trait definitions."
 
 [features]
-default = ["file"]
-file    = []  # gates std::fs-using helpers (added in Task 7)
+default = ["std", "file"]
+# `std` pulls in everything that needs the standard library: file I/O,
+# the net helpers, the thread/Barrier cancel path, and the std-only
+# serialization deps. Without it the crate is #![no_std] + alloc.
+std  = ["file", "serde/std", "tracing/std", "sha2/std"]
+file = ["std"]  # std::fs-using helpers in io_file (must imply std)
 
 [dependencies]
 log          = { workspace = true }

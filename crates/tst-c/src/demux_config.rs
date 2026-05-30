@@ -89,7 +89,7 @@ impl TstStrictMode {
 // ------------------------------------------------------------------
 
 use libc::size_t;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tst_core::mpegts::demux::{DemuxerConfig, StreamKind, StrictMode};
 use tst_core::mpegts::mux::Av1CarriageMode;
 
@@ -104,7 +104,7 @@ pub struct TstDemuxConfig {
     pes_cap_per_pid: Option<usize>,
     pes_cap_total: Option<usize>,
     klv_link_overrides: Vec<(u16, u16)>,
-    stream_kind_overrides: HashMap<u16, StreamKind>,
+    stream_kind_overrides: BTreeMap<u16, StreamKind>,
     cfi_tolerance: bool,
     // `None` = use Rust-side default (`Av1CarriageMode::Mpeg2TsBinding`).
     // Explicit `Some(_)` lets the C caller request the interop carriage
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
             pes_cap_per_pid: None,
             pes_cap_total: None,
             klv_link_overrides: Vec::new(),
-            stream_kind_overrides: HashMap::new(),
+            stream_kind_overrides: BTreeMap::new(),
             // Tolerance-by-default — see tst_core::DemuxerConfig rustdoc
             // and CHANGELOG entry on the 2026-05-24 default flip.
             cfi_tolerance: true,

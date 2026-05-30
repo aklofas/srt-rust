@@ -4118,7 +4118,7 @@ pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<
 pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_total: core::option::Option<usize>
-pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>
+pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::demux::event::StreamKind>
 pub tst_core::mpegts::demux::DemuxerConfig::strict: tst_core::mpegts::demux::strict::StrictMode
 impl core::clone::Clone for tst_core::mpegts::demux::DemuxerConfig
 pub fn tst_core::mpegts::demux::DemuxerConfig::clone(&self) -> tst_core::mpegts::demux::DemuxerConfig

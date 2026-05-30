@@ -4,11 +4,9 @@
 
 use crate::mpegts::demux::event::{StreamInfo, StreamKind};
 use crate::mpegts::demux::strict::StrictMode;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use hashbrown::HashSet;
-// `stream_kind_overrides` is a public field of `DemuxerConfig`; keep it on
-// `std::collections::HashMap` so the public API surface is unchanged. A later
-// no_std step migrates this public type deliberately (with a baseline update).
-use std::collections::{BTreeMap, HashMap};
 
 /// Stats snapshot for [`Demuxer`](crate::mpegts::demux::Demuxer). Used by
 /// `tst_pipeline::DemuxReceiver` to compose its own `DemuxReceiverStats`;
@@ -89,7 +87,7 @@ pub struct DemuxerConfig {
     /// memory growth in adversarial-input scenarios.
     pub pes_cap_total: Option<usize>,
     pub klv_link_overrides: Vec<(u16, u16)>,
-    pub stream_kind_overrides: HashMap<u16, StreamKind>,
+    pub stream_kind_overrides: BTreeMap<u16, StreamKind>,
     /// When `true`, PSI section reassembly accepts continuation packets
     /// across continuity-counter jumps (today's permissive behavior —
     /// section either passes by luck or fails CRC). Default `false` is
@@ -172,7 +170,7 @@ impl Default for DemuxerConfig {
             pes_cap_per_pid: None,
             pes_cap_total: None,
             klv_link_overrides: Vec::new(),
-            stream_kind_overrides: HashMap::new(),
+            stream_kind_overrides: BTreeMap::new(),
             lenient_psi_reassembly: false,
             av1_carriage: crate::mpegts::mux::Av1CarriageMode::default(),
             au_cell_cap_per_pid: None,

@@ -74,17 +74,19 @@
  *   rather than serialising its own output to a JSON string and doing a
  *   string compare — this is more robust to key ordering.
  *
- * Roundtrip scenario (artifact-digest approach):
- *   The C muxer (tst_mux_sender_t, tst_muxer_t) is gated behind the `srt`
- *   feature, and re-running the full mux recipe in C would duplicate the
- *   tst-core Muxer logic without added cross-binding signal. The C adapter
- *   therefore takes the same approach as the Python fallback:
- *     - Read the committed output.ts artifact.
- *     - sha256 it.
- *     - Assert it equals golden.extensions.output_sha256.
- *   This proves the C adapter can agree on the artifact's digest (sha256
- *   parity) and that the committed artifact has not drifted. The Rust adapter
- *   independently proves the mux recipe is deterministic.
+ * Roundtrip scenario (re-mux in C):
+ *   When built with the `srt` feature (TST_HAS_SRT defined — the default), the
+ *   offline muxer surface (tst_muxer_open/push_video/pull/close) is available.
+ *   The adapter re-runs the exact video-roundtrip recipe in C:
+ *     - tst_mux_config_new + add_program(1, 0x1000) + add_video_stream(0x1011, H264)
+ *     - tst_muxer_open, push one synthetic H.264 IDR at pts=0 (key_frame),
+ *       drain with a 1316-byte pull loop, close.
+ *     - Compare the C-produced bytes to the committed output.ts byte-for-byte
+ *       AND assert their sha256 equals golden.extensions.output_sha256.
+ *   This proves C reproduces the mux output, not merely that it can hash a
+ *   committed file. When built WITHOUT srt (TST_HAS_SRT undefined), the muxer
+ *   surface is unavailable: fall back to reading output.ts, hashing it, and
+ *   comparing to output_sha256 (weaker, but keeps the adapter buildable).
  *
  * Strict-rejection scenario:
  *   Feed 8192 × 0xFF through tst_demuxer_feed (default config, no strict
@@ -977,58 +979,112 @@ static int run_demux(const char *scenarios_dir_path,
     return 0;
 }
 
-/* ── Roundtrip scenario runner ───────────────────────────────────────────────
- *
- * Approach: read the committed output.ts, sha256 it, assert it equals
- * extensions.output_sha256 from the golden. Returns core=[] on success.
- *
- * WHY not re-mux in C: the C muxer (tst_muxer_t) requires the `srt` feature
- * and an SRT transport — it is not an offline offline byte buffer. Re-running
- * the mux recipe in C would add coupling without adding cross-binding signal;
- * the Rust adapter independently verifies mux determinism byte-for-byte. This
- * approach proves C's sha256 agrees with the committed digest (sha256 parity)
- * and that the artifact has not drifted from the golden.
- */
+/* Synthetic H.264 IDR AU — MUST match tst-integration's synthetic_h264_idr():
+ * 4-byte Annex-B start code + IDR NAL header (0x65) + 15 bytes 0xA5 ^ i. */
+static size_t synth_h264_idr(uint8_t out[20]) {
+    out[0] = 0x00; out[1] = 0x00; out[2] = 0x00; out[3] = 0x01;
+    out[4] = 0x65;
+    for (uint8_t i = 0; i < 15; i++) out[5 + i] = (uint8_t)(0xA5 ^ i);
+    return 20;
+}
+
+/* ── Roundtrip scenario runner ── */
 static int run_roundtrip(const char *scenarios_dir_path,
                          const scenario_entry_t *entry,
                          const char *golden_json,
                          core_event_list_t *out_events) {
-    /* Read output.ts (the `input` field for a roundtrip scenario IS output.ts). */
-    char *artifact_path = path_join(scenarios_dir_path, entry->input);
-    if (!artifact_path) return -1;
+    (void)out_events; /* roundtrip carries no media events — core: [] */
 
-    size_t artifact_len = 0;
-    uint8_t *artifact_data = read_file(artifact_path, &artifact_len);
-    free(artifact_path);
-    if (!artifact_data) return -1;
-
-    /* Compute sha256 of the committed artifact. */
-    char digest_hex[65];
-    sha256_hex(artifact_data, artifact_len, digest_hex);
-    free(artifact_data);
-
-    /* Extract extensions.output_sha256 from the golden JSON. */
+    /* Extract expected sha256 from golden.extensions.output_sha256. */
     char expected_sha256[65];
-    size_t ext_offset = json_extract_string(golden_json, 0,
+    size_t ext_off = json_extract_string(golden_json, 0,
         "output_sha256", expected_sha256, sizeof(expected_sha256));
-    if (ext_offset == 0 || expected_sha256[0] == '\0') {
+    if (ext_off == 0 || expected_sha256[0] == '\0') {
         fprintf(stderr, "ERROR: cannot extract extensions.output_sha256 from golden\n");
         return -1;
     }
 
-    /* Assert digest matches. */
-    if (strcmp(digest_hex, expected_sha256) != 0) {
+    /* Read the committed artifact (entry->input IS output.ts for roundtrip). */
+    char *artifact_path = path_join(scenarios_dir_path, entry->input);
+    if (!artifact_path) return -1;
+    size_t committed_len = 0;
+    uint8_t *committed = read_file(artifact_path, &committed_len);
+    free(artifact_path);
+    if (!committed) return -1;
+
+#if defined(TST_HAS_SRT)
+    /* ── Re-mux the recipe in C and compare to the committed bytes. ──────── */
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); free(committed); return -1; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); free(committed); return -1;
+    }
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); free(committed); return -1;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg); /* config is consumed/copied at open time */
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); free(committed); return -1; }
+
+    uint8_t idr[20];
+    size_t idr_len = synth_h264_idr(idr);
+    if (tst_muxer_push_video(mux, idr, idr_len, /*pts_90khz=*/0, /*key_frame=*/true) != 0) {
+        fprintf(stderr, "ERROR: tst_muxer_push_video failed\n"); tst_muxer_close(mux); free(committed); return -1;
+    }
+
+    /* Drain with a 1316-byte (7×188) pull loop, matching the Rust drain_mux. */
+    uint8_t *produced = NULL;
+    size_t produced_len = 0, produced_cap = 0;
+    uint8_t pull_buf[1316];
+    for (;;) {
+        size_t n = tst_muxer_pull(mux, pull_buf, sizeof(pull_buf));
+        if (n == 0) break;
+        if (produced_len + n > produced_cap) {
+            size_t new_cap = (produced_cap == 0) ? 65536 : produced_cap * 2;
+            while (new_cap < produced_len + n) new_cap *= 2;
+            uint8_t *grown = realloc(produced, new_cap);
+            if (!grown) { fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); free(committed); return -1; }
+            produced = grown; produced_cap = new_cap;
+        }
+        memcpy(produced + produced_len, pull_buf, n);
+        produced_len += n;
+    }
+    tst_muxer_close(mux);
+
+    /* Byte-for-byte parity with the committed artifact. */
+    if (produced_len != committed_len || memcmp(produced, committed, produced_len) != 0) {
         fprintf(stderr,
-            "FAIL [%s]: sha256 mismatch\n"
-            "  computed : %s\n"
-            "  expected : %s\n",
+            "FAIL [%s]: C-produced bytes differ from committed output.ts "
+            "(produced %zu bytes, committed %zu bytes)\n",
+            entry->id, produced_len, committed_len);
+        free(produced); free(committed); return -1;
+    }
+
+    /* sha256 parity with the golden. */
+    char digest_hex[65];
+    sha256_hex(produced, produced_len, digest_hex);
+    free(produced); free(committed);
+    if (strcmp(digest_hex, expected_sha256) != 0) {
+        fprintf(stderr, "FAIL [%s]: sha256 mismatch\n  computed : %s\n  expected : %s\n",
             entry->id, digest_hex, expected_sha256);
         return -1;
     }
-
-    /* Roundtrip carries no media events — core: [] */
-    (void)out_events; /* intentionally empty */
     return 0;
+#else
+    /* ── No srt feature: fall back to hashing the committed artifact. ────── */
+    char digest_hex[65];
+    sha256_hex(committed, committed_len, digest_hex);
+    free(committed);
+    if (strcmp(digest_hex, expected_sha256) != 0) {
+        fprintf(stderr, "FAIL [%s]: sha256 mismatch (artifact-hash fallback)\n"
+            "  computed : %s\n  expected : %s\n", entry->id, digest_hex, expected_sha256);
+        return -1;
+    }
+    return 0;
+#endif
 }
 
 /* ── Binding contract (strict-rejection) runner ──────────────────────────────

@@ -68,7 +68,7 @@ from tstrans.mpegts import (
     VideoCodec,
 )
 
-from conftest import _load_manifest, require_scenario, scenarios_dir
+from conftest import _TOML_AVAILABLE, require_scenario, scenarios_dir
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -365,18 +365,42 @@ def _validate_golden_tags(golden: dict[str, Any], scenario_id: str) -> None:
 # ── Parametrised test ─────────────────────────────────────────────────────────
 
 def _scenario_ids() -> list[str]:
-    """Return the list of scenario ids from the manifest, or [] if unavailable."""
+    """Scenario ids for parametrization. NEVER returns an empty list silently:
+    on any load failure it returns a single sentinel id so the parametrised
+    test runs and fails loudly with the underlying reason (see the test body).
+
+    Deliberately does NOT delegate to conftest's ``_load_manifest``: that helper
+    calls ``pytest.skip`` on failure, which would silently empty the
+    parametrization rather than emit a loud sentinel."""
+    if not _TOML_AVAILABLE:
+        return ["__error__:toml-parser-unavailable"]
+    manifest_path = scenarios_dir() / "scenarios.toml"
+    if not manifest_path.is_file():
+        return [f"__error__:manifest-not-found:{manifest_path}"]
     try:
-        entries = _load_manifest()
-        return [e["id"] for e in entries]
-    except Exception:
-        return []
+        if sys.version_info >= (3, 11):
+            import tomllib as _toml
+        else:
+            import tomli as _toml  # type: ignore[import-not-found]
+        with open(manifest_path, "rb") as fh:
+            data = _toml.load(fh)
+        ids = [e["id"] for e in data.get("scenario", [])]
+    except Exception as exc:  # noqa: BLE001 — surfaced as a loud test failure below
+        return [f"__error__:manifest-parse-failed:{exc!r}"]
+    return ids if ids else ["__error__:manifest-has-zero-scenarios"]
 
 
 @pytest.mark.parametrize("scenario_id", _scenario_ids())
 def test_scenario_matches_committed_golden(scenario_id: str) -> None:
     """For each scenario in scenarios.toml, run the Python adapter and assert
     the result equals the committed golden.json."""
+    if scenario_id.startswith("__error__:"):
+        pytest.fail(
+            "scenario collection failed: "
+            + scenario_id.removeprefix("__error__:")
+            + " — the Python cross-binding contract suite collected no real "
+            "scenarios. Fix the manifest/TOML parser; do not let this pass."
+        )
     manifest_entry, sdir = require_scenario(scenario_id)
     kind = manifest_entry["kind"]
     input_rel = Path(manifest_entry["input"])

@@ -250,6 +250,13 @@ jobs:
         # per-protocol check-*-error-mapping-coverage.sh clones).
         run: bash scripts/check-rust-error-mapping-coverage.sh
 
+      - name: check-ratchet-self-test (coverage drivers detect gaps)
+        # Validates the error-mapping coverage framework detects gaps. Gated to
+        # linux-x86_64: the check is platform-independent (no signal from other
+        # runners) and its synthetic-fixture bash is GNU-leaning.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-ratchet-self-test.sh
+
       - name: Check Publisher trait C mirror
         # Plan A5a — every tst_core::publisher::Publisher trait method has a
         # corresponding tst_publisher_* C entry point in the generated header.

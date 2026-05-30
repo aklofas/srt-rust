@@ -1,6 +1,7 @@
 //! MPEG audio public types.
 
 use crate::codec::CodecParseError;
+use alloc::vec::Vec;
 
 /// MPEG audio layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

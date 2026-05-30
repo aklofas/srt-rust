@@ -3,6 +3,8 @@
 use crate::error::KlvFieldError;
 use crate::klv::pack::OwnedRawField;
 use crate::klv::st0903::vtarget_pack::VTargetPack;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[must_use]
 #[derive(Debug, Clone, Default)]

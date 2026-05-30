@@ -1,6 +1,7 @@
 //! AV1 parsed type definitions.
 
 use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational};
+use alloc::vec::Vec;
 
 #[must_use]
 #[non_exhaustive]

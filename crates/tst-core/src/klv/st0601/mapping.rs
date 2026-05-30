@@ -5,6 +5,8 @@
 //! - Unsigned: integer in `[0, UINT_MAX]`, no INVALID.
 
 use crate::error::{KlvEncodeError, KlvFieldError};
+#[cfg(not(feature = "std"))]
+use crate::float_ext::FloatExt;
 use crate::klv::st0601::tags::LinearRange;
 
 /// Encode a float value into `out` according to `range`.

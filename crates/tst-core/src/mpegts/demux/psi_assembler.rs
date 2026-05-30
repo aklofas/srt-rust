@@ -17,6 +17,7 @@
 /// 4 KiB cap matches ffmpeg's `MAX_SECTION_SIZE`. Per ISO/IEC 13818-1 §2.4.4.6
 /// short-form sections (PAT, PMT) cap at 1021 bytes; long-form private sections
 /// cap at 4093. 4096 covers both with a small slop.
+use alloc::vec::Vec;
 pub(crate) const MAX_SECTION_SIZE: usize = 4096;
 
 /// Per-PID PSI section assembler. The demuxer drives state transitions:
@@ -90,7 +91,7 @@ impl PsiSectionAssembler {
                 // H.222.0 §2.4.4.1 section-mapped layout); they remain
                 // buffered for the next `try_complete_section` call.
                 let leftover = self.buf.split_off(total);
-                let complete = std::mem::take(&mut self.buf);
+                let complete = core::mem::take(&mut self.buf);
                 self.buf = leftover;
                 self.declared_total = None;
                 return Ok(Some(complete));

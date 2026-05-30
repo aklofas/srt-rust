@@ -28,6 +28,7 @@
 
 use crate::mpegts::common::Pts90khz;
 use crate::mpegts::mux::AudioCodec;
+use alloc::vec::Vec;
 
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
 /// PES `stream_id` for synchronous KLV metadata streams (stream_type 0x15).

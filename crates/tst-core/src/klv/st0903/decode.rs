@@ -7,6 +7,8 @@ use crate::klv::st0903::model::VmtiLs;
 use crate::klv::st0903::tags::{Encoding, TAGS, lookup};
 use crate::klv::st0903::var_uint;
 use crate::klv::st0903::vtarget_pack;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Lenient decode of a VMTI Local Set body per ST 0903.6 §10.1.
 ///
@@ -149,7 +151,7 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                 }
             }
             Encoding::Utf8 { max_chars } => {
-                let s = match std::str::from_utf8(value) {
+                let s = match core::str::from_utf8(value) {
                     Ok(s) => s,
                     Err(_) => {
                         ls.field_errors
@@ -344,7 +346,7 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     // but tracks all tag IDs in a `Vec<u32>`. ST 0903's strict dispatch
     // is single-pass so we keep both checks inline.
     let mut seen_u8 = [false; 256];
-    let mut seen_other: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let mut seen_other: hashbrown::HashSet<u32> = hashbrown::HashSet::new();
     let mut cursor = bytes;
     // `offset` tracks the start of the current item in `bytes` so
     // framing errors and duplicate-tag errors surface a useful
@@ -486,7 +488,7 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                 }
             }
             Encoding::Utf8 { max_chars } => {
-                let s = std::str::from_utf8(value).map_err(|_| {
+                let s = core::str::from_utf8(value).map_err(|_| {
                     KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 { tag: tag as u32 })
                 })?;
                 if s.chars().count() > max_chars {

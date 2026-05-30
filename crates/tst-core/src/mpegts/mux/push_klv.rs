@@ -8,6 +8,7 @@
 
 use crate::error::MuxError;
 use crate::mpegts::common::{Pcr27mhz, Pts90khz};
+use alloc::vec::Vec;
 
 use super::Muxer;
 use super::pes::{

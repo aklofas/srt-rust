@@ -30,6 +30,8 @@
 //! INT_MIN as INVALID sentinel) live in `klv::st0601::mapping`.
 
 use crate::error::{KlvEncodeError, KlvFieldError};
+#[cfg(not(feature = "std"))]
+use crate::float_ext::FloatExt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImapbParams {

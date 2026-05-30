@@ -11,6 +11,7 @@ use crate::mpegts::mux::types::{
     AudioCodec, Av1CarriageMode, KlvStreamType, MAX_PROGRAMS, MAX_SUBTITLE_STREAMS_PER_PROGRAM,
     StreamKind, StreamSpec, SubtitleCodec, TeletextField, VideoCodec,
 };
+use alloc::vec::Vec;
 
 /// One program in a multi-program TS multiplex. Each program has its own
 /// PMT (carried on `pmt_pid`), its own PCR (driven by `pcr_pid` or

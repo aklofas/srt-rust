@@ -5,6 +5,7 @@
 use crate::error::KlvEncodeError;
 use crate::klv::st0903::model::VmtiLs;
 use crate::klv::st0903::{VMTI_LS_UL, vtarget_pack};
+use alloc::vec::Vec;
 
 /// Encode a VMTI Local Set **body** (no UL prefix, no outer BER length,
 /// no Tag 1 checksum).

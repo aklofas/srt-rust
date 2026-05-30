@@ -4,6 +4,7 @@
 //! `tst-c` ABI is one struct + one fixed-size array.
 
 use crate::mpegts::common::StreamTypeCode;
+use alloc::string::String;
 
 /// Per-stream counters. Used at every site that emits or receives TS
 /// elementary streams. PID is identity; `stream_type` is the PMT byte

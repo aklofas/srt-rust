@@ -10,6 +10,7 @@ use crate::klv::length::{
     LengthEncoding, ber_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
 };
 use crate::klv::universal_label::UniversalLabel;
+use alloc::vec::Vec;
 
 /// A KLV field that borrows its value bytes from a parent buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]

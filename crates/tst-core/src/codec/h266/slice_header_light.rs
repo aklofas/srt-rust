@@ -5,6 +5,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::h266::sps::H266Sps;
+use alloc::vec::Vec;
 
 /// Light-weight H.266 slice header — fields required for keyframe detection
 /// and frame-type classification, extracted without walking into slice data.

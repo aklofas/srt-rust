@@ -25,6 +25,8 @@ use crate::mpegts::demux::payload::{
     split_obus, strip_dvb_sub_envelope, unwrap_av1_binding,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// True when H.222.0 §2.7.4 requires the PES to carry a PTS for this
 /// stream kind. Audio and video have a mandatory PTS contract; subtitle,
@@ -852,7 +854,7 @@ mod tests {
             0x00, 0x00,
         ]);
         buf.push(value_len as u8); // BER short-form length
-        buf.extend(std::iter::repeat_n(0x00u8, value_len));
+        buf.extend(core::iter::repeat_n(0x00u8, value_len));
         buf
     }
 
@@ -903,7 +905,7 @@ mod tests {
         // BER long-form: 0x81 (length-of-length=1), then 200.
         buf.push(0x81);
         buf.push(value_len as u8);
-        buf.extend(std::iter::repeat_n(0x00u8, value_len));
+        buf.extend(core::iter::repeat_n(0x00u8, value_len));
         assert!(orphan_validates_as_complete_klv(&buf));
     }
 }

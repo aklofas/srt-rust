@@ -13,7 +13,7 @@ default = ["std", "file"]
 # `std` pulls in everything that needs the standard library: file I/O,
 # the net helpers, the thread/Barrier cancel path, and the std-only
 # serialization deps. Without it the crate is #![no_std] + alloc.
-std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:toml"]
+std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:toml", "portable-atomic/std"]
 file = ["std"]  # std::fs-using helpers in io_file (must imply std)
 
 [dependencies]
@@ -26,6 +26,15 @@ serde_json   = { version = "1", optional = true }
 toml         = { version = "0.8", optional = true }
 sha2         = { version = "0.10", default-features = false }
 hashbrown    = { version = "0.15", default-features = false, features = ["default-hasher"] }
+# Float math (log2/ceil/powf/floor/round) used by KLV IMAPB / ST 0601 mapping.
+# core has no float intrinsics, so the no_std build routes through libm; under
+# std the inherent f64 methods are used (see `float_ext`).
+libm         = { version = "0.2", default-features = false }
+# `SrtCancelHandle` stores its 64-bit handle in an atomic. 32-bit bare-metal
+# targets (thumbv7em, riscv32imac) lack a native `AtomicI64`; portable-atomic
+# synthesizes one from the target's 32-bit CAS so the cancel primitive stays
+# lock-free-API and available under no_std. On 64-bit/std it forwards to core.
+portable-atomic = { version = "1", default-features = false, features = ["fallback"] }
 
 # IP_MULTICAST_IF on Windows: std::net exposes no setter and libc's socket layer
 # is Unix-shaped, so we use socket2's cross-platform setsockopt via SockRef.
@@ -61,6 +70,7 @@ harness = false
 # regenerate the fixtures consumed by integration tests.
 [[bin]]
 name  = "gen_synthetic_fixtures"
+required-features = ["std"]
 path  = "tests/tools/gen_synthetic_fixtures.rs"
 test  = false
 bench = false
@@ -68,6 +78,7 @@ doc   = false
 
 [[bin]]
 name  = "gen_subtitle_fixtures"
+required-features = ["std"]
 path  = "tests/tools/gen_subtitle_fixtures.rs"
 test  = false
 bench = false
@@ -75,6 +86,7 @@ doc   = false
 
 [[bin]]
 name  = "gen_h266_fixtures"
+required-features = ["std"]
 path  = "tests/tools/gen_h266_fixtures.rs"
 test  = false
 bench = false
@@ -82,6 +94,7 @@ doc   = false
 
 [[bin]]
 name  = "gen_av1_fixtures"
+required-features = ["std"]
 path  = "tests/tools/gen_av1_fixtures.rs"
 test  = false
 bench = false
@@ -89,6 +102,7 @@ doc   = false
 
 [[bin]]
 name  = "gen_pts_rollover_fixture"
+required-features = ["std"]
 path  = "tests/tools/gen_pts_rollover_fixture.rs"
 test  = false
 bench = false
@@ -96,6 +110,7 @@ doc   = false
 
 [[bin]]
 name  = "measure_pcr_jitter"
+required-features = ["std"]
 path  = "tests/tools/measure_pcr_jitter.rs"
 test  = false
 bench = false
@@ -103,10 +118,12 @@ doc   = false
 
 [[bin]]
 name  = "corpus_to_fixture"
+required-features = ["std"]
 path  = "tests/tools/corpus_to_fixture.rs"
 
 [[bin]]
 name  = "strip_conformance_parameter_sets"
+required-features = ["std"]
 path  = "tests/tools/strip_conformance_parameter_sets.rs"
 test  = false
 bench = false
@@ -114,6 +131,7 @@ doc   = false
 
 [[bin]]
 name  = "trace_h265_sps"
+required-features = ["std"]
 path  = "tests/tools/trace_h265_sps.rs"
 test  = false
 bench = false

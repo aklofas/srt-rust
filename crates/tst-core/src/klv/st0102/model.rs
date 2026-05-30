@@ -6,6 +6,8 @@ use crate::klv::pack::OwnedRawField;
 use crate::klv::st0102::enums::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification,
 };
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[must_use]
 #[derive(Debug, Clone, Default)]

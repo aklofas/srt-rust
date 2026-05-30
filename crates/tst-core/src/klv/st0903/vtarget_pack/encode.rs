@@ -2,6 +2,7 @@
 
 use super::model::VTargetPack;
 use crate::error::KlvEncodeError;
+use alloc::vec::Vec;
 
 /// Encode a single VTargetPack into `out`. Returns bytes written.
 ///

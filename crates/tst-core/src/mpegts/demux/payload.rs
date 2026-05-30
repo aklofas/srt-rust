@@ -4,6 +4,7 @@ use crate::codec::av1::leb128::read_leb128;
 use crate::mpegts::demux::event::{
     Av1ObuHeaderKind, NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec,
 };
+use alloc::vec::Vec;
 
 /// Split an Annex-B-framed elementary stream payload into typed NAL units.
 ///
@@ -490,7 +491,7 @@ pub fn iter_au_cells(
 > + '_ {
     use crate::mpegts::au_cell::read_metadata_au_cell;
     let mut offset = 0usize;
-    std::iter::from_fn(move || {
+    core::iter::from_fn(move || {
         if offset >= payload.len() {
             return None;
         }
@@ -628,7 +629,7 @@ mod tests {
     #[test]
     fn classifies_async_klv_by_ul_prefix() {
         let mut buf = vec![0x06, 0x0E, 0x2B, 0x34];
-        buf.extend(std::iter::repeat_n(0xAA, 30));
+        buf.extend(core::iter::repeat_n(0xAA, 30));
         assert_eq!(classify_klv(&buf), KlvShape::Async { klv: buf });
     }
 
@@ -644,8 +645,8 @@ mod tests {
         // the cell walk + header surface lives in `iter_au_cells`.
         let inner: Vec<u8> = [0x06, 0x0E, 0x2B, 0x34]
             .into_iter()
-            .chain(std::iter::repeat_n(0xAA, 12))
-            .chain(std::iter::repeat_n(0x55, 10))
+            .chain(core::iter::repeat_n(0xAA, 12))
+            .chain(core::iter::repeat_n(0x55, 10))
             .collect();
         // flags byte 0xCF: cfi=11 (Complete), dcf=0, rai=0, reserved=1111.
         // Complete = 0b11 in bits [7:6]; 0b11_0_0_1111 = 0xCF.

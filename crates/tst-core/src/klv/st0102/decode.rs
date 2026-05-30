@@ -8,6 +8,7 @@ use crate::klv::st0102::enums::{
 };
 use crate::klv::st0102::model::{SecurityLs, decode_utf16_bom};
 use crate::klv::st0102::tags::{Encoding, REQUIRED_TAGS, lookup};
+use alloc::string::ToString;
 
 /// Decode a Security Metadata Local Set per MISB ST 0102.12.
 ///
@@ -102,7 +103,7 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
     use crate::klv::pack::Iter;
 
     let mut record = SecurityLs::default();
-    let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let mut seen: hashbrown::HashSet<u32> = hashbrown::HashSet::new();
 
     for r in Iter::local_set(buf) {
         let f = r?;
@@ -200,7 +201,7 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
                 record.version = Some(u16::from_be_bytes([f.value[0], f.value[1]]));
             }
             Encoding::Iso646 | Encoding::FixedAscii { .. } => {
-                let s = match std::str::from_utf8(f.value) {
+                let s = match core::str::from_utf8(f.value) {
                     Ok(s) => s.to_string(),
                     Err(_) => {
                         return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 {

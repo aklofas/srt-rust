@@ -2,6 +2,9 @@
 
 use crate::mpegts::common::crc32::crc32_mpeg2;
 use crate::mpegts::descriptors::RawDescriptor;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use thiserror::Error;
 
 /// Decoded Program Association Table (ISO/IEC 13818-1 §2.4.4.3).
@@ -373,7 +376,7 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
     if let Some(d) = descs.iter().find(|d| d.tag == 0x50) {
         if d.data.len() > 6 {
             let raw = &d.data[6..];
-            if let Ok(s) = std::str::from_utf8(raw) {
+            if let Ok(s) = core::str::from_utf8(raw) {
                 let trimmed = s.trim_end_matches('\0').trim();
                 if !trimmed.is_empty() {
                     return Some(trimmed.to_string());
@@ -394,7 +397,7 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
     // 4. ISO 639 Language — first 3 bytes.
     if let Some(d) = descs.iter().find(|d| d.tag == 0x0A) {
         if d.data.len() >= 3 {
-            if let Ok(s) = std::str::from_utf8(&d.data[..3]) {
+            if let Ok(s) = core::str::from_utf8(&d.data[..3]) {
                 let trimmed = s.trim();
                 if !trimmed.is_empty() {
                     return Some(trimmed.to_string());
@@ -406,7 +409,7 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
     // shape; reserved per ISO/IEC 13818-1 but used in practice as the
     // de-facto label slot. Best-effort UTF-8.
     if let Some(d) = descs.iter().find(|d| d.tag == 0xFF) {
-        if let Ok(s) = std::str::from_utf8(&d.data) {
+        if let Ok(s) = core::str::from_utf8(&d.data) {
             let trimmed = s.trim_end_matches('\0').trim();
             if !trimmed.is_empty() {
                 return Some(trimmed.to_string());

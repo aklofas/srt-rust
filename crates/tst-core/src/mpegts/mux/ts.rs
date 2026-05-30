@@ -15,6 +15,7 @@
 //! mechanical packet assembly.
 
 use crate::mpegts::common::{Pcr27mhz, TS_PACKET_SIZE, TS_SYNC_BYTE};
+use alloc::boxed::Box;
 
 /// Per-PID 4-bit continuity counters.
 ///

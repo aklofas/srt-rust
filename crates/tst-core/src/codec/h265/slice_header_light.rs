@@ -5,6 +5,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::h265::sps::H265Sps;
+use alloc::vec::Vec;
 
 /// Light-weight H.265 slice segment header — fields required for keyframe
 /// detection and frame-type classification without walking into slice data.

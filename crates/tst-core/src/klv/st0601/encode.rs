@@ -3,6 +3,7 @@
 use crate::error::KlvEncodeError;
 use crate::klv::checksum::checksum_running_sum_16;
 use crate::klv::length::{ber_len, ber_oid_len, write_ber, write_ber_oid};
+use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
 use super::model::{EncodeConfig, UasDatalinkLs};

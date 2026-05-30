@@ -5,6 +5,8 @@
 use crate::error::KlvFieldError;
 use crate::klv::pack::OwnedRawField;
 use crate::klv::universal_label::UniversalLabel;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq)]

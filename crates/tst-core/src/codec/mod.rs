@@ -12,6 +12,7 @@
 //! is deferred to a follow-up plan; AC-3 full-frame iteration (vs the
 //! header-only parser shipped) is deferred to a follow-up plan.
 
+use alloc::string::String;
 pub mod aac;
 pub mod ac3;
 pub mod av1;

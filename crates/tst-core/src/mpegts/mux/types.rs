@@ -304,8 +304,8 @@ impl StreamSpec {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VideoStreamHandle(pub(super) u32);
 
-impl std::fmt::Debug for VideoStreamHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for VideoStreamHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (prog, within) = self.unpack();
         write!(f, "VideoStreamHandle(prog={prog}, stream={within})")
     }
@@ -331,8 +331,8 @@ impl std::fmt::Debug for VideoStreamHandle {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KlvStreamHandle(pub(super) u32);
 
-impl std::fmt::Debug for KlvStreamHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for KlvStreamHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (prog, within) = self.unpack();
         write!(f, "KlvStreamHandle(prog={prog}, stream={within})")
     }
@@ -521,8 +521,8 @@ impl KlvStreamHandle {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioStreamHandle(pub(super) u32);
 
-impl std::fmt::Debug for AudioStreamHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for AudioStreamHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (prog, within) = self.unpack();
         write!(f, "AudioStreamHandle(prog={prog}, stream={within})")
     }
@@ -624,8 +624,8 @@ pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SubtitleStreamHandle(pub(super) u32);
 
-impl std::fmt::Debug for SubtitleStreamHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SubtitleStreamHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (prog, within) = self.unpack();
         write!(f, "SubtitleStreamHandle(prog={prog}, stream={within})")
     }

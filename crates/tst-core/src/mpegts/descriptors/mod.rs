@@ -19,6 +19,7 @@
 //!
 //! Reference: ISO/IEC 13818-1 §2.6 and ETSI EN 300 468 §6.2.
 
+use alloc::vec::Vec;
 pub mod parse;
 pub use parse::{
     DescriptorParseError, RawDescriptor, SubtitlingDescriptorEntry, TeletextDescriptorEntry,

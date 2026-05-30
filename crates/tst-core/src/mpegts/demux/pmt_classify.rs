@@ -16,6 +16,7 @@ use crate::mpegts::demux::psi::{
     classify_audio_stream_type, extract_metadata_link, has_klva_registration,
 };
 use crate::mpegts::descriptors::RawDescriptor;
+use alloc::vec::Vec;
 
 impl super::demuxer::Demuxer {
     pub(super) fn derive_stream_kind(

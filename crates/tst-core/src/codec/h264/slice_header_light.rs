@@ -11,6 +11,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::h264::model::H264Sps;
+use alloc::vec::Vec;
 
 /// Light-weight H.264 slice header — fields required for keyframe detection
 /// and frame-type classification without walking into slice data.

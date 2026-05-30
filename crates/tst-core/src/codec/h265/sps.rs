@@ -3,6 +3,8 @@
 use super::{profile_tier_level, vui};
 use crate::codec::bitreader::BitReader;
 use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational, validate_bit_depth_minus8};
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// Parsed H.265 SPS fields. Populated by [`parse_sps`].
 #[must_use]

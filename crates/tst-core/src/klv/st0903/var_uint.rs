@@ -20,6 +20,7 @@
 //! itself accepts any 1..=4 byte input.
 
 use crate::error::KlvFieldError;
+use alloc::vec::Vec;
 
 /// Decode `bytes` as a truncated big-endian uint up to 4 bytes wide.
 /// `bytes.len()` must be 1..=4.

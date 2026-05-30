@@ -3,6 +3,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::av1::model::{Av1FrameHeaderLight, Av1ObuStream, Av1SequenceHeader};
 use crate::mpegts::demux::event::Obu;
+use alloc::vec::Vec;
 
 use super::frame_header::parse_frame_header_light;
 use super::sequence_header::parse_sequence_header;

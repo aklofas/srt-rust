@@ -2,6 +2,7 @@
 
 use crate::error::KlvEncodeError;
 use crate::klv::st0102::model::{SecurityLs, encode_utf16_bom};
+use alloc::vec::Vec;
 
 /// Encode into a caller-provided buffer. Returns the number of bytes
 /// written.

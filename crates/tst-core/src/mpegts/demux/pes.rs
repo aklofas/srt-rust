@@ -7,6 +7,7 @@
 
 use crate::error::DemuxError;
 use crate::mpegts::demux::event::PesHeaderMalformedKind;
+use alloc::vec::Vec;
 use hashbrown::HashMap;
 
 /// One reassembled PES on a single PID.
@@ -208,7 +209,7 @@ impl Reassembler {
 
     pub fn drain_partial(&mut self) -> Vec<PesPayload> {
         let mut out = Vec::new();
-        for (pid, p) in std::mem::take(&mut self.by_pid) {
+        for (pid, p) in core::mem::take(&mut self.by_pid) {
             if let Ok(Some(pes)) = parse_complete(pid, &p.buf, p.random_access_indicator) {
                 out.push(pes);
             }

@@ -13,6 +13,7 @@ use super::psi::{PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use super::ts::write_pcr_only_packet;
 use super::{AudioCodec, KlvStreamType, Muxer, StreamSpec, StreamType, VideoCodec};
 use crate::mpegts::common::{Pcr27mhz, Pts90khz};
+use alloc::vec::Vec;
 
 impl Muxer {
     pub(super) fn psi_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {

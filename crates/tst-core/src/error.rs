@@ -1,5 +1,6 @@
 //! Non-transport error types: KLV, MPEG-TS mux/demux.
 
+use alloc::string::String;
 use thiserror::Error;
 
 use crate::mpegts::mux::{StreamKind, TeletextField};

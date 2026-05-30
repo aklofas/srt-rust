@@ -31,6 +31,7 @@ mod tables;
 mod tests;
 
 use crate::codec::CodecParseError;
+use alloc::vec::Vec;
 
 /// AAC profile per ADTS §1.A (legacy MPEG-2 AAC profile names; most
 /// real-world ADTS encodes AAC-LC regardless of which MPEG-4 audio

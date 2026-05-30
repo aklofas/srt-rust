@@ -5,6 +5,8 @@ use crate::error::{KlvDecodeError, KlvFieldError};
 use crate::klv::length::{read_ber, read_ber_oid_strict, read_ber_strict};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::universal_label::UniversalLabel;
+use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
 
 use super::mapping::decode_fixed_range;
 use super::model::UasDatalinkLs;
@@ -405,7 +407,7 @@ fn apply_typed_tag(
                     got: f.value.len(),
                 });
             }
-            let s = std::str::from_utf8(f.value)
+            let s = core::str::from_utf8(f.value)
                 .map_err(|_| KlvFieldError::InvalidUtf8 { tag })?
                 .to_owned();
             match tag {

@@ -10,6 +10,7 @@ use super::var_uint::write_var_u32;
 use crate::error::KlvEncodeError;
 use crate::klv::imapb::{ImapbParams, encode_imapb};
 use crate::klv::length::write_ber;
+use alloc::vec::Vec;
 
 /// Emit a `[tag][BER length][value]` TLV to `out`.
 pub(super) fn emit_tlv(out: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), KlvEncodeError> {

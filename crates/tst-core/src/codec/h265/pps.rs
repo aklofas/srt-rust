@@ -4,6 +4,7 @@
 
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
+use alloc::vec::Vec;
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]

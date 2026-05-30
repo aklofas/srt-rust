@@ -3,6 +3,8 @@
 //! Stateless. Each parser takes the descriptor payload (length-field
 //! stripped) and returns typed entries or a [`DescriptorParseError`].
 
+use alloc::vec::Vec;
+
 /// Raw, unparsed descriptor. The walker (`walk_descriptors`) and the
 /// typed extractors (`has_klva_registration`, `extract_metadata_link`)
 /// interpret these.

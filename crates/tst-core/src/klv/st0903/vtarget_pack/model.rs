@@ -2,6 +2,7 @@
 //! and the pack-tag spec table (`PACK_TAGS`, `PackEncoding`, `PackTagSpec`,
 //! `pack_lookup`).
 
+use alloc::vec::Vec;
 use thiserror::Error;
 
 /// Per-pack-tag wire encoding. Mirrors `tags::Encoding` in shape but

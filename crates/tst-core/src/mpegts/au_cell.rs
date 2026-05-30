@@ -30,6 +30,7 @@
 //! metadata_descriptor; the wrapper itself is H.222.0's.
 
 use crate::error::KlvDecodeError;
+use alloc::vec::Vec;
 
 /// Cell fragment indication — H.222.0 V9 Table 2-157.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

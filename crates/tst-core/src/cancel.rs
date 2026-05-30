@@ -13,8 +13,9 @@
 //! similar) — which surfaces through our error mapping as `Broken` /
 //! `ConnectionBroken`.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use portable_atomic::{AtomicI64, Ordering};
 
 /// Sentinel stored in the atomic once cancel has run. Picked as `i64::MIN`
 /// because libsrt's `SRTSOCKET` (= `c_int`) cannot legally take this value
@@ -77,8 +78,8 @@ impl SrtCancelHandle {
     }
 }
 
-impl std::fmt::Debug for SrtCancelHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SrtCancelHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SrtCancelHandle")
             .field("cancelled", &self.is_cancelled())
             .finish()

@@ -43,15 +43,19 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rustdoc::broken_intra_doc_links)]
 
+#[macro_use]
 extern crate alloc;
 
 pub mod cancel;
 pub mod codec;
 pub mod error;
+#[cfg(not(feature = "std"))]
+mod float_ext;
 #[cfg(feature = "file")]
 pub mod io_file;
 pub mod klv;
 pub mod mpegts;
+#[cfg(feature = "std")]
 pub mod net;
 pub mod publisher;
 pub mod transport;

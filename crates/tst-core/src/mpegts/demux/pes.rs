@@ -7,7 +7,7 @@
 
 use crate::error::DemuxError;
 use crate::mpegts::demux::event::PesHeaderMalformedKind;
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 /// One reassembled PES on a single PID.
 #[derive(Debug, Clone, PartialEq, Eq)]

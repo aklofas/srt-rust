@@ -25,7 +25,7 @@ use crate::mpegts::demux::event::{
 use crate::mpegts::demux::psi::{Pmt, PsiParseError, parse_pat, parse_pmt};
 use crate::mpegts::demux::psi_assembler::AssemblerError;
 use crate::mpegts::demux::types::ProgramTracker;
-use std::collections::HashSet;
+use hashbrown::HashSet;
 
 /// Three-state outcome from `Demuxer::dispatch_psi_result`. Replaces the
 /// earlier two-state `bool` return that conflated "section incomplete /

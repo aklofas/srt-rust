@@ -4,7 +4,11 @@
 
 use crate::mpegts::demux::event::{StreamInfo, StreamKind};
 use crate::mpegts::demux::strict::StrictMode;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use hashbrown::HashSet;
+// `stream_kind_overrides` is a public field of `DemuxerConfig`; keep it on
+// `std::collections::HashMap` so the public API surface is unchanged. A later
+// no_std step migrates this public type deliberately (with a baseline update).
+use std::collections::{BTreeMap, HashMap};
 
 /// Stats snapshot for [`Demuxer`](crate::mpegts::demux::Demuxer). Used by
 /// `tst_pipeline::DemuxReceiver` to compose its own `DemuxReceiverStats`;

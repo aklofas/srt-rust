@@ -23,7 +23,8 @@ use crate::mpegts::demux::types::{
     DEFAULT_AU_CELL_CAP_PER_PID, DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig,
     DemuxerStats, ProgramTracker,
 };
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use hashbrown::{HashMap, HashSet};
+use std::collections::{BTreeMap, VecDeque};
 
 /// MPEG-TS demuxer.
 ///

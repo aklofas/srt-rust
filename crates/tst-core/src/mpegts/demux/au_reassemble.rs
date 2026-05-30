@@ -13,7 +13,7 @@
 //! version change.
 
 use crate::mpegts::au_cell::{AuCellHeader, CellFragmentIndication};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use super::event::MultiCellAuReason;
 

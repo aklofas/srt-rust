@@ -13,19 +13,19 @@ default = ["std", "file"]
 # `std` pulls in everything that needs the standard library: file I/O,
 # the net helpers, the thread/Barrier cancel path, and the std-only
 # serialization deps. Without it the crate is #![no_std] + alloc.
-std  = ["file", "serde/std", "tracing/std", "sha2/std"]
+std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:toml"]
 file = ["std"]  # std::fs-using helpers in io_file (must imply std)
 
 [dependencies]
 log          = { workspace = true }
 thiserror    = { workspace = true }
 libc         = { workspace = true }  # raw setsockopt in net::udp_socket (cfg(unix) helpers)
-h264-reader  = "0.8"
-tracing      = { version = "0.1", default-features = false, features = ["std"] }
-serde        = { version = "1", features = ["derive"] }
-serde_json   = "1"
-toml         = "0.8"
-sha2         = "0.10"
+tracing      = { version = "0.1", default-features = false }
+serde        = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json   = { version = "1", optional = true }
+toml         = { version = "0.8", optional = true }
+sha2         = { version = "0.10", default-features = false }
+hashbrown    = { version = "0.15", default-features = false, features = ["default-hasher"] }
 
 # IP_MULTICAST_IF on Windows: std::net exposes no setter and libc's socket layer
 # is Unix-shaped, so we use socket2's cross-platform setsockopt via SockRef.

@@ -40,7 +40,10 @@
 //!   Embedded users without a filesystem disable via
 //!   `tst-core = { default-features = false }`.
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rustdoc::broken_intra_doc_links)]
+
+extern crate alloc;
 
 pub mod cancel;
 pub mod codec;

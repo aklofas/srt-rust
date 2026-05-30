@@ -1,0 +1,23 @@
+[package]
+name = "baremetal-qemu"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "no_std QEMU runtime smoke test for the tst-core muxer (excluded from the workspace)"
+
+[[bin]]
+name = "baremetal-qemu"
+test = false
+bench = false
+
+[dependencies]
+tst-core = { path = "../tst-core", default-features = false }
+cortex-m-rt = "0.7"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+embedded-alloc = "0.5"
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+opt-level = "s"
+lto = true

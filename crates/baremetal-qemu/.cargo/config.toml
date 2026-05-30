@@ -1,0 +1,10 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+# QEMU appends the built ELF path after `-kernel`. `-machine mps2-an386`
+# fixes the CPU to Cortex-M4 (do NOT also pass `-cpu`, some QEMU builds
+# reject the redundant override). Semihosting carries hprintln! output and
+# the `debug::exit` pass/fail code to the host process exit status.
+runner = "qemu-system-arm -machine mps2-an386 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = ["-C", "link-arg=-Tlink.x"]

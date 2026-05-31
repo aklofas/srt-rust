@@ -12,6 +12,11 @@ bench = false
 
 [dependencies]
 tst-core = { path = "../tst-core", default-features = false }
+tst-pipeline = { path = "../tst-pipeline", default-features = false }
+# no_std lock backend for the in-memory `Sink` Transport. `Transport: Send`
+# (unconditional), so the single-threaded sink must use a Send/Sync cell:
+# `Arc<spin::Mutex<_>>`, not `Rc<RefCell<_>>` (which is !Send).
+spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
 cortex-m-rt = "0.7"
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 embedded-alloc = "0.5"

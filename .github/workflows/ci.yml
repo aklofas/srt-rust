@@ -554,7 +554,7 @@ jobs:
         run: cargo test -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl
 
   no-std-baremetal:
-    name: build (no_std bare-metal, tst-core)
+    name: no_std bare-metal (compile + QEMU runtime)
     runs-on: ubuntu-latest
     env:
       RUSTUP_TOOLCHAIN: "1.85"
@@ -594,6 +594,17 @@ jobs:
 
       - name: cargo build (tst-core, riscv32imac-unknown-none-elf)
         run: cargo build -p tst-core --no-default-features --target riscv32imac-unknown-none-elf
+
+      - name: Install QEMU (system ARM)
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm
+
+      # Runtime gate: run the tst-core muxer on a Cortex-M4 under QEMU and
+      # assert it byte-matches the committed video-roundtrip golden. The
+      # semihosting `debug::exit` code becomes this step's pass/fail; `timeout`
+      # bounds any QEMU hang. See crates/baremetal-qemu/ + the design spec.
+      - name: QEMU runtime smoke (baremetal-qemu)
+        working-directory: crates/baremetal-qemu
+        run: timeout 60 cargo run
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)

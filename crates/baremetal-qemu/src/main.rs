@@ -200,8 +200,9 @@ impl Transport for SmoltcpUdpTransport {
                     errno_code: None,
                 })?;
         }
-        // 16 polls is generous: the first send resolves ARP (~2 polls), then
-        // the datagram flows and loops back; subsequent sends need ~1-2.
+        // 16 polls is generous: the first send needs a couple of passes for
+        // neighbor resolution + flush, then the datagram loops back; subsequent
+        // sends need ~1-2.
         for _ in 0..16 {
             self.poll_and_drain();
         }

@@ -25,7 +25,7 @@ use tst_pipeline::MuxSender;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-const HEAP_SIZE: usize = 128 * 1024;
+const HEAP_SIZE: usize = 256 * 1024;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
 /// Committed, CI-guarded golden produced by `gen_scenarios`. Resolved relative

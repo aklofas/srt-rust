@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -21,6 +22,12 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::{Transport, TransportError};
 use tst_pipeline::MuxSender;
+
+use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet};
+use smoltcp::phy::{Loopback, Medium};
+use smoltcp::socket::udp;
+use smoltcp::time::Instant;
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -89,6 +96,124 @@ impl Transport for Sink {
         1316
     }
     fn close(&mut self) {}
+    fn is_alive(&self) -> bool {
+        true
+    }
+}
+
+/// Local loopback address/port the transport sends to and receives from. With
+/// the `Loopback` device, every transmitted frame is echoed back as RX, so a
+/// datagram sent to our own bound port comes straight back to the same socket.
+const LOOPBACK_PORT: u16 = 9000;
+
+/// A `no_std` `Transport` that serializes each `send_bytes` message as one UDP
+/// datagram through a real smoltcp IPv4 stack over a `phy::Loopback` device,
+/// then drains the looped-back datagram and appends its recovered payload to a
+/// shared accumulator. This upgrades the Check-2 `Vec` `Sink` from "bytes
+/// copied" to "bytes serialized through a real UDP/IP stack and parsed back".
+///
+/// Owned by `MuxSender` by value, so the unconditional `Transport: Send`
+/// supertrait costs nothing here (no `Arc<Mutex>` around the transport state).
+/// The `acc` accumulator is the one shared cell — read back by Check 3 after
+/// `MuxSender::close`, mirroring the Check-2 readback pattern.
+struct SmoltcpUdpTransport {
+    device: Loopback,
+    iface: Interface,
+    sockets: SocketSet<'static>,
+    handle: SocketHandle,
+    clock_ms: i64,
+    endpoint: IpEndpoint,
+    acc: Arc<Mutex<Vec<u8>>>,
+}
+
+impl SmoltcpUdpTransport {
+    fn new(acc: Arc<Mutex<Vec<u8>>>) -> Self {
+        let mut device = Loopback::new(Medium::Ethernet);
+
+        // Locally-administered fake MAC; loopback resolves its own ARP.
+        let config = Config::new(EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into());
+        let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
+        iface.update_ip_addrs(|addrs| {
+            addrs
+                .push(IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8))
+                .expect("ip addr slot");
+        });
+
+        // Owned (Vec-backed) packet buffers — available because the smoltcp
+        // `alloc` feature is enabled. 16 metadata slots / 4 KiB payload each is
+        // ample for the 564-byte golden (one ~564-byte datagram per chunk).
+        let rx_buf =
+            udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
+        let tx_buf =
+            udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 16], vec![0u8; 4096]);
+        let mut socket = udp::Socket::new(rx_buf, tx_buf);
+        socket.bind(LOOPBACK_PORT).expect("udp bind");
+
+        let mut sockets = SocketSet::new(vec![]);
+        let handle = sockets.add(socket);
+
+        Self {
+            device,
+            iface,
+            sockets,
+            handle,
+            clock_ms: 0,
+            endpoint: IpEndpoint::new(IpAddress::v4(127, 0, 0, 1), LOOPBACK_PORT),
+            acc,
+        }
+    }
+
+    /// Advance the manual clock and poll the interface once, then drain any
+    /// datagrams the loopback delivered back into the accumulator.
+    fn poll_and_drain(&mut self) {
+        self.clock_ms += 1;
+        self.iface
+            .poll(Instant::from_millis(self.clock_ms), &mut self.device, &mut self.sockets);
+
+        let socket = self.sockets.get_mut::<udp::Socket>(self.handle);
+        let mut tmp = [0u8; 1500];
+        while socket.can_recv() {
+            if let Ok((n, _meta)) = socket.recv_slice(&mut tmp) {
+                self.acc.lock().extend_from_slice(&tmp[..n]);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+impl Transport for SmoltcpUdpTransport {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        {
+            let socket = self.sockets.get_mut::<udp::Socket>(self.handle);
+            if !socket.can_send() {
+                // Send buffer full this pass — retry-identical-slice contract.
+                return Err(TransportError::Backpressure {
+                    msg: String::from("udp send buffer full"),
+                    errno_code: None,
+                });
+            }
+            socket
+                .send_slice(msg, self.endpoint)
+                .map_err(|_| TransportError::Broken {
+                    msg: String::from("udp send_slice failed"),
+                    errno_code: None,
+                })?;
+        }
+        // 16 polls is generous: the first send resolves ARP (~2 polls), then
+        // the datagram flows and loops back; subsequent sends need ~1-2.
+        for _ in 0..16 {
+            self.poll_and_drain();
+        }
+        Ok(())
+    }
+
+    fn max_payload(&self) -> usize {
+        1316
+    }
+
+    fn close(&mut self) {}
+
     fn is_alive(&self) -> bool {
         true
     }

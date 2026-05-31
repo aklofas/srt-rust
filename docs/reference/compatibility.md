@@ -55,12 +55,20 @@ transport traits. The `std` feature (default-on) gates the `net` helpers,
 the thread/`Barrier` cancel path, and `serde_json`/`toml` export. CI
 compiles the crate for `thumbv7em-none-eabihf` and
 `riscv32imac-unknown-none-elf`; a `*-none-*` target has no `std`, so the
-build itself is the guard. This is a **compile**-gate, not a runtime test
-— the embedding binary supplies a `#[global_allocator]`, and on 32-bit
-cores `portable-atomic` backs the 64-bit cancel atomic (its
-critical-section/fallback impl is the embedder's responsibility). Runtime
-verification (QEMU), `tst-pipeline`/transport `no_std`, and the
-libsrt-on-FreeRTOS port are tracked as a future milestone in `ROADMAP.md`.
+build itself is the guard. This is a **compile**-gate with a runtime sanity-check — the embedding
+binary supplies a `#[global_allocator]`, and on 32-bit cores
+`portable-atomic` backs the 64-bit cancel atomic (its
+critical-section/fallback impl is the embedder's responsibility). The
+bare-metal compile is also exercised at runtime under QEMU
+(`qemu-system-arm -machine mps2-an386`, thumbv7em) in CI as an end-to-end
+mux round-trip. The libsrt-on-FreeRTOS port remains a future milestone.
+
+`tst-pipeline`'s **sender** path (`MuxSender`/`Sender`/`RawSender`) also
+builds `#![no_std]` + `alloc` under `--no-default-features` and is verified
+against the same bare-metal targets. The receiver shells
+(`Receiver`/`DemuxReceiver`/`RawReceiver`), the `Managed*` reconnect
+wrappers, `MuxPublisher`, and `ext::pairing` require the default-on `std`
+feature.
 
 ---
 

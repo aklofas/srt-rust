@@ -36,6 +36,18 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Cargo features
+//!
+//! - `std` (default-on) — the full pipeline surface: the receiver shells
+//!   (`Receiver`/`DemuxReceiver`/`RawReceiver`), the `Managed*` reconnect
+//!   wrappers, `MuxPublisher`, and `ext::pairing`. With `--no-default-features`
+//!   the crate is `#![no_std]` + `alloc` and exposes only the **sender** shells
+//!   (`MuxSender`/`Sender`/`RawSender`) for bare-metal / FreeRTOS senders. The
+//!   embedding binary must supply a `#[global_allocator]`. Verified in CI
+//!   against `thumbv7em-none-eabihf` and `riscv32imac-unknown-none-elf`, and at
+//!   runtime under QEMU. Under no_std the `MuxSender` lock is a `spin::Mutex`
+//!   (a single-core sender never contends).
 
 #![warn(rustdoc::broken_intra_doc_links)]
 #![cfg_attr(not(feature = "std"), no_std)]

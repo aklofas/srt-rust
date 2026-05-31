@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+use alloc::vec;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
@@ -11,22 +12,75 @@ use cortex_m_semihosting::{debug, hprintln};
 use embedded_alloc::Heap;
 use panic_semihosting as _;
 
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
 const HEAP_SIZE: usize = 128 * 1024;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
+/// Committed, CI-guarded golden produced by `gen_scenarios`. Resolved relative
+/// to this file: `crates/baremetal-qemu/src/` → `../../tst-integration/...`.
+static GOLDEN: &[u8] =
+    include_bytes!("../../tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
+
+/// Verbatim copy of `tst_integration::scenarios::synthetic_h264_idr()`.
+/// (tst-integration is std-only and not a dependency; per spec decision A the
+/// short sequence is duplicated, and the on-device byte-compare detects drift.)
+fn synthetic_h264_idr() -> Vec<u8> {
+    let mut buf = Vec::with_capacity(20);
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Annex-B start code
+    buf.push(0x65); // nal_ref_idc=11, nal_unit_type=5 (IDR)
+    for i in 0u8..15 {
+        buf.push(0xA5 ^ i);
+    }
+    buf
+}
+
+/// Verbatim copy of `tst_integration::scenarios::video_roundtrip_ts_bytes()`.
+fn video_roundtrip_ts_bytes() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let mut mux = Muxer::new(cfg).expect("muxer init");
+    mux.push_video(&synthetic_h264_idr(), Pts90khz::new(0), /*key_frame=*/ true)
+        .expect("push_video");
+
+    // Drain (mirrors scenarios::drain_mux: 1316-byte = 7×188 chunks).
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 1316];
+    loop {
+        let n = mux.pull(&mut buf);
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    out
+}
+
 #[entry]
 fn main() -> ! {
-    // SAFETY: called once, before any allocation; `&raw mut` avoids a
-    // `static_mut_refs` warning.
     unsafe { HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
 
-    let mut v: Vec<u8> = Vec::new();
-    v.extend_from_slice(&[1, 2, 3]);
-    hprintln!("heap ok: {} bytes allocated", v.len());
+    let produced = video_roundtrip_ts_bytes();
 
-    debug::exit(debug::EXIT_SUCCESS);
+    if produced == GOLDEN {
+        hprintln!("PASS: {} bytes match golden", produced.len());
+        debug::exit(debug::EXIT_SUCCESS);
+    } else {
+        hprintln!(
+            "FAIL: produced {} bytes, golden {} bytes",
+            produced.len(),
+            GOLDEN.len()
+        );
+        debug::exit(debug::EXIT_FAILURE);
+    }
     loop {}
 }

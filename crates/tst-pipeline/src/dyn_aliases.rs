@@ -12,9 +12,13 @@
 //! See the [binding-authors guide](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/binding-authors.md)
 //! for worked examples per language.
 
-pub use crate::demux_receiver::BoxedDemuxReceiver;
 pub use crate::mux_sender::BoxedMuxSender;
-pub use crate::raw_receiver::BoxedRawReceiver;
 pub use crate::raw_sender::BoxedRawSender;
-pub use crate::receiver::BoxedReceiver;
 pub use crate::sender::BoxedSender;
+
+#[cfg(feature = "std")]
+pub use crate::demux_receiver::BoxedDemuxReceiver;
+#[cfg(feature = "std")]
+pub use crate::raw_receiver::BoxedRawReceiver;
+#[cfg(feature = "std")]
+pub use crate::receiver::BoxedReceiver;

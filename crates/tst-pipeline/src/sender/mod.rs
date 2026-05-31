@@ -7,7 +7,8 @@ mod framing;
 
 pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use tracing::{Span, info_span};
 use tst_core::transport::Transport;
 
@@ -155,15 +156,15 @@ pub struct Sender<T: Transport> {
     /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
     /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
     /// so asserting unwind safety is correct here.
-    _span: std::panic::AssertUnwindSafe<Span>,
+    _span: core::panic::AssertUnwindSafe<Span>,
 }
 
-impl<T: Transport> std::fmt::Debug for Sender<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: Transport> core::fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Sender")
             .field("closed", &self.closed)
             .field("mode", &self.mode)
-            .field("transport_kind", &std::any::type_name::<T>())
+            .field("transport_kind", &core::any::type_name::<T>())
             .finish()
     }
 }
@@ -173,7 +174,7 @@ impl<T: Transport> Sender<T> {
         let span = info_span!(
             target: "tst_pipeline::sender",
             "sender",
-            transport_kind = std::any::type_name::<T>(),
+            transport_kind = core::any::type_name::<T>(),
         );
         let _enter = span.enter();
         tracing::info!("Sender opened");
@@ -183,7 +184,7 @@ impl<T: Transport> Sender<T> {
             transport,
             closed: false,
             mode: config.framing_mode,
-            _span: std::panic::AssertUnwindSafe(span),
+            _span: core::panic::AssertUnwindSafe(span),
         }
     }
 

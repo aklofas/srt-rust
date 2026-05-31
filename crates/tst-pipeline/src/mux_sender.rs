@@ -11,9 +11,10 @@
 //! propagated to the caller; those are the cases where `ManagedTransport`
 //! is the right wrapper.
 
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::Arc;
-use crate::mutex::ShellMutex;
+use alloc::boxed::Box;
+use alloc::collections::{BTreeMap, VecDeque};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use tracing::{Span, info_span};
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
@@ -22,6 +23,7 @@ use tst_core::mpegts::mux::{
 };
 use tst_core::transport::{Transport, TransportError};
 
+use crate::mutex::ShellMutex;
 use crate::shell_error::ShellErrorKind;
 
 /// Stats snapshot for [`MuxSender`].
@@ -109,11 +111,11 @@ pub struct MuxSender<T: Transport> {
     /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
     /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
     /// so asserting unwind safety is correct here.
-    _span: std::panic::AssertUnwindSafe<Span>,
+    _span: core::panic::AssertUnwindSafe<Span>,
 }
 
-impl<T: Transport> std::fmt::Debug for MuxSender<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: Transport> core::fmt::Debug for MuxSender<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Acquire the inner Mutex briefly to read identity + lifecycle.
         // If poisoned (a panic happened mid-send), report poisoned-state
         // rather than panicking the formatter.
@@ -126,12 +128,12 @@ impl<T: Transport> std::fmt::Debug for MuxSender<T> {
                 .field("audio_streams", &inner.muxer.audio_handles().len())
                 .field("subtitle_streams", &inner.muxer.subtitle_handles().len())
                 .field("pending_chunks", &inner.pending_bytes.len())
-                .field("transport_kind", &std::any::type_name::<T>())
+                .field("transport_kind", &core::any::type_name::<T>())
                 .finish(),
             Err(_) => f
                 .debug_struct("MuxSender")
                 .field("inner", &"<poisoned>")
-                .field("transport_kind", &std::any::type_name::<T>())
+                .field("transport_kind", &core::any::type_name::<T>())
                 .finish(),
         }
     }
@@ -179,7 +181,7 @@ impl<T: Transport> MuxSender<T> {
             target: "tst_pipeline::mux_sender",
             "mux_sender",
             program_count = config.programs.len(),
-            transport_kind = std::any::type_name::<T>(),
+            transport_kind = core::any::type_name::<T>(),
         );
         let _enter = span.enter();
         let muxer = Muxer::new(config)?;
@@ -197,7 +199,7 @@ impl<T: Transport> MuxSender<T> {
                 last_backpressure_state: BackpressureState::Ok,
             }),
             cancel,
-            _span: std::panic::AssertUnwindSafe(span),
+            _span: core::panic::AssertUnwindSafe(span),
         })
     }
 

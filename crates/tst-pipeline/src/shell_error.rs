@@ -90,7 +90,7 @@ pub enum ShellErrorKind {
 /// let err = MuxSenderError::from(MuxError::InvalidConfig("test"));
 /// assert_eq!(err.kind(), ShellErrorKind::ConfigInvalid);
 /// ```
-pub trait ShellError: std::error::Error {
+pub trait ShellError: core::error::Error {
     /// Categorical reason for this failure. See [`ShellErrorKind`] for
     /// the per-shell-applicability matrix.
     fn kind(&self) -> ShellErrorKind;
@@ -141,6 +141,10 @@ pub(crate) fn errno_code_from_transport(e: &TransportError) -> Option<i32> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Direction {
     Send,
+    // Only constructed by the receiver-side shells, which are gated behind the
+    // `std` feature. Under `no_std` (sender-only) the variant is never built,
+    // but `kind_from_transport` still matches it exhaustively.
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     Recv,
 }
 
@@ -221,6 +225,10 @@ pub(crate) fn kind_from_transport(e: &TransportError, direction: Direction) -> S
 /// "the input byte stream is malformed at this point" — all map to
 /// `InputMalformed`. The exhaustive match documents that no variant has
 /// a different disposition.
+///
+/// Only the receiver-side shells (gated behind `std`) call this; under
+/// `no_std` (sender-only) it is dead.
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 pub(crate) fn kind_from_demux(e: &DemuxError) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {

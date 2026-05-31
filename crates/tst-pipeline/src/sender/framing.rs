@@ -14,7 +14,8 @@
 //! buffer must read 0x47. On failure: drop staging buffer, increment
 //! resync_events, return to UNSYNCED, restart scan from next byte.
 
-use std::collections::VecDeque;
+use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 use thiserror::Error;
 use tst_core::mpegts::common::{
     SRT_TS_BUNDLE_BYTES as SRT_BUNDLE_BYTES, SRT_TS_BUNDLE_PACKETS as SRT_BUNDLE_PACKETS,

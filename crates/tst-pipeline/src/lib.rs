@@ -38,45 +38,64 @@
 //! ```
 
 #![warn(rustdoc::broken_intra_doc_links)]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate alloc;
 
 mod mutex;
+
+#[cfg(feature = "std")]
 pub mod demux_receiver;
 pub mod dyn_aliases;
+#[cfg(feature = "std")]
 pub mod ext;
+#[cfg(feature = "std")]
 pub mod managed_demux_receiver;
+#[cfg(feature = "std")]
 pub mod managed_receive;
+#[cfg(feature = "std")]
 pub mod mux_publisher;
 pub mod mux_sender;
+#[cfg(feature = "std")]
 pub mod raw_receiver;
 pub mod raw_sender;
+#[cfg(feature = "std")]
 pub mod receiver;
+#[cfg(feature = "std")]
 pub mod reconnect;
 pub mod sender;
 pub mod shell_error;
 
 // Top-level re-exports of the most common types.
+#[cfg(feature = "std")]
 pub use demux_receiver::{
     ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource, DemuxReceiverStats,
 };
-pub use dyn_aliases::{
-    BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
-    BoxedSender,
-};
+pub use dyn_aliases::{BoxedMuxSender, BoxedRawSender, BoxedSender};
+#[cfg(feature = "std")]
+pub use dyn_aliases::{BoxedDemuxReceiver, BoxedRawReceiver, BoxedReceiver};
+#[cfg(feature = "std")]
 pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
+#[cfg(feature = "std")]
 pub use managed_receive::ManagedRecvTransport;
+#[cfg(feature = "std")]
 pub use mux_publisher::{MuxPublisher, MuxPublisherError, MuxPublisherStats};
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};
 // Pairing is intentionally NOT re-exported at the crate root. It lives
 // under `ext::pairing` to signal its opt-in, extension-module nature.
 // Callers write `use tst_pipeline::ext::pairing::Pairer` explicitly.
 // See `crate::ext` for rationale.
+#[cfg(feature = "std")]
 pub use raw_receiver::{
     RawReceiver, RawReceiverConfig, RawReceiverError, RawReceiverErrorSource, RawRecvStats,
 };
 pub use raw_sender::{
     RawSendStats, RawSender, RawSenderConfig, RawSenderError, RawSenderErrorSource,
 };
+#[cfg(feature = "std")]
 pub use receiver::{Receiver, ReceiverConfig, ReceiverError, ReceiverErrorSource, ReceiverStats};
+#[cfg(feature = "std")]
 pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,
 };

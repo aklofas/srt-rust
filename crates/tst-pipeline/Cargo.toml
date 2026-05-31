@@ -10,15 +10,22 @@ description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Re
 
 [features]
 default = ["std"]
-std = []
+# `std` pulls in the receiver path, the Managed* reconnect wrappers,
+# mux_publisher, ext::pairing, and the std-backed lock + tracing subscriber
+# integration. Without it the crate is #![no_std] + alloc and exposes only the
+# sender shells (MuxSender / Sender / RawSender).
+std = ["tst-core/std", "tracing/std"]
 
 [dependencies]
-tst-core  = { path = "../tst-core" }
+tst-core  = { path = "../tst-core", default-features = false }
 thiserror = { workspace = true }
-# Single facade for diagnostics workspace-wide. Consumers wire one
-# `tracing-subscriber`. We only need `std`; default `attributes` brings
-# in proc-macro deps we don't use.
-tracing   = { version = "0.1", default-features = false, features = ["std"] }
+# Single facade for diagnostics workspace-wide. `default-features = false`
+# keeps the macros usable under no_std+alloc; the `std` feature re-adds the
+# std subscriber integration.
+tracing   = { version = "0.1", default-features = false }
+# no_std lock backend (single-core embedded sender never contends). Referenced
+# only under cfg(not(feature = "std")) via crate::mutex.
+spin      = { version = "0.9", default-features = false, features = ["spin_mutex"] }
 
 [dev-dependencies]
 criterion       = { workspace = true }

@@ -84,9 +84,9 @@ pub mod shell_error;
 pub use demux_receiver::{
     ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource, DemuxReceiverStats,
 };
-pub use dyn_aliases::{BoxedMuxSender, BoxedRawSender, BoxedSender};
 #[cfg(feature = "std")]
 pub use dyn_aliases::{BoxedDemuxReceiver, BoxedRawReceiver, BoxedReceiver};
+pub use dyn_aliases::{BoxedMuxSender, BoxedRawSender, BoxedSender};
 #[cfg(feature = "std")]
 pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
 #[cfg(feature = "std")]

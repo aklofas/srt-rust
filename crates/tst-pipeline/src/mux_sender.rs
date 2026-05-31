@@ -12,7 +12,8 @@
 //! is the right wrapper.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use crate::mutex::ShellMutex;
 use tracing::{Span, info_span};
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
@@ -94,7 +95,7 @@ pub struct MuxSenderStats {
 ///
 /// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct MuxSender<T: Transport> {
-    inner: Mutex<Inner<T>>,
+    inner: ShellMutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction
     /// time. Held outside the inner Mutex so `close()` can fire it
     /// without competing with a concurrent `send_*` for the lock.
@@ -186,7 +187,7 @@ impl<T: Transport> MuxSender<T> {
         tracing::info!("MuxSender opened");
         drop(_enter);
         Ok(Self {
-            inner: Mutex::new(Inner {
+            inner: ShellMutex::new(Inner {
                 muxer,
                 transport,
                 pending_bytes: VecDeque::new(),

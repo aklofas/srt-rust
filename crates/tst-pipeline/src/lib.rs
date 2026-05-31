@@ -39,6 +39,7 @@
 
 #![warn(rustdoc::broken_intra_doc_links)]
 
+mod mutex;
 pub mod demux_receiver;
 pub mod dyn_aliases;
 pub mod ext;

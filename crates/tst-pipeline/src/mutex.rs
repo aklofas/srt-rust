@@ -1,0 +1,40 @@
+//! Internal lock abstraction so the sender shells compile both with the
+//! standard library and `#![no_std]`+`alloc`.
+//!
+//! - Under `std`, [`ShellMutex`] is a type alias for [`std::sync::Mutex`] —
+//!   poison semantics and behavior are exactly std's (zero divergence on the
+//!   gating platforms).
+//! - Under `no_std`, it is a thin newtype over [`spin::Mutex`]. A single-core
+//!   embedded sender never contends, so the spinlock is an uncontended atomic
+//!   swap. `lock()` returns `Result<_, ()>` (always `Ok`) so the call sites —
+//!   which use `if let Ok(..)` / `match` / `.map_err(|_| ..)?` and never name
+//!   `PoisonError` — compile unchanged against both backends.
+
+#[cfg(feature = "std")]
+pub(crate) type ShellMutex<T> = std::sync::Mutex<T>;
+
+#[cfg(not(feature = "std"))]
+pub(crate) use no_std_impl::ShellMutex;
+
+#[cfg(not(feature = "std"))]
+mod no_std_impl {
+    use spin::{Mutex, MutexGuard};
+
+    /// Spin-backed mutex with a `Result`-returning `lock()` mirroring the
+    /// shape of `std::sync::Mutex` (minus poisoning, which cannot occur
+    /// without unwinding).
+    pub(crate) struct ShellMutex<T>(Mutex<T>);
+
+    impl<T> ShellMutex<T> {
+        pub(crate) fn new(value: T) -> Self {
+            ShellMutex(Mutex::new(value))
+        }
+
+        /// Always `Ok` — a spinlock cannot be poisoned. The `Err = ()` arm
+        /// exists only so `if let Ok(..)` / `.map_err(..)` call sites that
+        /// were written against `std::sync::Mutex` compile verbatim.
+        pub(crate) fn lock(&self) -> Result<MutexGuard<'_, T>, ()> {
+            Ok(self.0.lock())
+        }
+    }
+}

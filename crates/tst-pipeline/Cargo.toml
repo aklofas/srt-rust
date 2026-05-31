@@ -8,6 +8,10 @@ authors      = { workspace = true }
 repository   = { workspace = true }
 description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Receiver, DemuxReceiver, RawReceiver, ManagedTransport, reconnect strategies."
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
 tst-core  = { path = "../tst-core" }
 thiserror = { workspace = true }

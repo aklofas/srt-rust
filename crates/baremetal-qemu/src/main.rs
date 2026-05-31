@@ -242,6 +242,31 @@ fn mux_sender_roundtrip_ts_bytes() -> Vec<u8> {
     out
 }
 
+/// Same config as Check 2, but driven through `MuxSender<SmoltcpUdpTransport>`:
+/// every TS chunk is sent as a UDP datagram, looped back through the smoltcp
+/// stack, recovered, and accumulated. The recovered bytes must equal the same
+/// golden — proving the TS payload survives real UDP encode + loopback + decode.
+fn mux_sender_over_udp_loopback() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let acc = Arc::new(Mutex::new(Vec::new()));
+    let transport = SmoltcpUdpTransport::new(Arc::clone(&acc));
+    let sender = MuxSender::new(transport, cfg).expect("mux sender");
+    sender
+        .send_video(&synthetic_h264_idr(), Pts90khz::new(0), /*key_frame=*/ true)
+        .expect("send_video");
+    sender.close();
+    // `let` binding drops the MutexGuard at end-of-statement before `acc`
+    // drops, same as Check 2.
+    let out = acc.lock().clone();
+    out
+}
+
 #[entry]
 fn main() -> ! {
     unsafe { HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
@@ -270,8 +295,20 @@ fn main() -> ! {
         loop {}
     }
 
+    // Check 3 — MuxSender over a real smoltcp UDP/IP loopback transport (P7c).
+    let udp_out = mux_sender_over_udp_loopback();
+    if udp_out != GOLDEN {
+        hprintln!(
+            "FAIL[udp_loopback]: produced {} bytes, golden {} bytes",
+            udp_out.len(),
+            GOLDEN.len()
+        );
+        debug::exit(debug::EXIT_FAILURE);
+        loop {}
+    }
+
     hprintln!(
-        "PASS: muxer + mux_sender both match golden ({} bytes)",
+        "PASS: muxer + mux_sender + udp_loopback all match golden ({} bytes)",
         GOLDEN.len()
     );
     debug::exit(debug::EXIT_SUCCESS);

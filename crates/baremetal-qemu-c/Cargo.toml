@@ -1,0 +1,25 @@
+[package]
+name = "baremetal-qemu-c"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "no_std staticlib glue: libtstrans.a (tst-c-core offline surface) for the C-firmware QEMU embedded test, excluded from the workspace"
+
+[lib]
+name = "tstrans_firmware"
+crate-type = ["staticlib"]
+test = false
+bench = false
+
+[dependencies]
+tst-c-core = { path = "../tst-c-core", default-features = false }
+# Registers the critical-section impl that tst-c-core's no_std last-error needs.
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

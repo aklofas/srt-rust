@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdint>
+#include <exception>
 extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
@@ -18,17 +19,36 @@ extern "C" int _exit(int);
 struct TaggedError { int id; };
 
 static const int N = 3;
-static const int M = 2000;
+static const int M = 20000;
 static volatile int g_fail = 0;
 
+// A local whose destructor yields *during* stack unwinding — i.e. while THIS
+// thread's exception is still in flight on __cxa_eh_globals. That hands control
+// to another thread that also throws, so without per-task globals the shared
+// in-flight state (uncaught-exception count + the propagating-exception ptr)
+// gets clobbered. std::uncaught_exceptions() must read exactly 1 here.
+struct YieldOnUnwind {
+    int my_id;
+    ~YieldOnUnwind() {
+        if (std::uncaught_exceptions() != 1) g_fail = 1;
+        taskYIELD();
+    }
+};
+
 // Each pthread throws ITS OWN id and must catch exactly that — any cross-thread
-// bleed of exception state shows up as e.id != my_id. taskYIELD() between
-// iterations forces the throws of the 3 threads to interleave mid-flight.
+// bleed of exception state shows up as e.id != my_id. The mid-unwind yield (via
+// YieldOnUnwind's destructor) and the in-catch yield force the throws of the 3
+// threads to interleave WHILE an exception is in flight on the shared global.
 static void* exc_thread(void* arg) {
     int my_id = (int)(intptr_t)arg;
     for (int i = 0; i < M; i++) {
-        try { throw TaggedError{my_id}; }
-        catch (const TaggedError& e) { if (e.id != my_id) g_fail = 1; }
+        try {
+            YieldOnUnwind guard{my_id};
+            throw TaggedError{my_id};
+        } catch (const TaggedError& e) {
+            if (e.id != my_id) g_fail = 1;
+            taskYIELD();   // yield while still inside the catch (caughtExceptions live)
+        }
         taskYIELD();
     }
     return nullptr;

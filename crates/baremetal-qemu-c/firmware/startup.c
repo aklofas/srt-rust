@@ -13,6 +13,7 @@
  *   clean exit regardless of the newlib version's probing strategy.
  */
 #include <stdint.h>
+#include <errno.h>
 
 extern uint32_t _sidata, _sdata, _edata, _sbss, _ebss, _estack;
 extern char end, _heap_end;
@@ -58,7 +59,13 @@ void Reset_Handler(void) {
 void *_sbrk(int incr) {
     static char *brk = 0;
     if (!brk) brk = &end;
-    if (brk + incr > &_heap_end) return (void *)-1;
+    /* Bound BOTH ends: a negative incr must not underflow below the heap base
+       (&end) into .bss/.data. Set errno=ENOMEM on failure per the newlib
+       contract so malloc can distinguish OOM. */
+    if (brk + incr > &_heap_end || brk + incr < &end) {
+        errno = ENOMEM;
+        return (void *)-1;
+    }
     char *prev = brk; brk += incr; return prev;
 }
 

@@ -16,12 +16,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   already-unconditional `tst_demuxer_*`. Additive — no symbol removed, no
   signature changed; SRT builds are unaffected, non-SRT builds gain the
   offline muxer.
-- Added a default-on `std` feature to `tst-c`. Every transport-bearing
-  surface (srt/rtp/udp/tcp/hls/rist) now implies `std`; the offline core
-  (muxer / demuxer / config / error / handle) is being carved to compile
-  without it, for the forthcoming no_std embedded staticlib path. (The
-  carve-out is not yet complete in this commit — `panic.rs`/`handle.rs` still
-  use unconditional `std::`; that work lands in the next task.)
+- The C-ABI logic was split into a new `tst-c-core` rlib (embeddable,
+  no_std-capable) re-exported by the `tst-c` cdylib/staticlib leaf. Consumer
+  artifacts are unchanged: `cargo build -p tst-c` still emits
+  `libtstrans.so` + `libtstrans.a` + `tstrans.h` exactly as before. A
+  default-on `std` feature gates every transport-bearing surface
+  (srt/rtp/udp/tcp/hls/rist); the offline core (muxer / demuxer / config /
+  error / handle / panic) now compiles `#![no_std]`+`alloc` under
+  `--no-default-features`, enabling the bare-metal embedded path.
 
 ---
 

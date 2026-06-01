@@ -51,7 +51,8 @@ if [ ${#ABI_HITS[@]} -gt 0 ]; then
     echo "FAIL: stale 'ABI version 0.[0-4]' references found:"
     for h in "${ABI_HITS[@]}"; do echo "  $h"; done
     echo
-    echo "Current ABI minor (per crates/tst-c-core/src/lib.rs TST_ABI_VERSION_MINOR): 5"
+    CURRENT_MINOR=$(grep -E '^pub const TST_ABI_VERSION_MINOR' crates/tst-c-core/src/lib.rs | grep -oE '[0-9]+' | tail -1)
+    echo "Current ABI minor (per crates/tst-c-core/src/lib.rs TST_ABI_VERSION_MINOR): ${CURRENT_MINOR}"
     echo "Update each hit to the current value."
     FAILED=1
 fi

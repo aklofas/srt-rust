@@ -34,7 +34,10 @@ PY
 
 echo "==> building glue staticlib (thumbv7em)"
 ( cd "$CRATE" && cargo build --release )
-AR=$(find "$CRATE/target" -name 'libtstrans_firmware.a' | head -1)
+# Deterministic path: --release above + target pinned to thumbv7em-none-eabihf
+# in the crate's .cargo/config.toml. (A `find | head -1` would walk debug/
+# first and could link a stale debug archive from a prior `cargo build`.)
+AR="$CRATE/target/thumbv7em-none-eabihf/release/libtstrans_firmware.a"
 ARDIR=$(cd "$(dirname "$AR")" && pwd)
 INC=$(cd crates/tst-c/include && pwd)
 

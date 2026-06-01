@@ -1922,10 +1922,11 @@ extern "C" {
  *
  * # Safety
  *
- * Sound under any caller invocation — no pointer arguments, no
- * mutating shared state (the thread-local is per-thread by definition),
- * no internal locks. The `unsafe extern "C"` annotation matches the
- * convention of every other `tst_*` entry point for consistency.
+ * Sound under any caller invocation — no pointer arguments. Under `std`
+ * the per-thread slot is mutated without locks; under `no_std` a single
+ * process-global slot is mutated inside a brief `critical-section` (which
+ * disables interrupts on single-core targets). The `unsafe extern "C"`
+ * annotation matches the convention of every other `tst_*` entry point.
  */
 void tst_clear_last_error(void);
 
@@ -1964,6 +1965,14 @@ uint32_t tst_get_abi_version_minor(void);
  * The value is not cleared by successful calls; it reflects the most
  * recent failure on this thread (or `TST_E_SUCCESS` if there has been
  * none since thread start).
+ *
+ * **Storage:** per-thread (`thread_local!`) under the default `std` build
+ * (the desktop cdylib/staticlib — the per-thread wording above is exact).
+ * In a `no_std` build the slot is instead a single **process-global**
+ * behind a `critical-section` lock, so the value — and the pointer from
+ * [`tst_get_last_error_str`] — may be overwritten by a tst-c call from any
+ * task/core; a multi-task `no_std` consumer must read it before the next
+ * tst-c call from anywhere.
  */
 int tst_get_last_error(void);
 

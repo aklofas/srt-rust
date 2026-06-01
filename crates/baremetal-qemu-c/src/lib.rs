@@ -12,17 +12,13 @@ extern crate alloc;
 use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::c_void;
 
-// Force the offline tst-c-core #[no_mangle] symbols to be reachable from the
-// staticlib root so they are retained + exported (rustc only guarantees export
-// of reachable no_mangle symbols from a staticlib).
-pub use tst_c_core::config::*;
-pub use tst_c_core::demux_config::*;
-pub use tst_c_core::demuxer::*;
-pub use tst_c_core::error::*;
-pub use tst_c_core::event::*;
-pub use tst_c_core::muxer::*;
-pub use tst_c_core::stats::*;
-pub use tst_c_core::{TST_ABI_VERSION_MINOR, tst_get_abi_version_minor};
+// Re-export the WHOLE crate so every `#[no_mangle]` symbol is reachable from
+// the staticlib root and thus retained + exported (rustc only guarantees export
+// of reachable no_mangle symbols from a staticlib). A root glob — matching the
+// cdylib leaf at crates/tst-c/src/lib.rs — also catches the crate-ROOT version
+// accessors (`tst_get_version_*`, `tst_get_abi_version_*`); per-submodule globs
+// would silently drop them, leaving a future embedded version-check unlinkable.
+pub use tst_c_core::*;
 
 // Register the critical-section impl (single-core) tst-c-core's no_std
 // last-error depends on. `use ... as _` forces cortex-m to be linked.

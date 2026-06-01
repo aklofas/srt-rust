@@ -13,12 +13,21 @@
 
 /* Protocols: UDP over IPv4 only. */
 #define LWIP_IPV4                   1
-#define LWIP_IPV6                   0
+/* S2: libsrt references sockaddr_in6 / ip6_addr_t / IN6_IS_ADDR_* / IPV6_*
+ * unconditionally (it's IPv6-capable). lwIP only defines them under LWIP_IPV6.
+ * Enable it so libsrt compiles against real lwIP IPv6 types (the boot smoke and
+ * the S3 SRT loopback still run over IPv4 — no IPv6 traffic). Adds the
+ * core/ipv6/*.c glob to build.sh. */
+#define LWIP_IPV6                   1
 #define LWIP_UDP                    1
 #define LWIP_TCP                    0
 #define LWIP_RAW                    0
 #define LWIP_DHCP                   0
-#define LWIP_DNS                    0
+/* S2: libsrt's channel.cpp calls ::getaddrinfo(NULL,"0",...) to resolve the
+ * wildcard bind address, and netinet_any.h needs `struct addrinfo`. lwIP only
+ * exposes getaddrinfo + struct addrinfo (lwip/netdb.h) under LWIP_DNS. dns.c +
+ * api/netdb.c are already in the source glob; no actual DNS runs in the smoke. */
+#define LWIP_DNS                    1
 #define LWIP_ARP                    0
 #define LWIP_ETHERNET               0
 #define LWIP_IGMP                   0
@@ -35,8 +44,12 @@
 #define LWIP_SOCKET                 1
 #define LWIP_SOCKET_SELECT          1
 /* S2: libsrt's channel.cpp/epoll.cpp call UNPREFIXED BSD names (socket/bind/
- * select/...). Map them to lwIP's impls (S1 used lwip_* explicitly with =0). */
-#define LWIP_COMPAT_SOCKETS         1
+ * select/...) and the UDT namespace declares its OWN socket()/bind()/sendmsg()
+ * API. Mode 2 exports the bare names as REAL functions (`#define lwip_bind bind`
+ * + real `int bind(...)`), NOT function-like macros — so they satisfy libsrt's
+ * ::socket()/::bind() calls at link time WITHOUT clobbering UDT::bind or
+ * std::bind (mode 1's macros break both; S1 used lwip_* explicitly with =0). */
+#define LWIP_COMPAT_SOCKETS         2
 #define LWIP_POSIX_SOCKETS_IO_NAMES 0
 #define LWIP_NETCONN_SEM_PER_THREAD 0
 

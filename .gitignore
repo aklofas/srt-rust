@@ -5,6 +5,7 @@
 # C firmware build artifacts (baremetal-qemu-c)
 crates/baremetal-qemu-c/firmware/*.elf
 crates/baremetal-qemu-c/firmware/firmware.elf
+crates/baremetal-qemu-c/firmware/golden.h
 
 # Rust analyzer
 .rust-analyzer/

@@ -10,7 +10,11 @@ INC="-I. -I$K/include -I$K/portable/GCC/ARM_CM4F"
 
 # FreeRTOS kernel + startup are C — compile with the C frontend so g++'s
 # stricter void*->T* rules don't reject the kernel macros. C++ sources
-# (main.cpp + any S0_EXTRA_SRC) compile with the C++ frontend.
+# (main.cpp + cxa_override.cpp + any S0_EXTRA_SRC) compile with the C++
+# frontend. cxa_override.cpp is the crux of the gate — its strong
+# __cxa_get_globals{,_fast} defs must be in the link (and ahead of -lstdc++,
+# which the *.o glob below guarantees) to win over libsupc++'s single-threaded
+# versions. To run the Task 7 RED-proof, drop it from CXX_SRC below.
 CC=arm-none-eabi-gcc
 CXX=arm-none-eabi-g++
 
@@ -22,7 +26,7 @@ for f in $C_SRC; do
   $CC $ARCH $OPT $INC -std=gnu11 -c "$f" -o "$(basename "${f%.c}").o"
 done
 
-CXX_SRC="main.cpp ${S0_EXTRA_SRC:-}"
+CXX_SRC="main.cpp cxa_override.cpp ${S0_EXTRA_SRC:-}"
 for f in $CXX_SRC; do
   $CXX $ARCH $OPT $INC -std=gnu++11 -fexceptions -c "$f" -o "$(basename "${f%.cpp}").o"
 done

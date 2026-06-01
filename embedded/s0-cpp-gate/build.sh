@@ -28,9 +28,12 @@ for f in $CXX_SRC; do
 done
 
 # Link with g++ so libstdc++ + the C++ unwinder come in. rdimon provides
-# semihosting syscalls; nano.specs gives newlib-nano for the C side.
+# semihosting syscalls. NOTE: we deliberately do NOT use --specs=nano.specs:
+# nano.specs substitutes libstdc++_nano.a, whose stripped eh_globals/eh_alloc
+# objects make a throw/catch land in std::terminate on this toolchain. The
+# full libstdc++.a (plus full newlib) gives a working two-phase unwind.
 $CXX $ARCH $OPT \
-  --specs=nano.specs --specs=rdimon.specs -T mps2_an386.ld -Wl,--gc-sections \
+  --specs=rdimon.specs -T mps2_an386.ld -Wl,--gc-sections \
   *.o -lstdc++ \
   -o firmware.elf
 

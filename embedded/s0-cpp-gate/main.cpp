@@ -5,24 +5,28 @@ extern "C" {
 }
 extern "C" __attribute__((noreturn)) void _exit(int);
 
-static void hello_task(void* arg) {
-    int id = (int)(long)arg;
-    for (int i = 0; i < 3; i++) {
-        printf("task%d tick %d\n", id, i);
-        fflush(stdout);
-        vTaskDelay(1);
+/* Task 3: prove the full libstdc++ + ARM unwinder works inside a single
+   FreeRTOS task. A throw/catch that crosses no task boundary still exercises
+   __cxa_throw, the .ARM.exidx/.extab unwind tables, and __cxa_get_globals
+   (default per-process EH state — single-task, so no TLS override needed yet). */
+struct TaggedError { int id; };
+
+static void exc_task(void*) {
+    int caught = -1;
+    try {
+        throw TaggedError{42};
+    } catch (const TaggedError& e) {
+        caught = e.id;
     }
-    if (id == 1) {
-        printf("PASS: freertos_hello\n");
-        fflush(stdout);
-        _exit(0);
-    }
-    vTaskDelete(nullptr);
+    if (caught == 42) printf("PASS: single_task_exception\n");
+    else              printf("FAIL[single]: caught=%d\n", caught);
+    fflush(stdout);
+    _exit(caught == 42 ? 0 : 1);
 }
 
 int main() {
-    xTaskCreate(hello_task, "t0", 512, (void*)0, 2, nullptr);
-    xTaskCreate(hello_task, "t1", 512, (void*)1, 2, nullptr);
+    /* Generous stack: stack unwinding + libstdc++ EH machinery is hungry. */
+    xTaskCreate(exc_task, "exc", 1024, nullptr, 2, nullptr);
     vTaskStartScheduler();
     for (;;) {}
 }

@@ -17,6 +17,13 @@ embedded/s1-lwip/firmware.elf
 embedded/s1-lwip/*.elf
 embedded/s1-lwip/*.o
 
+# Embedded S2 libsrt cross-compile + boot smoke build artifacts
+embedded/s2-libsrt/firmware.elf
+embedded/s2-libsrt/*.elf
+embedded/s2-libsrt/*.o
+embedded/s2-libsrt/srt-build/
+embedded/s2-libsrt/srt-install/
+
 # Rust analyzer
 .rust-analyzer/
 

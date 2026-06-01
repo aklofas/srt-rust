@@ -7,3 +7,9 @@
 [submodule "vendor/librist"]
 	path = vendor/librist
 	url = https://code.videolan.org/rist/librist.git
+[submodule "vendor/freertos-kernel"]
+	path = vendor/freertos-kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+[submodule "vendor/freertos-plus-posix"]
+	path = vendor/freertos-plus-posix
+	url = https://github.com/FreeRTOS/Lab-Project-FreeRTOS-POSIX.git

@@ -601,6 +601,12 @@ jobs:
       - name: cargo build (tst-pipeline, riscv32imac-unknown-none-elf)
         run: cargo build -p tst-pipeline --no-default-features --target riscv32imac-unknown-none-elf
 
+      - name: cargo rustc (tst-c offline core rlib, thumbv7em-none-eabihf)
+        run: cargo rustc -p tst-c --no-default-features --lib --target thumbv7em-none-eabihf --crate-type rlib
+
+      - name: cargo rustc (tst-c offline core rlib, riscv32imac-unknown-none-elf)
+        run: cargo rustc -p tst-c --no-default-features --lib --target riscv32imac-unknown-none-elf --crate-type rlib
+
       - name: Install QEMU (system ARM)
         run: sudo apt-get update && sudo apt-get install -y qemu-system-arm
 

@@ -27,3 +27,10 @@ for t in "${TARGETS[@]}"; do
   cargo build -p tst-pipeline --no-default-features --target "$t"
 done
 echo "OK: tst-pipeline (sender path) builds no_std for ${TARGETS[*]}"
+
+for t in "${TARGETS[@]}"; do
+  rustup target add "$t" --toolchain 1.85 >/dev/null 2>&1 || true
+  echo "==> cargo rustc -p tst-c --no-default-features --lib --crate-type rlib --target $t"
+  cargo rustc -p tst-c --no-default-features --lib --target "$t" --crate-type rlib
+done
+echo "OK: tst-c (offline core) builds no_std (rlib) for ${TARGETS[*]}"

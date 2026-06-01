@@ -17,8 +17,7 @@
 #define configUSE_16_BIT_TICKS                  0
 #define configIDLE_SHOULD_YIELD                 1
 #define configUSE_MUTEXES                       1
-#define configUSE_RECURSIVE_MUTEXES             0
-#define configUSE_COUNTING_SEMAPHORES           0
+#define configUSE_RECURSIVE_MUTEXES             1
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_TASK_NOTIFICATIONS            1
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES   1
@@ -40,9 +39,20 @@
    in a TLS pointer slot so concurrent exceptions don't clobber each other. */
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
-/* Allocation */
-#define configSUPPORT_STATIC_ALLOCATION         0
+/* Allocation. FreeRTOS-Plus-POSIX creates pthread join mutex/barrier via the
+   xSemaphoreCreate*Static APIs, so static allocation must be on. Let the kernel
+   supply the idle/timer task static memory (configKERNEL_PROVIDED_STATIC_MEMORY)
+   so we don't hand-roll vApplicationGet{Idle,Timer}TaskMemory. */
+#define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
+#define configKERNEL_PROVIDED_STATIC_MEMORY     1
+
+/* FreeRTOS-Plus-POSIX needs these: it stashes the pthread object in the task's
+   application tag (vTaskSetApplicationTaskTag), and uses the POSIX errno field
+   in the TCB for its return-error reporting. */
+#define configUSE_APPLICATION_TASK_TAG          1
+#define configUSE_POSIX_ERRNO                   1
+#define configUSE_COUNTING_SEMAPHORES           1
 
 /* Cortex-M interrupt priority configuration */
 #define configPRIO_BITS                         3
@@ -61,6 +71,11 @@
 #define INCLUDE_vTaskDelayUntil                 1
 #define INCLUDE_vTaskDelay                      1
 #define INCLUDE_xTaskGetSchedulerState          1
+/* FreeRTOS-Plus-POSIX uses these in pthread_detach/join/cond/cancel paths. */
+#define INCLUDE_eTaskGetState                   1
+#define INCLUDE_xTaskAbortDelay                 1
+#define INCLUDE_xTaskGetCurrentTaskHandle       1
+#define INCLUDE_xSemaphoreGetMutexHolder        1
 
 #define configASSERT(x) if ((x) == 0) { taskDISABLE_INTERRUPTS(); for(;;); }
 

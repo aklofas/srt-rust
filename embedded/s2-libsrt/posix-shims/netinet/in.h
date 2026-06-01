@@ -6,13 +6,13 @@
 
 /* libsrt's netinet_any.h / channel.cpp / api.cpp reference sockaddr_in6 +
  * IPPROTO_IPV6 + IPV6_* unconditionally (it supports IPv6 at compile time). lwIP
- * already defines `struct in6_addr` (+ s6_addr) in lwip/inet.h even with IPv6
- * off, but gates `struct sockaddr_in6` and the IPV6_* socket options behind
- * LWIP_IPV6 — which we keep OFF to stay IPv4-only like the S1 substrate (S2's
- * boot smoke never touches IPv6). Supply just the missing pieces so libsrt
- * compiles; layout mirrors lwIP's own sockaddr_in6 for forward ABI-compat. The
- * IPV6_* option values are the standard Linux numbers — cosmetic here since no
- * AF_INET6 socket is ever created at runtime. */
+ * already defines `struct in6_addr` (+ s6_addr) in lwip/inet.h, and — because
+ * our lwipopts.h enables LWIP_IPV6 — `struct sockaddr_in6` too. The `#if
+ * !LWIP_IPV6` block below is therefore an INACTIVE fallback, retained only for
+ * an IPv4-only configuration; with IPv6 enabled it compiles out. The IPV6_*
+ * socket-option gap-fills further down stay active unconditionally because lwIP
+ * doesn't define all of them (e.g. IPV6_UNICAST_HOPS). Cosmetic at runtime — no
+ * AF_INET6 socket is ever created. */
 #if !LWIP_IPV6
 #include <stdint.h>
 #ifndef AF_INET6

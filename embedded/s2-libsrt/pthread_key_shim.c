@@ -36,11 +36,12 @@ static int scheduler_running(void)
 int pthread_key_create(pthread_key_t* key, void (*destructor)(void*))
 {
     (void)destructor; /* not invoked — see file header */
+    if (key == NULL)
+        return EINVAL; /* nothing to return the key through; don't claim the slot */
     if (s_key_in_use)
         return EAGAIN; /* only one TLS slot available */
     s_key_in_use = 1;
-    if (key)
-        *key = S2_TLS_SLOT;
+    *key = S2_TLS_SLOT;
     return 0;
 }
 

@@ -651,6 +651,20 @@ jobs:
         continue-on-error: true
         run: bash scripts/check-s1-lwip.sh
 
+      # Runtime gate: cross-compile libsrt for bare-metal arm-none-eabi
+      # (CMAKE_SYSTEM_NAME=Generic -> ::select path, pthread backend, logging +
+      # encryption OFF), link it with the FreeRTOS+lwIP substrate, and run a
+      # srt_startup+create_socket+close+cleanup boot smoke under QEMU mps2-an386.
+      # Same phase-in (continue-on-error) rationale as S0/S1. No new apt packages
+      # -- cmake is already on the runner (the host libsrt builds use it); reuses
+      # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm.
+      # build.sh applies our bare-metal portability patches to the pinned
+      # vendor/srt submodule at build time (pointer stays pristine). Promote to
+      # hard-gate after a few green apt runs.
+      - name: QEMU runtime gate (S2 libsrt boot smoke)
+        continue-on-error: true
+        run: bash scripts/check-s2-libsrt.sh
+
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
     runs-on: ubuntu-latest

@@ -24,6 +24,15 @@ embedded/s2-libsrt/*.o
 embedded/s2-libsrt/srt-build/
 embedded/s2-libsrt/srt-install/
 
+# Embedded S3 SRT loopback runtime proof build artifacts
+embedded/s3-srt/firmware.elf
+embedded/s3-srt/*.elf
+embedded/s3-srt/*.o
+embedded/s3-srt/srt-build*/
+embedded/s3-srt/srt-install*/
+embedded/s3-srt/mbedtls-build/
+embedded/s3-srt/mbedtls-install/
+
 # Rust analyzer
 .rust-analyzer/
 

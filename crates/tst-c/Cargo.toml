@@ -27,7 +27,16 @@ hls     = ["tst-c-core/hls"]
 rist    = ["tst-c-core/rist"]
 
 [dependencies]
-tst-c-core = { path = "../tst-c-core", default-features = false }
+# `std` is hardcoded (not just forwarded via the leaf's `std` feature): this
+# leaf IS the desktop cdylib/staticlib artifact and is never built no_std (the
+# embedded path uses `tst-c-core` directly via a glue crate). Hardcoding std
+# here keeps `tst-c-core` std whenever the leaf is in the build graph — so
+# `cargo test --workspace --no-default-features` exercises the std (thread_local)
+# error path rather than the no_std process-global one (which races under
+# libtest parallelism). The no_std path is gated separately by
+# `cargo build -p tst-c-core --no-default-features` (check-no-std-baremetal.sh)
+# + the QEMU C-firmware test, where the leaf is absent.
+tst-c-core = { path = "../tst-c-core", default-features = false, features = ["std"] }
 
 [build-dependencies]
 cbindgen = { workspace = true }

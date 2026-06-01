@@ -2,6 +2,10 @@
 /target/
 **/target/
 
+# C firmware build artifacts (baremetal-qemu-c)
+crates/baremetal-qemu-c/firmware/*.elf
+crates/baremetal-qemu-c/firmware/firmware.elf
+
 # Rust analyzer
 .rust-analyzer/
 

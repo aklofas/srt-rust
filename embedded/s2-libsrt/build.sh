@@ -64,12 +64,15 @@ fi
 SRT_LIB=$(echo "$SRT_INSTALL"/lib*/libsrt.a)   # lib or lib64
 arm-none-eabi-size "$SRT_LIB" | tail -1
 
+# main.cpp includes <srt/srt.h> from the install tree.
+INC="$INC -I$SRT_INSTALL/include"
+
 rm -f *.o
 
 PS=$P/FreeRTOS-Plus-POSIX/source
 # Substrate (FreeRTOS + lwIP + startup/clock) — compiled WITHOUT the posix-shim
 # env, exactly as in S1 (these don't include srt or our pthread.h shim).
-C_SRC="startup.c clock_shim.c $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
+C_SRC="startup.c clock_shim.c syscalls_stub.c atomic64_stub.c $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
        $K/portable/GCC/ARM_CM4F/port.c $K/portable/MemMang/heap_4.c \
        $PS/FreeRTOS_POSIX_pthread.c $PS/FreeRTOS_POSIX_pthread_mutex.c \
        $PS/FreeRTOS_POSIX_pthread_cond.c $PS/FreeRTOS_POSIX_pthread_barrier.c \
@@ -99,10 +102,12 @@ done
 
 # --wrap=clock_gettime: redirect every clock_gettime reference to the hi-res
 # __wrap_clock_gettime in clock_shim.c (see that file's header for why).
+# Link libsrt.a (after our .o, before libstdc++). --start-group wraps libsrt +
+# libstdc++ + libc so their cross-references resolve regardless of order.
 $CXX $ARCH $OPT \
   --specs=rdimon.specs -T mps2_an386.ld -Wl,--gc-sections \
   -Wl,--wrap=clock_gettime \
-  *.o -lstdc++ \
+  -Wl,--start-group *.o "$SRT_LIB" -lstdc++ -Wl,--end-group \
   -o firmware.elf
 
 arm-none-eabi-size firmware.elf

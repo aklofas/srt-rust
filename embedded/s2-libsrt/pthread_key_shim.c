@@ -10,7 +10,14 @@
  * no per-task delete callback unless configTHREAD_LOCAL_STORAGE_DELETE_CALLBACKS
  * is enabled). That is acceptable here — libsrt's GC thread is long-lived and a
  * bare-metal target never exits; the small per-thread CUDTException simply isn't
- * reclaimed on the rare thread teardown. */
+ * reclaimed on the rare thread teardown.
+ *
+ * Pre-scheduler context: libsrt touches this key from a global constructor
+ * (before vTaskStartScheduler), where there is NO current task, so FreeRTOS's
+ * vTaskSetThreadLocalStoragePointer(NULL,...) would assert (pxCurrentTCB==NULL).
+ * Route get/set to a single global "bootstrap" slot until the scheduler runs.
+ * That bootstrap thread is distinct from any FreeRTOS task, which is correct
+ * TLS semantics — tasks start with their own (NULL) value. */
 #include <FreeRTOS.h>
 #include <task.h>
 #include <errno.h>
@@ -18,7 +25,13 @@
 
 #define S2_TLS_SLOT 0
 
-static int s_key_in_use = 0;
+static int   s_key_in_use = 0;
+static void* s_bootstrap_tls = NULL; /* TLS for the pre-scheduler bootstrap ctx */
+
+static int scheduler_running(void)
+{
+    return xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
+}
 
 int pthread_key_create(pthread_key_t* key, void (*destructor)(void*))
 {
@@ -41,12 +54,17 @@ int pthread_key_delete(pthread_key_t key)
 int pthread_setspecific(pthread_key_t key, const void* value)
 {
     (void)key;
-    vTaskSetThreadLocalStoragePointer(NULL, S2_TLS_SLOT, (void*)value);
+    if (scheduler_running())
+        vTaskSetThreadLocalStoragePointer(NULL, S2_TLS_SLOT, (void*)value);
+    else
+        s_bootstrap_tls = (void*)value;
     return 0;
 }
 
 void* pthread_getspecific(pthread_key_t key)
 {
     (void)key;
-    return pvTaskGetThreadLocalStoragePointer(NULL, S2_TLS_SLOT);
+    if (scheduler_running())
+        return pvTaskGetThreadLocalStoragePointer(NULL, S2_TLS_SLOT);
+    return s_bootstrap_tls;
 }

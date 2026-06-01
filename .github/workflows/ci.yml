@@ -638,6 +638,19 @@ jobs:
         continue-on-error: true
         run: bash scripts/check-s0-cpp-gate.sh
 
+      # Runtime gate: build the S1 FreeRTOS + lwIP harness (loopback netif, BSD
+      # sockets + select(), hi-res clock_gettime, FreeRTOS-Plus-POSIX pthreads)
+      # and run under QEMU mps2-an386, asserting the 564-byte video-roundtrip
+      # golden round-trips through a lwIP UDP loopback socket. Same phase-in
+      # (continue-on-error) rationale as S0: developed against local xPack g++,
+      # validated on CI's apt GCC. Promote to hard-gate after a few green runs.
+      # No new apt packages — reuses the gcc-arm-none-eabi + libstdc++-arm-none-
+      # eabi-newlib + qemu-system-arm installed above. vendor/lwip is fetched by
+      # the recursive submodule checkout at the top of this job.
+      - name: QEMU runtime gate (S1 lwIP loopback golden)
+        continue-on-error: true
+        run: bash scripts/check-s1-lwip.sh
+
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
     runs-on: ubuntu-latest

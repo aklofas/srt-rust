@@ -48,8 +48,11 @@ echo "==> compiling + linking firmware.elf"
     -o firmware.elf )
 
 echo "==> running firmware under QEMU (mps2-an386)"
+# `|| true` so a non-zero firmware exit (FAIL path / semihosting _exit(1)) is
+# captured here instead of aborting via `set -e` before the diagnostic is
+# echoed — CI logs need the firmware's FAIL line to triage a regression.
 OUT=$(timeout 60 qemu-system-arm -machine mps2-an386 -nographic \
-  -semihosting-config enable=on,target=native -kernel "$FW/firmware.elf")
+  -semihosting-config enable=on,target=native -kernel "$FW/firmware.elf" || true)
 echo "$OUT"
 echo "$OUT" | grep -q 'PASS: c_firmware' || { echo "GATE FAILED"; exit 1; }
 echo "OK: C firmware muxer byte-matches the video-roundtrip golden under QEMU"

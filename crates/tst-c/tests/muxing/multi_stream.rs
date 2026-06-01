@@ -11,9 +11,7 @@ use tstrans::config::{
     tst_mux_config_new,
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
-use tstrans::muxer::{
-    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video_to,
-};
+use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video_to};
 
 const NAL_SPS: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xc0, 0x1e, 0xda, 0x02, 0x80, 0xf6, 0xc0,

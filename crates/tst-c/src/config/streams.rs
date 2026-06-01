@@ -15,6 +15,7 @@ use crate::handle::{
     TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
+use alloc::vec::Vec;
 use tst_core::mpegts::mux::{
     AudioCodec, AudioStreamHandle, KlvStreamHandle, KlvStreamType, StreamSpec, SubtitleCodec,
     SubtitleStreamHandle, VideoCodec, VideoStreamHandle,
@@ -204,7 +205,7 @@ pub unsafe extern "C" fn tst_mux_config_add_audio_stream_with_language(
             return TST_INVALID_STREAM_HANDLE;
         }
         // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
-        let lang = unsafe { std::slice::from_raw_parts(language, 3) };
+        let lang = unsafe { core::slice::from_raw_parts(language, 3) };
         let mut buf = [0u8; 3];
         buf.copy_from_slice(lang);
         unsafe { add_audio_stream_inner(cfg, program, pid, codec, Some(buf)) }
@@ -291,7 +292,7 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_dvb_subtitling(
             return TST_INVALID_STREAM_HANDLE;
         }
         // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
-        let lang_slice = unsafe { std::slice::from_raw_parts(language, 3) };
+        let lang_slice = unsafe { core::slice::from_raw_parts(language, 3) };
         let mut lang = [0u8; 3];
         lang.copy_from_slice(lang_slice);
         unsafe {
@@ -337,7 +338,7 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_dvb_teletext(
             return TST_INVALID_STREAM_HANDLE;
         }
         // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
-        let lang_slice = unsafe { std::slice::from_raw_parts(language, 3) };
+        let lang_slice = unsafe { core::slice::from_raw_parts(language, 3) };
         let mut lang = [0u8; 3];
         lang.copy_from_slice(lang_slice);
         unsafe {
@@ -435,7 +436,7 @@ pub unsafe extern "C" fn tst_mux_config_set_pcr_pid(
     cfg: *mut TstMuxConfig,
     program: TstProgramHandle,
     pid: u16,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -457,7 +458,7 @@ pub unsafe extern "C" fn tst_mux_config_set_pcr_pid(
 pub unsafe extern "C" fn tst_mux_config_set_pcr_interval_ms(
     p: *mut TstMuxConfig,
     ms: u32,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -474,7 +475,7 @@ pub unsafe extern "C" fn tst_mux_config_set_pcr_interval_ms(
 pub unsafe extern "C" fn tst_mux_config_set_psi_interval_ms(
     p: *mut TstMuxConfig,
     ms: u32,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -491,7 +492,7 @@ pub unsafe extern "C" fn tst_mux_config_set_psi_interval_ms(
 pub unsafe extern "C" fn tst_mux_config_set_buffer_packets(
     p: *mut TstMuxConfig,
     n: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");

@@ -6,7 +6,8 @@
 //! handle. Valid until the next `_recv_event` / `_close` call on the
 //! same handle. Callers wanting longer lifetime memcpy out.
 
-use libc::{c_char, c_int};
+use crate::c_types::{c_char, c_int};
+use alloc::vec::Vec;
 
 // ------------------------------------------------------------------
 // Top-level event kind discriminator (6 variants)
@@ -277,8 +278,9 @@ pub struct TstNal {
     pub payload_len: usize,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _TST_NAL_SIZE: () = assert!(
-    std::mem::size_of::<TstNal>() == 24,
+    core::mem::size_of::<TstNal>() == 24,
     "TstNal must be 24 bytes (4 bytes header + 8 bytes pointer + 8 bytes len)"
 );
 
@@ -298,8 +300,9 @@ pub struct TstObu {
     pub payload_len: usize,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _TST_OBU_SIZE: () = assert!(
-    std::mem::size_of::<TstObu>() == 24,
+    core::mem::size_of::<TstObu>() == 24,
     "TstObu must be 24 bytes"
 );
 
@@ -317,8 +320,9 @@ pub struct TstDescriptor {
     pub data_len: usize,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _TST_DESCRIPTOR_SIZE: () = assert!(
-    std::mem::size_of::<TstDescriptor>() == 24,
+    core::mem::size_of::<TstDescriptor>() == 24,
     "TstDescriptor must be 24 bytes"
 );
 
@@ -345,8 +349,9 @@ pub struct TstStreamInfo {
     pub descriptor_count: usize,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _TST_STREAM_INFO_SIZE: () = assert!(
-    std::mem::size_of::<TstStreamInfo>() == 40,
+    core::mem::size_of::<TstStreamInfo>() == 40,
     "TstStreamInfo must be 40 bytes"
 );
 
@@ -361,7 +366,7 @@ pub struct TstKlvLink {
 }
 
 const _TST_KLV_LINK_SIZE: () = assert!(
-    std::mem::size_of::<TstKlvLink>() == 8,
+    core::mem::size_of::<TstKlvLink>() == 8,
     "TstKlvLink must be 8 bytes"
 );
 
@@ -518,8 +523,9 @@ pub struct TstEvent {
     pub u: TstEventBody,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _TST_EVENT_SIZE_REASONABLE: () = assert!(
-    std::mem::size_of::<TstEvent>() <= 256,
+    core::mem::size_of::<TstEvent>() <= 256,
     "TstEvent should fit in 256 bytes for stack-allocation comfort"
 );
 
@@ -527,7 +533,7 @@ impl Default for TstEvent {
     fn default() -> Self {
         // SAFETY: zeroed union is valid for all our variants (every
         // payload struct is plain old data + nullable pointers).
-        unsafe { std::mem::zeroed() }
+        unsafe { core::mem::zeroed() }
     }
 }
 
@@ -686,7 +692,7 @@ fn fill_program_map(
                 tag: d.tag,
                 _reserved: [0; 7],
                 // Pointer placeholder; resolved after payload_buf stops growing.
-                data: std::ptr::null(),
+                data: core::ptr::null(),
                 data_len: d.data.len(),
             });
         }
@@ -750,11 +756,11 @@ fn fill_sample(
     use tst_core::mpegts::demux::{SamplePayload, VideoPayload};
     let (kind_tag, _codec_int) = stream_kind_to_c(&stream.kind);
     let mut codec = -1i32;
-    let mut nals_ptr: *const TstNal = std::ptr::null();
+    let mut nals_ptr: *const TstNal = core::ptr::null();
     let mut nal_count: usize = 0;
-    let mut obus_ptr: *const TstObu = std::ptr::null();
+    let mut obus_ptr: *const TstObu = core::ptr::null();
     let mut obu_count: usize = 0;
-    let mut payload_ptr: *const u8 = std::ptr::null();
+    let mut payload_ptr: *const u8 = core::ptr::null();
     let mut payload_len: usize = 0;
     let mut random_access_indicator: u8 = 0;
     let mut stream_type: u8 = 0;
@@ -979,10 +985,10 @@ fn fill_nonconformant(
         obu_type: 0,
         _pad3: [0; 3],
         multi_cell_au_reason: 0,
-        programs: std::ptr::null(),
-        tags: std::ptr::null(),
+        programs: core::ptr::null(),
+        tags: core::ptr::null(),
         tag_count: 0,
-        detail: std::ptr::null(),
+        detail: core::ptr::null(),
     };
     match issue {
         NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid => {
@@ -1334,7 +1340,7 @@ fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
             ref_idc_or_layer_id: *ref_idc,
             temporal_id_plus1: 0,
             _reserved: 0,
-            payload: std::ptr::null(),
+            payload: core::ptr::null(),
             payload_len: payload.len(),
         },
         NalUnit::H265 {
@@ -1353,7 +1359,7 @@ fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
             ref_idc_or_layer_id: *layer_id,
             temporal_id_plus1: *temporal_id_plus1,
             _reserved: 0,
-            payload: std::ptr::null(),
+            payload: core::ptr::null(),
             payload_len: payload.len(),
         },
     }
@@ -1368,7 +1374,7 @@ fn obu_to_c(o: &tst_core::mpegts::demux::Obu) -> TstObu {
             has_extension: 1,
             temporal_id: ext.temporal_id,
             spatial_id: ext.spatial_id,
-            payload: std::ptr::null(),
+            payload: core::ptr::null(),
             payload_len: o.payload.len(),
         },
         None => TstObu {
@@ -1376,7 +1382,7 @@ fn obu_to_c(o: &tst_core::mpegts::demux::Obu) -> TstObu {
             has_extension: 0,
             temporal_id: 0,
             spatial_id: 0,
-            payload: std::ptr::null(),
+            payload: core::ptr::null(),
             payload_len: o.payload.len(),
         },
     }
@@ -1438,7 +1444,7 @@ mod tests {
             "audio payload pointer must NOT alias the input Vec — arena should own a copy"
         );
         let payload_len = unsafe { out.u.sample.payload_len };
-        let out_bytes = unsafe { std::slice::from_raw_parts(out_ptr, payload_len) };
+        let out_bytes = unsafe { core::slice::from_raw_parts(out_ptr, payload_len) };
         assert_eq!(out_bytes, &[0xAA, 0xBB, 0xCC, 0xDD]);
     }
 

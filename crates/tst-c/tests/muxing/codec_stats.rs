@@ -134,8 +134,7 @@ fn muxer_get_stream_codec_stats_null_out_returns_invalid_config() {
         let m = tst_muxer_open(cfg);
         assert!(!m.is_null());
 
-        let rc =
-            tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
+        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
         assert_eq!(rc, TstError::InvalidConfig as i32);
 
         tst_muxer_close(m);

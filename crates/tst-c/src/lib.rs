@@ -13,7 +13,66 @@
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
 //! `srt` in ABI 0.9). ABI minor is `0.9` (see [`TST_ABI_VERSION_MINOR`]).
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
+
+extern crate alloc;
+
+// ---------------------------------------------------------------------------
+// C primitive type aliases
+//
+// `libc` does not export `c_int`, `c_char`, or `size_t` on bare-metal
+// targets (no OS = no C library). Under std, use `libc::*` for
+// cbindgen compatibility. Under no_std, alias from `core::ffi`.
+// ---------------------------------------------------------------------------
+#[cfg(feature = "std")]
+pub(crate) mod c_types {
+    pub(crate) use libc::{c_char, c_int};
+    #[allow(non_camel_case_types)]
+    pub(crate) type size_t = libc::size_t;
+}
+#[cfg(not(feature = "std"))]
+pub(crate) mod c_types {
+    pub(crate) use core::ffi::{c_char, c_int};
+    #[allow(non_camel_case_types)]
+    pub(crate) type size_t = usize;
+}
+
+// ---------------------------------------------------------------------------
+// no_std lang items
+//
+// Under no_std, tst-c is consumed as an *rlib* by a downstream glue crate
+// (the bare-metal staticlib/firmware binary). That embedding crate — not
+// tst-c — supplies the `#[global_allocator]` and `#[panic_handler]`, exactly
+// as tst-core and tst-pipeline leave them to their embedder. Defining either
+// here would cause a duplicate-lang-item / duplicate-symbol link error when
+// the glue crate links its own.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// no_std Mutex seam
+//
+// Under std: callers import `std::sync::Mutex` directly.
+// Under no_std (bare-metal): a spin::Mutex newtype that surfaces the same
+// `new() + lock() -> Result<Guard, _>` interface so call sites compile
+// verbatim in both modes. The impl is registered by a downstream glue crate
+// via `critical-section`.
+// ---------------------------------------------------------------------------
+#[cfg(not(feature = "std"))]
+pub(crate) mod nostd_mutex {
+    //! Single-core no_std lock seam mirroring `std::sync::Mutex`'s surface
+    //! (`new` + `lock() -> Result<Guard, _>`) so call sites compile verbatim.
+    pub(crate) struct Mutex<T>(spin::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub(crate) const fn new(v: T) -> Self {
+            Self(spin::Mutex::new(v))
+        }
+        #[allow(clippy::result_unit_err)]
+        pub(crate) fn lock(&self) -> Result<spin::MutexGuard<'_, T>, ()> {
+            Ok(self.0.lock())
+        }
+    }
+}
 
 // Cross-cutting (shared by both sender and receiver):
 pub mod config;
@@ -87,11 +146,11 @@ pub use tcp::{tst_tcp_mux_sender_open, tst_tcp_recv_open, tst_tcp_sender_open};
 pub use udp::{tst_udp_mux_sender_open, tst_udp_recv_open, tst_udp_sender_open};
 
 /// Major version (compile-time macro in the generated header).
-pub const TST_VERSION_MAJOR: libc::c_int = 0;
+pub const TST_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version.
-pub const TST_VERSION_MINOR: libc::c_int = 1;
+pub const TST_VERSION_MINOR: crate::c_types::c_int = 1;
 /// Patch version.
-pub const TST_VERSION_PATCH: libc::c_int = 0;
+pub const TST_VERSION_PATCH: crate::c_types::c_int = 0;
 
 /// Major version of the C ABI contract. Bumped only on **breaking
 /// C-ABI change** — i.e., a change that would force a consumer to
@@ -120,7 +179,7 @@ pub const TST_VERSION_PATCH: libc::c_int = 0;
 ///
 /// Cbindgen emits this as `#define TST_ABI_VERSION_MAJOR 0` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_major`].
-pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
+pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
@@ -165,7 +224,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   cargo feature; now lives in the top-level `muxer` module. Additive —
 ///   no symbol removed, no signature changed; SRT builds are unaffected,
 ///   non-SRT / no_std builds gain the offline muxer.
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 9;
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 9;
 
 // =========================================================================
 // Runtime version accessors
@@ -309,7 +368,7 @@ pub unsafe extern "C" fn tst_get_version_packed() -> u32 {
 /// non-NULL and process-lifetime stable. Reading past the NUL byte is
 /// undefined behavior per usual C string rules.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_get_version_string() -> *const libc::c_char {
+pub unsafe extern "C" fn tst_get_version_string() -> *const crate::c_types::c_char {
     // Construct the NUL-terminated string at compile time from the
     // Cargo-package env vars. The trailing `\0` extends the &str's
     // backing storage by one byte so `.as_ptr()` yields a valid C
@@ -322,5 +381,5 @@ pub unsafe extern "C" fn tst_get_version_string() -> *const libc::c_char {
         env!("CARGO_PKG_VERSION_PATCH"),
         "\0",
     );
-    VERSION.as_ptr() as *const libc::c_char
+    VERSION.as_ptr() as *const crate::c_types::c_char
 }

@@ -22,9 +22,7 @@ use tstrans::event::TstEventKind;
 
 // Pull in the muxer open/pull/close for building TS bytes offline.
 #[cfg(feature = "srt")]
-use tstrans::muxer::{
-    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video,
-};
+use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video};
 
 // Use the C-ABI demux config for the open_with_config test.
 use tstrans::demux_config::{tst_demux_config_free, tst_demux_config_new};

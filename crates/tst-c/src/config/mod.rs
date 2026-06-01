@@ -19,8 +19,12 @@
 pub mod programs;
 pub mod streams;
 pub mod descriptors;
+// builders.rs uses tst_pipeline's reconnect/sender types which are std-only.
+// Gate the module (and all its re-exports) on `std`.
+#[cfg(feature = "std")]
 pub mod builders;
 
+#[cfg(feature = "std")]
 pub use builders::{
     TstOverflowPolicy, TstRawSenderConfig, TstReconnectPolicy, TstSenderConfig, TstTsFramingMode,
     tst_raw_sender_config_free, tst_raw_sender_config_new, tst_reconnect_policy_free,
@@ -49,6 +53,8 @@ pub use streams::{
 };
 
 use crate::panic::ffi_catch;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfig};
 
@@ -118,7 +124,7 @@ impl TstMuxConfig {
 /// or sender. Returns NULL only on allocation failure (OOM).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_mux_config_new() -> *mut TstMuxConfig {
-    ffi_catch(std::ptr::null_mut(), || {
+    ffi_catch(core::ptr::null_mut(), || {
         Box::into_raw(Box::new(TstMuxConfig {
             programs: Vec::new(),
             pcr_interval_ms: None,
@@ -209,7 +215,7 @@ mod tests {
     fn null_pointer_setters_return_invalid_config() {
         unsafe {
             assert_ne!(
-                tst_mux_config_add_program(std::ptr::null_mut(), 1, 0x1000),
+                tst_mux_config_add_program(core::ptr::null_mut(), 1, 0x1000),
                 TstProgramHandle(0),
             );
         }
@@ -262,7 +268,7 @@ mod tests {
         unsafe {
             // Null cfg: no program handle needed
             let h = tst_mux_config_add_video_stream(
-                std::ptr::null_mut(),
+                core::ptr::null_mut(),
                 TstProgramHandle(0),
                 0,
                 TstVideoCodec::H264,
@@ -309,7 +315,7 @@ mod tests {
     #[test]
     fn add_program_null_returns_sentinel() {
         unsafe {
-            let h = tst_mux_config_add_program(std::ptr::null_mut(), 1, 0x1000);
+            let h = tst_mux_config_add_program(core::ptr::null_mut(), 1, 0x1000);
             assert_eq!(h, TST_INVALID_PROGRAM_HANDLE);
         }
     }
@@ -353,7 +359,7 @@ mod tests {
                 data: body.as_ptr(),
                 data_len: body.len(),
             };
-            let rc = tst_mux_config_add_video_descriptor(std::ptr::null_mut(), 0, &desc);
+            let rc = tst_mux_config_add_video_descriptor(core::ptr::null_mut(), 0, &desc);
             assert!(rc < 0);
         }
     }
@@ -375,7 +381,7 @@ mod tests {
             let desc = crate::event::TstDescriptor {
                 tag: 0xDE,
                 _reserved: [0; 7],
-                data: std::ptr::null(),
+                data: core::ptr::null(),
                 data_len: 0,
             };
             let rc = tst_mux_config_add_klv_descriptor(cfg, stream, &desc);

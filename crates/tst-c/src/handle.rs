@@ -6,22 +6,37 @@
 //! the inner runs Drop, which closes the underlying transport / muxer.
 
 use crate::error::{TstError, record_internal, record_panic_caught, set_last_error};
-use std::any::Any;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(feature = "std")]
+use alloc::string::String;
+
+#[cfg(not(feature = "std"))]
+use crate::nostd_mutex::Mutex;
+#[cfg(feature = "std")]
 use std::sync::Mutex;
 
-/// Extract a best-effort detail string from a `catch_unwind` payload.
-/// Handles the two common panic-payload types — `&'static str` (from
-/// `panic!("foo")`) and `String` (from `panic!("{}", x)`); falls back
-/// to a placeholder for anything else.
-fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+/// Best-effort detail string from a `catch_unwind` payload (std only).
+#[cfg(feature = "std")]
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> alloc::string::String {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
+        alloc::string::String::from(*s)
+    } else if let Some(s) = payload.downcast_ref::<alloc::string::String>() {
         s.clone()
     } else {
-        "non-string panic payload".to_string()
+        alloc::string::String::from("non-string panic payload")
     }
+}
+
+/// Run `f` catching any panic (std). Returns `Ok(result)` or `Err(detail)`.
+#[cfg(feature = "std")]
+fn catch<R>(f: impl FnOnce() -> R) -> Result<R, alloc::string::String> {
+    use core::panic::AssertUnwindSafe;
+    std::panic::catch_unwind(AssertUnwindSafe(f)).map_err(|p| panic_payload_message(&*p))
+}
+
+/// Under no_std (panic = abort), run the closure directly — no unwinding possible.
+#[cfg(not(feature = "std"))]
+fn catch<R>(f: impl FnOnce() -> R) -> Result<R, alloc::string::String> {
+    Ok(f())
 }
 
 pub(crate) struct Handle<T> {
@@ -56,10 +71,9 @@ impl<T> Handle<T> {
             }
         };
         match guard.as_mut() {
-            Some(t) => match catch_unwind(AssertUnwindSafe(|| f(t))) {
+            Some(t) => match catch(|| f(t)) {
                 Ok(rc) => rc,
-                Err(payload) => {
-                    let detail = panic_payload_message(&*payload);
+                Err(detail) => {
                     record_panic_caught(&detail);
                     // After a panic the inner state is indeterminate.
                     // Drop it so subsequent calls return Closed rather
@@ -96,10 +110,9 @@ impl<T> Handle<T> {
             }
         };
         match guard.as_ref() {
-            Some(t) => match catch_unwind(AssertUnwindSafe(|| f(t))) {
+            Some(t) => match catch(|| f(t)) {
                 Ok(rc) => rc,
-                Err(payload) => {
-                    let detail = panic_payload_message(&*payload);
+                Err(detail) => {
                     record_panic_caught(&detail);
                     *guard = None;
                     TstError::PanicCaught as i32

@@ -20,6 +20,7 @@
 //! `slice::from_raw_parts(ptr, len)` sites across `tst-c/src/`.
 
 use crate::error::{TstError, set_last_error};
+use alloc::format;
 
 /// Convert a C `(ptr, len)` byte pair into a Rust `&[u8]` without
 /// dereferencing a null pointer.
@@ -58,7 +59,7 @@ pub(crate) unsafe fn ffi_slice<'a>(
         );
         return Err(TstError::InvalidConfig as i32);
     }
-    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+    Ok(unsafe { core::slice::from_raw_parts(ptr, len) })
 }
 
 #[cfg(test)]
@@ -73,7 +74,7 @@ mod tests {
         // && len > 0` guard let (NULL, 0) flow into `slice::from_raw_parts(null, 0)`
         // which is UB even though len is zero.
         clear_last_error_for_test();
-        let result = unsafe { ffi_slice(std::ptr::null(), 0, "buf") };
+        let result = unsafe { ffi_slice(core::ptr::null(), 0, "buf") };
         assert_eq!(result, Ok(&[][..]));
         assert_eq!(
             unsafe { tst_get_last_error() },
@@ -85,7 +86,7 @@ mod tests {
     #[test]
     fn null_pointer_with_nonzero_len_records_error_and_returns_code() {
         clear_last_error_for_test();
-        let result = unsafe { ffi_slice(std::ptr::null(), 5, "nal") };
+        let result = unsafe { ffi_slice(core::ptr::null(), 5, "nal") };
         assert_eq!(result, Err(TstError::InvalidConfig as i32));
         assert_eq!(
             unsafe { tst_get_last_error() },
@@ -94,7 +95,7 @@ mod tests {
         // The last-error message must include the caller-supplied name so
         // the diagnostic points at the specific parameter that was wrong.
         let s_ptr = unsafe { crate::error::tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert!(
             s.to_str().unwrap().contains("null nal"),
             "expected 'null nal' in message, got: {:?}",

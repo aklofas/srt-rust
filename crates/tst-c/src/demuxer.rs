@@ -21,7 +21,13 @@ use crate::demux_config::TstDemuxConfig;
 use crate::error::{TstError, record_demux_error, record_not_available, set_last_error};
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
+use alloc::boxed::Box;
 use tst_core::mpegts::demux::Demuxer;
+
+#[cfg(not(feature = "std"))]
+use crate::nostd_mutex::Mutex;
+#[cfg(feature = "std")]
+use std::sync::Mutex;
 
 /// Opaque handle wrapping a `tst_core::mpegts::demux::Demuxer`.
 ///
@@ -33,7 +39,7 @@ use tst_core::mpegts::demux::Demuxer;
 /// call on this handle).
 pub struct TstDemuxer {
     inner: Handle<Demuxer>,
-    arena: std::sync::Mutex<EventArena>,
+    arena: Mutex<EventArena>,
 }
 
 /// Open a standalone offline demuxer with default configuration.
@@ -50,11 +56,11 @@ pub struct TstDemuxer {
 /// The returned pointer must eventually be passed to `tst_demuxer_close`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_demuxer_open() -> *mut TstDemuxer {
-    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+    crate::panic::ffi_catch(core::ptr::null_mut(), || {
         let demuxer = Demuxer::new();
         Box::into_raw(Box::new(TstDemuxer {
             inner: Handle::new(demuxer),
-            arena: std::sync::Mutex::new(EventArena::new()),
+            arena: Mutex::new(EventArena::new()),
         }))
     })
 }
@@ -77,7 +83,7 @@ pub unsafe extern "C" fn tst_demuxer_open() -> *mut TstDemuxer {
 pub unsafe extern "C" fn tst_demuxer_open_with_config(
     cfg: *const TstDemuxConfig,
 ) -> *mut TstDemuxer {
-    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+    crate::panic::ffi_catch(core::ptr::null_mut(), || {
         // NULL cfg → default options, matching demux_receiver::open_with_config semantics.
         let opts = unsafe { cfg.as_ref().map(|c| c.build_options()) };
         let demuxer = match opts {
@@ -86,7 +92,7 @@ pub unsafe extern "C" fn tst_demuxer_open_with_config(
         };
         Box::into_raw(Box::new(TstDemuxer {
             inner: Handle::new(demuxer),
-            arena: std::sync::Mutex::new(EventArena::new()),
+            arena: Mutex::new(EventArena::new()),
         }))
     })
 }
@@ -123,7 +129,7 @@ pub unsafe extern "C" fn tst_demuxer_feed(
     p: *mut TstDemuxer,
     data: *const u8,
     len: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null demuxer pointer");
         return TstError::InvalidConfig as i32;
@@ -156,7 +162,7 @@ pub unsafe extern "C" fn tst_demuxer_feed(
 /// `p` must be a valid non-null pointer obtained from `tst_demuxer_open`
 /// / `tst_demuxer_open_with_config`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_demuxer_flush(p: *mut TstDemuxer) -> libc::c_int {
+pub unsafe extern "C" fn tst_demuxer_flush(p: *mut TstDemuxer) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null demuxer pointer");
         return TstError::InvalidConfig as i32;
@@ -200,7 +206,7 @@ pub unsafe extern "C" fn tst_demuxer_flush(p: *mut TstDemuxer) -> libc::c_int {
 pub unsafe extern "C" fn tst_demuxer_next_event(
     p: *mut TstDemuxer,
     out_event: *mut TstEvent,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null demuxer pointer");
         return TstError::InvalidConfig as i32;
@@ -258,7 +264,7 @@ mod tests {
 
     #[test]
     fn close_null_is_safe() {
-        unsafe { tst_demuxer_close(std::ptr::null_mut()) };
+        unsafe { tst_demuxer_close(core::ptr::null_mut()) };
     }
 
     #[test]
@@ -298,7 +304,7 @@ mod tests {
     #[test]
     fn open_with_null_config_uses_defaults() {
         unsafe {
-            let d = tst_demuxer_open_with_config(std::ptr::null());
+            let d = tst_demuxer_open_with_config(core::ptr::null());
             assert!(!d.is_null());
             tst_demuxer_close(d);
         }

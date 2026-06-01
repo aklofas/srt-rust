@@ -5,7 +5,9 @@
 //! releases. The receiver clones what it needs at `_open_with_config`
 //! time; the caller still owns the builder and must `_free` it.
 
-use libc::c_int;
+use crate::c_types::c_int;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 /// `repr(i32)` mirror of `tst_core::mpegts::mux::Av1CarriageMode`.
 ///
@@ -88,8 +90,8 @@ impl TstStrictMode {
 // TstDemuxConfig opaque builder
 // ------------------------------------------------------------------
 
-use libc::size_t;
-use std::collections::BTreeMap;
+use crate::c_types::size_t;
+use alloc::collections::BTreeMap;
 use tst_core::mpegts::demux::{DemuxerConfig, StreamKind, StrictMode};
 use tst_core::mpegts::mux::Av1CarriageMode;
 
@@ -161,7 +163,7 @@ impl TstDemuxConfig {
 /// Free with `tst_demux_config_free`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
-    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+    crate::panic::ffi_catch(core::ptr::null_mut(), || {
         Box::into_raw(Box::new(TstDemuxConfig {
             strict: StrictMode::Off,
             pes_cap_per_pid: None,
@@ -499,13 +501,13 @@ mod tests {
             tst_demux_config_free(cfg);
             // Calling _free again on the same pointer is documented as
             // undefined behavior; this test only validates _free(NULL).
-            tst_demux_config_free(std::ptr::null_mut());
+            tst_demux_config_free(core::ptr::null_mut());
         }
     }
 
     #[test]
     fn set_strict_mode_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_strict_mode(std::ptr::null_mut(), 0) };
+        let rc = unsafe { tst_demux_config_set_strict_mode(core::ptr::null_mut(), 0) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -521,7 +523,7 @@ mod tests {
 
     #[test]
     fn add_link_klv_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_add_link_klv(std::ptr::null_mut(), 0x101, 0x102) };
+        let rc = unsafe { tst_demux_config_add_link_klv(core::ptr::null_mut(), 0x101, 0x102) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -537,7 +539,7 @@ mod tests {
 
     #[test]
     fn set_pes_cap_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_pes_cap(std::ptr::null_mut(), 1024, 65536) };
+        let rc = unsafe { tst_demux_config_set_pes_cap(core::ptr::null_mut(), 1024, 65536) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -565,7 +567,7 @@ mod tests {
 
     #[test]
     fn set_cfi_tolerance_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_cfi_tolerance(std::ptr::null_mut(), 1) };
+        let rc = unsafe { tst_demux_config_set_cfi_tolerance(core::ptr::null_mut(), 1) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -621,7 +623,7 @@ mod tests {
 
     #[test]
     fn set_av1_carriage_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_av1_carriage(std::ptr::null_mut(), 0) };
+        let rc = unsafe { tst_demux_config_set_av1_carriage(core::ptr::null_mut(), 0) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -670,7 +672,7 @@ mod tests {
 
     #[test]
     fn set_au_cell_cap_per_pid_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_au_cell_cap_per_pid(std::ptr::null_mut(), 1024) };
+        let rc = unsafe { tst_demux_config_set_au_cell_cap_per_pid(core::ptr::null_mut(), 1024) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 
@@ -698,7 +700,7 @@ mod tests {
 
     #[test]
     fn set_lenient_psi_reassembly_null_cfg_returns_invalid_config() {
-        let rc = unsafe { tst_demux_config_set_lenient_psi_reassembly(std::ptr::null_mut(), 1) };
+        let rc = unsafe { tst_demux_config_set_lenient_psi_reassembly(core::ptr::null_mut(), 1) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 }

@@ -17,9 +17,9 @@
 //!
 //! | Return type                  | Default to pass                          |
 //! |------------------------------|------------------------------------------|
-//! | `*mut T` (opaque handle)     | `std::ptr::null_mut()`                   |
-//! | `*const T`                   | `std::ptr::null()` (or static fallback)  |
-//! | `libc::c_int`                | `TstError::Internal as i32` (-10)        |
+//! | `*mut T` (opaque handle)     | `core::ptr::null_mut()`                  |
+//! | `*const T`                   | `core::ptr::null()` (or static fallback) |
+//! | `crate::c_types::c_int`      | `TstError::Internal as i32` (-10)        |
 //! | `TstVideoStreamHandle` /     | `TST_INVALID_STREAM_HANDLE` (u32::MAX)   |
 //! | `TstKlvStreamHandle`         |                                          |
 //! | `TstProgramHandle`           | `TST_INVALID_PROGRAM_HANDLE`             |
@@ -32,14 +32,17 @@
 //! `TstError::* as i32` directly; the default is only observed on
 //! actual panic, where `PanicCaught` is in last-error.
 
+#[cfg(feature = "std")]
 use crate::error::record_panic_caught;
-use std::any::Any;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 
-/// Run `f` inside `catch_unwind`. On panic, record `PanicCaught` to
+/// Run `f` inside a panic boundary. On panic, record `PanicCaught` to
 /// the thread-local last-error (with a best-effort detail extracted
 /// from the panic payload) and return `default`. On success, return
 /// `f()`'s value unchanged.
+///
+/// Under `std` this uses `std::panic::catch_unwind`. Under `no_std`
+/// (bare-metal targets where panic = abort) the closure is run directly —
+/// no unwinding is possible, so no wrapper is needed.
 ///
 /// `AssertUnwindSafe` is sound here because every caller in `tst-c`
 /// satisfies one of:
@@ -55,11 +58,13 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 ///     that the caller now owns; a panic before `Box::into_raw` simply
 ///     drops the in-progress `Box` (Rust unwinding semantics) and
 ///     leaks nothing.
+#[cfg(feature = "std")]
 pub(crate) fn ffi_catch<R, F>(default: R, f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    match catch_unwind(AssertUnwindSafe(f)) {
+    use core::panic::AssertUnwindSafe;
+    match std::panic::catch_unwind(AssertUnwindSafe(f)) {
         Ok(value) => value,
         Err(payload) => {
             let detail = panic_payload_message(&*payload);
@@ -69,16 +74,28 @@ where
     }
 }
 
+/// Under no_std (panic = abort), there is no unwinding. Run the closure
+/// directly; the `default` value is never used but is kept in the signature
+/// so call sites are identical in both modes.
+#[cfg(not(feature = "std"))]
+pub(crate) fn ffi_catch<R, F>(_default: R, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    f()
+}
+
 /// Best-effort detail string from a `catch_unwind` payload. Mirrors
 /// the helper in `handle.rs` to keep both panic-isolation paths
 /// surfacing the same detail format.
-fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+#[cfg(feature = "std")]
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> alloc::string::String {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
+        alloc::string::String::from(*s)
+    } else if let Some(s) = payload.downcast_ref::<alloc::string::String>() {
         s.clone()
     } else {
-        "non-string panic payload".to_string()
+        alloc::string::String::from("non-string panic payload")
     }
 }
 
@@ -111,7 +128,7 @@ mod tests {
         clear_last_error_for_test();
         let _: i32 = ffi_catch(-10, || panic!("dynamic-{}", 42));
         let ptr = unsafe { crate::error::tst_get_last_error_str() };
-        let cstr = unsafe { std::ffi::CStr::from_ptr(ptr) };
+        let cstr = unsafe { core::ffi::CStr::from_ptr(ptr) };
         let msg = cstr.to_str().unwrap();
         assert!(msg.contains("dynamic-42"), "got: {msg}");
     }
@@ -120,7 +137,7 @@ mod tests {
     fn null_ptr_default_for_pointer_returns() {
         clear_last_error_for_test();
         struct Dummy;
-        let p: *mut Dummy = ffi_catch(std::ptr::null_mut(), || panic!("ptr panic"));
+        let p: *mut Dummy = ffi_catch(core::ptr::null_mut(), || panic!("ptr panic"));
         assert!(p.is_null());
         assert_eq!(
             unsafe { tst_get_last_error() },
@@ -148,14 +165,14 @@ mod tests {
     #[test]
     fn open_path_simulated_panic_is_caught() {
         clear_last_error_for_test();
-        let p: *mut u8 = ffi_catch(std::ptr::null_mut(), || panic!("simulated connect panic"));
+        let p: *mut u8 = ffi_catch(core::ptr::null_mut(), || panic!("simulated connect panic"));
         assert!(p.is_null());
         assert_eq!(
             unsafe { tst_get_last_error() },
             TstError::PanicCaught as i32
         );
         let ptr = unsafe { crate::error::tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
         assert!(msg.contains("simulated connect"), "got: {msg}");
     }
 
@@ -199,7 +216,7 @@ mod tests {
             TstError::PanicCaught as i32
         );
         let ptr = unsafe { crate::error::tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
         assert!(msg.contains("simulated cancel-path"), "got: {msg}");
     }
 }

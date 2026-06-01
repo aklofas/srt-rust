@@ -13,6 +13,7 @@ use crate::handle::{
     TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
+use alloc::vec::Vec;
 use tst_core::mpegts::mux::{KlvStreamHandle, StreamSpec, VideoStreamHandle};
 
 /// Set program-level PMT descriptors for the specified program.
@@ -36,7 +37,7 @@ pub unsafe extern "C" fn tst_mux_config_set_program_descriptors(
     tlv_bytes: *const u8,
     tlv_total_len: usize,
     tlv_count: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -79,7 +80,7 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
     tlv_bytes: *const u8,
     tlv_total_len: usize,
     tlv_count: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -151,7 +152,7 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
     tlv_bytes: *const u8,
     tlv_total_len: usize,
     tlv_count: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -214,7 +215,9 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
 //
 // # Safety
 // Caller must validate that `desc` is non-null before calling.
-unsafe fn desc_to_tlv_blob(desc: &crate::event::TstDescriptor) -> Result<Vec<u8>, libc::c_int> {
+unsafe fn desc_to_tlv_blob(
+    desc: &crate::event::TstDescriptor,
+) -> Result<Vec<u8>, crate::c_types::c_int> {
     if desc.data_len > 255 {
         set_last_error(
             TstError::InvalidConfig,
@@ -234,7 +237,7 @@ unsafe fn desc_to_tlv_blob(desc: &crate::event::TstDescriptor) -> Result<Vec<u8>
     } else {
         // SAFETY: caller validated desc.data non-null and desc.data_len > 0;
         // bytes are copied into the Vec so the caller's buffer can be freed.
-        unsafe { std::slice::from_raw_parts(desc.data, desc.data_len) }
+        unsafe { core::slice::from_raw_parts(desc.data, desc.data_len) }
     };
     let mut tlv = Vec::with_capacity(2 + body.len());
     tlv.push(desc.tag);
@@ -259,7 +262,7 @@ pub unsafe extern "C" fn tst_mux_config_add_video_descriptor(
     cfg: *mut TstMuxConfig,
     stream: TstVideoStreamHandle,
     desc: *const crate::event::TstDescriptor,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -318,7 +321,7 @@ pub unsafe extern "C" fn tst_mux_config_add_klv_descriptor(
     cfg: *mut TstMuxConfig,
     stream: TstKlvStreamHandle,
     desc: *const crate::event::TstDescriptor,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -375,7 +378,7 @@ pub unsafe extern "C" fn tst_mux_config_add_audio_descriptor(
     cfg: *mut TstMuxConfig,
     stream: TstAudioStreamHandle,
     desc: *const crate::event::TstDescriptor,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -436,7 +439,7 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_descriptor(
     cfg: *mut TstMuxConfig,
     stream: TstSubtitleStreamHandle,
     desc: *const crate::event::TstDescriptor,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -494,7 +497,7 @@ unsafe fn parse_tlv_list(
     tlv_bytes: *const u8,
     tlv_total_len: usize,
     tlv_count: usize,
-) -> Result<Vec<Vec<u8>>, libc::c_int> {
+) -> Result<Vec<Vec<u8>>, crate::c_types::c_int> {
     if tlv_total_len == 0 || tlv_count == 0 {
         return Ok(Vec::new());
     }
@@ -505,7 +508,7 @@ unsafe fn parse_tlv_list(
         );
         return Err(TstError::InvalidUsage as i32);
     }
-    let bytes = unsafe { std::slice::from_raw_parts(tlv_bytes, tlv_total_len) };
+    let bytes = unsafe { core::slice::from_raw_parts(tlv_bytes, tlv_total_len) };
     let mut descs = Vec::with_capacity(tlv_count);
     let mut offset = 0usize;
     for _ in 0..tlv_count {

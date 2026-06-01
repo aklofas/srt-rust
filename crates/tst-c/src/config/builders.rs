@@ -9,7 +9,7 @@
 
 use crate::error::{TstError, set_last_error};
 use crate::panic::ffi_catch;
-use std::time::Duration;
+use core::time::Duration;
 use tst_pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, SenderConfig, TsFramingMode,
 };
@@ -24,7 +24,7 @@ pub struct TstSenderConfig {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_config_new() -> *mut TstSenderConfig {
-    ffi_catch(std::ptr::null_mut(), || {
+    ffi_catch(core::ptr::null_mut(), || {
         Box::into_raw(Box::new(TstSenderConfig {
             inner: SenderConfig::default(),
         }))
@@ -56,7 +56,7 @@ pub enum TstTsFramingMode {
 pub unsafe extern "C" fn tst_sender_config_set_framing_mode(
     p: *mut TstSenderConfig,
     mode: TstTsFramingMode,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn tst_sender_config_set_framing_mode(
 pub unsafe extern "C" fn tst_sender_config_set_max_unsynced_bytes(
     p: *mut TstSenderConfig,
     n: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -96,7 +96,7 @@ pub struct TstRawSenderConfig {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_config_new() -> *mut TstRawSenderConfig {
-    ffi_catch(std::ptr::null_mut(), || {
+    ffi_catch(core::ptr::null_mut(), || {
         Box::into_raw(Box::new(TstRawSenderConfig {
             inner: RawSenderConfig::default(),
         }))
@@ -128,7 +128,7 @@ pub struct TstReconnectPolicy {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_reconnect_policy_new() -> *mut TstReconnectPolicy {
-    ffi_catch(std::ptr::null_mut(), || {
+    ffi_catch(core::ptr::null_mut(), || {
         Box::into_raw(Box::new(TstReconnectPolicy {
             inner: ReconnectPolicy::default(),
         }))
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn tst_reconnect_policy_free(p: *mut TstReconnectPolicy) {
 pub unsafe extern "C" fn tst_reconnect_policy_set_max_attempts(
     p: *mut TstReconnectPolicy,
     n: i32,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_max_attempts(
 pub unsafe extern "C" fn tst_reconnect_policy_set_backoff_constant_ms(
     p: *mut TstReconnectPolicy,
     ms: u32,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -186,7 +186,7 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_backoff_exponential_ms(
     p: *mut TstReconnectPolicy,
     base_ms: u32,
     max_ms: u32,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_backoff_exponential_ms(
 pub unsafe extern "C" fn tst_reconnect_policy_set_gap_buffer_capacity(
     p: *mut TstReconnectPolicy,
     n: usize,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
@@ -226,7 +226,7 @@ pub enum TstOverflowPolicy {
 pub unsafe extern "C" fn tst_reconnect_policy_set_overflow_policy(
     p: *mut TstReconnectPolicy,
     policy: TstOverflowPolicy,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     ffi_catch(TstError::Internal as i32, || {
         let Some(cfg) = (unsafe { p.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");

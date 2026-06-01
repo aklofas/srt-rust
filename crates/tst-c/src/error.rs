@@ -5,8 +5,10 @@
 //! string available via tst_get_last_error_str(). The detail string is
 //! stable until the next tst-c call on the same thread.
 
-use std::cell::RefCell;
-use std::ffi::CString;
+use alloc::borrow::ToOwned;
+use alloc::ffi::CString;
+use alloc::string::ToString;
+use core::cell::RefCell;
 
 /// Negative codes returned by every fallible tst-c entry point.
 ///
@@ -172,24 +174,46 @@ pub enum TstError {
     RistIo = -43,
 }
 
+// ---------------------------------------------------------------------------
+// Per-thread (std) / per-context (no_std) last-error storage
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "std")]
 thread_local! {
     static LAST_ERROR: RefCell<(i32, CString)> = RefCell::new((0, CString::new("").unwrap()));
+}
+#[cfg(feature = "std")]
+fn with_last_error<R>(f: impl FnOnce(&mut (i32, CString)) -> R) -> R {
+    LAST_ERROR.with(|cell| f(&mut cell.borrow_mut()))
+}
+
+// Under no_std (bare-metal, single-core): use critical-section + spin to
+// protect a static Option<(i32, CString)>.
+// The Option is required because CString::new("") is NOT const-evaluable
+// on Rust 1.85, so the static must be initialised to None and lazily
+// filled via get_or_insert_with on the first access.
+#[cfg(not(feature = "std"))]
+static LAST_ERROR: critical_section::Mutex<RefCell<Option<(i32, CString)>>> =
+    critical_section::Mutex::new(RefCell::new(None));
+#[cfg(not(feature = "std"))]
+fn with_last_error<R>(f: impl FnOnce(&mut (i32, CString)) -> R) -> R {
+    critical_section::with(|cs| {
+        let mut slot = LAST_ERROR.borrow(cs).borrow_mut();
+        let inner = slot.get_or_insert_with(|| (0, CString::new("").unwrap()));
+        f(inner)
+    })
 }
 
 /// Set the per-thread last-error code + message. Internal helper used by
 /// every fallible entry point on its error path.
 pub(crate) fn set_last_error(code: TstError, msg: &str) {
     let cstr = CString::new(msg).unwrap_or_else(|_| CString::new("<message had nul>").unwrap());
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = (code as i32, cstr);
-    });
+    with_last_error(|slot| *slot = (code as i32, cstr));
 }
 
 #[cfg(test)]
 pub(crate) fn clear_last_error_for_test() {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = (0, CString::new("").unwrap());
-    });
+    with_last_error(|slot| *slot = (0, CString::new("").unwrap()));
 }
 
 /// Read the most recent error code on this thread. Returns `0`
@@ -198,26 +222,22 @@ pub(crate) fn clear_last_error_for_test() {
 /// recent failure on this thread (or `TST_E_SUCCESS` if there has been
 /// none since thread start).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_get_last_error() -> libc::c_int {
-    crate::panic::ffi_catch(TstError::Internal as i32, || {
-        LAST_ERROR.with(|cell| cell.borrow().0)
-    })
+pub unsafe extern "C" fn tst_get_last_error() -> crate::c_types::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || with_last_error(|slot| slot.0))
 }
 
 /// Pointer to the most recent error message on this thread. Valid until
 /// the next tst-c call on the same thread. Never NULL — empty string when
 /// no error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
+pub unsafe extern "C" fn tst_get_last_error_str() -> *const crate::c_types::c_char {
     // The thread-local CString stays alive for the thread's lifetime, but
     // if `borrow()` panicked (reentrant Drop double-borrow), the happy-path
     // pointer is unreachable. Fall back to a static empty C string so the
     // never-NULL contract above is preserved.
     static EMPTY: &[u8] = b"\0";
-    let fallback = EMPTY.as_ptr() as *const libc::c_char;
-    crate::panic::ffi_catch(fallback, || {
-        LAST_ERROR.with(|cell| cell.borrow().1.as_ptr())
-    })
+    let fallback = EMPTY.as_ptr() as *const crate::c_types::c_char;
+    crate::panic::ffi_catch(fallback, || with_last_error(|slot| slot.1.as_ptr()))
 }
 
 /// Clears the thread-local last-error slot, resetting it to
@@ -443,10 +463,10 @@ pub(crate) fn record_transport_error(e: &TransportError) {
     // body doesn't contain an inner `_ =>` arm — that would confuse the
     // check-raw-c-mapper-coverage.sh ratchet (its awk extractor stops at
     // the first `_ =>` line, treating it as the outer wildcard).
-    fn errno_suffix(errno_code: &Option<i32>) -> String {
+    fn errno_suffix(errno_code: &Option<i32>) -> alloc::string::String {
         match errno_code {
-            Some(c) if *c != 0 => format!(" (errno {c})"),
-            Some(_) | None => String::new(),
+            Some(c) if *c != 0 => alloc::format!(" (errno {c})"),
+            Some(_) | None => alloc::string::String::new(),
         }
     }
     let (code, msg) = match e {
@@ -458,23 +478,26 @@ pub(crate) fn record_transport_error(e: &TransportError) {
         // TransportError struct variant directly.
         TransportError::Backpressure { msg: s, errno_code } => (
             TstError::Transport,
-            format!("backpressure: {s}{}", errno_suffix(errno_code)),
+            alloc::format!("backpressure: {s}{}", errno_suffix(errno_code)),
         ),
         TransportError::Broken { msg: s, errno_code } => (
             TstError::Transport,
-            format!("broken: {s}{}", errno_suffix(errno_code)),
+            alloc::format!("broken: {s}{}", errno_suffix(errno_code)),
         ),
-        TransportError::Closed => (TstError::Closed, "transport closed".into()),
+        TransportError::Closed => (
+            TstError::Closed,
+            alloc::string::String::from("transport closed"),
+        ),
         TransportError::TooLarge { len, max } => (
             TstError::TooLarge,
-            format!("message {len} bytes exceeds payload cap {max}"),
+            alloc::format!("message {len} bytes exceeds payload cap {max}"),
         ),
         _ => {
             // Required by #[non_exhaustive]. See scripts/check-raw-c-mapper-coverage.sh
             // for the CI ratchet that prevents this arm from firing.
             (
                 TstError::Transport,
-                format!("unhandled TransportError variant: {e:?}"),
+                alloc::format!("unhandled TransportError variant: {e:?}"),
             )
         }
     };
@@ -483,7 +506,10 @@ pub(crate) fn record_transport_error(e: &TransportError) {
 
 /// Helper for entry points that catch panics or Mutex poison.
 pub(crate) fn record_internal(detail: &str) {
-    set_last_error(TstError::Internal, &format!("internal error: {detail}"));
+    set_last_error(
+        TstError::Internal,
+        &alloc::format!("internal error: {detail}"),
+    );
 }
 
 /// Helper for the `catch_unwind` arm of `Handle::with_inner_*`. Records
@@ -492,7 +518,7 @@ pub(crate) fn record_internal(detail: &str) {
 pub(crate) fn record_panic_caught(detail: &str) {
     set_last_error(
         TstError::PanicCaught,
-        &format!("panic caught at FFI boundary: {detail}"),
+        &alloc::format!("panic caught at FFI boundary: {detail}"),
     );
 }
 
@@ -727,27 +753,19 @@ pub fn test_record_shell_error<E: ShellError>(e: &E) -> i32 {
 /// `tst_get_last_error()` but callable without `unsafe`. Not `extern "C"`;
 /// does not appear in the C header.
 pub fn test_last_error_code() -> i32 {
-    LAST_ERROR.with(|cell| cell.borrow().0)
+    with_last_error(|slot| slot.0)
 }
 
 /// Read the thread-local last-error message string for test assertions. Not
 /// `extern "C"`; does not appear in the C header.
-pub fn test_last_error_msg() -> String {
-    LAST_ERROR.with(|cell| {
-        cell.borrow()
-            .1
-            .to_str()
-            .unwrap_or("<invalid utf8>")
-            .to_owned()
-    })
+pub fn test_last_error_msg() -> alloc::string::String {
+    with_last_error(|slot| slot.1.to_str().unwrap_or("<invalid utf8>").to_owned())
 }
 
 /// Clear the thread-local last-error for test isolation. Not `extern "C"`;
 /// does not appear in the C header.
 pub fn test_clear_last_error() {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = (0, CString::new("").unwrap());
-    });
+    with_last_error(|slot| *slot = (0, CString::new("").unwrap()));
 }
 
 #[cfg(test)]
@@ -762,7 +780,7 @@ mod tests {
             TstError::InvalidConfig as i32
         );
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(s.to_str().unwrap(), "bad pid");
     }
 
@@ -771,7 +789,7 @@ mod tests {
         clear_last_error_for_test();
         assert_eq!(unsafe { tst_get_last_error() }, 0);
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(s.to_str().unwrap(), "");
     }
 
@@ -790,7 +808,7 @@ mod tests {
             "precondition: error should be set before clear"
         );
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(
             s.to_str().unwrap(),
             "stale failure",
@@ -807,7 +825,7 @@ mod tests {
             "after tst_clear_last_error(), code should be TST_E_SUCCESS (0)"
         );
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(
             s.to_str().unwrap(),
             "",
@@ -839,7 +857,9 @@ mod tests {
         };
         record_mux_error(&e);
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
         // The message is the MuxError Display impl output which says
         // "call push_video_to(handle, ...) instead" — the key is that
         // it points to a disambiguation API, not the deferred path.
@@ -866,7 +886,7 @@ mod tests {
             TstError::EndOfStream as i32
         );
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        let s = unsafe { core::ffi::CStr::from_ptr(s_ptr) };
         assert!(s.to_str().unwrap().contains("end of stream"));
     }
 
@@ -877,7 +897,9 @@ mod tests {
     /// suspenders with the per-variant exact-code assertion.
     fn assert_not_unhandled_wildcard() {
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
         assert!(
             !msg.starts_with("unhandled "),
             "wildcard arm fired for a known variant: {msg}"
@@ -1145,7 +1167,9 @@ mod tests {
             errno_code: Some(0),
         });
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
         assert!(
             !msg.contains("(errno"),
             "errno 0 should not surface a (errno N) suffix: {msg}"
@@ -1158,7 +1182,9 @@ mod tests {
             errno_code: Some(2),
         });
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        let msg = unsafe { core::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
         assert!(msg.contains("(errno 2)"), "got: {msg}");
     }
 

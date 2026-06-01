@@ -8,7 +8,7 @@
 //! heap-allocated list. That keeps the ABI allocator-free; callers
 //! stack-allocate the stats struct and pass a pointer.
 
-use libc::c_char;
+use crate::c_types::c_char;
 
 /// Maximum number of per-stream entries in any stats struct exposed at
 /// the C ABI. Rarely exceeded — multi-stream `mpegts::mux` caps at
@@ -46,7 +46,7 @@ pub struct TstStreamStats {
 }
 
 const _TST_STREAM_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstStreamStats>() == 96,
+    core::mem::size_of::<TstStreamStats>() == 96,
     "TstStreamStats must be 96 bytes"
 );
 
@@ -94,7 +94,7 @@ pub struct TstRawSendStats {
 }
 
 const _TST_RAW_SEND_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstRawSendStats>() == 16,
+    core::mem::size_of::<TstRawSendStats>() == 16,
     "TstRawSendStats must be 16 bytes (2 × u64)"
 );
 
@@ -122,7 +122,7 @@ pub struct TstSenderStats {
 }
 
 const _TST_SENDER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstSenderStats>() == 32,
+    core::mem::size_of::<TstSenderStats>() == 32,
     "TstSenderStats must be 32 bytes (4 × u64)"
 );
 
@@ -146,10 +146,11 @@ pub struct TstRawRecvStats {
 }
 
 const _TST_RAW_RECV_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstRawRecvStats>() == 16,
+    core::mem::size_of::<TstRawRecvStats>() == 16,
     "TstRawRecvStats must be 16 bytes (2 × u64)"
 );
 
+#[cfg(feature = "std")]
 impl From<&tst_pipeline::RawRecvStats> for TstRawRecvStats {
     fn from(s: &tst_pipeline::RawRecvStats) -> Self {
         Self {
@@ -179,10 +180,11 @@ pub struct TstReceiverStats {
 }
 
 const _TST_RECEIVER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstReceiverStats>() == 32,
+    core::mem::size_of::<TstReceiverStats>() == 32,
     "TstReceiverStats must be 32 bytes (4 × u64)"
 );
 
+#[cfg(feature = "std")]
 impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
     fn from(s: &tst_pipeline::ReceiverStats) -> Self {
         Self {
@@ -230,10 +232,11 @@ pub struct TstDemuxReceiverStats {
 }
 
 const _TST_DEMUX_RECEIVER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstDemuxReceiverStats>() == 48,
+    core::mem::size_of::<TstDemuxReceiverStats>() == 48,
     "TstDemuxReceiverStats must be 48 bytes (6 × u64)"
 );
 
+#[cfg(feature = "std")]
 impl From<&tst_pipeline::DemuxReceiverStats> for TstDemuxReceiverStats {
     fn from(s: &tst_pipeline::DemuxReceiverStats) -> Self {
         Self {
@@ -298,7 +301,7 @@ pub struct TstSocketStats {
 }
 
 const _TST_SOCKET_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstSocketStats>() == 120,
+    core::mem::size_of::<TstSocketStats>() == 120,
     "TstSocketStats must be 120 bytes (3×u32 + 1×u32 pad + 13×u64)"
 );
 
@@ -341,7 +344,7 @@ pub struct TstMuxerStats {
 }
 
 const _TST_MUXER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstMuxerStats>() == 6176,
+    core::mem::size_of::<TstMuxerStats>() == 6176,
     "TstMuxerStats must be 6176 bytes (2×u64 + 3×u32 + 4 pad + 64 × TstStreamStats)"
 );
 
@@ -375,7 +378,7 @@ pub struct TstMuxSenderStats {
 }
 
 const _TST_MUX_SENDER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstMuxSenderStats>() == 6192,
+    core::mem::size_of::<TstMuxSenderStats>() == 6192,
     "TstMuxSenderStats must be 6192 bytes (4×u64 + 3×u32 + 4 pad + 64 × TstStreamStats)"
 );
 
@@ -398,7 +401,7 @@ impl Default for TstMuxSenderStats {
 /// Returns `(count, truncated)`. Sorted by PID (BTreeMap iteration order).
 pub fn fill_per_stream(
     dst: &mut [TstStreamStats; TST_STATS_MAX_STREAMS],
-    src: &std::collections::BTreeMap<u16, tst_core::mpegts::StreamStats>,
+    src: &alloc::collections::BTreeMap<u16, tst_core::mpegts::StreamStats>,
 ) -> (u32, bool) {
     let total = src.len();
     let n = total.min(TST_STATS_MAX_STREAMS);
@@ -541,7 +544,7 @@ pub struct TstServerStats {
 }
 
 const _TST_SERVER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstServerStats>() == 32,
+    core::mem::size_of::<TstServerStats>() == 32,
     "TstServerStats must be 32 bytes (4 × u64)"
 );
 
@@ -579,7 +582,7 @@ pub struct TstMountStats {
 }
 
 const _TST_MOUNT_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstMountStats>() == 32,
+    core::mem::size_of::<TstMountStats>() == 32,
     "TstMountStats must be 32 bytes (4 × u64)"
 );
 
@@ -614,7 +617,7 @@ pub struct TstPublisherStats {
 }
 
 const _TST_PUBLISHER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstPublisherStats>() == 32,
+    core::mem::size_of::<TstPublisherStats>() == 32,
     "TstPublisherStats must be 32 bytes (2 × u64 + 2 × i64)"
 );
 
@@ -622,7 +625,7 @@ impl From<&tst_core::publisher::PublisherStats> for TstPublisherStats {
     fn from(s: &tst_core::publisher::PublisherStats) -> Self {
         // Option<Duration> → i64 millis; None → -1. Durations cannot be
         // negative, so -1 is an unambiguous "not present" sentinel.
-        fn ms(d: Option<std::time::Duration>) -> i64 {
+        fn ms(d: Option<core::time::Duration>) -> i64 {
             d.map(|d| d.as_millis().min(i64::MAX as u128) as i64)
                 .unwrap_or(-1)
         }
@@ -649,7 +652,7 @@ pub struct TstHlsStats {
 }
 
 const _TST_HLS_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstHlsStats>() == 24,
+    core::mem::size_of::<TstHlsStats>() == 24,
     "TstHlsStats must be 24 bytes (3 × u64)"
 );
 
@@ -679,10 +682,11 @@ pub struct TstMuxPublisherStats {
 }
 
 const _TST_MUX_PUBLISHER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstMuxPublisherStats>() == 24,
+    core::mem::size_of::<TstMuxPublisherStats>() == 24,
     "TstMuxPublisherStats must be 24 bytes (3 × u64)"
 );
 
+#[cfg(feature = "std")]
 impl From<&tst_pipeline::MuxPublisherStats> for TstMuxPublisherStats {
     fn from(s: &tst_pipeline::MuxPublisherStats) -> Self {
         Self {
@@ -709,7 +713,7 @@ mod codec_stats_tests {
 
     #[test]
     fn c_struct_size_is_24() {
-        assert_eq!(std::mem::size_of::<TstStreamCodecStats>(), 24);
+        assert_eq!(core::mem::size_of::<TstStreamCodecStats>(), 24);
     }
 
     #[test]

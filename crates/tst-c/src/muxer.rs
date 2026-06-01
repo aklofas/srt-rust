@@ -9,6 +9,8 @@ use crate::error::{TstError, record_mux_error, record_not_found, set_last_error}
 use crate::handle::{
     Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
 };
+use alloc::boxed::Box;
+use alloc::format;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
@@ -23,23 +25,23 @@ pub struct TstMuxer {
 /// last-error set.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_muxer_open(cfg: *mut TstMuxConfig) -> *mut TstMuxer {
-    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+    crate::panic::ffi_catch(core::ptr::null_mut(), || {
         let Some(cfg) = (unsafe { cfg.as_mut() }) else {
             set_last_error(TstError::InvalidConfig, "null config pointer");
-            return std::ptr::null_mut();
+            return core::ptr::null_mut();
         };
         let built = match cfg.build_config() {
             Ok(c) => c,
             Err(e) => {
                 record_mux_error(&e);
-                return std::ptr::null_mut();
+                return core::ptr::null_mut();
             }
         };
         let muxer = match Muxer::new(built) {
             Ok(m) => m,
             Err(e) => {
                 record_mux_error(&e);
-                return std::ptr::null_mut();
+                return core::ptr::null_mut();
             }
         };
         Box::into_raw(Box::new(TstMuxer {
@@ -57,7 +59,7 @@ pub unsafe extern "C" fn tst_muxer_push_video(
     len: usize,
     pts_90khz: i64,
     key_frame: bool,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -114,7 +116,7 @@ pub unsafe extern "C" fn tst_muxer_push_klv(
     klv: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -157,7 +159,7 @@ pub unsafe extern "C" fn tst_muxer_push_video_to(
     len: usize,
     pts_90khz: i64,
     key_frame: bool,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(h) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -206,7 +208,7 @@ pub unsafe extern "C" fn tst_muxer_push_klv_to(
     klv: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(h) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -256,7 +258,7 @@ pub unsafe extern "C" fn tst_muxer_push_audio(
     frames: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -293,7 +295,7 @@ pub unsafe extern "C" fn tst_muxer_push_audio_to(
     frames: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(h) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -338,7 +340,7 @@ pub unsafe extern "C" fn tst_muxer_push_subtitle(
     payload: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -375,7 +377,7 @@ pub unsafe extern "C" fn tst_muxer_push_subtitle_to(
     payload: *const u8,
     len: usize,
     pts_90khz: i64,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(h) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -420,7 +422,7 @@ pub unsafe extern "C" fn tst_muxer_pull(
     if out_buf.is_null() || out_cap == 0 {
         return 0;
     }
-    let slice = unsafe { std::slice::from_raw_parts_mut(out_buf, out_cap) };
+    let slice = unsafe { core::slice::from_raw_parts_mut(out_buf, out_cap) };
     let mut n = 0usize;
     let _rc = handle.inner.with_inner_mut(|m| {
         n = m.pull(slice);
@@ -437,7 +439,7 @@ pub unsafe extern "C" fn tst_muxer_pull(
 pub unsafe extern "C" fn tst_muxer_get_stats(
     p: *mut TstMuxer,
     out: *mut crate::stats::TstMuxerStats,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -489,7 +491,7 @@ pub unsafe extern "C" fn tst_muxer_get_stream_codec_stats(
     p: *mut TstMuxer,
     pid: u16,
     out: *mut crate::stats::TstStreamCodecStats,
-) -> libc::c_int {
+) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -519,7 +521,7 @@ pub unsafe extern "C" fn tst_muxer_get_stream_codec_stats(
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
 /// null, or `TST_E_CLOSED` if the muxer has been closed.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_muxer_reset_stats(p: *mut TstMuxer) -> libc::c_int {
+pub unsafe extern "C" fn tst_muxer_reset_stats(p: *mut TstMuxer) -> crate::c_types::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null muxer pointer");
         return TstError::InvalidConfig as i32;
@@ -611,6 +613,6 @@ mod tests {
 
     #[test]
     fn null_pointer_close_is_safe() {
-        unsafe { tst_muxer_close(std::ptr::null_mut()) };
+        unsafe { tst_muxer_close(core::ptr::null_mut()) };
     }
 }

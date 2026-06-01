@@ -16,11 +16,10 @@ doctest    = false
 [features]
 default = ["std", "srt", "rtp", "mbedtls"]
 # `std` gates every transport-bearing surface + std-only sinks. The offline
-# core (muxer / demuxer / config / error / handle) is being carved to compile
-# without it, for the forthcoming no_std embedded staticlib path (see
-# crates/baremetal-qemu-c/). Note: as of this commit `panic.rs`/`handle.rs`
-# still use unconditional `std::` — that carve-out lands in the next task.
-std     = []
+# core (muxer / demuxer / config / error / handle / panic) compiles without it
+# (no_std + alloc), for the no_std embedded staticlib path (see
+# crates/baremetal-qemu-c/); `std` gates the transport-bearing surface.
+std     = ["tst-pipeline/std", "tst-core/std"]
 srt     = ["std", "dep:tst-srt"]
 rtp     = ["std", "dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
@@ -35,11 +34,13 @@ tst-rtp      = { path = "../tst-rtp", default-features = false, optional = true 
 tst-udp      = { path = "../tst-udp", default-features = false, optional = true }
 tst-tcp      = { path = "../tst-tcp", default-features = false, optional = true }
 tst-rist     = { path = "../tst-rist", default-features = false, optional = true }
-tst-pipeline = { path = "../tst-pipeline" }
-tst-core     = { path = "../tst-core" }
-libc      = { workspace = true }
-thiserror = { workspace = true }
-secrecy   = { workspace = true, optional = true }
+tst-pipeline = { path = "../tst-pipeline", default-features = false }
+tst-core     = { path = "../tst-core", default-features = false }
+libc         = { workspace = true }
+thiserror    = { workspace = true }
+secrecy      = { workspace = true, optional = true }
+critical-section = "1"
+spin         = { version = "0.9", default-features = false, features = ["spin_mutex"] }
 
 [build-dependencies]
 cbindgen = { workspace = true }

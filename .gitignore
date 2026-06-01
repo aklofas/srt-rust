@@ -7,6 +7,11 @@ crates/baremetal-qemu-c/firmware/*.elf
 crates/baremetal-qemu-c/firmware/firmware.elf
 crates/baremetal-qemu-c/firmware/golden.h
 
+# Embedded S0 C++ exceptions gate build artifacts
+embedded/s0-cpp-gate/firmware.elf
+embedded/s0-cpp-gate/*.elf
+embedded/s0-cpp-gate/*.o
+
 # Rust analyzer
 .rust-analyzer/
 

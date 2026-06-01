@@ -607,8 +607,8 @@ jobs:
       - name: cargo build (tst-c-core offline C-ABI core rlib, riscv32imac-unknown-none-elf)
         run: cargo build -p tst-c-core --no-default-features --target riscv32imac-unknown-none-elf
 
-      - name: Install QEMU (system ARM)
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm
+      - name: Install QEMU + ARM C cross-toolchain
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi
 
       # Runtime gate: run the tst-core muxer on a Cortex-M4 under QEMU and
       # assert it byte-matches the committed video-roundtrip golden. The
@@ -617,6 +617,12 @@ jobs:
       - name: QEMU runtime smoke (baremetal-qemu)
         working-directory: crates/baremetal-qemu
         run: timeout 60 cargo run
+
+      # Runtime gate: build the C-firmware (libtstrans_firmware.a no_std glue
+      # staticlib + arm-none-eabi-gcc), run under QEMU mps2-an386, and assert it
+      # byte-matches the same video-roundtrip golden via the offline C ABI.
+      - name: QEMU runtime smoke (C firmware via libtstrans.a)
+        run: bash scripts/check-c-firmware-qemu.sh
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)

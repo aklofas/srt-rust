@@ -22,7 +22,7 @@ use tstrans::event::TstEventKind;
 
 // Pull in the muxer open/pull/close for building TS bytes offline.
 #[cfg(feature = "srt")]
-use tstrans::sender::muxer::{
+use tstrans::muxer::{
     tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video,
 };
 

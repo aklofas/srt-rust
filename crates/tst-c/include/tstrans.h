@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 8` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 9` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -91,8 +91,13 @@
  *   Wraps `tst_core::Demuxer` directly (no transport URL); callers feed
  *   raw TS bytes and pull typed `TstEvent`s. Unconditional (no feature
  *   gate — `tst-core` is a non-optional dep).
+ * - `9` — the offline `tst_muxer_*` surface is now unconditional (no
+ *   feature gate), matching `tst_demuxer_*`. Previously gated on the `srt`
+ *   cargo feature; now lives in the top-level `muxer` module. Additive —
+ *   no symbol removed, no signature changed; SRT builds are unaffected,
+ *   non-SRT / no_std builds gain the offline muxer.
  */
-#define TST_ABI_VERSION_MINOR 8
+#define TST_ABI_VERSION_MINOR 9
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -914,9 +919,7 @@ typedef struct TstMuxPublisher TstMuxPublisher;
 typedef struct tst_mux_sender_t tst_mux_sender_t;
 #endif
 
-#if defined(TST_HAS_SRT)
 typedef struct tst_muxer_t tst_muxer_t;
-#endif
 
 #if defined(TST_HAS_HLS)
 /**
@@ -2928,7 +2931,6 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
                                  bool key_frame);
 #endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Close and free the muxer.
  *
@@ -2937,9 +2939,7 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_muxer_close(struct tst_muxer_t *p);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Snapshot stats for a `tst_muxer_t` into `*out`.
  *
@@ -2947,9 +2947,7 @@ void tst_muxer_close(struct tst_muxer_t *p);
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
 int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
  *
@@ -2975,18 +2973,14 @@ int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
 int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
                                      uint16_t pid,
                                      struct tst_stream_codec_stats_t *out);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Open a standalone muxer. Builds the config from `cfg` so the caller may
  * free it immediately after this returns. Returns NULL on failure with
  * last-error set.
  */
 struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
  * of bytes written; 0 means nothing was ready or the buffer was too
@@ -2994,9 +2988,7 @@ struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
  * value.
  */
 size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one audio frame buffer (single-stream shorthand).
  *
@@ -3013,9 +3005,7 @@ int tst_muxer_push_audio(struct tst_muxer_t *p,
                          const uint8_t *frames,
                          size_t len,
                          int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -3033,9 +3023,7 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
                             const uint8_t *frames,
                             size_t len,
                             int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one KLV blob onto the muxer's single KLV stream.
  *
@@ -3068,9 +3056,7 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
  * `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
  */
 int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream.
  *
@@ -3089,9 +3075,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
                           const uint8_t *klv,
                           size_t len,
                           int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one subtitle PES unit (single-stream shorthand).
  *
@@ -3109,9 +3093,7 @@ int tst_muxer_push_subtitle(struct tst_muxer_t *p,
                             const uint8_t *payload,
                             size_t len,
                             int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -3129,9 +3111,7 @@ int tst_muxer_push_subtitle_to(struct tst_muxer_t *p,
                                const uint8_t *payload,
                                size_t len,
                                int64_t pts_90khz);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B-framed video access unit. Returns 0 on success or a
  * negative TST_E_* code.
@@ -3142,9 +3122,7 @@ int tst_muxer_push_video(struct tst_muxer_t *p,
                          size_t len,
                          int64_t pts_90khz,
                          bool key_frame);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -3163,9 +3141,7 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
                             size_t len,
                             int64_t pts_90khz,
                             bool key_frame);
-#endif
 
-#if defined(TST_HAS_SRT)
 /**
  * Reset stats counters for a `tst_muxer_t` to zero.
  *
@@ -3176,7 +3152,6 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
 int tst_muxer_reset_stats(struct tst_muxer_t *p);
-#endif
 
 // ─── TS SENDER ─────────────────────────────────────────────
 

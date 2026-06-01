@@ -50,7 +50,7 @@ fn muxer_get_stats_after_push() {
         tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::sender::muxer::{
+    use tstrans::muxer::{
         tst_muxer_close, tst_muxer_get_stats, tst_muxer_open, tst_muxer_reset_stats,
     };
     unsafe {
@@ -79,7 +79,7 @@ fn muxer_get_stats_after_push() {
 fn muxer_get_stats_null_pointer_returns_invalid_config() {
     let mut st = TstMuxerStats::default();
     unsafe {
-        let rc = tstrans::sender::muxer::tst_muxer_get_stats(ptr::null_mut(), &mut st);
+        let rc = tstrans::muxer::tst_muxer_get_stats(ptr::null_mut(), &mut st);
         assert_ne!(rc, 0);
     }
 }

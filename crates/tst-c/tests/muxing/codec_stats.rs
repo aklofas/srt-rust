@@ -20,9 +20,14 @@
 //! * `tst_demux_receiver_get_stream_codec_stats`             (demux_receiver.rs)
 //! * `tst_managed_demux_receiver_get_stream_codec_stats`     (demux_receiver.rs)
 
-// Every test in this file pulls in `tstrans::sender::*` or
-// `tstrans::receiver::*`, both gated behind `feature = "srt"`. Gate the
-// whole file so `cargo test --workspace --no-default-features` compiles.
+// The null-pointer error-path tests at the top need only the unconditional
+// `tstrans::muxer::*`, but the loopback/happy-path tests below pull in
+// `tstrans::sender::*` / `tstrans::receiver::*`, both gated behind
+// `feature = "srt"`. The whole file is gated at the binary level so
+// `cargo test --workspace --no-default-features` compiles; the muxing test
+// binary links SRT-dependent code and defaults to `srt` anyway. (It is no
+// longer true that *every* test here requires sender/receiver — splitting the
+// offline cases out from the gate was out of scope for this relocation.)
 #![cfg(feature = "srt")]
 
 use std::ptr;
@@ -40,7 +45,7 @@ fn muxer_get_stream_codec_stats_null_handle_returns_invalid_config() {
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(ptr::null_mut(), 0x100, &mut out)
+        tstrans::muxer::tst_muxer_get_stream_codec_stats(ptr::null_mut(), 0x100, &mut out)
     };
     assert_eq!(rc, TstError::InvalidConfig as i32);
 }
@@ -121,7 +126,7 @@ fn muxer_get_stream_codec_stats_null_out_returns_invalid_config() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open};
+    use tstrans::muxer::{tst_muxer_close, tst_muxer_open};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -130,7 +135,7 @@ fn muxer_get_stream_codec_stats_null_out_returns_invalid_config() {
         assert!(!m.is_null());
 
         let rc =
-            tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
+            tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
         assert_eq!(rc, TstError::InvalidConfig as i32);
 
         tst_muxer_close(m);
@@ -144,7 +149,7 @@ fn muxer_get_stream_codec_stats_unconfigured_pid_returns_not_found() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open};
+    use tstrans::muxer::{tst_muxer_close, tst_muxer_open};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -160,7 +165,7 @@ fn muxer_get_stream_codec_stats_unconfigured_pid_returns_not_found() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x9999, &mut out);
+        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x9999, &mut out);
         assert_eq!(rc, TstError::NotFound as i32);
 
         tst_muxer_close(m);
@@ -174,7 +179,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
+    use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -189,7 +194,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
+        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
         assert_eq!(rc, 0);
         assert_eq!(out.kind, TST_CODEC_KIND_UNKNOWN);
 
@@ -208,7 +213,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
+        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
         assert_eq!(rc, 0);
         assert_eq!(out.kind, TST_CODEC_KIND_VIDEO);
         assert!(

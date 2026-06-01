@@ -7,6 +7,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Changed — tst-c ABI minor 8 → 9: offline `tst_muxer_*` un-gated (2026-05-31)
+
+- tst-c ABI minor 8 → 9: the offline `tst_muxer_*` surface is now
+  unconditional (previously gated behind the `srt` feature), matching the
+  already-unconditional `tst_demuxer_*`. Additive — no symbol removed, no
+  signature changed; SRT builds are unaffected, non-SRT builds gain the
+  offline muxer.
+- Added a default-on `std` feature to `tst-c`. Every transport-bearing
+  surface (srt/rtp/udp/tcp/hls/rist) now implies `std`; the offline core
+  (muxer / demuxer / config / error / handle) is being carved to compile
+  without it, for the forthcoming no_std embedded staticlib path. (The
+  carve-out is not yet complete in this commit — `panic.rs`/`handle.rs` still
+  use unconditional `std::`; that work lands in the next task.)
+
+---
+
 ## [Unreleased] — tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
 
 ### Added — tst-py bindings for UDP / TCP / HLS / RIST (Plan A5b, 2026-05-27)

@@ -1,6 +1,8 @@
 //! Multi-stream `mpegts::mux` fan-out via the C ABI.
 
-// Pulls in `tstrans::sender::muxer::*`, which is `cfg(feature = "srt")`.
+// The offline `tst_muxer_*` surface is unconditional (no feature gate);
+// this test still gates on `srt` only because it links against SRT-transport
+// helpers used elsewhere in the muxing test binary.
 #![cfg(feature = "srt")]
 
 use tstrans::config::{
@@ -9,7 +11,7 @@ use tstrans::config::{
     tst_mux_config_new,
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
-use tstrans::sender::muxer::{
+use tstrans::muxer::{
     tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video_to,
 };
 

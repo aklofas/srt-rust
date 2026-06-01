@@ -25,6 +25,16 @@ consolidated into **4 domain harnesses** (`abi`, `receiving`, `muxing`,
 - **Not touched:** the explicit `url_open` `[[test]]` (already folder-shaped)
   and `tests/smoke.c` (a C source read by `abi/smoke.rs` via the manifest path).
 
+## Offline-muxer module relocation (ABI 8 → 9)
+
+The standalone offline `tst_muxer_*` C ABI surface was relocated from
+`src/sender/muxer.rs` (gated on `#[cfg(feature = "srt")]` via
+`sender/mod.rs`) to the top-level unconditional `src/muxer.rs`, mirroring
+the already-unconditional `src/demuxer.rs`. The test import paths changed
+from `tstrans::sender::muxer` to `tstrans::muxer` across all muxing tests.
+The `tst_muxer_*` declarations in `tstrans.h` moved out of the
+`#if defined(TST_HAS_SRT)` blocks and are now emitted unconditionally.
+
 ## Equivalence check
 
 No test added/dropped/renamed: tst-c's `cargo test -- --list` count is

@@ -10,7 +10,8 @@
 //! along with the reconnecting `tst_managed_*` variants. RTP and RTSP
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
-//! feature gate). ABI minor is `0.8` (see [`TST_ABI_VERSION_MINOR`]).
+//! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
+//! `srt` in ABI 0.9). ABI minor is `0.9` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
@@ -21,6 +22,7 @@ pub mod demuxer;
 pub mod error;
 pub mod event;
 pub mod handle;
+pub mod muxer;
 pub mod stats;
 mod ffi_slice;
 mod panic;
@@ -123,7 +125,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 8` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 9` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -158,7 +160,12 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   Wraps `tst_core::Demuxer` directly (no transport URL); callers feed
 ///   raw TS bytes and pull typed `TstEvent`s. Unconditional (no feature
 ///   gate — `tst-core` is a non-optional dep).
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 8;
+/// - `9` — the offline `tst_muxer_*` surface is now unconditional (no
+///   feature gate), matching `tst_demuxer_*`. Previously gated on the `srt`
+///   cargo feature; now lives in the top-level `muxer` module. Additive —
+///   no symbol removed, no signature changed; SRT builds are unaffected,
+///   non-SRT / no_std builds gain the offline muxer.
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 9;
 
 // =========================================================================
 // Runtime version accessors

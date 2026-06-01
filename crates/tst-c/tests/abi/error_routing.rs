@@ -465,10 +465,15 @@ fn raw_receiver_end_of_stream_returns_eos_code() {
 /// standalone muxer with no transport. It validates the sentinel code path
 /// that all shell handles share.
 ///
-/// `tstrans::sender::muxer` is `cfg(feature = "srt")`, so this single test
-/// is the only one in the file gated behind the srt feature — the rest of
-/// `error_routing.rs` runs unconditionally so the shell-error/transport-error
-/// mapping coverage is preserved in `--no-default-features` builds.
+/// Both surfaces this test uses — `tstrans::muxer` (the offline `tst_muxer_*`
+/// surface) and `tstrans::config` (`pub mod config;` is unconditional in
+/// `lib.rs`) — are available without the `srt` feature, so this test does not
+/// actually depend on `srt`. The `#[cfg(feature = "srt")]` gate is retained
+/// only because un-gating it was out of scope for this relocation task; the
+/// `abi` test binary is built with default features (which include `srt`)
+/// regardless, so the gate is currently inert. The rest of `error_routing.rs`
+/// runs unconditionally so the shell-error/transport-error mapping coverage is
+/// preserved in `--no-default-features` builds.
 #[cfg(feature = "srt")]
 #[test]
 fn handle_closed_sentinel_returns_closed_code_black_box() {
@@ -476,7 +481,7 @@ fn handle_closed_sentinel_returns_closed_code_black_box() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
+    use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
 
     // A minimal valid H.264 Annex-B NAL: start code + IDR byte.
     let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB, 0xCC];

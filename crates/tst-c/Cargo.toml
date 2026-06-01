@@ -14,17 +14,20 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 doctest    = false
 
 [features]
-default = ["srt", "rtp", "mbedtls"]
-srt     = ["dep:tst-srt"]
-rtp     = ["dep:tst-rtp", "dep:secrecy"]
+default = ["std", "srt", "rtp", "mbedtls"]
+# `std` gates every transport-bearing surface + std-only sinks. The offline
+# core (muxer / demuxer / config / error / handle) is being carved to compile
+# without it, for the forthcoming no_std embedded staticlib path (see
+# crates/baremetal-qemu-c/). Note: as of this commit `panic.rs`/`handle.rs`
+# still use unconditional `std::` — that carve-out lands in the next task.
+std     = []
+srt     = ["std", "dep:tst-srt"]
+rtp     = ["std", "dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
-# Plan A5a additions — default-off to keep embedded libtstrans.so size
-# unchanged for existing SRT-only / RTP-only consumers. Linux distros
-# that want everything can `cargo build --features udp,tcp,hls,rist`.
-udp     = ["dep:tst-udp"]
-tcp     = ["dep:tst-tcp"]
-hls     = ["dep:tst-tcp", "tst-tcp?/hls"] # HLS lives in tst-tcp; needs the hls sub-feature
-rist    = ["dep:tst-rist"]
+udp     = ["std", "dep:tst-udp"]
+tcp     = ["std", "dep:tst-tcp"]
+hls     = ["std", "dep:tst-tcp", "tst-tcp?/hls"]
+rist    = ["std", "dep:tst-rist"]
 
 [dependencies]
 tst-srt      = { path = "../tst-srt", default-features = false, optional = true }

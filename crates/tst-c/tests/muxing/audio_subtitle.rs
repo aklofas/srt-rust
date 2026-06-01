@@ -8,7 +8,9 @@
 //! SRT-wrapped `tst_mux_sender_send_*` tests are out of scope here —
 //! they need listener/sender boilerplate and live in `tests/url_open.rs`.
 
-// Pulls in `tstrans::sender::muxer::*`, which is `cfg(feature = "srt")`.
+// The offline `tst_muxer_*` surface is unconditional (no feature gate);
+// this test still gates on `srt` only because it links against SRT-transport
+// helpers used elsewhere in the muxing test binary.
 #![cfg(feature = "srt")]
 
 use tstrans::config::{
@@ -19,7 +21,7 @@ use tstrans::config::{
     tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
-use tstrans::sender::muxer::{
+use tstrans::muxer::{
     tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_audio, tst_muxer_push_audio_to,
     tst_muxer_push_subtitle, tst_muxer_push_subtitle_to, tst_muxer_push_video_to,
 };

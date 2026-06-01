@@ -23,15 +23,24 @@ fn main() {
     let config =
         cbindgen::Config::from_file(format!("{crate_dir}/cbindgen.toml")).expect("cbindgen.toml");
 
+    // The `#[no_mangle]` entry points now live in the embeddable `tst-c-core`
+    // rlib (this leaf crate only re-exports them via `pub use tst_c_core::*`),
+    // so cbindgen scans the core crate's source tree. cbindgen.toml stays in
+    // this crate.
+    let core_dir = PathBuf::from(&crate_dir)
+        .parent()
+        .expect("crate dir parent")
+        .join("tst-c-core");
+
     cbindgen::Builder::new()
         .with_config(config)
-        .with_crate(&crate_dir)
+        .with_crate(&core_dir)
         .generate()
         .expect("cbindgen generate")
         .write_to_file(&header_path);
 
     println!("cargo:rerun-if-changed=cbindgen.toml");
-    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=../tst-c-core/src");
 
     // Post-process 1: inject TST_HAS_SRT / TST_HAS_RTP feature defines into
     // the header immediately after the include guard open, so consumer C code
@@ -48,30 +57,30 @@ fn main() {
     add_section_dividers(&header_path);
 
     // ────────────────────────────────────────────────────────────────
-    // Symbol hygiene (audit 09-c-abi.md Finding 3): restrict the
-    // libtstrans dynamic export table to tst_*/TST_* symbols on
-    // platforms that support per-symbol linker-script export gates.
-    // Linux uses --exclude-libs=ALL (hides all static-library symbols
-    // from the dynamic export table; libsrt/mbedTLS are statically
-    // linked so their srt_*/SRT_*/mbedtls_* exports are dropped while
-    // our own #[no_mangle] tst_* symbols remain).
-    // macOS uses -exported_symbols_list (whitelist by symbol-name
-    // pattern). Windows MSVC is deferred to plan #65's follow-up
-    // (runtime tests blocked on Windows hardware — see
-    // project_plan_65 memory entry).
+    // Symbol hygiene (audit 09-c-abi.md Finding 3): the libtstrans
+    // dynamic export table must contain only tst_*/TST_* symbols (the
+    // srt_*/SRT_*/mbedtls_* symbols from the statically-linked libsrt /
+    // mbedTLS must NOT leak).
     //
-    // Note: Plan B originally specified -Wl,--version-script=... for
-    // Linux, but that conflicts with rustc's auto-emitted anonymous
-    // version-script for cdylib targets (GNU BFD ld rejects mixing
-    // anonymous and named version tags). --exclude-libs=ALL achieves
-    // the same outcome (0 srt_*/SRT_* in libtstrans.so's export table)
-    // without touching the auto-emitted script.
+    // Linux previously used `-Wl,--exclude-libs=ALL` for this. That flag
+    // localizes the symbols of EVERY static archive on the link line —
+    // which, after the tst-c-core split, now includes the tst-c-core
+    // rlib carrying our own #[no_mangle] tst_* entry points, so it would
+    // hide the entire public ABI. It is dropped here because it is
+    // redundant: rustc's auto-emitted anonymous version-script for a
+    // cdylib already localizes every symbol that is not a crate-graph
+    // `pub` `#[no_mangle]` export, so libsrt/mbedTLS symbols are emitted
+    // with LOCAL binding (`t`/`b`/`r` in `nm`) and never reach the
+    // dynamic export table. The `srt_symbols_not_exported` integration
+    // test enforces this invariant (0 global srt_*/SRT_* symbols).
+    //
+    // macOS still uses -exported_symbols_list (whitelist by symbol-name
+    // pattern; the leaf crate's exports.txt). Windows MSVC is deferred to
+    // plan #65's follow-up.
     // ────────────────────────────────────────────────────────────────
 
     #[cfg(target_os = "linux")]
     {
-        println!("cargo:rustc-link-arg=-Wl,--exclude-libs=ALL");
-
         // Dual-mbedTLS coexistence (Plan A5a). When BOTH the `srt` feature
         // (libsrt links the workspace `vendor/mbedtls`) AND the `rist` feature
         // (librist links its own `contrib/mbedtls`) are active, the two static

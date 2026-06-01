@@ -4,6 +4,7 @@ members = [
     "crates/rist-sys",
     "crates/srt-sys",
     "crates/tst-c",
+    "crates/tst-c-core",
     "crates/tst-core",
     "crates/tst-integration",
     "crates/tst-pipeline",

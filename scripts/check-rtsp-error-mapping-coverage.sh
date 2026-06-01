@@ -3,7 +3,7 @@
 #
 # Verifies that every RtspError, MountError, and RtspServerError variant
 # from tst-rtp has an explicit match arm in
-# crates/tst-c/src/error.rs, and that the three converter functions
+# crates/tst-c-core/src/error.rs, and that the three converter functions
 # (rtsp_error_to_code, mount_error_to_code, rtsp_server_error_to_code)
 # exist.
 #
@@ -19,7 +19,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-ERR_FILE="$ROOT/crates/tst-c/src/error.rs"
+ERR_FILE="$ROOT/crates/tst-c-core/src/error.rs"
 RTSP_ERR="$ROOT/crates/tst-rtp/src/error.rs"
 
 # ----------------------------------------------------------------------

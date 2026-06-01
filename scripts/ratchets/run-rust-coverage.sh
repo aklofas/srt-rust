@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Driver: run the `rust` rows of error-mapping.tsv through lib/coverage.sh.
 # Each row asserts every <Enum>ErrorKind variant has an arm in its
-# <proto>_error_to_code converter in crates/tst-c/src/error.rs.
+# <proto>_error_to_code converter in crates/tst-c-core/src/error.rs.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/coverage.sh
 . "$DIR/lib/coverage.sh"
 
 TSV="$DIR/error-mapping.tsv"
-ARM_FILE="crates/tst-c/src/error.rs"
+ARM_FILE="crates/tst-c-core/src/error.rs"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --tsv) TSV="$2"; shift 2 ;;

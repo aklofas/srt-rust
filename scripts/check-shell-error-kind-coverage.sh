@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify every ShellErrorKind variant is matched explicitly in
-# tst_error_from_kind (crates/tst-c/src/error.rs) BEFORE the function's
+# tst_error_from_kind (crates/tst-c-core/src/error.rs) BEFORE the function's
 # wildcard arm.
 #
 # ShellErrorKind is #[non_exhaustive], requiring tst-c match expressions
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 KIND_FILE="crates/tst-pipeline/src/shell_error.rs"
-TST_C_ERROR="crates/tst-c/src/error.rs"
+TST_C_ERROR="crates/tst-c-core/src/error.rs"
 
 extract_function_body_before_wildcard() {
     local file="$1"

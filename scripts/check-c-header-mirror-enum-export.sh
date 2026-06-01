@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify every `pub enum Tst<Name>` declared in crates/tst-c/src/ is
+# Verify every `pub enum Tst<Name>` declared in crates/tst-c-core/src/ is
 # listed in crates/tst-c/cbindgen.toml's `[export] include = [...]`
 # allowlist.
 #
@@ -30,11 +30,11 @@ CBINDGEN="crates/tst-c/cbindgen.toml"
 
 [ -f "$CBINDGEN" ] || { echo "FAIL: $CBINDGEN not found"; exit 1; }
 
-ENUMS=$(grep -rhE '^pub enum Tst[A-Z][A-Za-z0-9]*' crates/tst-c/src/ \
+ENUMS=$(grep -rhE '^pub enum Tst[A-Z][A-Za-z0-9]*' crates/tst-c-core/src/ \
             | sed -E 's/^pub enum (Tst[A-Za-z0-9]+).*/\1/' \
             | sort -u)
 
-[ -n "$ENUMS" ] || { echo "FAIL: no Tst* enums found under crates/tst-c/src/"; exit 1; }
+[ -n "$ENUMS" ] || { echo "FAIL: no Tst* enums found under crates/tst-c-core/src/"; exit 1; }
 
 # Extract only the `[export] include = [...]` block — not [export.rename]
 # (which would create a hole where a rename rule exists but the include
@@ -57,7 +57,7 @@ while IFS= read -r enum; do
 done <<< "$ENUMS"
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-    echo "FAIL: Tst* enums declared in crates/tst-c/src/ but missing from"
+    echo "FAIL: Tst* enums declared in crates/tst-c-core/src/ but missing from"
     echo "      cbindgen.toml [export] include allowlist:"
     for e in "${MISSING[@]}"; do echo "  - $e"; done
     echo
@@ -70,4 +70,4 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 fi
 
 count=$(echo "$ENUMS" | grep -c .)
-echo "OK: $count Tst* enums in tst-c/src/ are all in $CBINDGEN export allowlist"
+echo "OK: $count Tst* enums in tst-c-core/src/ are all in $CBINDGEN export allowlist"

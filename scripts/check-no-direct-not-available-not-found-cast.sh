@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify that no C ABI source file in crates/tst-c/src/ contains a direct
+# Verify that no C ABI source file in crates/tst-c-core/src/ contains a direct
 # `TstError::NotAvailable as i32` or `TstError::NotFound as i32` cast.
 # These bypass set_last_error() and leave stale message visible to
 # tst_get_last_error(). The canonical pattern is to call
@@ -15,7 +15,7 @@
 #
 # Exclusions:
 # - `assert_eq` in test modules (documented enum-value assertions).
-# - crates/tst-c/src/error.rs (the helpers themselves contain the cast
+# - crates/tst-c-core/src/error.rs (the helpers themselves contain the cast
 #   on their happy path — they pair it with set_last_error in the same
 #   call, which is the whole point).
 
@@ -36,21 +36,21 @@ fi
 # Drive pass/fail off rg's own exit code: 0 = matches, 1 = no matches (healthy),
 # >=2 = a real rg error that must red the build rather than be filtered away.
 set +e
-matches=$(rg -n "TstError::(NotAvailable|NotFound) as i32" crates/tst-c/src/)
+matches=$(rg -n "TstError::(NotAvailable|NotFound) as i32" crates/tst-c-core/src/)
 rg_rc=$?
 set -e
 if [ "$rg_rc" -ge 2 ]; then
-    echo "FAIL: ripgrep errored (exit $rg_rc) scanning crates/tst-c/src/." >&2
+    echo "FAIL: ripgrep errored (exit $rg_rc) scanning crates/tst-c-core/src/." >&2
     exit 1
 fi
 
 BYPASS=$(printf '%s' "$matches" \
     | grep -v "assert_eq" \
-    | grep -v "^crates/tst-c/src/error.rs:" \
+    | grep -v "^crates/tst-c-core/src/error.rs:" \
     || true)
 
 if [ -n "$BYPASS" ]; then
-    echo "FAIL: direct TstError::(NotAvailable|NotFound) as i32 cast(s) found in crates/tst-c/src/:"
+    echo "FAIL: direct TstError::(NotAvailable|NotFound) as i32 cast(s) found in crates/tst-c-core/src/:"
     echo "$BYPASS" | sed 's/^/  /'
     echo
     echo "Use record_not_available(msg) or record_not_found(msg) from"
@@ -58,4 +58,4 @@ if [ -n "$BYPASS" ]; then
     exit 1
 fi
 
-echo "OK: no direct NotAvailable/NotFound casts in crates/tst-c/src/"
+echo "OK: no direct NotAvailable/NotFound casts in crates/tst-c-core/src/"

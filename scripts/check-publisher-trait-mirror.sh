@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 30th bash ratchet (Plan A5a Wave C).
 # Verifies every method on the tst_core::publisher::Publisher trait has a
-# corresponding tst_publisher_* C entry point in crates/tst-c/src/hls/ AND
+# corresponding tst_publisher_* C entry point in crates/tst-c-core/src/hls/ AND
 # appears in the generated crates/tst-c/include/tstrans.h.
 #
 # Catches future drift: when someone adds a new method to the Publisher trait,
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 CORE_TRAIT="crates/tst-core/src/publisher/mod.rs"
-HLS_DIR="crates/tst-c/src/hls"
+HLS_DIR="crates/tst-c-core/src/hls"
 HEADER="crates/tst-c/include/tstrans.h"
 
 if [[ ! -f "$CORE_TRAIT" ]]; then

@@ -2109,11 +2109,23 @@ version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
+ "libc",
+ "tempfile",
+ "tst-c-core",
+ "tst-core",
+ "tst-pipeline",
+ "tst-srt",
+ "tst-test-helpers",
+]
+
+[[package]]
+name = "tst-c-core"
+version = "0.1.0"
+dependencies = [
  "critical-section",
  "libc",
  "secrecy",
  "spin",
- "tempfile",
  "thiserror",
  "tst-core",
  "tst-pipeline",
@@ -2121,7 +2133,6 @@ dependencies = [
  "tst-rtp",
  "tst-srt",
  "tst-tcp",
- "tst-test-helpers",
  "tst-udp",
 ]
 

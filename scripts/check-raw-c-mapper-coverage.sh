@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify every variant of MuxError + TransportError is matched explicitly
-# in the raw record_*_error mappers in crates/tst-c/src/error.rs BEFORE
+# in the raw record_*_error mappers in crates/tst-c-core/src/error.rs BEFORE
 # the mapper's wildcard arm.
 #
 # These raw mappers exist because the standalone-muxer path (no shell)
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-TST_C_ERROR="crates/tst-c/src/error.rs"
+TST_C_ERROR="crates/tst-c-core/src/error.rs"
 
 # Each row: enum-file | enum-short-name | mapper-fn-name | excluded-variants (space-separated, optional)
 #

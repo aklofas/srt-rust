@@ -24,9 +24,16 @@ fn committed_header_matches_cbindgen_output() {
 
     let config = cbindgen::Config::from_file(format!("{manifest_dir}/cbindgen.toml"))
         .expect("read cbindgen.toml");
+    // The `#[no_mangle]` entry points live in the embeddable `tst-c-core`
+    // rlib (this crate re-exports them via `pub use tst_c_core::*`), so
+    // cbindgen scans the core crate — same as build.rs.
+    let core_dir = PathBuf::from(manifest_dir)
+        .parent()
+        .expect("crate dir parent")
+        .join("tst-c-core");
     let generated = cbindgen::Builder::new()
         .with_config(config)
-        .with_crate(manifest_dir)
+        .with_crate(&core_dir)
         .generate()
         .expect("cbindgen generate");
     let mut buf = Vec::new();

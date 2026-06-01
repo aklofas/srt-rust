@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Local mirror of the CI `no-std-baremetal` job.
 #
-# Proves `tst-core` and `tst-pipeline` (sender path) compile `#![no_std]` +
+# Proves `tst-core`, `tst-pipeline` (sender path), and `tst-c-core` (the
+# embeddable C-ABI core rlib) compile `#![no_std]` +
 # `alloc` for bare-metal targets.  A `*-none-*` target has no `std` at all,
 # so a clean build IS the guard: any `use std::` regression or std-only
 # dependency fails to compile here.  Library builds need no
@@ -30,7 +31,7 @@ echo "OK: tst-pipeline (sender path) builds no_std for ${TARGETS[*]}"
 
 for t in "${TARGETS[@]}"; do
   rustup target add "$t" --toolchain 1.85 >/dev/null 2>&1 || true
-  echo "==> cargo rustc -p tst-c --no-default-features --lib --crate-type rlib --target $t"
-  cargo rustc -p tst-c --no-default-features --lib --target "$t" --crate-type rlib
+  echo "==> cargo build -p tst-c-core --no-default-features --target $t"
+  cargo build -p tst-c-core --no-default-features --target "$t"
 done
-echo "OK: tst-c (offline core) builds no_std (rlib) for ${TARGETS[*]}"
+echo "OK: tst-c-core (offline C-ABI core) builds no_std (rlib) for ${TARGETS[*]}"

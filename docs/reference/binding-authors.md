@@ -113,7 +113,7 @@ tst_mux_sender_close(sender);
 
 Every C-ABI error code surfaced through `tst_get_last_error()` and the
 direct negative-return-value contract derives from one of two
-explicit-coverage paths in `crates/tst-c/src/error.rs`:
+explicit-coverage paths in `crates/tst-c-core/src/error.rs`:
 
 **Shell-entry path (the common case).** Every C entry point that owns
 a shell handle (`tst_mux_sender_*`, `tst_ts_sender_*`,

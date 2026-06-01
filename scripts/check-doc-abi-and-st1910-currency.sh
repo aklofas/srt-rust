@@ -6,7 +6,7 @@
 #
 #   1. README.md, docs/, and crate-level rustdoc must not mention
 #      a stale ABI minor (`ABI version 0.0`..`0.4`). Current value is
-#      tracked by TST_ABI_VERSION_MINOR in crates/tst-c/src/lib.rs; the
+#      tracked by TST_ABI_VERSION_MINOR in crates/tst-c-core/src/lib.rs; the
 #      published docs must match.
 #
 #   2. Bare `ST 1910` (i.e. NOT followed by `.1`) must not appear in
@@ -51,7 +51,7 @@ if [ ${#ABI_HITS[@]} -gt 0 ]; then
     echo "FAIL: stale 'ABI version 0.[0-4]' references found:"
     for h in "${ABI_HITS[@]}"; do echo "  $h"; done
     echo
-    echo "Current ABI minor (per crates/tst-c/src/lib.rs TST_ABI_VERSION_MINOR): 5"
+    echo "Current ABI minor (per crates/tst-c-core/src/lib.rs TST_ABI_VERSION_MINOR): 5"
     echo "Update each hit to the current value."
     FAILED=1
 fi
@@ -92,7 +92,7 @@ fi
 # -----------------------------------------------------------------------
 # Rule 3 — tst-c crate docs claiming receiver/demux pending
 # -----------------------------------------------------------------------
-TSTC_LIB="crates/tst-c/src/lib.rs"
+TSTC_LIB="crates/tst-c-core/src/lib.rs"
 if [ -f "$TSTC_LIB" ]; then
     PENDING_HITS=()
     while IFS= read -r line; do

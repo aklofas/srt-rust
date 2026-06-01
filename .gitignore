@@ -12,6 +12,11 @@ embedded/s0-cpp-gate/firmware.elf
 embedded/s0-cpp-gate/*.elf
 embedded/s0-cpp-gate/*.o
 
+# Embedded S1 FreeRTOS + lwIP harness build artifacts
+embedded/s1-lwip/firmware.elf
+embedded/s1-lwip/*.elf
+embedded/s1-lwip/*.o
+
 # Rust analyzer
 .rust-analyzer/
 

@@ -13,3 +13,6 @@
 [submodule "vendor/freertos-plus-posix"]
 	path = vendor/freertos-plus-posix
 	url = https://github.com/FreeRTOS/Lab-Project-FreeRTOS-POSIX.git
+[submodule "vendor/lwip"]
+	path = vendor/lwip
+	url = https://github.com/lwip-tcpip/lwip.git

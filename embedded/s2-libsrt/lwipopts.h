@@ -1,6 +1,8 @@
-/* lwIP config for the S1 harness: a single device, loopback netif only, UDP +
- * BSD sockets + select(). No NIC, no ARP/ethernet, no TCP/IPv6 — the minimum
- * surface libsrt's channel.cpp (sendto/recvfrom) + CEPoll (select) exercise. */
+/* lwIP config for the S2 harness: a single device, loopback netif only, UDP +
+ * BSD sockets + select(). No NIC, no ARP/ethernet, no TCP. IPv6 is ENABLED (see
+ * LWIP_IPV6 below) so libsrt's sockaddr_in6/ip6_addr_t types resolve, but only
+ * IPv4 loopback traffic actually flows. The minimum surface libsrt's
+ * channel.cpp (sendto/recvfrom) + CEPoll (select) exercise. */
 #ifndef LWIP_LWIPOPTS_H
 #define LWIP_LWIPOPTS_H
 

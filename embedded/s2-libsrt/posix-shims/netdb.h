@@ -24,12 +24,16 @@
  * plane uses numeric addresses), so a stub that fails is sufficient: libsrt's
  * sockaddr_any::str() treats a nonzero return as "no host" and falls back to
  * ":<port>". Real impl deferred — not needed until/unless a binding wants it. */
+#ifndef EAI_FAIL
+#define EAI_FAIL (-4)   /* nonzero; POSIX getnameinfo returns 0 or an EAI_* code */
+#endif
 static inline int getnameinfo(const struct sockaddr* sa, socklen_t salen,
                               char* host, socklen_t hostlen,
                               char* serv, socklen_t servlen, int flags) {
-    (void)sa; (void)salen; (void)host; (void)hostlen;
-    (void)serv; (void)servlen; (void)flags;
-    return -1;
+    (void)sa; (void)salen; (void)flags;
+    if (host && hostlen) host[0] = '\0';   /* don't leave caller buffers unset */
+    if (serv && servlen) serv[0] = '\0';
+    return EAI_FAIL;
 }
 
 #endif

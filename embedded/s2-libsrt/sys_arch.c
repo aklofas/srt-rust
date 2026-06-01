@@ -93,9 +93,10 @@ u32_t sys_arch_mbox_tryfetch(sys_mbox_t *mbox, void **msg) {
 sys_thread_t sys_thread_new(const char *name, lwip_thread_fn fn, void *arg,
                             int stacksize, int prio) {
     TaskHandle_t h = NULL;
-    /* lwIP stacksize is in bytes; FreeRTOS xTaskCreate depth is in words. */
+    /* lwIP stacksize is in bytes; FreeRTOS xTaskCreate depth is in words.
+     * Round up so a non-word-aligned byte size doesn't under-allocate. */
     xTaskCreate((TaskFunction_t)fn, name,
-                (configSTACK_DEPTH_TYPE)(stacksize / sizeof(StackType_t)),
+                (configSTACK_DEPTH_TYPE)(((size_t)stacksize + sizeof(StackType_t) - 1) / sizeof(StackType_t)),
                 arg, (UBaseType_t)prio, &h);
     return h;
 }

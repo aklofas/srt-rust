@@ -7,6 +7,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+/* LWIP_TIMEVAL_PRIVATE=0 (lwipopts.h) → every lwIP TU must see the system
+ * struct timeval; lwIP's docs require including <sys/time.h> from cc.h. */
+#include <sys/time.h>
 
 #define LWIP_PLATFORM_DIAG(x)   do { printf x; } while (0)
 #define LWIP_PLATFORM_ASSERT(x) do { printf("LWIP ASSERT: %s\n", x); abort(); } while (0)

@@ -68,4 +68,9 @@
 #define LWIP_PROVIDE_ERRNO          0
 #include <errno.h>
 
+/* Use the system struct timeval (from <sys/time.h>) rather than lwIP's private
+ * one — once main.cpp also pulls the FreeRTOS-Plus-POSIX/newlib headers, lwIP's
+ * own definition collides (redefinition of 'struct timeval'). */
+#define LWIP_TIMEVAL_PRIVATE        0
+
 #endif /* LWIP_LWIPOPTS_H */

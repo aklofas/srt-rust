@@ -13,7 +13,8 @@ OPT="-Os -ffunction-sections -fdata-sections -g"
 INC="-I. -I$K/include -I$K/portable/GCC/ARM_CM4F \
      -I$P/include -I$P/include/private \
      -I$P/FreeRTOS-Plus-POSIX/include -I$P/FreeRTOS-Plus-POSIX/include/portable \
-     -I$L/src/include"
+     -I$L/src/include \
+     -I$ROOT/crates/baremetal-qemu-c/firmware"   # golden.h (reused 564B golden)
 
 CC=arm-none-eabi-gcc
 CXX=arm-none-eabi-g++

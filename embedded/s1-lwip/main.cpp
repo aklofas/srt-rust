@@ -1,52 +1,82 @@
-// S1 — Task 3 milestone: a 4-byte datagram round-trips through lwIP UDP on the
-// loopback netif. pthreads + golden come in Task 4; this de-risks lwIP/sys_arch.
+// S1 — Task 4 (payoff): the committed 564-byte video-roundtrip golden round-
+// trips through lwIP UDP on the loopback netif. Sender + receiver run as
+// FreeRTOS-Plus-POSIX pthreads (the threading API libsrt's sync_posix.cpp binds
+// to) concurrently with lwIP's own tcpip thread — the R2-hardening concurrency
+// mix. Receiver blocks on select() (libsrt's CEPoll primitive off-Linux).
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
+#include "FreeRTOS_POSIX.h"
+#include "FreeRTOS_POSIX/pthread.h"
 #include "lwip/tcpip.h"
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
-#include "lwip/netif.h"
-#include "lwip/init.h"
 }
+#include "golden.h"   // crates/baremetal-qemu-c/firmware/golden.h — GOLDEN[], GOLDEN_LEN
 extern "C" int _exit(int);
-
-static volatile int g_lwip_up = 0;
-static void tcpip_ready(void*) { g_lwip_up = 1; }
 
 #define PORT 9000
 
-static void run_task(void*) {
-    tcpip_init(tcpip_ready, nullptr);
-    while (!g_lwip_up) vTaskDelay(pdMS_TO_TICKS(1));
-    // The loopback netif (lo, 127.0.0.1) is auto-added by lwIP init when
-    // LWIP_HAVE_LOOPIF; give it a moment, then send to 127.0.0.1.
-    vTaskDelay(pdMS_TO_TICKS(10));
+static volatile int g_lwip_up = 0;
+static volatile int g_fail = 0;
+static int g_rx_sock = -1;
+static uint8_t g_rxbuf[1024];
+static int g_rxlen = 0;
 
-    int rx = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+static void tcpip_ready(void*) { g_lwip_up = 1; }
+
+// Receiver pthread: bind, block on select(), recvfrom into g_rxbuf.
+static void* rx_thread(void*) {
     struct sockaddr_in addr; memset(&addr, 0, sizeof addr);
     addr.sin_family = AF_INET;
     addr.sin_port = lwip_htons(PORT);
     addr.sin_addr.s_addr = lwip_htonl(INADDR_LOOPBACK);
-    if (lwip_bind(rx, (struct sockaddr*)&addr, sizeof addr) != 0) { printf("FAIL[bind]\n"); fflush(stdout); _exit(1); }
-
-    int tx = lwip_socket(AF_INET, SOCK_DGRAM, 0);
-    const uint8_t msg[4] = {0xDE, 0xAD, 0xBE, 0xEF};
-    lwip_sendto(tx, msg, sizeof msg, 0, (struct sockaddr*)&addr, sizeof addr);
-
-    // Block on select() then recv — exercises lwIP's select path.
-    fd_set rfds; FD_ZERO(&rfds); FD_SET(rx, &rfds);
+    g_rx_sock = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+    if (g_rx_sock < 0 || lwip_bind(g_rx_sock, (struct sockaddr*)&addr, sizeof addr) != 0) {
+        g_fail = 1; return nullptr;
+    }
+    fd_set rfds; FD_ZERO(&rfds); FD_SET(g_rx_sock, &rfds);
     struct timeval tv; tv.tv_sec = 5; tv.tv_usec = 0;
-    int sel = lwip_select(rx + 1, &rfds, nullptr, nullptr, &tv);
-    if (sel <= 0) { printf("FAIL[select]: %d\n", sel); fflush(stdout); _exit(1); }
+    if (lwip_select(g_rx_sock + 1, &rfds, nullptr, nullptr, &tv) <= 0) { g_fail = 1; return nullptr; }
+    g_rxlen = lwip_recvfrom(g_rx_sock, g_rxbuf, sizeof g_rxbuf, 0, nullptr, nullptr);
+    return nullptr;
+}
 
-    uint8_t buf[16]; int n = lwip_recvfrom(rx, buf, sizeof buf, 0, nullptr, nullptr);
-    int ok = (n == 4) && (memcmp(buf, msg, 4) == 0);
-    if (ok) printf("PASS: s1_lwip_smoke (4B UDP loopback via select)\n");
-    else    printf("FAIL[recv]: n=%d\n", n);
+// Sender pthread: send the full golden buffer to the loopback receiver.
+static void* tx_thread(void*) {
+    struct sockaddr_in addr; memset(&addr, 0, sizeof addr);
+    addr.sin_family = AF_INET;
+    addr.sin_port = lwip_htons(PORT);
+    addr.sin_addr.s_addr = lwip_htonl(INADDR_LOOPBACK);
+    int tx = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+    // Small delay so the receiver is bound + in select() first.
+    vTaskDelay(pdMS_TO_TICKS(50));
+    if (lwip_sendto(tx, GOLDEN, GOLDEN_LEN, 0, (struct sockaddr*)&addr, sizeof addr) < 0) g_fail = 1;
+    return nullptr;
+}
+
+static void run_task(void*) {
+    tcpip_init(tcpip_ready, nullptr);
+    while (!g_lwip_up) vTaskDelay(pdMS_TO_TICKS(1));
+
+    pthread_t rx, tx;
+    pthread_attr_t attr; pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 4096);   // ≥4 KiB (S0 finding)
+    pthread_create(&rx, &attr, rx_thread, nullptr);
+    pthread_create(&tx, &attr, tx_thread, nullptr);
+    pthread_join(tx, nullptr);
+    pthread_join(rx, nullptr);
+
+    int ok = !g_fail
+          && (g_rxlen == (int)GOLDEN_LEN)
+          && (memcmp(g_rxbuf, GOLDEN, GOLDEN_LEN) == 0);
+    if (ok) printf("PASS: s1_lwip (golden %uB through lwIP UDP loopback, select+pthreads+hires-clock)\n",
+                   (unsigned)GOLDEN_LEN);
+    else    printf("FAIL[s1_lwip]: g_fail=%d rxlen=%d (expected %u)\n",
+                   g_fail, g_rxlen, (unsigned)GOLDEN_LEN);
     fflush(stdout);
     _exit(ok ? 0 : 1);
 }

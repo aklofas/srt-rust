@@ -676,6 +676,17 @@ jobs:
         continue-on-error: true
         run: bash scripts/check-s3-srt.sh
 
+      # Runtime gate: real-NIC egress. A bare-metal SRT caller streams the
+      # 564-byte golden x N out a lan9118 NIC over QEMU SLIRP user-net to a
+      # host tst-srt listener that verifies byte-exact -- plain and AES-128.
+      # The host process exit code is the verdict (the firmware only proves it
+      # sent). Same phase-in (continue-on-error) rationale as S0-S3. No new apt
+      # packages -- SLIRP is in qemu-system-arm, lan9118 is in QEMU, mbedTLS is
+      # vendored; the host harness builds the vendored host libsrt via cargo.
+      - name: QEMU runtime gate (S4 lan9118 NIC -> host SRT egress)
+        continue-on-error: true
+        run: bash scripts/check-s4-srt.sh
+
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
     runs-on: ubuntu-latest

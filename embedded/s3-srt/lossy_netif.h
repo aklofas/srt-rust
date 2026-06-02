@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Bring up a netif at 127.0.0.1 whose output loops packets back to input,
+/* Bring up a netif at 10.0.0.1 whose output loops packets back to input,
  * deterministically dropping ~20% of DATA-sized packets (control/handshake
  * always pass). Call after tcpip_init() has completed. */
 void     lossy_netif_up(void);

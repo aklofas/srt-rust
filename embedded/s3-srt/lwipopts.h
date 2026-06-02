@@ -35,9 +35,11 @@
 #define LWIP_IGMP                   0
 #define LWIP_ICMP                   1
 
-/* S3: our lossy netif (lossy_netif.c) owns 127.0.0.1 and applies packet loss in
+/* S3: our lossy netif (lossy_netif.c) owns 10.0.0.1 and applies packet loss in
  * its output path, so disable lwIP's built-in loopback short-circuit — otherwise
- * traffic to 127.0.0.1 would bypass our netif and never see the drop filter. */
+ * traffic to the netif's own address would bypass our netif and never see the
+ * drop filter. (10.0.0.1, not 127.0.0.1: with LWIP_HAVE_LOOPIF=0 lwIP accepts
+ * 127/8 at the IP layer but never matches it to the bound UDP pcb.) */
 #define LWIP_HAVE_LOOPIF            0
 #define LWIP_NETIF_LOOPBACK         0
 #define LWIP_NETIF_LOOPBACK_MULTITHREADING 0

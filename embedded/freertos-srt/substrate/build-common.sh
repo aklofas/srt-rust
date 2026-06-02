@@ -47,7 +47,11 @@ INC="-I$SUB -I$SUB/freertos -I$SUB/lwip -I$SUB/drivers \
      -I$P/FreeRTOS-Plus-POSIX/include -I$P/FreeRTOS-Plus-POSIX/include/portable"
 
 # Substrate C always present: startup, clock, stubs, FreeRTOS kernel + POSIX.
-C_SRC="$SUB/startup.c $SUB/clock_shim.c $SUB/syscalls_stub.c $SUB/atomic64_stub.c $SUB/net_shim.c \
+# (net_shim.c is the libsrt-on-lwIP __wrap_setsockopt shim — it needs lwIP
+# headers and is only meaningful on the data-plane targets, so it rides with the
+# netif drivers below, exactly as in S3/S4. The non-netif targets never call
+# setsockopt, so -Wl,--wrap=setsockopt stays inert for them.)
+C_SRC="$SUB/startup.c $SUB/clock_shim.c $SUB/syscalls_stub.c $SUB/atomic64_stub.c \
        $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
        $K/portable/GCC/ARM_CM4F/port.c $K/portable/MemMang/heap_4.c \
        $PS/FreeRTOS_POSIX_pthread.c $PS/FreeRTOS_POSIX_pthread_mutex.c \
@@ -61,8 +65,8 @@ if [ "${LWIP:-0}" = "1" ]; then
   C_SRC="$C_SRC $SUB/lwip/sys_arch.c $L/src/core/*.c $L/src/core/ipv4/*.c $L/src/core/ipv6/*.c $L/src/api/*.c $L/src/netif/ethernet.c"
 fi
 case "${NETIF:-none}" in
-  lossy)   C_SRC="$C_SRC $SUB/drivers/lossy_netif.c" ;;
-  lan9118) C_SRC="$C_SRC $SUB/drivers/lan9118_netif.c" ;;
+  lossy)   C_SRC="$C_SRC $SUB/drivers/lossy_netif.c $SUB/net_shim.c" ;;
+  lan9118) C_SRC="$C_SRC $SUB/drivers/lan9118_netif.c $SUB/net_shim.c" ;;
 esac
 
 # libsrt (+ optional mbedTLS) cross-build, keyed on ENCRYPT so plain/AES trees

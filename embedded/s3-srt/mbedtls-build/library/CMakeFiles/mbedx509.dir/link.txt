@@ -1,0 +1,2 @@
+/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libmbedx509.a CMakeFiles/mbedx509.dir/pkcs7.c.obj CMakeFiles/mbedx509.dir/x509.c.obj CMakeFiles/mbedx509.dir/x509_create.c.obj CMakeFiles/mbedx509.dir/x509_crl.c.obj CMakeFiles/mbedx509.dir/x509_crt.c.obj CMakeFiles/mbedx509.dir/x509_csr.c.obj CMakeFiles/mbedx509.dir/x509write.c.obj CMakeFiles/mbedx509.dir/x509write_crt.c.obj CMakeFiles/mbedx509.dir/x509write_csr.c.obj
+/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libmbedx509.a

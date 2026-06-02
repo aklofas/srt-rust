@@ -10,7 +10,7 @@ publish = false
 [workspace]
 
 [dependencies]
-tst-srt = { path = "../../../crates/tst-srt" }
+tst-srt = { path = "../../../../crates/tst-srt" }
 
 [[bin]]
 name = "s4-host"

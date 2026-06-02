@@ -4,7 +4,7 @@
 //! enables AES-128.
 use std::io::Write;
 use std::process::exit;
-use tst_srt::{Congestion, KeyLength, ListenerBuilder, Passphrase};
+use tst_srt::{KeyLength, ListenerBuilder, Passphrase};
 
 include!(concat!(env!("OUT_DIR"), "/golden.rs")); // pub static GOLDEN: [u8;564]
 
@@ -16,7 +16,7 @@ fn main() {
     let tag = if aes.is_some() { "s4_host_aes" } else { "s4_host_plain" };
 
     let mut lb = ListenerBuilder::new();
-    lb.congestion(Congestion::File); // match the FILE-mode caller
+    // LIVE mode (tst-srt default) — matches the firmware caller's SRTT_LIVE.
     if let Some(pass) = aes.as_deref() {
         lb.passphrase(Passphrase::new(pass.to_string()).expect("valid passphrase"));
         lb.key_length(KeyLength::Aes128);
@@ -30,18 +30,26 @@ fn main() {
     println!("host-ready");
     let _ = std::io::stdout().flush();
 
-    let (mut sock, peer) = match listener.accept() {
+    let (mut sock, _peer) = match listener.accept() {
         Ok(x) => x,
         Err(e) => { eprintln!("FAIL[{tag}]: accept: {e}"); exit(1); }
     };
-    eprintln!("accepted {peer}");
 
+    // LIVE/message mode: srt_recv requires the buffer to be at least the
+    // negotiated payload size (~1456 B), even though each message is only 564 B
+    // — passing a smaller tail slice throws "Incorrect use of Message API". So
+    // recv into a fixed full-size temp buffer each call, then copy into place.
     let mut buf = vec![0u8; STREAM_LEN];
+    let mut tmp = [0u8; 2048];
     let mut got = 0usize;
     while got < STREAM_LEN {
-        match sock.recv(&mut buf[got..]) {
+        match sock.recv(&mut tmp) {
             Ok(0) => break,
-            Ok(n) => got += n,
+            Ok(n) => {
+                let take = n.min(STREAM_LEN - got);
+                buf[got..got + take].copy_from_slice(&tmp[..take]);
+                got += take;
+            }
             Err(e) => { eprintln!("FAIL[{tag}]: recv at {got}: {e}"); exit(1); }
         }
     }

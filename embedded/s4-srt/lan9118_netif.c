@@ -103,7 +103,7 @@ static err_t lan9118_init(struct netif *netif) {
     for (int i = 0; i < 6; i++) netif->hwaddr[i] = s_mac[i];
     netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_LINK_UP;
 
-    /* Endianness probe (QEMU returns 0x87654321). Soft-reset the engine. */
+    /* Endianness probe (QEMU returns 0x87654321 from BYTE_TEST). */
     (void)REG(BYTE_TEST);
     REG(HW_CFG) = 0;                                      /* defaults are fine for QEMU */
     /* Program MAC address: ADDRL = low 4 bytes, ADDRH = high 2 bytes. */

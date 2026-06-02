@@ -1,18 +1,23 @@
-// Shared SRT socket configuration for the S3 caller + listener. FILE/buffer
-// transmission mode (SRTT_FILE) = SRT's reliable mode: full ARQ until
-// delivered, no too-late-packet-drop -> byte-exact recovery under loss. Phase B
-// additionally sets a passphrase (compile with -DS4_PASSPHRASE="...").
+// Shared SRT socket configuration for the S4 caller. LIVE transmission mode
+// (the libsrt default) so it interoperates with the host tst-srt listener,
+// which is a LIVE-streaming library (TSBPD + message API on; no FILE-mode
+// listener knob). Over the lossless SLIRP path LIVE delivers the golden
+// byte-exact (no too-late-packet-drop fires without loss). Phase B additionally
+// sets a passphrase (compile with -DS4_PASSPHRASE="...").
 #ifndef SRT_OPTS_H
 #define SRT_OPTS_H
 #include <srt/srt.h>
 
 static inline int s4_apply_opts(SRTSOCKET s) {
-    // SRTO_TRANSTYPE takes an SRT_TRANSTYPE value, NOT int. The arm-none-eabi
-    // EABI defaults to -fshort-enums, so sizeof(SRT_TRANSTYPE) == 1 here; passing
-    // an int (size 4) fails libsrt's cast_optval size check (-> MN_INVAL throw).
-    SRT_TRANSTYPE tt = SRTT_FILE;
+    // LIVE is the default transtype; setting it explicitly documents intent and
+    // keeps both ends matched (a FILE caller vs a LIVE listener is rejected at
+    // handshake — TSBPD/message-API negotiation mismatch). SRTO_TRANSTYPE takes
+    // an SRT_TRANSTYPE value, NOT int: arm-none-eabi defaults to -fshort-enums
+    // so sizeof(SRT_TRANSTYPE) == 1; passing an int (size 4) fails libsrt's
+    // cast_optval size check (-> MN_INVAL throw).
+    SRT_TRANSTYPE tt = SRTT_LIVE;
     if (srt_setsockflag(s, SRTO_TRANSTYPE, &tt, sizeof tt) == SRT_ERROR) return -1;
-    // Modest buffers (192 KiB FreeRTOS heap — keep SRT's allocations small).
+    // Modest buffers (keep SRT's allocations small on the 1 MiB FreeRTOS heap).
     int buf = 256 * 1024;
     srt_setsockflag(s, SRTO_SNDBUF, &buf, sizeof buf);
     srt_setsockflag(s, SRTO_RCVBUF, &buf, sizeof buf);

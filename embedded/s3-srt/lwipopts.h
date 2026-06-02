@@ -55,6 +55,12 @@
  * std::bind (mode 1's macros break both; S1 used lwip_* explicitly with =0). */
 #define LWIP_COMPAT_SOCKETS         2
 #define LWIP_POSIX_SOCKETS_IO_NAMES 0
+/* S3: libsrt's CChannel::setUDPSockOpt sets SO_RCVTIMEO + SO_SNDTIMEO on the UDP
+ * socket (its non-blocking-via-short-timeout path on non-UNIX/_WIN32 systems)
+ * and throws MJ_SETUP if either setsockopt returns -1. Enable both so lwIP
+ * accepts them. (SO_RCVBUF/SO_SNDBUF are handled by the net_shim.c link-wrap.) */
+#define LWIP_SO_RCVTIMEO            1
+#define LWIP_SO_SNDTIMEO            1
 #define LWIP_NETCONN_SEM_PER_THREAD 0
 
 /* Memory — generous; this is an H7-class budget and the traffic is one 564B

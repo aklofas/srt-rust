@@ -63,8 +63,13 @@ static err_t lossy_netif_init(struct netif *netif)
 void lossy_netif_up(void)
 {
     ip4_addr_t ip, mask, gw;
-    IP4_ADDR(&ip, 127, 0, 0, 1);
-    IP4_ADDR(&mask, 255, 0, 0, 0);
+    /* 10.0.0.1/24, NOT 127.0.0.1: lwIP special-cases loopback addresses and,
+     * with LWIP_HAVE_LOOPIF=0 (no real loopback netif), packets to 127.0.0.1 are
+     * accepted at the IP layer (netif address match) but never matched to the
+     * bound UDP pcb -> recv_udp is never called. A normal address on our netif
+     * routes + delivers cleanly. Both endpoints use 10.0.0.1 (main.cpp). */
+    IP4_ADDR(&ip, 10, 0, 0, 1);
+    IP4_ADDR(&mask, 255, 255, 255, 0);
     IP4_ADDR(&gw, 0, 0, 0, 0);
     netif_add(&s_netif, &ip, &mask, &gw, NULL, lossy_netif_init, tcpip_input);
     netif_set_default(&s_netif);

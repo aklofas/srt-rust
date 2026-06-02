@@ -13,7 +13,11 @@
 #define configMAX_PRIORITIES                    (5)
 #define configMINIMAL_STACK_SIZE                (256)        /* words */
 #define configSTACK_DEPTH_TYPE                  uint32_t     /* lwIP sys_thread_new byte→word conversion */
-#define configTOTAL_HEAP_SIZE                   (192 * 1024)
+/* S3: the SRT data plane spins up several worker pthreads (2 per multiplexer +
+ * GC) plus our 2 app pthreads, each with a multi-KiB stack carved from this
+ * heap, on top of libsrt's own buffers. 192 KiB (S2's boot-smoke budget) is far
+ * too small. RAM is 4 MiB (mps2_an386.ld), so be generous. */
+#define configTOTAL_HEAP_SIZE                   (1024 * 1024)
 #define configMAX_TASK_NAME_LEN                 (16)
 #define configUSE_16_BIT_TICKS                  0
 #define configIDLE_SHOULD_YIELD                 1
@@ -36,9 +40,12 @@
 #define configTIMER_QUEUE_LENGTH                10
 #define configTIMER_TASK_STACK_DEPTH            (256)
 
-/* Thread-local storage — S0-critical: Task 4 stores per-task __cxa_eh_globals
-   in a TLS pointer slot so concurrent exceptions don't clobber each other. */
-#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
+/* Thread-local storage — two slots: slot 0 backs libsrt's pthread_key TSD
+   (pthread_key_shim.c), slot 1 holds per-task __cxa_eh_globals (cxa_override.cpp)
+   so concurrent exceptions don't clobber each other. S3 needs BOTH at once
+   (libsrt's setOpt etc. throw from within pthreads that also use pthread_key),
+   so they must live on distinct slots. */
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 2
 
 /* Allocation. FreeRTOS-Plus-POSIX creates pthread join mutex/barrier via the
    xSemaphoreCreate*Static APIs, so static allocation must be on. Let the kernel

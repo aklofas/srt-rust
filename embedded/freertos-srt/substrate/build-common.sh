@@ -132,8 +132,16 @@ for f in $CXX_SRC; do
   $CXX $ARCH $OPT $INC $SHIM_DEFS -std=gnu++11 -fexceptions -c "$f" -o "$PROD/$(basename "${f%.cpp}").o"
 done
 
+# --wrap=clock_gettime + --wrap=gettimeofday: their wrappers live in clock_shim.c
+# + syscalls_stub.c (always compiled), so always safe. --wrap=setsockopt's
+# wrapper is __wrap_setsockopt in net_shim.c, compiled only for the data-plane
+# targets (NETIF != none); the non-netif targets must NOT wrap setsockopt —
+# libsrt-smoke pulls setsockopt from libsrt.a and would hit an undefined
+# __wrap_setsockopt otherwise (matching S2, which wrapped only clock_gettime).
+WRAPS="-Wl,--wrap=clock_gettime -Wl,--wrap=gettimeofday"
+[ "${NETIF:-none}" != "none" ] && WRAPS="$WRAPS -Wl,--wrap=setsockopt"
 $CXX $ARCH $OPT --specs=rdimon.specs -T "$SUB/mps2_an386.ld" -Wl,--gc-sections \
-  -Wl,--wrap=clock_gettime -Wl,--wrap=setsockopt -Wl,--wrap=gettimeofday \
+  $WRAPS \
   -Wl,--start-group "$PROD"/*.o $SRT_LIB $MBED_LIBS -lstdc++ -Wl,--end-group \
   -o "$PROD/firmware.elf"
 arm-none-eabi-size "$PROD/firmware.elf"

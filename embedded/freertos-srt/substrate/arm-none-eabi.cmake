@@ -11,7 +11,9 @@ set(CMAKE_CXX_COMPILER      arm-none-eabi-g++)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 get_filename_component(_S2 "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
-set(_ROOT "${_S2}/../..")
+# This file lives at embedded/freertos-srt/substrate/ — three levels under the
+# workspace root (was embedded/s4-srt/, two levels, hence the old ../..).
+set(_ROOT "${_S2}/../../..")
 set(_K "${_ROOT}/vendor/freertos-kernel")
 set(_P "${_ROOT}/vendor/freertos-plus-posix")
 set(_L "${_ROOT}/vendor/lwip")
@@ -25,9 +27,10 @@ set(_ARCH "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 # vendor/srt patch guards its single use (an IPE error path) on this define.
 set(_DEFS "-D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include ${CMAKE_CURRENT_LIST_DIR}/posix-shims/s2_prefix.h")
 # Include order matters: posix-shims FIRST (so <pthread.h>/<netinet/in.h> route
-# to FreeRTOS-Plus-POSIX/lwIP), then the substrate dir (lwipopts.h, arch/cc.h),
-# then FreeRTOS + lwIP. lwIP's compat/posix supplies <sys/socket.h>/<arpa/inet.h>.
-set(_INC "-I${_S2}/posix-shims -I${_S2} \
+# to FreeRTOS-Plus-POSIX/lwIP), then the substrate config dirs (substrate/lwip
+# has lwipopts.h + arch/cc.h; substrate/freertos has FreeRTOSConfig.h), then
+# FreeRTOS + lwIP. lwIP's compat/posix supplies <sys/socket.h>/<arpa/inet.h>.
+set(_INC "-I${_S2}/posix-shims -I${_S2} -I${_S2}/freertos -I${_S2}/lwip \
  -I${_K}/include -I${_K}/portable/GCC/ARM_CM4F \
  -I${_P}/include -I${_P}/include/private \
  -I${_P}/FreeRTOS-Plus-POSIX/include -I${_P}/FreeRTOS-Plus-POSIX/include/portable \

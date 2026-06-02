@@ -4,7 +4,7 @@
 # host tst-srt listener that verifies byte-exact. Two phases: plain + mbedTLS-
 # AES-128. The HOST process exit code + PASS token is the verdict (the firmware
 # can't self-verify off-device egress; it only prints s4_*_sent). Lifted from the
-# former scripts/check-s4-srt.sh; invoked by check-freertos-srt.sh example.
+# former S4 gate script; invoked by check-freertos-srt.sh example.
 # Caller (check-freertos-srt.sh) has already verified arm-none-eabi-g++, qemu,
 # cmake, and cargo are present.
 set -euo pipefail

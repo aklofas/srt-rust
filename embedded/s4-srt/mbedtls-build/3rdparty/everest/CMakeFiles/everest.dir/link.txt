@@ -1,2 +1,0 @@
-/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libeverest.a CMakeFiles/everest.dir/library/everest.c.obj CMakeFiles/everest.dir/library/x25519.c.obj CMakeFiles/everest.dir/library/Hacl_Curve25519_joined.c.obj
-/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libeverest.a

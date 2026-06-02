@@ -627,62 +627,48 @@ jobs:
       - name: QEMU runtime smoke (C firmware via libtstrans.a)
         run: bash scripts/check-c-firmware-qemu.sh
 
-      # Runtime gate: build the S0 C++ exceptions/threading firmware (FreeRTOS +
-      # FreeRTOS-Plus-POSIX, pthread backend) and run under QEMU mps2-an386,
-      # asserting concurrent per-task throw/catch with exception isolation.
-      # Promoted to hard-gate 2026-06-01 after a consecutive green-run streak on
-      # the apt toolchain (the gate skips cleanly via `command -v` guards if the
-      # cross-toolchain/QEMU is ever absent, so promotion can't false-red on a
-      # runner-image change).
-      - name: QEMU runtime gate (S0 C++ exceptions on FreeRTOS)
-        run: bash scripts/check-s0-cpp-gate.sh
+      # Runtime gates for the embedded/freertos-srt/ reference product (the
+      # consolidated S0-S4 arc: one shared substrate, the NIC-egress example, and
+      # the five layered verifications as named tests, all driven by the
+      # check-freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
+      # `command -v` guards if the cross-toolchain/QEMU/cmake/cargo is absent, so
+      # promotion can't false-red on a runner-image change. No new apt packages --
+      # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm +
+      # cmake are installed above; vendor/{lwip,srt,mbedtls} come from the
+      # recursive submodule checkout; the example host harness builds the vendored
+      # host libsrt via cargo.
 
-      # Runtime gate: build the S1 FreeRTOS + lwIP harness (loopback netif, BSD
-      # sockets + select(), hi-res clock_gettime, FreeRTOS-Plus-POSIX pthreads)
-      # and run under QEMU mps2-an386, asserting the 564-byte video-roundtrip
-      # golden round-trips through a lwIP UDP loopback socket. Promoted to
-      # hard-gate 2026-06-01 alongside S0 (same green-run streak + skip-guard
-      # rationale). No new apt packages — reuses the gcc-arm-none-eabi +
-      # libstdc++-arm-none-eabi-newlib + qemu-system-arm installed above.
-      # vendor/lwip is fetched by the recursive submodule checkout above.
-      - name: QEMU runtime gate (S1 lwIP loopback golden)
-        run: bash scripts/check-s1-lwip.sh
+      # exceptions (was S0): concurrent per-task C++ throw/catch with exception
+      # isolation on FreeRTOS + FreeRTOS-Plus-POSIX (pthread backend). Hard-gate.
+      - name: QEMU runtime gate (freertos-srt exceptions)
+        run: bash scripts/check-freertos-srt.sh exceptions
 
-      # Runtime gate: cross-compile libsrt for bare-metal arm-none-eabi
-      # (CMAKE_SYSTEM_NAME=Generic -> ::select path, pthread backend, logging +
-      # encryption OFF), link it with the FreeRTOS+lwIP substrate, and run a
-      # srt_startup+create_socket+close+cleanup boot smoke under QEMU mps2-an386.
-      # Promoted to hard-gate 2026-06-01 alongside S0/S1. No new apt packages --
-      # cmake is already on the runner (the host libsrt builds use it); reuses
-      # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm.
-      # build.sh applies our bare-metal portability patches to the pinned
-      # vendor/srt submodule at build time (pointer stays pristine).
-      - name: QEMU runtime gate (S2 libsrt boot smoke)
-        run: bash scripts/check-s2-libsrt.sh
+      # lwip-loopback (was S1): the 564-byte golden round-trips through a lwIP UDP
+      # loopback socket (BSD sockets + select(), hi-res clock_gettime). Hard-gate.
+      - name: QEMU runtime gate (freertos-srt lwip-loopback)
+        run: bash scripts/check-freertos-srt.sh lwip-loopback
 
-      # Runtime gate: SRT caller+listener loopback data-plane proof on bare-metal
-      # arm-none-eabi. Streams the 564-byte golden x N through SRT over a lossy
-      # loopback netif (~20% deterministic data-packet loss) and asserts the
-      # receiver recovers it byte-exact -- unencrypted and mbedTLS-encrypted
-      # (AES-128 + passphrase). Promoted to hard-gate 2026-06-01 alongside
-      # S0/S1/S2 (single-process, deterministic outcome). No new apt packages --
-      # cmake is on the runner; mbedTLS is vendored.
-      - name: QEMU runtime gate (S3 SRT loopback ARQ + encryption)
-        run: bash scripts/check-s3-srt.sh
+      # libsrt-smoke (was S2): cross-compiled libsrt (Generic -> ::select path,
+      # pthread backend, logging+encryption OFF) boots srt_startup + create_socket
+      # + close + cleanup against the FreeRTOS+lwIP substrate. Hard-gate.
+      - name: QEMU runtime gate (freertos-srt libsrt-smoke)
+        run: bash scripts/check-freertos-srt.sh libsrt-smoke
 
-      # Runtime gate: real-NIC egress. A bare-metal SRT caller streams the
-      # 564-byte golden x N out a lan9118 NIC over QEMU SLIRP user-net to a
-      # host tst-srt listener that verifies byte-exact -- plain and AES-128.
-      # The host process exit code is the verdict (the firmware only proves it
-      # sent). STAYS phase-in (continue-on-error) for now while S0-S3 were
-      # promoted to hard-gate 2026-06-01: S4 is the only networked / two-process
-      # gate (SLIRP timing + a kill-bounded host join), so it bakes one more
-      # cycle before promotion. No new apt packages -- SLIRP is in
-      # qemu-system-arm, lan9118 is in QEMU, mbedTLS is vendored; the host
-      # harness builds the vendored host libsrt via cargo.
-      - name: QEMU runtime gate (S4 lan9118 NIC -> host SRT egress)
+      # loopback-arq (was S3): SRT caller+listener data-plane proof -- streams the
+      # golden x N over a lossy loopback netif (~20% deterministic loss) and
+      # recovers it byte-exact, plain and mbedTLS-AES-128. Hard-gate.
+      - name: QEMU runtime gate (freertos-srt loopback-arq ARQ + encryption)
+        run: bash scripts/check-freertos-srt.sh loopback-arq
+
+      # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
+      # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
+      # listener that verifies byte-exact (plain + AES-128); the host process exit
+      # code is the verdict. STAYS phase-in (continue-on-error): it's the only
+      # networked / two-process gate (SLIRP timing + a kill-bounded host join), so
+      # it bakes a few more cycles before promotion to hard-gate.
+      - name: QEMU runtime gate (freertos-srt NIC egress example)
         continue-on-error: true
-        run: bash scripts/check-s4-srt.sh
+        run: bash scripts/check-freertos-srt.sh example
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)

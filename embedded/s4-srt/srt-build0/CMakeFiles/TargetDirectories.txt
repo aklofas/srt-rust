@@ -1,8 +1,0 @@
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/srt_virtual.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/srt_static.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/edit_cache.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/rebuild_cache.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/list_install_components.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/install.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/install/local.dir
-/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s4-srt/srt-build0/CMakeFiles/install/strip.dir

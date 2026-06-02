@@ -1,5 +1,7 @@
-// S4 — SRT caller (FILE mode) on bare metal streaming the 564-byte golden out a
-// real lan9118 NIC over QEMU SLIRP user-net to a host tst-srt listener. The
+// S4 — SRT caller (LIVE mode) on bare metal streaming the 564-byte golden out a
+// real lan9118 NIC over QEMU SLIRP user-net to a host tst-srt listener. LIVE
+// (not FILE) so it interoperates with the host tst-srt LIVE-streaming listener;
+// see srt_opts.h. Over lossless SLIRP the golden still arrives byte-exact. The
 // firmware only proves it SENT; the host is the authoritative byte-exact
 // verifier (the bytes leave the chip). Two phases: plain + AES-128 (S4_PASSPHRASE).
 #include <cstdio>

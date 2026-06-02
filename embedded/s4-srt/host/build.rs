@@ -1,25 +1,17 @@
-// Parse the committed C golden (crates/baremetal-qemu-c/firmware/golden.h) into
-// a Rust byte slice so the host verifier compares against the SAME bytes every
-// other P7 proof uses. No new golden is introduced.
+// Embed the committed video-roundtrip golden so the host verifier compares
+// against the SAME bytes every other P7 proof uses. Read the committed source
+// of truth directly (crates/tst-integration/.../output.ts, 564 bytes) rather
+// than the generated golden.h — output.ts is git-tracked, so this builds on a
+// clean checkout; golden.h is generated at CI time by check-c-firmware-qemu.sh
+// and is absent until then. No new golden is introduced.
 use std::{env, fs, path::Path};
 
 fn main() {
     let here = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let golden_h = Path::new(&here).join("../../../crates/baremetal-qemu-c/firmware/golden.h");
-    println!("cargo:rerun-if-changed={}", golden_h.display());
-    let src = fs::read_to_string(&golden_h).expect("read golden.h");
-
-    // Extract everything between `GOLDEN[] = {` and the closing `};`.
-    let body = src
-        .split_once("GOLDEN[] = {").expect("GOLDEN[] start").1
-        .split_once("};").expect("GOLDEN[] end").0;
-    let bytes: Vec<u8> = body
-        .split(',')
-        .filter_map(|t| {
-            let t = t.trim();
-            t.strip_prefix("0x").map(|h| u8::from_str_radix(h, 16).expect("hex byte"))
-        })
-        .collect();
+    let golden_ts = Path::new(&here)
+        .join("../../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
+    println!("cargo:rerun-if-changed={}", golden_ts.display());
+    let bytes = fs::read(&golden_ts).expect("read video-roundtrip output.ts");
     assert_eq!(bytes.len(), 564, "GOLDEN must be 564 bytes, got {}", bytes.len());
 
     let out = Path::new(&env::var("OUT_DIR").unwrap()).join("golden.rs");

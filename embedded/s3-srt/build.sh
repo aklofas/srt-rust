@@ -22,8 +22,36 @@ CC=arm-none-eabi-gcc
 CXX=arm-none-eabi-g++
 
 SRT=$ROOT/vendor/srt
-SRT_BUILD=srt-build
-SRT_INSTALL=$(pwd)/srt-install
+# Key the build/install dirs on S3_ENCRYPT so the plain (Phase A) and AES
+# (Phase B) libsrt builds — which differ in ENABLE_ENCRYPTION — don't clobber
+# each other; the CI wrapper runs both in turn.
+SRT_BUILD=srt-build${S3_ENCRYPT:-0}
+SRT_INSTALL=$(pwd)/srt-install${S3_ENCRYPT:-0}
+
+# Phase B (S3_ENCRYPT=1): cross-build the vendored mbedTLS for the target first,
+# then point libsrt's crypto at it. Phase A leaves encryption OFF.
+MBED=$ROOT/vendor/mbedtls
+MBED_INSTALL=$(pwd)/mbedtls-install
+SRT_ENC_FLAGS="-DENABLE_ENCRYPTION=OFF"
+if [ "${S3_ENCRYPT:-0}" = "1" ]; then
+  if [ ! -f "$MBED_INSTALL/lib/libmbedcrypto.a" ] || [ "${S3_REBUILD_SRT:-0}" = "1" ]; then
+    rm -rf mbedtls-build "$MBED_INSTALL"
+    # Dedicated minimal toolchain (mbedtls-toolchain.cmake) — NOT arm-none-eabi.cmake
+    # (that injects libsrt/lwIP defs). The bare-metal deltas ride in via
+    # MBEDTLS_USER_CONFIG_FILE (mbedTLS's CMakeLists quotes the path).
+    cmake -S "$MBED" -B mbedtls-build \
+      -DCMAKE_TOOLCHAIN_FILE="$(pwd)/mbedtls-toolchain.cmake" \
+      -DCMAKE_INSTALL_PREFIX="$MBED_INSTALL" \
+      -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON \
+      -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF -DMBEDTLS_FATAL_WARNINGS=OFF \
+      -DMBEDTLS_USER_CONFIG_FILE="$(pwd)/mbedtls-user-config.h"
+    cmake --build mbedtls-build --target install -j"$(nproc)"
+  fi
+  # CMAKE_FIND_ROOT_PATH so libsrt's find_library locates our cross mbedTLS under
+  # the toolchain's FIND_ROOT_PATH_MODE_LIBRARY=ONLY.
+  SRT_ENC_FLAGS="-DENABLE_ENCRYPTION=ON -DUSE_ENCLIB=mbedtls -DCMAKE_PREFIX_PATH=$MBED_INSTALL -DCMAKE_FIND_ROOT_PATH=$MBED_INSTALL"
+fi
 
 # Apply our bare-metal portability patches to the pinned vendor/srt submodule.
 # The submodule stays pristine in git (pointer unchanged); the patches live in
@@ -58,7 +86,7 @@ if [ ! -f "$SRT_INSTALL/lib/libsrt.a" ] || [ "${S3_REBUILD_SRT:-0}" = "1" ]; the
     -DCMAKE_BUILD_TYPE=MinSizeRel \
     -DENABLE_APPS=OFF -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
     -DENABLE_UNITTESTS=OFF -DENABLE_TESTING=OFF -DENABLE_BONDING=OFF \
-    -DENABLE_HEAVY_LOGGING=OFF -DENABLE_LOGGING=OFF -DENABLE_ENCRYPTION=OFF \
+    -DENABLE_HEAVY_LOGGING=OFF -DENABLE_LOGGING=OFF $SRT_ENC_FLAGS \
     -DENABLE_STDCXX_SYNC=OFF -DENABLE_MONOTONIC_CLOCK=OFF \
     -DENABLE_SOCK_CLOEXEC=OFF
   cmake --build "$SRT_BUILD" --target install -j"$(nproc)"
@@ -96,6 +124,9 @@ done
 # the s2_prefix.h force-include (newlib type suppressions), -D__GNU__ (endian
 # branch), and -DSRT_NO_PTHREAD_CANCEL (matches the vendor/srt patch).
 SHIM_DEFS="-include posix-shims/s2_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -DS3_LOSS_ENABLED=1"
+# Phase B only: define the passphrase so srt_opts.h sets SRTO_PASSPHRASE. Never
+# in Phase A — libsrt built with encryption OFF rejects SRTO_PASSPHRASE.
+[ "${S3_ENCRYPT:-0}" = "1" ] && SHIM_DEFS="$SHIM_DEFS -DS3_PASSPHRASE=\"s3-loopback-secret\""
 $CC $ARCH $OPT $INC $SHIM_DEFS -std=gnu11 -c pthread_key_shim.c -o pthread_key_shim.o
 
 # cxa_override.cpp: strong __cxa_get_globals/_fast defs (per-task eh state in
@@ -109,10 +140,14 @@ done
 # __wrap_clock_gettime in clock_shim.c (see that file's header for why).
 # Link libsrt.a (after our .o, before libstdc++). --start-group wraps libsrt +
 # libstdc++ + libc so their cross-references resolve regardless of order.
+# Phase B: link the cross-built mbedTLS (order per srt-sys: srt -> mbedtls ->
+# mbedx509 -> mbedcrypto), all inside the --start-group so cross-refs resolve.
+MBED_LIBS=""
+[ "${S3_ENCRYPT:-0}" = "1" ] && MBED_LIBS="-L$MBED_INSTALL/lib -lmbedtls -lmbedx509 -lmbedcrypto"
 $CXX $ARCH $OPT \
   --specs=rdimon.specs -T mps2_an386.ld -Wl,--gc-sections \
   -Wl,--wrap=clock_gettime -Wl,--wrap=setsockopt -Wl,--wrap=gettimeofday \
-  -Wl,--start-group *.o "$SRT_LIB" -lstdc++ -Wl,--end-group \
+  -Wl,--start-group *.o "$SRT_LIB" $MBED_LIBS -lstdc++ -Wl,--end-group \
   -o firmware.elf
 
 arm-none-eabi-size firmware.elf

@@ -22,6 +22,15 @@ extern "C" {
 #define REPEAT 64
 static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
+// Distinct gate token + label per phase (Phase B sets S3_PASSPHRASE).
+#ifdef S3_PASSPHRASE
+#define S3_TAG "s3_srt_aes"
+#define S3_ENC " (AES-128 encrypted)"
+#else
+#define S3_TAG "s3_srt_plain"
+#define S3_ENC ""
+#endif
+
 static volatile int g_up = 0;
 static volatile int g_listen_ready = 0;
 static volatile int g_fail = 0;
@@ -119,9 +128,9 @@ static void run_task(void*) {
 
 #if S3_LOSS_ENABLED
     int ok = !g_fail && bytes_ok && dropped > 0;     // injected loss recovered byte-exact
-    if (ok) printf("PASS: s3_srt_plain (GOLDEN x %d recovered byte-exact under ~20%% loss, dropped=%u, rcv_loss=%d)\n",
-                   REPEAT, dropped, rcvloss);
-    else    printf("FAIL[s3_srt_plain]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
+    if (ok) printf("PASS: " S3_TAG " (GOLDEN x %d recovered byte-exact under ~20%% loss%s, dropped=%u, rcv_loss=%d)\n",
+                   REPEAT, S3_ENC, dropped, rcvloss);
+    else    printf("FAIL[" S3_TAG "]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
                    g_where, g_rxlen, STREAM_LEN, bytes_ok, dropped, rcvloss);
 #else
     int ok = !g_fail && bytes_ok;                    // clean delivery (no loss yet)

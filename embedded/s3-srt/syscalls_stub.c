@@ -49,3 +49,16 @@ int __wrap_gettimeofday(struct timeval* tv, void* tz)
     }
     return 0;
 }
+
+/* mbedTLS hardware entropy hook (MBEDTLS_ENTROPY_HARDWARE_ALT, Phase B). Bare
+ * metal has no entropy source; reuse the deterministic LCG. DETERMINISTIC ON
+ * PURPOSE so the CI gate reproduces — both peers share the passphrase, the
+ * SEK/salt just need to be self-consistent within the run. NOT production-safe;
+ * a real embedded build must wire a hardware RNG. */
+int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
+{
+    (void)data;
+    _getentropy(output, len);
+    if (olen) *olen = len;
+    return 0;
+}

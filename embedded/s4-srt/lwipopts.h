@@ -30,20 +30,18 @@
  * exposes getaddrinfo + struct addrinfo (lwip/netdb.h) under LWIP_DNS. dns.c +
  * api/netdb.c are already in the source glob; no actual DNS runs in the smoke. */
 #define LWIP_DNS                    1
-#define LWIP_ARP                    0
-#define LWIP_ETHERNET               0
+/* S4: real lan9118 Ethernet (not the S3 loopback netif). The driver hands raw
+ * frames to lwIP's ethernet_input, so ARP (to resolve the SLIRP gateway
+ * 10.0.2.2) and the ethernet layer must be on. */
+#define LWIP_ARP                    1
+#define LWIP_ETHERNET               1
 #define LWIP_IGMP                   0
 #define LWIP_ICMP                   1
 
-/* S3: our lossy netif (lossy_netif.c) owns 10.0.0.1 and applies packet loss in
- * its output path, so disable lwIP's built-in loopback short-circuit — otherwise
- * traffic to the netif's own address would bypass our netif and never see the
- * drop filter. (10.0.0.1, not 127.0.0.1: with LWIP_HAVE_LOOPIF=0 lwIP accepts
- * 127/8 at the IP layer but never matches it to the bound UDP pcb.) */
+/* S4: a real lan9118 netif owns 10.0.2.15/24 (SLIRP guest address). No lwIP
+ * built-in loopback; all traffic goes out the NIC to the SLIRP gateway. */
 #define LWIP_HAVE_LOOPIF            0
 #define LWIP_NETIF_LOOPBACK         0
-#define LWIP_NETIF_LOOPBACK_MULTITHREADING 0
-#define LWIP_LOOPBACK_MAX_PBUFS     8
 
 /* Sequential / socket API. */
 #define LWIP_NETCONN                1
@@ -76,6 +74,12 @@
 #define MEMP_NUM_TCPIP_MSG_API      16
 #define MEMP_NUM_TCPIP_MSG_INPKT    16
 #define PBUF_POOL_SIZE              16
+
+/* ARP table + a couple of queued packets while ARP resolves the gateway. */
+#define MEMP_NUM_ARP_QUEUE          5
+#define ARP_TABLE_SIZE              4
+#define ARP_QUEUEING                1
+#define ETH_PAD_SIZE                0
 
 /* Threading: the tcpip thread + socket mboxes (sized via our sys_arch). */
 #define TCPIP_THREAD_NAME           "tcpip"

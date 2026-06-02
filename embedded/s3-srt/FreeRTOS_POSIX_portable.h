@@ -33,4 +33,12 @@
 #define posixconfigENABLE_SCHED_PARAM   0
 #include <sys/sched.h>
 
+/* S3: libsrt spawns its snd/rcv queue worker pthreads with the DEFAULT attr, so
+ * the default pthread stack (PTHREAD_STACK_MIN = configMINIMAL_STACK_SIZE*4 =
+ * 1 KiB) applies — far too small for libsrt's select()+packet+congctl call
+ * chains (FreeRTOS stack-overflow hook fired). Raise the floor. Defined here
+ * (before FreeRTOS_POSIX_portable_default.h's #ifndef) so it wins. usStackSize
+ * is stored in a uint16_t, so keep this < 64 KiB. */
+#define PTHREAD_STACK_MIN  16384
+
 #endif /* _FREERTOS_POSIX_PORTABLE_H_ */

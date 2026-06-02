@@ -15,7 +15,8 @@ OPT="-Os -ffunction-sections -fdata-sections -g"
 INC="-Iposix-shims -I. -I$K/include -I$K/portable/GCC/ARM_CM4F \
      -I$P/include -I$P/include/private \
      -I$P/FreeRTOS-Plus-POSIX/include -I$P/FreeRTOS-Plus-POSIX/include/portable \
-     -I$L/src/include -I$L/src/include/compat/posix"
+     -I$L/src/include -I$L/src/include/compat/posix \
+     -I$ROOT/crates/baremetal-qemu-c/firmware"   # golden.h (reused 564B golden)
 
 CC=arm-none-eabi-gcc
 CXX=arm-none-eabi-g++
@@ -58,7 +59,8 @@ if [ ! -f "$SRT_INSTALL/lib/libsrt.a" ] || [ "${S3_REBUILD_SRT:-0}" = "1" ]; the
     -DENABLE_APPS=OFF -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
     -DENABLE_UNITTESTS=OFF -DENABLE_TESTING=OFF -DENABLE_BONDING=OFF \
     -DENABLE_HEAVY_LOGGING=OFF -DENABLE_LOGGING=OFF -DENABLE_ENCRYPTION=OFF \
-    -DENABLE_STDCXX_SYNC=OFF -DENABLE_MONOTONIC_CLOCK=OFF
+    -DENABLE_STDCXX_SYNC=OFF -DENABLE_MONOTONIC_CLOCK=OFF \
+    -DENABLE_SOCK_CLOEXEC=OFF
   cmake --build "$SRT_BUILD" --target install -j"$(nproc)"
 fi
 SRT_LIB=$(echo "$SRT_INSTALL"/lib*/libsrt.a)   # lib or lib64
@@ -73,7 +75,7 @@ PS=$P/FreeRTOS-Plus-POSIX/source
 # Substrate (FreeRTOS + lwIP + startup/clock) — compiled WITHOUT the posix-shim
 # env, exactly as in S1 (these don't include srt or our pthread.h shim).
 # lossy_netif.c is pure lwIP (no srt/shim headers) so it belongs here.
-C_SRC="startup.c clock_shim.c syscalls_stub.c atomic64_stub.c lossy_netif.c $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
+C_SRC="startup.c clock_shim.c syscalls_stub.c atomic64_stub.c lossy_netif.c net_shim.c $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
        $K/portable/GCC/ARM_CM4F/port.c $K/portable/MemMang/heap_4.c \
        $PS/FreeRTOS_POSIX_pthread.c $PS/FreeRTOS_POSIX_pthread_mutex.c \
        $PS/FreeRTOS_POSIX_pthread_cond.c $PS/FreeRTOS_POSIX_pthread_barrier.c \
@@ -93,10 +95,12 @@ done
 # headers / srt.h, so they need the SAME compat env libsrt was built with:
 # the s2_prefix.h force-include (newlib type suppressions), -D__GNU__ (endian
 # branch), and -DSRT_NO_PTHREAD_CANCEL (matches the vendor/srt patch).
-SHIM_DEFS="-include posix-shims/s2_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL"
+SHIM_DEFS="-include posix-shims/s2_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -DS3_LOSS_ENABLED=0"
 $CC $ARCH $OPT $INC $SHIM_DEFS -std=gnu11 -c pthread_key_shim.c -o pthread_key_shim.o
 
-CXX_SRC="main.cpp ${S3_EXTRA_SRC:-}"
+# cxa_override.cpp: strong __cxa_get_globals/_fast defs (per-task eh state in
+# FreeRTOS TLS slot 1) — required because libsrt's API throws from our pthreads.
+CXX_SRC="main.cpp cxa_override.cpp ${S3_EXTRA_SRC:-}"
 for f in $CXX_SRC; do
   $CXX $ARCH $OPT $INC $SHIM_DEFS -std=gnu++11 -fexceptions -c "$f" -o "$(basename "${f%.cpp}").o"
 done
@@ -107,7 +111,7 @@ done
 # libstdc++ + libc so their cross-references resolve regardless of order.
 $CXX $ARCH $OPT \
   --specs=rdimon.specs -T mps2_an386.ld -Wl,--gc-sections \
-  -Wl,--wrap=clock_gettime \
+  -Wl,--wrap=clock_gettime -Wl,--wrap=setsockopt -Wl,--wrap=gettimeofday \
   -Wl,--start-group *.o "$SRT_LIB" -lstdc++ -Wl,--end-group \
   -o firmware.elf
 

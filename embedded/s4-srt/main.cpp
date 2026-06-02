@@ -59,8 +59,18 @@ static void* caller_thread(void*) {
             off += n;
         }
     }
-    srt_bstats(cs, &g_tx_stats, 0);
-    srt_close(cs);   // FILE-mode linger flushes the send buffer to the host
+    // LIVE-mode srt_close does NOT linger, and srt_send only buffers — the send
+    // queue worker paces the packets onto the wire afterward. Wait for the send
+    // buffer to drain (pktSndBuf == 0) so all REPEAT messages leave the NIC,
+    // then a short grace so the host reads its recv buffer before we close and
+    // QEMU tears the network down. Both bounded so a stall can't hang the gate.
+    for (int i = 0; i < 8000; i++) {
+        srt_bstats(cs, &g_tx_stats, 0);
+        if (g_tx_stats.pktSndBuf == 0) break;
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    srt_close(cs);
     return nullptr;
 }
 
@@ -68,7 +78,9 @@ static void run_task(void*) {
     tcpip_init(tcpip_ready, nullptr);
     while (!g_up) vTaskDelay(pdMS_TO_TICKS(1));
     lan9118_netif_up(10,0,2,15, 10,0,2,2);             // guest 10.0.2.15, gw 10.0.2.2
-    xTaskCreate(rx_poll_task, "rx", 1024, nullptr, 5, nullptr);
+    // rx poll task at priority 3: below tcpip (4) so pushed frames are processed
+    // promptly, above run_task (2). NOTE configMAX_PRIORITIES=5 -> max prio is 4.
+    xTaskCreate(rx_poll_task, "rx", 1024, nullptr, 3, nullptr);
 
     if (srt_startup() < 0) fail("startup");
 
@@ -81,8 +93,7 @@ static void run_task(void*) {
     // The firmware cannot verify bytes (they left the chip); it only reports the
     // send completed. The HOST tst-srt listener is the authoritative verifier.
     int ok = !g_fail;
-    if (ok) printf("PASS: " S4_TAG "_sent (GOLDEN x %d streamed%s, pktSent=%lld)\n",
-                   REPEAT, S4_ENC, (long long)g_tx_stats.pktSentTotal);
+    if (ok) printf("PASS: " S4_TAG "_sent (GOLDEN x %d streamed%s)\n", REPEAT, S4_ENC);
     else    printf("FAIL[" S4_TAG "]: where=%s\n", g_where);
     fflush(stdout);
     srt_cleanup();

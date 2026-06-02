@@ -1,0 +1,10 @@
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/lib/libsrt.a
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/version.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/srt.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/logging_api.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/access_control.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/platform_sys.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/include/srt/udt.h
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/lib/pkgconfig/haisrt.pc
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/lib/pkgconfig/srt.pc
+/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-install0/bin/srt-ffplay

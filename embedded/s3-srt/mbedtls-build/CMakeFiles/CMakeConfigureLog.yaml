@@ -1,0 +1,364 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineSystem.cmake:228 (message)"
+      - "CMakeLists.txt:46 (project)"
+    message: |
+      The target system is: Generic -  - arm
+      The host system is: Linux - 6.17.0-35-generic - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:46 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" failed.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-Os;-ffunction-sections;-fdata-sections
+      Id flags:  
+      
+      The output was:
+      1
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-exit.o): in function `exit':
+      (.text.exit+0x14): undefined reference to `_exit'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-closer.o): in function `_close_r':
+      (.text._close_r+0xc): undefined reference to `_close'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-lseekr.o): in function `_lseek_r':
+      (.text._lseek_r+0x14): undefined reference to `_lseek'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-readr.o): in function `_read_r':
+      (.text._read_r+0x14): undefined reference to `_read'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-writer.o): in function `_write_r':
+      (.text._write_r+0x14): undefined reference to `_write'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-sbrkr.o): in function `_sbrk_r':
+      (.text._sbrk_r+0xc): undefined reference to `_sbrk'
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:46 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-Os;-ffunction-sections;-fdata-sections
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.o"
+      
+      The C compiler identification is GNU, found in:
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/3.28.3/CompilerIdC/CMakeCCompilerId.o
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:46 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_214bd/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_214bd.dir/build.make CMakeFiles/cmTC_214bd.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35'
+        Building C object CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections    -v -o CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+        Using built-in specs.
+        COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc
+        Target: arm-none-eabi
+        Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile
+        Thread model: single
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) 
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1 -quiet -v -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_214bd.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -Os -version -ffunction-sections -fdata-sections -o /tmp/claude-1000/ccHNfalu.s
+        GNU C17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)
+        	compiled by GNU C version 13.2.0, GMP version 6.2.1, MPFR version 3.1.6, MPC version 1.0.3, isl version isl-0.15-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"
+        ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include
+        End of search list.
+        Compiler executable checksum: cbfaf50aae68f52bd08fc0a210be36c2
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj /tmp/claude-1000/ccHNfalu.s
+        GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119
+        COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/
+        LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.'
+        Linking C static library libcmTC_214bd.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_214bd.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_214bd.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_214bd.a CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_214bd.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:46 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        end of search list found
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+        implicit include dirs: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:159 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:46 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(arm-none-eabi-ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_214bd/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_214bd.dir/build.make CMakeFiles/cmTC_214bd.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35']
+        ignore line: [Building C object CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections    -v -o CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc]
+        ignore line: [Target: arm-none-eabi]
+        ignore line: [Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile]
+        ignore line: [Thread model: single]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1 -quiet -v -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_214bd.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -Os -version -ffunction-sections -fdata-sections -o /tmp/claude-1000/ccHNfalu.s]
+        ignore line: [GNU C17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)]
+        ignore line: [	compiled by GNU C version 13.2.0  GMP version 6.2.1  MPFR version 3.1.6  MPC version 1.0.3  isl version isl-0.15-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"]
+        ignore line: [ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: cbfaf50aae68f52bd08fc0a210be36c2]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj /tmp/claude-1000/ccHNfalu.s]
+        ignore line: [GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119]
+        ignore line: [COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/]
+        ignore line: [LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-Os' '-ffunction-sections' '-fdata-sections' '-v' '-o' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.']
+        ignore line: [Linking C static library libcmTC_214bd.a]
+        ignore line: [/usr/bin/cmake -P CMakeFiles/cmTC_214bd.dir/cmake_clean_target.cmake]
+        ignore line: [/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_214bd.dir/link.txt --verbose=1]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_214bd.a CMakeFiles/cmTC_214bd.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_214bd.a]
+        ignore line: [gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-wZ9p35']
+        ignore line: []
+        ignore line: []
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:97 (CHECK_C_SOURCE_COMPILES)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "CMakeLists.txt:137 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_65a05/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_65a05.dir/build.make CMakeFiles/cmTC_65a05.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf'
+        Building C object CMakeFiles/cmTC_65a05.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -DCMAKE_HAVE_LIBC_PTHREAD  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections  -o CMakeFiles/cmTC_65a05.dir/src.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c: In function 'main':
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c:11:3: error: implicit declaration of function 'pthread_create' [-Wimplicit-function-declaration]
+           11 |   pthread_create(&thread, NULL, test_func, NULL);
+              |   ^~~~~~~~~~~~~~
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c:12:3: error: implicit declaration of function 'pthread_detach' [-Wimplicit-function-declaration]
+           12 |   pthread_detach(thread);
+              |   ^~~~~~~~~~~~~~
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c:13:3: error: implicit declaration of function 'pthread_cancel' [-Wimplicit-function-declaration]
+           13 |   pthread_cancel(thread);
+              |   ^~~~~~~~~~~~~~
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c:14:3: error: implicit declaration of function 'pthread_join'; did you mean 'pthread_atfork'? [-Wimplicit-function-declaration]
+           14 |   pthread_join(thread, NULL);
+              |   ^~~~~~~~~~~~
+              |   pthread_atfork
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf/src.c:16:3: error: implicit declaration of function 'pthread_exit' [-Wimplicit-function-declaration]
+           16 |   pthread_exit(NULL);
+              |   ^~~~~~~~~~~~
+        gmake[1]: *** [CMakeFiles/cmTC_65a05.dir/build.make:78: CMakeFiles/cmTC_65a05.dir/src.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-eqo8uf'
+        gmake: *** [Makefile:127: cmTC_65a05/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:136 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:169 (_threads_check_flag_pthread)"
+      - "CMakeLists.txt:137 (find_package)"
+    checks:
+      - "Check if compiler accepts -pthread"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "THREADS_HAVE_PTHREAD_ARG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_e6f6d/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_e6f6d.dir/build.make CMakeFiles/cmTC_e6f6d.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7'
+        Building C object CMakeFiles/cmTC_e6f6d.dir/CheckForPthreads.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections  -o CMakeFiles/cmTC_e6f6d.dir/CheckForPthreads.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7/CheckForPthreads.c
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7/CheckForPthreads.c: In function 'main':
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7/CheckForPthreads.c:12:3: error: implicit declaration of function 'pthread_create' [-Wimplicit-function-declaration]
+           12 |   pthread_create(&thread, 0, start_routine, 0);
+              |   ^~~~~~~~~~~~~~
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7/CheckForPthreads.c:13:3: error: implicit declaration of function 'pthread_join'; did you mean 'pthread_atfork'? [-Wimplicit-function-declaration]
+           13 |   pthread_join(thread, 0);
+              |   ^~~~~~~~~~~~
+              |   pthread_atfork
+        gmake[1]: *** [CMakeFiles/cmTC_e6f6d.dir/build.make:78: CMakeFiles/cmTC_e6f6d.dir/CheckForPthreads.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-6Ym0x7'
+        gmake: *** [Makefile:127: cmTC_e6f6d/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckLibraryExists.cmake:69 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "CMakeLists.txt:137 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_54ce1/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_54ce1.dir/build.make CMakeFiles/cmTC_54ce1.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd'
+        Building C object CMakeFiles/cmTC_54ce1.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections -DCHECK_FUNCTION_EXISTS=pthread_create -o CMakeFiles/cmTC_54ce1.dir/CheckFunctionExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd/CheckFunctionExists.c
+        Linking C static library libcmTC_54ce1.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_54ce1.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_54ce1.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_54ce1.a CMakeFiles/cmTC_54ce1.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_54ce1.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-mlkkcd'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:222 (CHECK_C_COMPILER_FLAG)"
+    checks:
+      - "Performing Test C_COMPILER_SUPPORTS_WFORMAT_SIGNEDNESS"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections -Wall -Wextra -Wwrite-strings -Wmissing-prototypes -Wformat=2 -Wno-format-nonliteral -Wvla -Wlogical-op -Wshadow"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "C_COMPILER_SUPPORTS_WFORMAT_SIGNEDNESS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_8285f/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_8285f.dir/build.make CMakeFiles/cmTC_8285f.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe'
+        Building C object CMakeFiles/cmTC_8285f.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -DC_COMPILER_SUPPORTS_WFORMAT_SIGNEDNESS  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Os -ffunction-sections -fdata-sections -Wall -Wextra -Wwrite-strings -Wmissing-prototypes -Wformat=2 -Wno-format-nonliteral -Wvla -Wlogical-op -Wshadow    -Wformat-signedness -o CMakeFiles/cmTC_8285f.dir/src.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe/src.c
+        Linking C static library libcmTC_8285f.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_8285f.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8285f.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_8285f.a CMakeFiles/cmTC_8285f.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_8285f.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/mbedtls-build/CMakeFiles/CMakeScratch/TryCompile-Il3GLe'
+        
+      exitCode: 0
+...

@@ -1,0 +1,1047 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineSystem.cmake:228 (message)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      The target system is: Generic -  - arm
+      The host system is: Linux - 6.17.0-35-generic - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" failed.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-D__GNU__=1;-DSRT_NO_PTHREAD_CANCEL;-include;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+      Id flags:  
+      
+      The output was:
+      1
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-exit.o): in function `exit':
+      (.text.exit+0x14): undefined reference to `_exit'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-closer.o): in function `_close_r':
+      (.text._close_r+0xc): undefined reference to `_close'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-lseekr.o): in function `_lseek_r':
+      (.text._lseek_r+0x14): undefined reference to `_lseek'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-readr.o): in function `_read_r':
+      (.text._read_r+0x14): undefined reference to `_read'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-writer.o): in function `_write_r':
+      (.text._write_r+0x14): undefined reference to `_write'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-sbrkr.o): in function `_sbrk_r':
+      (.text._sbrk_r+0xc): undefined reference to `_sbrk'
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-D__GNU__=1;-DSRT_NO_PTHREAD_CANCEL;-include;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.o"
+      
+      The C compiler identification is GNU, found in:
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/3.28.3/CompilerIdC/CMakeCCompilerId.o
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-D__GNU__=1;-DSRT_NO_PTHREAD_CANCEL;-include;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+      Id flags:  
+      
+      The output was:
+      1
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-exit.o): in function `exit':
+      (.text.exit+0x14): undefined reference to `_exit'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-closer.o): in function `_close_r':
+      (.text._close_r+0xc): undefined reference to `_close'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-lseekr.o): in function `_lseek_r':
+      (.text._lseek_r+0x14): undefined reference to `_lseek'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-readr.o): in function `_read_r':
+      (.text._read_r+0x14): undefined reference to `_read'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-writer.o): in function `_write_r':
+      (.text._write_r+0x14): undefined reference to `_write'
+      /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-sbrkr.o): in function `_sbrk_r':
+      (.text._sbrk_r+0xc): undefined reference to `_sbrk'
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ 
+      Build flags: -mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16;-D__GNU__=1;-DSRT_NO_PTHREAD_CANCEL;-include;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include;-I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.o"
+      
+      The CXX compiler identification is GNU, found in:
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.o
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6e120/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_6e120.dir/build.make CMakeFiles/cmTC_6e120.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR'
+        Building C object CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix    -v -o CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+        Using built-in specs.
+        COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc
+        Target: arm-none-eabi
+        Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile
+        Thread model: single
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) 
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1 -quiet -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ -D __GNU__=1 -D SRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_6e120.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -version -o /tmp/claude-1000/ccX8f3h0.s
+        GNU C17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)
+        	compiled by GNU C version 13.2.0, GMP version 6.2.1, MPFR version 3.1.6, MPC version 1.0.3, isl version isl-0.15-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"
+        ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include
+        End of search list.
+        Compiler executable checksum: cbfaf50aae68f52bd08fc0a210be36c2
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj /tmp/claude-1000/ccX8f3h0.s
+        GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119
+        COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/
+        LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.'
+        Linking C static library libcmTC_6e120.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_6e120.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6e120.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_6e120.a CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_6e120.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        end of search list found
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include/private]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include/compat/posix]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+        implicit include dirs: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/portable/GCC/ARM_CM4F;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include/private;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include/compat/posix;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:159 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(arm-none-eabi-ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6e120/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_6e120.dir/build.make CMakeFiles/cmTC_6e120.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR']
+        ignore line: [Building C object CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix    -v -o CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc]
+        ignore line: [Target: arm-none-eabi]
+        ignore line: [Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile]
+        ignore line: [Thread model: single]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1 -quiet -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ -D __GNU__=1 -D SRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_6e120.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -version -o /tmp/claude-1000/ccX8f3h0.s]
+        ignore line: [GNU C17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)]
+        ignore line: [	compiled by GNU C version 13.2.0  GMP version 6.2.1  MPFR version 3.1.6  MPC version 1.0.3  isl version isl-0.15-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"]
+        ignore line: [ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: cbfaf50aae68f52bd08fc0a210be36c2]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj /tmp/claude-1000/ccX8f3h0.s]
+        ignore line: [GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119]
+        ignore line: [COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/]
+        ignore line: [LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.']
+        ignore line: [Linking C static library libcmTC_6e120.a]
+        ignore line: [/usr/bin/cmake -P CMakeFiles/cmTC_6e120.dir/cmake_clean_target.cmake]
+        ignore line: [/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6e120.dir/link.txt --verbose=1]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_6e120.a CMakeFiles/cmTC_6e120.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_6e120.a]
+        ignore line: [gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ZSB2tR']
+        ignore line: []
+        ignore line: []
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_c9312/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_c9312.dir/build.make CMakeFiles/cmTC_c9312.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k'
+        Building CXX object CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix    -v -o CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++
+        Target: arm-none-eabi
+        Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile
+        Thread model: single
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) 
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1plus -quiet -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ -D __GNU__=1 -D SRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_c9312.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -version -o /tmp/claude-1000/ccl3S8ay.s
+        GNU C++17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)
+        	compiled by GNU C version 13.2.0, GMP version 6.2.1, MPFR version 3.1.6, MPC version 1.0.3, isl version isl-0.15-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"
+        ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"
+        ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include
+         /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include
+        End of search list.
+        Compiler executable checksum: 50c94105808d783ea34c718059c0c0b6
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/'
+         /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj /tmp/claude-1000/ccl3S8ay.s
+        GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119
+        COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/
+        LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX static library libcmTC_c9312.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_c9312.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c9312.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_c9312.a CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_c9312.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include]
+          add: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+          add: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        end of search list found
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include/private]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include]
+        collapse include dir [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix] ==> [/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include/compat/posix]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1/backward]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        collapse include dir [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include] ==> [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+        implicit include dirs: [/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims;/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-kernel/portable/GCC/ARM_CM4F;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/include/private;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include;/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/lwip/src/include/compat/posix;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include/c++/14.2.1/backward;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/lib/gcc/arm-none-eabi/14.2.1/include-fixed;/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/arm-none-eabi/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CMakeDetermineCompilerABI.cmake:159 (message)"
+      - "/usr/share/cmake-3.28/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:25 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(arm-none-eabi-ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_c9312/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_c9312.dir/build.make CMakeFiles/cmTC_c9312.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k']
+        ignore line: [Building CXX object CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix    -v -o CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++]
+        ignore line: [Target: arm-none-eabi]
+        ignore line: [Configured with: /__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/sources/gcc/configure --prefix=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application --with-sysroot=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/application/arm-none-eabi --with-native-system-header-dir=/include --infodir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/info --mandir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/man --htmldir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/html --pdfdir=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install/share/pdf --build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu --target=arm-none-eabi --disable-nls --disable-shared --disable-threads --disable-tls --enable-checking=release --enable-languages=c,c++,fortran --with-gmp=/__w/arm-none-eabi-gcc-xpack/arm-none-eabi-gcc-xpack/build-assets/build/linux-x64/x86_64-pc-linux-gnu/install --with-newlib --with-pkgversion='xPack GNU Arm Embedded GCC x86_64' --with-gnu-as --with-gnu-ld --with-system-zlib --with-headers=yes --enable-multilib --with-multilib-list=aprofile,rmprofile]
+        ignore line: [Thread model: single]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 14.2.1 20241119 (xPack GNU Arm Embedded GCC x86_64) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/cc1plus -quiet -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -imultilib thumb/v7e-m+fp/hard -iprefix /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/ -isysroot /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi -D__USES_INITFINI__ -D __GNU__=1 -D SRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_c9312.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mlibarch=armv7e-m+fp -march=armv7e-m+fp -version -o /tmp/claude-1000/ccl3S8ay.s]
+        ignore line: [GNU C++17 (xPack GNU Arm Embedded GCC x86_64) version 14.2.1 20241119 (arm-none-eabi)]
+        ignore line: [	compiled by GNU C version 13.2.0  GMP version 6.2.1  MPFR version 3.1.6  MPC version 1.0.3  isl version isl-0.15-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include"]
+        ignore line: [ignoring nonexistent directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/usr/local/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/include-fixed"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/../../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include"]
+        ignore line: [ignoring duplicate directory "/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include]
+        ignore line: [ /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/arm-none-eabi/thumb/v7e-m+fp/hard]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include/c++/14.2.1/backward]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/include-fixed]
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: 50c94105808d783ea34c718059c0c0b6]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/']
+        ignore line: [ /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/as -v -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -march=armv7e-m+fp -mfloat-abi=hard -mfpu=fpv4-sp-d16 -meabi=5 -o CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj /tmp/claude-1000/ccl3S8ay.s]
+        ignore line: [GNU assembler version 2.43.1 (arm-none-eabi) using BFD version (xPack GNU Arm Embedded GCC x86_64) 2.43.1.20241119]
+        ignore line: [COMPILER_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../libexec/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/]
+        ignore line: [LIBRARY_PATH=/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/thumb/v7e-m+fp/hard/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/:/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../arm-none-eabi/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m4' '-mthumb' '-mfloat-abi=hard' '-mfpu=fpv4-sp-d16' '-D' '__GNU__=1' '-D' 'SRT_NO_PTHREAD_CANCEL' '-include' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include' '-I' '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix' '-v' '-o' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv7e-m+fp' '-march=armv7e-m+fp' '-dumpdir' 'CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [Linking CXX static library libcmTC_c9312.a]
+        ignore line: [/usr/bin/cmake -P CMakeFiles/cmTC_c9312.dir/cmake_clean_target.cmake]
+        ignore line: [/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c9312.dir/link.txt --verbose=1]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_c9312.a CMakeFiles/cmTC_c9312.dir/CMakeCXXCompilerABI.cpp.obj]
+        ignore line: [/opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_c9312.a]
+        ignore line: [gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-23iw3k']
+        ignore line: []
+        ignore line: []
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:97 (CHECK_C_SOURCE_COMPILES)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "CMakeLists.txt:34 (include)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_714a7/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_714a7.dir/build.make CMakeFiles/cmTC_714a7.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg'
+        Building C object CMakeFiles/cmTC_714a7.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -DCMAKE_HAVE_LIBC_PTHREAD  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  -o CMakeFiles/cmTC_714a7.dir/src.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg/src.c
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg/src.c: In function 'main':
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg/src.c:13:3: error: implicit declaration of function 'pthread_cancel'; did you mean 'pthread_self'? [-Wimplicit-function-declaration]
+           13 |   pthread_cancel(thread);
+              |   ^~~~~~~~~~~~~~
+              |   pthread_self
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg/src.c:15:3: error: implicit declaration of function 'pthread_atfork'; did you mean 'pthread_join'? [-Wimplicit-function-declaration]
+           15 |   pthread_atfork(NULL, NULL, NULL);
+              |   ^~~~~~~~~~~~~~
+              |   pthread_join
+        gmake[1]: *** [CMakeFiles/cmTC_714a7.dir/build.make:78: CMakeFiles/cmTC_714a7.dir/src.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-QjFUrg'
+        gmake: *** [Makefile:127: cmTC_714a7/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckLibraryExists.cmake:69 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/usr/share/cmake-3.28/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "CMakeLists.txt:34 (include)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_13860/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_13860.dir/build.make CMakeFiles/cmTC_13860.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK'
+        Building C object CMakeFiles/cmTC_13860.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -DCHECK_FUNCTION_EXISTS=pthread_create -o CMakeFiles/cmTC_13860.dir/CheckFunctionExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK/CheckFunctionExists.c
+        Linking C static library libcmTC_13860.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_13860.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_13860.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_13860.a CMakeFiles/cmTC_13860.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_13860.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-lbtrIK'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckFunctionExists.cmake:86 (try_compile)"
+      - "CMakeLists.txt:353 (check_function_exists)"
+    checks:
+      - "Looking for inet_pton"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_INET_PTON"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_8182b/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_8182b.dir/build.make CMakeFiles/cmTC_8182b.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ'
+        Building C object CMakeFiles/cmTC_8182b.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -DCHECK_FUNCTION_EXISTS=inet_pton -o CMakeFiles/cmTC_8182b.dir/CheckFunctionExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ/CheckFunctionExists.c
+        Linking C static library libcmTC_8182b.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_8182b.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8182b.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_8182b.a CMakeFiles/cmTC_8182b.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_8182b.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-DsMVHZ'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "scripts/FindPThreadGetSetName.cmake:43 (check_symbol_exists)"
+      - "CMakeLists.txt:361 (FindPThreadGetSetName)"
+    checks:
+      - "Looking for pthread_getname_np"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_PTHREAD_GETNAME_NP_IN_PTHREAD_NP_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_8af48/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_8af48.dir/build.make CMakeFiles/cmTC_8af48.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1'
+        Building C object CMakeFiles/cmTC_8af48.dir/CheckSymbolExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -D_DARWIN_C_SOURCE -D_GNU_SOURCE -D_POSIX_SOURCE=1  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -pthread -o CMakeFiles/cmTC_8af48.dir/CheckSymbolExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1/CheckSymbolExists.c
+        arm-none-eabi-gcc: error: unrecognized command-line option '-pthread'; did you mean '-fpthread'?
+        gmake[1]: *** [CMakeFiles/cmTC_8af48.dir/build.make:78: CMakeFiles/cmTC_8af48.dir/CheckSymbolExists.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-CGPVH1'
+        gmake: *** [Makefile:127: cmTC_8af48/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "scripts/FindPThreadGetSetName.cmake:48 (check_symbol_exists)"
+      - "CMakeLists.txt:361 (FindPThreadGetSetName)"
+    checks:
+      - "Looking for pthread_setname_np"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_PTHREAD_SETNAME_NP_IN_PTHREAD_NP_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_0d6d0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_0d6d0.dir/build.make CMakeFiles/cmTC_0d6d0.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN'
+        Building C object CMakeFiles/cmTC_0d6d0.dir/CheckSymbolExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -D_DARWIN_C_SOURCE -D_GNU_SOURCE -D_POSIX_SOURCE=1  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -pthread -o CMakeFiles/cmTC_0d6d0.dir/CheckSymbolExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN/CheckSymbolExists.c
+        arm-none-eabi-gcc: error: unrecognized command-line option '-pthread'; did you mean '-fpthread'?
+        gmake[1]: *** [CMakeFiles/cmTC_0d6d0.dir/build.make:78: CMakeFiles/cmTC_0d6d0.dir/CheckSymbolExists.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-I2E5BN'
+        gmake: *** [Makefile:127: cmTC_0d6d0/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "scripts/FindPThreadGetSetName.cmake:55 (check_symbol_exists)"
+      - "CMakeLists.txt:361 (FindPThreadGetSetName)"
+    checks:
+      - "Looking for pthread_getname_np"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_PTHREAD_GETNAME_NP"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_7eeea/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_7eeea.dir/build.make CMakeFiles/cmTC_7eeea.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan'
+        Building C object CMakeFiles/cmTC_7eeea.dir/CheckSymbolExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -D_DARWIN_C_SOURCE -D_GNU_SOURCE -D_POSIX_SOURCE=1  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -pthread -o CMakeFiles/cmTC_7eeea.dir/CheckSymbolExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan/CheckSymbolExists.c
+        arm-none-eabi-gcc: error: unrecognized command-line option '-pthread'; did you mean '-fpthread'?
+        gmake[1]: *** [CMakeFiles/cmTC_7eeea.dir/build.make:78: CMakeFiles/cmTC_7eeea.dir/CheckSymbolExists.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-IPNjan'
+        gmake: *** [Makefile:127: cmTC_7eeea/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "scripts/FindPThreadGetSetName.cmake:59 (check_symbol_exists)"
+      - "CMakeLists.txt:361 (FindPThreadGetSetName)"
+    checks:
+      - "Looking for pthread_setname_np"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_PTHREAD_SETNAME_NP"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_672f7/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_672f7.dir/build.make CMakeFiles/cmTC_672f7.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ'
+        Building C object CMakeFiles/cmTC_672f7.dir/CheckSymbolExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -D_DARWIN_C_SOURCE -D_GNU_SOURCE -D_POSIX_SOURCE=1  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -pthread -o CMakeFiles/cmTC_672f7.dir/CheckSymbolExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ/CheckSymbolExists.c
+        arm-none-eabi-gcc: error: unrecognized command-line option '-pthread'; did you mean '-fpthread'?
+        gmake[1]: *** [CMakeFiles/cmTC_672f7.dir/build.make:78: CMakeFiles/cmTC_672f7.dir/CheckSymbolExists.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-ULY7jQ'
+        gmake: *** [Makefile:127: cmTC_672f7/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckLibraryExists.cmake:69 (try_compile)"
+      - "scripts/CheckGCCAtomicIntrinsics.cmake:40 (check_library_exists)"
+      - "CMakeLists.txt:612 (CheckGCCAtomicIntrinsics)"
+    checks:
+      - "Looking for __atomic_fetch_add_8 in atomic"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_LIBATOMIC"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_49ae0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_49ae0.dir/build.make CMakeFiles/cmTC_49ae0.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj'
+        Building C object CMakeFiles/cmTC_49ae0.dir/CheckFunctionExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -DCHECK_FUNCTION_EXISTS=__atomic_fetch_add_8 -o CMakeFiles/cmTC_49ae0.dir/CheckFunctionExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj/CheckFunctionExists.c
+        <command-line>: warning: conflicting types for built-in function '__atomic_fetch_add_8'; expected 'long long unsigned int(volatile void *, long long unsigned int,  int)' [-Wbuiltin-declaration-mismatch]
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj/CheckFunctionExists.c:7:3: note: in expansion of macro 'CHECK_FUNCTION_EXISTS'
+            7 |   CHECK_FUNCTION_EXISTS(void);
+              |   ^~~~~~~~~~~~~~~~~~~~~
+        Linking C executable cmTC_49ae0
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_49ae0.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -DCHECK_FUNCTION_EXISTS=__atomic_fetch_add_8 CMakeFiles/cmTC_49ae0.dir/CheckFunctionExists.c.obj -o cmTC_49ae0  -latomic 
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: cannot find -latomic: No such file or directory
+        collect2: error: ld returned 1 exit status
+        gmake[1]: *** [CMakeFiles/cmTC_49ae0.dir/build.make:99: cmTC_49ae0] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-X7ODuj'
+        gmake: *** [Makefile:127: cmTC_49ae0/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "scripts/CheckGCCAtomicIntrinsics.cmake:55 (check_c_source_compiles)"
+      - "CMakeLists.txt:612 (CheckGCCAtomicIntrinsics)"
+    checks:
+      - "Performing Test HAVE_LIBATOMIC_COMPILES"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_LIBATOMIC_COMPILES"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_9edca/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_9edca.dir/build.make CMakeFiles/cmTC_9edca.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu'
+        Building C object CMakeFiles/cmTC_9edca.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -DHAVE_LIBATOMIC_COMPILES  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  -o CMakeFiles/cmTC_9edca.dir/src.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu/src.c
+        Linking C executable cmTC_9edca
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9edca.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  CMakeFiles/cmTC_9edca.dir/src.c.obj -o cmTC_9edca  -latomic 
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: cannot find -latomic: No such file or directory
+        collect2: error: ld returned 1 exit status
+        gmake[1]: *** [CMakeFiles/cmTC_9edca.dir/build.make:99: cmTC_9edca] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-eJqObu'
+        gmake: *** [Makefile:127: cmTC_9edca/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "scripts/CheckGCCAtomicIntrinsics.cmake:99 (check_c_source_compiles)"
+      - "CMakeLists.txt:612 (CheckGCCAtomicIntrinsics)"
+    checks:
+      - "Performing Test HAVE_GCCATOMIC_INTRINSICS"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_GCCATOMIC_INTRINSICS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6c3ff/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_6c3ff.dir/build.make CMakeFiles/cmTC_6c3ff.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4'
+        Building C object CMakeFiles/cmTC_6c3ff.dir/src.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -DHAVE_GCCATOMIC_INTRINSICS  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  -o CMakeFiles/cmTC_6c3ff.dir/src.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4/src.c
+        Linking C executable cmTC_6c3ff
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6c3ff.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  CMakeFiles/cmTC_6c3ff.dir/src.c.obj -o cmTC_6c3ff 
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-exit.o): in function `exit':
+        (.text.exit+0x14): undefined reference to `_exit'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: CMakeFiles/cmTC_6c3ff.dir/src.c.obj: in function `main':
+        src.c:(.text+0x42): undefined reference to `__atomic_fetch_add_8'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: src.c:(.text+0x72): undefined reference to `__atomic_fetch_sub_8'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-closer.o): in function `_close_r':
+        (.text._close_r+0xc): undefined reference to `_close'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-lseekr.o): in function `_lseek_r':
+        (.text._lseek_r+0x14): undefined reference to `_lseek'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-readr.o): in function `_read_r':
+        (.text._read_r+0x14): undefined reference to `_read'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-writer.o): in function `_write_r':
+        (.text._write_r+0x14): undefined reference to `_write'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-sbrkr.o): in function `_sbrk_r':
+        (.text._sbrk_r+0xc): undefined reference to `_sbrk'
+        collect2: error: ld returned 1 exit status
+        gmake[1]: *** [CMakeFiles/cmTC_6c3ff.dir/build.make:99: cmTC_6c3ff] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-R8kSM4'
+        gmake: *** [Makefile:127: cmTC_6c3ff/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCXXSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "scripts/CheckCXXAtomic.cmake:42 (check_cxx_source_compiles)"
+      - "CMakeLists.txt:616 (CheckCXXAtomic)"
+    checks:
+      - "Performing Test HAVE_CXX_ATOMIC"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_CXX_ATOMIC"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_d77b0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_d77b0.dir/build.make CMakeFiles/cmTC_d77b0.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n'
+        Building CXX object CMakeFiles/cmTC_d77b0.dir/src.cxx.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ -DHAVE_CXX_ATOMIC  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -std=c++11 -o CMakeFiles/cmTC_d77b0.dir/src.cxx.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n/src.cxx
+        Linking CXX static library libcmTC_d77b0.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_d77b0.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d77b0.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_d77b0.a CMakeFiles/cmTC_d77b0.dir/src.cxx.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_d77b0.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-5FXG0n'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCXXSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "scripts/CheckCXXAtomic.cmake:53 (check_cxx_source_compiles)"
+      - "CMakeLists.txt:616 (CheckCXXAtomic)"
+    checks:
+      - "Performing Test HAVE_CXX_ATOMIC_STATIC"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_CXX_ATOMIC_STATIC"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_80329/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_80329.dir/build.make CMakeFiles/cmTC_80329.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4'
+        Building CXX object CMakeFiles/cmTC_80329.dir/src.cxx.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ -DHAVE_CXX_ATOMIC_STATIC  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -std=c++11 -static -o CMakeFiles/cmTC_80329.dir/src.cxx.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4/src.cxx
+        Linking CXX static library libcmTC_80329.a
+        /usr/bin/cmake -P CMakeFiles/cmTC_80329.dir/cmake_clean_target.cmake
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_80329.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ar qc libcmTC_80329.a CMakeFiles/cmTC_80329.dir/src.cxx.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-ranlib libcmTC_80329.a
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-aEzmn4'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCXXSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "scripts/CheckCXXStdPutTime.cmake:53 (check_cxx_source_compiles)"
+      - "CMakeLists.txt:622 (CheckCXXStdPutTime)"
+    checks:
+      - "Performing Test HAVE_CXX_STD_PUT_TIME"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_CXX_STD_PUT_TIME"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_cf017/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_cf017.dir/build.make CMakeFiles/cmTC_cf017.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ'
+        Building CXX object CMakeFiles/cmTC_cf017.dir/src.cxx.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ -DHAVE_CXX_STD_PUT_TIME  -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -std=c++11 -o CMakeFiles/cmTC_cf017.dir/src.cxx.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ/src.cxx
+        Linking CXX executable cmTC_cf017
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cf017.dir/link.txt --verbose=1
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix -std=c++11 CMakeFiles/cmTC_cf017.dir/src.cxx.obj -o cmTC_cf017 
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-exit.o): in function `exit':
+        (.text.exit+0x14): undefined reference to `_exit'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-abort.o): in function `abort':
+        (.text.abort+0xa): undefined reference to `_exit'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-closer.o): in function `_close_r':
+        (.text._close_r+0xc): undefined reference to `_close'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-fstatr.o): in function `_fstat_r':
+        (.text._fstat_r+0x12): undefined reference to `_fstat'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-gettimeofdayr.o): in function `_gettimeofday_r':
+        (.text._gettimeofday_r+0x12): undefined reference to `_gettimeofday'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-lseekr.o): in function `_lseek_r':
+        (.text._lseek_r+0x14): undefined reference to `_lseek'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-openr.o): in function `_open_r':
+        (.text._open_r+0x14): undefined reference to `_open'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-readr.o): in function `_read_r':
+        (.text._read_r+0x14): undefined reference to `_read'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-signalr.o): in function `_kill_r':
+        (.text._kill_r+0x12): undefined reference to `_kill'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-signalr.o): in function `_getpid_r':
+        (.text._getpid_r+0x0): undefined reference to `_getpid'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-sbrkr.o): in function `_sbrk_r':
+        (.text._sbrk_r+0xc): undefined reference to `_sbrk'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-writer.o): in function `_write_r':
+        (.text._write_r+0x14): undefined reference to `_write'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-getentropyr.o): in function `_getentropy_r':
+        (.text._getentropy_r+0x12): undefined reference to `_getentropy'
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld: /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/lib/thumb/v7e-m+fp/hard/libc.a(libc_a-isattyr.o): in function `_isatty_r':
+        (.text._isatty_r+0xc): undefined reference to `_isatty'
+        collect2: error: ld returned 1 exit status
+        gmake[1]: *** [CMakeFiles/cmTC_cf017.dir/build.make:99: cmTC_cf017] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-w4pZYQ'
+        gmake: *** [Makefile:127: cmTC_cf017/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:140 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckSymbolExists.cmake:66 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "CMakeLists.txt:991 (check_symbol_exists)"
+    checks:
+      - "Looking for pthread_atfork"
+    directories:
+      source: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0"
+      binary: "/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aklofas/Projects/ts-transformer/ts-transformer/vendor/srt/scripts"
+    buildResult:
+      variable: "HAVE_PTHREAD_ATFORK"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_31558/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_31558.dir/build.make CMakeFiles/cmTC_31558.dir/build
+        gmake[1]: Entering directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0'
+        Building C object CMakeFiles/cmTC_31558.dir/CheckSymbolExists.c.obj
+        /opt/xpack/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gcc   -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims/s2_prefix.h -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/posix-shims -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-kernel/portable/GCC/ARM_CM4F  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/include/private  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/freertos-plus-posix/FreeRTOS-Plus-POSIX/include/portable  -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include -I/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/../../vendor/lwip/src/include/compat/posix  -o CMakeFiles/cmTC_31558.dir/CheckSymbolExists.c.obj -c /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0/CheckSymbolExists.c
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0/CheckSymbolExists.c: In function 'main':
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0/CheckSymbolExists.c:8:19: error: 'pthread_atfork' undeclared (first use in this function); did you mean 'pthread_attr'?
+            8 |   return ((int*)(&pthread_atfork))[argc];
+              |                   ^~~~~~~~~~~~~~
+              |                   pthread_attr
+        /home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0/CheckSymbolExists.c:8:19: note: each undeclared identifier is reported only once for each function it appears in
+        gmake[1]: *** [CMakeFiles/cmTC_31558.dir/build.make:78: CMakeFiles/cmTC_31558.dir/CheckSymbolExists.c.obj] Error 1
+        gmake[1]: Leaving directory '/home/aklofas/Projects/ts-transformer/ts-transformer/embedded/s3-srt/srt-build0/CMakeFiles/CMakeScratch/TryCompile-yd1NP0'
+        gmake: *** [Makefile:127: cmTC_31558/fast] Error 2
+        
+      exitCode: 2
+...

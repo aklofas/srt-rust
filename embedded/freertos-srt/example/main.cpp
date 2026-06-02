@@ -24,7 +24,7 @@ extern "C" {
 #define REPEAT 64
 static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
-#ifdef S4_PASSPHRASE
+#ifdef SRT_PASSPHRASE
 #define S4_TAG "s4_aes"
 #define S4_ENC " (AES-128)"
 #else
@@ -51,7 +51,7 @@ static void* caller_thread(void*) {
     sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000202);   /* 10.0.2.2 = SLIRP host alias */
     SRTSOCKET cs = srt_create_socket();
-    if (cs == SRT_INVALID_SOCK || s4_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
+    if (cs == SRT_INVALID_SOCK || srt_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
     if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); return nullptr; }
     for (int r = 0; r < REPEAT && !g_fail; r++) {
         int off = 0;

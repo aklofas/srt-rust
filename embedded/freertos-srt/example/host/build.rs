@@ -9,7 +9,7 @@ use std::{env, fs, path::Path};
 fn main() {
     let here = env::var("CARGO_MANIFEST_DIR").unwrap();
     let golden_ts = Path::new(&here)
-        .join("../../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
+        .join("../../../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
     println!("cargo:rerun-if-changed={}", golden_ts.display());
     let bytes = fs::read(&golden_ts).expect("read video-roundtrip output.ts");
     assert_eq!(bytes.len(), 564, "GOLDEN must be 564 bytes, got {}", bytes.len());

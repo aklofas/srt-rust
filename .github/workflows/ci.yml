@@ -630,59 +630,56 @@ jobs:
       # Runtime gate: build the S0 C++ exceptions/threading firmware (FreeRTOS +
       # FreeRTOS-Plus-POSIX, pthread backend) and run under QEMU mps2-an386,
       # asserting concurrent per-task throw/catch with exception isolation.
-      # Phase-in (continue-on-error) for now: the gate was developed against the
-      # local xPack arm-none-eabi-g++ 14.2.1; this runs on CI's older apt GCC,
-      # which may diverge on libstdc++/unwinder behavior. Promote to hard-gate
-      # after a few consecutive green runs on the apt toolchain.
+      # Promoted to hard-gate 2026-06-01 after a consecutive green-run streak on
+      # the apt toolchain (the gate skips cleanly via `command -v` guards if the
+      # cross-toolchain/QEMU is ever absent, so promotion can't false-red on a
+      # runner-image change).
       - name: QEMU runtime gate (S0 C++ exceptions on FreeRTOS)
-        continue-on-error: true
         run: bash scripts/check-s0-cpp-gate.sh
 
       # Runtime gate: build the S1 FreeRTOS + lwIP harness (loopback netif, BSD
       # sockets + select(), hi-res clock_gettime, FreeRTOS-Plus-POSIX pthreads)
       # and run under QEMU mps2-an386, asserting the 564-byte video-roundtrip
-      # golden round-trips through a lwIP UDP loopback socket. Same phase-in
-      # (continue-on-error) rationale as S0: developed against local xPack g++,
-      # validated on CI's apt GCC. Promote to hard-gate after a few green runs.
-      # No new apt packages — reuses the gcc-arm-none-eabi + libstdc++-arm-none-
-      # eabi-newlib + qemu-system-arm installed above. vendor/lwip is fetched by
-      # the recursive submodule checkout at the top of this job.
+      # golden round-trips through a lwIP UDP loopback socket. Promoted to
+      # hard-gate 2026-06-01 alongside S0 (same green-run streak + skip-guard
+      # rationale). No new apt packages — reuses the gcc-arm-none-eabi +
+      # libstdc++-arm-none-eabi-newlib + qemu-system-arm installed above.
+      # vendor/lwip is fetched by the recursive submodule checkout above.
       - name: QEMU runtime gate (S1 lwIP loopback golden)
-        continue-on-error: true
         run: bash scripts/check-s1-lwip.sh
 
       # Runtime gate: cross-compile libsrt for bare-metal arm-none-eabi
       # (CMAKE_SYSTEM_NAME=Generic -> ::select path, pthread backend, logging +
       # encryption OFF), link it with the FreeRTOS+lwIP substrate, and run a
       # srt_startup+create_socket+close+cleanup boot smoke under QEMU mps2-an386.
-      # Same phase-in (continue-on-error) rationale as S0/S1. No new apt packages
-      # -- cmake is already on the runner (the host libsrt builds use it); reuses
+      # Promoted to hard-gate 2026-06-01 alongside S0/S1. No new apt packages --
+      # cmake is already on the runner (the host libsrt builds use it); reuses
       # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm.
       # build.sh applies our bare-metal portability patches to the pinned
-      # vendor/srt submodule at build time (pointer stays pristine). Promote to
-      # hard-gate after a few green apt runs.
+      # vendor/srt submodule at build time (pointer stays pristine).
       - name: QEMU runtime gate (S2 libsrt boot smoke)
-        continue-on-error: true
         run: bash scripts/check-s2-libsrt.sh
 
       # Runtime gate: SRT caller+listener loopback data-plane proof on bare-metal
       # arm-none-eabi. Streams the 564-byte golden x N through SRT over a lossy
       # loopback netif (~20% deterministic data-packet loss) and asserts the
       # receiver recovers it byte-exact -- unencrypted and mbedTLS-encrypted
-      # (AES-128 + passphrase). Same phase-in (continue-on-error) rationale as
-      # S0/S1/S2. No new apt packages -- cmake is on the runner; mbedTLS is
-      # vendored. Promote to hard-gate after a few green apt runs.
+      # (AES-128 + passphrase). Promoted to hard-gate 2026-06-01 alongside
+      # S0/S1/S2 (single-process, deterministic outcome). No new apt packages --
+      # cmake is on the runner; mbedTLS is vendored.
       - name: QEMU runtime gate (S3 SRT loopback ARQ + encryption)
-        continue-on-error: true
         run: bash scripts/check-s3-srt.sh
 
       # Runtime gate: real-NIC egress. A bare-metal SRT caller streams the
       # 564-byte golden x N out a lan9118 NIC over QEMU SLIRP user-net to a
       # host tst-srt listener that verifies byte-exact -- plain and AES-128.
       # The host process exit code is the verdict (the firmware only proves it
-      # sent). Same phase-in (continue-on-error) rationale as S0-S3. No new apt
-      # packages -- SLIRP is in qemu-system-arm, lan9118 is in QEMU, mbedTLS is
-      # vendored; the host harness builds the vendored host libsrt via cargo.
+      # sent). STAYS phase-in (continue-on-error) for now while S0-S3 were
+      # promoted to hard-gate 2026-06-01: S4 is the only networked / two-process
+      # gate (SLIRP timing + a kill-bounded host join), so it bakes one more
+      # cycle before promotion. No new apt packages -- SLIRP is in
+      # qemu-system-arm, lan9118 is in QEMU, mbedTLS is vendored; the host
+      # harness builds the vendored host libsrt via cargo.
       - name: QEMU runtime gate (S4 lan9118 NIC -> host SRT egress)
         continue-on-error: true
         run: bash scripts/check-s4-srt.sh

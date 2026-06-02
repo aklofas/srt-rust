@@ -109,8 +109,12 @@ fi
 
 rm -f "$PROD"/*.o
 # Substrate C compiles plain (no shim env), exactly as the staged builds did.
+# $DEFS (the per-target lwipopts/behavior knobs the staged builds baked into
+# their config headers — e.g. -DLWIP_NETIF_LOOPBACK=1) MUST reach these C files
+# too: lwipopts.h is read by the lwIP core here, not just by the C++ app, so a
+# -D that only hit the app would leave lwIP compiled with the superset default.
 for f in $C_SRC; do
-  $CC $ARCH $OPT $INC -std=gnu11 -c "$f" -o "$PROD/$(basename "${f%.c}").o"
+  $CC $ARCH $OPT $INC ${DEFS:-} -std=gnu11 -c "$f" -o "$PROD/$(basename "${f%.c}").o"
 done
 
 # App + the C++ glue. cxa_override is always linked (per-task eh globals); the

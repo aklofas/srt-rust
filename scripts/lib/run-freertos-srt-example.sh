@@ -29,11 +29,19 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=ENCRYPT  $4=passphrase-or-empt
   local host_pid=$!
 
   # Wait (<=10s) for the listener to print 'host-ready' before launching QEMU.
+  # Hard-fail if it never appears: otherwise the loop falls through and QEMU
+  # connects before the listener is bound -> a race/flaky failure.
+  local ready=0
   for _ in $(seq 1 100); do
-    grep -q 'host-ready' <<<"$(cat "$hostout")" && break
-    kill -0 "$host_pid" 2>/dev/null || { echo "host died early"; cat "$hostout"; exit 1; }
+    if grep -q 'host-ready' <<<"$(cat "$hostout")"; then ready=1; break; fi
+    kill -0 "$host_pid" 2>/dev/null || { echo "host died early ($label)"; cat "$hostout"; exit 1; }
     sleep 0.1
   done
+  if [ "$ready" -ne 1 ]; then
+    echo "GATE FAILED ($label): host never printed host-ready within 10s"; cat "$hostout"
+    kill "$host_pid" 2>/dev/null; wait "$host_pid" 2>/dev/null
+    exit 1
+  fi
 
   echo "==> running example firmware caller under QEMU ($label)"
   local qout

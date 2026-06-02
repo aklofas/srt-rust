@@ -665,6 +665,17 @@ jobs:
         continue-on-error: true
         run: bash scripts/check-s2-libsrt.sh
 
+      # Runtime gate: SRT caller+listener loopback data-plane proof on bare-metal
+      # arm-none-eabi. Streams the 564-byte golden x N through SRT over a lossy
+      # loopback netif (~20% deterministic data-packet loss) and asserts the
+      # receiver recovers it byte-exact -- unencrypted and mbedTLS-encrypted
+      # (AES-128 + passphrase). Same phase-in (continue-on-error) rationale as
+      # S0/S1/S2. No new apt packages -- cmake is on the runner; mbedTLS is
+      # vendored. Promote to hard-gate after a few green apt runs.
+      - name: QEMU runtime gate (S3 SRT loopback ARQ + encryption)
+        continue-on-error: true
+        run: bash scripts/check-s3-srt.sh
+
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
     runs-on: ubuntu-latest

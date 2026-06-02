@@ -28,5 +28,6 @@ case "$t" in
   example)       command -v cmake >/dev/null 2>&1 || { echo "SKIP: cmake"; exit 0; }
                  command -v cargo >/dev/null 2>&1 || { echo "SKIP: cargo"; exit 0; }
                  bash "$(dirname "$0")/lib/run-freertos-srt-example.sh" || exit 1 ;;
+  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

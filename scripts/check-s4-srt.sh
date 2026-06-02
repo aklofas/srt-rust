@@ -12,6 +12,27 @@ command -v qemu-system-arm   >/dev/null 2>&1 || { echo "SKIP: qemu-system-arm no
 command -v cmake             >/dev/null 2>&1 || { echo "SKIP: cmake not installed"; exit 0; }
 command -v cargo             >/dev/null 2>&1 || { echo "SKIP: cargo not installed"; exit 0; }
 
+# golden.h is generated (not committed) from the committed video-roundtrip
+# output.ts by check-c-firmware-qemu.sh. Generate it here too if absent so this
+# gate is self-contained on a clean checkout — both main.cpp (#include) and the
+# host build.rs depend on the same 564 golden bytes.
+GOLDEN_H=crates/baremetal-qemu-c/firmware/golden.h
+GOLDEN_TS=crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts
+if [ ! -f "$GOLDEN_H" ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "SKIP: python3 not installed (needed to generate golden.h)"; exit 0; }
+  echo "==> generating $GOLDEN_H from $GOLDEN_TS"
+  python3 - "$GOLDEN_TS" > "$GOLDEN_H" <<'PY'
+import sys
+data = open(sys.argv[1], "rb").read()
+print("#include <stddef.h>\n#include <stdint.h>")
+print(f"static const size_t GOLDEN_LEN = {len(data)};")
+print("static const uint8_t GOLDEN[] = {")
+for i in range(0, len(data), 12):
+    print("  " + ", ".join(f"0x{b:02x}" for b in data[i:i+12]) + ",")
+print("};")
+PY
+fi
+
 HOST_DIR=embedded/s4-srt/host
 HOST_BIN="$HOST_DIR/target/release/s4-host"
 
@@ -43,8 +64,20 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=S4_ENCRYPT  $4=passphrase-or-e
     -nic user,model=lan9118 || true)
   echo "$qout"
 
-  # Join the host (bounded), then assert ITS verdict.
-  local hrc=0; { wait "$host_pid"; } || hrc=$?
+  # Bounded join: once QEMU (the caller) has exited, the host either already
+  # finished (success: it received the stream and exit(0)'d) or is still blocked
+  # in accept()/recv() (failure: handshake never connected). Wait up to 10s,
+  # then kill it so a failed run can't hang CI on an unbounded `wait`.
+  local hrc=0 waited=0
+  while kill -0 "$host_pid" 2>/dev/null && [ "$waited" -lt 100 ]; do
+    sleep 0.1; waited=$((waited + 1))
+  done
+  if kill -0 "$host_pid" 2>/dev/null; then
+    echo "host still running after QEMU exit — killing ($label)"
+    kill "$host_pid" 2>/dev/null; wait "$host_pid" 2>/dev/null; hrc=1
+  else
+    wait "$host_pid" 2>/dev/null || hrc=$?
+  fi
   echo "---- host output ($label) ----"; cat "$hostout"
   grep -q "$token" <<<"$(cat "$hostout")" || { echo "GATE FAILED ($label): no host PASS"; exit 1; }
   [ "$hrc" -eq 0 ] || { echo "GATE FAILED ($label): host exit $hrc"; exit 1; }

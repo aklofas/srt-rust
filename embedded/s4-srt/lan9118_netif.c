@@ -77,14 +77,17 @@ void lan9118_poll(void) {
     if (((REG(RX_FIFO_INF) >> 16) & 0xFFu) == 0) return;
     uint32_t status = REG(RX_STATUS_FIFO);
     uint32_t len = (status >> 16) & 0x3FFFu;             /* packet length incl CRC */
-    if (len == 0) return;
-    struct pbuf *p = pbuf_alloc(PBUF_RAW, (u16_t)len, PBUF_RAM);
+    static uint8_t buf[1600];
     uint32_t words = (len + 3u) / 4u;
-    if (p == NULL) {                                     /* drop: drain the FIFO */
+    /* Drain + drop on a zero, oversize, or unallocatable frame so a malformed
+     * RX status length (the field is 14 bits, up to 16383) can never overflow
+     * buf[1600] or the pbuf. Mirrors the TX path's len guard. */
+    struct pbuf *p = (len == 0 || len > sizeof buf) ? NULL
+                     : pbuf_alloc(PBUF_RAW, (u16_t)len, PBUF_RAM);
+    if (p == NULL) {
         for (uint32_t i = 0; i < words; i++) (void)REG(RX_DATA_FIFO);
         return;
     }
-    static uint8_t buf[1600];
     uint32_t *w = (uint32_t *)buf;
     for (uint32_t i = 0; i < words; i++) w[i] = REG(RX_DATA_FIFO);
     pbuf_take(p, buf, (u16_t)len);

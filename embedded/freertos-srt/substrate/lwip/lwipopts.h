@@ -38,10 +38,20 @@
 #define LWIP_IGMP                   0
 #define LWIP_ICMP                   1
 
-/* S4: a real lan9118 netif owns 10.0.2.15/24 (SLIRP guest address). No lwIP
- * built-in loopback; all traffic goes out the NIC to the SLIRP gateway. */
+/* Superset base: Ethernet+ARP (for the lan9118 example) AND a built-in-loopif
+ * path (for the lwip-loopback test) both compiled in. The loopback toggles are
+ * #ifndef-guarded so the lwip-loopback target re-enables them via -D without a
+ * forked config; loopback-arq + example leave them at 0 (the lossy/lan9118
+ * netifs own their addresses and must see every packet). */
+#ifndef LWIP_HAVE_LOOPIF
 #define LWIP_HAVE_LOOPIF            0
+#endif
+#ifndef LWIP_NETIF_LOOPBACK
 #define LWIP_NETIF_LOOPBACK         0
+#endif
+#ifndef LWIP_NETIF_LOOPBACK_MULTITHREADING
+#define LWIP_NETIF_LOOPBACK_MULTITHREADING 0
+#endif
 
 /* Sequential / socket API. */
 #define LWIP_NETCONN                1

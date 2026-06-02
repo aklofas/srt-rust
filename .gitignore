@@ -7,41 +7,16 @@ crates/baremetal-qemu-c/firmware/*.elf
 crates/baremetal-qemu-c/firmware/firmware.elf
 crates/baremetal-qemu-c/firmware/golden.h
 
-# Embedded S0 C++ exceptions gate build artifacts
-embedded/s0-cpp-gate/firmware.elf
-embedded/s0-cpp-gate/*.elf
-embedded/s0-cpp-gate/*.o
-
-# Embedded S1 FreeRTOS + lwIP harness build artifacts
-embedded/s1-lwip/firmware.elf
-embedded/s1-lwip/*.elf
-embedded/s1-lwip/*.o
-
-# Embedded S2 libsrt cross-compile + boot smoke build artifacts
-embedded/s2-libsrt/firmware.elf
-embedded/s2-libsrt/*.elf
-embedded/s2-libsrt/*.o
-embedded/s2-libsrt/srt-build/
-embedded/s2-libsrt/srt-install/
-
-# Embedded S3 SRT loopback runtime proof build artifacts
-embedded/s3-srt/firmware.elf
-embedded/s3-srt/*.elf
-embedded/s3-srt/*.o
-embedded/s3-srt/srt-build*/
-embedded/s3-srt/srt-install*/
-embedded/s3-srt/mbedtls-build/
-embedded/s3-srt/mbedtls-install/
-
-# Embedded S4 lan9118 NIC -> host SRT egress build artifacts
-embedded/s4-srt/firmware.elf
-embedded/s4-srt/*.elf
-embedded/s4-srt/*.o
-embedded/s4-srt/srt-build*/
-embedded/s4-srt/srt-install*/
-embedded/s4-srt/mbedtls-build/
-embedded/s4-srt/mbedtls-install/
-embedded/s4-srt/host/target/
+# Embedded freertos-srt reference product build artifacts
+embedded/freertos-srt/firmware.elf
+embedded/freertos-srt/*.elf
+embedded/freertos-srt/*.o
+embedded/freertos-srt/srt-build*/
+embedded/freertos-srt/srt-install*/
+embedded/freertos-srt/mbedtls-build/
+embedded/freertos-srt/mbedtls-install/
+embedded/freertos-srt/example/host/target/
+embedded/freertos-srt/substrate/golden.h
 
 # Rust analyzer
 .rust-analyzer/

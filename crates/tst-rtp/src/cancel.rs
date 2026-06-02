@@ -127,14 +127,17 @@ mod tests {
     fn cancel_visible_across_threads() {
         let h = RtpCancelHandle::new();
         let h2 = h.clone();
+        // Spin until the cancel set by the main thread becomes visible. The flag
+        // is atomic, so the child is guaranteed to observe it eventually — there
+        // is no give-up bound (an earlier `0..1000` cap could exhaust before a
+        // descheduled main thread ran `cancel()`, flaking on loaded runners). A
+        // genuine cross-thread visibility regression would spin forever and be
+        // caught by the per-test timeout.
         let t = thread::spawn(move || {
-            for _ in 0..1000 {
-                if h2.is_cancelled() {
-                    return true;
-                }
+            while !h2.is_cancelled() {
                 std::thread::yield_now();
             }
-            false
+            true
         });
         h.cancel();
         assert!(t.join().unwrap(), "child thread never observed cancel");

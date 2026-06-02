@@ -3,7 +3,7 @@
 // which is a LIVE-streaming library (TSBPD + message API on; no FILE-mode
 // listener knob). Over the lossless SLIRP path LIVE delivers the golden
 // byte-exact (no too-late-packet-drop fires without loss). Phase B additionally
-// sets a passphrase (compile with -DS4_PASSPHRASE="...").
+// sets a passphrase (compile with -DSRT_PASSPHRASE="...").
 #ifndef SRT_OPTS_H
 #define SRT_OPTS_H
 #include <srt/srt.h>
@@ -15,14 +15,18 @@ static inline int s4_apply_opts(SRTSOCKET s) {
     // an SRT_TRANSTYPE value, NOT int: arm-none-eabi defaults to -fshort-enums
     // so sizeof(SRT_TRANSTYPE) == 1; passing an int (size 4) fails libsrt's
     // cast_optval size check (-> MN_INVAL throw).
-    SRT_TRANSTYPE tt = SRTT_LIVE;
+#ifdef SRT_FILE_MODE
+    SRT_TRANSTYPE tt = SRTT_FILE;   /* loopback-arq: reliable byte-exact under loss */
+#else
+    SRT_TRANSTYPE tt = SRTT_LIVE;   /* example: interop with the LIVE tst-srt host listener */
+#endif
     if (srt_setsockflag(s, SRTO_TRANSTYPE, &tt, sizeof tt) == SRT_ERROR) return -1;
     // Modest buffers (keep SRT's allocations small on the 1 MiB FreeRTOS heap).
     int buf = 256 * 1024;
     srt_setsockflag(s, SRTO_SNDBUF, &buf, sizeof buf);
     srt_setsockflag(s, SRTO_RCVBUF, &buf, sizeof buf);
-#ifdef S4_PASSPHRASE
-    const char* pp = S4_PASSPHRASE;
+#ifdef SRT_PASSPHRASE
+    const char* pp = SRT_PASSPHRASE;
     int klen = 16;  // AES-128
     if (srt_setsockflag(s, SRTO_PASSPHRASE, pp, (int)__builtin_strlen(pp)) == SRT_ERROR) return -1;
     srt_setsockflag(s, SRTO_PBKEYLEN, &klen, sizeof klen);

@@ -28,7 +28,7 @@ static volatile int g_fail = 0;
 static const char*  g_where = "";
 static uint8_t      g_rxbuf[STREAM_LEN];
 static int          g_rxlen = 0;
-static SRT_TRACEBSTATS g_tx_stats;
+static SRT_TRACEBSTATS g_rx_stats;
 
 static void tcpip_ready(void*) { g_up = 1; }
 
@@ -53,6 +53,12 @@ static void* listener_thread(void*) {
         got += n;
     }
     g_rxlen = got;
+    // Snapshot receiver stats AFTER the full stream is in: pktRcvRetransTotal is
+    // now final and counts every retransmitted packet we had to receive to
+    // recover the ~20% the lossy netif dropped. (The sender's pktRetransTotal,
+    // sampled right after its send loop, would still be 0 in FILE mode — that
+    // loop only buffers; retransmission happens during srt_close's linger.)
+    srt_bstats(cs, &g_rx_stats, 0);
     srt_close(cs);
     srt_close(ls);
     return nullptr;
@@ -77,7 +83,6 @@ static void* caller_thread(void*) {
             off += n;
         }
     }
-    srt_bstats(cs, &g_tx_stats, 0);
     srt_close(cs);
     return nullptr;
 }
@@ -103,14 +108,21 @@ static void run_task(void*) {
     for (int r = 0; bytes_ok && r < REPEAT; r++)
         if (memcmp(g_rxbuf + r * GOLDEN_LEN, GOLDEN, GOLDEN_LEN) != 0) bytes_ok = 0;
 
-    int retrans = g_tx_stats.pktRetransTotal;
+    // dropped = packets the netif deterministically injected as loss (0 when the
+    // filter is off). In FILE mode the ONLY way the stream still reconstructs
+    // byte-exact (bytes_ok) is SRT retransmitting each dropped packet, so
+    // dropped>0 && bytes_ok proves ARQ recovery. rcv_loss is SRT's own
+    // receiver-side loss tally, reported for corroboration (it can read 1 even
+    // with no injected loss, so it is NOT the gate).
+    unsigned dropped = lossy_dropped_count();
+    int rcvloss = g_rx_stats.pktRcvLossTotal;
 
 #if S3_LOSS_ENABLED
-    int ok = !g_fail && bytes_ok && retrans > 0;     // ARQ must have fired
-    if (ok) printf("PASS: s3_srt_plain (GOLDEN x %d recovered under ~20%% loss, retrans=%d, dropped=%u)\n",
-                   REPEAT, retrans, (unsigned)lossy_dropped_count());
-    else    printf("FAIL[s3_srt_plain]: where=%s rxlen=%d/%d bytes_ok=%d retrans=%d\n",
-                   g_where, g_rxlen, STREAM_LEN, bytes_ok, retrans);
+    int ok = !g_fail && bytes_ok && dropped > 0;     // injected loss recovered byte-exact
+    if (ok) printf("PASS: s3_srt_plain (GOLDEN x %d recovered byte-exact under ~20%% loss, dropped=%u, rcv_loss=%d)\n",
+                   REPEAT, dropped, rcvloss);
+    else    printf("FAIL[s3_srt_plain]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
+                   g_where, g_rxlen, STREAM_LEN, bytes_ok, dropped, rcvloss);
 #else
     int ok = !g_fail && bytes_ok;                    // clean delivery (no loss yet)
     if (ok) printf("PASS: s3_srt_clean (GOLDEN x %d delivered, no loss)\n", REPEAT);

@@ -1,9 +1,9 @@
 /* A hand-written lwIP loopback netif with deterministic packet loss.
  *
  * Replaces lwIP's built-in loopback (LWIP_NETIF_LOOPBACK=0 in lwipopts). The
- * netif sits at 127.0.0.1; its output loops a COPY of each pbuf back up the
+ * netif sits at 10.0.0.1; its output loops a COPY of each pbuf back up the
  * stack via netif->input (tcpip_input). A datagram is dropped only when the
- * filter is enabled AND it is a DATA-sized packet (tot_len > 900) AND it is the
+ * filter is enabled AND it is a DATA-sized packet (tot_len > 300) AND it is the
  * 5th such packet (~20%). SRT control/handshake/KM packets are small and always
  * pass, so the connection and keying are never disrupted. Deterministic ->
  * the CI gate reproduces. Self-converging: a dropped packet's retransmit is a
@@ -36,7 +36,10 @@ static err_t loop_back(struct netif *netif, struct pbuf *p)
 
 static err_t lossy_linkoutput(struct netif *netif, struct pbuf *p)
 {
-    if (s_enabled && p->tot_len > 900) {            /* data packet, not control */
+    /* Measured wire sizes: SRT data packets carrying a 564-byte golden chunk are
+     * 608 bytes; control packets (handshake/ACK/NAK/KM) are <= 116. The 300-byte
+     * gate drops only data, never control. */
+    if (s_enabled && p->tot_len > 300) {            /* data packet, not control */
         uint32_t ord = ++s_data_ord;
         if (ord % 5 == 0) { s_dropped++; return ERR_OK; }   /* silently drop */
     }

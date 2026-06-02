@@ -95,7 +95,7 @@ done
 # headers / srt.h, so they need the SAME compat env libsrt was built with:
 # the s2_prefix.h force-include (newlib type suppressions), -D__GNU__ (endian
 # branch), and -DSRT_NO_PTHREAD_CANCEL (matches the vendor/srt patch).
-SHIM_DEFS="-include posix-shims/s2_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -DS3_LOSS_ENABLED=0"
+SHIM_DEFS="-include posix-shims/s2_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -DS3_LOSS_ENABLED=1"
 $CC $ARCH $OPT $INC $SHIM_DEFS -std=gnu11 -c pthread_key_shim.c -o pthread_key_shim.o
 
 # cxa_override.cpp: strong __cxa_get_globals/_fast defs (per-task eh state in

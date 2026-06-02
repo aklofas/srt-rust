@@ -8,6 +8,26 @@ cd "$(dirname "$0")/.."
 command -v arm-none-eabi-g++ >/dev/null 2>&1 || { echo "SKIP: arm-none-eabi-g++ not installed"; exit 0; }
 command -v qemu-system-arm   >/dev/null 2>&1 || { echo "SKIP: qemu-system-arm not installed"; exit 0; }
 
+# golden.h is generated (not committed) from the committed video-roundtrip
+# output.ts by check-c-firmware-qemu.sh. Generate it here too if absent so this
+# gate is self-contained on a clean checkout (the firmware #includes it).
+GOLDEN_H=crates/baremetal-qemu-c/firmware/golden.h
+GOLDEN_TS=crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts
+if [ ! -f "$GOLDEN_H" ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "SKIP: python3 not installed (needed to generate golden.h)"; exit 0; }
+  echo "==> generating $GOLDEN_H from $GOLDEN_TS"
+  python3 - "$GOLDEN_TS" > "$GOLDEN_H" <<'PY'
+import sys
+data = open(sys.argv[1], "rb").read()
+print("#include <stddef.h>\n#include <stdint.h>")
+print(f"static const size_t GOLDEN_LEN = {len(data)};")
+print("static const uint8_t GOLDEN[] = {")
+for i in range(0, len(data), 12):
+    print("  " + ", ".join(f"0x{b:02x}" for b in data[i:i+12]) + ",")
+print("};")
+PY
+fi
+
 echo "==> building S1 lwIP harness firmware"
 ( cd embedded/s1-lwip && ./build.sh )
 

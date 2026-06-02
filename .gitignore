@@ -33,6 +33,16 @@ embedded/s3-srt/srt-install*/
 embedded/s3-srt/mbedtls-build/
 embedded/s3-srt/mbedtls-install/
 
+# Embedded S4 lan9118 NIC -> host SRT egress build artifacts
+embedded/s4-srt/firmware.elf
+embedded/s4-srt/*.elf
+embedded/s4-srt/*.o
+embedded/s4-srt/srt-build*/
+embedded/s4-srt/srt-install*/
+embedded/s4-srt/mbedtls-build/
+embedded/s4-srt/mbedtls-install/
+embedded/s4-srt/host/target/
+
 # Rust analyzer
 .rust-analyzer/
 

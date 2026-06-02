@@ -5,6 +5,7 @@
  * promiscuous (PRMS) so frame filtering never gets in the way of the test. */
 #include "lwip/opt.h"
 #include "lwip/netif.h"
+#include "lwip/tcpip.h"
 #include "lwip/etharp.h"
 #include "lwip/ethip6.h"
 #include "lwip/snmp.h"

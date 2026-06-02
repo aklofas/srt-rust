@@ -8,7 +8,7 @@
 #define SRT_OPTS_H
 #include <srt/srt.h>
 
-static inline int s4_apply_opts(SRTSOCKET s) {
+static inline int srt_apply_opts(SRTSOCKET s) {
     // LIVE is the default transtype; setting it explicitly documents intent and
     // keeps both ends matched (a FILE caller vs a LIVE listener is rejected at
     // handshake — TSBPD/message-API negotiation mismatch). SRTO_TRANSTYPE takes

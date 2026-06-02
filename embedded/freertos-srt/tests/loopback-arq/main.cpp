@@ -22,8 +22,8 @@ extern "C" {
 #define REPEAT 64
 static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
-// Distinct gate token + label per phase (Phase B sets S3_PASSPHRASE).
-#ifdef S3_PASSPHRASE
+// Distinct gate token + label per phase (Phase B sets SRT_PASSPHRASE).
+#ifdef SRT_PASSPHRASE
 #define S3_TAG "s3_srt_aes"
 #define S3_ENC " (AES-128 encrypted)"
 #else
@@ -49,7 +49,7 @@ static void* listener_thread(void*) {
     sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000001);   /* 10.0.0.1 (our lossy netif) */
     SRTSOCKET ls = srt_create_socket();
-    if (ls == SRT_INVALID_SOCK || s3_apply_opts(ls) != 0) { fail("listen_opts"); return nullptr; }
+    if (ls == SRT_INVALID_SOCK || srt_apply_opts(ls) != 0) { fail("listen_opts"); return nullptr; }
     if (srt_bind(ls, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("bind"); return nullptr; }
     if (srt_listen(ls, 1) == SRT_ERROR) { fail("listen"); return nullptr; }
     g_listen_ready = 1;
@@ -80,7 +80,7 @@ static void* caller_thread(void*) {
     sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000001);   /* 10.0.0.1 (our lossy netif) */
     SRTSOCKET cs = srt_create_socket();
-    if (cs == SRT_INVALID_SOCK || s3_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
+    if (cs == SRT_INVALID_SOCK || srt_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
     if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); return nullptr; }
     // Handshake (+ KM in Phase B) is complete now; loss may be enabled.
     lossy_set_enabled(S3_LOSS_ENABLED);

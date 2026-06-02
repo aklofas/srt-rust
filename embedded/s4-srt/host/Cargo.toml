@@ -1,0 +1,17 @@
+[package]
+name = "s4-host"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Empty [workspace] table detaches this package from the main ts-transformer
+# workspace, so it never appears in `cargo metadata`/public-api/non_exhaustive
+# scans of crates/. It depends on tst-srt by relative path only.
+[workspace]
+
+[dependencies]
+tst-srt = { path = "../../../crates/tst-srt" }
+
+[[bin]]
+name = "s4-host"
+path = "src/main.rs"

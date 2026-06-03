@@ -123,3 +123,30 @@ golden = "audio-klv-roundtrip/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "drop-idempotence"
+kind = "binding_contract"
+input = "drop-idempotence/input.ts"
+golden = "drop-idempotence/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "forged-handle"
+kind = "binding_contract"
+input = "forged-handle/input.bin"
+golden = "forged-handle/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "exception-kind-stability"
+kind = "binding_contract"
+input = "exception-kind-stability/input.bin"
+golden = "exception-kind-stability/golden.json"
+features = []
+tier = "A"
+schema_version = 0

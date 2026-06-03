@@ -1,0 +1,13 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "error",
+      "code": "DOUBLE_CLOSE_OK"
+    }
+  ],
+  "extensions": {
+    "contract": "drop_idempotence"
+  }
+}

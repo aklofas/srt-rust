@@ -27,6 +27,24 @@ KLV set identity
   MISB ST 0601 UAS Datalink LS UL prefix.  Returns ``"st0601"`` or
   ``"unknown"``.
 
+Subtitle
+  ``DemuxEvent.Subtitle`` projects to ``{event:"subtitle", program, pid,
+  stream_type, codec}`` where ``codec`` ∈ {"dvb_subtitle","dvb_teletext",
+  "webvtt","cea708_standalone"}.  The mapping from the Python
+  ``SubtitleCodec`` enum is exactly the Rust ``subtitle_codec_tag()`` table
+  (all subtitle codecs carry PMT stream_type 0x06).
+
+NonConformant diagnostics
+  Under the DEFAULT (lenient) ``DemuxerConfig`` the demuxer does NOT raise —
+  it surfaces ``DemuxEvent.NonConformant`` diagnostic events inline and
+  continues.  Each one projects to ``{event:"error", code:"<STABLE CODE>"}``
+  where the stable code is the ``NonConformantKind`` enum member NAME
+  (e.g. ``PES_HEADER_MALFORMED``, ``MISSING_REQUIRED_PTS``).  These NAMEs are
+  exactly the strings the Rust ``nonconformant_issue_code()`` returns, which
+  in turn match the ``TST_NONCONFORMANT_CODE_*`` C constant base names.  The
+  events are emitted in demuxer queue order, interleaved with media events —
+  reproducing the golden's ordered sequence byte-for-byte.
+
 Error mapping
   Any ``DemuxError`` raised by ``Demuxer.feed`` or ``Demuxer.flush`` maps
   to the umbrella public code ``"STRICT_REJECTION"`` regardless of the
@@ -38,7 +56,19 @@ Roundtrip
   The Python muxer reproduces the exact same TS bytes as the Rust generator
   (verified byte-identical against the committed ``output.ts`` artifact AND
   sha256-equal to ``extensions.output_sha256``).  This proves the Python
-  binding's muxer is deterministic and produces the same artefact.
+  binding's muxer is deterministic and produces the same artefact.  Covers
+  both ``video-roundtrip`` (video-only) and ``audio-klv-roundtrip``
+  (video + AAC audio + synchronous KLV).
+
+Lifecycle binding contracts
+  ``drop-idempotence`` exercises the Python demuxer lifecycle (flush twice +
+  ``del`` + a fresh instance that still works) and emits the
+  ``DOUBLE_CLOSE_OK`` sentinel.  ``forged-handle`` is a C-ABI trust-boundary
+  contract with no Python equivalent (PyO3 has no raw opaque handle), so the
+  Python adapter does a STRUCTURAL-only assertion (the committed golden
+  parses with ``code:"INVALID_HANDLE"`` + ``contract:"forged_handle"``) and
+  defers the runtime teeth to the C adapter (Task 13) — mirroring how the
+  Rust adapter scoped the raw-pointer-deref portion.
 
 Unknown golden event tags
   If the committed golden contains an ``event`` tag that this normaliser
@@ -57,14 +87,17 @@ import pytest
 
 from tstrans.exceptions import DemuxError
 from tstrans.mpegts import (
+    AudioCodec,
     DemuxEvent,
     Demuxer,
     DemuxerConfig,
+    KlvStreamType,
     Muxer,
     MuxerConfigBuilder,
     MuxerProgramConfigBuilder,
     Pts90khz,
     StrictMode,
+    SubtitleCodec,
     VideoCodec,
 )
 
@@ -112,6 +145,36 @@ def _video_payload_bytes(ev: DemuxEvent.Video) -> bytes:  # type: ignore[name-de
     return bytes(out)
 
 
+# Map the Python `SubtitleCodec` enum to the binding-neutral string tag used in
+# the golden's `subtitle.codec` field.  Mirrors the Rust `subtitle_codec_tag()`
+# table exactly (read both): DvbSubtitling→"dvb_subtitle",
+# DvbTeletext→"dvb_teletext", WebVttInTs→"webvtt",
+# Cea708Standalone→"cea708_standalone".
+_SUBTITLE_CODEC_TAG: dict[SubtitleCodec, str] = {
+    SubtitleCodec.DVB_SUBTITLING: "dvb_subtitle",
+    SubtitleCodec.DVB_TELETEXT: "dvb_teletext",
+    SubtitleCodec.WEBVTT_IN_TS: "webvtt",
+    SubtitleCodec.CEA708_STANDALONE: "cea708_standalone",
+}
+
+
+def _nonconformant_code(ev: DemuxEvent.NonConformant) -> str:  # type: ignore[name-defined]
+    """Map a NonConformant diagnostic event to its stable public string code.
+
+    The Python `NonConformantKind` enum member NAME is exactly the stable code
+    string the Rust `nonconformant_issue_code()` returns (and the
+    `TST_NONCONFORMANT_CODE_*` C-constant base name), e.g.
+    `NonConformantKind.PES_HEADER_MALFORMED` → `"PES_HEADER_MALFORMED"`.
+
+    Note: the Python enum collapses Rust's two `STREAM_TYPE_MISMATCH_*` issues
+    into a single `STREAM_TYPE_MISMATCH` member; that split is not exercised by
+    any committed golden, so the NAME passthrough is exact for the scenario
+    suite.  If a future golden needs a split code, this is where the explicit
+    disambiguation would go.
+    """
+    return ev.kind.name
+
+
 # ── Normaliser ────────────────────────────────────────────────────────────────
 
 def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
@@ -122,9 +185,13 @@ def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
     - ``ProgramMap`` → build the ``pid → stream_type_hex`` map; skip from output.
     - ``Video``      → ``{"event":"video", ...}``
     - ``Audio``      → ``{"event":"audio", ...}``
+    - ``Subtitle``   → ``{"event":"subtitle", ...}``
     - ``Klv``        → ``{"event":"klv", ...}``
     - ``UnknownSample`` → ``{"event":"unknown", "pid": ...}``
-    - ``Discontinuity`` / ``NonConformant`` / ``ReconnectDiscontinuity`` → skipped.
+    - ``NonConformant`` → ``{"event":"error","code":"<STABLE CODE>"}`` (surfaced
+      inline, in queue order, NOT skipped — mirrors the Rust normaliser which
+      maps NonConformant to ``CoreEvent::Error``).
+    - ``Discontinuity`` / ``ReconnectDiscontinuity`` → skipped (diagnostics).
     - ``DemuxError`` from ``feed`` → ``[{"event":"error","code":"STRICT_REJECTION"}]``.
     """
     demuxer = Demuxer()
@@ -193,6 +260,18 @@ def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
                 "payload_sha256": _sha256_hex(raw),
             })
 
+        elif isinstance(ev, DemuxEvent.Subtitle):
+            # All subtitle codecs carry PMT stream_type 0x06; the binding-
+            # neutral codec tag comes from the SubtitleCodec enum (same table
+            # as the Rust normaliser's subtitle_codec_tag()).
+            events.append({
+                "event": "subtitle",
+                "program": ev.stream.program_number,
+                "pid": ev.stream.pid,
+                "stream_type": stream_type_hex(ev.stream.pid, 0x06),
+                "codec": _SUBTITLE_CODEC_TAG[ev.codec],
+            })
+
         elif isinstance(ev, DemuxEvent.Klv):
             events.append({
                 "event": "klv",
@@ -205,9 +284,18 @@ def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
         elif isinstance(ev, DemuxEvent.UnknownSample):
             events.append({"event": "unknown", "pid": ev.stream.pid})
 
+        elif isinstance(ev, DemuxEvent.NonConformant):
+            # Lenient-mode diagnostic — surfaced inline as an error event with
+            # the specific stable code, in queue order alongside media events.
+            # The conformant Muxer emits zero NonConformant events, so the clean
+            # demux scenarios are unaffected.
+            events.append({
+                "event": "error",
+                "code": _nonconformant_code(ev),
+            })
+
         elif isinstance(ev, (
             DemuxEvent.Discontinuity,
-            DemuxEvent.NonConformant,
             DemuxEvent.ReconnectDiscontinuity,
         )):
             pass  # diagnostic — skip from output
@@ -266,6 +354,78 @@ def _video_roundtrip_ts_bytes() -> bytes:
     return bytes(out)
 
 
+def _synthetic_adts_frame() -> bytes:
+    """Reproduce the Rust generator's ``synthetic_adts_frame()`` byte-for-byte.
+
+    7-byte ADTS header (MPEG-2 ID, no CRC, AAC-LC, sample_rate_index=4 →
+    44100 Hz, channel_config=2 stereo, frame_length=15) + 8 deterministic
+    payload bytes.
+    """
+    total_len = 15  # 7-byte header + 8 payload bytes
+    sample_rate_index = 4  # 44100 Hz
+    channel_config = 2  # stereo
+    h = bytearray(7)
+    h[0] = 0xFF
+    h[1] = 0b1111_0001  # ID=MPEG-2, layer=00, protection_absent=1
+    h[2] = (1 << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_config >> 2) & 1)
+    h[3] = ((channel_config & 0b11) << 6) | ((total_len >> 11) & 0b11)
+    h[4] = (total_len >> 3) & 0xFF
+    h[5] = ((total_len & 0b111) << 5) | 0b1_1111
+    h[6] = 0b11_1111 << 2
+    return bytes(h) + bytes([0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7])
+
+
+def _minimal_st0601_ls() -> bytes:
+    """Reproduce the Rust generator's ``minimal_st0601_ls()`` byte-for-byte.
+
+    16-byte MISB ST 0601 UAS Datalink LS UL + BER short-form length 0.
+    """
+    return bytes([
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
+        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,  # UL bytes 1-16
+        0x00,  # BER short-form length = 0
+    ])
+
+
+def _audio_klv_roundtrip_ts_bytes() -> bytes:
+    """Python mirror of ``audio_klv_roundtrip_ts_bytes()`` in the Rust crate.
+
+    Reproduces the same muxer recipe byte-for-byte:
+      - program_number=1, pmt_pid=0x1000
+      - video pid=0x1011 H.264; audio pid=0x1021 AAC;
+        KLV pid=0x1031 SYNCHRONOUS_METADATA (carries_pts=True)
+      - PTS 0 throughout
+      - push_video(synthetic_h264_idr(), pts=0, key=True)
+      - push_audio(synthetic_adts_frame(), pts=0)
+      - push_klv(minimal_st0601_ls(), pts=0)  # muxer auto-wraps AU cell header
+
+    The committed output_sha256 golden is locked to this exact mux output.
+    """
+    prog = (
+        MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+        .add_video(pid=0x1011, codec=VideoCodec.H264)
+        .add_audio(0x1021, AudioCodec.AAC)
+        # SynchronousMetadata requires carries_pts=True.
+        .add_klv(0x1031, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    mux = Muxer(cfg)
+    pts = Pts90khz.from_raw(0)
+    mux.push_video(_synthetic_h264_idr(), pts=pts, key_frame=True)
+    mux.push_audio(_synthetic_adts_frame(), pts=pts)
+    # Pass raw KLV LS bytes — muxer auto-wraps in the AU cell header.
+    mux.push_klv(_minimal_st0601_ls(), pts=pts)
+    out = bytearray()
+    buf = bytearray(1316)  # 7 × 188
+    while True:
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out.extend(buf[:n])
+    return bytes(out)
+
+
 def _run_roundtrip(
     scenario_id: str,
     input_path: Path,
@@ -281,6 +441,8 @@ def _run_roundtrip(
     """
     if scenario_id == "video-roundtrip":
         fresh = _video_roundtrip_ts_bytes()
+    elif scenario_id == "audio-klv-roundtrip":
+        fresh = _audio_klv_roundtrip_ts_bytes()
     else:
         pytest.fail(f"unknown roundtrip scenario id: {scenario_id!r}")
 
@@ -299,51 +461,163 @@ def _run_roundtrip(
     return []
 
 
+def _run_strict_rejection(scenario_id: str, input_bytes: bytes) -> list[dict[str, Any]]:
+    """Feed garbage bytes (no 0x47 sync) to the default-config demuxer; assert a
+    DemuxError is raised and maps to the umbrella ``STRICT_REJECTION`` code.
+
+    Also asserts drop idempotence: the demuxer can be destroyed after an error
+    without crashing.  Shared by ``strict-rejection`` (8192 × 0xFF garbage).
+    """
+    demuxer = Demuxer()
+    raised = False
+    try:
+        demuxer.feed(input_bytes)
+        # If feed somehow doesn't raise (extremely unlikely for 8192 × 0xFF
+        # which has no sync byte), flush and drain to give the demuxer a chance
+        # to surface the error.
+        demuxer.flush()
+        list(demuxer)
+    except DemuxError:
+        raised = True
+
+    # Idempotent drop: destroy the demuxer after an error — must not panic.
+    del demuxer
+
+    if not raised:
+        pytest.fail(
+            f"[{scenario_id}] expected DemuxError on garbage input, got none"
+        )
+
+    return [{"event": "error", "code": "STRICT_REJECTION"}]
+
+
+def _run_strict_psi_rejection(
+    scenario_id: str, input_bytes: bytes
+) -> list[dict[str, Any]]:
+    """Feed a TS with a valid PAT + a PMT with a corrupted CRC to a
+    ``StrictMode.FULL`` demuxer; assert the ``PsiChecksumMismatch`` escalates to
+    a DemuxError that maps to the umbrella ``STRICT_REJECTION`` code.
+
+    Shared by ``malformed-psi-strict`` and ``exception-kind-stability`` — both
+    carry the identical malformed-PSI input and both must surface the SAME
+    stable public code regardless of the binding (exception-kind stability).
+    The default (lenient) demuxer would NOT raise here — it would emit a
+    NonConformant event instead — so FULL strict mode is required, mirroring the
+    Rust adapter's ``DemuxerBuilder::new().strict(StrictMode::Full)``.
+    """
+    demuxer = Demuxer(DemuxerConfig(strict_mode=StrictMode.FULL))
+    raised = False
+    try:
+        demuxer.feed(input_bytes)
+        demuxer.flush()
+        list(demuxer)
+    except DemuxError:
+        raised = True
+    del demuxer
+    if not raised:
+        pytest.fail(
+            f"[{scenario_id}] expected DemuxError (PsiChecksumMismatch under "
+            f"StrictMode.FULL) on corrupted-PMT-CRC input, got none"
+        )
+    return [{"event": "error", "code": "STRICT_REJECTION"}]
+
+
+def _run_drop_idempotence(
+    scenario_id: str, input_bytes: bytes
+) -> list[dict[str, Any]]:
+    """Exercise the Python demuxer lifecycle and assert double-close safety.
+
+    The native ``tstrans.mpegts.Demuxer`` has no explicit ``close()`` method
+    and is not a context manager — its lifecycle is governed by ``flush()`` (the
+    explicit end-of-stream finaliser) and Python GC / ``del``.  "Double close"
+    is therefore expressed exactly as the Rust adapter does it: feed the minimal
+    valid TS, ``flush()`` TWICE (the second flush must be a safe no-op), then
+    ``del`` the instance, then construct a FRESH demuxer that still works.  None
+    of this may raise or crash.  On success the contract emits the sentinel
+    ``DOUBLE_CLOSE_OK``.
+    """
+    demuxer = Demuxer()
+    demuxer.feed(input_bytes)
+    demuxer.flush()
+    demuxer.flush()  # second "close" — must be a safe no-op, no raise.
+    list(demuxer)  # drain — must not crash after a double-flush.
+    del demuxer  # explicit drop — must not crash.
+
+    # A fresh instance still works after the prior was finalised + dropped.
+    fresh = Demuxer()
+    fresh.feed(input_bytes)
+    fresh.flush()
+    list(fresh)
+    del fresh
+
+    return [{"event": "error", "code": "DOUBLE_CLOSE_OK"}]
+
+
+def _run_forged_handle(
+    scenario_id: str, input_bytes: bytes
+) -> list[dict[str, Any]]:
+    """Forged-handle trust-boundary contract — STRUCTURAL-only on the Python side.
+
+    ``forged-handle`` is fundamentally a C-ABI contract: a forged opaque
+    ``tst_*`` handle must be rejected, not dereferenced.  The PyO3 binding has no
+    raw opaque-handle concept — stream handles never cross the Python boundary as
+    integers a caller can forge — so there is no runtime guard to exercise here.
+
+    The Python adapter therefore performs a STRUCTURAL assertion only: it
+    confirms the committed input artifact is the expected 4-byte LE forged value
+    and emits the ``INVALID_HANDLE`` sentinel that the committed golden carries.
+    The runtime teeth (a forged opaque pointer must not be dereferenced) are
+    deferred to the C adapter (Task 13) — mirroring exactly how the Rust adapter
+    scoped the raw-pointer-deref portion as a C-adapter concern.
+    """
+    # The committed artifact is the forged handle value as 4 little-endian bytes
+    # (FORGED_HANDLE_RAW = 0x100 — one bit past the canonical 0xFF mask). Confirm
+    # the cross-binding input is single-sourced and exactly what we assert on.
+    if len(input_bytes) != 4:
+        pytest.fail(
+            f"[{scenario_id}] forged-handle input must be a 4-byte LE u32, "
+            f"got {len(input_bytes)} bytes"
+        )
+    forged = int.from_bytes(input_bytes, "little")
+    if forged != 0x100:
+        pytest.fail(
+            f"[{scenario_id}] forged-handle artifact value drifted: "
+            f"got {forged:#x}, expected 0x100"
+        )
+
+    return [{"event": "error", "code": "INVALID_HANDLE"}]
+
+
 def _run_binding_contract(
     scenario_id: str,
     input_path: Path,
 ) -> list[dict[str, Any]]:
-    """Run a ``kind=binding_contract`` scenario.
+    """Run a ``kind=binding_contract`` scenario by dispatching on the id.
 
-    For ``strict-rejection``:
-    - Feeds garbage bytes to the default-config Demuxer.
-    - Asserts a ``DemuxError`` is raised.
-    - Maps it to ``{"event":"error","code":"STRICT_REJECTION"}``.
-    - Asserts close/drop idempotence: the Demuxer can be destroyed after
-      an error without crashing.
+    Each contract exercises its nearest honest Python guarantee and emits the
+    sentinel/umbrella code its committed golden carries.  See the per-runner
+    docstrings for the exact mechanism and what (if anything) is deferred to the
+    C adapter (Task 13).
     """
+    input_bytes = input_path.read_bytes()
+
     if scenario_id == "strict-rejection":
-        input_bytes = input_path.read_bytes()
-
-        # Feed garbage — must raise DemuxError.
-        demuxer = Demuxer()
-        raised = False
-        try:
-            demuxer.feed(input_bytes)
-            # If feed somehow doesn't raise (extremely unlikely for 8192 × 0xFF
-            # which has no sync byte), flush and drain to give the demuxer a
-            # chance to surface the error.
-            demuxer.flush()
-            list(demuxer)
-        except DemuxError:
-            raised = True
-
-        # Idempotent drop: destroy the demuxer after an error — must not panic.
-        del demuxer
-
-        if not raised:
-            pytest.fail(
-                f"[{scenario_id}] expected DemuxError on garbage input, got none"
-            )
-
-        return [{"event": "error", "code": "STRICT_REJECTION"}]
+        return _run_strict_rejection(scenario_id, input_bytes)
+    if scenario_id in ("malformed-psi-strict", "exception-kind-stability"):
+        return _run_strict_psi_rejection(scenario_id, input_bytes)
+    if scenario_id == "drop-idempotence":
+        return _run_drop_idempotence(scenario_id, input_bytes)
+    if scenario_id == "forged-handle":
+        return _run_forged_handle(scenario_id, input_bytes)
 
     pytest.fail(f"unknown binding_contract scenario id: {scenario_id!r}")
 
 
 # ── Golden validation ─────────────────────────────────────────────────────────
 
-_KNOWN_EVENT_TAGS = frozenset({"video", "audio", "klv", "unknown", "error"})
+_KNOWN_EVENT_TAGS = frozenset(
+    {"video", "audio", "subtitle", "klv", "unknown", "error"}
+)
 
 
 def _validate_golden_tags(golden: dict[str, Any], scenario_id: str) -> None:

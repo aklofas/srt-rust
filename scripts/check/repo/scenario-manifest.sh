@@ -19,6 +19,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 SCENARIO_MANIFEST="${SCENARIO_MANIFEST:-$ROOT/crates/tst-integration/tests/fixtures/scenarios/scenarios.toml}"
 
+# Source-of-truth allow-sets. Extend when a new scenario kind/feature is added to scenarios.toml.
 KNOWN_KINDS="demux roundtrip binding_contract"
 KNOWN_FEATURES="srt rtp udp tcp hls rist"
 
@@ -55,7 +56,7 @@ run_check() {
 
   # --- Rule 3: unknown feature tokens ---------------------------------------
   # features line may be `features = []` or `features = ["srt", "rtp"]`
-  local feat_line tok
+  local feat_line tok tokens
   while IFS= read -r feat_line; do
     # Strip the key prefix, brackets, quotes, and spaces; split on commas.
     feat_line="$(printf '%s' "$feat_line" \
@@ -63,18 +64,15 @@ run_check() {
                  | tr -d '[]" ')"
     # Empty array is fine.
     [ -n "$feat_line" ] || continue
-    # Split comma-separated tokens.
-    local IFS_BAK="$IFS"
-    IFS=','
-    for tok in $feat_line; do
-      IFS="$IFS_BAK"
+    # Split comma-separated tokens (IFS scoped to this read, no save/restore).
+    IFS=',' read -ra tokens <<< "$feat_line"
+    for tok in "${tokens[@]}"; do
       [ -n "$tok" ] || continue
       if ! printf '%s\n' $KNOWN_FEATURES | grep -Fxq "$tok"; then
         echo "FAIL: unknown feature token: $tok" >&2
         fail=1
       fi
     done
-    IFS="$IFS_BAK"
   done < <(grep -E '^features[[:space:]]*=[[:space:]]*\[' "$SCENARIO_MANIFEST")
 
   # --- Rule 4: input paths must exist ---------------------------------------

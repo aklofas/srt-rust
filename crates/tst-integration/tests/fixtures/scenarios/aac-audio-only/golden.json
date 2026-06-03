@@ -1,0 +1,15 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "audio",
+      "program": 1,
+      "pid": 4129,
+      "stream_type": "0x0f",
+      "pts": 90000,
+      "payload_sha256": "dab9927faf5fba918eea2ae3864efc36dd128267da8691563589711b6f1057d3"
+    }
+  ],
+  "extensions": null
+}

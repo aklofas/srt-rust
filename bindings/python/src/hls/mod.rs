@@ -26,7 +26,7 @@
 //! - `scripts/check-py-hls-error-mapping-coverage.sh` — every
 //!   `HlsErrorKind` variant has a `make_hls_error(py, "<KIND>", ...)`
 //!   call site.
-//! - `scripts/check-py-publisher-class-mirror.sh` — the Python
+//! - `scripts/check/python/publisher-class-mirror.sh` — the Python
 //!   `Publisher` ABC's abstract methods mirror the Rust
 //!   `tst_core::publisher::Publisher` trait.
 

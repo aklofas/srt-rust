@@ -3,7 +3,7 @@
 #
 # Only the genuinely-uniform clones live here. Bespoke/multi-enum rails
 # (rtsp, server, mux-error-kind, shell-error-kind, raw-c-mapper,
-# non-conformant, py-codec/demux/klv) keep their own scripts/check-*.sh.
+# non-conformant, py-codec/demux/klv) keep their own scripts/check/<group>/ rail.
 #
 # rust rows:  lang  name  enum            variant_source                       arm_fn
 #             (arm file is always bindings/c/core/src/error.rs)

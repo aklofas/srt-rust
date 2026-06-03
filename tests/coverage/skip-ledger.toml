@@ -1,5 +1,5 @@
 # Skip ledger — one entry per intentional Rust `#[ignore]`, with a class and
-# rationale. Kept in sync with the tree by scripts/check-skip-ledger-sync.sh:
+# rationale. Kept in sync with the tree by scripts/check/repo/skip-ledger-sync.sh:
 #
 #   * every active `#[ignore]` test function must have a NON-resolved entry here
 #     whose `test` is the exact function name;

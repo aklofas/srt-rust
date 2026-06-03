@@ -6,7 +6,7 @@ output byte-matches the committed golden
 (`../tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts`).
 
 This is the runtime counterpart to the `no_std` *compile* gate
-(`scripts/check-no-std-baremetal.sh`): the compile gate proves `tst-core`
+(`scripts/check/embedded/no-std-baremetal.sh`): the compile gate proves `tst-core`
 builds for bare metal; this proves it *runs* there (heap, panic, codegen).
 
 ## Why it is excluded from the workspace
@@ -25,7 +25,7 @@ and the QEMU runner.
 A `PASS` line + exit 0 means the on-device muxer reproduced the golden. Or run
 the repo-root mirror, which skips cleanly without QEMU:
 
-    bash scripts/check-qemu-runtime.sh
+    bash scripts/check/embedded/qemu-runtime.sh
 
 ## Checks
 

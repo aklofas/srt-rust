@@ -1,7 +1,7 @@
 //! Verify every inner-error variant routes through the correct
 //! `kind_from_*` helper AND through the shell's `From<inner>` impl
 //! to the expected `ShellErrorKind`. CI ratchet
-//! `scripts/check-pipeline-kind-classification.sh` enforces every
+//! `scripts/check/rust/pipeline-kind-classification.sh` enforces every
 //! upstream inner variant is matched in the corresponding kind_from_*
 //! helper before the wildcard; this test asserts the actual kind value
 //! for each pairing.

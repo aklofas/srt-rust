@@ -30,7 +30,7 @@ directory owns one concern:
 | `embedded/` | Bare-metal / QEMU firmware test harnesses (workspace-excluded) | `baremetal-qemu` (no_std muxer/pipeline QEMU smoke), `baremetal-qemu-c` (C-firmware staticlib glue), `freertos-srt` (libsrt-on-FreeRTOS) |
 | `examples/` | Runnable Rust examples (crate `tst-examples`, `publish = false`) | Task-oriented subfolders; C examples mirror this taxonomy under `bindings/c/examples/` |
 | `vendor/` | Pinned submodules built statically | `vendor/srt` (libsrt 1.5.5), `vendor/mbedtls` (3.6.6 LTS) |
-| `scripts/` | CI ratchets + generators + dev tools | ~40 `check-*.sh` rails plus `ratchets/` (TSV-driven coverage) and `lib/` |
+| `scripts/` | CI ratchets + generators + dev tools | `check/{c,python,rust,embedded,repo}/` rails, `gen/` generators, `dev/` tools, plus `ratchets/` (TSV-driven coverage) and `lib/` |
 | `tests/` | Cross-cutting advisory control plane | `tests/coverage/` manifests (fixture/skip-ledger/stream-matrix) |
 | `oss-fuzz/` | OSS-Fuzz packaging (options + seed corpora) | Per-crate fuzz targets live in `crates/<c>/fuzz/` |
 

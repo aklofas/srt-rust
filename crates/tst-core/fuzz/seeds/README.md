@@ -9,7 +9,7 @@ The runtime corpus lives under `crates/*/fuzz/corpus/<target>/` and is
 gitignored. To populate `corpus/` from `seeds/` before a fuzz run:
 
 ```bash
-bash scripts/seed-fuzz-corpora.sh
+bash scripts/dev/seed-fuzz-corpora.sh
 ```
 
 The script is idempotent — it only copies seeds that aren't already in

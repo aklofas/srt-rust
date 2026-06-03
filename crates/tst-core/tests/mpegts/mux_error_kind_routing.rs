@@ -3,7 +3,7 @@
 //!
 //! 32 (variant, expected kind) rows. Maintained as a flat table; if
 //! a new variant is added upstream the CI ratchet
-//! `scripts/check-mux-error-kind-coverage.sh` catches the missing
+//! `scripts/check/rust/mux-error-kind-coverage.sh` catches the missing
 //! match arm before this test runs. This test is the per-variant
 //! correctness check (the ratchet guarantees coverage; this test
 //! guarantees correctness of the mapping).

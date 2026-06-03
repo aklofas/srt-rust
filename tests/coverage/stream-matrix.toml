@@ -1,5 +1,5 @@
 # Stream coverage matrix — ADVISORY. Captures coverage *intent* across the
-# stream-shape axes. Not enforced (scripts/check-test-manifests.sh only checks
+# stream-shape axes. Not enforced (scripts/check/repo/test-manifests.sh only checks
 # that `status` values are recognized). Drives cross-binding scenario selection
 # and flags known gaps.
 #

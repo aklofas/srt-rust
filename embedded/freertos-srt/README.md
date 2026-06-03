@@ -81,7 +81,7 @@ One dispatcher gate builds a target, runs it under QEMU, and asserts its PASS
 token:
 
 ```bash
-bash scripts/check-freertos-srt.sh <target>   # from the workspace root
+bash scripts/check/embedded/freertos-srt.sh <target>   # from the workspace root
 ```
 
 It skips cleanly when the cross-toolchain / QEMU / cmake / cargo is absent. The

@@ -2,7 +2,7 @@
 // against the SAME bytes every other P7 proof uses. Read the committed source
 // of truth directly (crates/tst-integration/.../output.ts, 564 bytes) rather
 // than the generated golden.h — output.ts is git-tracked, so this builds on a
-// clean checkout; golden.h is generated at CI time by check-c-firmware-qemu.sh
+// clean checkout; golden.h is generated at CI time by scripts/check/c/firmware-qemu.sh
 // and is absent until then. No new golden is introduced.
 use std::{env, fs, path::Path};
 

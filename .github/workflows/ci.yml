@@ -65,7 +65,7 @@ jobs:
       - name: Install build prerequisites (macOS)
         # librist's vendored build is meson-driven and needs `meson` + `ninja`
         # on PATH; cmake is pre-installed. ripgrep backs
-        # check-no-direct-not-available-not-found-cast.sh (fails closed if `rg`
+        # scripts/check/c/no-direct-not-available-not-found-cast.sh (fails closed if `rg`
         # is missing). Install only what's absent: `ninja` (and sometimes others)
         # is now pre-installed on the macos-14 image, and `brew install` on an
         # already-present formula emits a `::warning::` — guard with `brew list`
@@ -177,48 +177,48 @@ jobs:
 
       - name: check-c-abi-rustdoc-coverage
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-c-abi-rustdoc-coverage.sh
+        run: bash scripts/check/c/abi-rustdoc-coverage.sh
 
       - name: No stale relocated-away package paths
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-no-stale-relocated-paths.sh
+        run: bash scripts/check/repo/no-stale-relocated-paths.sh
 
       - name: check-close-contract-presence
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-close-contract-presence.sh
+        run: bash scripts/check/rust/close-contract-presence.sh
 
       - name: check-no-public-usize
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-no-public-usize.sh
+        run: bash scripts/check/rust/no-public-usize.sh
 
       - name: ShellErrorKind coverage at C ABI
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-shell-error-kind-coverage.sh
+        run: bash scripts/check/rust/shell-error-kind-coverage.sh
       - name: Pipeline kind-classification coverage
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-pipeline-kind-classification.sh
+        run: bash scripts/check/rust/pipeline-kind-classification.sh
       - name: Raw C mapper variant coverage
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-raw-c-mapper-coverage.sh
+        run: bash scripts/check/c/raw-mapper-coverage.sh
       - name: MuxError::kind() variant coverage
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-mux-error-kind-coverage.sh
+        run: bash scripts/check/rust/mux-error-kind-coverage.sh
       - name: No srt_*/SRT_* symbol leak in libtstrans.so
         # Plan B Wave 5.B ratchet — fails if libtstrans.so's dynamic
         # export table contains any srt_*/SRT_* symbols (defense in depth
         # alongside the symbol_audit.rs Rust-side check). Linux-only
         # (uses GNU nm).
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-no-srt-symbol-leak.sh
+        run: bash scripts/check/c/no-srt-symbol-leak.sh
 
       - name: Check C header section uniqueness
-        run: bash scripts/check-c-header-section-uniqueness.sh
+        run: bash scripts/check/c/header-section-uniqueness.sh
 
       - name: Check no direct NotAvailable/NotFound casts
-        run: bash scripts/check-no-direct-not-available-not-found-cast.sh
+        run: bash scripts/check/c/no-direct-not-available-not-found-cast.sh
 
       - name: Check lifecycle ffi_catch coverage
-        run: bash scripts/check-lifecycle-ffi-catch-coverage.sh
+        run: bash scripts/check/c/lifecycle-ffi-catch-coverage.sh
 
       - name: Check extern C ffi_catch coverage
         # Superset of the lifecycle check above: every `pub unsafe
@@ -227,7 +227,7 @@ jobs:
         # trivially-infallible allowlist. Caught tst_demux_config_free
         # which had bypassed the lifecycle ratchet by being named
         # _free (plan #96 Wave F finding #9).
-        run: bash scripts/check-extern-c-ffi-catch-coverage.sh
+        run: bash scripts/check/c/extern-c-ffi-catch-coverage.sh
 
       - name: Check C header mirror-enum export
         # Catches Tst* enums declared in bindings/c/core/src/ but missing
@@ -235,7 +235,7 @@ jobs:
         # dropped from the generated header (regression bug 2026-05-24
         # CFI tolerance: TstCellFragmentIndication was defined but
         # never exported, so C callers had no constants).
-        run: bash scripts/check-c-header-mirror-enum-export.sh
+        run: bash scripts/check/c/header-mirror-enum-export.sh
 
       - name: Check doc ABI and ST 1910 currency
         # Plan #96 Wave D ratchet — fails on stale `ABI version 0.[0-3]`
@@ -244,7 +244,7 @@ jobs:
         # H.222.0 §2.12.4.2; `ST 1910.1` with the .1 suffix is allowed
         # everywhere since it's a distinct CMAF/HLS standard), and on
         # `receiver-surface ... pending` wording in tst-c crate docs.
-        run: bash scripts/check-doc-abi-and-st1910-currency.sh
+        run: bash scripts/check/repo/doc-abi-and-st1910-currency.sh
 
       - name: Check udp/tcp/hls/rist C ABI error-mapping coverage
         # Each tst-c transport family's *_error_to_code converter must
@@ -252,38 +252,38 @@ jobs:
         # because those enums are #[non_exhaustive]). Driven by
         # scripts/ratchets/error-mapping.tsv (consolidated from the former
         # per-protocol check-*-error-mapping-coverage.sh clones).
-        run: bash scripts/check-rust-error-mapping-coverage.sh
+        run: bash scripts/check/rust/rust-error-mapping-coverage.sh
 
       - name: check-ratchet-self-test (coverage drivers detect gaps)
         # Validates the error-mapping coverage framework detects gaps. Gated to
         # linux-x86_64: the check is platform-independent (no signal from other
         # runners) and its synthetic-fixture bash is GNU-leaning.
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-ratchet-self-test.sh
+        run: bash scripts/check/repo/ratchet-self-test.sh
 
       - name: Check Publisher trait C mirror
         # Plan A5a — every tst_core::publisher::Publisher trait method has a
         # corresponding tst_publisher_* C entry point in the generated header.
-        run: bash scripts/check-publisher-trait-mirror.sh
+        run: bash scripts/check/c/publisher-trait-mirror.sh
 
       - name: Check advisory test manifests (existence + format only)
         # tests/coverage/*.toml are well-formed and reference real, path-safe,
         # in-tree files. Not a coverage gate.
-        run: bash scripts/check-test-manifests.sh
+        run: bash scripts/check/repo/test-manifests.sh
 
       - name: check-skip-ledger-sync (ledger matches real #[ignore]s)
         # Every active Rust #[ignore] has a non-resolved skip-ledger entry and
         # vice-versa; placeholder/blocked_bug deferrals carry a future expiry.
         # Gated to linux-x86_64: the scan is platform-independent.
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-skip-ledger-sync.sh
+        run: bash scripts/check/repo/skip-ledger-sync.sh
 
       - name: check-fixture-hashes (per-file SHA-256 closure)
         # Per-file SHA-256 closure over committed fixtures. Gated to linux-x86_64:
         # the hashes are platform-independent and sha256sum is GNU-only (absent on
         # the macOS runner).
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-fixture-hashes.sh
+        run: bash scripts/check/repo/fixture-hashes.sh
 
       - name: Check cross-binding scenario fixtures (generated golden drift)
         # Runs gen_scenarios --check to ensure committed fixture goldens match
@@ -291,14 +291,14 @@ jobs:
         # gated to linux-x86_64 (cross-platform runners would add no signal
         # and the mux/demux output is platform-independent).
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-scenarios.sh
+        run: bash scripts/check/repo/scenarios.sh
 
       - name: check-scenario-generator-privacy (synthetic-only)
         # Scans the scenario generator sources (comments stripped) for reads of
         # testfiles/ or any local/ corpus path. Gated to linux-x86_64 — source
         # scan is platform-independent.
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-scenario-generator-privacy.sh
+        run: bash scripts/check/repo/scenario-generator-privacy.sh
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
@@ -592,7 +592,7 @@ jobs:
       # binaries do). thumbv7em-none-eabihf = Cortex-M4F/M7F (STM32F4/F7/H7);
       # riscv32imac-unknown-none-elf proves the code is arch-agnostic no_std
       # (e.g. ESP32-P4 bare-metal). Mirrored locally by
-      # scripts/check-no-std-baremetal.sh.
+      # scripts/check/embedded/no-std-baremetal.sh.
       - name: cargo build (tst-core, thumbv7em-none-eabihf)
         run: cargo build -p tst-core --no-default-features --target thumbv7em-none-eabihf
 
@@ -629,12 +629,12 @@ jobs:
       # staticlib + arm-none-eabi-gcc), run under QEMU mps2-an386, and assert it
       # byte-matches the same video-roundtrip golden via the offline C ABI.
       - name: QEMU runtime smoke (C firmware via libtstrans.a)
-        run: bash scripts/check-c-firmware-qemu.sh
+        run: bash scripts/check/c/firmware-qemu.sh
 
       # Runtime gates for the embedded/freertos-srt/ reference product (the
       # consolidated S0-S4 arc: one shared substrate, the NIC-egress example, and
       # the five layered verifications as named tests, all driven by the
-      # check-freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
+      # scripts/check/embedded/freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
       # `command -v` guards if the cross-toolchain/QEMU/cmake/cargo is absent, so
       # promotion can't false-red on a runner-image change. No new apt packages --
       # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm +
@@ -649,27 +649,27 @@ jobs:
       # so a runner-image regression can't silently drop coverage while green.
       - name: QEMU runtime gate (freertos-srt exceptions)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check-freertos-srt.sh exceptions
+        run: bash scripts/check/embedded/freertos-srt.sh exceptions
 
       # lwip-loopback (was S1): the 564-byte golden round-trips through a lwIP UDP
       # loopback socket (BSD sockets + select(), hi-res clock_gettime). Hard-gate.
       - name: QEMU runtime gate (freertos-srt lwip-loopback)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check-freertos-srt.sh lwip-loopback
+        run: bash scripts/check/embedded/freertos-srt.sh lwip-loopback
 
       # libsrt-smoke (was S2): cross-compiled libsrt (Generic -> ::select path,
       # pthread backend, logging+encryption OFF) boots srt_startup + create_socket
       # + close + cleanup against the FreeRTOS+lwIP substrate. Hard-gate.
       - name: QEMU runtime gate (freertos-srt libsrt-smoke)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check-freertos-srt.sh libsrt-smoke
+        run: bash scripts/check/embedded/freertos-srt.sh libsrt-smoke
 
       # loopback-arq (was S3): SRT caller+listener data-plane proof -- streams the
       # golden x N over a lossy loopback netif (~20% deterministic loss) and
       # recovers it byte-exact, plain and mbedTLS-AES-128. Hard-gate.
       - name: QEMU runtime gate (freertos-srt loopback-arq ARQ + encryption)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check-freertos-srt.sh loopback-arq
+        run: bash scripts/check/embedded/freertos-srt.sh loopback-arq
 
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
@@ -679,7 +679,7 @@ jobs:
       # it bakes a few more cycles before promotion to hard-gate.
       - name: QEMU runtime gate (freertos-srt NIC egress example)
         continue-on-error: true
-        run: bash scripts/check-freertos-srt.sh example
+        run: bash scripts/check/embedded/freertos-srt.sh example
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)
@@ -705,7 +705,7 @@ jobs:
           cargo +nightly install cargo-fuzz --quiet
 
       - name: check-fuzz-targets (manifest matches fuzz dirs)
-        run: bash scripts/check-fuzz-targets.sh
+        run: bash scripts/check/repo/fuzz-targets.sh
 
       # `cargo +nightly fuzz check` (compile-only) catches fuzz-target
       # rot when a public API change breaks one. Compile-only because
@@ -741,7 +741,7 @@ jobs:
     # this job (added via audit #1, 2026-05-24) closes the gap by running
     # the broader default-marker suite that exercises Demuxer, Muxer,
     # KLV typed decode/encode, codec parsers, and io helpers. Wires
-    # scripts/check-py-codec-error-mapping-coverage.sh (the 12th bash
+    # scripts/check/python/codec-error-mapping-coverage.sh (the 12th bash
     # ratchet) as a fast-fail step so future CodecParseError variants
     # cannot silently miss Python exception mapping.
     env:
@@ -758,31 +758,31 @@ jobs:
       - name: check-py-codec-error-mapping-coverage
         # Cheap grep over Rust source — run before the expensive maturin
         # build so a missing exception-mapping arm fails CI fast.
-        run: bash scripts/check-py-codec-error-mapping-coverage.sh
+        run: bash scripts/check/python/codec-error-mapping-coverage.sh
 
       - name: check-py-demux-error-mapping-coverage
         # Plan #96 Wave G (Finding 12): every DemuxError variant must be
         # mapped explicitly in `demux_error_to_pyerr` instead of routing
         # silently to INTERNAL through the non_exhaustive wildcard.
-        run: bash scripts/check-py-demux-error-mapping-coverage.sh
+        run: bash scripts/check/python/demux-error-mapping-coverage.sh
 
       - name: check-py-klv-decode-error-mapping-coverage
         # Plan #96 Wave G (Finding 12): same guardrail for KlvDecodeError
         # — every variant maps to a specific KlvErrorKind, not INTERNAL.
-        run: bash scripts/check-py-klv-decode-error-mapping-coverage.sh
+        run: bash scripts/check/python/klv-decode-error-mapping-coverage.sh
 
       - name: check-py-klv-encode-error-mapping-coverage
         # Plan #96 Wave G (Finding 12): same guardrail for KlvEncodeError
         # — every variant maps to a specific KlvEncodeErrorKind, not the
         # BUFFER_TOO_SMALL wildcard fallback.
-        run: bash scripts/check-py-klv-encode-error-mapping-coverage.sh
+        run: bash scripts/check/python/klv-encode-error-mapping-coverage.sh
 
       - name: check-py-non-conformant-kind-coverage
         # Plan #96 Wave G (Finding 12): NonConformantKind is the public
         # analytics surface. Verify every Rust NonConformantIssue variant
         # has an arm in `non_conformant_kind_name` and every output kind
         # string is a member of the Python NonConformantKind enum.
-        run: bash scripts/check-py-non-conformant-kind-coverage.sh
+        run: bash scripts/check/python/non-conformant-kind-coverage.sh
 
       - name: check-py-error-mapping-coverage
         # Consolidated: every <Proto>ErrorKind in tstrans.exceptions
@@ -790,12 +790,12 @@ jobs:
         # under bindings/python/src/. Driven by scripts/ratchets/error-mapping.tsv
         # (replaces the former per-protocol check-py-*-error-mapping clones;
         # also brings rtp/rtsp under CI, which were previously local-only).
-        run: bash scripts/check-py-error-mapping-coverage.sh
+        run: bash scripts/check/python/error-mapping-coverage.sh
 
       - name: check-py-publisher-class-mirror
         # Plan A5b Wave C T14 — verifies the Python Publisher ABC method
         # list (tstrans/hls.pyi) mirrors the Rust tst_core Publisher trait.
-        run: bash scripts/check-py-publisher-class-mirror.sh
+        run: bash scripts/check/python/publisher-class-mirror.sh
 
       - name: Install build prerequisites
         run: |
@@ -937,7 +937,7 @@ jobs:
     #     build accidentally references an rtp symbol, or vice-versa).
     #  2. cfg-leak regressions where a symbol appears in a build flavor
     #     that should not have it — faster feedback than waiting for
-    #     check-c-header-conditional-sections.sh to run against the header.
+    #     scripts/check/c/header-conditional-sections.sh to run against the header.
     #
     # Linux-only: vendored libsrt cmake build is the reference platform.
     # The four modes are:
@@ -993,7 +993,7 @@ jobs:
         # Runs unconditionally (header is checked regardless of feature mode)
         # because the script operates on the committed header, not a
         # freshly-generated one.
-        run: bash scripts/check-c-header-conditional-sections.sh
+        run: bash scripts/check/c/header-conditional-sections.sh
 
       - name: cargo build tst-c (${{ matrix.name }})
         # Build tst-c with the feature combination under test. Explicit build

@@ -26,7 +26,7 @@ mixes cleanly with ``abc.ABCMeta`` and exposes ``Publisher.register(...)``.
 The concrete ``HlsPublisher`` is a native PyClass with the four required
 methods; it is registered here as a virtual subclass. The ABC's abstract
 method list is verified against the Rust ``Publisher`` trait by
-``scripts/check-py-publisher-class-mirror.sh`` (which reads ``hls.pyi``).
+``scripts/check/python/publisher-class-mirror.sh`` (which reads ``hls.pyi``).
 """
 
 from __future__ import annotations

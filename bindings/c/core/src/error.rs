@@ -293,7 +293,7 @@ use tst_pipeline::{ShellError, ShellErrorKind, TransportError};
 /// Map a [`ShellErrorKind`] to its corresponding [`TstError`] code.
 ///
 /// This is the single point of truth for the kind-to-code projection.
-/// CI ratchet `scripts/check-shell-error-kind-coverage.sh` enforces
+/// CI ratchet `scripts/check/rust/shell-error-kind-coverage.sh` enforces
 /// every `ShellErrorKind` variant is matched explicitly here.
 pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
     match kind {
@@ -304,7 +304,7 @@ pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
         ShellErrorKind::Closed => TstError::Closed,
         ShellErrorKind::EndOfStream => TstError::EndOfStream,
         // Required by #[non_exhaustive]. CI ratchet
-        // scripts/check-shell-error-kind-coverage.sh enforces every
+        // scripts/check/rust/shell-error-kind-coverage.sh enforces every
         // ShellErrorKind variant is matched above before this arm.
         _ => TstError::Internal,
     }
@@ -339,7 +339,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 ///
 /// **CI invariants:**
 ///
-/// 1. `scripts/check-raw-c-mapper-coverage.sh` — every `MuxError`
+/// 1. `scripts/check/c/raw-mapper-coverage.sh` — every `MuxError`
 ///    variant must be mentioned in the per-variant routing table
 ///    inside this function before the wildcard arm.
 /// 2. The in-file unit test `every_known_mux_error_variant_maps_to_expected_code`
@@ -350,7 +350,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
 
     // Per-variant code routing (covered by kind() projection below
     // unless explicitly overridden). The ratchet
-    // scripts/check-raw-c-mapper-coverage.sh greps this block for
+    // scripts/check/c/raw-mapper-coverage.sh greps this block for
     // every MuxError::VariantName before the wildcard arm.
     //
     //   MuxError::InvalidNal              -> TstError::InvalidNal     [override]
@@ -404,7 +404,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             MuxSenderErrorKind::InputMalformed => TstError::InvalidUsage,
             MuxSenderErrorKind::Internal => TstError::Internal,
             // Required by #[non_exhaustive]. CI ratchet
-            // scripts/check-mux-error-kind-coverage.sh enforces every
+            // scripts/check/rust/mux-error-kind-coverage.sh enforces every
             // MuxSenderErrorKind variant is matched above before this arm.
             // Matches the wildcard-default-to-Internal pattern from Wave
             // 4.A (record_shell_error) and Wave 6.D (MuxError::kind() at
@@ -435,7 +435,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
 /// `Display` string so the message is still informative.
 pub(crate) fn record_demux_error(e: &DemuxError) -> i32 {
     // Per-variant code routing. All four known DemuxError variants are listed
-    // explicitly before the wildcard. The check-raw-c-mapper-coverage.sh
+    // explicitly before the wildcard. The scripts/check/c/raw-mapper-coverage.sh
     // ratchet intentionally does NOT scan DemuxError (it is `#[non_exhaustive]`
     // from tst-core; the mux/transport raw mappers it covers predate this
     // function). The explicit arms below give the same coverage guarantee
@@ -470,7 +470,7 @@ pub(crate) fn record_transport_error(e: &TransportError) {
     // is 0 (the Bad sentinel) so it doesn't masquerade as a real errno.
     // Extracted into a fn (rather than a nested match) so the outer match
     // body doesn't contain an inner `_ =>` arm — that would confuse the
-    // check-raw-c-mapper-coverage.sh ratchet (its awk extractor stops at
+    // scripts/check/c/raw-mapper-coverage.sh ratchet (its awk extractor stops at
     // the first `_ =>` line, treating it as the outer wildcard).
     fn errno_suffix(errno_code: &Option<i32>) -> alloc::string::String {
         match errno_code {
@@ -502,7 +502,7 @@ pub(crate) fn record_transport_error(e: &TransportError) {
             alloc::format!("message {len} bytes exceeds payload cap {max}"),
         ),
         _ => {
-            // Required by #[non_exhaustive]. See scripts/check-raw-c-mapper-coverage.sh
+            // Required by #[non_exhaustive]. See scripts/check/c/raw-mapper-coverage.sh
             // for the CI ratchet that prevents this arm from firing.
             (
                 TstError::Transport,
@@ -570,7 +570,7 @@ pub(crate) fn record_not_found(msg: &str) -> i32 {
 // a wildcard arm on matches from outside that crate. The explicit arms below
 // cover every variant known at Phase 4 ship time; the wildcard is a safe
 // fallback for future additions. CI ratchet
-// `scripts/check-rtsp-error-mapping-coverage.sh` catches any gap at pre-push
+// `scripts/check/rust/rtsp-error-mapping-coverage.sh` catches any gap at pre-push
 // time (not compile time) — it greps the explicit arm list here against the
 // enum definition in tst-rtp.
 // ---------------------------------------------------------------------------
@@ -581,7 +581,7 @@ pub(crate) fn record_not_found(msg: &str) -> i32 {
 /// fallback is required by `#[non_exhaustive]` and maps future variants to
 /// `TstError::RtspProtocol` (the most generic RTSP failure bucket).
 ///
-/// CI ratchet `scripts/check-rtsp-error-mapping-coverage.sh` verifies every
+/// CI ratchet `scripts/check/rust/rtsp-error-mapping-coverage.sh` verifies every
 /// known variant has an explicit arm.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // used by Phase 4 Wave B RTSP entry points (Tasks 5–8)

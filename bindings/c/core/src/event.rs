@@ -1190,7 +1190,7 @@ fn fill_nonconformant(
                 // PcrMalformedKind is #[non_exhaustive]; future variants
                 // fall back to InvalidReservedBits until the C surface
                 // gains a discriminator entry. The bash ratchet
-                // check-raw-c-mapper-coverage.sh covers MuxError /
+                // scripts/check/c/raw-mapper-coverage.sh covers MuxError /
                 // TransportError but not PcrMalformedKind; rely on this
                 // wildcard plus the explicit arms above.
                 _ => 0xFF,

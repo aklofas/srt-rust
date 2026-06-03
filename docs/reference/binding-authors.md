@@ -130,10 +130,10 @@ record_shell_error<E: ShellError>(e: &E) -> i32
 
 Two CI ratchets guard this path against silent regressions:
 
-- `scripts/check-shell-error-kind-coverage.sh` — fails if a future
+- `scripts/check/rust/shell-error-kind-coverage.sh` — fails if a future
   `ShellErrorKind` variant is added without an explicit arm in
   `tst_error_from_kind` (before the `#[non_exhaustive]` wildcard).
-- `scripts/check-pipeline-kind-classification.sh` — fails if a future
+- `scripts/check/rust/pipeline-kind-classification.sh` — fails if a future
   variant of `MuxError`, `TransportError`, `DemuxError`, or
   `TsFramingError` is added without an explicit arm in the
   corresponding `kind_from_*` helper in
@@ -151,7 +151,7 @@ through dedicated per-variant tables:
 
 One CI ratchet guards this path:
 
-- `scripts/check-raw-c-mapper-coverage.sh` — fails if a future
+- `scripts/check/c/raw-mapper-coverage.sh` — fails if a future
   `MuxError` or `TransportError` variant is added without an explicit
   arm in the corresponding `record_*_error` function.
 

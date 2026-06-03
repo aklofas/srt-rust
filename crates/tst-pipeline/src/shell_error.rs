@@ -150,7 +150,7 @@ pub(crate) enum Direction {
 
 /// Compute the shell-kind for a `MuxError`. Used by `MuxSender`'s
 /// `From<MuxError>` impl. **Every MuxError variant is matched explicitly**
-/// — the CI ratchet `scripts/check-pipeline-kind-classification.sh`
+/// — the CI ratchet `scripts/check/rust/pipeline-kind-classification.sh`
 /// (Task 10) will enforce no variant escapes through a wildcard.
 pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
     use ShellErrorKind::*;
@@ -188,7 +188,7 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
         MuxError::DescriptorIndexOutOfRange { .. } => ConfigInvalid,
         MuxError::AbsIndexOutOfRange { .. } => ConfigInvalid,
         // Required by #[non_exhaustive]. CI ratchet
-        // scripts/check-pipeline-kind-classification.sh enforces every
+        // scripts/check/rust/pipeline-kind-classification.sh enforces every
         // upstream MuxError variant is matched above before this arm.
         // If this arm fires, the ratchet failed or was bypassed; the
         // shell error reports ConfigInvalid as a safe-default category

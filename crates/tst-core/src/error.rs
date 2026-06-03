@@ -611,7 +611,7 @@ impl MuxError {
     /// import site).
     ///
     /// The 32-variant routing is enforced by the CI ratchet
-    /// `scripts/check-mux-error-kind-coverage.sh` — every variant of
+    /// `scripts/check/rust/mux-error-kind-coverage.sh` — every variant of
     /// the upstream [`MuxError`] enum must be matched explicitly in
     /// this function's body before the `#[non_exhaustive]` wildcard.
     /// A new variant added without a corresponding arm here will fail
@@ -633,7 +633,7 @@ impl MuxError {
         // The match is exhaustive in-crate (MuxError is #[non_exhaustive]
         // but defined here), so the trailing wildcard would be flagged
         // unreachable. We keep it intentionally as an anchor for the CI
-        // ratchet scripts/check-mux-error-kind-coverage.sh, which uses
+        // ratchet scripts/check/rust/mux-error-kind-coverage.sh, which uses
         // the wildcard's presence to delimit "above this point all
         // variants are explicitly classified".
         #[allow(unreachable_patterns)]
@@ -683,7 +683,7 @@ impl MuxError {
             MuxError::AbsIndexOutOfRange { .. } => InvalidUsage,
 
             // Required by #[non_exhaustive]. CI ratchet
-            // scripts/check-mux-error-kind-coverage.sh enforces every
+            // scripts/check/rust/mux-error-kind-coverage.sh enforces every
             // upstream MuxError variant is matched explicitly above
             // before this arm. If this arm fires at runtime, the
             // ratchet failed (or was bypassed) — the safe default

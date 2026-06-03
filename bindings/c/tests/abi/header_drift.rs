@@ -10,7 +10,7 @@
 // per-transport sections diverge, so the drift assertion is meaningless.
 // Gate the test to the default-feature build only; the per-flavor
 // `tst-c feature matrix` CI jobs cover compile-level cfg-leak detection
-// via `check-c-header-conditional-sections.sh`.
+// via `scripts/check/c/header-conditional-sections.sh`.
 #![cfg(all(feature = "srt", feature = "rtp"))]
 
 use std::fs;

@@ -1,6 +1,6 @@
 # Fixture provenance manifest. Every committed fixture GROUP declares where it
 # came from so a reviewer can confirm nothing private leaked in. Advisory:
-# scripts/check-test-manifests.sh enforces that each `root` exists, each
+# scripts/check/repo/test-manifests.sh enforces that each `root` exists, each
 # `origin` is recognized, `no_private_corpus` is true, and no path is absolute
 # or escapes the repo (no leading `/`, no `..`). It does NOT re-hash files
 # (integrity enforcement is deferred).
@@ -54,12 +54,12 @@ no_private_corpus = true
 [[group]]
 root = "tests/coverage/fuzz-targets.toml"
 origin = "synthetic"
-generator = "scripts/gen-fuzz-targets.sh"
+generator = "scripts/gen/fuzz-targets.sh"
 no_private_corpus = true
 
 # Cross-binding scenario harness goldens (WS-5). Committed input artifacts +
 # golden.json per scenario + the generated scenarios.toml manifest. Regenerate
-# with the generator below; gen_scenarios --check (scripts/check-scenarios.sh)
+# with the generator below; gen_scenarios --check (scripts/check/repo/scenarios.sh)
 # fails CI if the committed set drifts. Synthetic-only by construction.
 [[group]]
 root = "crates/tst-integration/tests/fixtures/scenarios"

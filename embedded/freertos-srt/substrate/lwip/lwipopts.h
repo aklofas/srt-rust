@@ -19,7 +19,7 @@
  * unconditionally (it's IPv6-capable). lwIP only defines them under LWIP_IPV6.
  * Enable it so libsrt compiles against real lwIP IPv6 types (the boot smoke and
  * the loopback-arq SRT loopback still run over IPv4 — no IPv6 traffic). Adds the
- * core/ipv6/*.c glob to build.sh. */
+ * core/ipv6 *.c sources to build.sh. */
 #define LWIP_IPV6                   1
 #define LWIP_UDP                    1
 #define LWIP_TCP                    0
@@ -105,9 +105,12 @@
 #define LWIP_NETIF_API              1
 #define LWIP_DEBUG                  0
 
-/* errno: use newlib's. */
-#define LWIP_PROVIDE_ERRNO          0
-#include <errno.h>
+/* errno: use newlib's. lwip/errno.h gates on `#ifdef LWIP_PROVIDE_ERRNO`
+ * (existence, NOT value), so defining it to 0 would STILL make lwIP define its
+ * own ETIMEDOUT=110 etc., clashing with newlib's <errno.h> (ETIMEDOUT=116) and
+ * flooding the build with macro-redefinition warnings. Instead leave
+ * LWIP_PROVIDE_ERRNO undefined and tell lwip/errno.h to pull in <errno.h>. */
+#define LWIP_ERRNO_STDINCLUDE       1
 
 /* Use the system struct timeval (from <sys/time.h>) rather than lwIP's private
  * one — once main.cpp also pulls the FreeRTOS-Plus-POSIX/newlib headers, lwIP's

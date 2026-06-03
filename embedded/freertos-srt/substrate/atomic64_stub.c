@@ -8,6 +8,7 @@
  * op, restore. No SMP, so this is correct here. */
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 static inline uint32_t irq_save(void)
 {
@@ -67,14 +68,17 @@ uint64_t __atomic_fetch_sub_8(volatile void* ptr, uint64_t val, int memorder)
     return old;
 }
 
-int __atomic_compare_exchange_8(volatile void* ptr, void* expected,
-                                uint64_t desired, int weak,
-                                int success, int failure)
+/* Signature matches GCC's __atomic_compare_exchange_8 builtin (bool return,
+ * bool `weak`) to avoid -Wbuiltin-declaration-mismatch; ABI-identical to int
+ * (0/1 in r0) on this target. */
+bool __atomic_compare_exchange_8(volatile void* ptr, void* expected,
+                                 uint64_t desired, bool weak,
+                                 int success, int failure)
 {
     (void)weak; (void)success; (void)failure;
     uint32_t s = irq_save();
     uint64_t cur = *(volatile uint64_t*)ptr;
-    int ok = (cur == *(uint64_t*)expected);
+    bool ok = (cur == *(uint64_t*)expected);
     if (ok)
         *(volatile uint64_t*)ptr = desired;
     else

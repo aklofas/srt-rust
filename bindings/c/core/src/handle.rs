@@ -6,8 +6,6 @@
 //! the inner runs Drop, which closes the underlying transport / muxer.
 
 use crate::error::{TstError, record_internal, record_panic_caught, set_last_error};
-#[cfg(feature = "std")]
-use alloc::string::String;
 
 #[cfg(not(feature = "std"))]
 use crate::nostd_mutex::Mutex;

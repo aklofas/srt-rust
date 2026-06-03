@@ -74,19 +74,22 @@
  *   rather than serialising its own output to a JSON string and doing a
  *   string compare — this is more robust to key ordering.
  *
- * Roundtrip scenario (re-mux in C):
- *   When built with the `srt` feature (TST_HAS_SRT defined — the default), the
- *   offline muxer surface (tst_muxer_open/push_video/pull/close) is available.
- *   The adapter re-runs the exact video-roundtrip recipe in C:
- *     - tst_mux_config_new + add_program(1, 0x1000) + add_video_stream(0x1011, H264)
- *     - tst_muxer_open, push one synthetic H.264 IDR at pts=0 (key_frame),
- *       drain with a 1316-byte pull loop, close.
- *     - Compare the C-produced bytes to the committed output.ts byte-for-byte
- *       AND assert their sha256 equals golden.extensions.output_sha256.
- *   This proves C reproduces the mux output, not merely that it can hash a
- *   committed file. When built WITHOUT srt (TST_HAS_SRT undefined), the muxer
- *   surface is unavailable: fall back to reading output.ts, hashing it, and
- *   comparing to output_sha256 (weaker, but keeps the adapter buildable).
+ * Roundtrip scenarios (re-mux in C):
+ *   The offline muxer surface (tst_mux_config_new, tst_muxer_open, push_video/
+ *   audio/klv, pull, close) is ALWAYS available — ABI minor 9 un-gated it, so
+ *   there is no TST_HAS_SRT guard and no hash-only fallback. The roundtrip
+ *   runner dispatches on the scenario id; there are TWO roundtrip recipes,
+ *   each re-muxed in C and compared for FULL byte-identity (memcmp) + sha256:
+ *     - video-roundtrip: add_program(1, 0x1000) + add_video_stream(0x1011,
+ *       H264); push one synthetic H.264 IDR at pts=0 (key_frame).
+ *     - audio-klv-roundtrip: same program + video, plus add_audio_stream(
+ *       0x1021, AAC) + add_klv_stream(0x1031, SYNCHRONOUS_METADATA,
+ *       carries_pts=true); push H.264 IDR + one synthetic ADTS frame + raw
+ *       ST 0601 LS (muxer auto-wraps the AU cell), all at pts=0.
+ *   Each recipe drains with a 1316-byte pull loop, then asserts the C-produced
+ *   bytes are byte-for-byte equal to the committed output.ts AND that their
+ *   sha256 equals golden.extensions.output_sha256. This proves C reproduces
+ *   the mux output exactly, not merely that it can hash a committed file.
  *
  * Strict-rejection scenario:
  *   Feed 8192 × 0xFF through tst_demuxer_feed (default config, no strict
@@ -1091,7 +1094,8 @@ static int run_demux(const char *scenarios_dir_path,
     return 0;
 }
 
-/* Synthetic H.264 IDR AU — MUST match tst-integration's synthetic_h264_idr():
+/* Synthetic H.264 IDR AU — MUST match tst-integration's synthetic_h264_idr()
+ * (crates/tst-integration/src/scenarios/mod.rs):
  * 4-byte Annex-B start code + IDR NAL header (0x65) + 15 bytes 0xA5 ^ i. */
 static size_t synth_h264_idr(uint8_t out[20]) {
     out[0] = 0x00; out[1] = 0x00; out[2] = 0x00; out[3] = 0x01;
@@ -1100,27 +1104,42 @@ static size_t synth_h264_idr(uint8_t out[20]) {
     return 20;
 }
 
-/* Synthetic ADTS frame — MUST match tst-integration's synthetic_adts_frame():
+/* Synthetic ADTS frame — MUST match tst-integration's synthetic_adts_frame()
+ * (crates/tst-integration/src/scenarios/mod.rs):
  * 7-byte ADTS header (MPEG-2 ID, no CRC, AAC-LC, sample_rate_index=4=44100 Hz,
- * channel_config=2 stereo, frame_length=15) + 8 deterministic payload bytes. */
+ * channel_config=2 stereo, frame_length=15) + 8 deterministic payload bytes.
+ *
+ * `frame_length` is a 13-bit field split across header bytes 3/4/5 (bits
+ * 12..11 in byte 3, bits 10..3 in byte 4, bits 2..0 in byte 5) — see the
+ * per-byte layout comments below. */
 static size_t synth_adts_frame(uint8_t out[15]) {
-    const uint32_t total_len = 15;       /* 7-byte header + 8 payload bytes */
+    const uint32_t total_len = 15;       /* aac_frame_length (13-bit) = full frame size */
     const uint8_t sample_rate_index = 4; /* 44100 Hz */
     const uint8_t channel_config = 2;    /* stereo */
+    /* byte0: syncword bits 15..8 (all 1). */
     out[0] = 0xFF;
-    out[1] = 0xF1; /* 0b1111_0001: ID=MPEG-2, layer=00, protection_absent=1 */
+    /* byte1: syncword bits 7..4 | ID(1)=MPEG-2 | layer(2)=00 | protection_absent(1)=1. */
+    out[1] = 0xF1; /* 0b1111_0001 */
+    /* byte2: profile(2)=01 AAC-LC | sampling_freq_index(4) | private(1)=0 |
+     *        channel_config bit 2. */
     out[2] = (uint8_t)((1 << 6) | ((sample_rate_index & 0xF) << 2)
                        | ((channel_config >> 2) & 1));
+    /* byte3: channel_config bits 1..0 | orig/copy(1)=0 | home(1)=0 |
+     *        copyright_id(1)=0 | copyright_start(1)=0 | frame_length bits 12..11. */
     out[3] = (uint8_t)(((channel_config & 0x3) << 6) | ((total_len >> 11) & 0x3));
+    /* byte4: frame_length bits 10..3. */
     out[4] = (uint8_t)((total_len >> 3) & 0xFF);
+    /* byte5: frame_length bits 2..0 | buffer_fullness bits 10..6 (all 1 = VBR). */
     out[5] = (uint8_t)(((total_len & 0x7) << 5) | 0x1F);
+    /* byte6: buffer_fullness bits 5..0 (all 1) | num_raw_data_blocks(2)=0. */
     out[6] = (uint8_t)(0x3F << 2);
     static const uint8_t body[8] = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7};
     memcpy(out + 7, body, 8);
     return 15;
 }
 
-/* Minimal ST 0601 LS — MUST match tst-integration's minimal_st0601_ls():
+/* Minimal ST 0601 LS — MUST match tst-integration's minimal_st0601_ls()
+ * (crates/tst-integration/src/scenarios/mod.rs):
  * 16-byte MISB ST 0601 UAS Datalink LS UL + BER short-form length 0. */
 static size_t synth_minimal_st0601_ls(uint8_t out[17]) {
     static const uint8_t ls[17] = {
@@ -1134,7 +1153,9 @@ static size_t synth_minimal_st0601_ls(uint8_t out[17]) {
 
 /* Drain all buffered TS packets from `mux` with a 1316-byte (7×188) pull loop,
  * matching the Rust/Python drain_mux. Appends to *produced (realloc-grown).
- * Returns 0 on success, -1 on OOM. */
+ * Returns 0 on success, -1 on OOM. On the -1 path *produced may hold the
+ * partial allocation (it is NOT freed or nulled here) — the caller is still
+ * responsible for free()ing *produced. */
 static int drain_muxer(struct tst_muxer_t *mux,
                        uint8_t **produced, size_t *produced_len, size_t *produced_cap) {
     uint8_t pull_buf[1316];
@@ -1333,11 +1354,13 @@ static int run_roundtrip(const char *scenarios_dir_path,
  *     the umbrella "STRICT_REJECTION", identical to the Rust/Python adapters.
  *
  *   drop-idempotence  (THE REAL C DOUBLE-FREE TEETH)
- *     Open a demuxer, feed the minimal valid TS, flush twice, then call
- *     tst_demuxer_close() TWICE on the SAME handle. The second close must be
- *     safe — no double-free, no crash. tst-c's close nulls/consumes the handle
- *     box so the second call is a guarded no-op. Emits the DOUBLE_CLOSE_OK
- *     sentinel.
+ *     Open a demuxer, feed the minimal valid TS, flush twice, then close once,
+ *     null the caller's pointer, and call tst_demuxer_close(NULL) again. The
+ *     second close exercises the ABI's documented null-pointer guard — the
+ *     idiomatic double-close-safe pattern (no double-free, no crash). A literal
+ *     same-pointer double-close is undefined behavior and is deliberately NOT
+ *     performed (see the per-function header for the full ABI-contract note).
+ *     Emits the DOUBLE_CLOSE_OK sentinel.
  *
  *   forged-handle  (THE REAL C HANDLE-VALIDATION TEETH)
  *     Build a valid single-video muxer (one stream → handle 0), then call

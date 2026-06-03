@@ -283,6 +283,70 @@ path = "crates/tst-core/tests/fixtures/subtitles/webvtt_multi_program_with_klv.t
 sha256 = "4f45ecb905535395e2efdd459dbf2aa11d80dc575bf8a800c0586fa98b4f0dfb"
 
 [[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/aac-audio-only/golden.json"
+sha256 = "a5c3e6fddced9fa48e37d5202bbea082dcc6f7eaf0732d5835955fc424ac9eb8"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/aac-audio-only/input.ts"
+sha256 = "63bcaec0a1949350c7db5c8e1b6f03fbee1ecaa4401ab2f129639f899435abc7"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/audio-klv-roundtrip/golden.json"
+sha256 = "79725eff0857b9ebbf84f27c7168677db12daaa8f33a9648166725ab32ad8fb3"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/audio-klv-roundtrip/output.ts"
+sha256 = "a16ac979bcbb518ef687cc7f3313e0da36ac3767a926ec5393dfeadc9a301528"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/audio-video-mp/golden.json"
+sha256 = "22e32a1fa9a8569376dbbc408c49d06888b06df0f7d5e36f5dc45997bbcf5e4b"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/audio-video-mp/input.ts"
+sha256 = "750591e18e09a14e012da5d0134a066ea59faa247c3300706df572b12450a023"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/av1-registration-desc/golden.json"
+sha256 = "4f2537e68bad3cd9a8c358d9a8c9585e52c28b3ae02047864cb9b00f27670848"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/av1-registration-desc/input.ts"
+sha256 = "742b44e39716febc26ab01c117f8bb27612d2e55e26e7b869456036d69d96084"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/drop-idempotence/golden.json"
+sha256 = "cd1f6ec06b46d6ef35ef5c68c95c886726af4d84cc39b2d3df42fb5d3f593ef8"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/drop-idempotence/input.ts"
+sha256 = "2aa000852931462b875ec9b2548dd8bf5846fef36e5a1084d149cdd636d09a24"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/dvb-subtitle-mp/golden.json"
+sha256 = "c91153fbdff7403e049f0a1586cbab28358d9f74a5ed06f0a2e45803d73382fa"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/dvb-subtitle-mp/input.ts"
+sha256 = "ea0f73a698215d71ec2c0a79f3b4caaab3fd0f6347d86c738ad143ed33244bc1"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/exception-kind-stability/golden.json"
+sha256 = "b9f2a91eb6abcb18361d76ff3a3759f01ccc3f4cb513dcc9e3a07a7991c34b80"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/exception-kind-stability/input.bin"
+sha256 = "637525b5bf575a8a337f838ccd9495d589198ad6c2dfd0d6c563ff7b60551341"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/forged-handle/golden.json"
+sha256 = "e9b9cd4366fbb9d0ce5575c0f06c1bc7512e919e1d00c7c8469b1b028403f56d"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/forged-handle/input.bin"
+sha256 = "bf5e8ffa51a9e748985800c1d3d7f1a2a6ae7435136593ca8d9637e3f87c699c"
+
+[[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/h264-st0601-mp/golden.json"
 sha256 = "8c701860861bc05d80050520107c253d0f883ca98e0c2fbc43317e0f7821b67a"
 
@@ -291,8 +355,40 @@ path = "crates/tst-integration/tests/fixtures/scenarios/h264-st0601-mp/input.ts"
 sha256 = "cd251edd9be5631e9b92ba622925bc8d83de736b3428220c696e5eb8f6b25354"
 
 [[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/h264-sync-klv-aucell/golden.json"
+sha256 = "cc2819d6b0bf60991a990fa8161722efb32b75e2615852d1cee3d8d94cf389ed"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/h264-sync-klv-aucell/input.ts"
+sha256 = "94516b9ecb88ca11eb1b93a9e4aea24155e9c12ebd49cbed989ccc103fcc1a49"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/h265-klv-mp/golden.json"
+sha256 = "451ce9fdb01bafcb80d3ae077d07ebbc2a42247f3e6cb3635c559659a89a5100"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/h265-klv-mp/input.ts"
+sha256 = "9db980ce60d106fa216aa8dccf6db037e656453d7b5619e4d582a5edf1374b02"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/golden.json"
+sha256 = "954a4345df8c56ec3401f3ece39955fb6616d89e48b7923a2308b7006bea2664"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/input.ts"
+sha256 = "fcfa7d35a7e52f44151eb3ea9e2a2261ff7866a77ba47a53324e1255c2e3212e"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/malformed-psi-strict/golden.json"
+sha256 = "6157e73ac38e73a1394e6b5604d78c92fe78659040174ebf54b0a83e493d7385"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/malformed-psi-strict/input.bin"
+sha256 = "637525b5bf575a8a337f838ccd9495d589198ad6c2dfd0d6c563ff7b60551341"
+
+[[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/scenarios.toml"
-sha256 = "bf19258fae4eeff00f0264245dff7b7ae35578b580bed17f5e3191158d98e0af"
+sha256 = "9b254d5d01ca711f5520a22f060c212f84772f2303f0623ede42303ef9b3232b"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/strict-rejection/golden.json"
@@ -303,12 +399,28 @@ path = "crates/tst-integration/tests/fixtures/scenarios/strict-rejection/input.b
 sha256 = "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
 
 [[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/golden.json"
+sha256 = "e4a3318936b57cc299fdb528e057f96210a1e7ae4124fe25021e9ad8c862e1a6"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/input.ts"
+sha256 = "75e9bd9ed769e10b26233d8013064a56e139da071ef6d9213773416282a600bd"
+
+[[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/golden.json"
 sha256 = "1fa8f2b23b3491571c214e4f5661657f96954de6954ed14d8857bcf50583dca0"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts"
 sha256 = "2aa000852931462b875ec9b2548dd8bf5846fef36e5a1084d149cdd636d09a24"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/webvtt-in-ts/golden.json"
+sha256 = "680815bff691cf9e2084e6978263e9ad74a866d2f6d7a7184e3796cac1a2c8ba"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/webvtt-in-ts/input.ts"
+sha256 = "f301c06541cddfd763700ba9962c89331b80b5f6494ddbd14792ec760d97a72c"
 
 [[file]]
 path = "tests/coverage/fuzz-targets.toml"

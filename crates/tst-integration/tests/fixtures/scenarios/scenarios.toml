@@ -60,3 +60,12 @@ golden = "aac-audio-only/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "audio-video-mp"
+kind = "demux"
+input = "audio-video-mp/input.ts"
+golden = "audio-video-mp/golden.json"
+features = []
+tier = "A"
+schema_version = 0

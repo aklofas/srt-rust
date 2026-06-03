@@ -95,6 +95,7 @@ from tstrans.mpegts import (
     Muxer,
     MuxerConfigBuilder,
     MuxerProgramConfigBuilder,
+    NonConformantKind,
     Pts90khz,
     StrictMode,
     SubtitleCodec,
@@ -161,17 +162,30 @@ _SUBTITLE_CODEC_TAG: dict[SubtitleCodec, str] = {
 def _nonconformant_code(ev: DemuxEvent.NonConformant) -> str:  # type: ignore[name-defined]
     """Map a NonConformant diagnostic event to its stable public string code.
 
-    The Python `NonConformantKind` enum member NAME is exactly the stable code
-    string the Rust `nonconformant_issue_code()` returns (and the
-    `TST_NONCONFORMANT_CODE_*` C-constant base name), e.g.
+    The Python `NonConformantKind` enum member NAME is an exact match to the
+    Rust `nonconformant_issue_code()` stable code (and the
+    `TST_NONCONFORMANT_CODE_*` C-constant base name) for EVERY member EXCEPT
+    `STREAM_TYPE_MISMATCH` — that is the one PyO3-collapsed case, handled by the
+    loud branch below.  Example of the exact path:
     `NonConformantKind.PES_HEADER_MALFORMED` → `"PES_HEADER_MALFORMED"`.
-
-    Note: the Python enum collapses Rust's two `STREAM_TYPE_MISMATCH_*` issues
-    into a single `STREAM_TYPE_MISMATCH` member; that split is not exercised by
-    any committed golden, so the NAME passthrough is exact for the scenario
-    suite.  If a future golden needs a split code, this is where the explicit
-    disambiguation would go.
     """
+    if ev.kind is NonConformantKind.STREAM_TYPE_MISMATCH:
+        # PyO3 collapses Rust's two distinct stable codes
+        # (STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID /
+        # STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID) into this single member, so
+        # the Python binding cannot derive which split code applies.  No current
+        # golden exercises it; reproducing a split-variant golden requires a
+        # tst-py binding change (re-expose the two codes), NOT an adapter-test
+        # change — fail loud rather than emit the wrong "STREAM_TYPE_MISMATCH".
+        pytest.fail(
+            "NonConformantKind.STREAM_TYPE_MISMATCH is PyO3-collapsed: the "
+            "Python binding folds Rust's two stable codes "
+            "STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID / "
+            "STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID into one member, so this "
+            "adapter cannot derive the split code. Reproducing a split-variant "
+            "golden requires a tst-py binding change (re-expose both codes), "
+            "not an adapter-test change."
+        )
     return ev.kind.name
 
 

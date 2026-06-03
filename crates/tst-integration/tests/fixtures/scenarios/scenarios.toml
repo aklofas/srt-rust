@@ -99,7 +99,7 @@ schema_version = 0
 
 [[scenario]]
 id = "malformed-pes-lenient"
-kind = "demux_diagnostic"
+kind = "demux"
 input = "malformed-pes-lenient/input.ts"
 golden = "malformed-pes-lenient/golden.json"
 features = []

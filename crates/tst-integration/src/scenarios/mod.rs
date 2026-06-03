@@ -611,9 +611,18 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                     set: klv_set_from_ul(&payload),
                 });
             }
-            DemuxEvent::Discontinuity { .. }
-            | DemuxEvent::NonConformant { .. }
-            | DemuxEvent::ReconnectDiscontinuity => { /* diagnostic — skip */ }
+            // NonConformant → CoreEvent::Error with a stable public code.
+            // The conformant Muxer emits zero NonConformant events, so clean
+            // demux goldens are unaffected; malformed-input scenarios surface
+            // the diagnostic in queue order alongside any recovered samples.
+            DemuxEvent::NonConformant { issue, .. } => {
+                events.push(CoreEvent::Error {
+                    code: nonconformant_issue_code(&issue),
+                });
+            }
+            DemuxEvent::Discontinuity { .. } | DemuxEvent::ReconnectDiscontinuity => {
+                /* diagnostic — skip */
+            }
         }
     }
 
@@ -778,121 +787,6 @@ pub fn nonconformant_issue_code(
         NonConformantIssue::Other(_) => "OTHER",
     }
     .into()
-}
-
-/// Variant of `demux_to_core_events` that also surfaces `NonConformant`
-/// events as `CoreEvent::Error { code }` using stable public string codes.
-///
-/// Used by `demux_diagnostic` scenarios that need to assert the demuxer
-/// emits the expected nonconformant diagnostic code in addition to recovered
-/// media events.  The normaliser rules from `demux_to_core_events` apply
-/// unchanged; NonConformant events are **inserted in queue order** alongside
-/// the media events.
-pub fn demux_to_core_events_diagnostic(ts_bytes: &[u8]) -> Vec<CoreEvent> {
-    use std::collections::HashMap;
-    use tst_core::mpegts::demux::event::SamplePayload;
-    use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
-
-    let mut demuxer = Demuxer::new();
-
-    if let Err(e) = demuxer.feed(ts_bytes) {
-        return vec![CoreEvent::Error {
-            code: demux_error_code(&e),
-        }];
-    }
-
-    demuxer.flush();
-
-    let mut raw_events = Vec::new();
-    while let Some(ev) = demuxer.next_event() {
-        raw_events.push(ev);
-    }
-
-    let mut stream_type_by_pid: HashMap<u16, u8> = HashMap::new();
-    for ev in &raw_events {
-        if let DemuxEvent::ProgramMap(pm) = ev {
-            for si in &pm.streams {
-                stream_type_by_pid.insert(si.pid, si.stream_type.as_byte());
-            }
-        }
-    }
-
-    let stream_type_hex = |pid: u16, fallback: u8| -> String {
-        let byte = stream_type_by_pid.get(&pid).copied().unwrap_or(fallback);
-        format!("0x{byte:02x}")
-    };
-
-    let mut events = Vec::new();
-    for ev in raw_events {
-        match ev {
-            DemuxEvent::ProgramMap(_) => {}
-            DemuxEvent::Sample {
-                stream,
-                pts,
-                payload,
-                ..
-            } => match payload {
-                SamplePayload::Video {
-                    codec,
-                    payload: vp,
-                    random_access_indicator,
-                } => {
-                    let raw = video_payload_bytes(&vp);
-                    events.push(CoreEvent::Video {
-                        program: stream.program_number,
-                        pid: stream.pid,
-                        stream_type: stream_type_hex(stream.pid, video_codec_pmt_byte(codec)),
-                        pts: pts.as_ticks(),
-                        key: random_access_indicator,
-                        payload_sha256: sha256_hex(&raw),
-                    });
-                }
-                SamplePayload::Audio { codec, frames } => {
-                    events.push(CoreEvent::Audio {
-                        program: stream.program_number,
-                        pid: stream.pid,
-                        stream_type: stream_type_hex(stream.pid, audio_codec_pmt_byte(codec)),
-                        pts: pts.as_ticks(),
-                        payload_sha256: sha256_hex(&frames),
-                    });
-                }
-                SamplePayload::Subtitle { codec, .. } => {
-                    events.push(CoreEvent::Subtitle {
-                        program: stream.program_number,
-                        pid: stream.pid,
-                        stream_type: stream_type_hex(stream.pid, 0x06),
-                        codec: subtitle_codec_tag(codec),
-                    });
-                }
-                SamplePayload::Unknown { .. } => {
-                    events.push(CoreEvent::Unknown { pid: stream.pid });
-                }
-            },
-            DemuxEvent::Metadata {
-                stream,
-                payload,
-                kind,
-                ..
-            } => {
-                let _ = &kind;
-                events.push(CoreEvent::Klv {
-                    program: stream.program_number,
-                    pid: stream.pid,
-                    stream_type: stream_type_hex(stream.pid, klv_kind_pmt_byte(&stream.kind)),
-                    set: klv_set_from_ul(&payload),
-                });
-            }
-            // NonConformant → CoreEvent::Error with stable public code.
-            DemuxEvent::NonConformant { issue, .. } => {
-                events.push(CoreEvent::Error {
-                    code: nonconformant_issue_code(&issue),
-                });
-            }
-            DemuxEvent::Discontinuity { .. } | DemuxEvent::ReconnectDiscontinuity => {}
-        }
-    }
-
-    events
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1421,23 +1315,24 @@ impl Scenario for MalformedPsiStrict {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scenario 12 — malformed-pes-lenient (demux_diagnostic)
+// Scenario 12 — malformed-pes-lenient (demux)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// `kind = "demux_diagnostic"`: hand-crafted TS with a valid PAT + PMT
-/// declaring H.264 video at PID 0x0101, followed by a PES whose `flags1` byte
-/// (byte 6 of the optional PES header) has its top two bits set to `0b00`
-/// instead of the spec-required `0b10`. This violates H.222.0 V9 §2.4.3.6.
+/// `kind = "demux"`: hand-crafted TS with a valid PAT + PMT declaring H.264
+/// video at PID 0x0101, followed by a PES whose `flags1` byte (byte 6 of the
+/// optional PES header) has its top two bits set to `0b00` instead of the
+/// spec-required `0b10`. This violates H.222.0 V9 §2.4.3.6.
 ///
 /// Under the DEFAULT (lenient) `DemuxerConfig` the demuxer:
 ///  1. Emits `DemuxEvent::NonConformant { issue: PesHeaderMalformed {
 ///     kind: InvalidMarkerBits } }` (stable code `"PES_HEADER_MALFORMED"`).
 ///  2. Recovers and emits `DemuxEvent::Sample` for the video PID.
 ///
-/// The `demux_diagnostic` kind uses `demux_to_core_events_diagnostic`, which
-/// surfaces NonConformant events as `CoreEvent::Error { code }` alongside the
-/// normal media events. The golden includes both events in queue order
-/// (NonConformant fires before the Sample event in the demuxer queue).
+/// The shared `demux_to_core_events` normaliser surfaces NonConformant events
+/// as `CoreEvent::Error { code }` alongside the normal media events. The golden
+/// includes both events in queue order (NonConformant fires before the Sample
+/// event in the demuxer queue). The conformant Muxer emits zero NonConformant
+/// events, so this added arm leaves the clean demux scenarios unchanged.
 ///
 /// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
 struct MalformedPesLenient;
@@ -1447,7 +1342,7 @@ impl Scenario for MalformedPesLenient {
         "malformed-pes-lenient"
     }
     fn kind(&self) -> &'static str {
-        "demux_diagnostic"
+        "demux"
     }
     fn features(&self) -> Vec<&'static str> {
         vec![]
@@ -1458,7 +1353,7 @@ impl Scenario for MalformedPesLenient {
 
     fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
         let ts_bytes = synthetic_ts_malformed_pes_header();
-        let core = demux_to_core_events_diagnostic(&ts_bytes);
+        let core = demux_to_core_events(&ts_bytes);
 
         let artifact_rel = PathBuf::from(self.id()).join("input.ts");
         write_file(&out_dir.join(&artifact_rel), &ts_bytes);

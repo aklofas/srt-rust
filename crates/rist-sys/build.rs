@@ -324,9 +324,19 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
     // cdylib's `-Wl,--allow-multiple-definition` collapses these with libsrt's
     // identical 3.6.x copy.
     if let Some(prefix) = &mbedtls_prefix {
+        // cmake's GNUInstallDirs puts the static libs in `<prefix>/lib` on
+        // Debian/Ubuntu but `<prefix>/lib64` on RHEL/AlmaLinux (manylinux
+        // wheel builds). Emit both search paths so the link succeeds
+        // regardless of distro — a missing dir is silently ignored by the
+        // linker. (Without lib64, manylinux builds failed with "could not
+        // find native static library `mbedtls`".)
         println!(
             "cargo:rustc-link-search=native={}",
             prefix.join("lib").to_string_lossy()
+        );
+        println!(
+            "cargo:rustc-link-search=native={}",
+            prefix.join("lib64").to_string_lossy()
         );
         println!("cargo:rustc-link-lib=static=mbedtls");
         println!("cargo:rustc-link-lib=static=mbedx509");

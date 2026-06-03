@@ -424,9 +424,9 @@ fn synthetic_adts_frame() -> Vec<u8> {
 /// Minimal DVB subtitle segment — a bare subtitle_segment body passed to
 /// `push_subtitle` for a `DvbSubtitling`-codec stream.
 ///
-/// The muxer's DVB-sub PES writer auto-prepends the 3-byte PES data field
-/// envelope (`data_identifier=0x20`, `subtitle_stream_id=0x00`) and appends
-/// the 1-byte end marker (`0xFF`). The caller therefore passes the raw
+/// The muxer's DVB-sub PES writer auto-prepends a 2-byte PES data field
+/// header (`data_identifier=0x20`, `subtitle_stream_id=0x00`) and appends a
+/// 1-byte end marker (`0xFF`). The caller therefore passes the raw
 /// subtitle segment bytes only.
 ///
 /// A DVB subtitle segment (ETSI EN 300 743 §7.2) has the structure:
@@ -437,7 +437,7 @@ fn synthetic_adts_frame() -> Vec<u8> {
 ///   … payload …
 /// Segment type 0x80 = page_composition_segment (always present per §9.5.1).
 /// Minimal body: no regions → segment_length = 0x0003 (the 3-byte fixed header
-/// beyond the common 6-byte header: active_display_duration(2) + state/version(1)).
+/// beyond the common 6-byte header: page_time_out(2) + state/version(1)).
 /// In practice we emit the shortest possible page_composition_segment:
 ///   sync_byte=0x0F, type=0x80, page_id=0x0001, length=0x0003,
 ///   presentation_time=0x0000, page_state_version=0x00 (state=Normal+version 0).
@@ -446,8 +446,8 @@ fn synthetic_dvb_subtitle_segment() -> Vec<u8> {
         0x0F, // sync_byte
         0x80, // segment_type = page_composition_segment
         0x00, 0x01, // page_id = 1
-        0x00, 0x03, // segment_length = 3 (presentation_time_out(2) + version(1))
-        0x00, 0x00, // page_presentation_time_out (2 byte) = 0
+        0x00, 0x03, // segment_length = 3 (page_time_out(2) + version(1))
+        0x00, 0x00, // page_time_out (2 byte) = 0
         0x00, // version_number(4) | page_state(2) | reserved(2) = 0x00
     ]
 }

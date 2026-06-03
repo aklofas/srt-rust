@@ -1,0 +1,16 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "video",
+      "program": 1,
+      "pid": 4113,
+      "stream_type": "0x06",
+      "pts": 90000,
+      "key": true,
+      "payload_sha256": "39f07166ad40cd223fe5852f3b21e6a64ade57d18d83bbde4a5242ac780f9435"
+    }
+  ],
+  "extensions": null
+}

@@ -123,7 +123,7 @@ For the full runnable version with synthetic frames + commentary on every
 config knob:
 
 ```bash
-cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
+cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000
 ```
 
 Other send-side examples worth knowing:

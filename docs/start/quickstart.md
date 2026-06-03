@@ -160,7 +160,7 @@ clock); `key_frame` should be true for IDR frames.
 
 In production, replace the synthetic generator with your encoder's
 output. See
-[../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs)
+[../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs)
 for a runnable version with five frames and pacing.
 
 ## Run the example pair
@@ -172,7 +172,7 @@ pair:
 # terminal A
 cargo run -p tst-examples --example srt_listener_to_file -- 127.0.0.1:9000 /tmp/out.ts
 # terminal B
-cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
+cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000
 ```
 
 The receiver writes incoming bytes to `/tmp/out.ts`. After the sender

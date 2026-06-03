@@ -3,10 +3,10 @@
 Senders that push pre-muxed TS bytes (or muxed-on-the-fly TS) over a
 transport. Five examples, in read-order:
 
-## 1. `pipeline_send_to_socket.rs` — basic SRT sender
+## 1. `send_pipeline_to_socket.rs` — basic SRT sender
 
 ```sh
-cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
+cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000
 ```
 
 Opens a `MuxSender` shell over an SRT caller socket, pushes synthetic

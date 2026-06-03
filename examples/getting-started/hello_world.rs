@@ -8,7 +8,7 @@
 //!
 //! No SRT, no files, no real codecs — just bytes in, bytes out.
 //! From here:
-//!   - To send over SRT:                 sending/pipeline_send_to_socket.rs
+//!   - To send over SRT:                 sending/send_pipeline_to_socket.rs
 //!   - To write to a real .ts file:      muxing/mux_to_file.rs
 //!   - To carry real H.265 video:        muxing/mux_h265_with_klv.rs
 //!   - To decode the KLV blob back:      klv-metadata/klv_decode_file.rs

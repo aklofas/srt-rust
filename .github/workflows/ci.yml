@@ -443,7 +443,7 @@ jobs:
 
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles
-        # bindings/c/examples/c/scenarios/run_scenarios.c against the
+        # bindings/c/examples/scenarios/run_scenarios.c against the
         # libtstrans.so produced by the "cargo build (all crate types,
         # all-features)" step above (the last cdylib-producing build; the
         # intervening "cargo test (all features)" step only rebuilds rlibs and
@@ -469,7 +469,7 @@ jobs:
             -L target/debug \
             -Wall -Werror \
             -o /tmp/run_scenarios_c_adapter \
-            bindings/c/examples/c/scenarios/run_scenarios.c \
+            bindings/c/examples/scenarios/run_scenarios.c \
             -ltstrans
           # `timeout 60` bounds the standalone C binary the way nextest's
           # terminate-after bounds the Rust tests — the C adapter is the one

@@ -76,11 +76,11 @@ if (tst_get_abi_version_minor() < TST_ABI_VERSION_MINOR) {
 }
 ```
 
-See [`examples/c/getting-started/version_check.c`](../../bindings/c/examples/c/getting-started/version_check.c) for the canonical startup pattern (matches what `tst-jni` and `tst-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
+See [`examples/getting-started/version_check.c`](../../bindings/c/examples/getting-started/version_check.c) for the canonical startup pattern (matches what `tst-jni` and `tst-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
 
 ## Hello world
 
-Build one MPEG-TS frame in memory containing one H.264 access unit + one KLV record — no SRT, no files. The full example is at [`examples/c/getting-started/hello_world.c`](../../bindings/c/examples/c/getting-started/hello_world.c); the core is ten lines:
+Build one MPEG-TS frame in memory containing one H.264 access unit + one KLV record — no SRT, no files. The full example is at [`examples/getting-started/hello_world.c`](../../bindings/c/examples/getting-started/hello_world.c); the core is ten lines:
 
 ```c
 #include "tstrans.h"
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 
 For KLV: **pass raw MISB Local Set bytes** — the muxer auto-wraps the H.222.0 § 2.12.4.2 AU cell header for `SYNCHRONOUS_METADATA` streams. Don't pre-wrap.
 
-Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/c/muxing/mux_dual_camera.c`](../../bindings/c/examples/c/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
+Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/muxing/mux_dual_camera.c`](../../bindings/c/examples/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
 
 ## First receive
 
@@ -228,7 +228,7 @@ The receiver is the higher-level of three concentric shapes. Pick by what you ac
 | 188-byte aligned TS packets | `tst_receiver_t` | One TS packet per `_recv_packet` call |
 | Typed demux events | `tst_demux_receiver_t` | One `tst_event_t` per `_recv_event` call |
 
-Add the `tst_managed_*` prefix for any of the three to get automatic reconnect — see [Pipeline guide](/docs/guides/pipeline.md). Full receiver examples in [`examples/c/receiving/`](../../bindings/c/examples/c/receiving/).
+Add the `tst_managed_*` prefix for any of the three to get automatic reconnect — see [Pipeline guide](/docs/guides/pipeline.md). Full receiver examples in [`examples/receiving/`](../../bindings/c/examples/receiving/).
 
 ## Language-specific gotchas
 

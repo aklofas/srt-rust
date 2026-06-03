@@ -4,7 +4,7 @@
 //! `TST_*_VERSION_*` compile-time constant. The values themselves are
 //! incidental — what matters is that the runtime accessor and the
 //! header macro agree at this build artifact. A drift would mean
-//! `examples/c/getting-started/version_check.c`'s cross-validation
+//! `examples/getting-started/version_check.c`'s cross-validation
 //! would silently lie about SO/header alignment.
 //!
 //! See `docs/plans/2026-05-21-c-abi-versioning-and-last-error-clear.md`

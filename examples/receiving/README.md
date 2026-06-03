@@ -23,7 +23,7 @@ cargo run -p tst-examples --example srt_listener_to_file -- 127.0.0.1:9000 /tmp/
 
 Diff from §1: take the listener role instead of caller. Pair with any
 caller-mode sender (e.g.
-[`../sending/pipeline_send_to_socket.rs`](../sending/pipeline_send_to_socket.rs)).
+[`../sending/send_pipeline_to_socket.rs`](../sending/send_pipeline_to_socket.rs)).
 
 ## 3. `srt_recv_typed.rs` — typed-event receiver via `DemuxReceiver<T>`
 

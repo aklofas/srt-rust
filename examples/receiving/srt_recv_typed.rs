@@ -6,7 +6,7 @@
 //! out" with no intermediate demuxer plumbing visible to the caller.
 //! `MuxSender` on the publishing side and `DemuxReceiver` on the consuming
 //! side are deliberately mirror-image shapes — see
-//! `pipeline_send_to_socket.rs` for the producer counterpart, and run
+//! `send_pipeline_to_socket.rs` for the producer counterpart, and run
 //! the two together for an end-to-end smoke.
 //!
 //! Usage:
@@ -14,7 +14,7 @@
 //!   cargo run -p tst-examples --example srt_recv_typed -- 9000
 //!
 //!   # terminal B (the publisher)
-//!   cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
+//!   cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000
 //!
 //! What to look for in the output:
 //! - One `ProgramMap` line shortly after the peer connects (the demuxer
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // handful of retransmissions, short enough that interactive use
     // doesn't suffer. Both peers must agree on this value (libsrt
     // negotiates the maximum during handshake), so the matching
-    // `pipeline_send_to_socket` example uses the same 120ms.
+    // `send_pipeline_to_socket` example uses the same 120ms.
     //
     // `bind` is the terminal call on `ListenerBuilder` — no separate
     // `.build()` step. It returns a ready-to-accept `Listener`.

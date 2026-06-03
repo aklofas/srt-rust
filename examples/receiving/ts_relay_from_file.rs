@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = args.next().ok_or("missing addr")?;
 
     // 120 ms latency — reasonable LAN/regional WAN default. See
-    // `pipeline_send_to_socket.rs` header for the full SocketBuilder knob
+    // `send_pipeline_to_socket.rs` header for the full SocketBuilder knob
     // discussion.
     //
     // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // counters. Useful for verifying the relay actually completed without
     // silent drops (e.g. due to peer disconnect mid-stream).
     eprintln!("stats: {:?}", sender.stats());
-    // Cancel-first close (see `pipeline_send_to_socket.rs` for rationale).
+    // Cancel-first close (see `send_pipeline_to_socket.rs` for rationale).
     sender.close();
     std::thread::sleep(Duration::from_millis(200));
     Ok(())

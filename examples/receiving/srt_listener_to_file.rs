@@ -1,13 +1,13 @@
 //! Minimal SRT receiver: bind, accept one connection, write bytes to a file.
 //!
-//! The peer for the existing `pipeline_send_to_socket` and `ts_relay_from_file`
+//! The peer for the existing `send_pipeline_to_socket` and `ts_relay_from_file`
 //! examples — run this in one terminal, run the sender in another:
 //!
 //!   # terminal A (this example)
 //!   cargo run -p tst-examples --example srt_listener_to_file -- 127.0.0.1:9000 out.ts
 //!
 //!   # terminal B (the sender)
-//!   cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
+//!   cargo run -p tst-examples --example send_pipeline_to_socket -- 127.0.0.1:9000
 //!
 //! Stops after the first sender disconnects.
 
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // value is the conventional starting point for live SRT: enough buffer
     // for typical round-trip jitter and a handful of retransmissions, without
     // adding so much wall-clock delay that interactive use suffers. Both
-    // peers must agree on the latency budget — see `pipeline_send_to_socket`,
+    // peers must agree on the latency budget — see `send_pipeline_to_socket`,
     // which uses the same value.
     //
     // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`):

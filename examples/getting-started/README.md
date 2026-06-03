@@ -25,7 +25,7 @@ What you'll see:
 
 When you're ready to do something real:
 
-- Send over SRT: [`../sending/pipeline_send_to_socket.rs`](../sending/pipeline_send_to_socket.rs)
+- Send over SRT: [`../sending/send_pipeline_to_socket.rs`](../sending/send_pipeline_to_socket.rs)
 - Write to a file: [`../muxing/mux_to_file.rs`](../muxing/mux_to_file.rs)
 - Carry real H.265 video: [`../muxing/mux_h265_with_klv.rs`](../muxing/mux_h265_with_klv.rs)
 - Decode the KLV blob back: [`../klv-metadata/klv_decode_file.rs`](../klv-metadata/klv_decode_file.rs)
@@ -36,5 +36,5 @@ Cookbook backlink:
 mux-only twin).
 
 The C twin lives at
-[`../../bindings/c/examples/c/getting-started/hello_world.c`](../../bindings/c/examples/c/getting-started/hello_world.c)
+[`../../bindings/c/examples/getting-started/hello_world.c`](../../bindings/c/examples/getting-started/hello_world.c)
 and produces a byte-identical output (752 bytes / 4 packets).

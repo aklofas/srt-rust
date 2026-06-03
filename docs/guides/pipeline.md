@@ -113,7 +113,7 @@ your raw KLV LS bytes through to the muxer; the muxer does the wrap.
 PTS lives in the PES header (per § 2.12.4.1). See
 [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) for the wire-format details.
 
-Mirroring [../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs):
+Mirroring [../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs):
 
 ```rust,no_run
 use tst_core::mpegts::common::Pts90khz;
@@ -798,7 +798,7 @@ Eight runnable examples cover the pipeline surface — four send, four receive.
 
 Send side:
 
-- [../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs)
+- [../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs)
   — `MuxSender` → `SrtTransport` → connected SRT socket. The canonical
   setup.
 - [../examples/receiving/ts_relay_from_file.rs](../examples/receiving/ts_relay_from_file.rs)
@@ -815,7 +815,7 @@ Receive side:
 
 - [../examples/receiving/srt_recv_typed.rs](../examples/receiving/srt_recv_typed.rs)
   — `DemuxReceiver` → `SrtTransport` → typed `DemuxEvent` stream from a
-  live SRT peer. Mirror of `pipeline_send_to_socket.rs`.
+  live SRT peer. Mirror of `send_pipeline_to_socket.rs`.
 - [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs)
   — `Demuxer` driven by a file (no transport). Triage-grade
   diagnostic for any `.ts` capture.
@@ -827,7 +827,7 @@ Receive side:
 
 ## See also
 
-- **Runnable example:** `cargo run -p tst-examples --example pipeline_send_to_socket` — [examples/sending/pipeline_send_to_socket.rs](/examples/sending/pipeline_send_to_socket.rs)
+- **Runnable example:** `cargo run -p tst-examples --example send_pipeline_to_socket` — [examples/sending/send_pipeline_to_socket.rs](/examples/sending/send_pipeline_to_socket.rs)
 - [guides/srt.md](/docs/guides/srt.md) — the `Socket` and `Listener` that sit behind `SrtTransport`.
 - [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — the muxer that `MuxSender` wraps.
 - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — the demuxer that `DemuxReceiver` wraps.

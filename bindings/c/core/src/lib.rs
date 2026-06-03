@@ -238,7 +238,7 @@ pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 9;
 //     assert(tst_get_abi_version_major() == TST_ABI_VERSION_MAJOR);
 //     assert(tst_get_abi_version_minor() >= TST_ABI_VERSION_MINOR);
 //
-// See examples/c/getting-started/version_check.c for the canonical pattern.
+// See examples/getting-started/version_check.c for the canonical pattern.
 
 /// Returns the C ABI contract major version at runtime.
 ///

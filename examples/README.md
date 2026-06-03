@@ -17,7 +17,7 @@ example's name on the first build).
 | If you want to… | Start here |
 |---|---|
 | See the smallest possible thing this library does | [`getting-started/hello_world.rs`](getting-started/hello_world.rs) |
-| Send video + KLV over an SRT link | [`sending/pipeline_send_to_socket.rs`](sending/pipeline_send_to_socket.rs) |
+| Send video + KLV over an SRT link | [`sending/send_pipeline_to_socket.rs`](sending/send_pipeline_to_socket.rs) |
 | Write an MPEG-TS file from scratch | [`muxing/mux_to_file.rs`](muxing/mux_to_file.rs) |
 | Decode KLV from a `.ts` capture | [`receiving/demux_to_events.rs`](receiving/demux_to_events.rs) → [`klv-metadata/extract_klv.rs`](klv-metadata/extract_klv.rs) → [`klv-metadata/klv_decode_file.rs`](klv-metadata/klv_decode_file.rs) |
 | Pair video AUs with KLV records | [`pairing/pair_klv_pipeline.rs`](pairing/pair_klv_pipeline.rs) |
@@ -60,6 +60,6 @@ diff alongside the change.
 ## C examples
 
 C ABI examples mirror this taxonomy under
-[`../bindings/c/examples/c/`](../bindings/c/examples/c/). Linux
+[`../bindings/c/examples/`](../bindings/c/examples/). Linux
 x86_64 only by build convention; build with `gcc` + the cbindgen-emitted
 header. See that folder's README for build invocation.

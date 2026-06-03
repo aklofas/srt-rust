@@ -534,7 +534,7 @@ have handle-aware siblings — they take pre-muxed TS bytes
 (`send_ts(bytes)`) or opaque payload bytes (`send(bytes)`), so
 multi-stream fan-out doesn't apply.
 
-See `bindings/c/examples/c/muxing/mux_dual_camera.c` for a worked end-to-end
+See `bindings/c/examples/muxing/mux_dual_camera.c` for a worked end-to-end
 example mirroring the Rust analogue.
 
 ## Per-stream PMT descriptors
@@ -894,7 +894,7 @@ Three runnable examples cover the muxer's surface:
 - `cargo run -p tst-examples --example mux_h265_with_klv` — [examples/muxing/mux_h265_with_klv.rs](/examples/muxing/mux_h265_with_klv.rs)
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.
-- `cargo run -p tst-examples --example pipeline_send_to_socket` — [examples/sending/pipeline_send_to_socket.rs](/examples/sending/pipeline_send_to_socket.rs)
+- `cargo run -p tst-examples --example send_pipeline_to_socket` — [examples/sending/send_pipeline_to_socket.rs](/examples/sending/send_pipeline_to_socket.rs)
   — the muxer composed inside `pipeline::MuxSender` and connected to an
   SRT socket. See [guides/pipeline.md](/docs/guides/pipeline.md) for the
   sender-shell layer.

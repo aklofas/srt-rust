@@ -5,7 +5,7 @@
 //! playable with `ffmpeg -i out.ts -f null -` or inspectable with `tsduck`.
 //!
 //! See `mux_h265_with_klv.rs` for a richer multi-stream example, and
-//! `pipeline_send_to_socket.rs` for the same data flowing over SRT.
+//! `send_pipeline_to_socket.rs` for the same data flowing over SRT.
 //!
 //! Usage: `cargo run -p tst-examples --example mux_to_file -- <out.ts> <duration_secs>`
 

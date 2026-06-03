@@ -85,7 +85,7 @@ fn main() {
     // export tables) is done in each cdylib crate's own build.rs, not here:
     // `cargo:rustc-link-arg-cdylib` only applies to a cdylib target in the same
     // package and rist-sys is rlib-only, so emitting it here only printed a
-    // warning (cargo#9562). See bindings/c/tst-c/build.rs for the effective wiring.
+    // warning (cargo#9562). See bindings/c/build.rs for the effective wiring.
 
     let force_vendored = env::var_os("RIST_FORCE_VENDORED").is_some();
     let no_pkg_config = env::var_os("RIST_NO_PKG_CONFIG").is_some();

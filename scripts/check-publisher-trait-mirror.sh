@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 30th bash ratchet (Plan A5a Wave C).
 # Verifies every method on the tst_core::publisher::Publisher trait has a
-# corresponding tst_publisher_* C entry point in bindings/c/tst-c-core/src/hls/ AND
-# appears in the generated bindings/c/tst-c/include/tstrans.h.
+# corresponding tst_publisher_* C entry point in bindings/c/core/src/hls/ AND
+# appears in the generated bindings/c/include/tstrans.h.
 #
 # Catches future drift: when someone adds a new method to the Publisher trait,
 # this ratchet fails until they ALSO add a matching C entry point in src/hls/
@@ -11,8 +11,8 @@
 set -euo pipefail
 
 CORE_TRAIT="crates/tst-core/src/publisher/mod.rs"
-HLS_DIR="bindings/c/tst-c-core/src/hls"
-HEADER="bindings/c/tst-c/include/tstrans.h"
+HLS_DIR="bindings/c/core/src/hls"
+HEADER="bindings/c/include/tstrans.h"
 
 if [[ ! -f "$CORE_TRAIT" ]]; then
     echo "FAIL: $CORE_TRAIT not found"

@@ -37,7 +37,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_klv` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_klv` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::NoKlvStreamsConfigured`] if no KLV streams are
@@ -151,7 +151,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_klv_to` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_klv_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

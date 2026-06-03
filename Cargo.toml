@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "crates/rist-sys",
     "crates/srt-sys",
-    "bindings/c/tst-c",
-    "bindings/c/tst-c-core",
+    "bindings/c",
+    "bindings/c/core",
     "crates/tst-core",
     "crates/tst-integration",
     "crates/tst-pipeline",

@@ -39,7 +39,7 @@ echo "==> building glue staticlib (thumbv7em)"
 # first and could link a stale debug archive from a prior `cargo build`.)
 AR="$CRATE/target/thumbv7em-none-eabihf/release/libtstrans_firmware.a"
 ARDIR=$(cd "$(dirname "$AR")" && pwd)
-INC=$(cd bindings/c/tst-c/include && pwd)
+INC=$(cd bindings/c/include && pwd)
 
 echo "==> compiling + linking firmware.elf"
 ( cd "$FW" && arm-none-eabi-gcc \

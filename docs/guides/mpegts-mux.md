@@ -534,7 +534,7 @@ have handle-aware siblings — they take pre-muxed TS bytes
 (`send_ts(bytes)`) or opaque payload bytes (`send(bytes)`), so
 multi-stream fan-out doesn't apply.
 
-See `bindings/c/tst-c/examples/c/mux_dual_camera.c` for a worked end-to-end
+See `bindings/c/examples/c/mux_dual_camera.c` for a worked end-to-end
 example mirroring the Rust analogue.
 
 ## Per-stream PMT descriptors

@@ -34,7 +34,7 @@ change without notice.
 
 Before privatizing a public item, the implementer must:
 
-1. Grep `bindings/c/tst-c-core/src/` for use sites of the item.
+1. Grep `bindings/c/core/src/` for use sites of the item.
 2. Read the `tst-jni` design (outside the published repo at
    `~/Projects/ts-transformer/docs/specs/2026-05-02-tst-jni-and-demux-design.md`)
    to confirm the planned JVM bindings don't need the item through a

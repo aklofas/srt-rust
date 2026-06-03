@@ -43,7 +43,7 @@ fn main() {
     // directive applies only to a cdylib target in the SAME package, and srt-sys
     // is rlib-only — so emitting it here did nothing except print a per-build
     // warning ("does not contain a cdylib target", rust-lang/cargo#9562). The
-    // effective `-Wl,--exclude-libs=ALL` (Linux) lives in bindings/c/tst-c/build.rs
+    // effective `-Wl,--exclude-libs=ALL` (Linux) lives in bindings/c/build.rs
     // (alongside the macOS exported_symbols_list path); the "no srt_*/SRT_*
     // symbol leak in libtstrans.so" CI ratchet verifies it works.
 

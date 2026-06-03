@@ -1,0 +1,65 @@
+[package]
+name        = "tst-c"
+description = "C ABI artifact crate (libtstrans.so / .a / tstrans.h) re-exporting tst-c-core"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+name       = "tstrans"
+crate-type = ["cdylib", "staticlib", "rlib"]
+doctest    = false
+
+[features]
+# All features forward to `tst-c-core`, where the C-ABI logic lives. This leaf
+# crate only produces the cdylib/staticlib + cbindgen header.
+default = ["std", "srt", "rtp", "mbedtls"]
+std     = ["tst-c-core/std"]
+srt     = ["tst-c-core/srt"]
+rtp     = ["tst-c-core/rtp"]
+mbedtls = ["tst-c-core/mbedtls"]
+udp     = ["tst-c-core/udp"]
+tcp     = ["tst-c-core/tcp"]
+hls     = ["tst-c-core/hls"]
+rist    = ["tst-c-core/rist"]
+
+[dependencies]
+# `std` is hardcoded (not just forwarded via the leaf's `std` feature): this
+# leaf IS the desktop cdylib/staticlib artifact and is never built no_std (the
+# embedded path uses `tst-c-core` directly via a glue crate). Hardcoding std
+# here keeps `tst-c-core` std whenever the leaf is in the build graph — so
+# `cargo test --workspace --no-default-features` exercises the std (thread_local)
+# error path rather than the no_std process-global one (which races under
+# libtest parallelism). The no_std path is gated separately by
+# `cargo build -p tst-c-core --no-default-features` (check-no-std-baremetal.sh)
+# + the QEMU C-firmware test, where the leaf is absent.
+tst-c-core = { path = "core", default-features = false, features = ["std"] }
+
+[build-dependencies]
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+cc               = { workspace = true }
+cbindgen         = { workspace = true }
+tst-test-helpers = { path = "../../crates/tst-test-helpers" }
+tempfile         = "3"
+# The integration tests in `tests/` reference these crates directly (constructing
+# Rust-side fixtures + comparing against the C ABI surface). They are pulled in
+# transitively through `tst-c-core`, but the test binaries must name them, so
+# they are declared here as dev-dependencies. Feature unification with the
+# `tst-c-core` dependency graph keeps a single build of each.
+tst-srt          = { path = "../../crates/tst-srt", default-features = false }
+tst-core         = { path = "../../crates/tst-core", default-features = false }
+tst-pipeline     = { path = "../../crates/tst-pipeline", default-features = false }
+libc             = { workspace = true }
+
+# Folder-shaped integration test: Cargo's auto-discovery only walks tests/*.rs
+# at the top level, not tests/<dir>/mod.rs. The explicit entry below points it
+# at the url_open/ directory so `cargo test -p tst-c --test url_open` keeps
+# working post-split.
+[[test]]
+name = "url_open"
+path = "tests/url_open/mod.rs"

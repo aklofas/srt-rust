@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Verify every `pub enum Tst<Name>` declared in bindings/c/tst-c-core/src/ is
-# listed in bindings/c/tst-c/cbindgen.toml's `[export] include = [...]`
+# Verify every `pub enum Tst<Name>` declared in bindings/c/core/src/ is
+# listed in bindings/c/cbindgen.toml's `[export] include = [...]`
 # allowlist.
 #
 # Background: cbindgen uses an explicit allowlist (`[export] include`).
@@ -26,15 +26,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CBINDGEN="bindings/c/tst-c/cbindgen.toml"
+CBINDGEN="bindings/c/cbindgen.toml"
 
 [ -f "$CBINDGEN" ] || { echo "FAIL: $CBINDGEN not found"; exit 1; }
 
-ENUMS=$(grep -rhE '^pub enum Tst[A-Z][A-Za-z0-9]*' bindings/c/tst-c-core/src/ \
+ENUMS=$(grep -rhE '^pub enum Tst[A-Z][A-Za-z0-9]*' bindings/c/core/src/ \
             | sed -E 's/^pub enum (Tst[A-Za-z0-9]+).*/\1/' \
             | sort -u)
 
-[ -n "$ENUMS" ] || { echo "FAIL: no Tst* enums found under bindings/c/tst-c-core/src/"; exit 1; }
+[ -n "$ENUMS" ] || { echo "FAIL: no Tst* enums found under bindings/c/core/src/"; exit 1; }
 
 # Extract only the `[export] include = [...]` block — not [export.rename]
 # (which would create a hole where a rename rule exists but the include
@@ -57,7 +57,7 @@ while IFS= read -r enum; do
 done <<< "$ENUMS"
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-    echo "FAIL: Tst* enums declared in bindings/c/tst-c-core/src/ but missing from"
+    echo "FAIL: Tst* enums declared in bindings/c/core/src/ but missing from"
     echo "      cbindgen.toml [export] include allowlist:"
     for e in "${MISSING[@]}"; do echo "  - $e"; done
     echo
@@ -65,7 +65,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     echo "     add a matching entry to [export.rename] if a custom"
     echo "     snake_case typedef name is wanted. Then rebuild tst-c and"
     echo "     copy target/<profile>/include/tstrans.h into the"
-    echo "     checked-in bindings/c/tst-c/include/tstrans.h."
+    echo "     checked-in bindings/c/include/tstrans.h."
     exit 1
 fi
 

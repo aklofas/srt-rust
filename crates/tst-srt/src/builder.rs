@@ -235,7 +235,7 @@ impl SocketBuilder {
     /// `tst_raw_sender_open`, `tst_managed_mux_sender_open`,
     /// `tst_managed_sender_open`, `tst_managed_raw_sender_open`. URL query
     /// parameters take the place of builder setters; see
-    /// `bindings/c/tst-c/include/tstrans.h` and `docs/reference/binding-authors.md`.
+    /// `bindings/c/include/tstrans.h` and `docs/reference/binding-authors.md`.
     ///
     /// # Errors
     /// Returns [`ConnectError`] on hostname-resolution failure, libsrt

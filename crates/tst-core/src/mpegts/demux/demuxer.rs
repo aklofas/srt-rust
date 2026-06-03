@@ -155,7 +155,7 @@ impl Demuxer {
     ///
     /// # C ABI
     ///
-    /// `tst_demuxer_open` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_demuxer_open` — see `bindings/c/include/tstrans.h`.
     pub fn new() -> Self {
         Self::with_config(DemuxerConfig::default())
     }
@@ -164,7 +164,7 @@ impl Demuxer {
     ///
     /// # C ABI
     ///
-    /// `tst_demuxer_open_with_config` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_demuxer_open_with_config` — see `bindings/c/include/tstrans.h`.
     pub fn with_config(config: DemuxerConfig) -> Self {
         let cap_per_pid = config.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
         let cap_total = config.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
@@ -218,7 +218,7 @@ impl Demuxer {
     ///
     /// # C ABI
     ///
-    /// `tst_demuxer_feed` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_demuxer_feed` — see `bindings/c/include/tstrans.h`.
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
         self.sync_buf.extend_from_slice(bytes);
         // Enforce the hard ceiling immediately — the inner sync-search-window
@@ -408,7 +408,7 @@ impl Demuxer {
     ///
     /// # C ABI
     ///
-    /// `tst_demuxer_next_event` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_demuxer_next_event` — see `bindings/c/include/tstrans.h`.
     /// The `None` case maps to the `TST_E_NOT_AVAILABLE` sentinel (-13).
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         self.queue.pop_front()
@@ -425,7 +425,7 @@ impl Demuxer {
     ///
     /// # C ABI
     ///
-    /// `tst_demuxer_flush` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_demuxer_flush` — see `bindings/c/include/tstrans.h`.
     pub fn flush(&mut self) {
         let partials = self.pes.drain_partial();
         for pes in partials {

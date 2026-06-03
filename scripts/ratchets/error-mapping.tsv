@@ -6,7 +6,7 @@
 # non-conformant, py-codec/demux/klv) keep their own scripts/check-*.sh.
 #
 # rust rows:  lang  name  enum            variant_source                       arm_fn
-#             (arm file is always bindings/c/tst-c-core/src/error.rs)
+#             (arm file is always bindings/c/core/src/error.rs)
 # py rows:    lang  name  class           make_fn                              (col5 unused)
 #             (exceptions file = bindings/python/python/tstrans/exceptions.py,
 #              call-site dir = bindings/python/src)

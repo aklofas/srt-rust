@@ -18,7 +18,7 @@
 set -euo pipefail
 
 # Paths relative to ts-transformer/ workspace root.
-HEADER="bindings/c/tst-c/include/tstrans.h"
+HEADER="bindings/c/include/tstrans.h"
 SRC_DIRS=(
     "crates/tst-pipeline/src"
     "crates/tst-srt/src"

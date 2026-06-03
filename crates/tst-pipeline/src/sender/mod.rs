@@ -198,7 +198,7 @@ impl<T: Transport> Sender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_sender_send_ts` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_sender_send_ts` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`SenderErrorSource::Framing`] in STRICT mode when the input fails
@@ -266,7 +266,7 @@ impl<T: Transport> Sender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_sender_flush` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_sender_flush` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// Returns [`SenderErrorSource::Transport`] when the underlying [`Transport`]
@@ -302,7 +302,7 @@ impl<T: Transport> Sender<T> {
     /// # C ABI
     ///
     /// `tst_sender_get_socket_stats` — see
-    /// `bindings/c/tst-c/include/tstrans.h`.
+    /// `bindings/c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
         self.transport.socket_stats()
     }
@@ -328,7 +328,7 @@ impl<T: Transport> Sender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_sender_cancel` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_sender_cancel` — see `bindings/c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

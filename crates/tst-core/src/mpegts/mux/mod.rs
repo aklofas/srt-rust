@@ -242,7 +242,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_pull` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_muxer_pull` — see `bindings/c/include/tstrans.h`.
     pub fn pull(&mut self, out: &mut [u8]) -> usize {
         if out.len() < 188 {
             return 0;

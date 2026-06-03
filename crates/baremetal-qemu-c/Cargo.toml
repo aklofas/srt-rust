@@ -12,7 +12,7 @@ test = false
 bench = false
 
 [dependencies]
-tst-c-core = { path = "../../bindings/c/tst-c-core", default-features = false }
+tst-c-core = { path = "../../bindings/c/core", default-features = false }
 # Registers the critical-section impl that tst-c-core's no_std last-error needs.
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 

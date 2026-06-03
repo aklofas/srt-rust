@@ -71,7 +71,7 @@ impl Muxer {
     /// # C ABI
     ///
     /// `tst_muxer_get_stream_codec_stats` — see
-    /// `bindings/c/tst-c/include/tstrans.h`.
+    /// `bindings/c/include/tstrans.h`.
     pub fn stream_codec_stats(&self, pid: u16) -> Option<crate::mpegts::stats::StreamCodecStats> {
         if let Some(c) = self.stream_codec_counters.get(&pid) {
             return Some(c.to_public());

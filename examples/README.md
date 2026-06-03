@@ -60,6 +60,6 @@ diff alongside the change.
 ## C examples
 
 C ABI examples mirror this taxonomy under
-[`../bindings/c/tst-c/examples/c/`](../bindings/c/tst-c/examples/c/). Linux
+[`../bindings/c/examples/c/`](../bindings/c/examples/c/). Linux
 x86_64 only by build convention; build with `gcc` + the cbindgen-emitted
 header. See that folder's README for build invocation.

@@ -218,7 +218,7 @@ jobs:
 
       - name: Check extern C ffi_catch coverage
         # Superset of the lifecycle check above: every `pub unsafe
-        # extern "C" fn` in bindings/c/tst-c-core/src/ must isolate panics via
+        # extern "C" fn` in bindings/c/core/src/ must isolate panics via
         # ffi_catch, Handle::with_inner_{mut,ref}, or be in the
         # trivially-infallible allowlist. Caught tst_demux_config_free
         # which had bypassed the lifecycle ratchet by being named
@@ -226,7 +226,7 @@ jobs:
         run: bash scripts/check-extern-c-ffi-catch-coverage.sh
 
       - name: Check C header mirror-enum export
-        # Catches Tst* enums declared in bindings/c/tst-c-core/src/ but missing
+        # Catches Tst* enums declared in bindings/c/core/src/ but missing
         # from cbindgen.toml [export] include allowlist — silently
         # dropped from the generated header (regression bug 2026-05-24
         # CFI tolerance: TstCellFragmentIndication was defined but
@@ -439,7 +439,7 @@ jobs:
 
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles
-        # bindings/c/tst-c/examples/c/scenarios/run_scenarios.c against the
+        # bindings/c/examples/c/scenarios/run_scenarios.c against the
         # libtstrans.so produced by the "cargo build (all crate types,
         # all-features)" step above (the last cdylib-producing build; the
         # intervening "cargo test (all features)" step only rebuilds rlibs and
@@ -461,11 +461,11 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: |
           gcc \
-            -I bindings/c/tst-c/include \
+            -I bindings/c/include \
             -L target/debug \
             -Wall -Werror \
             -o /tmp/run_scenarios_c_adapter \
-            bindings/c/tst-c/examples/c/scenarios/run_scenarios.c \
+            bindings/c/examples/c/scenarios/run_scenarios.c \
             -ltstrans
           # `timeout 60` bounds the standalone C binary the way nextest's
           # terminate-after bounds the Rust tests — the C adapter is the one
@@ -1005,7 +1005,7 @@ jobs:
         # default  → 5 tests; srt-only → 1 test; rtp-only → 4 tests;
         # neither  → 0 tests (compile succeeds, no test bodies active).
         # feature_matrix_compile now lives in the consolidated `abi` test
-        # binary (see bindings/c/tst-c/tests/MOVEMENT_MAP.md); build that binary
+        # binary (see bindings/c/tests/MOVEMENT_MAP.md); build that binary
         # and filter to its tests — the per-mode counts above are unchanged.
         env:
           SRT_FORCE_VENDORED: "1"

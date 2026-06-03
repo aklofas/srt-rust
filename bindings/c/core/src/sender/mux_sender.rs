@@ -1,0 +1,1372 @@
+//! `tst_mux_sender_t` (plain) and `tst_managed_mux_sender_t` (managed).
+//!
+//! Both wrap `tst_pipeline::MuxSender<T>`, with T parameterized on the
+//! underlying transport. Plain uses `SrtTransport`; managed uses
+//! `ManagedTransport<SrtTransport>` with a factory that reconnects via the
+//! original URL on transport breakage.
+
+use crate::config::{TstMuxConfig, TstReconnectPolicy};
+use crate::error::{
+    TstError, record_mux_error, record_not_available, record_not_found, record_shell_error,
+    set_last_error, tst_get_last_error,
+};
+use crate::handle::{
+    Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+};
+use tst_pipeline::{ManagedTransport, MuxSender, TransportCancel};
+use tst_srt::SrtTransport;
+use tst_srt::config::SocketConfig;
+
+// ------------------------------------------------------------------
+// tst_mux_sender_t (plain L1)
+// ------------------------------------------------------------------
+
+pub struct TstMuxSender {
+    inner: Handle<MuxSender<SrtTransport>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
+    was_cancelled: Arc<AtomicBool>,
+}
+
+/// Open a `tst_mux_sender_t` connected via SRT.
+///
+/// `srt_url` is a `srt://host:port?key=value&...` URL. Query
+/// parameters apply libsrt-vocabulary options to the connection
+/// (passphrase, latency, streamid, etc.). URL values override config
+/// values for the same option. See
+/// `docs/guides/srt.md#url-parsing` for the recognized key table.
+///
+/// Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+/// last-error for any malformed URL, unsupported key, unknown key, or
+/// invalid value. The detail string from
+/// `tst_get_last_error_str()` describes the specific problem.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_open(
+    srt_url: *const libc::c_char,
+    cfg: *mut TstMuxConfig,
+) -> *mut TstMuxSender {
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return std::ptr::null_mut();
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let built = match cfg.build_config() {
+            Ok(c) => c,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let mut socket_cfg = SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
+        let transport = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg)
+        {
+            Ok(t) => t,
+            Err(e) => {
+                crate::error::record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let sender = match MuxSender::new(transport, built) {
+            Ok(s) => s,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
+        Box::into_raw(Box::new(TstMuxSender {
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
+        }))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_video(
+    p: *mut TstMuxSender,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one KLV blob through the muxer's single KLV stream and out the
+/// transport.
+///
+/// `klv` must point to **raw MISB Local Set bytes**. For streams configured
+/// as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+/// 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 before
+/// emitting. **Do not pre-wrap the AU cell on the caller side** —
+/// double-wrapping produces metadata that receivers cannot parse. For
+/// streams configured as `TST_KLV_STREAM_TYPE_PRIVATE_DATA`, the payload
+/// is emitted as-is.
+///
+/// `pts_90khz` is the presentation timestamp in 90 kHz ticks. The current
+/// API uses `metadata_service_id = 0x00` per ST 1402.2 App. B Table 2; a
+/// future entry will expose the field explicitly.
+///
+/// Single-stream form: the mux sender must have exactly one KLV stream
+/// configured. Multi-stream callers use `tst_mux_sender_send_klv_to` with
+/// an explicit `TstKlvStreamHandle`.
+///
+/// # Errors
+///
+/// Routed through `tst_get_last_error()` via the inner `MuxSender`
+/// shell's `record_shell_error`. Common codes:
+///
+/// - `TST_E_INVALID_USAGE` — no KLV stream configured or ambiguous target.
+/// - `TST_E_KLV_TOO_LARGE` — payload exceeds the per-frame KLV size limit.
+/// - `TST_E_TRANSPORT` — transport-layer failure (closed, timeout, broken pipe).
+/// - `TST_E_INVALID_CONFIG` — `klv` is null with non-zero `len`.
+///
+/// # C ABI
+///
+/// `tst_mux_sender_send_klv` — see `bindings/c/include/tstrans.h`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_klv(
+    p: *mut TstMuxSender,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle.inner.with_inner_ref(|s| {
+        match s.send_klv(
+            slice, pts,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        }
+    })
+}
+
+/// Push one Annex-B NAL targeting a specific video elementary stream.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+/// config time and is stable across the config→open boundary. Out-of-range
+/// handles surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_video` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_video_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Validate the caller-provided u32 against the canonical handle layout
+    // BEFORE the push-time range check sees it. A forged value like
+    // `valid.raw() | 0x100` would otherwise mask down to the valid low-byte
+    // handle and silently route to the wrong elementary stream. The
+    // push-time check only sees the masked indices and can't distinguish.
+    let stream = match VideoStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Push one pre-built KLV blob targeting a specific KLV elementary stream.
+///
+/// For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+/// the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+/// V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+/// For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+/// through unchanged.
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_klv` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_klv_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstKlvStreamHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match KlvStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper.inner.with_inner_ref(|s| {
+        match s.send_klv_to(
+            stream, slice, pts,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        }
+    })
+}
+
+/// Send one audio frame buffer (single-stream shorthand).
+///
+/// Resolves only when exactly one audio stream is configured.
+/// Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+///
+/// `frames` is one or more pre-framed audio frames concatenated by the
+/// caller. PTS is required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_audio(
+    p: *mut TstMuxSender,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one audio frame buffer targeting a specific audio elementary stream.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_audio_stream` /
+/// `tst_mux_config_add_audio_stream_with_language`. Out-of-range handles
+/// surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_audio` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_audio_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match AudioStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one subtitle PES unit (single-stream shorthand).
+///
+/// Resolves only when exactly one subtitle stream is configured.
+/// Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or
+/// `MuxError::NoSubtitleStreamsConfigured`).
+///
+/// `payload` is one complete logical subtitle unit (DVB-sub composition
+/// page, teletext data field, CEA-708 service block, or WebVTT cue).
+/// PTS is required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_subtitle(
+    p: *mut TstMuxSender,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one subtitle PES unit targeting a specific subtitle elementary
+/// stream.
+///
+/// `stream_handle` is obtained from one of the four
+/// `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+/// handles surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_subtitle` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_subtitle_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match SubtitleStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Snapshot stats for a `tst_mux_sender_t` into `*out`.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, or `TST_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_get_stats(
+    p: *mut TstMuxSender,
+    out: *mut crate::stats::TstMuxSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = s.stats();
+        let mut per_stream =
+            [crate::stats::TstStreamStats::default(); crate::stats::TST_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::TstMuxSenderStats {
+            bytes_sent: stats.bytes_sent,
+            packets_sent: stats.packets_sent,
+            pending_bytes_queued: stats.pending_bytes_queued,
+            pending_chunks_queued: stats.pending_chunks_queued,
+            programs_configured: stats.programs_configured,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// Read wire-level transport stats (RTT, packet loss, bandwidth, queue
+/// depths) for the underlying libsrt socket. Cumulative since connect.
+///
+/// `out` MUST point to a writable `TstSocketStats`; the function zeros
+/// the struct on failure.
+///
+/// Returns:
+/// * `0` on success — `*out` is populated.
+/// * `TST_E_INVALID_CONFIG` if `p` or `out` is NULL.
+/// * `TST_E_NOT_AVAILABLE` if the inner transport has no live socket
+///   (closed or — for the managed sibling — mid-reconnect).
+/// * `TST_E_CLOSED` if the sender has been closed.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstMuxSender` opened via
+/// `tst_mux_sender_open` and `out` points to a writable `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_get_socket_stats(
+    p: *mut TstMuxSender,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(
+            "mux sender socket stats unavailable (transport not connected or closed)",
+        ),
+    })
+}
+
+/// Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
+///
+/// The returned struct is a tagged union — read `out->kind` first, then
+/// the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+/// `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+///
+/// # Errors
+///
+/// * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+/// * `TST_E_CLOSED` — handle was closed via `tst_mux_sender_close`
+/// * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+/// * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+///
+/// # Safety
+///
+/// `p` must be a valid pointer obtained from `tst_mux_sender_open`; `out`
+/// must be a writable `tst_stream_codec_stats_t`. The pointee is fully
+/// written on `TST_OK` and untouched on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_get_stream_codec_stats(
+    p: *mut TstMuxSender,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle
+        .inner
+        .with_inner_ref(|s| match s.stream_codec_stats(pid) {
+            Some(stats) => {
+                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+                0
+            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            )),
+        })
+}
+
+/// Reset stats counters for a `tst_mux_sender_t` to zero.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+/// null, or `TST_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_reset_stats(p: *mut TstMuxSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_ref(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+/// Close and free a `tst_mux_sender_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_close(p: *mut TstMuxSender) {
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
+}
+
+/// Cancel a `tst_mux_sender_t`. Unblocks a thread parked in any `_send_*`
+/// entry point within one libsrt I/O cycle (~3-10 ms) by closing the
+/// underlying libsrt socket. Safe to call from any thread. Idempotent.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+///
+/// After cancel, all `_send_*` entry points return `TST_E_CLOSED`. The
+/// handle must still be `_close`'d to free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_cancel(p: *mut TstMuxSender) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null sender pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // send holds it). The was_cancelled flag + cancel-handle Arc are
+        // accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
+}
+
+/// Borrow `srt_url` as a Rust string and run it through `tst_srt::url`'s
+/// rich URL parser. Sets last-error and returns `Err(())` on any failure
+/// path; caller treats `Err(())` as "return NULL".
+pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<tst_srt::SrtUrl, ()> {
+    if srt_url.is_null() {
+        set_last_error(TstError::InvalidConfig, "null srt_url");
+        return Err(());
+    }
+    let cstr = unsafe { std::ffi::CStr::from_ptr(srt_url) };
+    let s = match cstr.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            set_last_error(TstError::InvalidConfig, "srt_url is not valid utf-8");
+            return Err(());
+        }
+    };
+    tst_srt::SrtUrl::parse(s).map_err(|e| {
+        set_last_error(TstError::InvalidConfig, &format!("invalid srt url: {e}"));
+    })
+}
+
+/// Like [`parse_c_srt_url`] but more forgiving for listener-mode entry points:
+/// if the URL omits both a host and `?mode=listener` (e.g. `srt://:7000`),
+/// inject `?mode=listener` and retry. This lets `_open_listener` entry points
+/// accept the clean `srt://:port` form directly — the `_listener` suffix in
+/// the function name is the authoritative listener-mode signal, so requiring
+/// the URL to also carry `?mode=listener` is redundant.
+///
+/// Any error other than [`tst_srt::UrlError::MissingHost`] is returned
+/// unchanged (the first-pass error is already recorded in the thread-local
+/// last-error by `parse_c_srt_url`).
+///
+/// Called by `tst_*_open_listener` entry points. Plain `tst_*_open` entry
+/// points keep the strict parse via `parse_c_srt_url` (an empty host is
+/// meaningless for caller mode).
+pub(crate) unsafe fn parse_c_srt_url_listener(
+    srt_url: *const libc::c_char,
+) -> Result<tst_srt::SrtUrl, ()> {
+    // First-pass: the fast common path (URL already has a host or already
+    // carries ?mode=listener).
+    let first = unsafe { parse_c_srt_url(srt_url) };
+    if first.is_ok() {
+        return first;
+    }
+    // First pass failed and already recorded the error. To branch on
+    // MissingHost specifically, re-parse here directly. The cost is negligible
+    // (one extra string parse on an error path).
+    if srt_url.is_null() {
+        // Null pointer: already handled by parse_c_srt_url above.
+        return Err(());
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(srt_url) }
+        .to_string_lossy()
+        .into_owned();
+    match tst_srt::SrtUrl::parse(&s) {
+        Err(tst_srt::UrlError::MissingHost) => {}
+        _ => {
+            // Some other error (or unexpectedly Ok) — the first pass already
+            // recorded it; return the original Err(()).
+            return Err(());
+        }
+    }
+    // MissingHost on an empty-host URL — inject mode=listener and retry.
+    let sep = if s.contains('?') { '&' } else { '?' };
+    let augmented = format!("{s}{sep}mode=listener");
+    tst_srt::SrtUrl::parse(&augmented).map_err(|e| {
+        set_last_error(TstError::InvalidConfig, &format!("invalid srt url: {e}"));
+    })
+}
+
+// ------------------------------------------------------------------
+// tst_managed_mux_sender_t (managed L2)
+// ------------------------------------------------------------------
+
+pub struct TstManagedMuxSender {
+    inner: Handle<MuxSender<ManagedTransport<SrtTransport>>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
+    was_cancelled: Arc<AtomicBool>,
+}
+
+/// Open a `tst_managed_mux_sender_t` connected via SRT.
+///
+/// `srt_url` is a `srt://host:port?key=value&...` URL. Query
+/// parameters apply libsrt-vocabulary options to the connection
+/// (passphrase, latency, streamid, etc.). URL values override config
+/// values for the same option. See
+/// `docs/guides/srt.md#url-parsing` for the recognized key table.
+///
+/// Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+/// last-error for any malformed URL, unsupported key, unknown key, or
+/// invalid value. The detail string from
+/// `tst_get_last_error_str()` describes the specific problem.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_open(
+    srt_url: *const libc::c_char,
+    cfg: *mut TstMuxConfig,
+    policy: *const TstReconnectPolicy,
+) -> *mut TstManagedMuxSender {
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return std::ptr::null_mut();
+        };
+        let policy = match unsafe { policy.as_ref() } {
+            Some(p) => p.inner.clone(),
+            None => tst_pipeline::ReconnectPolicy::default(),
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let built = match cfg.build_config() {
+            Ok(c) => c,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let mut socket_cfg = SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
+
+        // Initial connect.
+        let initial = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                crate::error::record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+
+        // Reconnect closure: same host/port AND same socket config so URL
+        // overlay options (passphrase/latency/etc.) survive reconnects.
+        // URL is parsed once at construction and never re-parsed.
+        let host = url.host.clone();
+        let port = url.port;
+        let cfg_for_reconnect = socket_cfg.clone();
+        let factory = move || crate::sender::connect::connect_srt(&host, port, &cfg_for_reconnect);
+
+        let managed = ManagedTransport::new(initial, factory, policy);
+        let sender = match MuxSender::new(managed, built) {
+            Ok(s) => s,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
+        Box::into_raw(Box::new(TstManagedMuxSender {
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
+        }))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_video(
+    p: *mut TstManagedMuxSender,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one KLV blob through the managed mux sender's single KLV stream
+/// and out the underlying reconnecting transport.
+///
+/// Same payload contract as `tst_mux_sender_send_klv`: **raw MISB Local
+/// Set bytes**, muxer auto-wraps the AU cell for SynchronousMetadata
+/// streams. Do not pre-wrap.
+///
+/// `pts_90khz` is the presentation timestamp in 90 kHz ticks. The current
+/// API uses `metadata_service_id = 0x00`.
+///
+/// Single-stream form: see `tst_managed_mux_sender_send_klv_to` for the
+/// multi-stream variant.
+///
+/// # Errors
+///
+/// Routed through `tst_get_last_error()`. Same code set as
+/// `tst_mux_sender_send_klv` plus reconnect-specific transient codes:
+///
+/// - `TST_E_NOT_AVAILABLE` — transport mid-reconnect (transient; next
+///   call may succeed).
+///
+/// # C ABI
+///
+/// `tst_managed_mux_sender_send_klv` — see `bindings/c/include/tstrans.h`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_klv(
+    p: *mut TstManagedMuxSender,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle.inner.with_inner_ref(|s| {
+        match s.send_klv(
+            slice, pts,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        }
+    })
+}
+
+/// Push one Annex-B NAL targeting a specific video elementary stream on a
+/// managed (auto-reconnecting) sender.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+/// config time and is stable across reconnects. Out-of-range handles
+/// surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_managed_mux_sender_send_video` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_video_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match VideoStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Push one pre-built KLV blob targeting a specific KLV elementary stream on
+/// a managed (auto-reconnecting) sender.
+///
+/// For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+/// the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+/// V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+/// For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+/// through unchanged.
+///
+/// On a single-stream sender, prefer `tst_managed_mux_sender_send_klv` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_klv_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstKlvStreamHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match KlvStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper.inner.with_inner_ref(|s| {
+        match s.send_klv_to(
+            stream, slice, pts,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        }
+    })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
+/// through the inner reconnecting transport.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_audio(
+    p: *mut TstManagedMuxSender,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
+/// `stream_handle` is stable across reconnects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_audio_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match AudioStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
+/// through the inner reconnecting transport.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle(
+    p: *mut TstManagedMuxSender,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
+/// `stream_handle` is stable across reconnects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match SubtitleStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, or `TST_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_get_stats(
+    p: *mut TstManagedMuxSender,
+    out: *mut crate::stats::TstMuxSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = s.stats();
+        let mut per_stream =
+            [crate::stats::TstStreamStats::default(); crate::stats::TST_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::TstMuxSenderStats {
+            bytes_sent: stats.bytes_sent,
+            packets_sent: stats.packets_sent,
+            pending_bytes_queued: stats.pending_bytes_queued,
+            pending_chunks_queued: stats.pending_chunks_queued,
+            programs_configured: stats.programs_configured,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// See [`tst_mux_sender_get_socket_stats`]. The managed variant returns
+/// `TST_E_NOT_AVAILABLE` whenever the reconnect loop currently has no
+/// live inner socket — callers should treat this as transient and retry.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstManagedMuxSender` opened via
+/// `tst_managed_mux_sender_open` and `out` points to a writable
+/// `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_get_socket_stats(
+    p: *mut TstManagedMuxSender,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(
+            "mux sender socket stats unavailable (transport not connected or closed)",
+        ),
+    })
+}
+
+/// Managed sibling of [`tst_mux_sender_get_stream_codec_stats`]. Returns
+/// the same values — codec stats live on the inner `Muxer`, so they
+/// persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
+///
+/// # Errors
+///
+/// * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+/// * `TST_E_CLOSED` — handle was closed via `tst_managed_mux_sender_close`
+/// * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+/// * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+///
+/// # Safety
+///
+/// `p` must be a valid pointer obtained from `tst_managed_mux_sender_open`;
+/// `out` must be a writable `tst_stream_codec_stats_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_get_stream_codec_stats(
+    p: *mut TstManagedMuxSender,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle
+        .inner
+        .with_inner_ref(|s| match s.stream_codec_stats(pid) {
+            Some(stats) => {
+                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+                0
+            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            )),
+        })
+}
+
+/// Reset stats counters for a `tst_managed_mux_sender_t` to zero.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+/// null, or `TST_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_reset_stats(
+    p: *mut TstManagedMuxSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_ref(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+/// Close and free a `tst_managed_mux_sender_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_close(p: *mut TstManagedMuxSender) {
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
+}
+
+/// Cancel a `tst_managed_mux_sender_t`. Same semantics as
+/// `tst_mux_sender_cancel`; reaches the currently-active inner
+/// transport's cancel handle through `ManagedTransport`'s atomic
+/// snapshot.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_cancel(p: *mut TstManagedMuxSender) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null sender pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // send holds it). The was_cancelled flag + cancel-handle Arc are
+        // accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::*;
+    use std::ffi::CString;
+
+    #[test]
+    fn open_with_invalid_url_returns_null_and_sets_error() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+            tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
+            let bad = CString::new("not-an-srt-url").unwrap();
+            let p = tst_mux_sender_open(bad.as_ptr(), cfg);
+            assert!(p.is_null());
+            assert_eq!(
+                crate::error::tst_get_last_error() as i32,
+                TstError::InvalidConfig as i32,
+            );
+            tst_mux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn open_with_unreachable_host_returns_null_with_transport_error() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+            tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
+            // Reserved-for-documentation address that should reject quickly.
+            let url = CString::new("srt://192.0.2.1:9").unwrap();
+            let p = tst_mux_sender_open(url.as_ptr(), cfg);
+            assert!(p.is_null());
+            // Either Transport (broken) or InvalidConfig depending on libsrt
+            // resolver behavior — both are valid failures here.
+            let code = crate::error::tst_get_last_error() as i32;
+            assert!(
+                code == TstError::Transport as i32 || code == TstError::InvalidConfig as i32,
+                "expected Transport or InvalidConfig, got {code}",
+            );
+            tst_mux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn null_close_is_safe() {
+        unsafe {
+            tst_mux_sender_close(std::ptr::null_mut());
+            tst_managed_mux_sender_close(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_mux_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn managed_null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_managed_mux_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+}

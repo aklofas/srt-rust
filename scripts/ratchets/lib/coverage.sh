@@ -7,7 +7,7 @@
 #
 # Two enforced shapes:
 #   rust : every `<Enum>ErrorKind` variant in a tst-<proto> crate has an arm in
-#          `fn <proto>_error_to_code` in bindings/c/tst-c-core/src/error.rs, and no
+#          `fn <proto>_error_to_code` in bindings/c/core/src/error.rs, and no
 #          wildcard arm unless the enum is #[non_exhaustive].
 #   py   : every `class <Enum>ErrorKind` member in tstrans.exceptions has at
 #          least one `make_<proto>_error(py, "KIND", ...)` call site under

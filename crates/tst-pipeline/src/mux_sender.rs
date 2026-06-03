@@ -214,7 +214,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_video` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_video` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Typed PTS
     ///
@@ -301,7 +301,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_klv` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_klv` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -337,7 +337,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_video_to` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_video_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -417,7 +417,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_klv_to` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_klv_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -458,7 +458,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_audio` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_audio` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -488,7 +488,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_audio_to` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_audio_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -529,7 +529,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_subtitle` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_subtitle` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -559,7 +559,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_send_subtitle_to` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_send_subtitle_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -700,7 +700,7 @@ impl<T: Transport> MuxSender<T> {
     /// # C ABI
     ///
     /// `tst_mux_sender_get_socket_stats` — see
-    /// `bindings/c/tst-c/include/tstrans.h`.
+    /// `bindings/c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
         // Plan F mutex sweep (safe-default on poison): mirrors reconnect/mod.rs
         // verbatim — None on poison, indistinguishable from "no live socket."
@@ -729,7 +729,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// `tst_mux_sender_get_stream_codec_stats` (plain) +
     /// `tst_managed_mux_sender_get_stream_codec_stats` (managed wrapper) —
-    /// see `bindings/c/tst-c/include/tstrans.h`.
+    /// see `bindings/c/include/tstrans.h`.
     pub fn stream_codec_stats(
         &self,
         pid: u16,
@@ -803,7 +803,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_mux_sender_cancel` — see `bindings/c/tst-c/include/tstrans.h`.
+    /// `tst_mux_sender_cancel` — see `bindings/c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

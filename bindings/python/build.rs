@@ -9,7 +9,7 @@ fn main() {
     // `-Wl,--allow-multiple-definition` collapses every reference onto the
     // first definition (libsrt's), so the extension links AND both libraries
     // share one consistent mbedTLS at runtime (same fix + rationale as
-    // bindings/c/tst-c/build.rs; the clean cross-crate-reuse fix is the rist-sys
+    // bindings/c/build.rs; the clean cross-crate-reuse fix is the rist-sys
     // v2 follow-up). Scoped to the srt+rist combo so single-transport builds
     // keep strict duplicate-symbol checking.
     #[cfg(target_os = "linux")]

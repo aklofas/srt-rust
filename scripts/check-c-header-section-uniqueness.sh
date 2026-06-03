@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify that bindings/c/tst-c/include/tstrans.h has between 7 and 9 section
+# Verify that bindings/c/include/tstrans.h has between 7 and 9 section
 # dividers (// ─── NAME ──────) and that every divider name is unique.
 #
 # Plan B's add_section_dividers post-process is specified to emit 7
@@ -17,7 +17,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-HEADER="bindings/c/tst-c/include/tstrans.h"
+HEADER="bindings/c/include/tstrans.h"
 if [ ! -f "$HEADER" ]; then
     echo "FAIL: header not found at $HEADER"
     exit 1
@@ -42,7 +42,7 @@ if [ "$UNIQUE" -ne "$COUNT" ]; then
     echo "FAIL: $HEADER has duplicate section divider names:"
     printf '%s\n' "$DUPES" | sed 's/^/  /'
     echo
-    echo "add_section_dividers in bindings/c/tst-c/build.rs should emit each"
+    echo "add_section_dividers in bindings/c/build.rs should emit each"
     echo "section at most once. A duplicate name signals the post-process"
     echo "regressed to line-by-line transition emission against sort_by=Name."
     exit 1

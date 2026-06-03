@@ -79,7 +79,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// `_recv_event` / `_close` / `_cancel` / `_get_stats` and the typed
 /// event arena) shipped via the receiver-surface plans (raw byte recv
 /// → TS-aligned recv → typed demux events). See
-/// `bindings/c/tst-c/include/tstrans.h` for the C surface.
+/// `bindings/c/include/tstrans.h` for the C surface.
 ///
 /// ## Per-language idiom
 ///
@@ -452,7 +452,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// # C ABI
     ///
     /// `tst_demux_receiver_get_socket_stats` — see
-    /// `bindings/c/tst-c/include/tstrans.h`.
+    /// `bindings/c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
         self.ts.socket_stats()
     }
@@ -474,7 +474,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     ///
     /// `tst_demux_receiver_get_stream_codec_stats` (plain) +
     /// `tst_managed_demux_receiver_get_stream_codec_stats` (managed wrapper) —
-    /// see `bindings/c/tst-c/include/tstrans.h`.
+    /// see `bindings/c/include/tstrans.h`.
     pub fn stream_codec_stats(
         &self,
         pid: u16,

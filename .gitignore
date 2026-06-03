@@ -41,6 +41,14 @@ Thumbs.db
 # crate Cargo.toml from CWD.
 /.venv/
 
+# Python tooling caches (mypy / pytest / bytecode). Project-local rules so
+# contributors without a matching global gitignore don't see them as untracked,
+# regardless of where the cache lands (root, bindings/python, package subdirs).
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+
 # Local Claude Code guidance — not part of the publishable repo
 /CLAUDE.md
 

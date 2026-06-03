@@ -18,6 +18,27 @@ guides ([guides/srt.md](/docs/guides/srt.md), [guides/klv.md](/docs/guides/klv.m
 [guides/pipeline.md](/docs/guides/pipeline.md)). Read this first if you plan to
 read more than one of those.
 
+## Repository layout
+
+The workspace is organized by role, not by a flat crate list. Each top-level
+directory owns one concern:
+
+| Directory | Owns | Notes |
+|---|---|---|
+| `crates/` | The pure-Rust core: library + transports + test-infra | `srt-sys`, `rist-sys` (raw FFI); `tst-core` (engine); `tst-pipeline` (shells); the transports `tst-srt` / `tst-rtp` / `tst-udp` / `tst-tcp` / `tst-rist`; `tst-integration`, `tst-test-helpers` (test infra) |
+| `bindings/` | Language bindings for downstream consumers | `bindings/c` (crate `tst-c` — cdylib/staticlib + `include/tstrans.h`) with its embeddable rlib at `bindings/c/core` (crate `tst-c-core`); `bindings/python` (crate `tst-py`); `bindings/jvm`, `bindings/apple-android` planned |
+| `embedded/` | Bare-metal / QEMU firmware test harnesses (workspace-excluded) | `baremetal-qemu` (no_std muxer/pipeline QEMU smoke), `baremetal-qemu-c` (C-firmware staticlib glue), `freertos-srt` (libsrt-on-FreeRTOS) |
+| `examples/` | Runnable Rust examples (crate `tst-examples`, `publish = false`) | Task-oriented subfolders; C examples mirror this taxonomy under `bindings/c/examples/` |
+| `vendor/` | Pinned submodules built statically | `vendor/srt` (libsrt 1.5.5), `vendor/mbedtls` (3.6.6 LTS) |
+| `scripts/` | CI ratchets + generators + dev tools | ~40 `check-*.sh` rails plus `ratchets/` (TSV-driven coverage) and `lib/` |
+| `tests/` | Cross-cutting advisory control plane | `tests/coverage/` manifests (fixture/skip-ledger/stream-matrix) |
+| `oss-fuzz/` | OSS-Fuzz packaging (options + seed corpora) | Per-crate fuzz targets live in `crates/<c>/fuzz/` |
+
+The boundary is: `crates/` is everything a Rust consumer would depend on; `bindings/`
+is everything a non-Rust consumer links against; `embedded/` is firmware test
+scaffolding that is not a workspace member. All `bindings/*` and `examples` remain
+Cargo workspace members; `embedded/*` are `exclude`d (separate build roots).
+
 ## Crate graph
 
 ```

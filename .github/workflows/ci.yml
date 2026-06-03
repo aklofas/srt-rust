@@ -300,6 +300,13 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/repo/scenario-generator-privacy.sh
 
+      - name: check-scenario-manifest (dup-id, unknown feature/kind, missing paths)
+        # Validates scenarios.toml integrity: unique ids, known kinds, known
+        # feature tokens, and resolvable input/golden paths. Gated to
+        # linux-x86_64 — manifest + fixture paths are platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/repo/scenario-manifest.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

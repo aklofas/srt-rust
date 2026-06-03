@@ -44,6 +44,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(VideoRoundtrip),
         Box::new(StrictRejection),
         Box::new(H265KlvMp),
+        Box::new(H264SyncKlvAuCell),
     ]
 }
 
@@ -602,6 +603,75 @@ impl Scenario for H265KlvMp {
         let pts = Pts90khz::new(90_000); // t=1s
         mux.push_video(&synthetic_h265_idr(), pts, /*key_frame=*/ true)
             .expect("push_video");
+        mux.push_klv(&minimal_st0601_ls(), pts, /*metadata_service_id=*/ 0x00)
+            .expect("push_klv");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 5 — h264-sync-klv-aucell (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: H.264 video + `SynchronousMetadata` KLV (PMT 0x15).
+///
+/// The muxer auto-prepends the 5-byte `Metadata_AU_cell` header per
+/// ITU-T H.222.0 §2.12.4.2 — callers pass raw KLV LS bytes only
+/// (`reference_klv_au_cell_caller_responsibility`).  The demuxer unwraps the
+/// AU cell and surfaces the raw LS bytes in `DemuxEvent::Metadata::payload`.
+///
+/// `carries_pts = true` is required for `SynchronousMetadata` streams.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct H264SyncKlvAuCell;
+
+impl Scenario for H264SyncKlvAuCell {
+    fn id(&self) -> &'static str {
+        "h264-sync-klv-aucell"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            // SynchronousMetadata requires carries_pts = true.
+            prog.add_klv(
+                0x1031,
+                KlvStreamType::SynchronousMetadata,
+                /*carries_pts=*/ true,
+            );
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+        // Pass raw KLV LS bytes — muxer auto-wraps in the AU cell header.
         mux.push_klv(&minimal_st0601_ls(), pts, /*metadata_service_id=*/ 0x00)
             .expect("push_klv");
 

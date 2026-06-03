@@ -33,3 +33,12 @@ golden = "h265-klv-mp/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "h264-sync-klv-aucell"
+kind = "demux"
+input = "h264-sync-klv-aucell/input.ts"
+golden = "h264-sync-klv-aucell/golden.json"
+features = []
+tier = "A"
+schema_version = 0

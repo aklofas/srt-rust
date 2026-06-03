@@ -74,8 +74,8 @@ fi
 # Seed corpus packaging — unified loop.
 #
 # Per-target precedence (zip merges all sources for a target):
-#   1. crates/tst-core/tests/fixtures/<source>/  (existing fixtures)
-#   2. oss-fuzz/targets/<target>_seed_corpus/    (committed synthetic seeds)
+#   1. crates/tst-core/tests/fixtures/<source>/  (fixture-derived; do not edit)
+#   2. crates/<crate>/fuzz/seeds/<target>/       (committed synthetic seeds — single source of truth)
 
 # Helper: zip-or-append for a single target.
 zip_seeds() {
@@ -95,15 +95,15 @@ zip_seeds demux_psi              crates/tst-core/tests/fixtures/regression
 zip_seeds demux_pes_reassembly   crates/tst-core/tests/fixtures/regression
 zip_seeds ts_parser              crates/tst-core/tests/fixtures/regression
 
-# Committed synthetic seeds.
-zip_seeds mpegts_au_cell_read    oss-fuzz/targets/mpegts_au_cell_read_seed_corpus
-zip_seeds audio_frame_iter       oss-fuzz/targets/audio_frame_iter_seed_corpus
-zip_seeds url_parse              oss-fuzz/targets/url_parse_seed_corpus
-zip_seeds mux_pull                oss-fuzz/targets/mux_pull_seed_corpus
-zip_seeds mux_push_klv            oss-fuzz/targets/mux_push_klv_seed_corpus
-zip_seeds mux_push_video          oss-fuzz/targets/mux_push_video_seed_corpus
-zip_seeds parse_parameter_sets    oss-fuzz/targets/parse_parameter_sets_seed_corpus
-zip_seeds parse_av1_sequence_header  oss-fuzz/targets/parse_av1_sequence_header_seed_corpus
+# Committed synthetic seeds — canonical under crates/<crate>/fuzz/seeds/<target>/.
+zip_seeds mpegts_au_cell_read       crates/tst-core/fuzz/seeds/mpegts_au_cell_read
+zip_seeds audio_frame_iter          crates/tst-core/fuzz/seeds/audio_frame_iter
+zip_seeds url_parse                 crates/tst-srt/fuzz/seeds/url_parse
+zip_seeds mux_pull                  crates/tst-core/fuzz/seeds/mux_pull
+zip_seeds mux_push_klv              crates/tst-core/fuzz/seeds/mux_push_klv
+zip_seeds mux_push_video            crates/tst-core/fuzz/seeds/mux_push_video
+zip_seeds parse_parameter_sets      crates/tst-core/fuzz/seeds/parse_parameter_sets
+zip_seeds parse_av1_sequence_header crates/tst-core/fuzz/seeds/parse_av1_sequence_header
 
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)

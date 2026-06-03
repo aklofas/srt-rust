@@ -16,9 +16,8 @@ It is consumed in two contexts:
 | `build.sh` | Build script: cargo +nightly fuzz build, binary copy, seed/dict/options packaging |
 | `targets/klv.dict` | libFuzzer dictionary for KLV decoders |
 | `targets/<name>.options` | Per-target libFuzzer options (e.g., `max_len`) |
-| `targets/<name>_seed_corpus/` | Per-target committed seed inputs |
 
-Fixture-derived seeds (ST 0601 fixtures, plan #52 regression fixtures) are sourced at build time from `crates/tst-core/tests/fixtures/`; build.sh does the zip.
+Committed synthetic seeds live canonically under `crates/<crate>/fuzz/seeds/<target>/` (single source of truth); `build.sh` zips them from there. Fixture-derived seeds (ST 0601 fixtures, plan #52 regression fixtures) are sourced from `crates/tst-core/tests/fixtures/`.
 
 ## Submission to google/oss-fuzz (one-time)
 
@@ -84,7 +83,7 @@ If the bug reproduces, fix it in our tree, push to main, and OSS-Fuzz will pick 
 | Bug fix in any Rust source | No — OSS-Fuzz git-clones each cycle |
 | New fuzz target added in our tree | No — build.sh discovers via `ls fuzz_targets/` |
 | Submodule pin bump (libsrt / mbedTLS) | No — container re-clones with new submodules |
-| New seed corpus dir added under `oss-fuzz/targets/` | No — same |
+| New seed added under `crates/<crate>/fuzz/seeds/<target>/` | No — same |
 | `project.yaml` change (sanitizers, contacts) | **Yes** |
 | `Dockerfile` change (deps, base image) | **Yes** |
 | `build.sh` change (logic, paths) | **Yes** |

@@ -89,12 +89,20 @@ fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
 ///
 /// `committed_output_ts` is the committed `output.ts` artifact (the scenario's
 /// `input`). Returns `core: []` (roundtrip carries no media events).
-fn run_roundtrip(committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> {
+///
+/// Dispatches on the scenario `id` so each roundtrip scenario re-runs its own
+/// single-source-of-truth mux recipe. The `_ => panic!` arm forces any future
+/// roundtrip scenario to add an explicit recipe binding here.
+fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> {
     use sha2::{Digest, Sha256};
-    use tst_integration::scenarios::video_roundtrip_ts_bytes;
+    use tst_integration::scenarios::{audio_klv_roundtrip_ts_bytes, video_roundtrip_ts_bytes};
 
     // Re-run the generator's exact recipe — no hand-retyped mux.
-    let fresh = video_roundtrip_ts_bytes();
+    let fresh = match id {
+        "video-roundtrip" => video_roundtrip_ts_bytes(),
+        "audio-klv-roundtrip" => audio_klv_roundtrip_ts_bytes(),
+        other => panic!("unknown roundtrip scenario: {other}"),
+    };
 
     // 1. Byte-identity against the committed artifact.
     assert_eq!(
@@ -193,7 +201,7 @@ fn all_scenarios_match_committed_goldens() {
 
         let observed_core: Vec<CoreEvent> = match entry.kind.as_str() {
             "demux" => run_demux(&input),
-            "roundtrip" => run_roundtrip(&input, &committed),
+            "roundtrip" => run_roundtrip(&entry.id, &input, &committed),
             "binding_contract" => run_binding_contract(&entry.id, &input),
             other => panic!("unknown scenario kind '{}' in manifest", other),
         };

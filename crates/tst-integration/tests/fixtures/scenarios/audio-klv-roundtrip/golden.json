@@ -1,0 +1,8 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [],
+  "extensions": {
+    "output_sha256": "a16ac979bcbb518ef687cc7f3313e0da36ac3767a926ec5393dfeadc9a301528"
+  }
+}

@@ -114,3 +114,12 @@ golden = "unknown-stream-type/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "audio-klv-roundtrip"
+kind = "roundtrip"
+input = "audio-klv-roundtrip/output.ts"
+golden = "audio-klv-roundtrip/golden.json"
+features = []
+tier = "A"
+schema_version = 0

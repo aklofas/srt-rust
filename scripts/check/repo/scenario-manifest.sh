@@ -33,9 +33,18 @@ run_check() {
 
   # --- Rule 1: duplicate ids ------------------------------------------------
   # Match both `id = "foo"` (spaced, real manifest) and `id="foo"` (self-test).
+  # `|| true`: under `set -euo pipefail`, a no-match grep (exit 1) inside this
+  # command substitution would otherwise abort the whole script mid-check with
+  # no "FAIL:" message. Treat "no ids found" as an empty set and report it
+  # cleanly below (an empty/malformed manifest is exactly what this ratchet
+  # should catch, not silently die on).
   local ids
   ids="$(grep -E '^id[[:space:]]*=[[:space:]]*"' "$SCENARIO_MANIFEST" \
-         | sed -E 's/^id[[:space:]]*=[[:space:]]*"(.*)"/\1/')"
+         | sed -E 's/^id[[:space:]]*=[[:space:]]*"(.*)"/\1/' || true)"
+  if [ -z "$ids" ]; then
+    echo "FAIL: manifest contains no scenario ids: $SCENARIO_MANIFEST" >&2
+    fail=1
+  fi
   local dups
   dups="$(printf '%s\n' "$ids" | sort | uniq -d)"
   if [ -n "$dups" ]; then
@@ -212,6 +221,11 @@ tier = "A"
 schema_version = 0
 TOML
   expect fail "missing golden file" || return 1
+
+  # (7) Empty / no-id manifest — must fail CLEANLY (not abort the script under
+  # `set -euo pipefail` when the id grep finds no matches).
+  printf '# manifest with no scenarios\n' > "$SCENARIO_MANIFEST"
+  expect fail "manifest with no scenario ids" || return 1
 
   echo "self-test: PASS"
 }

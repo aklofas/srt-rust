@@ -1524,9 +1524,18 @@ static int contract_drop_idempotence(const char *scenarios_dir_path,
     }
     free(input_data);
 
-    /* Flush twice — the second flush must be a safe no-op (idempotent). */
-    tst_demuxer_flush(demuxer);
-    tst_demuxer_flush(demuxer);
+    /* Flush twice — both must succeed: per the ABI, flush() on a valid OPEN
+     * demuxer returns 0 (it only errors on a null/closed handle), and the
+     * second flush is an idempotent no-op (the handle is not closed until
+     * below). Surface a non-zero rc explicitly rather than letting this
+     * lifecycle contract emit DOUBLE_CLOSE_OK while flush is silently failing. */
+    int fr1 = tst_demuxer_flush(demuxer);
+    int fr2 = tst_demuxer_flush(demuxer);
+    if (fr1 < 0 || fr2 < 0) {
+        fprintf(stderr, "FAIL [%s]: tst_demuxer_flush() on an open demuxer should "
+                "succeed (idempotent); got rc=%d,%d\n", entry->id, fr1, fr2);
+        tst_demuxer_close(demuxer); return -1;
+    }
 
     /* THE TEETH: close once (consumes + frees the handle), null the caller's
      * pointer, then close again on the now-NULL pointer. The second close hits
@@ -1542,7 +1551,10 @@ static int contract_drop_idempotence(const char *scenarios_dir_path,
         fprintf(stderr, "FAIL [%s]: fresh demuxer open failed after double-close\n", entry->id);
         return -1;
     }
-    tst_demuxer_flush(fresh);
+    if (tst_demuxer_flush(fresh) < 0) {
+        fprintf(stderr, "FAIL [%s]: tst_demuxer_flush() on a fresh demuxer should succeed\n", entry->id);
+        tst_demuxer_close(fresh); return -1;
+    }
     tst_demuxer_close(fresh);
 
     fprintf(stdout, "  [drop-idempotence] flush() x2 + close()/null/close(NULL) "

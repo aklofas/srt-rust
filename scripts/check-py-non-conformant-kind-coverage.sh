@@ -18,8 +18,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_ENUM_FILE="$ROOT/crates/tst-core/src/mpegts/demux/event.rs"
-RUST_MAPPER_FILE="$ROOT/crates/tst-py/src/mpegts.rs"
-PY_ENUM_FILE="$ROOT/crates/tst-py/python/tstrans/mpegts.py"
+RUST_MAPPER_FILE="$ROOT/bindings/python/src/mpegts.rs"
+PY_ENUM_FILE="$ROOT/bindings/python/python/tstrans/mpegts.py"
 
 # ----------------------------------------------------------------------
 # Step 1: extract every NonConformantIssue variant name.

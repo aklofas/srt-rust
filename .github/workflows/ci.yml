@@ -218,7 +218,7 @@ jobs:
 
       - name: Check extern C ffi_catch coverage
         # Superset of the lifecycle check above: every `pub unsafe
-        # extern "C" fn` in crates/tst-c-core/src/ must isolate panics via
+        # extern "C" fn` in bindings/c/tst-c-core/src/ must isolate panics via
         # ffi_catch, Handle::with_inner_{mut,ref}, or be in the
         # trivially-infallible allowlist. Caught tst_demux_config_free
         # which had bypassed the lifecycle ratchet by being named
@@ -226,7 +226,7 @@ jobs:
         run: bash scripts/check-extern-c-ffi-catch-coverage.sh
 
       - name: Check C header mirror-enum export
-        # Catches Tst* enums declared in crates/tst-c-core/src/ but missing
+        # Catches Tst* enums declared in bindings/c/tst-c-core/src/ but missing
         # from cbindgen.toml [export] include allowlist — silently
         # dropped from the generated header (regression bug 2026-05-24
         # CFI tolerance: TstCellFragmentIndication was defined but
@@ -439,7 +439,7 @@ jobs:
 
       - name: C scenario adapter (cross-binding parity check)
         # WS-5: C adapter for the cross-binding scenario harness. Compiles
-        # crates/tst-c/examples/c/scenarios/run_scenarios.c against the
+        # bindings/c/tst-c/examples/c/scenarios/run_scenarios.c against the
         # libtstrans.so produced by the "cargo build (all crate types,
         # all-features)" step above (the last cdylib-producing build; the
         # intervening "cargo test (all features)" step only rebuilds rlibs and
@@ -461,11 +461,11 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: |
           gcc \
-            -I crates/tst-c/include \
+            -I bindings/c/tst-c/include \
             -L target/debug \
             -Wall -Werror \
             -o /tmp/run_scenarios_c_adapter \
-            crates/tst-c/examples/c/scenarios/run_scenarios.c \
+            bindings/c/tst-c/examples/c/scenarios/run_scenarios.c \
             -ltstrans
           # `timeout 60` bounds the standalone C binary the way nextest's
           # terminate-after bounds the Rust tests — the C adapter is the one
@@ -503,7 +503,7 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: |
           BASELINE=255
-          OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
+          OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ bindings/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2
             exit 1
@@ -783,7 +783,7 @@ jobs:
       - name: check-py-error-mapping-coverage
         # Consolidated: every <Proto>ErrorKind in tstrans.exceptions
         # (srt/udp/tcp/rtp/rtsp/hls/rist) has a make_<proto>_error call site
-        # under crates/tst-py/src/. Driven by scripts/ratchets/error-mapping.tsv
+        # under bindings/python/src/. Driven by scripts/ratchets/error-mapping.tsv
         # (replaces the former per-protocol check-py-*-error-mapping clones;
         # also brings rtp/rtsp under CI, which were previously local-only).
         run: bash scripts/check-py-error-mapping-coverage.sh
@@ -825,7 +825,7 @@ jobs:
         # the default `-m 'not pandas'` set; the [pandas] extra is covered
         # by `python-pandas-extra`.
         run: |
-          cd crates/tst-py
+          cd bindings/python
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install maturin pytest pytest-timeout
@@ -835,7 +835,7 @@ jobs:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
         run: |
-          cd crates/tst-py
+          cd bindings/python
           source .venv/bin/activate
           maturin develop --release
 
@@ -845,7 +845,7 @@ jobs:
         # `python-pandas-extra` job; missing-extra ImportError smoke also
         # lives there (patches sys.modules to be extra-agnostic).
         run: |
-          cd crates/tst-py
+          cd bindings/python
           .venv/bin/pytest tests/ -v
 
   python-pandas-extra:
@@ -895,9 +895,9 @@ jobs:
       - name: Create + activate venv, install maturin + pandas extras
         # maturin develop requires VIRTUAL_ENV/CONDA_PREFIX/.venv; setup-python
         # alone gives a system python, not a venv. Create .venv at the
-        # crates/tst-py/ level (matches local-dev convention).
+        # bindings/python/ level (matches local-dev convention).
         run: |
-          cd crates/tst-py
+          cd bindings/python
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install maturin pytest pytest-timeout 'numpy>=1.24' 'pandas>=2.0'
@@ -907,13 +907,13 @@ jobs:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
         run: |
-          cd crates/tst-py
+          cd bindings/python
           source .venv/bin/activate
           maturin develop --release
 
       - name: pytest -m pandas (extra-gated tests)
         run: |
-          cd crates/tst-py
+          cd bindings/python
           .venv/bin/pytest -m pandas --override-ini=addopts= tests/ -v
 
       - name: pytest missing-extra ImportError smoke
@@ -921,7 +921,7 @@ jobs:
         # passes when the extra IS installed — it patches sys.modules so the
         # canary holds either way.
         run: |
-          cd crates/tst-py
+          cd bindings/python
           .venv/bin/pytest tests/test_pandas_missing_extra.py -v
 
   tst-c-feature-matrix:
@@ -1005,7 +1005,7 @@ jobs:
         # default  → 5 tests; srt-only → 1 test; rtp-only → 4 tests;
         # neither  → 0 tests (compile succeeds, no test bodies active).
         # feature_matrix_compile now lives in the consolidated `abi` test
-        # binary (see crates/tst-c/tests/MOVEMENT_MAP.md); build that binary
+        # binary (see bindings/c/tst-c/tests/MOVEMENT_MAP.md); build that binary
         # and filter to its tests — the per-mode counts above are unchanged.
         env:
           SRT_FORCE_VENDORED: "1"

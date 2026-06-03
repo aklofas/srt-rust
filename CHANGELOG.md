@@ -63,7 +63,7 @@ directly, not through `tst-c`).
 - `python-wheels.yml` maturin feature list extended to
   `rtp,srt,udp,tcp,hls,rist` (workflow stays parked behind tst-jni).
 - **SRT + RIST in one process:** the default wheel links libsrt + librist
-  (two static mbedTLS copies); `crates/tst-py/build.rs` adds
+  (two static mbedTLS copies); `bindings/python/build.rs` adds
   `-Wl,--allow-multiple-definition` (Linux, scoped srt&&rist) to collapse
   onto one mbedTLS — same fix as `tst-c`. Verified link + runtime.
 
@@ -168,8 +168,8 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
 
 ### Per-wave breakdown
 
-- **T1 — bootstrap.** New `crates/tst-py/Cargo.toml` `srt` feature gated on
-  `tst-srt`. Empty `crates/tst-py/python/tstrans/srt.py` shim with the
+- **T1 — bootstrap.** New `bindings/python/Cargo.toml` `srt` feature gated on
+  `tst-srt`. Empty `bindings/python/python/tstrans/srt.py` shim with the
   conditional `_native.srt` import + friendly `ImportError` when the
   feature is off. `tstrans.exceptions.{SrtError, SrtErrorKind}` exception
   hierarchy + stub bash ratchet
@@ -200,7 +200,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   (`scripts/check-py-srt-error-mapping-coverage.sh`) replaces the T1
   stub: every `SrtErrorKind` variant must have at least one literal
   `make_srt_error(py, "<VARIANT>", ...)` call site under
-  `crates/tst-py/src/`.
+  `bindings/python/src/`.
 - **T5 — convenience wrappers.** `MuxSender.from_url(url, program_config)`
   + `DemuxReceiver.from_url(url, *, demux_config=None)`. Same 16-method
   push family as `tstrans.rtp.MuxSender` and `tstrans.mpegts.Muxer`
@@ -234,7 +234,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   (matching the 18 PyClasses), `mypy --strict` clean. Continues the
   existing `py.typed` discipline established in Phase 4 Stage 2.
 - **T10 — integration tests + README + CHANGELOG.** New
-  `crates/tst-py/tests/test_srt_integration.py` with 4 end-to-end tests
+  `bindings/python/tests/test_srt_integration.py` with 4 end-to-end tests
   spanning multiple PyClasses (full Builder→Socket→MuxSender/DemuxReceiver
   pipeline, MuxSender/DemuxReceiver.from_url shortcut path, encrypted
   loopback with `passphrase`, ManagedSender+ManagedReceiver round-trip
@@ -534,18 +534,18 @@ transports out of the box.
 - **2 new bash ratchets** (count 23 → 25):
   - `scripts/check-py-rtsp-error-mapping-coverage.sh` — every
     `RtspErrorKind` variant has at least one literal
-    `make_rtsp_error(py, "<VARIANT>", ...)` call site in `crates/tst-py/src/`.
+    `make_rtsp_error(py, "<VARIANT>", ...)` call site in `bindings/python/src/`.
   - `scripts/check-py-rtp-error-mapping-coverage.sh` — same for
     `RtpErrorKind` (3 variants).
 - **`RtspError`/`RtspErrorKind` + `RtpError`/`RtpErrorKind`** exception
   classes in `tstrans.exceptions`. Follow the established kind-enum
   pattern (`MuxError` / `DemuxError` / `KlvError`).
 - **End-to-end integration tests** (T25): two new tests in
-  `crates/tst-py/tests/test_rtp_integration.py` — a MuxSender ↔ DemuxReceiver
+  `bindings/python/tests/test_rtp_integration.py` — a MuxSender ↔ DemuxReceiver
   loopback round-trip (data plane only) and a full RtspServer → RtspClient
   pipeline test that exercises the T23 `into_demux_receiver` bridge over
   UDP loopback. Both pass in ~1.6s wall on local hardware.
-- **README updates**: top-level `README.md` Python row + `crates/tst-py/README.md`
+- **README updates**: top-level `README.md` Python row + `bindings/python/README.md`
   new "RTP + RTSP transport" section with 10-line client + server snippets.
 
 ### Added — tst-rtp internal (T27, partial Stage 3)
@@ -1107,7 +1107,7 @@ stays at 162, public-api baselines unchanged, no ABI bump.
   subfolder scaffold (`.gitkeep` placeholders) awaiting Phase 2 recipe
   split
 - All in-repo references (README.md, rustdoc inside `crates/**/*.rs`,
-  cbindgen-emitted `crates/tst-c/include/tstrans.h`, examples/READMEs,
+  cbindgen-emitted `bindings/c/tst-c/include/tstrans.h`, examples/READMEs,
   intra-`docs/` cross-links) updated to the new paths. Intra-`docs/`
   cross-links now use leading-slash absolute form (`/docs/...`) for
   GitHub-rendered portability from any nesting depth.
@@ -1311,7 +1311,7 @@ Static-validation review of the plan #96 closeout commits (see `docs/analysis/20
 
 **Tests added:**
 
-- Python: 8 new tests in `crates/tst-py/tests/test_mpegts_muxer_push.py` covering bool-as-int rejection on all 6 numeric subtitle-config fields plus bytearray-as-bytes rejection on `language` for both `DvbSubtitlingConfig` and `DvbTeletextConfig`. pytest total: 708 (default; +8 vs plan #96 closeout's 698 → 700-ish + sibling diff). No Rust tests added (all other follow-ups are doc-only).
+- Python: 8 new tests in `bindings/python/tests/test_mpegts_muxer_push.py` covering bool-as-int rejection on all 6 numeric subtitle-config fields plus bytearray-as-bytes rejection on `language` for both `DvbSubtitlingConfig` and `DvbTeletextConfig`. pytest total: 708 (default; +8 vs plan #96 closeout's 698 → 700-ish + sibling diff). No Rust tests added (all other follow-ups are doc-only).
 
 **`cargo public-api` drift:** none — all changes are doc comments, Python wrappers, docs, or const-value bumps. The 3 ratcheted crates (tst-core / tst-pipeline / tst-srt) are unaffected.
 
@@ -1350,9 +1350,9 @@ Plan #96. 16 of 17 findings from `docs/analysis/2026-05-25-core-c-python-closeou
 - `tstrans.mpegts.DemuxerConfig.__post_init__`: fail-fast validation on all 7 fields (4 from Wave H, 3 from Wave B coordination follow-up). Invalid primitives now fail at construction instead of deep inside PyO3 extraction with opaque overflow errors. Excludes `bool` from `int` accepted-types since Python's `bool` is a subclass of `int`. (Finding 10)
 - `tstrans.mpegts._drain_muxer_to_file`: replaced per-chunk `bytes(buf[:n])` allocation with a hoisted `memoryview` slice. Bumped `_DRAIN_CHUNK_PACKETS` from 4 to 7 to align with the 1316-byte SRT bundle size common in receivers. (Finding 11)
 - `Demuxer` rustdoc per-language idiom table: C row no longer says "deferred to per-binding plan — receiver-surface C ABI is P0". Now correctly describes `tst_demux_receiver_recv_event(p, &out_event)` draining into arena-lifetime `tst_event_t` + `tst_demux_receiver_close(p)`. (Finding 15)
-- `README.md` + `docs/binding-authors.md` + `docs/compatibility.md` + `crates/tst-c/src/lib.rs`: refreshed ABI version from stale 0.2 references to actual 0.4 in the generated header. Added history entries for the 2→3 (AU cell reassembly) and 3→4 (CFI tolerance) bumps to `binding-authors.md`. `compatibility.md` receiver-side stats + multi-program demux rows updated to "shipped" status (the audit said lines 460–482 contained the stale claim; actual stale text was at lines 463 + 466). (Finding 4)
+- `README.md` + `docs/binding-authors.md` + `docs/compatibility.md` + `bindings/c/tst-c/src/lib.rs`: refreshed ABI version from stale 0.2 references to actual 0.4 in the generated header. Added history entries for the 2→3 (AU cell reassembly) and 3→4 (CFI tolerance) bumps to `binding-authors.md`. `compatibility.md` receiver-side stats + multi-program demux rows updated to "shipped" status (the audit said lines 460–482 contained the stale claim; actual stale text was at lines 463 + 466). (Finding 4)
 - ST 1910 mis-cites scrubbed from MPEG-TS sync-metadata AU cell contexts. README lines 5/10/57/117 + `tst_py/src/mux.rs:1034` + `tests/test_mpegts_muxer_push.py:165` now use ST 1402 / H.222.0 §2.12.4.2 wording. ST 1910.1 kept correctly in `docs/compatibility.md:530` + `docs/deferred-features.md` CMAF/HLS context only. (Finding 5)
-- Sweeping cleanup: 85 of 149 Phase N / Task N scaffold comments removed from public Rust + C ABI + Python wrapper sources (149 → 64). Remaining 64 are load-bearing ABI history entries, current-invariant comments, or test docstrings (out of authorized scope). Incidental: 3 stale `#[allow(dead_code)] // used in later Phase 3 tasks` attrs removed from `crates/tst-c/src/config/streams.rs::from_core` (those fns are heavily used today). (Finding 17)
+- Sweeping cleanup: 85 of 149 Phase N / Task N scaffold comments removed from public Rust + C ABI + Python wrapper sources (149 → 64). Remaining 64 are load-bearing ABI history entries, current-invariant comments, or test docstrings (out of authorized scope). Incidental: 3 stale `#[allow(dead_code)] // used in later Phase 3 tasks` attrs removed from `bindings/c/tst-c/src/config/streams.rs::from_core` (those fns are heavily used today). (Finding 17)
 
 **Added (CI ratchets, 6 new bash scripts — count goes from 14 to 20):**
 
@@ -1526,8 +1526,8 @@ ratchet count goes from 13 to **14**.
 **Test coverage (`tstrans` 0.1.0):**
 
 - 6 previously-skipped tests now run via synthetic fixtures in
-  `crates/tst-py/tests/_builders/` (`synthetic_klv_universal.py`) and
-  `crates/tst-py/tests/fixtures/` (`aac_minimal.ts`, `audio_aac_large.ts`).
+  `bindings/python/tests/_builders/` (`synthetic_klv_universal.py`) and
+  `bindings/python/tests/fixtures/` (`aac_minimal.ts`, `audio_aac_large.ts`).
   Covers ST 0102 + ST 0903 pandas DataFrame paths, the GIL-release
   smoke test for audio, the GIL-progress assertion for audio-heavy
   captures, and a full mux→demux round-trip. The remaining 17
@@ -1539,7 +1539,7 @@ ratchet count goes from 13 to **14**.
 
 **Tooling (`tst-c`):**
 
-- `cbindgen` post-processor in `crates/tst-c/build.rs` strips the
+- `cbindgen` post-processor in `bindings/c/tst-c/build.rs` strips the
   leading space cbindgen 0.29.x emits before single-line function
   declarations in the generated header — affected 55 declarations
   across `tstrans.h`, flagged by the Codex CFI follow-up validation
@@ -1587,7 +1587,7 @@ shipped.
 **Added:**
 
 - `TstCellFragmentIndication` enum is now actually exported in `tstrans.h`.
-  Defined in `crates/tst-c/src/event.rs` as the C mirror of Rust's
+  Defined in `bindings/c/tst-c/src/event.rs` as the C mirror of Rust's
   `CellFragmentIndication`, but cbindgen's `[export] include` allowlist
   in `cbindgen.toml` was missing the entry — so C callers received the
   raw `cc_expected` / `cc_observed` bytes with no constants to compare
@@ -1595,7 +1595,7 @@ shipped.
   with `TST_CELL_FRAGMENT_INDICATION_{MIDDLE,LAST,FIRST,COMPLETE}` constants.
   (Caught by Codex review, `docs/analysis/2026-05-24-codex-review-au-cell-cfi-fix-validation.md`.)
 - `scripts/check-c-header-mirror-enum-export.sh` (13th bash ratchet) —
-  enumerates every `pub enum Tst*` in `crates/tst-c/src/` and asserts
+  enumerates every `pub enum Tst*` in `bindings/c/tst-c/src/` and asserts
   each is in the `cbindgen.toml [export] include` allowlist. Prevents
   the next mirror enum from regressing the same way. Wired into
   `.github/workflows/ci.yml`.
@@ -1684,9 +1684,9 @@ shipped.
 - `crates/tst-core/src/mpegts/demux/types.rs` (3 new config-field
   unit tests).
 - `crates/tst-core/src/mpegts/demux/event.rs` (1 new Display test).
-- `crates/tst-py/tests/test_au_cell_tolerance.py` (NEW, 11 tests) —
+- `bindings/python/tests/test_au_cell_tolerance.py` (NEW, 11 tests) —
   surface + end-to-end binding coverage.
-- `crates/tst-c/src/demux_config.rs` (3 new setter unit tests).
+- `bindings/c/tst-c/src/demux_config.rs` (3 new setter unit tests).
 
 **Background:** ITU-T H.222.0 V9 §2.12.4.2 Table 2-157 defines
 `cell_fragment_indication = 0b11` as a single complete cell. Some
@@ -1731,7 +1731,7 @@ opt-in tolerance for malformed producers — see
 
 **Tests:**
 
-- `crates/tst-py/tests/test_gil_release.py` (NEW, 5 tests) — pure-Python
+- `bindings/python/tests/test_gil_release.py` (NEW, 5 tests) — pure-Python
   worker-thread concurrency probes verifying the wrapped methods let
   other threads progress.
 
@@ -1811,7 +1811,7 @@ Closes audit #9. See
 - Reworded the NumPy accessor documentation across
   `docs/guide-python-pandas.md`, `docs/guide-python.md`, and the
   `_make_np_property` docstring in
-  `crates/tst-py/python/tstrans/codec.py` to describe
+  `bindings/python/python/tstrans/codec.py` to describe
   `.payload_np` / `.raw_rbsp_np` / `.raw_np` as **snapshot views**
   rather than **zero-copy views**. Each accessor call materializes a
   fresh Python `bytes` from Rust-owned storage (one `O(payload_length)`
@@ -1855,7 +1855,7 @@ Closes audit #9. See
   `unknown` entry (the decoder routes typed tags to typed fields), so
   the drop only affects manual record construction.
 
-- New `crates/tst-py/tests/test_klv_round_trip_unknown.py` (15 tests):
+- New `bindings/python/tests/test_klv_round_trip_unknown.py` (15 tests):
   per-set round-trip preservation, dataclass-construction preservation,
   the collision-typed-wins matrix, the nested VmtiLs-with-VTargetPack
   case, and Python-side `unknown` shape validation (raises on non-
@@ -1875,12 +1875,12 @@ Closes audit #9. See
 **Docs:**
 
 - Refreshed stale Python binding status text across `README.md`,
-  `crates/tst-py/README.md`, and `docs/guide-python.md` to reflect the
+  `bindings/python/README.md`, and `docs/guide-python.md` to reflect the
   Phase 6 shipped reality (Demuxer + Muxer + typed KLV decode/encode
   for ST 0601 / ST 0102 / ST 0605 / ST 0903, codec parsers for
   H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, optional pandas
   DataFrame + NumPy adapters). Replaced the "Once v1 ships" placeholder
-  Quickstart in `crates/tst-py/README.md` with real `parse_file` /
+  Quickstart in `bindings/python/README.md` with real `parse_file` /
   `probe` / `Muxer.write_file` examples. Updated the v1 roadmap
   to mark Phases 0-6 SHIPPED and Phase 7 (CI wheels + PyPI publish)
   as UP NEXT. Closes audit #8.
@@ -2826,13 +2826,13 @@ performed after plan #92 closed the first round of Codex Wave 6 findings:
 **Fixed:**
 
 - **C ABI `TstError::NotAvailable` / `TstError::NotFound` now record fresh
-  last-error state before returning.** 17 C ABI sites in `crates/tst-c/src/`
+  last-error state before returning.** 17 C ABI sites in `bindings/c/tst-c/src/`
   (12 NotAvailable socket_stats accessors + 5 NotFound per-PID codec_stats
   accessors) returned the negative code via `TstError::Foo as i32` without
   calling `set_last_error()` first, leaving stale message visible to
   `tst_get_last_error()`. Each site now uses `record_not_available(msg)` or
   `record_not_found(msg)` — new `pub(crate)` helpers in
-  `crates/tst-c/src/error.rs` paired with the existing `record_shell_error`
+  `bindings/c/tst-c/src/error.rs` paired with the existing `record_shell_error`
   / `record_mux_error` / `record_eos` family. 4 new unit tests prove the
   helpers overwrite prior unrelated last-error state.
 
@@ -2865,8 +2865,8 @@ performed after plan #92 closed the first round of Codex Wave 6 findings:
 
 - `scripts/check-no-direct-not-available-not-found-cast.sh` (the **10th**
   bash ratchet) forbids the `TstError::NotAvailable as i32` /
-  `TstError::NotFound as i32` direct-cast pattern in `crates/tst-c/src/`.
-  Excludes `crates/tst-c/src/error.rs` (where the helpers' own bodies
+  `TstError::NotFound as i32` direct-cast pattern in `bindings/c/tst-c/src/`.
+  Excludes `bindings/c/tst-c/src/error.rs` (where the helpers' own bodies
   legitimately contain the cast paired with `set_last_error`). Wired
   into `.github/workflows/ci.yml` alongside the existing 9.
 
@@ -2878,7 +2878,7 @@ performed after plan #92 closed the first round of Codex Wave 6 findings:
 - `tstrans.h` byte delta: +~90 lines from the 3 new KLV docstring blocks
   (cbindgen propagates Rust rustdoc into the header), 0 symbol changes.
 
-**Test coverage:** 4 new unit tests in `crates/tst-c/src/error.rs` covering
+**Test coverage:** 4 new unit tests in `bindings/c/tst-c/src/error.rs` covering
 the 2 new helpers' code-and-message overwrite behavior. All 10 bash
 ratchets green. All 3 cargo-public-api baselines clean.
 
@@ -2893,7 +2893,7 @@ review of the shipped Wave 5.B + 6.A + 6.D implementations
 **Fixed:**
 
 - **C header section dividers no longer repeat.** Wave 5.B's `add_section_dividers`
-  post-process in `crates/tst-c/build.rs` walked cbindgen's name-sorted output
+  post-process in `bindings/c/tst-c/build.rs` walked cbindgen's name-sorted output
   line-by-line and emitted a divider on every classified-section transition.
   With `cbindgen.toml` `sort_by = "Name"`, alphabetic symbol order interleaved
   domains (`tst_clear_*` → INTROSPECTION, `tst_demux_*` → DEMUX RECEIVER,
@@ -2902,12 +2902,12 @@ review of the shipped Wave 5.B + 6.A + 6.D implementations
   pass 1 buffers each doc-comment + declaration block classified by section;
   pass 2 emits header content verbatim, then iterates 7 required sections +
   2 conditional catch-alls in declared order, emitting each at most once.
-  Result: `crates/tst-c/include/tstrans.h` now has 9 dividers (7 required +
+  Result: `bindings/c/tst-c/include/tstrans.h` now has 9 dividers (7 required +
   LIFETIME + OTHER), matching the original Wave 5.B spec. Implementation
   required two adaptations beyond the plan's sketch: multi-line declaration
   absorption (cbindgen wraps long parameter lists) and a trailer bucket
   (`} // extern "C"` + `#endif` + `_TST_ABI_ASSERT` block must emit AFTER
-  sections, not before). `crates/tst-c/tests/header_drift.rs` carries a
+  sections, not before). `bindings/c/tst-c/tests/header_drift.rs` carries a
   mirror copy of `add_section_dividers` (intentional — build.rs runs
   pre-compile and cannot import from `tst_c::`); both copies updated in
   lock-step and enforced byte-identical by the existing drift test.
@@ -2956,7 +2956,7 @@ review of the shipped Wave 5.B + 6.A + 6.D implementations
   emitted in canonical order instead of 16 in transition order.
 
 **Test coverage:** no new tests added — the byte-identity header drift test
-(`crates/tst-c/tests/header_drift.rs`) covers the post-process change end-to-end;
+(`bindings/c/tst-c/tests/header_drift.rs`) covers the post-process change end-to-end;
 existing muxer roundtrip + descriptor + per-stream-class test suites cover
 the `Muxer::new` extraction behavior-equivalence. All 9 bash ratchets green;
 all 3 cargo-public-api baselines clean.
@@ -3225,9 +3225,9 @@ and the project moves to `tst-jni` binding work.
     `tst_mux_sender_send_subtitle[_to]` plus matching
     `tst_managed_mux_sender_send_*` wrappers (full pattern symmetry
     with the existing video/klv send surface).
-  - 15 new integration tests in `crates/tst-c/tests/audio_subtitle.rs`.
+  - 15 new integration tests in `bindings/c/tst-c/tests/audio_subtitle.rs`.
 - New C example
-  `crates/tst-c/examples/c/muxing/mux_with_audio_klv_subtitles.c` —
+  `bindings/c/tst-c/examples/c/muxing/mux_with_audio_klv_subtitles.c` —
   first C example covering all four user-visible stream-handle types
   (`TstVideoStreamHandle` + `TstAudioStreamHandle` +
   `TstKlvStreamHandle` + `TstSubtitleStreamHandle`) in one mux program.
@@ -3236,7 +3236,7 @@ and the project moves to `tst-jni` binding work.
 
 **Improved (zero ABI delta):**
 
-- Retrofitted `crates/tst-c/examples/c/muxing/send_synthetic.c` from
+- Retrofitted `bindings/c/tst-c/examples/c/muxing/send_synthetic.c` from
   88 LoC / 19% comment density to 249 LoC / 64% density. Aligned with
   the teaching-code convention bar set by `mux_dual_camera.c` per
   `feedback_examples_are_teaching_code.md`: multi-line header banner,
@@ -3247,11 +3247,11 @@ and the project moves to `tst-jni` binding work.
 **Internal (zero callable-ABI delta — same symbols, same signatures,
 same struct layouts, same sizeof asserts):**
 
-- Split `crates/tst-c/src/config.rs` (1649 LoC) into `config/{mod,
+- Split `bindings/c/tst-c/src/config.rs` (1649 LoC) into `config/{mod,
   programs, streams, descriptors, builders}.rs`.
-- Split `crates/tst-c/src/demux_receiver.rs` (1054 LoC) into
+- Split `bindings/c/tst-c/src/demux_receiver.rs` (1054 LoC) into
   `demux_receiver/{mod, events, stats, managed}.rs`.
-- Reorganized `crates/tst-c/src/` from 17 flat sibling files into
+- Reorganized `bindings/c/tst-c/src/` from 17 flat sibling files into
   `sender/` (5 files: muxer, mux_sender, ts_sender, raw_sender,
   connect) + `receiver/` (4 entries: raw_receiver, ts_receiver,
   demux_receiver/, listen) subfolders. Cross-cutting files preserved
@@ -3259,14 +3259,14 @@ same struct layouts, same sizeof asserts):**
   `event.rs`, `stats.rs`, `demux_config.rs`, `config/`. Plan A keeps
   version code inline in `lib.rs` (Decision D2); no `version.rs` file
   exists.
-- Split `crates/tst-c/tests/url_open.rs` (1421 LoC) into
+- Split `bindings/c/tst-c/tests/url_open.rs` (1421 LoC) into
   `tests/url_open/{mod, mux_sender, ts_sender, raw_sender,
   demux_receiver, ts_receiver, raw_receiver}.rs`. Cargo's
   folder-shaped integration-test discovery (via explicit `[[test]]
   path = "..."` in `Cargo.toml`) treats `url_open/mod.rs` as the
   test binary entry point; `cargo test -p tst-c --test url_open`
   still runs all 31 tests as one binary.
-- Added `sort_by = "Name"` to `crates/tst-c/cbindgen.toml` so
+- Added `sort_by = "Name"` to `bindings/c/tst-c/cbindgen.toml` so
   generated items in `tstrans.h` are alphabetically ordered by symbol
   name. Closes a known Plan #83 follow-up. Decouples header layout
   from Rust source-file layout so future reorgs don't churn the
@@ -3326,12 +3326,12 @@ same struct layouts, same sizeof asserts):**
   last-error slot to `(TST_E_SUCCESS, "")`. Mirrors libsrt's
   `srt_clearlasterror()`. Caller-driven; idempotent.
 - **NEW** C smoke test
-  `crates/tst-c/examples/c/getting-started/version_check.c`.
+  `bindings/c/tst-c/examples/c/getting-started/version_check.c`.
   Cross-validates every (runtime, header) pair; the canonical pattern
   for binding-author load-time SO/header consistency checks.
-- **NEW** Rust integration test `crates/tst-c/tests/version_check.rs`
+- **NEW** Rust integration test `bindings/c/tst-c/tests/version_check.rs`
   (7 tests asserting each runtime accessor returns the expected const).
-- **NEW** in-file last-error-clear tests in `crates/tst-c/src/error.rs`
+- **NEW** in-file last-error-clear tests in `bindings/c/tst-c/src/error.rs`
   (`tst_clear_last_error_resets_to_success_state` +
   `tst_clear_last_error_idempotent_when_already_clear`).
 
@@ -3340,7 +3340,7 @@ same struct layouts, same sizeof asserts):**
 - Decision D1 (see plan): macro prefix is `TST_*` not `TSTRANS_*` for
   consistency with the existing `TST_VERSION_*` / `TST_INVALID_*` /
   `TST_STATS_*` precedent.
-- Decision D2: version entries live inline in `crates/tst-c/src/lib.rs`
+- Decision D2: version entries live inline in `bindings/c/tst-c/src/lib.rs`
   rather than a new `version.rs`. Plan C's tst-c reorg owns any
   future extraction.
 - Cbindgen mechanism: `pub const FOO: <integer-type> = N;` automatically
@@ -3362,7 +3362,7 @@ same struct layouts, same sizeof asserts):**
 
 **Tooling / build:**
 
-- **Symbol hygiene.** `crates/tst-c/build.rs` now emits per-OS linker args to restrict
+- **Symbol hygiene.** `bindings/c/tst-c/build.rs` now emits per-OS linker args to restrict
   `libtstrans` dynamic exports to `tst_*`/`TST_*`:
   - Linux: `-Wl,--exclude-libs=ALL` (hides all static-library symbols, including
     libsrt's `srt_*`/`SRT_*` and mbedTLS's `mbedtls_*`).
@@ -3376,14 +3376,14 @@ same struct layouts, same sizeof asserts):**
   `--exclude-libs=ALL` pivot achieves the same outcome (0 `srt_*`/`SRT_*` in
   the dynamic export table) without touching the auto-emitted script.
 
-  New file: `crates/tst-c/exports.txt`. Closes audit `09-c-abi.md` Finding 3.
+  New file: `bindings/c/tst-c/exports.txt`. Closes audit `09-c-abi.md` Finding 3.
 
-- **Layout assertion.** `crates/tst-c/cbindgen.toml` trailer gains a 9th
+- **Layout assertion.** `bindings/c/tst-c/cbindgen.toml` trailer gains a 9th
   `_TST_ABI_ASSERT(sizeof(tst_socket_stats_t) == 120, ...)` line. Catches
   Rust-side `SocketStats` reorders that change the struct size at C-consumer
   build time. Closes audit `09-c-abi.md` Finding 2.
 
-- **Domain-grouping section dividers.** `crates/tst-c/build.rs` runs a
+- **Domain-grouping section dividers.** `bindings/c/tst-c/build.rs` runs a
   post-process step after cbindgen that inserts prefix-keyed section dividers
   in `tstrans.h` (`// ─── INTROSPECTION ───`, `// ─── MUX SENDER ───`, etc.).
   7 required sections (INTROSPECTION, MUX SENDER, TS SENDER, RAW SENDER,
@@ -3396,7 +3396,7 @@ same struct layouts, same sizeof asserts):**
   `srt_*`/`SRT_*` match. Wired into `.github/workflows/ci.yml` after the
   existing 6 ratchets. Linux-only (same gate as `symbol_audit.rs`).
 
-- **`crates/tst-c/tests/symbol_audit.rs` update.** Removed the `srt_*`
+- **`bindings/c/tst-c/tests/symbol_audit.rs` update.** Removed the `srt_*`
   allowlist (no longer needed after Task 4); added `srt_symbols_not_exported`
   test for defense-in-depth (clearer failure message naming the specific
   leaked symbol).
@@ -3429,15 +3429,15 @@ same struct layouts, same sizeof asserts):**
 
 **Internal (no public-API surface delta):**
 
-- New files: `crates/tst-c/exports.txt`,
+- New files: `bindings/c/tst-c/exports.txt`,
   `crates/tst-core/tests/tools/gen_pts_rollover_fixture.rs`,
   `crates/tst-core/tests/tools/measure_pcr_jitter.rs`,
   `scripts/check-no-srt-symbol-leak.sh`.
-- Modified: `crates/tst-c/build.rs` (link args + post-process function),
-  `crates/tst-c/cbindgen.toml` (9th layout assert),
-  `crates/tst-c/include/tstrans.h` (regenerated +1 trailer line + section
-  dividers), `crates/tst-c/tests/symbol_audit.rs` (allowlist removal + new
-  test), `crates/tst-c/tests/header_drift.rs` (mirrored
+- Modified: `bindings/c/tst-c/build.rs` (link args + post-process function),
+  `bindings/c/tst-c/cbindgen.toml` (9th layout assert),
+  `bindings/c/tst-c/include/tstrans.h` (regenerated +1 trailer line + section
+  dividers), `bindings/c/tst-c/tests/symbol_audit.rs` (allowlist removal + new
+  test), `bindings/c/tst-c/tests/header_drift.rs` (mirrored
   `add_section_dividers` to keep the drift check in sync; kept in lock-step
   with `build.rs` by convention).
 - `cargo public-api` baselines for tst-core / tst-pipeline / tst-srt:
@@ -3489,7 +3489,7 @@ same struct layouts, same sizeof asserts):**
 - Upgraded rustdoc on `TstError::NotAvailable` (-13) and `TstError::NotFound`
   (-14) to lead with the transient-vs-persistent contract verb and to
   cross-reference each other. The cbindgen-generated C header
-  `crates/tst-c/include/tstrans.h` regenerates with the new rustdoc.
+  `bindings/c/tst-c/include/tstrans.h` regenerates with the new rustdoc.
 - `tst_pipeline::lib.rs` and `tst_srt::lib.rs` comment blocks for the
   re-exported `SrtCancelHandle` updated from the now-misleading
   "transport-agnostic primitive" framing to the accurate "SRT-shaped
@@ -3559,10 +3559,10 @@ same struct layouts, same sizeof asserts):**
 
 **Internal:**
 
-- `crates/tst-c/src/error.rs` collapses from 4 per-variant `record_*_error` functions
+- `bindings/c/tst-c/src/error.rs` collapses from 4 per-variant `record_*_error` functions
   (~270 lines of per-variant translation) to one `record_shell_error<E: ShellError>(e: &E) -> i32`
   helper plus `tst_error_from_kind(kind: ShellErrorKind) -> TstError`. Inline match
-  routing at 2 recv-path sites in `crates/tst-c/src/demux_receiver.rs` also
+  routing at 2 recv-path sites in `bindings/c/tst-c/src/demux_receiver.rs` also
   collapsed to `record_shell_error` (the open-path sites still use
   `record_transport_error` for raw `TransportError` from connect helpers).
 - `scripts/check-tst-c-error-coverage.sh` (plan #70, 134 lines) split into two new
@@ -3956,7 +3956,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ### Changed
 - **Loopback integration tests stabilized for Darwin scheduling.**
-  Six tests across `crates/tst-c/tests/` and `crates/tst-srt/tests/`
+  Six tests across `bindings/c/tst-c/tests/` and `crates/tst-srt/tests/`
   had hardcoded `thread::sleep` drain pauses (100-500 ms) that worked
   on Linux loopback but raced on the GHA `macos-14` (Apple Silicon)
   runner. All bumped to 1 s — comfortably covers SRT's 120 ms
@@ -3967,7 +3967,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   `tst-srt::pipeline_receiver_live_corpus`. (Continues the pattern
   established by the post-plan-#64 hotfix to
   `tst-c::demux_receiver_loopback`.)
-- **`crates/tst-c/tests/smoke.rs`: cross-platform cdylib name +
+- **`bindings/c/tst-c/tests/smoke.rs`: cross-platform cdylib name +
   dylib-search env var.** Was hardcoding `libtstrans.so` +
   `LD_LIBRARY_PATH`; macOS uses `.dylib` + `DYLD_LIBRARY_PATH`,
   Windows uses `tstrans.dll` + `PATH`. Refactored to use
@@ -3984,7 +3984,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   verification intent; no race.
 
 ### Cfg-gated
-- **`crates/tst-c/tests/symbol_audit`: `#[cfg_attr(not(all(target_os =
+- **`bindings/c/tst-c/tests/symbol_audit`: `#[cfg_attr(not(all(target_os =
   "linux", target_env = "gnu")), ignore = "..."]`.** The test uses
   GNU nm with ELF-specific flags and filters ELF housekeeping
   symbols (`_init`, `_fini`, `__bss_start`, etc.). macOS (Mach-O)
@@ -4191,7 +4191,7 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
   host in listener mode. `tst_*_open_listener` C entry points also
   accept `srt://:port` (empty host) without requiring the explicit
   `?mode=listener` query parameter.
-- New C example `recv_raw_to_file.c` (`crates/tst-c/examples/c/receiving/`).
+- New C example `recv_raw_to_file.c` (`bindings/c/tst-c/examples/c/receiving/`).
 
 ### Fixed
 
@@ -4316,7 +4316,7 @@ translated to a sentinel return for the entry point's return type.
 
 #### Fixed (panic-safety hardening)
 
-- **New `crates/tst-c/src/panic.rs` module** with `pub(crate) fn
+- **New `bindings/c/tst-c/src/panic.rs` module** with `pub(crate) fn
   ffi_catch<R, F>(default: R, f: F) -> R` helper. Wraps
   `catch_unwind(AssertUnwindSafe(f))`; on `Err` records `PanicCaught`
   via the existing `record_panic_caught` in `error.rs` (extracts a
@@ -5097,19 +5097,19 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   tooling, not learner code; relocating them clarifies the boundary.
 
 - **C examples mirror the same taxonomy** under
-  `crates/tst-c/examples/c/{getting-started,muxing}/`. Build commands
+  `bindings/c/tst-c/examples/c/{getting-started,muxing}/`. Build commands
   in each file's header updated to the new paths.
 
 #### Added (examples)
 
 - **`getting-started/hello_world.rs`** (Rust) and
-  `crates/tst-c/examples/c/getting-started/hello_world.c` (C) — the
+  `bindings/c/tst-c/examples/c/getting-started/hello_world.c` (C) — the
   smallest possible mux + KLV round-trip showing what this library
   does. Both produce byte-identical output (752 bytes / 4 packets).
   Designed as the first example a new contributor runs.
 
 - **9 READMEs** — top-level `examples/README.md`, 8 per-category
-  READMEs, and `crates/tst-c/examples/c/README.md`. Numbered curriculum
+  READMEs, and `bindings/c/tst-c/examples/c/README.md`. Numbered curriculum
   per category with cookbook backlinks; "diffs from previous"
   call-outs on the cumulative h264 → h265 → h266 → av1 muxing
   progression.

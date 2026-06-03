@@ -6,10 +6,10 @@
 # non-conformant, py-codec/demux/klv) keep their own scripts/check-*.sh.
 #
 # rust rows:  lang  name  enum            variant_source                       arm_fn
-#             (arm file is always crates/tst-c-core/src/error.rs)
+#             (arm file is always bindings/c/tst-c-core/src/error.rs)
 # py rows:    lang  name  class           make_fn                              (col5 unused)
-#             (exceptions file = crates/tst-py/python/tstrans/exceptions.py,
-#              call-site dir = crates/tst-py/src)
+#             (exceptions file = bindings/python/python/tstrans/exceptions.py,
+#              call-site dir = bindings/python/src)
 rust	udp	UdpErrorKind	crates/tst-udp/src/error.rs	udp_error_to_code
 rust	tcp	TcpErrorKind	crates/tst-tcp/src/error.rs	tcp_error_to_code
 rust	rist	RistErrorKind	crates/tst-rist/src/error.rs	rist_error_to_code

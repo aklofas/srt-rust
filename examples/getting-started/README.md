@@ -36,5 +36,5 @@ Cookbook backlink:
 mux-only twin).
 
 The C twin lives at
-[`../../crates/tst-c/examples/c/getting-started/hello_world.c`](../../crates/tst-c/examples/c/getting-started/hello_world.c)
+[`../../bindings/c/tst-c/examples/c/getting-started/hello_world.c`](../../bindings/c/tst-c/examples/c/getting-started/hello_world.c)
 and produces a byte-identical output (752 bytes / 4 packets).

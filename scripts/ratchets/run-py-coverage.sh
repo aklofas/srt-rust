@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Driver: run the `py` rows of error-mapping.tsv through lib/coverage.sh.
 # Each row asserts every `class <Enum>ErrorKind` member in
-# tstrans.exceptions has a make_<proto>_error call site under crates/tst-py/src/.
+# tstrans.exceptions has a make_<proto>_error call site under bindings/python/src/.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"          # scripts/ratchets -> scripts -> workspace root
@@ -9,8 +9,8 @@ ROOT="$(cd "$DIR/../.." && pwd)"          # scripts/ratchets -> scripts -> works
 . "$DIR/lib/coverage.sh"
 
 TSV="$DIR/error-mapping.tsv"
-EXC_FILE="$ROOT/crates/tst-py/python/tstrans/exceptions.py"
-SRC_DIR="$ROOT/crates/tst-py/src"
+EXC_FILE="$ROOT/bindings/python/python/tstrans/exceptions.py"
+SRC_DIR="$ROOT/bindings/python/src"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --tsv) TSV="$2"; shift 2 ;;

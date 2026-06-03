@@ -5,7 +5,7 @@
 # Background: cbindgen 0.29.x emits single-line function declarations
 # with one leading space (e.g. ` int tst_foo(void);`) while multi-line
 # declarations start at column 0. The `add_section_dividers` function
-# in `crates/tst-c/build.rs` strips this leading space as part of its
+# in `bindings/c/tst-c/build.rs` strips this leading space as part of its
 # post-processing pass, so the checked-in header should never contain
 # a top-level declaration prefixed with whitespace.
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-HEADER="crates/tst-c/include/tstrans.h"
+HEADER="bindings/c/tst-c/include/tstrans.h"
 
 [ -f "$HEADER" ] || { echo "FAIL: $HEADER not found"; exit 1; }
 
@@ -38,7 +38,7 @@ if grep -nE "$PAT" "$HEADER" >/dev/null 2>&1; then
     echo "FAIL: $HEADER has top-level declarations starting with whitespace:"
     grep -nE "$PAT" "$HEADER"
     echo
-    echo "Fix: ensure the strip_prefix(' ') strip step in crates/tst-c/build.rs"
+    echo "Fix: ensure the strip_prefix(' ') strip step in bindings/c/tst-c/build.rs"
     echo "     add_section_dividers() is present, then rebuild and copy:"
     echo "     rm $HEADER && SRT_FORCE_VENDORED=1 cargo build -p tst-c"
     echo "     cp target/debug/include/tstrans.h $HEADER"

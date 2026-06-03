@@ -15,7 +15,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_FILE="$ROOT/crates/tst-core/src/error.rs"
-PY_FILE="$ROOT/crates/tst-py/src/mpegts.rs"
+PY_FILE="$ROOT/bindings/python/src/mpegts.rs"
 
 # Extract every variant name from `pub enum DemuxError { ... }` block.
 # Portable read-into-array pattern (bash 3.2+) per

@@ -31,7 +31,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_video` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_video` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::AmbiguousTarget`] when zero or more than one video
@@ -138,7 +138,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_video_to` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_video_to` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

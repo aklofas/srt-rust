@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Verify that every `pub unsafe extern "C" fn` in crates/tst-c-core/src/
+# Verify that every `pub unsafe extern "C" fn` in bindings/c/tst-c-core/src/
 # isolates panics across the C boundary. Three acceptable forms:
 #
 #   1. The body wraps work in `crate::panic::ffi_catch(...)` (the
 #      open-path + builder-setter pattern).
 #   2. The body uses `Handle::with_inner_mut(...)` or
 #      `Handle::with_inner_ref(...)` — both already wrap their closure
-#      in `catch_unwind` internally (see crates/tst-c-core/src/handle.rs).
+#      in `catch_unwind` internally (see bindings/c/tst-c-core/src/handle.rs).
 #   3. The function name is in the trivially-infallible allowlist
 #      below (constant returns with no internal locking, panics, or
 #      allocation).
@@ -20,11 +20,11 @@
 #
 # Cross-language unwinding past a C frame is undefined behavior under
 # `panic="unwind"` and an abort with no last-error visibility under
-# `panic="abort"`. See crates/tst-c-core/src/panic.rs for the contract.
+# `panic="abort"`. See bindings/c/tst-c-core/src/panic.rs for the contract.
 
 set -euo pipefail
 
-SRC_DIR="crates/tst-c-core/src"
+SRC_DIR="bindings/c/tst-c-core/src"
 
 # Allowlist of function names that are trivially infallible: no
 # pointer dereferences, no allocations, no internal locks, no calls
@@ -109,7 +109,7 @@ for entry in "${ENTRIES[@]}"; do
     ' "$file")
 
     # Step 3: scan body for one of the panic-isolation patterns. The
-    # `with_mux_publisher(` HLS helper (crates/tst-c-core/src/hls/mux_publisher.rs)
+    # `with_mux_publisher(` HLS helper (bindings/c/tst-c-core/src/hls/mux_publisher.rs)
     # wraps its closure in crate::panic::ffi_catch internally — same contract
     # as Handle::with_inner_mut — so callers delegating through it are isolated.
     # Here-string, NOT `echo "$body" | grep -q`: `grep -q` closes the pipe on

@@ -114,7 +114,7 @@ not silently renamed):**
 
 | Site | Convention concern | Disposition |
 |------|---------------------|-------------|
-| `DemuxReceiver::with_demux_options(transport, options)` | Uses over-specific `_demux_options` noun; rule recommends generic `with_config`. | Rename candidate for a future plan — touches the C ABI mirror at `crates/tst-c-core/src/receiver/demux_receiver/mod.rs:170, 664`, so a one-line audit isn't free. |
+| `DemuxReceiver::with_demux_options(transport, options)` | Uses over-specific `_demux_options` noun; rule recommends generic `with_config`. | Rename candidate for a future plan — touches the C ABI mirror at `bindings/c/tst-c-core/src/receiver/demux_receiver/mod.rs:170, 664`, so a one-line audit isn't free. |
 | `SrtTransport::with_max_payload(self, n) -> Self` | Chainable `self -> Self` modifier on an already-constructed value; reads like a constructor by prefix but is a fluent modifier. | Borderline — the rustdoc at `crates/tst-srt/src/transport.rs:31` clarifies the modifier intent. No rename; reviewers should not flag new `with_*` modifiers on existing values, but new constructors should still match the `with_<aspect>` aspect-rule. |
 
 ---

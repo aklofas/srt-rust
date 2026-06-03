@@ -32,7 +32,7 @@
 //!    later events.
 //!
 //! The matching Python entry point
-//! [`tstrans.io.parse_file`](https://github.com/aklofas/ts-transformer/blob/main/crates/tst-py/python/tstrans/io.py)
+//! [`tstrans.io.parse_file`](https://github.com/aklofas/ts-transformer/blob/main/bindings/python/python/tstrans/io.py)
 //! is fallible by construction — it raises `tstrans.exceptions.DemuxError`
 //! on the same conditions that [`TryDemuxFromFile`] surfaces as `Err`.
 

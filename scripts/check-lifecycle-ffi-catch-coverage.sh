@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify that every C ABI lifecycle entry (_close + _cancel) in
-# crates/tst-c-core/src/{sender,receiver}/ wraps its body in
+# bindings/c/tst-c-core/src/{sender,receiver}/ wraps its body in
 # `crate::panic::ffi_catch(...)`.
 #
 # Validate-1 Sprint 3 D1 wrapped 25 lifecycle entries (13 _close +
@@ -19,8 +19,8 @@ set -euo pipefail
 
 # Paths relative to ts-transformer/ workspace root.
 SRC_DIRS=(
-    "crates/tst-c-core/src/sender"
-    "crates/tst-c-core/src/receiver"
+    "bindings/c/tst-c-core/src/sender"
+    "bindings/c/tst-c-core/src/receiver"
 )
 
 # Window size (in lines) after the signature line where the

@@ -27,7 +27,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/python-wheels.yml"
-      - "crates/tst-py/**"
+      - "bindings/python/**"
       - "crates/tst-core/**"
       - "crates/tst-rtp/**"
       - "crates/tst-pipeline/**"
@@ -81,9 +81,9 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          working-directory: crates/tst-py
+          working-directory: bindings/python
           # `rtp` is the only feature surface today (default-on in
-          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # bindings/python/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
           args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-linux-${{ matrix.target }}
-          path: crates/tst-py/dist/*.whl
+          path: bindings/python/dist/*.whl
           if-no-files-found: error
           retention-days: 7
 
@@ -143,9 +143,9 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          working-directory: crates/tst-py
+          working-directory: bindings/python
           # `rtp` is the only feature surface today (default-on in
-          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # bindings/python/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
           args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
@@ -156,7 +156,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-macos-${{ matrix.target }}
-          path: crates/tst-py/dist/*.whl
+          path: bindings/python/dist/*.whl
           if-no-files-found: error
           retention-days: 7
 
@@ -184,9 +184,9 @@ jobs:
 
       - uses: PyO3/maturin-action@v1
         with:
-          working-directory: crates/tst-py
+          working-directory: bindings/python
           # `rtp` is the only feature surface today (default-on in
-          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # bindings/python/Cargo.toml). When `srt` lands in v2 (planned
           # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
           # add `--features srt` here.
           args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
@@ -196,7 +196,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-windows-x86_64
-          path: crates/tst-py/dist/*.whl
+          path: bindings/python/dist/*.whl
           if-no-files-found: error
           retention-days: 7
 
@@ -215,13 +215,13 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           command: sdist
-          working-directory: crates/tst-py
+          working-directory: bindings/python
           args: --out dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: sdist
-          path: crates/tst-py/dist/*.tar.gz
+          path: bindings/python/dist/*.tar.gz
           if-no-files-found: error
           retention-days: 7
 

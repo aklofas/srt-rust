@@ -18,7 +18,7 @@ The C ABI ships as the `tst-c` crate in the workspace; its build emits the artif
 |---|---|---|
 | `libtstrans.so` (Linux) / `libtstrans.dylib` (macOS) / `tstrans.dll` (Windows-MSVC) | `target/debug/` or `target/release/` | Shared library |
 | `libtstrans.a` (`tstrans.lib` on MSVC) | same | Static library — libsrt + mbedTLS + libstdc++ statically embedded |
-| `tstrans.h` | `crates/tst-c/include/` | Single-file C header (~135 KB), `cbindgen`-generated |
+| `tstrans.h` | `bindings/c/tst-c/include/` | Single-file C header (~135 KB), `cbindgen`-generated |
 | `tstrans.pc` | `target/<profile>/` | pkg-config file (substituted by `build.rs` from `tstrans.pc.in`) |
 
 ### From source
@@ -27,7 +27,7 @@ The C ABI ships as the `tst-c` crate in the workspace; its build emits the artif
 git clone https://github.com/aklofas/ts-transformer
 cd ts-transformer
 SRT_FORCE_VENDORED=1 cargo build -p tst-c --release
-# Artifacts land in target/release/ + crates/tst-c/include/tstrans.h
+# Artifacts land in target/release/ + bindings/c/tst-c/include/tstrans.h
 ```
 
 The build vendors libsrt 1.5.5 + mbedTLS 3.6.x statically — your `libtstrans.so` has no external dependencies beyond libc, libpthread, libstdc++, libdl, and libm. Verify with `ldd target/release/libtstrans.so`.
@@ -37,7 +37,7 @@ The build vendors libsrt 1.5.5 + mbedTLS 3.6.x statically — your `libtstrans.s
 Direct gcc/clang:
 
 ```sh
-gcc -I crates/tst-c/include \
+gcc -I bindings/c/tst-c/include \
     -L target/release \
     -Wl,-rpath,target/release \
     -Wall -Werror -o myapp \
@@ -76,11 +76,11 @@ if (tst_get_abi_version_minor() < TST_ABI_VERSION_MINOR) {
 }
 ```
 
-See [`examples/c/getting-started/version_check.c`](../../crates/tst-c/examples/c/getting-started/version_check.c) for the canonical startup pattern (matches what `tst-jni` and `tst-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
+See [`examples/c/getting-started/version_check.c`](../../bindings/c/tst-c/examples/c/getting-started/version_check.c) for the canonical startup pattern (matches what `tst-jni` and `tst-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
 
 ## Hello world
 
-Build one MPEG-TS frame in memory containing one H.264 access unit + one KLV record — no SRT, no files. The full example is at [`examples/c/getting-started/hello_world.c`](../../crates/tst-c/examples/c/getting-started/hello_world.c); the core is ten lines:
+Build one MPEG-TS frame in memory containing one H.264 access unit + one KLV record — no SRT, no files. The full example is at [`examples/c/getting-started/hello_world.c`](../../bindings/c/tst-c/examples/c/getting-started/hello_world.c); the core is ten lines:
 
 ```c
 #include "tstrans.h"
@@ -110,7 +110,7 @@ int main(void) {
 Run it:
 
 ```sh
-gcc -I crates/tst-c/include -L target/release -Wl,-rpath,target/release \
+gcc -I bindings/c/tst-c/include -L target/release -Wl,-rpath,target/release \
     -o /tmp/hello hello.c -ltstrans
 /tmp/hello
 # built 752 bytes of MPEG-TS
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 
 For KLV: **pass raw MISB Local Set bytes** — the muxer auto-wraps the H.222.0 § 2.12.4.2 AU cell header for `SYNCHRONOUS_METADATA` streams. Don't pre-wrap.
 
-Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/c/muxing/mux_dual_camera.c`](../../crates/tst-c/examples/c/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
+Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/c/muxing/mux_dual_camera.c`](../../bindings/c/tst-c/examples/c/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
 
 ## First receive
 
@@ -228,7 +228,7 @@ The receiver is the higher-level of three concentric shapes. Pick by what you ac
 | 188-byte aligned TS packets | `tst_receiver_t` | One TS packet per `_recv_packet` call |
 | Typed demux events | `tst_demux_receiver_t` | One `tst_event_t` per `_recv_event` call |
 
-Add the `tst_managed_*` prefix for any of the three to get automatic reconnect — see [Pipeline guide](/docs/guides/pipeline.md). Full receiver examples in [`examples/c/receiving/`](../../crates/tst-c/examples/c/receiving/).
+Add the `tst_managed_*` prefix for any of the three to get automatic reconnect — see [Pipeline guide](/docs/guides/pipeline.md). Full receiver examples in [`examples/c/receiving/`](../../bindings/c/tst-c/examples/c/receiving/).
 
 ## Language-specific gotchas
 

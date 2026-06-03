@@ -15,7 +15,7 @@ use core::ffi::c_void;
 // Re-export the WHOLE crate so every `#[no_mangle]` symbol is reachable from
 // the staticlib root and thus retained + exported (rustc only guarantees export
 // of reachable no_mangle symbols from a staticlib). A root glob — matching the
-// cdylib leaf at crates/tst-c/src/lib.rs — also catches the crate-ROOT version
+// cdylib leaf at bindings/c/tst-c/src/lib.rs — also catches the crate-ROOT version
 // accessors (`tst_get_version_*`, `tst_get_abi_version_*`); per-submodule globs
 // would silently drop them, leaving a future embedded version-check unlinkable.
 pub use tst_c_core::*;

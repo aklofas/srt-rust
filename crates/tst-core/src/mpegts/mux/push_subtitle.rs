@@ -33,7 +33,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_subtitle` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_subtitle` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
@@ -79,7 +79,7 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// `tst_muxer_push_subtitle_to` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_muxer_push_subtitle_to` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

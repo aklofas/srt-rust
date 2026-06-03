@@ -175,7 +175,7 @@ impl<T: Transport> RawSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_sender_send` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_sender_send` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     ///
@@ -243,7 +243,7 @@ impl<T: Transport> RawSender<T> {
     ///
     /// `tst_raw_sender_get_socket_stats` reaches through this accessor to
     /// call [`Transport::socket_stats`] on the inner transport. See
-    /// `crates/tst-c/include/tstrans.h`.
+    /// `bindings/c/tst-c/include/tstrans.h`.
     pub fn transport(&self) -> &T {
         &self.transport
     }
@@ -252,7 +252,7 @@ impl<T: Transport> RawSender<T> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_sender_cancel` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_sender_cancel` — see `bindings/c/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

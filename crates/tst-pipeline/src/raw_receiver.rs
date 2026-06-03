@@ -49,7 +49,7 @@ pub struct RawRecvStats {
 ///
 /// # C ABI
 ///
-/// `tst_raw_receiver_close` (plain) — see `crates/tst-c/include/tstrans.h`.
+/// `tst_raw_receiver_close` (plain) — see `bindings/c/tst-c/include/tstrans.h`.
 ///
 /// ## Per-language idiom
 ///
@@ -191,7 +191,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_receiver_recv` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_receiver_recv` — see `bindings/c/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     ///
@@ -244,7 +244,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_receiver_get_stats` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_receiver_get_stats` — see `bindings/c/tst-c/include/tstrans.h`.
     pub fn stats(&self) -> RawRecvStats {
         self.stats
     }
@@ -253,7 +253,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_receiver_reset_stats` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_receiver_reset_stats` — see `bindings/c/tst-c/include/tstrans.h`.
     pub fn reset_stats(&mut self) {
         self.stats = RawRecvStats::default();
     }
@@ -267,7 +267,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// # C ABI
     ///
     /// `tst_raw_receiver_get_socket_stats` — see
-    /// `crates/tst-c/include/tstrans.h`.
+    /// `bindings/c/tst-c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
         self.transport.socket_stats()
     }
@@ -283,7 +283,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_receiver_close` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_receiver_close` — see `bindings/c/tst-c/include/tstrans.h`.
     pub fn close(&mut self) {
         self.transport.close();
     }
@@ -292,7 +292,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// `tst_raw_receiver_cancel` — see `crates/tst-c/include/tstrans.h`.
+    /// `tst_raw_receiver_cancel` — see `bindings/c/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

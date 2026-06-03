@@ -100,7 +100,7 @@ with MuxSender(url, config) as sender:
 ### C (`tst-c` ABI)
 
 Binding shape: opaque handle (`tst_mux_sender_t *`) with explicit
-`tst_*_close`. See `crates/tst-c/include/tstrans.h` for the full ABI.
+`tst_*_close`. See `bindings/c/tst-c/include/tstrans.h` for the full ABI.
 
 ```c
 tst_mux_sender_t *sender = NULL;
@@ -113,7 +113,7 @@ tst_mux_sender_close(sender);
 
 Every C-ABI error code surfaced through `tst_get_last_error()` and the
 direct negative-return-value contract derives from one of two
-explicit-coverage paths in `crates/tst-c-core/src/error.rs`:
+explicit-coverage paths in `bindings/c/tst-c-core/src/error.rs`:
 
 **Shell-entry path (the common case).** Every C entry point that owns
 a shell handle (`tst_mux_sender_*`, `tst_ts_sender_*`,
@@ -304,7 +304,7 @@ three-tier scheme exposed through `tstrans.h`:
       `TstPublisherKind` enum. **Note:** building with both `srt` and `rist`
       links two static mbedTLS copies; the cdylib build adds
       `-Wl,--allow-multiple-definition` (Linux) to collapse them onto one —
-      see `crates/tst-c/build.rs`.
+      see `bindings/c/tst-c/build.rs`.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

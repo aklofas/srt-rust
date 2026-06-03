@@ -38,7 +38,7 @@ if [ -n "$LEAKED" ]; then
     echo "FAIL: libtstrans.so dynamic export table contains srt_*/SRT_* symbols:"
     echo "$LEAKED" | sed 's/^/  /'
     echo
-    echo "Plan B's symbol-hygiene wiring (crates/tst-c/build.rs) should hide these."
+    echo "Plan B's symbol-hygiene wiring (bindings/c/tst-c/build.rs) should hide these."
     echo "Diagnose:"
     echo "  cargo build -p tst-c -v 2>&1 | grep exclude-libs"
     exit 1

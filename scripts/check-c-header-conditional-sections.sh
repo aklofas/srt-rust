@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-HEADER="crates/tst-c/include/tstrans.h"
+HEADER="bindings/c/tst-c/include/tstrans.h"
 
 if [[ ! -f "$HEADER" ]]; then
     echo "FAIL: $HEADER not found"
@@ -53,7 +53,7 @@ if command -v cbindgen >/dev/null 2>&1; then
 
     # Generate header with srt feature only (rtp disabled)
     if cbindgen \
-        --config crates/tst-c/cbindgen.toml \
+        --config bindings/c/tst-c/cbindgen.toml \
         --crate tst-c \
         --features srt \
         --output "$TMPFILE" \
@@ -89,7 +89,7 @@ else
     python3 - <<'PY'
 import re, sys
 
-with open("crates/tst-c/include/tstrans.h") as f:
+with open("bindings/c/tst-c/include/tstrans.h") as f:
     text = f.read()
 
 # Verify opaque struct typedefs for RTP handles ARE present in the

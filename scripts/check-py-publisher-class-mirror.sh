@@ -10,13 +10,13 @@
 # ratchet runs without maturin. The Rust side reads the `pub trait
 # Publisher { ... }` block in crates/tst-core/src/publisher/mod.rs; the
 # Python side reads the `class Publisher:` block in
-# crates/tst-py/python/tstrans/hls.pyi.
+# bindings/python/python/tstrans/hls.pyi.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_FILE="$ROOT/crates/tst-core/src/publisher/mod.rs"
-PYI_FILE="$ROOT/crates/tst-py/python/tstrans/hls.pyi"
+PYI_FILE="$ROOT/bindings/python/python/tstrans/hls.pyi"
 
 # Rust trait methods: lines like `fn push_ts(...)` inside the
 # `pub trait Publisher { ... }` block, before its closing brace.
@@ -60,7 +60,7 @@ if ! diff <(echo "$rust_methods") <(echo "$py_methods") >/dev/null; then
     while IFS= read -r m; do echo "  rust: $m" >&2; done <<< "$rust_methods"
     echo "Python ABC (tstrans.hls.Publisher) methods:" >&2
     while IFS= read -r m; do echo "  py:   $m" >&2; done <<< "$py_methods"
-    echo "Reconcile crates/tst-py/python/tstrans/hls.pyi with the Rust trait." >&2
+    echo "Reconcile bindings/python/python/tstrans/hls.pyi with the Rust trait." >&2
     exit 1
 fi
 

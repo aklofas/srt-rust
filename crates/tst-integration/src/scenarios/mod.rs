@@ -55,6 +55,9 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(MalformedPesLenient),
         Box::new(UnknownStreamType),
         Box::new(AudioKlvRoundtrip),
+        Box::new(DropIdempotence),
+        Box::new(ForgedHandle),
+        Box::new(ExceptionKindStability),
     ]
 }
 
@@ -1513,6 +1516,194 @@ impl Scenario for AudioKlvRoundtrip {
             lossy: false,
             core: vec![],
             extensions: serde_json::json!({ "output_sha256": digest }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 15 — drop-idempotence (binding_contract, lifecycle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "binding_contract"`: asserts that closing/dropping a demuxer twice
+/// is safe (no panic, no double-free, no use-after-free).
+///
+/// This is a LIFECYCLE contract, reusing the `CoreEvent::Error` envelope as a
+/// contract-assertion carrier with the sentinel code `"DOUBLE_CLOSE_OK"` and an
+/// `extensions.contract = "drop_idempotence"` tag naming the contract. The
+/// sentinel is NOT a demux error code — it is a contract assertion defined by
+/// this suite; the C adapter (Task 13) maps it to its real
+/// `tst_demuxer_close`-called-twice guard, the Python adapter to its `close()`
+/// idempotence.
+///
+/// The "input" is a minimal valid synthetic TS (a tiny H.264 video stream,
+/// reusing the `video-roundtrip` recipe) so every binding has a real demuxer to
+/// open + close twice. This generator NEVER reads an external fixture.
+///
+/// **Rust side:** the pure-Rust `Demuxer` has no explicit `close()` method — it
+/// relies on `Drop`. "Double close" in Rust is therefore expressed as: feed the
+/// input, `flush()` (the explicit end-of-stream finaliser) twice, then `drop`;
+/// the nearest real guarantee is that a fresh `Demuxer` constructed afterwards
+/// also works. The Rust adapter exercises this and emits the sentinel; the
+/// binding-specific double-`close()` teeth live in the C/Python adapters.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct DropIdempotence;
+
+impl Scenario for DropIdempotence {
+    fn id(&self) -> &'static str {
+        "drop-idempotence"
+    }
+    fn kind(&self) -> &'static str {
+        "binding_contract"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Minimal valid TS so the binding adapters have a real demuxer to open
+        // and close twice. Reuses the deterministic video-roundtrip mux recipe.
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let ts_bytes = video_roundtrip_ts_bytes();
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![CoreEvent::Error {
+                code: "DOUBLE_CLOSE_OK".to_string(),
+            }],
+            extensions: serde_json::json!({ "contract": "drop_idempotence" }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 16 — forged-handle (binding_contract, lifecycle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "binding_contract"`: asserts that a forged / garbage handle passed
+/// across a trust boundary is rejected, not dereferenced.
+///
+/// This is PRIMARILY a C-ABI contract — a forged `tst_*` handle must be
+/// rejected, not deref'd into a freed/invalid pointer. The contract is carried
+/// in the `CoreEvent::Error` envelope with sentinel code `"INVALID_HANDLE"` and
+/// `extensions.contract = "forged_handle"`.
+///
+/// **Rust side (approach a — a real guard exists):** tst-core exposes
+/// `VideoStreamHandle::try_from_raw`, the validating sibling of `from_raw` used
+/// at every FFI / PyO3 trust boundary. A forged `u32` with any bit set above
+/// the documented 8-bit packed layout (e.g. `0x100`) is rejected with
+/// `MuxError::InvalidStreamHandle`. The Rust adapter asserts this rejection
+/// directly, so the `INVALID_HANDLE` sentinel corresponds to a real pure-Rust
+/// guard — not a fabricated assertion. The raw-pointer-deref teeth (a forged
+/// opaque pointer must not be dereferenced) remain a C-adapter concern (Task 13).
+///
+/// The "input" artifact is the forged handle value as 4 little-endian bytes, so
+/// the C/Python adapters can read the same forged value the Rust side rejects.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct ForgedHandle;
+
+/// The forged handle value the adapters assert is rejected. `0x100` has a bit
+/// set above the canonical 8-bit `(program<<4)|within` layout, so
+/// `try_from_raw` returns `Err(InvalidStreamHandle)`. Shared single source of
+/// truth between `ForgedHandle::generate` and the Rust adapter test.
+pub const FORGED_HANDLE_RAW: u32 = 0x100;
+
+impl Scenario for ForgedHandle {
+    fn id(&self) -> &'static str {
+        "forged-handle"
+    }
+    fn kind(&self) -> &'static str {
+        "binding_contract"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // The forged handle value as 4 little-endian bytes — the same value the
+        // C/Python adapters read and pass to their handle-rewrap guard.
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let forged = FORGED_HANDLE_RAW.to_le_bytes().to_vec();
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.bin");
+        write_file(&out_dir.join(&artifact_rel), &forged);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![CoreEvent::Error {
+                code: "INVALID_HANDLE".to_string(),
+            }],
+            extensions: serde_json::json!({ "contract": "forged_handle" }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 17 — exception-kind-stability (binding_contract, lifecycle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "binding_contract"`: asserts the SAME stable public code surfaces
+/// across all bindings for the same malformed input — exception/error-kind
+/// stability across the language boundary.
+///
+/// Reuses the `malformed-psi-strict` malformation (a valid PAT + a PMT with a
+/// deliberately corrupted CRC-32). Under `StrictMode::Full` the demuxer
+/// converts `PsiChecksumMismatch` → `DemuxError::StrictRejection`, mapped to
+/// the stable public code `"STRICT_REJECTION"`. `STRICT_REJECTION` is a REAL
+/// stable code (already used by `strict-rejection` + `malformed-psi-strict`);
+/// this scenario asserts that code is identical regardless of which binding
+/// runs the demux. The `extensions.contract = "exception_kind_stability"` tag
+/// names the contract.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct ExceptionKindStability;
+
+impl Scenario for ExceptionKindStability {
+    fn id(&self) -> &'static str {
+        "exception-kind-stability"
+    }
+    fn kind(&self) -> &'static str {
+        "binding_contract"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Same malformation as malformed-psi-strict: PAT (valid CRC) + PMT
+        // (corrupted CRC). Under StrictMode::Full: PsiChecksumMismatch →
+        // StrictRejection → "STRICT_REJECTION".
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let ts_bytes = synthetic_ts_bad_pmt_crc();
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.bin");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![CoreEvent::Error {
+                code: "STRICT_REJECTION".to_string(),
+            }],
+            extensions: serde_json::json!({ "contract": "exception_kind_stability" }),
         };
         (artifact_rel, golden)
     }

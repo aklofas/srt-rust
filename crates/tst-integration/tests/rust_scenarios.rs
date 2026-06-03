@@ -143,6 +143,14 @@ fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<C
 /// For `malformed-psi-strict`: feed a TS with a valid PAT but corrupted PMT
 /// CRC to a `StrictMode::Full` demuxer. The `PsiChecksumMismatch` NonConformant
 /// escalates to `DemuxError::StrictRejection`, which maps to `"STRICT_REJECTION"`.
+///
+/// For the lifecycle contracts (`drop-idempotence`, `forged-handle`,
+/// `exception-kind-stability`) the `CoreEvent::Error` envelope carries a
+/// contract sentinel code rather than a demux error; each arm asserts the
+/// nearest honest pure-Rust guarantee and emits the sentinel. The
+/// `extensions.contract` tag (verified by the caller via the committed golden)
+/// names the contract. Some contracts are primarily exercised by the C adapter
+/// (Task 13) — see the per-arm comments for what is deferred and why.
 fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
     use tst_core::mpegts::demux::Demuxer;
     use tst_integration::scenarios::demux_error_code_pub;
@@ -175,6 +183,82 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
                         "malformed-psi-strict: expected StrictRejection error from feed, got Ok"
                     );
                 }
+            };
+            drop(demuxer);
+            vec![CoreEvent::Error { code }]
+        }
+        "drop-idempotence" => {
+            // The pure-Rust `Demuxer` has no explicit `close()` — it relies on
+            // `Drop`. "Double close" is expressed as: feed, then `flush()` (the
+            // explicit end-of-stream finaliser) TWICE, then drop. The nearest
+            // real guarantee is that a fresh `Demuxer` constructed afterwards
+            // also works. None of this panics — Rust's ownership makes it safe
+            // by construction. The binding-specific double-`close()` teeth (a C
+            // `tst_demuxer_close` called twice must not double-free) live in the
+            // C/Python adapters (Task 13).
+            let mut demuxer = Demuxer::new();
+            demuxer
+                .feed(input)
+                .expect("minimal valid TS should feed cleanly");
+            demuxer.flush();
+            demuxer.flush(); // second "close" — must be a safe no-op.
+            drop(demuxer);
+            // A fresh instance still works after the prior was finalised+dropped.
+            let mut fresh = Demuxer::new();
+            fresh
+                .feed(input)
+                .expect("fresh demuxer works after prior drop");
+            fresh.flush();
+            drop(fresh);
+            vec![CoreEvent::Error {
+                code: "DOUBLE_CLOSE_OK".to_string(),
+            }]
+        }
+        "forged-handle" => {
+            // Approach (a): a real pure-Rust trust-boundary guard exists.
+            // `VideoStreamHandle::try_from_raw` rejects a forged `u32` whose
+            // bits fall outside the documented 8-bit packed layout. The forged
+            // value lives in the committed input artifact (4 LE bytes) so the
+            // C/Python adapters reject the identical value. The raw-POINTER
+            // deref teeth (a forged opaque pointer must not be dereferenced)
+            // remain a C-adapter concern (Task 13) — pure Rust has no raw
+            // handles, but the integer-rewrap guard is a genuine equivalent.
+            use tst_core::mpegts::mux::VideoStreamHandle;
+            use tst_integration::scenarios::FORGED_HANDLE_RAW;
+
+            // The committed artifact must carry exactly the forged value we
+            // assert against — keeps the cross-binding input single-sourced.
+            assert_eq!(
+                input.len(),
+                4,
+                "forged-handle input must be a 4-byte LE u32"
+            );
+            let from_artifact = u32::from_le_bytes([input[0], input[1], input[2], input[3]]);
+            assert_eq!(
+                from_artifact, FORGED_HANDLE_RAW,
+                "forged-handle artifact value drifted from the constant"
+            );
+
+            let rejected = VideoStreamHandle::try_from_raw(from_artifact).is_err();
+            assert!(
+                rejected,
+                "forged handle {from_artifact:#x} must be rejected by try_from_raw"
+            );
+            vec![CoreEvent::Error {
+                code: "INVALID_HANDLE".to_string(),
+            }]
+        }
+        "exception-kind-stability" => {
+            // Same malformation + mechanism as malformed-psi-strict, asserting
+            // the SAME stable public code surfaces here. PsiChecksumMismatch
+            // under StrictMode::Full → StrictRejection → "STRICT_REJECTION".
+            use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
+            let mut demuxer = DemuxerBuilder::new().strict(StrictMode::Full).build();
+            let code = match &demuxer.feed(input) {
+                Err(e) => demux_error_code_pub(e),
+                Ok(()) => panic!(
+                    "exception-kind-stability: expected StrictRejection error from feed, got Ok"
+                ),
             };
             drop(demuxer);
             vec![CoreEvent::Error { code }]

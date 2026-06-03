@@ -42,3 +42,12 @@ golden = "h264-sync-klv-aucell/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "av1-registration-desc"
+kind = "demux"
+input = "av1-registration-desc/input.ts"
+golden = "av1-registration-desc/golden.json"
+features = []
+tier = "A"
+schema_version = 0

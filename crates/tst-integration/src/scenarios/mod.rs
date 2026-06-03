@@ -45,6 +45,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(StrictRejection),
         Box::new(H265KlvMp),
         Box::new(H264SyncKlvAuCell),
+        Box::new(Av1RegistrationDesc),
     ]
 }
 
@@ -689,6 +690,92 @@ impl Scenario for H264SyncKlvAuCell {
         };
         (artifact_rel, golden)
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 6 — av1-registration-desc (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: AV1 video stream (PMT stream_type 0x06 + AV01
+/// registration descriptor).
+///
+/// AV1 OBU payload is pushed as raw OBU bytes (no Annex-B start code).
+/// In `Mpeg2TsBinding` carriage mode (the default) the muxer wraps OBUs
+/// in `ts_open_bitstream_unit()` framing.  The demuxer recovers
+/// `VideoCodec::Av1` from the PMT `format_identifier "AV01"`.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct Av1RegistrationDesc;
+
+impl Scenario for Av1RegistrationDesc {
+    fn id(&self) -> &'static str {
+        "av1-registration-desc"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::Av1);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        // AV1 OBU payload — no Annex-B start code.
+        mux.push_video(&synthetic_av1_au(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Minimal AV1 access unit: Temporal Delimiter + Sequence Header + Frame
+/// Header + Tile Group OBUs with `obu_has_size_field = 1`.
+///
+/// Bodies are placeholder bytes — the muxer and demuxer treat them as opaque
+/// payload.  The demuxer recovers `VideoCodec::Av1` from the PMT
+/// `format_identifier "AV01"` (registration descriptor emitted by the muxer),
+/// not from the OBU payload.
+fn synthetic_av1_au() -> Vec<u8> {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        // AV1 spec §5.3.2 OBU header:
+        //   forbidden(1)=0, obu_type(4), extension_flag(1)=0,
+        //   has_size_field(1)=1, reserved(1)=0
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8); // single-byte LEB128 (body < 128 bytes)
+        v.extend_from_slice(body);
+        v
+    }
+    let mut au = Vec::new();
+    au.extend(obu(2, &[])); // Temporal Delimiter (empty body)
+    au.extend(obu(1, &[0x00, 0x00])); // Sequence Header placeholder
+    au.extend(obu(3, &[0x00])); // Frame Header placeholder
+    au.extend(obu(4, &[0x00, 0x01, 0x02])); // Tile Group placeholder
+    au
 }
 
 /// Minimal valid H.265 IDR access unit in Annex-B framing.

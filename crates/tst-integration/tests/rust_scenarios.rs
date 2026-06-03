@@ -209,7 +209,7 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
                 .feed(input)
                 .expect("fresh demuxer works after prior drop");
             fresh.flush();
-            drop(fresh);
+            // `fresh` drops implicitly at end of scope.
             vec![CoreEvent::Error {
                 code: "DOUBLE_CLOSE_OK".to_string(),
             }]

@@ -26,16 +26,44 @@ fn synthetic_ts_packet(seq_byte: u8) -> [u8; 188] {
     out
 }
 
+/// Find a free RTP port base on `127.0.0.1` where both `base` and `base + 1`
+/// (the RTCP companion auto-bound on `port + 1` per RFC 3550 §11) are
+/// currently bindable, then release them so the transport under test can bind
+/// them itself.
+///
+/// This replaces the old hard-coded 55004/55008/… ports, which intermittently
+/// collided with the Windows dynamic-exclusion / reserved UDP ranges (shift
+/// per runner boot) and failed with `WSAEACCES (os error 10013)`. An
+/// OS-assigned ephemeral port is never drawn from a reserved range, so this
+/// removes that flake class. We can't hand the pre-bound socket to the
+/// transport (`RtpRecvTransport::listen` binds by URL and exposes no
+/// local-addr accessor), so we discover-then-release; the serialized `network`
+/// nextest test-group means no sibling test races for the freed port.
+fn free_rtp_port_base() -> u16 {
+    use std::net::UdpSocket;
+    loop {
+        let s = UdpSocket::bind("127.0.0.1:0").expect("bind ephemeral udp");
+        let base = s.local_addr().unwrap().port();
+        if base < u16::MAX {
+            if let Ok(companion) = UdpSocket::bind(("127.0.0.1", base + 1)) {
+                drop(companion);
+                drop(s);
+                return base;
+            }
+        }
+        drop(s); // base + 1 was taken (or base == u16::MAX); retry.
+    }
+}
+
 #[test]
 fn unicast_loopback_round_trip() {
     // 1. Bind the receiver first so the sender's send-buffer flushes
-    //    immediately.
-    //
-    // Ports are spaced by 4 (not 1) since Phase 2 Task 10 auto-binds
-    // an RTCP companion socket on `port + 1` per RFC 3550 §11. The 4-
-    // wide gap leaves room for both RTP + RTCP and a future sender-
-    // side companion if we ever symmetrize there too.
-    let mut recv = RtpRecvTransport::listen("rtp://127.0.0.1:55004").unwrap();
+    //    immediately. An ephemeral base (with base+1 free for the RTCP
+    //    companion auto-bound per Phase 2 Task 10 / RFC 3550 §11) avoids
+    //    the Windows reserved-range WSAEACCES flake of fixed ports.
+    let base = free_rtp_port_base();
+    let url = format!("rtp://127.0.0.1:{base}");
+    let mut recv = RtpRecvTransport::listen(&url).unwrap();
 
     // 2. Spawn a recv thread that reads N packets and pushes them to a
     //    channel.
@@ -56,10 +84,9 @@ fn unicast_loopback_round_trip() {
     // 3. Send 3 packets. Tiny sleep lets the OS schedule the recv side
     //    so we don't lose to startup race.
     thread::sleep(Duration::from_millis(20));
-    let mut send = RtpTransport::connect("rtp://127.0.0.1:55004").unwrap();
+    let mut send = RtpTransport::connect(&url).unwrap();
     // (RTCP companion: send-side uses an ephemeral local port; recv-
-    // side bound 55005 above. No collision with the next test which
-    // uses 55008/55009.)
+    // side bound base+1 above.)
     let pkts = [
         synthetic_ts_packet(0x01),
         synthetic_ts_packet(0x02),
@@ -78,8 +105,8 @@ fn unicast_loopback_round_trip() {
 
 #[test]
 fn cancel_wakes_blocked_recv() {
-    // 55008 (RTCP at 55009) — leaves the 55004 cohort alone.
-    let recv = RtpRecvTransport::listen("rtp://127.0.0.1:55008").unwrap();
+    let base = free_rtp_port_base();
+    let recv = RtpRecvTransport::listen(&format!("rtp://127.0.0.1:{base}")).unwrap();
     let cancel = recv.cancel_handle().expect("cancel handle");
     let handle = thread::spawn(move || {
         let mut recv = recv;
@@ -101,9 +128,10 @@ fn cancel_wakes_blocked_recv() {
 /// confirms the SocketStats counter increments.
 #[test]
 fn send_stats_increment_per_packet() {
-    // 55012 (RTCP at 55013) — leaves the 55004 and 55008 cohorts alone.
-    let _recv = RtpRecvTransport::listen("rtp://127.0.0.1:55012").unwrap();
-    let mut send = RtpTransport::connect("rtp://127.0.0.1:55012").unwrap();
+    let base = free_rtp_port_base();
+    let url = format!("rtp://127.0.0.1:{base}");
+    let _recv = RtpRecvTransport::listen(&url).unwrap();
+    let mut send = RtpTransport::connect(&url).unwrap();
     let pkt = synthetic_ts_packet(0xFF);
     send.send_bytes(&pkt).unwrap();
     send.send_bytes(&pkt).unwrap();
@@ -124,38 +152,42 @@ fn send_stats_increment_per_packet() {
 
 #[test]
 fn rtcp_socket_pair_opens_by_default() {
-    let recv_url = "rtp://127.0.0.1:55104";
-    let r = RtpRecvTransport::listen(recv_url).unwrap();
-    // After Task 10, an RTCP socket is auto-bound on port+1 (55105 here).
-    // Probe by trying to bind 55105 ourselves — should fail with AddrInUse.
-    let probe = std::net::UdpSocket::bind("127.0.0.1:55105");
+    let base = free_rtp_port_base();
+    let r = RtpRecvTransport::listen(&format!("rtp://127.0.0.1:{base}")).unwrap();
+    // After Task 10, an RTCP socket is auto-bound on port+1 (base+1, free at
+    // discovery). Probe by trying to bind base+1 ourselves — should fail with
+    // AddrInUse now that RtpRecvTransport holds it.
+    let probe = std::net::UdpSocket::bind(("127.0.0.1", base + 1));
     assert!(
         probe.is_err(),
-        "RTCP port 55105 should already be bound by RtpRecvTransport"
+        "RTCP port {} should already be bound by RtpRecvTransport",
+        base + 1
     );
     drop(r);
 }
 
 #[test]
 fn rtcp_opt_out_skips_second_socket() {
-    let recv_url = "rtp://127.0.0.1:55106";
-    let r = tst_rtp::RtpRecvSocketBuilder::from_url(recv_url)
+    let base = free_rtp_port_base();
+    let r = tst_rtp::RtpRecvSocketBuilder::from_url(&format!("rtp://127.0.0.1:{base}"))
         .unwrap()
         .rtcp(false)
         .build()
         .unwrap();
-    // With opt-out, port+1 (55107) is free.
-    let probe = std::net::UdpSocket::bind("127.0.0.1:55107");
+    // With opt-out, port+1 (base+1) stays free.
+    let probe = std::net::UdpSocket::bind(("127.0.0.1", base + 1));
     assert!(
         probe.is_ok(),
-        "RTCP port 55107 should be free when builder opts out of RTCP"
+        "RTCP port {} should be free when builder opts out of RTCP",
+        base + 1
     );
     drop(r);
 }
 
 #[test]
 fn rtcp_stats_accessor_exists() {
-    let r = RtpRecvTransport::listen("rtp://127.0.0.1:55108").unwrap();
+    let base = free_rtp_port_base();
+    let r = RtpRecvTransport::listen(&format!("rtp://127.0.0.1:{base}")).unwrap();
     let stats = r.rtcp_stats();
     // Counter starts at zero — the reporter thread won't have fired
     // the first RR yet (RFC 3550 §6.2 randomized interval, 2.5-7.5 s

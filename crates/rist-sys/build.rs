@@ -30,7 +30,14 @@ fn build_mbedtls() -> PathBuf {
         .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
         // Hide mbedTLS from -Wall sweeps; we don't author this code.
-        .define("CMAKE_C_FLAGS", "-w");
+        .define("CMAKE_C_FLAGS", "-w")
+        // Build the static mbedTLS objects position-independent so they link
+        // into the downstream cdylib (the tst-py wheel). Implicit on
+        // Debian/Ubuntu (gcc defaults to PIE) but NOT on the RHEL/AlmaLinux
+        // gcc-toolset used for manylinux wheels — without it the wheel link
+        // fails with "relocation R_X86_64_32S ... recompile with -fPIC".
+        // Mirrors srt-sys::build_mbedtls. No-op on MSVC.
+        .define("CMAKE_POSITION_INDEPENDENT_CODE", "ON");
 
     // On windows-msvc, Rust links the dynamic release UCRT (`/MD`) regardless
     // of the cargo profile, but cmake defaults to `/MDd` for a Debug build —

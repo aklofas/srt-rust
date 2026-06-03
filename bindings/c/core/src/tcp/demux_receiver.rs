@@ -4,7 +4,7 @@
 //! Pull typed `TstEvent` items with `tst_tcp_demux_receiver_next_event`.
 //! Free with `tst_tcp_demux_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/src/udp/demux_receiver.rs` — the
+//! Pattern mirrors `bindings/c/core/src/udp/demux_receiver.rs` — the
 //! `EventArena` borrowed-buffer lifetime (design §4.5), `ShellErrorKind`
 //! → error-code mapping, and the per-PID stats borrowed buffer are all
 //! identical, except the transport type is `TcpTransport` not

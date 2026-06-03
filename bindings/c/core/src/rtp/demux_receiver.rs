@@ -5,7 +5,7 @@
 //! Cancel with `tst_rtp_demux_receiver_cancel`. Free with
 //! `tst_rtp_demux_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/src/receiver/demux_receiver/` exactly —
+//! Pattern mirrors `bindings/c/core/src/receiver/demux_receiver/` exactly —
 //! `EventArena` borrowed-buffer lifetime (design §4.5), `ShellErrorKind`
 //! → error-code mapping, `was_cancelled` side-channel, and the
 //! Broken-on-non-cancelled → EOS mapping are all identical.

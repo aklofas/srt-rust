@@ -179,6 +179,10 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-c-abi-rustdoc-coverage.sh
 
+      - name: No stale relocated-away package paths
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-no-stale-relocated-paths.sh
+
       - name: check-close-contract-presence
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-close-contract-presence.sh

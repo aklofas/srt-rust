@@ -5,7 +5,7 @@
 //! `tst_tcp_receiver_recv_ts`. Free the handle with
 //! `tst_tcp_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/src/udp/receiver.rs` — error mapping,
+//! Pattern mirrors `bindings/c/core/src/udp/receiver.rs` — error mapping,
 //! `ffi_catch` wrapping, and `Handle::with_inner_mut/_ref` usage are
 //! identical, except the transport type is `TcpTransport` not
 //! `UdpRecvTransport`.

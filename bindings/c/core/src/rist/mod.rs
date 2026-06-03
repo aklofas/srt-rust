@@ -7,7 +7,7 @@
 //! the handle-specific data-path entry points in the sub-modules below.
 //! Each handle has its own `_close` entry point to free it.
 //!
-//! The surface mirrors `bindings/c/src/udp/` module-for-module **minus
+//! The surface mirrors `bindings/c/core/src/udp/` module-for-module **minus
 //! cancel**: the RIST transport does not expose a `cancel_handle()`, so
 //! there are no `tst_rist_*_cancel` entry points. To unblock a thread
 //! parked in a data-path call, close the handle from the same thread (or

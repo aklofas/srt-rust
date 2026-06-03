@@ -8,7 +8,7 @@
 //!
 //! `RtspServerBuilder` uses `&mut self -> &mut Self` chain setters (which
 //! is already FFI-friendly on the Rust side), but the C ABI stores fields
-//! independently in `TstRtspServerBuilder` (see `bindings/c/src/handle.rs`)
+//! independently in `TstRtspServerBuilder` (see `bindings/c/core/src/handle.rs`)
 //! and reconstructs the Rust builder from them at `start` time (Task 8).
 //! This matches the T5 `TstRtspClientBuilder` pattern, keeps the opaque
 //! struct layout stable across future Rust API changes, and avoids holding

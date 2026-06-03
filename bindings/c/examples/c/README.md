@@ -4,13 +4,13 @@ Runnable C examples for the `tst-c` C ABI. Linux x86_64 only by build
 convention (cbindgen-generated header + cdylib / staticlib).
 
 If you're new to the project and want to start in Rust, the equivalent
-curriculum lives at [`../../../examples/`](../../../examples/) — the C
+curriculum lives at [`../../../../examples/`](../../../../examples/) — the C
 examples here mirror that taxonomy.
 
 ## Build
 
 ```sh
-cd crates/tst-c
+cd bindings/c
 cargo build                # produces target/debug/libtstrans.{so,a} + include/tstrans.h
 gcc -I include -L ../../target/debug \
     -Wall -Werror -o /tmp/<name> \

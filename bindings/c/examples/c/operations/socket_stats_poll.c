@@ -10,7 +10,7 @@
  * media to a peer listener and prints socket stats every 500 ms.
  *
  * Build:
- *   cd crates/tst-c
+ *   cd bindings/c
  *   cargo build  # produces target/debug/libtstrans.{so,a} + include/tstrans.h
  *   cc -I ../../target/debug/include -L ../../target/debug \
  *      -Wall -Werror -o /tmp/socket_stats_poll \

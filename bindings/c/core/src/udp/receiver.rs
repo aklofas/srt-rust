@@ -5,7 +5,7 @@
 //! `tst_udp_receiver_recv_ts`. Free the handle with
 //! `tst_udp_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/src/rtp/receiver.rs` exactly — error
+//! Pattern mirrors `bindings/c/core/src/rtp/receiver.rs` exactly — error
 //! mapping, `ffi_catch` wrapping, and `Handle::with_inner_mut/_ref`
 //! usage are identical.
 //!

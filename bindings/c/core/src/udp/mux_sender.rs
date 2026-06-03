@@ -4,7 +4,7 @@
 //! Push encoded video/KLV/audio/subtitle with the `push_*` family.
 //! Free with `tst_udp_mux_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/src/rtp/mux_sender.rs` exactly — error
+//! Pattern mirrors `bindings/c/core/src/rtp/mux_sender.rs` exactly — error
 //! mapping, `ffi_catch` wrapping, `Handle::with_inner_ref`, and
 //! `try_from_raw` trust-boundary validation are identical.
 //!

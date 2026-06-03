@@ -4,7 +4,7 @@
 //! `hls://` / `hlss://` builder URL, the bind address, the output
 //! directory, basic-auth credentials, and TLS cert/key paths. This
 //! module is the single C-string-to-Rust-str bridge plus error mapping;
-//! it mirrors `bindings/c/src/udp/url.rs` exactly but records
+//! it mirrors `bindings/c/core/src/udp/url.rs` exactly but records
 //! `TstError::HlsConfig` on failure (the HLS family's config-error code).
 
 use crate::error::{TstError, set_last_error};

@@ -162,7 +162,7 @@ pub const TST_VERSION_PATCH: crate::c_types::c_int = 0;
 /// - Adding new `tst_*` functions or `TST_*` macros (backwards-compatible).
 /// - Adding new `TstError::*` codes (backwards-compatible; old codes
 ///   remain stable per the documented `#[repr(i32)]` policy in
-///   `bindings/c/src/error.rs`).
+///   `bindings/c/core/src/error.rs`).
 ///
 /// Bumped on:
 ///

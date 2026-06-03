@@ -5,7 +5,7 @@
 //! blocked send (or the caller thread) with `tst_rtp_sender_cancel`.
 //! Free the handle with `tst_rtp_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/src/sender/ts_sender.rs` exactly —
+//! Pattern mirrors `bindings/c/core/src/sender/ts_sender.rs` exactly —
 //! error mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref`
 //! usage, FFI slice handling, and the cancel + `was_cancelled`
 //! side-channel are all identical.

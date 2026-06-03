@@ -5,7 +5,7 @@
 //! Cancel with `tst_rtp_mux_sender_cancel`. Free with
 //! `tst_rtp_mux_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/src/sender/mux_sender.rs` exactly —
+//! Pattern mirrors `bindings/c/core/src/sender/mux_sender.rs` exactly —
 //! error mapping, `ffi_catch` wrapping, `Handle::with_inner_ref`,
 //! `try_from_raw` trust-boundary validation, and the cancel
 //! side-channel are all identical.

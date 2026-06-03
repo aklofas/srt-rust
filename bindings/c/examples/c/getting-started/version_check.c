@@ -2,7 +2,7 @@
  * version_check.c — verify the loaded libtstrans matches the compiled-against header.
  *
  * Build (Linux x86_64, with libtstrans built locally):
- *   cd crates/tst-c
+ *   cd bindings/c
  *   cargo build
  *   cc -I include -L ../../target/debug \
  *      -Wall -Werror -o /tmp/version_check \

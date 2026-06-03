@@ -4,7 +4,7 @@
 //! Push pre-muxed TS bytes with `tst_udp_sender_send_ts`. Free the
 //! handle with `tst_udp_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/src/rtp/sender.rs` exactly — error
+//! Pattern mirrors `bindings/c/core/src/rtp/sender.rs` exactly — error
 //! mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref` usage,
 //! and FFI slice handling are identical.
 //!

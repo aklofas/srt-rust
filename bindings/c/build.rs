@@ -37,12 +37,12 @@ fn main() {
         .write_to_file(&header_path);
 
     println!("cargo:rerun-if-changed=cbindgen.toml");
-    println!("cargo:rerun-if-changed=../tst-c-core/src");
+    println!("cargo:rerun-if-changed=core/src");
     // cbindgen scans tst-c-core (.with_crate above) including its Cargo.toml for
     // the cfg/feature gates that drive the [defines] block; Cargo only auto-watches
     // THIS crate's Cargo.toml, so watch the core's explicitly or a feature-only
     // edit would skip header regen on incremental builds.
-    println!("cargo:rerun-if-changed=../tst-c-core/Cargo.toml");
+    println!("cargo:rerun-if-changed=core/Cargo.toml");
 
     // Post-process 1: inject TST_HAS_SRT / TST_HAS_RTP feature defines into
     // the header immediately after the include guard open, so consumer C code

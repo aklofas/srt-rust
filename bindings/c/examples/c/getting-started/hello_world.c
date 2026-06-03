@@ -2,7 +2,7 @@
  * hello_world.c — the smallest tst-c example.
  *
  * Build (Linux x86_64, with libtstrans built locally):
- *   cd crates/tst-c
+ *   cd bindings/c
  *   cargo build
  *   cc -I include -L target/debug \
  *      -Wall -Werror -o /tmp/hello_world \

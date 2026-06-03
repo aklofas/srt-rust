@@ -8,7 +8,7 @@
 //!
 //! `RtspClientBuilder` uses consuming `mut self -> Self` chain methods.
 //! To support mutable-in-place C setter semantics we store the configuration
-//! fields directly in `TstRtspClientBuilder` (see `bindings/c/src/handle.rs`)
+//! fields directly in `TstRtspClientBuilder` (see `bindings/c/core/src/handle.rs`)
 //! and reconstruct the Rust builder from them at `connect` time (Task 6).
 //! This avoids the `mem::replace(inner, RtspClientBuilder::new(...))` dance
 //! which would require passing a dummy URL and re-parsing it on every setter.

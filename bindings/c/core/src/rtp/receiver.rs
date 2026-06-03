@@ -6,7 +6,7 @@
 //! `tst_rtp_receiver_cancel`. Free the handle with
 //! `tst_rtp_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/src/receiver/ts_receiver.rs` exactly —
+//! Pattern mirrors `bindings/c/core/src/receiver/ts_receiver.rs` exactly —
 //! error mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref`
 //! usage, the `was_cancelled` + cancel side-channel, and the
 //! `ShellErrorKind::Closed` → `TST_E_CLOSED` vs `TST_E_END_OF_STREAM`

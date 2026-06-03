@@ -41,7 +41,9 @@ fn synthetic_ts_packet(seq_byte: u8) -> [u8; 188] {
 /// nextest test-group means no sibling test races for the freed port.
 fn free_rtp_port_base() -> u16 {
     use std::net::UdpSocket;
-    loop {
+    // Bounded so a host under unusual port pressure fails deterministically with
+    // a clear message instead of spinning until nextest's timeout kills it.
+    for _ in 0..1000 {
         let s = UdpSocket::bind("127.0.0.1:0").expect("bind ephemeral udp");
         let base = s.local_addr().unwrap().port();
         if base < u16::MAX {
@@ -52,7 +54,12 @@ fn free_rtp_port_base() -> u16 {
             }
         }
         drop(s); // base + 1 was taken (or base == u16::MAX); retry.
+        std::thread::yield_now();
     }
+    panic!(
+        "free_rtp_port_base: no free base/base+1 UDP port pair on 127.0.0.1 \
+         after 1000 attempts (host under port pressure?)"
+    );
 }
 
 #[test]
@@ -155,14 +162,16 @@ fn rtcp_socket_pair_opens_by_default() {
     let base = free_rtp_port_base();
     let r = RtpRecvTransport::listen(&format!("rtp://127.0.0.1:{base}")).unwrap();
     // After Task 10, an RTCP socket is auto-bound on port+1 (base+1, free at
-    // discovery). Probe by trying to bind base+1 ourselves — should fail with
-    // AddrInUse now that RtpRecvTransport holds it.
-    let probe = std::net::UdpSocket::bind(("127.0.0.1", base + 1));
-    assert!(
-        probe.is_err(),
-        "RTCP port {} should already be bound by RtpRecvTransport",
-        base + 1
-    );
+    // discovery). Probe by trying to bind base+1 ourselves — it must fail
+    // specifically with AddrInUse (RtpRecvTransport holds it); any other error
+    // would pass `is_err()` spuriously without proving RTCP is bound.
+    match std::net::UdpSocket::bind(("127.0.0.1", base + 1)) {
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {}
+        other => panic!(
+            "RTCP port {} should be held by RtpRecvTransport (AddrInUse); got {other:?}",
+            base + 1
+        ),
+    }
     drop(r);
 }
 

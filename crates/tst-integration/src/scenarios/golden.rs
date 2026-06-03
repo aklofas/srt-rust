@@ -77,7 +77,7 @@ pub enum CoreEvent {
         program: u16,
         pid: u16,
         stream_type: String,
-        /// Subtitle codec tag: "dvb_subtitle" | "dvb_teletext" | "webvtt".
+        /// Subtitle codec tag: "dvb_subtitle" | "dvb_teletext" | "webvtt" | "cea708_standalone".
         codec: String,
     },
     Error {

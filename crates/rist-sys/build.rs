@@ -110,6 +110,7 @@ fn write_meson_cross_file() -> Option<PathBuf> {
          ar = '{target}-ar'\n\
          strip = '{target}-strip'\n\
          pkg-config = 'pkg-config'\n\
+         cmake = 'cmake'\n\
          \n\
          [host_machine]\n\
          system = 'linux'\n\

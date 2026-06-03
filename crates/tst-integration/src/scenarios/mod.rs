@@ -20,7 +20,8 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec,
+    VideoCodec,
 };
 
 use golden::{CoreEvent, Golden};
@@ -48,6 +49,8 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(Av1RegistrationDesc),
         Box::new(AacAudioOnly),
         Box::new(AudioVideoMp),
+        Box::new(DvbSubtitleMp),
+        Box::new(WebVttInTsScenario),
     ]
 }
 
@@ -418,6 +421,47 @@ fn synthetic_adts_frame() -> Vec<u8> {
     out
 }
 
+/// Minimal DVB subtitle segment — a bare subtitle_segment body passed to
+/// `push_subtitle` for a `DvbSubtitling`-codec stream.
+///
+/// The muxer's DVB-sub PES writer auto-prepends the 3-byte PES data field
+/// envelope (`data_identifier=0x20`, `subtitle_stream_id=0x00`) and appends
+/// the 1-byte end marker (`0xFF`). The caller therefore passes the raw
+/// subtitle segment bytes only.
+///
+/// A DVB subtitle segment (ETSI EN 300 743 §7.2) has the structure:
+///   sync_byte(1) = 0x0F
+///   segment_type(1)
+///   page_id(2)
+///   segment_length(2)
+///   … payload …
+/// Segment type 0x80 = page_composition_segment (always present per §9.5.1).
+/// Minimal body: no regions → segment_length = 0x0003 (the 3-byte fixed header
+/// beyond the common 6-byte header: active_display_duration(2) + state/version(1)).
+/// In practice we emit the shortest possible page_composition_segment:
+///   sync_byte=0x0F, type=0x80, page_id=0x0001, length=0x0003,
+///   presentation_time=0x0000, page_state_version=0x00 (state=Normal+version 0).
+fn synthetic_dvb_subtitle_segment() -> Vec<u8> {
+    vec![
+        0x0F, // sync_byte
+        0x80, // segment_type = page_composition_segment
+        0x00, 0x01, // page_id = 1
+        0x00, 0x03, // segment_length = 3 (presentation_time_out(2) + version(1))
+        0x00, 0x00, // page_presentation_time_out (2 byte) = 0
+        0x00, // version_number(4) | page_state(2) | reserved(2) = 0x00
+    ]
+}
+
+/// Minimal WebVTT cue carried in MPEG-TS PES (`WebVttInTs` codec).
+///
+/// The `WebVttInTs` PES shape passes caller bytes through unchanged
+/// (passthrough mode — no auto-prepend). We use a deterministic ASCII cue
+/// payload in the informal MPEG-TS WebVTT encoding.
+fn synthetic_webvtt_cue() -> Vec<u8> {
+    // A minimal well-formed WebVTT cue body — deterministic and ASCII-safe.
+    b"00:00:00.000 --> 00:00:01.000\nHello\n".to_vec()
+}
+
 /// Minimal MPEG-2 audio frame — synthetic bytes that begin with the valid
 /// MPEG audio sync word used by the mux audio path.
 /// The muxer treats these bytes as opaque PES payload.
@@ -532,7 +576,15 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                             payload_sha256: sha256_hex(&frames),
                         });
                     }
-                    SamplePayload::Subtitle { .. } => { /* skip for now */ }
+                    SamplePayload::Subtitle { codec, .. } => {
+                        events.push(CoreEvent::Subtitle {
+                            program: stream.program_number,
+                            pid: stream.pid,
+                            // All subtitle codecs emit PMT stream_type 0x06.
+                            stream_type: stream_type_hex(stream.pid, 0x06),
+                            codec: subtitle_codec_tag(codec),
+                        });
+                    }
                     SamplePayload::Unknown { .. } => {
                         events.push(CoreEvent::Unknown { pid: stream.pid });
                     }
@@ -642,6 +694,22 @@ fn klv_set_from_ul(payload: &[u8]) -> String {
         "st0601".to_string()
     } else {
         "unknown".to_string()
+    }
+}
+
+/// Map a demux `SubtitleCodec` to the binding-neutral string tag used in
+/// `CoreEvent::Subtitle::codec`.
+///
+/// Tags are stable across Rust/C/Python: "dvb_subtitle" | "dvb_teletext" |
+/// "webvtt".  `Cea708Standalone` is not in the cross-binding golden surface
+/// yet — it maps to "cea708_standalone" for forward-compat.
+fn subtitle_codec_tag(codec: tst_core::mpegts::demux::event::SubtitleCodec) -> String {
+    use tst_core::mpegts::demux::event::SubtitleCodec;
+    match codec {
+        SubtitleCodec::DvbSubtitling => "dvb_subtitle".to_string(),
+        SubtitleCodec::DvbTeletext => "dvb_teletext".to_string(),
+        SubtitleCodec::WebVttInTs => "webvtt".to_string(),
+        SubtitleCodec::Cea708Standalone => "cea708_standalone".to_string(),
     }
 }
 
@@ -968,6 +1036,146 @@ impl Scenario for AudioVideoMp {
             .expect("push_audio_to aac");
         mux.push_audio_to(mp2_handle, pts, &synthetic_mp2_frame())
             .expect("push_audio_to mp2");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 9 — dvb-subtitle-mp (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: H.264 video + DVB Subtitling stream.
+///
+/// The subtitle stream uses `SubtitleCodec::DvbSubtitling` (PMT stream_type
+/// 0x06, disambiguated by the auto-emitted `subtitling_descriptor` tag 0x59).
+/// The muxer auto-wraps the caller's raw segment bytes in the EN 300 743 §6.2
+/// PES data field envelope (`data_identifier=0x20`, `subtitle_stream_id=0x00`,
+/// end marker `0xFF`); the demuxer strips the envelope and surfaces the inner
+/// segment bytes in `SamplePayload::Subtitle::payload`.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct DvbSubtitleMp;
+
+impl Scenario for DvbSubtitleMp {
+    fn id(&self) -> &'static str {
+        "dvb-subtitle-mp"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            // DVB subtitling codec (PMT stream_type 0x06 + subtitling_descriptor).
+            // Language "eng", subtitling_type 0x10 (DVB sub, no AR signalling),
+            // composition and ancillary page IDs both 1.
+            prog.add_subtitle(
+                0x1041,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            );
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+        // Push raw DVB subtitle segment bytes — muxer auto-wraps in
+        // EN 300 743 §6.2 PES data field envelope.
+        mux.push_subtitle(pts, &synthetic_dvb_subtitle_segment())
+            .expect("push_subtitle");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 10 — webvtt-in-ts (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: H.264 video + WebVTT-in-TS subtitle stream.
+///
+/// The subtitle stream uses `SubtitleCodec::WebVttInTs` (PMT stream_type 0x06,
+/// disambiguated by the auto-emitted `registration_descriptor` with
+/// `format_identifier = "VTTC"`). The `WebVttInTs` PES shape is passthrough —
+/// no auto-prepend. The demuxer surfaces the raw cue bytes in
+/// `SamplePayload::Subtitle::payload`.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct WebVttInTsScenario;
+
+impl Scenario for WebVttInTsScenario {
+    fn id(&self) -> &'static str {
+        "webvtt-in-ts"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            // WebVTT-in-TS codec (PMT stream_type 0x06 + VTTC registration_descriptor).
+            prog.add_subtitle(0x1042, SubtitleCodec::WebVttInTs);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+        // Push raw WebVTT cue bytes — passthrough, no envelope added.
+        mux.push_subtitle(pts, &synthetic_webvtt_cue())
+            .expect("push_subtitle");
 
         let ts_bytes = drain_mux(&mut mux);
         let core = demux_to_core_events(&ts_bytes);

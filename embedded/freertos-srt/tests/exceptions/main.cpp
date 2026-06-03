@@ -7,7 +7,7 @@ extern "C" {
 #include "FreeRTOS_POSIX.h"
 #include "FreeRTOS_POSIX/pthread.h"
 }
-extern "C" int _exit(int);
+extern "C" void _exit(int);  // matches startup.c + the libc builtin (void, noreturn)
 
 // Task 5: re-run the concurrent C++ exception gate with the worker threads
 // created as FreeRTOS-Plus-POSIX *pthreads* — the threading API libsrt's

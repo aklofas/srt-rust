@@ -1423,6 +1423,9 @@ impl Scenario for UnknownStreamType {
 // ─────────────────────────────────────────────────────────────────────────────
 // Hand-crafted TS input helpers (Scenarios 11–13)
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// Low-level TS/PSI/PES byte assembly used by the malformed-input scenarios
+// (Scenarios 11+); the codec-frame builders live in "Synthetic data helpers" above.
 
 /// Build a 188-byte TS packet. `pid` must fit in 13 bits. `payload_unit_start`
 /// sets PUSI. `payload` must be ≤ 184 bytes; the remainder is stuffed with 0xFF.
@@ -1550,7 +1553,8 @@ fn build_pes_h264(malformed_flags1: bool) -> Vec<u8> {
 fn build_pes_unknown() -> Vec<u8> {
     let mut pes = Vec::new();
     pes.extend_from_slice(&[0x00, 0x00, 0x01]);
-    pes.push(0xBD); // private_stream_1
+    // stream_id = 0xBD (private_stream_1); arbitrary for this unknown-stream-type test.
+    pes.push(0xBD);
     pes.extend_from_slice(&[0x00, 0x00]); // PES_packet_length = 0
     pes.push(0x80); // flags1 (conformant)
     pes.push(0x00); // flags2

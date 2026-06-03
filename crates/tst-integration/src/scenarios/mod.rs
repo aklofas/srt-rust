@@ -51,6 +51,9 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(AudioVideoMp),
         Box::new(DvbSubtitleMp),
         Box::new(WebVttInTsScenario),
+        Box::new(MalformedPsiStrict),
+        Box::new(MalformedPesLenient),
+        Box::new(UnknownStreamType),
     ]
 }
 
@@ -718,11 +721,178 @@ pub fn demux_error_code_pub(e: &tst_core::error::DemuxError) -> String {
     demux_error_code(e)
 }
 
-// Umbrella public code for the pilot — every fatal demux error maps to the
-// single binding-neutral reject code.
-// TODO: distinct public codes when non-strict binding_contract scenarios land.
+// Umbrella public code — every fatal demux error maps to the single
+// binding-neutral reject code.
 fn demux_error_code(_e: &tst_core::error::DemuxError) -> String {
     "STRICT_REJECTION".into()
+}
+
+/// Map a `NonConformantIssue` to the stable public string code used in the
+/// cross-binding golden envelope.
+///
+/// String codes match the `TST_NONCONFORMANT_CODE_*` constant base names in
+/// `bindings/c/include/tstrans.h` (e.g. `TST_NONCONFORMANT_CODE_PES_HEADER_MALFORMED`
+/// → `"PES_HEADER_MALFORMED"`), minus the `TST_NONCONFORMANT_CODE_` prefix.
+/// These are the stability surface: do NOT rename them without a schema_version bump.
+pub fn nonconformant_issue_code(
+    issue: &tst_core::mpegts::demux::event::NonConformantIssue,
+) -> String {
+    use tst_core::mpegts::demux::event::NonConformantIssue;
+    match issue {
+        NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid => {
+            "STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID"
+        }
+        NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid => {
+            "STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID"
+        }
+        NonConformantIssue::MissingMetadataDescriptor => "MISSING_METADATA_DESCRIPTOR",
+        NonConformantIssue::PcrAnomaly { .. } => "PCR_ANOMALY",
+        NonConformantIssue::PsiChecksumMismatch { .. } => "PSI_CHECKSUM_MISMATCH",
+        NonConformantIssue::PusiMidPes => "PUSI_MID_PES",
+        NonConformantIssue::MalformedPes { .. } => "MALFORMED_PES",
+        NonConformantIssue::PidReusedAcrossPrograms { .. } => "PID_REUSED_ACROSS_PROGRAMS",
+        NonConformantIssue::SubtitleMissingDescriptor { .. } => "SUBTITLE_MISSING_DESCRIPTOR",
+        NonConformantIssue::SubtitleDescriptorAmbiguous { .. } => "SUBTITLE_DESCRIPTOR_AMBIGUOUS",
+        NonConformantIssue::SubtitleDescriptorMalformed { .. } => "SUBTITLE_DESCRIPTOR_MALFORMED",
+        NonConformantIssue::Av1RegistrationMalformed { .. } => "AV1_REGISTRATION_MALFORMED",
+        NonConformantIssue::Av1ObuMissingSizeField { .. } => "AV1_OBU_MISSING_SIZE_FIELD",
+        NonConformantIssue::Av1TileListNotAllowed { .. } => "AV1_TILE_LIST_NOT_ALLOWED",
+        NonConformantIssue::PsiOverlongSection { .. } => "PSI_OVERLONG_SECTION",
+        NonConformantIssue::TransportErrorPacket { .. } => "TRANSPORT_ERROR_PACKET",
+        NonConformantIssue::PsiCcDiscontinuity { .. } => "PSI_CC_DISCONTINUITY",
+        NonConformantIssue::MultiCellAu { .. } => "MULTI_CELL_AU",
+        NonConformantIssue::CfiTolerated { .. } => "CFI_TOLERATED",
+        NonConformantIssue::PsiMultiSectionUnsupported { .. } => "PSI_MULTI_SECTION_UNSUPPORTED",
+        NonConformantIssue::DvbSubDataIdentifier { .. } => "DVB_SUB_DATA_IDENTIFIER",
+        NonConformantIssue::PtsAnomaly { .. } => "PTS_ANOMALY",
+        NonConformantIssue::MissingRequiredPts { .. } => "MISSING_REQUIRED_PTS",
+        NonConformantIssue::PesHeaderMalformed { .. } => "PES_HEADER_MALFORMED",
+        NonConformantIssue::SubtitleAlignmentMissing { .. } => "SUBTITLE_ALIGNMENT_MISSING",
+        NonConformantIssue::PcrMalformed { .. } => "PCR_MALFORMED",
+        NonConformantIssue::NalHeader { .. } => "NAL_HEADER",
+        NonConformantIssue::Av1ObuHeader { .. } => "AV1_OBU_HEADER",
+        NonConformantIssue::Ac3SyncMissing { .. } => "AC3_SYNC_MISSING",
+        NonConformantIssue::LatmFraming { .. } => "LATM_FRAMING",
+        NonConformantIssue::Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",
+        NonConformantIssue::Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
+        NonConformantIssue::Other(_) => "OTHER",
+    }
+    .into()
+}
+
+/// Variant of `demux_to_core_events` that also surfaces `NonConformant`
+/// events as `CoreEvent::Error { code }` using stable public string codes.
+///
+/// Used by `demux_diagnostic` scenarios that need to assert the demuxer
+/// emits the expected nonconformant diagnostic code in addition to recovered
+/// media events.  The normaliser rules from `demux_to_core_events` apply
+/// unchanged; NonConformant events are **inserted in queue order** alongside
+/// the media events.
+pub fn demux_to_core_events_diagnostic(ts_bytes: &[u8]) -> Vec<CoreEvent> {
+    use std::collections::HashMap;
+    use tst_core::mpegts::demux::event::SamplePayload;
+    use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+
+    let mut demuxer = Demuxer::new();
+
+    if let Err(e) = demuxer.feed(ts_bytes) {
+        return vec![CoreEvent::Error {
+            code: demux_error_code(&e),
+        }];
+    }
+
+    demuxer.flush();
+
+    let mut raw_events = Vec::new();
+    while let Some(ev) = demuxer.next_event() {
+        raw_events.push(ev);
+    }
+
+    let mut stream_type_by_pid: HashMap<u16, u8> = HashMap::new();
+    for ev in &raw_events {
+        if let DemuxEvent::ProgramMap(pm) = ev {
+            for si in &pm.streams {
+                stream_type_by_pid.insert(si.pid, si.stream_type.as_byte());
+            }
+        }
+    }
+
+    let stream_type_hex = |pid: u16, fallback: u8| -> String {
+        let byte = stream_type_by_pid.get(&pid).copied().unwrap_or(fallback);
+        format!("0x{byte:02x}")
+    };
+
+    let mut events = Vec::new();
+    for ev in raw_events {
+        match ev {
+            DemuxEvent::ProgramMap(_) => {}
+            DemuxEvent::Sample {
+                stream,
+                pts,
+                payload,
+                ..
+            } => match payload {
+                SamplePayload::Video {
+                    codec,
+                    payload: vp,
+                    random_access_indicator,
+                } => {
+                    let raw = video_payload_bytes(&vp);
+                    events.push(CoreEvent::Video {
+                        program: stream.program_number,
+                        pid: stream.pid,
+                        stream_type: stream_type_hex(stream.pid, video_codec_pmt_byte(codec)),
+                        pts: pts.as_ticks(),
+                        key: random_access_indicator,
+                        payload_sha256: sha256_hex(&raw),
+                    });
+                }
+                SamplePayload::Audio { codec, frames } => {
+                    events.push(CoreEvent::Audio {
+                        program: stream.program_number,
+                        pid: stream.pid,
+                        stream_type: stream_type_hex(stream.pid, audio_codec_pmt_byte(codec)),
+                        pts: pts.as_ticks(),
+                        payload_sha256: sha256_hex(&frames),
+                    });
+                }
+                SamplePayload::Subtitle { codec, .. } => {
+                    events.push(CoreEvent::Subtitle {
+                        program: stream.program_number,
+                        pid: stream.pid,
+                        stream_type: stream_type_hex(stream.pid, 0x06),
+                        codec: subtitle_codec_tag(codec),
+                    });
+                }
+                SamplePayload::Unknown { .. } => {
+                    events.push(CoreEvent::Unknown { pid: stream.pid });
+                }
+            },
+            DemuxEvent::Metadata {
+                stream,
+                payload,
+                kind,
+                ..
+            } => {
+                let _ = &kind;
+                events.push(CoreEvent::Klv {
+                    program: stream.program_number,
+                    pid: stream.pid,
+                    stream_type: stream_type_hex(stream.pid, klv_kind_pmt_byte(&stream.kind)),
+                    set: klv_set_from_ul(&payload),
+                });
+            }
+            // NonConformant → CoreEvent::Error with stable public code.
+            DemuxEvent::NonConformant { issue, .. } => {
+                events.push(CoreEvent::Error {
+                    code: nonconformant_issue_code(&issue),
+                });
+            }
+            DemuxEvent::Discontinuity { .. } | DemuxEvent::ReconnectDiscontinuity => {}
+        }
+    }
+
+    events
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1191,4 +1361,365 @@ impl Scenario for WebVttInTsScenario {
         };
         (artifact_rel, golden)
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 11 — malformed-psi-strict (binding_contract)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "binding_contract"`: hand-crafted TS with a valid PAT pointing to
+/// a PMT PID, followed by a PMT whose CRC-32 is deliberately corrupted.
+///
+/// Under `StrictMode::Full` the demuxer converts
+/// `NonConformantIssue::PsiChecksumMismatch` into
+/// `DemuxError::StrictRejection`, which the adapter maps to `"STRICT_REJECTION"`.
+///
+/// **Distinction from `strict-rejection`:** The existing pilot feeds 8192 bytes
+/// of `0xFF` — no 0x47 sync byte — triggering `DemuxError::Unrecoverable`
+/// after exhausting the sync-search window. This scenario uses syntactically
+/// valid TS packets with correct sync bytes and a valid PAT (correct CRC). The
+/// demuxer acquires sync and parses the PAT successfully; the rejection fires
+/// specifically from `PsiChecksumMismatch` on the PMT section's corrupted CRC,
+/// exercising a different code path while producing the same stable golden code.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct MalformedPsiStrict;
+
+impl Scenario for MalformedPsiStrict {
+    fn id(&self) -> &'static str {
+        "malformed-psi-strict"
+    }
+    fn kind(&self) -> &'static str {
+        "binding_contract"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Two TS packets: PAT (valid CRC) + PMT (corrupted CRC last byte).
+        // Under StrictMode::Full: PsiChecksumMismatch → StrictRejection →
+        // "STRICT_REJECTION".
+        let ts_bytes = synthetic_ts_bad_pmt_crc();
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.bin");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![CoreEvent::Error {
+                code: "STRICT_REJECTION".to_string(),
+            }],
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 12 — malformed-pes-lenient (demux_diagnostic)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux_diagnostic"`: hand-crafted TS with a valid PAT + PMT
+/// declaring H.264 video at PID 0x0101, followed by a PES whose `flags1` byte
+/// (byte 6 of the optional PES header) has its top two bits set to `0b00`
+/// instead of the spec-required `0b10`. This violates H.222.0 V9 §2.4.3.6.
+///
+/// Under the DEFAULT (lenient) `DemuxerConfig` the demuxer:
+///  1. Emits `DemuxEvent::NonConformant { issue: PesHeaderMalformed {
+///     kind: InvalidMarkerBits } }` (stable code `"PES_HEADER_MALFORMED"`).
+///  2. Recovers and emits `DemuxEvent::Sample` for the video PID.
+///
+/// The `demux_diagnostic` kind uses `demux_to_core_events_diagnostic`, which
+/// surfaces NonConformant events as `CoreEvent::Error { code }` alongside the
+/// normal media events. The golden includes both events in queue order
+/// (NonConformant fires before the Sample event in the demuxer queue).
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct MalformedPesLenient;
+
+impl Scenario for MalformedPesLenient {
+    fn id(&self) -> &'static str {
+        "malformed-pes-lenient"
+    }
+    fn kind(&self) -> &'static str {
+        "demux_diagnostic"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let ts_bytes = synthetic_ts_malformed_pes_header();
+        let core = demux_to_core_events_diagnostic(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 13 — unknown-stream-type (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: hand-crafted TS with a valid PAT + PMT advertising
+/// `stream_type = 0x02` (ISO/IEC 13818-2 MPEG-2 video — not parsed by tst-core)
+/// at PID 0x0201, plus PES payload.
+///
+/// The demuxer classifies the PID as `StreamKind::Unknown(0x02)` and emits
+/// `DemuxEvent::Sample { payload: SamplePayload::Unknown { .. } }`. The
+/// normaliser's existing `SamplePayload::Unknown` arm converts this to
+/// `CoreEvent::Unknown { pid: 0x0201 }`.
+///
+/// No new normaliser arm is required — the `Unknown` path already exists.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct UnknownStreamType;
+
+impl Scenario for UnknownStreamType {
+    fn id(&self) -> &'static str {
+        "unknown-stream-type"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // PID 0x0201 carries stream_type=0x02 (MPEG-2 video, not in tst-core's
+        // known-type set). The normaliser maps SamplePayload::Unknown to
+        // CoreEvent::Unknown { pid: 0x0201 }.
+        let ts_bytes = synthetic_ts_unknown_stream_type();
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hand-crafted TS input helpers (Scenarios 11–13)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Build a 188-byte TS packet. `pid` must fit in 13 bits. `payload_unit_start`
+/// sets PUSI. `payload` must be ≤ 184 bytes; the remainder is stuffed with 0xFF.
+fn ts_packet(pid: u16, payload_unit_start: bool, payload: &[u8]) -> Vec<u8> {
+    assert!(pid <= 0x1FFF, "PID out of range");
+    assert!(payload.len() <= 184, "payload too large for one TS packet");
+    let mut pkt = vec![0u8; 188];
+    pkt[0] = 0x47; // sync byte
+    let pusi_bit: u8 = if payload_unit_start { 0x40 } else { 0x00 };
+    pkt[1] = pusi_bit | ((pid >> 8) as u8 & 0x1F);
+    pkt[2] = pid as u8;
+    // adaptation_field_control = 0b01 (payload only, no adaptation field), CC=0
+    pkt[3] = 0x10;
+    pkt[4..].fill(0xFF); // stuff unused portion with 0xFF
+    pkt[4..4 + payload.len()].copy_from_slice(payload);
+    pkt
+}
+
+/// Build a TS packet for a PSI section (PAT or PMT). PSI sections require a
+/// `pointer_field` byte (0x00) immediately after the 4-byte TS header when
+/// PUSI=1 (ISO/IEC 13818-1 §2.4.4.1).
+fn ts_psi_packet(pid: u16, section: &[u8]) -> Vec<u8> {
+    assert!(
+        section.len() <= 183,
+        "PSI section too large for one TS packet (need room for pointer_field)"
+    );
+    let mut payload = vec![0x00]; // pointer_field = 0
+    payload.extend_from_slice(section);
+    ts_packet(pid, /*pusi=*/ true, &payload)
+}
+
+/// Compute CRC-32/MPEG-2 and append the 4-byte big-endian result to `data`.
+fn append_crc(data: &mut Vec<u8>) {
+    let crc = tst_core::mpegts::common::crc32::crc32_mpeg2(data);
+    data.extend_from_slice(&crc.to_be_bytes());
+}
+
+/// Build a minimal PAT section for one program: `program_number` → `pmt_pid`.
+///
+/// Returns a complete PSI section including 4-byte CRC trailer.
+fn build_pat_section(transport_stream_id: u16, program_number: u16, pmt_pid: u16) -> Vec<u8> {
+    // section_length = 5 (fixed post-length fields) + 4 (one entry) + 4 (CRC) = 13.
+    let section_length: u16 = 13;
+    let mut sec = Vec::new();
+    sec.push(0x00); // table_id = PAT
+    // section_syntax_indicator=1, '0'=0, reserved=0b11, section_length high nibble
+    sec.push(0xB0 | ((section_length >> 8) as u8 & 0x0F));
+    sec.push(section_length as u8);
+    sec.extend_from_slice(&transport_stream_id.to_be_bytes());
+    sec.push(0xC1); // reserved(2)=0b11, version_number(5)=0, current_next(1)=1
+    sec.push(0x00); // section_number
+    sec.push(0x00); // last_section_number
+    // Program entry: program_number(16) + reserved(3)=0b111 + PMT_PID(13)
+    sec.extend_from_slice(&program_number.to_be_bytes());
+    let pmt_pid_field: u16 = 0xE000 | (pmt_pid & 0x1FFF);
+    sec.extend_from_slice(&pmt_pid_field.to_be_bytes());
+    append_crc(&mut sec);
+    sec
+}
+
+/// Build a minimal PMT section for one elementary stream.
+///
+/// `corrupt_crc`: when `true`, the last byte of the appended CRC is flipped,
+/// producing a checksum mismatch that the demuxer surfaces as
+/// `NonConformantIssue::PsiChecksumMismatch`.
+fn build_pmt_section(
+    program_number: u16,
+    pcr_pid: u16,
+    es_pid: u16,
+    stream_type: u8,
+    corrupt_crc: bool,
+) -> Vec<u8> {
+    // PMT section content after the 3-byte header (table_id + section_length):
+    //   program_number(2) + version/current_next(1) + section_number(1) +
+    //   last_section_number(1)                                          = 5
+    //   PCR_PID(2) + program_info_length(2)                             = 4
+    //   stream_type(1) + ES_PID(2) + ES_info_length(2)                  = 5
+    //   CRC_32(4)                                                        = 4
+    //   total section_length = 5 + 4 + 5 + 4                           = 18
+    let section_length: u16 = 18;
+    let mut sec = Vec::new();
+    sec.push(0x02); // table_id = PMT
+    sec.push(0xB0 | ((section_length >> 8) as u8 & 0x0F));
+    sec.push(section_length as u8);
+    sec.extend_from_slice(&program_number.to_be_bytes());
+    sec.push(0xC1); // reserved + version=0 + current_next=1
+    sec.push(0x00); // section_number
+    sec.push(0x00); // last_section_number
+    let pcr_pid_field: u16 = 0xE000 | (pcr_pid & 0x1FFF);
+    sec.extend_from_slice(&pcr_pid_field.to_be_bytes());
+    sec.extend_from_slice(&[0xF0, 0x00]); // reserved(4) + program_info_length(12) = 0
+    // Stream entry: stream_type(8) + reserved(3) + ES_PID(13) + reserved(4) + ES_info_length(12)=0
+    sec.push(stream_type);
+    let es_pid_field: u16 = 0xE000 | (es_pid & 0x1FFF);
+    sec.extend_from_slice(&es_pid_field.to_be_bytes());
+    sec.extend_from_slice(&[0xF0, 0x00]); // reserved + ES_info_length = 0
+    append_crc(&mut sec);
+    if corrupt_crc {
+        let last = sec.len() - 1;
+        sec[last] ^= 0xFF;
+    }
+    sec
+}
+
+/// Build a minimal H.264 video PES packet.
+///
+/// `malformed_flags1`: when `true`, sets the `flags1` byte (PES byte 6) to
+/// `0x00` instead of the conformant `0x80`, triggering
+/// `PesHeaderMalformed { kind: InvalidMarkerBits }` in the demuxer.
+fn build_pes_h264(malformed_flags1: bool) -> Vec<u8> {
+    let es_payload = synthetic_h264_idr();
+    let flags1: u8 = if malformed_flags1 { 0x00 } else { 0x80 };
+    let mut pes = Vec::new();
+    pes.extend_from_slice(&[0x00, 0x00, 0x01]); // PES start code prefix
+    pes.push(0xE0); // stream_id: video_stream_0
+    pes.extend_from_slice(&[0x00, 0x00]); // PES_packet_length = 0 (unbounded)
+    pes.push(flags1); // flags1
+    pes.push(0x00); // flags2: PTS_DTS_flags=0, no timestamps
+    pes.push(0x00); // header_data_length = 0
+    pes.extend_from_slice(&es_payload);
+    pes
+}
+
+/// Build a minimal PES packet for an unrecognized stream type.
+fn build_pes_unknown() -> Vec<u8> {
+    let mut pes = Vec::new();
+    pes.extend_from_slice(&[0x00, 0x00, 0x01]);
+    pes.push(0xBD); // private_stream_1
+    pes.extend_from_slice(&[0x00, 0x00]); // PES_packet_length = 0
+    pes.push(0x80); // flags1 (conformant)
+    pes.push(0x00); // flags2
+    pes.push(0x00); // header_data_length = 0
+    pes.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // synthetic payload
+    pes
+}
+
+/// Synthetic TS for Scenario 11: PAT (valid CRC) + PMT (corrupted CRC) + PES.
+///
+/// Under `StrictMode::Full` the PMT's `PsiChecksumMismatch` → `StrictRejection`
+/// → `"STRICT_REJECTION"`.
+fn synthetic_ts_bad_pmt_crc() -> Vec<u8> {
+    let pat = build_pat_section(0x0001, 0x0001, 0x0100);
+    let pmt = build_pmt_section(0x0001, 0x0101, 0x0101, 0x1B, /*corrupt_crc=*/ true);
+
+    let mut out = Vec::new();
+    out.extend(ts_psi_packet(0x0000, &pat));
+    out.extend(ts_psi_packet(0x0100, &pmt));
+    // One PES packet for completeness (strict rejection fires before it's processed).
+    let pes = build_pes_h264(/*malformed_flags1=*/ false);
+    out.extend(ts_packet(0x0101, /*pusi=*/ true, &pes));
+    out
+}
+
+/// Synthetic TS for Scenario 12: PAT (valid) + PMT (valid, H.264 at 0x0101)
+/// + first PES with malformed `flags1` + second PES to trigger PUSI boundary.
+///
+/// Under lenient config the demuxer emits `NonConformant` then `Sample`. The
+/// second PUSI on PID 0x0101 finalises the first (malformed) PES during
+/// `feed()` so the events surface before `flush()`.
+fn synthetic_ts_malformed_pes_header() -> Vec<u8> {
+    let pat = build_pat_section(0x0001, 0x0001, 0x0100);
+    let pmt = build_pmt_section(0x0001, 0x0101, 0x0101, 0x1B, /*corrupt_crc=*/ false);
+
+    let mut out = Vec::new();
+    out.extend(ts_psi_packet(0x0000, &pat));
+    out.extend(ts_psi_packet(0x0100, &pmt));
+    let pes1 = build_pes_h264(/*malformed_flags1=*/ true);
+    out.extend(ts_packet(0x0101, /*pusi=*/ true, &pes1));
+    // Second PUSI on PID 0x0101 finalises pes1 → emits NonConformant + Sample.
+    let pes2 = build_pes_h264(/*malformed_flags1=*/ false);
+    out.extend(ts_packet(0x0101, /*pusi=*/ true, &pes2));
+    out
+}
+
+/// Synthetic TS for Scenario 13: PAT (valid) + PMT declaring `stream_type=0x02`
+/// (MPEG-2 video — unknown to tst-core) at PID 0x0201, plus two PES packets.
+///
+/// `tst-core` classifies PID 0x0201 as `StreamKind::Unknown(0x02)`. The
+/// demuxer emits `SamplePayload::Unknown`, which the normaliser maps to
+/// `CoreEvent::Unknown { pid: 0x0201 }`.
+fn synthetic_ts_unknown_stream_type() -> Vec<u8> {
+    let pat = build_pat_section(0x0001, 0x0001, 0x0200);
+    // stream_type = 0x02: ISO/IEC 13818-2 MPEG-2 video (not in tst-core's known set)
+    let pmt = build_pmt_section(0x0001, 0x0201, 0x0201, 0x02, /*corrupt_crc=*/ false);
+
+    let mut out = Vec::new();
+    out.extend(ts_psi_packet(0x0000, &pat));
+    out.extend(ts_psi_packet(0x0200, &pmt));
+    let pes = build_pes_unknown();
+    out.extend(ts_packet(0x0201, /*pusi=*/ true, &pes));
+    // Second PUSI to trigger PES boundary and emit the event.
+    let pes2 = build_pes_unknown();
+    out.extend(ts_packet(0x0201, /*pusi=*/ true, &pes2));
+    out
 }

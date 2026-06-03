@@ -11,8 +11,8 @@ test = false
 bench = false
 
 [dependencies]
-tst-core = { path = "../tst-core", default-features = false }
-tst-pipeline = { path = "../tst-pipeline", default-features = false }
+tst-core = { path = "../../crates/tst-core", default-features = false }
+tst-pipeline = { path = "../../crates/tst-pipeline", default-features = false }
 # no_std lock backend for the in-memory `Sink` Transport. `Transport: Send`
 # (unconditional), so the single-threaded sink must use a Send/Sync cell:
 # `Arc<spin::Mutex<_>>`, not `Rc<RefCell<_>>` (which is !Send).

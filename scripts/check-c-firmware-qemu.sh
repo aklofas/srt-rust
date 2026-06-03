@@ -14,7 +14,7 @@ if ! command -v qemu-system-arm >/dev/null 2>&1; then
   echo "SKIP: qemu-system-arm not installed (apt install qemu-system-arm)"; exit 0
 fi
 
-CRATE=crates/baremetal-qemu-c
+CRATE=embedded/baremetal-qemu-c
 FW="$CRATE/firmware"
 GOLDEN_TS=crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts
 

@@ -1,6 +1,6 @@
 /* Cortex-M4F startup for QEMU mps2-an386 + newlib/rdimon semihosting + FreeRTOS.
  *
- * Adapted from crates/baremetal-qemu-c/firmware/startup.c. The only structural
+ * Adapted from embedded/baremetal-qemu-c/firmware/startup.c. The only structural
  * change for FreeRTOS is the vector table: the kernel's ARM_CM4F port installs
  * the context-switch + tick machinery via the SVC, PendSV and SysTick exception
  * vectors. Their handler symbols are vPortSVCHandler / xPortPendSVHandler /

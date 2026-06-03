@@ -17,7 +17,7 @@ members = [
     "crates/tst-udp",
     "examples",
 ]
-exclude = ["crates/baremetal-qemu", "crates/baremetal-qemu-c"]
+exclude = ["embedded/baremetal-qemu", "embedded/baremetal-qemu-c"]
 
 [workspace.package]
 version      = "0.1.0"

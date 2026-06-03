@@ -36,9 +36,9 @@ const HEAP_SIZE: usize = 256 * 1024;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
 /// Committed, CI-guarded golden produced by `gen_scenarios`. Resolved relative
-/// to this file: `crates/baremetal-qemu/src/` → `../../tst-integration/...`.
+/// to this file: `embedded/baremetal-qemu/src/` → `../../../crates/tst-integration/...`.
 static GOLDEN: &[u8] =
-    include_bytes!("../../tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
+    include_bytes!("../../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts");
 
 /// Verbatim copy of `tst_integration::scenarios::synthetic_h264_idr()`.
 /// (tst-integration is std-only and not a dependency; per spec decision A the

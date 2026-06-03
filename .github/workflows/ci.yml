@@ -616,9 +616,9 @@ jobs:
       # Runtime gate: run the tst-core muxer on a Cortex-M4 under QEMU and
       # assert it byte-matches the committed video-roundtrip golden. The
       # semihosting `debug::exit` code becomes this step's pass/fail; `timeout`
-      # bounds any QEMU hang. See crates/baremetal-qemu/ + the design spec.
+      # bounds any QEMU hang. See embedded/baremetal-qemu/ + the design spec.
       - name: QEMU runtime smoke (baremetal-qemu)
-        working-directory: crates/baremetal-qemu
+        working-directory: embedded/baremetal-qemu
         run: timeout 60 cargo run
 
       # Runtime gate: build the C-firmware (libtstrans_firmware.a no_std glue

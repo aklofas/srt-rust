@@ -20,7 +20,7 @@ and the QEMU runner.
 
     sudo apt install qemu-system-arm   # one-time
     rustup target add thumbv7em-none-eabihf
-    cd crates/baremetal-qemu && cargo run
+    cd embedded/baremetal-qemu && cargo run
 
 A `PASS` line + exit 0 means the on-device muxer reproduced the golden. Or run
 the repo-root mirror, which skips cleanly without QEMU:

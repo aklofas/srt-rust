@@ -16,7 +16,7 @@ default = ["std", "srt", "rtp", "mbedtls"]
 # `std` gates every transport-bearing surface + std-only sinks. The offline
 # core (muxer / demuxer / config / error / handle / panic) compiles without it
 # (no_std + alloc), for the no_std embedded staticlib path (see
-# crates/baremetal-qemu-c/); `std` gates the transport-bearing surface.
+# embedded/baremetal-qemu-c/); `std` gates the transport-bearing surface.
 std     = ["tst-pipeline/std", "tst-core/std"]
 srt     = ["std", "dep:tst-srt"]
 rtp     = ["std", "dep:tst-rtp", "dep:secrecy"]

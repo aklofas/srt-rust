@@ -1,6 +1,6 @@
 //! `MuxSender` over an in-memory `Transport` must produce TS bytes
 //! byte-identical to the CI-guarded video-roundtrip golden. This is the std
-//! mirror of the on-device check in `crates/baremetal-qemu/`.
+//! mirror of the on-device check in `embedded/baremetal-qemu/`.
 
 use std::sync::{Arc, Mutex};
 

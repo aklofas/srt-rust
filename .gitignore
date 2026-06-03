@@ -3,9 +3,9 @@
 **/target/
 
 # C firmware build artifacts (baremetal-qemu-c)
-crates/baremetal-qemu-c/firmware/*.elf
-crates/baremetal-qemu-c/firmware/firmware.elf
-crates/baremetal-qemu-c/firmware/golden.h
+embedded/baremetal-qemu-c/firmware/*.elf
+embedded/baremetal-qemu-c/firmware/firmware.elf
+embedded/baremetal-qemu-c/firmware/golden.h
 
 # Embedded freertos-srt reference product build artifacts (all under build/)
 embedded/freertos-srt/build/

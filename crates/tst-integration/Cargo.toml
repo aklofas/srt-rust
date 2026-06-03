@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 publish = false
+description = "Cross-binding scenario harness: golden-envelope contract + scenarios that the Rust, Python, and C adapters all reproduce byte-for-byte, with a gen_scenarios --check drift rail. Not for external consumption."
 
 [features]
 default = []

@@ -344,6 +344,98 @@ fn minimal_st0601_ls() -> Vec<u8> {
     ]
 }
 
+/// Minimal valid H.265 IDR access unit in Annex-B framing.
+///
+/// 4-byte start code + 2-byte NAL header (IDR_W_RADL nal_unit_type=19,
+/// nuh_layer_id=0, nuh_temporal_id_plus1=1) + 14 deterministic filler bytes.
+fn synthetic_h265_idr() -> Vec<u8> {
+    let mut buf = Vec::with_capacity(20);
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Annex-B start code
+    // H.265 NAL header (2 bytes):
+    //   forbidden_zero_bit(1) = 0
+    //   nal_unit_type(6)      = 19 (IDR_W_RADL) → bits 1..=6
+    //   nuh_layer_id(6)       = 0
+    //   nuh_temporal_id_plus1(3) = 1
+    // Byte 0: (19 << 1) & 0xFF = 0x26, Byte 1: 0x01
+    buf.push(0x26);
+    buf.push(0x01);
+    for i in 0u8..14 {
+        buf.push(0xB7 ^ i);
+    }
+    buf
+}
+
+/// Minimal AV1 access unit: Temporal Delimiter + Sequence Header + Frame
+/// Header + Tile Group OBUs with `obu_has_size_field = 1`.
+///
+/// Bodies are placeholder bytes — the muxer and demuxer treat them as opaque
+/// payload.  The demuxer recovers `VideoCodec::Av1` from the PMT
+/// `format_identifier "AV01"` (registration descriptor emitted by the muxer),
+/// not from the OBU payload.
+fn synthetic_av1_au() -> Vec<u8> {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        // AV1 spec §5.3.2 OBU header:
+        //   forbidden(1)=0, obu_type(4), extension_flag(1)=0,
+        //   has_size_field(1)=1, reserved(1)=0
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8); // single-byte LEB128 (body < 128 bytes)
+        v.extend_from_slice(body);
+        v
+    }
+    let mut au = Vec::new();
+    au.extend(obu(2, &[])); // Temporal Delimiter (empty body)
+    au.extend(obu(1, &[0x00, 0x00])); // Sequence Header placeholder
+    au.extend(obu(3, &[0x00])); // Frame Header placeholder
+    au.extend(obu(4, &[0x00, 0x01, 0x02])); // Tile Group placeholder
+    au
+}
+
+/// Minimal ADTS frame (7-byte header + 8 payload bytes = 15 bytes total).
+///
+/// Fixed parameters: MPEG-2 ID, no CRC, AAC-LC profile, sample_rate_index=4
+/// (44100 Hz), channel_config=2 (stereo).  The muxer treats audio bytes
+/// opaquely; the 7-byte ADTS sync header makes the frame parsable by the
+/// codec stats counter.
+fn synthetic_adts_frame() -> Vec<u8> {
+    let total_len: u32 = 15; // 7-byte header + 8 payload bytes
+    let sample_rate_index: u8 = 4; // 44100 Hz
+    let channel_config: u8 = 2; // stereo
+    let mut h = vec![0u8; 7];
+    h[0] = 0xFF;
+    // ID=MPEG-2(1), layer=0b00, protection_absent=1 → 0b1111_0001
+    h[1] = 0b1111_0001;
+    // profile_objecttype(2)=1(AAC-LC), sampling_freq_index(4), private=0,
+    // channel_config upper bit
+    h[2] = (1 << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_config >> 2) & 1);
+    h[3] = ((channel_config & 0b11) << 6) | (((total_len >> 11) & 0b11) as u8);
+    h[4] = ((total_len >> 3) & 0xFF) as u8;
+    h[5] = (((total_len & 0b111) as u8) << 5) | 0b1_1111;
+    h[6] = 0b11_1111 << 2;
+    let mut out = h;
+    // 8 deterministic payload bytes
+    out.extend_from_slice(&[0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7]);
+    out
+}
+
+/// Minimal MPEG-2 audio frame — synthetic bytes that begin with the valid
+/// MPEG audio sync word used by the mux audio path.
+/// The muxer treats these bytes as opaque PES payload.
+fn synthetic_mp2_frame() -> Vec<u8> {
+    // MPEG-1 Layer II sync header: sync(12)=0xFFF, ID(1)=1(MPEG-1),
+    // layer(2)=0b10(Layer II), protection(1)=1(no CRC) → 0xFF 0xFD
+    let mut buf = vec![0u8; 20];
+    buf[0] = 0xFF;
+    buf[1] = 0xFD; // MPEG-1, Layer II, no CRC
+    buf[2] = 0xC0; // bitrate=384kbps, 44100Hz, no padding
+    buf[3] = 0x04; // stereo, original
+    // 16 deterministic payload bytes
+    for i in 4u8..20 {
+        buf[i as usize] = 0xB0 ^ i;
+    }
+    buf
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Demux-to-CoreEvent normaliser
 // ─────────────────────────────────────────────────────────────────────────────
@@ -596,7 +688,11 @@ impl Scenario for H265KlvMp {
         let cfg = {
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
             prog.add_video(0x1011, VideoCodec::H265);
-            prog.add_klv(0x1031, KlvStreamType::PrivateData, /*carries_pts=*/ false);
+            prog.add_klv(
+                0x1031,
+                KlvStreamType::PrivateData,
+                /*carries_pts=*/ false,
+            );
             let mut b = MuxerConfig::builder();
             b.add_program(prog.build());
             b.build().expect("valid muxer config")
@@ -606,8 +702,12 @@ impl Scenario for H265KlvMp {
         let pts = Pts90khz::new(90_000); // t=1s
         mux.push_video(&synthetic_h265_idr(), pts, /*key_frame=*/ true)
             .expect("push_video");
-        mux.push_klv(&minimal_st0601_ls(), pts, /*metadata_service_id=*/ 0x00)
-            .expect("push_klv");
+        mux.push_klv(
+            &minimal_st0601_ls(),
+            pts,
+            /*metadata_service_id=*/ 0x00,
+        )
+        .expect("push_klv");
 
         let ts_bytes = drain_mux(&mut mux);
         let core = demux_to_core_events(&ts_bytes);
@@ -675,8 +775,12 @@ impl Scenario for H264SyncKlvAuCell {
         mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
             .expect("push_video");
         // Pass raw KLV LS bytes — muxer auto-wraps in the AU cell header.
-        mux.push_klv(&minimal_st0601_ls(), pts, /*metadata_service_id=*/ 0x00)
-            .expect("push_klv");
+        mux.push_klv(
+            &minimal_st0601_ls(),
+            pts,
+            /*metadata_service_id=*/ 0x00,
+        )
+        .expect("push_klv");
 
         let ts_bytes = drain_mux(&mut mux);
         let core = demux_to_core_events(&ts_bytes);
@@ -811,59 +915,6 @@ impl Scenario for AacAudioOnly {
     }
 }
 
-/// Minimal ADTS frame (7-byte header + 8 payload bytes = 15 bytes total).
-///
-/// Fixed parameters: MPEG-2 ID, no CRC, AAC-LC profile, sample_rate_index=4
-/// (44100 Hz), channel_config=2 (stereo).  The muxer treats audio bytes
-/// opaquely; the 7-byte ADTS sync header makes the frame parsable by the
-/// codec stats counter.
-fn synthetic_adts_frame() -> Vec<u8> {
-    let total_len: u32 = 15; // 7-byte header + 8 payload bytes
-    let sample_rate_index: u8 = 4; // 44100 Hz
-    let channel_config: u8 = 2; // stereo
-    let mut h = vec![0u8; 7];
-    h[0] = 0xFF;
-    // ID=MPEG-2(1), layer=0b00, protection_absent=1 → 0b1111_0001
-    h[1] = 0b1111_0001;
-    // profile_objecttype(2)=1(AAC-LC), sampling_freq_index(4), private=0,
-    // channel_config upper bit
-    h[2] = (1 << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_config >> 2) & 1);
-    h[3] = ((channel_config & 0b11) << 6) | (((total_len >> 11) & 0b11) as u8);
-    h[4] = ((total_len >> 3) & 0xFF) as u8;
-    h[5] = (((total_len & 0b111) as u8) << 5) | 0b1_1111;
-    h[6] = 0b11_1111 << 2;
-    let mut out = h;
-    // 8 deterministic payload bytes
-    out.extend_from_slice(&[0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7]);
-    out
-}
-
-/// Minimal AV1 access unit: Temporal Delimiter + Sequence Header + Frame
-/// Header + Tile Group OBUs with `obu_has_size_field = 1`.
-///
-/// Bodies are placeholder bytes — the muxer and demuxer treat them as opaque
-/// payload.  The demuxer recovers `VideoCodec::Av1` from the PMT
-/// `format_identifier "AV01"` (registration descriptor emitted by the muxer),
-/// not from the OBU payload.
-fn synthetic_av1_au() -> Vec<u8> {
-    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
-        // AV1 spec §5.3.2 OBU header:
-        //   forbidden(1)=0, obu_type(4), extension_flag(1)=0,
-        //   has_size_field(1)=1, reserved(1)=0
-        let header = (obu_type << 3) | 0x02;
-        let mut v = vec![header];
-        v.push(body.len() as u8); // single-byte LEB128 (body < 128 bytes)
-        v.extend_from_slice(body);
-        v
-    }
-    let mut au = Vec::new();
-    au.extend(obu(2, &[])); // Temporal Delimiter (empty body)
-    au.extend(obu(1, &[0x00, 0x00])); // Sequence Header placeholder
-    au.extend(obu(3, &[0x00])); // Frame Header placeholder
-    au.extend(obu(4, &[0x00, 0x01, 0x02])); // Tile Group placeholder
-    au
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Scenario 8 — audio-video-mp (demux)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -907,6 +958,7 @@ impl Scenario for AudioVideoMp {
             .expect("push_video");
 
         // Two audio streams — use explicit handles to avoid AmbiguousTarget.
+        // audio_handles() returns streams in PMT declaration order.
         let handles = mux.audio_handles();
         assert_eq!(handles.len(), 2, "expected two audio handles");
         let aac_handle = handles[0]; // AAC (declared first)
@@ -931,43 +983,4 @@ impl Scenario for AudioVideoMp {
         };
         (artifact_rel, golden)
     }
-}
-
-/// Minimal MPEG-2 audio frame — synthetic bytes that begin with the valid
-/// MPEG audio sync word used by the mux audio path.
-/// The muxer treats these bytes as opaque PES payload.
-fn synthetic_mp2_frame() -> Vec<u8> {
-    // MPEG-1 Layer II sync header: sync(12)=0xFFF, ID(1)=1(MPEG-1),
-    // layer(2)=0b10(Layer II), protection(1)=1(no CRC) → 0xFF 0xFD
-    let mut buf = vec![0u8; 20];
-    buf[0] = 0xFF;
-    buf[1] = 0xFD; // MPEG-1, Layer II, no CRC
-    buf[2] = 0xC0; // bitrate=384kbps, 44100Hz, no padding
-    buf[3] = 0x04; // stereo, original
-    // 16 deterministic payload bytes
-    for i in 4u8..20 {
-        buf[i as usize] = 0xB0 ^ i;
-    }
-    buf
-}
-
-/// Minimal valid H.265 IDR access unit in Annex-B framing.
-///
-/// 4-byte start code + 2-byte NAL header (IDR_W_RADL nal_unit_type=19,
-/// nuh_layer_id=0, nuh_temporal_id_plus1=1) + 14 deterministic filler bytes.
-fn synthetic_h265_idr() -> Vec<u8> {
-    let mut buf = Vec::with_capacity(20);
-    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Annex-B start code
-    // H.265 NAL header (2 bytes):
-    //   forbidden_zero_bit(1) = 0
-    //   nal_unit_type(6)      = 19 (IDR_W_RADL) → bits 1..=6
-    //   nuh_layer_id(6)       = 0
-    //   nuh_temporal_id_plus1(3) = 1
-    // Byte 0: (19 << 1) & 0xFF = 0x26, Byte 1: 0x01
-    buf.push(0x26);
-    buf.push(0x01);
-    for i in 0u8..14 {
-        buf.push(0xB7 ^ i);
-    }
-    buf
 }

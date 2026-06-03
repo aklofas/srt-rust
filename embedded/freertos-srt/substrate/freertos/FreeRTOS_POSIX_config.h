@@ -1,4 +1,4 @@
-/* FreeRTOS+POSIX knob overrides for the S0 C++ exceptions gate.
+/* FreeRTOS+POSIX knob overrides for the exceptions C++ exceptions gate.
  *
  * The wrapper pulls all posixconfig* defaults from
  * FreeRTOS_POSIX_portable_default.h; the only port-specific deviations we need

@@ -1,8 +1,8 @@
-// S2 — boot smoke: cross-compiled libsrt initializes on the FreeRTOS+lwIP
+// libsrt-smoke — boot smoke: cross-compiled libsrt initializes on the FreeRTOS+lwIP
 // substrate. srt_startup spawns the SRT:GC garbage-collector thread as a
 // FreeRTOS-Plus-POSIX pthread; srt_create_socket allocates a CUDTSocket;
 // srt_cleanup joins the GC thread. No bind/connect — pure runtime init/teardown
-// (the data plane is S3). lwIP is linked so libsrt's socket-call symbols
+// (the data plane is loopback-arq). lwIP is linked so libsrt's socket-call symbols
 // resolve (the R4 deliverable), but no datagram flows.
 #include <cstdio>
 #include <cstdint>
@@ -43,7 +43,7 @@ static void boot_task(void*) {
 
 int main() {
     // Generous stack: srt_startup + the GC thread exercise the C++ unwinder
-    // (S0 finding: libsrt threads need >=4 KiB; the bootstrap task more).
+    // (exceptions finding: libsrt threads need >=4 KiB; the bootstrap task more).
     xTaskCreate(boot_task, "boot", 4096, nullptr, 2, nullptr);
     vTaskStartScheduler();
     for (;;) {}

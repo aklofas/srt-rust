@@ -1,18 +1,18 @@
-//! S4 host harness: a tst-srt SRT listener that receives the firmware caller's
-//! GOLDEN×N stream over SLIRP and verifies it byte-exact. The authoritative
-//! verdict for the S4 gate. `S4_PASSPHRASE` env (set by the gate in Phase B)
-//! enables AES-128.
+//! freertos-srt example host harness: a tst-srt SRT listener that receives the
+//! firmware caller's GOLDEN×N stream over SLIRP and verifies it byte-exact. The
+//! authoritative verdict for the example gate. `FREERTOS_SRT_PASSPHRASE` env
+//! (set by the gate in Phase B) enables AES-128.
 use std::io::Write;
 use std::process::exit;
 use tst_srt::{KeyLength, ListenerBuilder, Passphrase};
 
-include!(concat!(env!("OUT_DIR"), "/golden.rs")); // pub static GOLDEN: [u8;564]
+include!(concat!(env!("OUT_DIR"), "/golden.rs")); // pub static GOLDEN + GOLDEN_LEN
 
 const REPEAT: usize = 64;
-const STREAM_LEN: usize = 564 * REPEAT;
+const STREAM_LEN: usize = GOLDEN_LEN * REPEAT;
 
 fn main() {
-    let aes = std::env::var("S4_PASSPHRASE").ok();
+    let aes = std::env::var("FREERTOS_SRT_PASSPHRASE").ok();
     let tag = if aes.is_some() { "s4_host_aes" } else { "s4_host_plain" };
 
     let mut lb = ListenerBuilder::new();
@@ -55,7 +55,7 @@ fn main() {
     }
 
     let len_ok = got == STREAM_LEN;
-    let bytes_ok = len_ok && (0..REPEAT).all(|r| &buf[r * 564..(r + 1) * 564] == &GOLDEN[..]);
+    let bytes_ok = len_ok && (0..REPEAT).all(|r| buf[r * GOLDEN_LEN..(r + 1) * GOLDEN_LEN] == GOLDEN[..]);
     if bytes_ok {
         let enc = if aes.is_some() { " (AES-128)" } else { "" };
         println!("PASS: {tag} (received {got} bytes = GOLDEN x {REPEAT} byte-exact{enc})");

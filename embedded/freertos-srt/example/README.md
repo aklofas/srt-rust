@@ -22,10 +22,18 @@ arrive intact at an independent SRT receiver.
   applies `substrate/srt_opts.h`, and sends the golden ×64. It prints
   `s4_*_sent` after sending; it **cannot self-verify** (the bytes are gone), so
   the verdict is the host's.
-- `host/` — a small, workspace-detached Rust package (`s4-host`) that opens a
+- `host/` — a small, workspace-detached Rust package (`freertos-srt-host`) that opens a
   `tst-srt` listener, receives the stream, and prints `s4_host_plain` /
   `s4_host_aes` on a byte-exact match. It depends on `tst-srt` by relative path
   only, so it never shows up in the main workspace's metadata.
+
+## Production crypto warning
+
+> The AES-128 phase here is a **reference**, not a secure deployment. Its entropy
+> comes from a deterministic fixed-seed LCG in `substrate/syscalls_stub.c`
+> (`_getentropy` / `mbedtls_hardware_poll`) so the gate is reproducible in CI.
+> **Production encrypted firmware must replace those hooks with a real
+> hardware-RNG-backed entropy source** before trusting the encryption.
 
 ## Run it end-to-end
 

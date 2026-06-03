@@ -5,8 +5,8 @@
  * glibc-style byte-order macro set for little-endian ARM (Cortex-M is LE; GCC
  * confirms __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__). Guarded so a later
  * <machine/endian.h> can't double-define. */
-#ifndef S2_SHIM_ENDIAN_H
-#define S2_SHIM_ENDIAN_H
+#ifndef FREERTOS_SRT_SHIM_ENDIAN_H
+#define FREERTOS_SRT_SHIM_ENDIAN_H
 
 #include <stdint.h>
 

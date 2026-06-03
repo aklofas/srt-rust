@@ -1,4 +1,4 @@
-/* Port-specific FreeRTOS+POSIX configuration for the S0 C++ exceptions gate
+/* Port-specific FreeRTOS+POSIX configuration for the exceptions C++ exceptions gate
  * (arm-none-eabi-gcc / newlib, Cortex-M4F, QEMU mps2-an386).
  *
  * FreeRTOS_POSIX.h includes this header first. Its job is to suppress the
@@ -33,7 +33,7 @@
 #define posixconfigENABLE_SCHED_PARAM   0
 #include <sys/sched.h>
 
-/* S3: libsrt spawns its snd/rcv queue worker pthreads with the DEFAULT attr, so
+/* loopback-arq: libsrt spawns its snd/rcv queue worker pthreads with the DEFAULT attr, so
  * the default pthread stack (PTHREAD_STACK_MIN = configMINIMAL_STACK_SIZE*4 =
  * 1 KiB) applies — far too small for libsrt's select()+packet+congctl call
  * chains (FreeRTOS stack-overflow hook fired). Raise the floor. Defined here

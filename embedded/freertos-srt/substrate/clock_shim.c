@@ -1,4 +1,4 @@
-/* Hi-res clock_gettime(CLOCK_MONOTONIC) for the S1 harness (R3).
+/* Hi-res clock_gettime(CLOCK_MONOTONIC) for the lwip-loopback harness (R3).
  *
  * FreeRTOS-Plus-POSIX's FreeRTOS_POSIX_clock.c provides a tick-resolution
  * (~1 ms) clock_gettime AND several other TUs (pthread_cond/mutex, timer,
@@ -7,8 +7,8 @@
  * clock_nanosleep/clock_getres). Instead the link uses `-Wl,--wrap=clock_gettime`:
  * every reference to clock_gettime (ours + the POSIX TUs' + std::chrono later)
  * resolves to __wrap_clock_gettime below, while the wrapper's own def survives
- * only as the now-unreferenced __real_clock_gettime. This is the S1 analog of
- * S0's strong-symbol override for __cxa_get_globals — same goal (our hi-res def
+ * only as the now-unreferenced __real_clock_gettime. This is the lwip-loopback analog of
+ * the exceptions gate's strong-symbol override for __cxa_get_globals — same goal (our hi-res def
  * wins the link), cleaner mechanism for an inter-TU symbol.
  *
  * It subdivides each tick with the SysTick current-value register.

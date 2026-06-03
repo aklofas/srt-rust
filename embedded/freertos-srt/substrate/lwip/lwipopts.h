@@ -1,4 +1,4 @@
-/* lwIP config for the S2 harness: a single device, loopback netif only, UDP +
+/* lwIP config for the libsrt-smoke harness: a single device, loopback netif only, UDP +
  * BSD sockets + select(). No NIC, no ARP/ethernet, no TCP. IPv6 is ENABLED (see
  * LWIP_IPV6 below) so libsrt's sockaddr_in6/ip6_addr_t types resolve, but only
  * IPv4 loopback traffic actually flows. The minimum surface libsrt's
@@ -15,22 +15,22 @@
 
 /* Protocols: UDP over IPv4 only. */
 #define LWIP_IPV4                   1
-/* S2: libsrt references sockaddr_in6 / ip6_addr_t / IN6_IS_ADDR_* / IPV6_*
+/* libsrt-smoke: libsrt references sockaddr_in6 / ip6_addr_t / IN6_IS_ADDR_* / IPV6_*
  * unconditionally (it's IPv6-capable). lwIP only defines them under LWIP_IPV6.
  * Enable it so libsrt compiles against real lwIP IPv6 types (the boot smoke and
- * the S3 SRT loopback still run over IPv4 — no IPv6 traffic). Adds the
+ * the loopback-arq SRT loopback still run over IPv4 — no IPv6 traffic). Adds the
  * core/ipv6/*.c glob to build.sh. */
 #define LWIP_IPV6                   1
 #define LWIP_UDP                    1
 #define LWIP_TCP                    0
 #define LWIP_RAW                    0
 #define LWIP_DHCP                   0
-/* S2: libsrt's channel.cpp calls ::getaddrinfo(NULL,"0",...) to resolve the
+/* libsrt-smoke: libsrt's channel.cpp calls ::getaddrinfo(NULL,"0",...) to resolve the
  * wildcard bind address, and netinet_any.h needs `struct addrinfo`. lwIP only
  * exposes getaddrinfo + struct addrinfo (lwip/netdb.h) under LWIP_DNS. dns.c +
  * api/netdb.c are already in the source glob; no actual DNS runs in the smoke. */
 #define LWIP_DNS                    1
-/* S4: real lan9118 Ethernet (not the S3 loopback netif). The driver hands raw
+/* example: real lan9118 Ethernet (not the loopback-arq loopback netif). The driver hands raw
  * frames to lwIP's ethernet_input, so ARP (to resolve the SLIRP gateway
  * 10.0.2.2) and the ethernet layer must be on. */
 #define LWIP_ARP                    1
@@ -57,15 +57,15 @@
 #define LWIP_NETCONN                1
 #define LWIP_SOCKET                 1
 #define LWIP_SOCKET_SELECT          1
-/* S2: libsrt's channel.cpp/epoll.cpp call UNPREFIXED BSD names (socket/bind/
+/* libsrt-smoke: libsrt's channel.cpp/epoll.cpp call UNPREFIXED BSD names (socket/bind/
  * select/...) and the UDT namespace declares its OWN socket()/bind()/sendmsg()
  * API. Mode 2 exports the bare names as REAL functions (`#define lwip_bind bind`
  * + real `int bind(...)`), NOT function-like macros — so they satisfy libsrt's
  * ::socket()/::bind() calls at link time WITHOUT clobbering UDT::bind or
- * std::bind (mode 1's macros break both; S1 used lwip_* explicitly with =0). */
+ * std::bind (mode 1's macros break both; lwip-loopback used lwip_* explicitly with =0). */
 #define LWIP_COMPAT_SOCKETS         2
 #define LWIP_POSIX_SOCKETS_IO_NAMES 0
-/* S3: libsrt's CChannel::setUDPSockOpt sets SO_RCVTIMEO + SO_SNDTIMEO on the UDP
+/* loopback-arq: libsrt's CChannel::setUDPSockOpt sets SO_RCVTIMEO + SO_SNDTIMEO on the UDP
  * socket (its non-blocking-via-short-timeout path on non-UNIX/_WIN32 systems)
  * and throws MJ_SETUP if either setsockopt returns -1. Enable both so lwIP
  * accepts them. (SO_RCVBUF/SO_SNDBUF are handled by the net_shim.c link-wrap.) */

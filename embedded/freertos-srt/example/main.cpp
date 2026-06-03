@@ -1,9 +1,9 @@
-// S4 — SRT caller (LIVE mode) on bare metal streaming the 564-byte golden out a
+// example — SRT caller (LIVE mode) on bare metal streaming the 564-byte golden out a
 // real lan9118 NIC over QEMU SLIRP user-net to a host tst-srt listener. LIVE
 // (not FILE) so it interoperates with the host tst-srt LIVE-streaming listener;
 // see srt_opts.h. Over lossless SLIRP the golden still arrives byte-exact. The
 // firmware only proves it SENT; the host is the authoritative byte-exact
-// verifier (the bytes leave the chip). Two phases: plain + AES-128 (S4_PASSPHRASE).
+// verifier (the bytes leave the chip). Two phases: plain + AES-128 (FREERTOS_SRT_PASSPHRASE).
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -25,11 +25,11 @@ extern "C" {
 static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
 #ifdef SRT_PASSPHRASE
-#define S4_TAG "s4_aes"
-#define S4_ENC " (AES-128)"
+#define PASS_TAG "s4_aes"
+#define ENC_SUFFIX " (AES-128)"
 #else
-#define S4_TAG "s4_plain"
-#define S4_ENC ""
+#define PASS_TAG "s4_plain"
+#define ENC_SUFFIX ""
 #endif
 
 static volatile int g_up = 0;
@@ -84,7 +84,10 @@ static void run_task(void*) {
     // promptly, above run_task (2). NOTE configMAX_PRIORITIES=5 -> max prio is 4.
     xTaskCreate(rx_poll_task, "rx", 1024, nullptr, 3, nullptr);
 
-    if (srt_startup() < 0) fail("startup");
+    // srt_startup failure is terminal: every later SRT call would run in an
+    // invalid init state. Fail fast before the caller thread exists rather than
+    // letting it report a misleading where=call_opts.
+    if (srt_startup() < 0) { printf("FAIL[" PASS_TAG "]: where=startup\n"); fflush(stdout); _exit(1); }
 
     pthread_t ct;
     pthread_attr_t attr; pthread_attr_init(&attr);
@@ -95,8 +98,8 @@ static void run_task(void*) {
     // The firmware cannot verify bytes (they left the chip); it only reports the
     // send completed. The HOST tst-srt listener is the authoritative verifier.
     int ok = !g_fail;
-    if (ok) printf("PASS: " S4_TAG "_sent (GOLDEN x %d streamed%s)\n", REPEAT, S4_ENC);
-    else    printf("FAIL[" S4_TAG "]: where=%s\n", g_where);
+    if (ok) printf("PASS: " PASS_TAG "_sent (GOLDEN x %d streamed%s)\n", REPEAT, ENC_SUFFIX);
+    else    printf("FAIL[" PASS_TAG "]: where=%s\n", g_where);
     fflush(stdout);
     srt_cleanup();
     _exit(ok ? 0 : 1);

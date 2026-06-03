@@ -1,6 +1,6 @@
 # Minimal bare-metal arm-none-eabi toolchain for cross-building vendored mbedTLS
 # (Phase B). mbedTLS is plain C and, unlike arm-none-eabi.cmake, needs NONE of
-# the libsrt/lwIP/FreeRTOS includes or the s2_prefix force-include (those
+# the libsrt/lwIP/FreeRTOS includes or the shim_prefix force-include (those
 # suppress newlib typedefs for the libsrt-vs-FreeRTOS-POSIX collision and would
 # only get in mbedTLS's way) — only the Cortex-M4F arch flags. The bare-metal
 # config deltas (no NET/FS/TIMING; hardware-entropy alt) are passed via

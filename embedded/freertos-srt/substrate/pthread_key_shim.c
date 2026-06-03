@@ -1,4 +1,4 @@
-/* Minimal pthread thread-specific-data (TSD) for the S2 libsrt port.
+/* Minimal pthread thread-specific-data (TSD) for the libsrt-smoke libsrt port.
  *
  * FreeRTOS-Plus-POSIX ships no pthread_key_* API, but libsrt's sync_posix.cpp
  * needs exactly ONE key (CThreadError's per-thread last-error). We back that key
@@ -23,7 +23,7 @@
 #include <errno.h>
 #include <pthread.h>   /* our shim: pthread_key_t + the prototypes we define here */
 
-#define S2_TLS_SLOT 0
+#define FREERTOS_SRT_TLS_SLOT 0
 
 static int   s_key_in_use = 0;
 static void* s_bootstrap_tls = NULL; /* TLS for the pre-scheduler bootstrap ctx */
@@ -41,7 +41,7 @@ int pthread_key_create(pthread_key_t* key, void (*destructor)(void*))
     if (s_key_in_use)
         return EAGAIN; /* only one TLS slot available */
     s_key_in_use = 1;
-    *key = S2_TLS_SLOT;
+    *key = FREERTOS_SRT_TLS_SLOT;
     return 0;
 }
 
@@ -56,7 +56,7 @@ int pthread_setspecific(pthread_key_t key, const void* value)
 {
     (void)key;
     if (scheduler_running())
-        vTaskSetThreadLocalStoragePointer(NULL, S2_TLS_SLOT, (void*)value);
+        vTaskSetThreadLocalStoragePointer(NULL, FREERTOS_SRT_TLS_SLOT, (void*)value);
     else
         s_bootstrap_tls = (void*)value;
     return 0;
@@ -66,6 +66,6 @@ void* pthread_getspecific(pthread_key_t key)
 {
     (void)key;
     if (scheduler_running())
-        return pvTaskGetThreadLocalStoragePointer(NULL, S2_TLS_SLOT);
+        return pvTaskGetThreadLocalStoragePointer(NULL, FREERTOS_SRT_TLS_SLOT);
     return s_bootstrap_tls;
 }

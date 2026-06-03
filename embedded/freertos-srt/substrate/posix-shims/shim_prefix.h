@@ -6,8 +6,8 @@
  * FreeRTOS-Plus-POSIX the sole definer (it's the threading layer libsrt binds
  * to). The pthread-type and sigval/sigevent collisions are handled by the
  * posix-shims/sys/_pthreadtypes.h and posix-shims/sys/signal.h shims. */
-#ifndef S2_PREFIX_H
-#define S2_PREFIX_H
+#ifndef FREERTOS_SRT_SHIM_PREFIX_H
+#define FREERTOS_SRT_SHIM_PREFIX_H
 #define __timer_t_defined 1
 #define _TIMER_T_DECLARED
 #endif

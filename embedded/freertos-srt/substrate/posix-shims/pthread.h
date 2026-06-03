@@ -1,7 +1,7 @@
 /* Route libsrt's <pthread.h> to FreeRTOS-Plus-POSIX (newlib's is a non-impl
  * stub with a different pthread_t). */
-#ifndef S2_SHIM_PTHREAD_H
-#define S2_SHIM_PTHREAD_H
+#ifndef FREERTOS_SRT_SHIM_PTHREAD_H
+#define FREERTOS_SRT_SHIM_PTHREAD_H
 #include <FreeRTOS_POSIX.h>
 #include <FreeRTOS_POSIX/pthread.h>
 
@@ -10,8 +10,8 @@
  * Declare the API here; pthread_key_shim.c implements it over FreeRTOS's single
  * thread-local-storage slot (configNUM_THREAD_LOCAL_STORAGE_POINTERS=1). The
  * definitions link into the firmware, not libsrt.a. */
-#ifndef S2_PTHREAD_KEY_DECLARED
-#define S2_PTHREAD_KEY_DECLARED
+#ifndef FREERTOS_SRT_PTHREAD_KEY_DECLARED
+#define FREERTOS_SRT_PTHREAD_KEY_DECLARED
 typedef int pthread_key_t;
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +23,6 @@ void* pthread_getspecific(pthread_key_t key);
 #ifdef __cplusplus
 }
 #endif
-#endif /* S2_PTHREAD_KEY_DECLARED */
+#endif /* FREERTOS_SRT_PTHREAD_KEY_DECLARED */
 
 #endif

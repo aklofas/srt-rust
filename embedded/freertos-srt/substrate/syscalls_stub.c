@@ -3,7 +3,7 @@
  * _getentropy: libsrt seeds initial sequence numbers / socket IDs via
  * std::random_device, which on newlib funnels through getentropy() -> the
  * _getentropy syscall. Bare metal has no entropy backend, so it is unresolved.
- * S2 builds with encryption OFF and never needs cryptographic randomness, so a
+ * libsrt-smoke builds with encryption OFF and never needs cryptographic randomness, so a
  * deterministic LCG is enough to link and boot. This is NOT suitable for real
  * crypto — a production embedded build must wire a hardware RNG here. */
 #include <stddef.h>

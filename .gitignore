@@ -7,16 +7,9 @@ crates/baremetal-qemu-c/firmware/*.elf
 crates/baremetal-qemu-c/firmware/firmware.elf
 crates/baremetal-qemu-c/firmware/golden.h
 
-# Embedded freertos-srt reference product build artifacts
-embedded/freertos-srt/firmware.elf
-embedded/freertos-srt/*.elf
-embedded/freertos-srt/*.o
-embedded/freertos-srt/srt-build*/
-embedded/freertos-srt/srt-install*/
-embedded/freertos-srt/mbedtls-build/
-embedded/freertos-srt/mbedtls-install/
+# Embedded freertos-srt reference product build artifacts (all under build/)
+embedded/freertos-srt/build/
 embedded/freertos-srt/example/host/target/
-embedded/freertos-srt/substrate/golden.h
 
 # Rust analyzer
 .rust-analyzer/

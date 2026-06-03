@@ -35,6 +35,7 @@ freertos-srt/
     lwip-loopback/     564B golden through a lwIP UDP loopback socket
     libsrt-smoke/      srt_startup + create_socket + close + cleanup
     loopback-arq/      SRT byte-exact recovery under ~20% loss (plain + AES)
+  build/               all generated output (gitignored; ./build.sh clean wipes it)
 ```
 
 The `substrate/` is built once and shared. Each target flips a few knobs
@@ -51,17 +52,28 @@ path, with `#ifndef`-guarded toggles overridden per target via `-D`.
 ENCRYPT=1 ./build.sh loopback-arq
 ```
 
-`build.sh` emits `firmware.elf` here. Run it under QEMU, e.g.:
+`build.sh` emits `build/firmware.elf` (all generated output lives under `build/`;
+`./build.sh clean` removes it). Run it under QEMU, e.g.:
 
 ```bash
 qemu-system-arm -machine mps2-an386 -nographic \
-  -semihosting-config enable=on,target=native -kernel firmware.elf
+  -semihosting-config enable=on,target=native -kernel build/firmware.elf
 ```
 
 The first `libsrt`/`example`/`loopback-arq` build cross-compiles the vendored
 libsrt (and, with `ENCRYPT=1`, mbedTLS) for the target — a few minutes; warm
 builds are seconds. Prerequisites: `arm-none-eabi-gcc`/`g++`, `qemu-system-arm`,
 `cmake`, and (for the example host) `cargo`.
+
+## Production crypto warning
+
+> **The AES-128 path in this reference uses _deterministic_ entropy.** The
+> `ENCRYPT=1` builds wire mbedTLS, but the entropy hooks in
+> `substrate/syscalls_stub.c` (`_getentropy` and `mbedtls_hardware_poll`) are a
+> fixed-seed LCG, chosen so the QEMU/CI gate reproduces bit-for-bit. **This is
+> not cryptographically secure.** Before enabling SRT encryption in production
+> firmware, replace both hooks with a hardware RNG or your board's approved
+> entropy source — otherwise the key material is predictable.
 
 ## The gate
 

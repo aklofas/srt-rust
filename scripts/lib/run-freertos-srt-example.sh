@@ -3,15 +3,15 @@
 # streams the 564-byte golden x N out a lan9118 NIC over QEMU SLIRP user-net to a
 # host tst-srt listener that verifies byte-exact. Two phases: plain + mbedTLS-
 # AES-128. The HOST process exit code + PASS token is the verdict (the firmware
-# can't self-verify off-device egress; it only prints s4_*_sent). Lifted from the
-# former S4 gate script; invoked by check-freertos-srt.sh example.
+# can't self-verify off-device egress; it only prints s4_*_sent). Invoked by
+# check-freertos-srt.sh example.
 # Caller (check-freertos-srt.sh) has already verified arm-none-eabi-g++, qemu,
 # cmake, and cargo are present.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 HOST_DIR=embedded/freertos-srt/example/host
-HOST_BIN="$HOST_DIR/target/release/s4-host"
+HOST_BIN="$HOST_DIR/target/release/freertos-srt-host"
 # Must match build-common.sh's -DSRT_PASSPHRASE for the encrypted firmware.
 PASSPHRASE="freertos-srt-secret-1"
 
@@ -24,7 +24,7 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=ENCRYPT  $4=passphrase-or-empt
 
   echo "==> starting host listener ($label)"
   local hostout; hostout=$(mktemp)
-  if [ -n "$pass" ]; then S4_PASSPHRASE="$pass" "$HOST_BIN" >"$hostout" 2>&1 &
+  if [ -n "$pass" ]; then FREERTOS_SRT_PASSPHRASE="$pass" "$HOST_BIN" >"$hostout" 2>&1 &
   else                    "$HOST_BIN" >"$hostout" 2>&1 & fi
   local host_pid=$!
 
@@ -47,7 +47,7 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=ENCRYPT  $4=passphrase-or-empt
   local qout
   qout=$(timeout 120 qemu-system-arm -machine mps2-an386 -nographic \
     -semihosting-config enable=on,target=native \
-    -kernel embedded/freertos-srt/firmware.elf \
+    -kernel embedded/freertos-srt/build/firmware.elf \
     -nic user,model=lan9118 || true)
   echo "$qout"
 

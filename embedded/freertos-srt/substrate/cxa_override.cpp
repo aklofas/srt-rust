@@ -7,12 +7,12 @@
 // never pulled in. BOTH must be overridden together (else eh_globals.o is
 // pulled for the other -> duplicate definition of ours).
 //
-// First needed in S3: libsrt's data-plane API (e.g. srt_setsockflag) throws
-// CUDTException from WITHIN our caller/listener pthreads. S2's boot smoke never
-// threw at runtime, so it shipped without this override; S3 must port it.
+// First needed in loopback-arq: libsrt's data-plane API (e.g. srt_setsockflag) throws
+// CUDTException from WITHIN our caller/listener pthreads. libsrt-smoke's boot smoke never
+// threw at runtime, so it shipped without this override; loopback-arq must port it.
 //
 // SLOT 1 (not 0): slot 0 is claimed by pthread_key_shim.c for libsrt's
-// per-thread last-error TSD, and S3 exercises both at once. They must not share
+// per-thread last-error TSD, and loopback-arq exercises both at once. They must not share
 // a slot. (configNUM_THREAD_LOCAL_STORAGE_POINTERS bumped to 2 in
 // FreeRTOSConfig.h.)
 //

@@ -1,5 +1,5 @@
 [package]
-name = "s4-host"
+name = "freertos-srt-host"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -13,5 +13,5 @@ publish = false
 tst-srt = { path = "../../../../crates/tst-srt" }
 
 [[bin]]
-name = "s4-host"
+name = "freertos-srt-host"
 path = "src/main.rs"

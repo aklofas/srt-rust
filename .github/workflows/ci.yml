@@ -640,24 +640,31 @@ jobs:
 
       # exceptions (was S0): concurrent per-task C++ throw/catch with exception
       # isolation on FreeRTOS + FreeRTOS-Plus-POSIX (pthread backend). Hard-gate.
+      # FREERTOS_SRT_REQUIRE_TOOLS=1 makes a missing prerequisite (the apt step
+      # above installs them all) fail closed instead of skipping to a no-op pass,
+      # so a runner-image regression can't silently drop coverage while green.
       - name: QEMU runtime gate (freertos-srt exceptions)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash scripts/check-freertos-srt.sh exceptions
 
       # lwip-loopback (was S1): the 564-byte golden round-trips through a lwIP UDP
       # loopback socket (BSD sockets + select(), hi-res clock_gettime). Hard-gate.
       - name: QEMU runtime gate (freertos-srt lwip-loopback)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash scripts/check-freertos-srt.sh lwip-loopback
 
       # libsrt-smoke (was S2): cross-compiled libsrt (Generic -> ::select path,
       # pthread backend, logging+encryption OFF) boots srt_startup + create_socket
       # + close + cleanup against the FreeRTOS+lwIP substrate. Hard-gate.
       - name: QEMU runtime gate (freertos-srt libsrt-smoke)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash scripts/check-freertos-srt.sh libsrt-smoke
 
       # loopback-arq (was S3): SRT caller+listener data-plane proof -- streams the
       # golden x N over a lossy loopback netif (~20% deterministic loss) and
       # recovers it byte-exact, plain and mbedTLS-AES-128. Hard-gate.
       - name: QEMU runtime gate (freertos-srt loopback-arq ARQ + encryption)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash scripts/check-freertos-srt.sh loopback-arq
 
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the

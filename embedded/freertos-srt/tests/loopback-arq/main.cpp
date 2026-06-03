@@ -1,4 +1,4 @@
-// S3 — Phase A: SRT caller + listener (FILE mode) on one device over the lossy
+// loopback-arq — Phase A: SRT caller + listener (FILE mode) on one device over the lossy
 // loopback netif. The 564-byte golden is streamed REPEAT times and the listener
 // reconstructs it byte-exact. This step runs with the drop filter DISABLED to
 // prove the SRT data-plane wiring before adding loss (Task 3 enables it).
@@ -24,11 +24,11 @@ static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
 // Distinct gate token + label per phase (Phase B sets SRT_PASSPHRASE).
 #ifdef SRT_PASSPHRASE
-#define S3_TAG "s3_srt_aes"
-#define S3_ENC " (AES-128 encrypted)"
+#define PASS_TAG "s3_srt_aes"
+#define ENC_SUFFIX " (AES-128 encrypted)"
 #else
-#define S3_TAG "s3_srt_plain"
-#define S3_ENC ""
+#define PASS_TAG "s3_srt_plain"
+#define ENC_SUFFIX ""
 #endif
 
 static volatile int g_up = 0;
@@ -49,9 +49,14 @@ static void* listener_thread(void*) {
     sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000001);   /* 10.0.0.1 (our lossy netif) */
     SRTSOCKET ls = srt_create_socket();
-    if (ls == SRT_INVALID_SOCK || srt_apply_opts(ls) != 0) { fail("listen_opts"); return nullptr; }
-    if (srt_bind(ls, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("bind"); return nullptr; }
-    if (srt_listen(ls, 1) == SRT_ERROR) { fail("listen"); return nullptr; }
+    if (ls == SRT_INVALID_SOCK) { fail("listen_create"); return nullptr; }
+    // On every pre-accept failure close the partially-created listen socket and
+    // set g_fail BEFORE returning. The caller's wait loop watches g_fail, so a
+    // setup failure here surfaces as FAIL[...] instead of leaving the caller
+    // spinning on g_listen_ready (which it never sets) -> QEMU timeout.
+    if (srt_apply_opts(ls) != 0)                              { fail("listen_opts"); srt_close(ls); return nullptr; }
+    if (srt_bind(ls, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("bind");        srt_close(ls); return nullptr; }
+    if (srt_listen(ls, 1) == SRT_ERROR)                       { fail("listen");      srt_close(ls); return nullptr; }
     g_listen_ready = 1;
     SRTSOCKET cs = srt_accept(ls, nullptr, nullptr);
     if (cs == SRT_INVALID_SOCK) { fail("accept"); return nullptr; }
@@ -75,15 +80,24 @@ static void* listener_thread(void*) {
 
 // Caller: connect, then srt_send the golden REPEAT times.
 static void* caller_thread(void*) {
-    while (!g_listen_ready) vTaskDelay(pdMS_TO_TICKS(1));
+    // Wait for the listener to reach srt_listen. Abort if it failed during setup
+    // (g_fail) — otherwise a pre-accept listener failure would never set
+    // g_listen_ready and this loop would spin forever, degrading a real failure
+    // into a QEMU timeout. The 10s bound is a backstop for any unforeseen stall.
+    for (int i = 0; !g_listen_ready; i++) {
+        if (g_fail) return nullptr;
+        if (i >= 10000) { fail("listen_ready_timeout"); return nullptr; }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
     struct sockaddr_in sa; memset(&sa, 0, sizeof sa);
     sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000001);   /* 10.0.0.1 (our lossy netif) */
     SRTSOCKET cs = srt_create_socket();
-    if (cs == SRT_INVALID_SOCK || srt_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
-    if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); return nullptr; }
+    if (cs == SRT_INVALID_SOCK) { fail("call_create"); return nullptr; }
+    if (srt_apply_opts(cs) != 0) { fail("call_opts"); srt_close(cs); return nullptr; }
+    if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); srt_close(cs); return nullptr; }
     // Handshake (+ KM in Phase B) is complete now; loss may be enabled.
-    lossy_set_enabled(S3_LOSS_ENABLED);
+    lossy_set_enabled(FREERTOS_SRT_LOSS_ENABLED);
     for (int r = 0; r < REPEAT && !g_fail; r++) {
         int off = 0;
         while (off < (int)GOLDEN_LEN) {
@@ -102,7 +116,10 @@ static void run_task(void*) {
     lossy_netif_up();
     lossy_set_enabled(0);              // off until the caller connects
 
-    if (srt_startup() < 0) { fail("startup"); }
+    // srt_startup failure is terminal: every later SRT call would run in an
+    // invalid init state, turning a clean startup failure into secondary hangs
+    // or misleading where= labels. Fail fast before any worker thread exists.
+    if (srt_startup() < 0) { printf("FAIL[" PASS_TAG "]: where=startup\n"); fflush(stdout); _exit(1); }
 
     pthread_t lt, ct;
     pthread_attr_t attr; pthread_attr_init(&attr);
@@ -126,11 +143,11 @@ static void run_task(void*) {
     unsigned dropped = lossy_dropped_count();
     int rcvloss = g_rx_stats.pktRcvLossTotal;
 
-#if S3_LOSS_ENABLED
+#if FREERTOS_SRT_LOSS_ENABLED
     int ok = !g_fail && bytes_ok && dropped > 0;     // injected loss recovered byte-exact
-    if (ok) printf("PASS: " S3_TAG " (GOLDEN x %d recovered byte-exact under ~20%% loss%s, dropped=%u, rcv_loss=%d)\n",
-                   REPEAT, S3_ENC, dropped, rcvloss);
-    else    printf("FAIL[" S3_TAG "]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
+    if (ok) printf("PASS: " PASS_TAG " (GOLDEN x %d recovered byte-exact under ~20%% loss%s, dropped=%u, rcv_loss=%d)\n",
+                   REPEAT, ENC_SUFFIX, dropped, rcvloss);
+    else    printf("FAIL[" PASS_TAG "]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
                    g_where, g_rxlen, STREAM_LEN, bytes_ok, dropped, rcvloss);
 #else
     int ok = !g_fail && bytes_ok;                    // clean delivery (no loss yet)

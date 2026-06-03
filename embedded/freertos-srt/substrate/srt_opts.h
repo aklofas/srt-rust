@@ -1,4 +1,4 @@
-// Shared SRT socket configuration for the S4 caller. LIVE transmission mode
+// Shared SRT socket configuration for the example caller. LIVE transmission mode
 // (the libsrt default) so it interoperates with the host tst-srt listener,
 // which is a LIVE-streaming library (TSBPD + message API on; no FILE-mode
 // listener knob). Over the lossless SLIRP path LIVE delivers the golden

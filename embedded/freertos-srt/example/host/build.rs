@@ -15,6 +15,11 @@ fn main() {
     assert_eq!(bytes.len(), 564, "GOLDEN must be 564 bytes, got {}", bytes.len());
 
     let out = Path::new(&env::var("OUT_DIR").unwrap()).join("golden.rs");
+    let len = bytes.len();
     let listed = bytes.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ");
-    fs::write(&out, format!("pub static GOLDEN: [u8; 564] = [{listed}];\n")).unwrap();
+    fs::write(
+        &out,
+        format!("pub static GOLDEN: [u8; {len}] = [{listed}];\npub const GOLDEN_LEN: usize = {len};\n"),
+    )
+    .unwrap();
 }

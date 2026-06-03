@@ -1,7 +1,7 @@
 /* lwIP defines sockaddr_in/in_addr/IPPROTO_* in lwip/sockets.h, pulled via the
  * compat <sys/socket.h>; lwIP ships no <netinet/in.h>, so forward to it. */
-#ifndef S2_SHIM_NETINET_IN_H
-#define S2_SHIM_NETINET_IN_H
+#ifndef FREERTOS_SRT_SHIM_NETINET_IN_H
+#define FREERTOS_SRT_SHIM_NETINET_IN_H
 #include <sys/socket.h>
 
 /* libsrt's netinet_any.h / channel.cpp / api.cpp reference sockaddr_in6 +
@@ -32,7 +32,7 @@ struct sockaddr_in6 {
  * (IPPROTO_IPV6, IPV6_V6ONLY) under LWIP_IPV6 but NOT IPV6_UNICAST_HOPS, and
  * none with IPv6 off. Fill the gaps with the standard Linux values (#ifndef so
  * lwIP's own defs win where present). Cosmetic here — no AF_INET6 socket is
- * created at runtime in the IPv4-only boot smoke / S3 loopback. */
+ * created at runtime in the IPv4-only boot smoke / loopback-arq loopback. */
 #ifndef IPPROTO_IPV6
 #define IPPROTO_IPV6      41
 #endif

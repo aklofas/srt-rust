@@ -2,8 +2,8 @@
  * addrinfo (in lwip/netdb.h, under LWIP_DNS — which we enable in lwipopts), but
  * NO getnameinfo and none of the NI_* flags. Forward to lwIP's netdb and supply
  * the missing pieces. */
-#ifndef S2_SHIM_NETDB_H
-#define S2_SHIM_NETDB_H
+#ifndef FREERTOS_SRT_SHIM_NETDB_H
+#define FREERTOS_SRT_SHIM_NETDB_H
 
 #include <sys/socket.h>
 #include <lwip/netdb.h>
@@ -20,7 +20,7 @@
 #define NI_DGRAM       0x10
 #endif
 
-/* lwIP has no getnameinfo. S2 does no reverse-name resolution (the SRT data
+/* lwIP has no getnameinfo. libsrt-smoke does no reverse-name resolution (the SRT data
  * plane uses numeric addresses), so a stub that fails is sufficient: libsrt's
  * sockaddr_any::str() treats a nonzero return as "no host" and falls back to
  * ":<port>". Real impl deferred — not needed until/unless a binding wants it. */

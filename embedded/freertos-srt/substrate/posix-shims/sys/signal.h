@@ -7,8 +7,8 @@
  * across the real header, leaving FreeRTOS's as the single definition. The basic
  * signal API (SIG*, signal(), raise(), sig_atomic_t) sits below the 199309 gate
  * and is unaffected. */
-#ifndef S2_SHIM_SYS_SIGNAL_H
-#define S2_SHIM_SYS_SIGNAL_H
+#ifndef FREERTOS_SRT_SHIM_SYS_SIGNAL_H
+#define FREERTOS_SRT_SHIM_SYS_SIGNAL_H
 #include <sys/features.h>   /* pin __POSIX_VISIBLE before we override it */
 #pragma push_macro("__POSIX_VISIBLE")
 #undef __POSIX_VISIBLE

@@ -69,3 +69,21 @@ golden = "audio-video-mp/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "dvb-subtitle-mp"
+kind = "demux"
+input = "dvb-subtitle-mp/input.ts"
+golden = "dvb-subtitle-mp/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "webvtt-in-ts"
+kind = "demux"
+input = "webvtt-in-ts/input.ts"
+golden = "webvtt-in-ts/golden.json"
+features = []
+tier = "A"
+schema_version = 0

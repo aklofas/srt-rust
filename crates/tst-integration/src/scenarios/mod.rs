@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
 
 use golden::{CoreEvent, Golden};
@@ -46,6 +46,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(H265KlvMp),
         Box::new(H264SyncKlvAuCell),
         Box::new(Av1RegistrationDesc),
+        Box::new(AacAudioOnly),
     ]
 }
 
@@ -750,6 +751,90 @@ impl Scenario for Av1RegistrationDesc {
         };
         (artifact_rel, golden)
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 7 — aac-audio-only (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: a program with a single AAC ADTS audio stream and no
+/// video, exercising the audio-only program path.
+///
+/// Note: `MuxerConfig::validate` forbids subtitle-only programs but permits
+/// audio-only programs — the PCR fallback chain includes audio.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct AacAudioOnly;
+
+impl Scenario for AacAudioOnly {
+    fn id(&self) -> &'static str {
+        "aac-audio-only"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_audio(0x1021, AudioCodec::Aac);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        mux.push_audio(&synthetic_adts_frame(), pts)
+            .expect("push_audio");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Minimal ADTS frame (7-byte header + 8 payload bytes = 15 bytes total).
+///
+/// Fixed parameters: MPEG-2 ID, no CRC, AAC-LC profile, sample_rate_index=4
+/// (44100 Hz), channel_config=2 (stereo).  The muxer treats audio bytes
+/// opaquely; the 7-byte ADTS sync header makes the frame parsable by the
+/// codec stats counter.
+fn synthetic_adts_frame() -> Vec<u8> {
+    let total_len: u32 = 15; // 7-byte header + 8 payload bytes
+    let sample_rate_index: u8 = 4; // 44100 Hz
+    let channel_config: u8 = 2; // stereo
+    let mut h = vec![0u8; 7];
+    h[0] = 0xFF;
+    // ID=MPEG-2(1), layer=0b00, protection_absent=1 → 0b1111_0001
+    h[1] = 0b1111_0001;
+    // profile_objecttype(2)=1(AAC-LC), sampling_freq_index(4), private=0,
+    // channel_config upper bit
+    h[2] = (1 << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_config >> 2) & 1);
+    h[3] = ((channel_config & 0b11) << 6) | (((total_len >> 11) & 0b11) as u8);
+    h[4] = ((total_len >> 3) & 0xFF) as u8;
+    h[5] = (((total_len & 0b111) as u8) << 5) | 0b1_1111;
+    h[6] = 0b11_1111 << 2;
+    let mut out = h;
+    // 8 deterministic payload bytes
+    out.extend_from_slice(&[0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7]);
+    out
 }
 
 /// Minimal AV1 access unit: Temporal Delimiter + Sequence Header + Frame

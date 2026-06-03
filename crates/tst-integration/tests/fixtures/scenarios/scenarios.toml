@@ -51,3 +51,12 @@ golden = "av1-registration-desc/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "aac-audio-only"
+kind = "demux"
+input = "aac-audio-only/input.ts"
+golden = "aac-audio-only/golden.json"
+features = []
+tier = "A"
+schema_version = 0

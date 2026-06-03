@@ -43,6 +43,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(H264St0601Mp),
         Box::new(VideoRoundtrip),
         Box::new(StrictRejection),
+        Box::new(H265KlvMp),
     ]
 }
 
@@ -558,4 +559,85 @@ pub fn demux_error_code_pub(e: &tst_core::error::DemuxError) -> String {
 // TODO: distinct public codes when non-strict binding_contract scenarios land.
 fn demux_error_code(_e: &tst_core::error::DemuxError) -> String {
     "STRICT_REJECTION".into()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 4 — h265-klv-mp (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: H.265 video + asynchronous (PrivateData) KLV.
+///
+/// KLV stream is `PrivateData` (PMT stream_type 0x06, async) — the same
+/// carriage as `h264-st0601-mp` but with an H.265 video codec.  This
+/// exercises the H.265 `VideoCodec` path (PMT stream_type 0x24) end-to-end.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct H265KlvMp;
+
+impl Scenario for H265KlvMp {
+    fn id(&self) -> &'static str {
+        "h265-klv-mp"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H265);
+            prog.add_klv(0x1031, KlvStreamType::PrivateData, /*carries_pts=*/ false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+        mux.push_video(&synthetic_h265_idr(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+        mux.push_klv(&minimal_st0601_ls(), pts, /*metadata_service_id=*/ 0x00)
+            .expect("push_klv");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Minimal valid H.265 IDR access unit in Annex-B framing.
+///
+/// 4-byte start code + 2-byte NAL header (IDR_W_RADL nal_unit_type=19,
+/// nuh_layer_id=0, nuh_temporal_id_plus1=1) + 14 deterministic filler bytes.
+fn synthetic_h265_idr() -> Vec<u8> {
+    let mut buf = Vec::with_capacity(20);
+    buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Annex-B start code
+    // H.265 NAL header (2 bytes):
+    //   forbidden_zero_bit(1) = 0
+    //   nal_unit_type(6)      = 19 (IDR_W_RADL) → bits 1..=6
+    //   nuh_layer_id(6)       = 0
+    //   nuh_temporal_id_plus1(3) = 1
+    // Byte 0: (19 << 1) & 0xFF = 0x26, Byte 1: 0x01
+    buf.push(0x26);
+    buf.push(0x01);
+    for i in 0u8..14 {
+        buf.push(0xB7 ^ i);
+    }
+    buf
 }

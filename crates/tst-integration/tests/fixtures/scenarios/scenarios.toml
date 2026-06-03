@@ -24,3 +24,12 @@ golden = "strict-rejection/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "h265-klv-mp"
+kind = "demux"
+input = "h265-klv-mp/input.ts"
+golden = "h265-klv-mp/golden.json"
+features = []
+tier = "A"
+schema_version = 0

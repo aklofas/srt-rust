@@ -1,0 +1,23 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "klv",
+      "program": 1,
+      "pid": 4145,
+      "stream_type": "0x06",
+      "set": "st0601"
+    },
+    {
+      "event": "video",
+      "program": 1,
+      "pid": 4113,
+      "stream_type": "0x24",
+      "pts": 90000,
+      "key": true,
+      "payload_sha256": "5451a2da376cff78275373b503ea64956510725762903836d7b8a5691451fba3"
+    }
+  ],
+  "extensions": null
+}

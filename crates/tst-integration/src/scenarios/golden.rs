@@ -38,8 +38,8 @@ pub struct Golden {
 ///
 /// `#[serde(tag = "event", rename_all = "snake_case")]` gives each variant a
 /// stable JSON tag string (`"video"`, `"audio"`, `"klv"`, `"unknown"`,
-/// `"error"`).  The tag values are the public stability surface; do NOT rename
-/// variants here without a schema_version bump.
+/// `"subtitle"`, `"error"`).  The tag values are the public stability surface;
+/// do NOT rename variants here without a schema_version bump.
 ///
 /// There is deliberately no `#[serde(other)]` and no `non_exhaustive` attribute
 /// here: an unrecognised `event` tag causes a deserialisation error so that an
@@ -73,9 +73,40 @@ pub enum CoreEvent {
     Unknown {
         pid: u16,
     },
+    Subtitle {
+        program: u16,
+        pid: u16,
+        stream_type: String,
+        /// Subtitle codec tag: "dvb_subtitle" | "dvb_teletext" | "webvtt".
+        codec: String,
+    },
     Error {
         /// Stable public code, never Rust-internal kind or free text.
         /// Examples: "STRICT_REJECTION", "SYNC_BUF_EXHAUSTED".
         code: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subtitle_variant_roundtrips_through_json() {
+        let g = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![CoreEvent::Subtitle {
+                program: 1,
+                pid: 0x1100,
+                stream_type: "0x06".into(),
+                codec: "dvb_subtitle".into(),
+            }],
+            extensions: serde_json::Value::Null,
+        };
+        let json = serde_json::to_string(&g).unwrap();
+        assert!(json.contains("\"event\":\"subtitle\""));
+        let back: Golden = serde_json::from_str(&json).unwrap();
+        assert_eq!(g, back);
+    }
 }

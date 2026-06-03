@@ -29,6 +29,13 @@ fn build_mbedtls() -> PathBuf {
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
         // Hide mbedTLS from -Wall sweeps; we don't author this code.
         .define("CMAKE_C_FLAGS", "-w")
+        // Build the static mbedTLS objects position-independent so they can be
+        // linked into the downstream cdylib (the tst-py wheel / libtstrans.so).
+        // Debian/Ubuntu gcc defaults to PIE so this was implicit there, but the
+        // RHEL/AlmaLinux gcc-toolset (manylinux wheel builds) does not — without
+        // this the wheel link fails: "relocation R_X86_64_32S ... can not be
+        // used when making a shared object; recompile with -fPIC". No-op on MSVC.
+        .define("CMAKE_POSITION_INDEPENDENT_CODE", "ON")
         .build()
 }
 

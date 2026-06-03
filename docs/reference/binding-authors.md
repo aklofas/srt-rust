@@ -255,7 +255,11 @@ before receivers when both share state.
 ## Versioning
 
 The Rust API uses pre-1.0 SemVer (`0.x.y`). The C ABI uses its own
-three-tier scheme exposed through `tstrans.h`:
+three-tier scheme exposed through `tstrans.h`. The binding crates do not carry
+`cargo public-api` baselines — their consumer contract is `tstrans.h` plus
+the C-ABI ratchets; see
+`docs/reference/public-api.md` § "Binding crates: no `cargo public-api`
+baseline (by design)" for the full rationale.
 
 - `TST_ABI_VERSION_MAJOR` — incremented on any source- or binary-
   incompatible change to the ABI shape. **0** today.

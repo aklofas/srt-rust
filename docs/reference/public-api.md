@@ -36,7 +36,7 @@ Before privatizing a public item, the implementer must:
 
 1. Grep `bindings/c/core/src/` for use sites of the item.
 2. Read the `tst-jni` design (outside the published repo at
-   `~/Projects/ts-transformer/docs/specs/2026-05-02-tst-jni-and-demux-design.md`)
+   `~/Projects/ts-transformer/docs/specs/2026-05-27-tst-jni-design.md`)
    to confirm the planned JVM bindings don't need the item through a
    canonical workflow.
 3. Grep `crates/tst-core/fuzz/fuzz_targets/`, `crates/tst-core/tests/`,
@@ -77,6 +77,38 @@ Submodules that are `pub mod` are the *intentional* public surface.
 Submodules that are `mod` are private; if anything inside them needs to
 be public, surface it via an explicit `pub use` from `mod.rs`. This
 keeps the public surface visible at the top of each `mod.rs`.
+
+## Binding crates: no `cargo public-api` baseline (by design)
+
+Eight Rust library crates carry a committed `public-api.txt` baseline that
+CI checks via `cargo public-api` on every push: `rist-sys`, `tst-core`,
+`tst-pipeline`, `tst-rist`, `tst-rtp`, `tst-srt`, `tst-tcp`, and `tst-udp`.
+
+The three binding crates — `bindings/c` (tst-c), `bindings/c/core`
+(tst-c-core), and `bindings/python` (tst-py) — intentionally carry **no**
+`public-api.txt`. Their consumer contract is not their Rust surface:
+
+- **tst-c / tst-c-core.** The Rust surface of these crates is a cdylib/staticlib
+  leaf (`pub use tst_c_core::*`) plus `#[no_mangle] extern "C"` glue.
+  `cargo public-api` on a cdylib is not meaningful; the real ABI contract is
+  the committed cbindgen-generated header `bindings/c/include/tstrans.h`, the
+  `TST_ABI_VERSION_MAJOR` / `TST_ABI_VERSION_MINOR` macros it defines, and the
+  C-ABI ratchets under `scripts/check/c/` (especially
+  `abi-rustdoc-coverage.sh`, `header-conditional-sections.sh`,
+  `header-mirror-enum-export.sh`, and `raw-mapper-coverage.sh`).
+- **tst-py.** The Rust surface is `#[pymodule]` / `#[pymethods]` PyO3 glue —
+  not the Python contract. The Python consumer surface is gated by the
+  committed `.pyi` stubs under `bindings/python/python/tstrans/`, the
+  `py.typed` marker, the pytest suite, and the Python error-mapping ratchets
+  under `scripts/check/python/`.
+
+**Rule:** do not add `cargo public-api` baselines to binding crates unless
+they become actual CI release gates. Adding a baseline to a binding crate
+that isn't wired into CI creates misleading drift noise without gating
+anything.
+
+See `docs/reference/binding-authors.md` for the full C-ABI error-mapping
+contract and the Python/JVM/Swift binding-shape conventions.
 
 ## Cross-references
 

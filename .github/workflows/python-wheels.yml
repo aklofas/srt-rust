@@ -33,6 +33,13 @@ on:
       - "crates/tst-pipeline/**"
       - "crates/tst-srt/**"
       - "crates/srt-sys/**"
+      # The wheel builds --features rtp,srt,udp,tcp,hls,rist, so every native
+      # crate on that path affects it. rist-sys (+ tst-rist/tst-tcp/tst-udp)
+      # were missing — a change to them must rebuild + re-test the wheels.
+      - "crates/rist-sys/**"
+      - "crates/tst-rist/**"
+      - "crates/tst-tcp/**"
+      - "crates/tst-udp/**"
       - "vendor/**"
 
 permissions:

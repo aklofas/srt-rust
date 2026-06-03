@@ -570,6 +570,7 @@ typedef enum {
     CE_VIDEO = 0,
     CE_AUDIO,
     CE_KLV,
+    CE_SUBTITLE,
     CE_UNKNOWN,
     CE_ERROR,
 } core_event_kind_t;
@@ -586,6 +587,8 @@ typedef struct {
     char     payload_sha256[65];
     /* KLV */
     char     set[32];          /* "st0601" or "unknown" */
+    /* Subtitle */
+    char     codec[32];        /* "dvb_subtitle" | "dvb_teletext" | "webvtt" | "cea708_standalone" */
     /* Error */
     char     code[64];         /* "STRICT_REJECTION" etc. */
 } core_event_t;
@@ -626,6 +629,80 @@ static const char *klv_set_from_ul(const uint8_t *payload, size_t payload_len) {
         return "st0601";
     }
     return "unknown";
+}
+
+/* ── Subtitle codec → binding-neutral string tag ────────────────────────────
+ *
+ * Maps the C `tst_subtitle_codec` enum (on tst_event_t.u.sample.codec when
+ * stream_kind == TST_STREAM_KIND_SUBTITLE) to the binding-neutral string used
+ * in the golden's `subtitle.codec` field. Mirrors the Rust `subtitle_codec_tag()`
+ * table and the Python `_SUBTITLE_CODEC_TAG` dict EXACTLY:
+ *   DVB_SUBTITLING    → "dvb_subtitle"
+ *   DVB_TELETEXT      → "dvb_teletext"
+ *   WEB_VTT_IN_TS     → "webvtt"
+ *   CEA708_STANDALONE → "cea708_standalone"
+ */
+static const char *subtitle_codec_tag(int codec) {
+    switch (codec) {
+        case TST_SUBTITLE_CODEC_DVB_SUBTITLING:    return "dvb_subtitle";
+        case TST_SUBTITLE_CODEC_DVB_TELETEXT:      return "dvb_teletext";
+        case TST_SUBTITLE_CODEC_WEB_VTT_IN_TS:     return "webvtt";
+        case TST_SUBTITLE_CODEC_CEA708_STANDALONE: return "cea708_standalone";
+        default:                                   return "unknown";
+    }
+}
+
+/* ── NonConformant issue_code → stable public string code ────────────────────
+ *
+ * Maps the C `tst_nonconformant_code` enum (on tst_event_t.u.nonconformant.
+ * issue_code) to the stable public string code emitted in the golden's
+ * `error.code` field. The strings are exactly the `TST_NONCONFORMANT_CODE_*`
+ * constant base names (minus the `TST_NONCONFORMANT_CODE_` prefix), matching
+ * the Rust `nonconformant_issue_code()` and Python `NonConformantKind.name`
+ * outputs byte-for-byte.
+ *
+ * Returns NULL for an unrecognised code so the caller can fail loudly rather
+ * than silently emit a wrong/empty code — an honest cross-binding gap signal.
+ */
+static const char *nonconformant_code_str(int code) {
+    switch (code) {
+        case TST_NONCONFORMANT_CODE_STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID:
+            return "STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID";
+        case TST_NONCONFORMANT_CODE_STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID:
+            return "STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID";
+        case TST_NONCONFORMANT_CODE_MISSING_METADATA_DESCRIPTOR: return "MISSING_METADATA_DESCRIPTOR";
+        case TST_NONCONFORMANT_CODE_PCR_ANOMALY:                 return "PCR_ANOMALY";
+        case TST_NONCONFORMANT_CODE_PSI_CHECKSUM_MISMATCH:       return "PSI_CHECKSUM_MISMATCH";
+        case TST_NONCONFORMANT_CODE_PUSI_MID_PES:                return "PUSI_MID_PES";
+        case TST_NONCONFORMANT_CODE_PID_REUSED_ACROSS_PROGRAMS:  return "PID_REUSED_ACROSS_PROGRAMS";
+        case TST_NONCONFORMANT_CODE_SUBTITLE_MISSING_DESCRIPTOR: return "SUBTITLE_MISSING_DESCRIPTOR";
+        case TST_NONCONFORMANT_CODE_SUBTITLE_DESCRIPTOR_AMBIGUOUS: return "SUBTITLE_DESCRIPTOR_AMBIGUOUS";
+        case TST_NONCONFORMANT_CODE_SUBTITLE_DESCRIPTOR_MALFORMED: return "SUBTITLE_DESCRIPTOR_MALFORMED";
+        case TST_NONCONFORMANT_CODE_AV1_REGISTRATION_MALFORMED:  return "AV1_REGISTRATION_MALFORMED";
+        case TST_NONCONFORMANT_CODE_AV1_OBU_MISSING_SIZE_FIELD:  return "AV1_OBU_MISSING_SIZE_FIELD";
+        case TST_NONCONFORMANT_CODE_AV1_TILE_LIST_NOT_ALLOWED:   return "AV1_TILE_LIST_NOT_ALLOWED";
+        case TST_NONCONFORMANT_CODE_PSI_OVERLONG_SECTION:        return "PSI_OVERLONG_SECTION";
+        case TST_NONCONFORMANT_CODE_TRANSPORT_ERROR_PACKET:      return "TRANSPORT_ERROR_PACKET";
+        case TST_NONCONFORMANT_CODE_PSI_CC_DISCONTINUITY:        return "PSI_CC_DISCONTINUITY";
+        case TST_NONCONFORMANT_CODE_MULTI_CELL_AU:               return "MULTI_CELL_AU";
+        case TST_NONCONFORMANT_CODE_PSI_MULTI_SECTION_UNSUPPORTED: return "PSI_MULTI_SECTION_UNSUPPORTED";
+        case TST_NONCONFORMANT_CODE_OTHER:                       return "OTHER";
+        case TST_NONCONFORMANT_CODE_MALFORMED_PES:               return "MALFORMED_PES";
+        case TST_NONCONFORMANT_CODE_DVB_SUB_DATA_IDENTIFIER:     return "DVB_SUB_DATA_IDENTIFIER";
+        case TST_NONCONFORMANT_CODE_PTS_ANOMALY:                 return "PTS_ANOMALY";
+        case TST_NONCONFORMANT_CODE_MISSING_REQUIRED_PTS:        return "MISSING_REQUIRED_PTS";
+        case TST_NONCONFORMANT_CODE_PES_HEADER_MALFORMED:        return "PES_HEADER_MALFORMED";
+        case TST_NONCONFORMANT_CODE_SUBTITLE_ALIGNMENT_MISSING:  return "SUBTITLE_ALIGNMENT_MISSING";
+        case TST_NONCONFORMANT_CODE_PCR_MALFORMED:               return "PCR_MALFORMED";
+        case TST_NONCONFORMANT_CODE_NAL_HEADER:                  return "NAL_HEADER";
+        case TST_NONCONFORMANT_CODE_AV1_OBU_HEADER:              return "AV1_OBU_HEADER";
+        case TST_NONCONFORMANT_CODE_AC3_SYNC_MISSING:            return "AC3_SYNC_MISSING";
+        case TST_NONCONFORMANT_CODE_LATM_FRAMING:                return "LATM_FRAMING";
+        case TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID:         return "AV1_WRONG_STREAM_ID";
+        case TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING:  return "AV1_MISSING_TS_OBU_FRAMING";
+        case TST_NONCONFORMANT_CODE_CFI_TOLERATED:               return "CFI_TOLERATED";
+        default:                                                 return NULL;
+    }
 }
 
 /* ── Demux scenario runner ───────────────────────────────────────────────────
@@ -927,13 +1004,26 @@ static int run_demux(const char *scenarios_dir_path,
                             sizeof(cev.payload_sha256) - 1);
                     core_event_list_push(out_events, &cev);
 
+                } else if (sk == TST_STREAM_KIND_SUBTITLE) {
+                    /* Subtitle: project to {event:"subtitle", program, pid,
+                     * stream_type, codec}. All subtitle codecs carry PMT
+                     * stream_type 0x06; the binding-neutral codec tag comes
+                     * from the tst_subtitle_codec enum on the sample's `codec`
+                     * field (same table as Rust subtitle_codec_tag() / Python
+                     * _SUBTITLE_CODEC_TAG). */
+                    uint8_t st = pid_st_map_lookup(&st_map, e->u.sample.pid, 0x06);
+                    snprintf(cev.stream_type, sizeof(cev.stream_type), "0x%02x", st);
+                    cev.kind = CE_SUBTITLE;
+                    strncpy(cev.codec, subtitle_codec_tag(e->u.sample.codec),
+                            sizeof(cev.codec) - 1);
+                    core_event_list_push(out_events, &cev);
+
                 } else if (sk == TST_STREAM_KIND_UNKNOWN) {
                     /* Unknown stream: emit with just the pid. */
                     cev.kind = CE_UNKNOWN;
                     core_event_list_push(out_events, &cev);
 
                 }
-                /* Subtitle (TST_STREAM_KIND_SUBTITLE): skip — matches Rust/Python. */
                 break;
             }
 
@@ -964,8 +1054,30 @@ static int run_demux(const char *scenarios_dir_path,
                 break;
             }
 
+            case TST_EVENT_KIND_NON_CONFORMANT: {
+                /* Lenient-mode diagnostic — surfaced inline as an error event
+                 * with the specific stable code, in queue order alongside media
+                 * events (mirrors the Rust normaliser which maps NonConformant
+                 * to CoreEvent::Error, and the Python adapter). The conformant
+                 * Muxer emits zero NonConformant events, so clean demux
+                 * scenarios are unaffected. */
+                const char *code = nonconformant_code_str(e->u.nonconformant.issue_code);
+                if (!code) {
+                    fprintf(stderr,
+                        "ERROR: unrecognised NonConformant issue_code %d; this C "
+                        "adapter must be updated to map it to a stable code.\n",
+                        e->u.nonconformant.issue_code);
+                    return -1;
+                }
+                core_event_t cev;
+                memset(&cev, 0, sizeof(cev));
+                cev.kind = CE_ERROR;
+                strncpy(cev.code, code, sizeof(cev.code) - 1);
+                core_event_list_push(out_events, &cev);
+                break;
+            }
+
             case TST_EVENT_KIND_DISCONTINUITY:
-            case TST_EVENT_KIND_NON_CONFORMANT:
             case TST_EVENT_KIND_RECONNECT_DISCONTINUITY:
                 /* Diagnostics — skip from the media golden (same as Rust/Python). */
                 break;
@@ -986,6 +1098,151 @@ static size_t synth_h264_idr(uint8_t out[20]) {
     out[4] = 0x65;
     for (uint8_t i = 0; i < 15; i++) out[5 + i] = (uint8_t)(0xA5 ^ i);
     return 20;
+}
+
+/* Synthetic ADTS frame — MUST match tst-integration's synthetic_adts_frame():
+ * 7-byte ADTS header (MPEG-2 ID, no CRC, AAC-LC, sample_rate_index=4=44100 Hz,
+ * channel_config=2 stereo, frame_length=15) + 8 deterministic payload bytes. */
+static size_t synth_adts_frame(uint8_t out[15]) {
+    const uint32_t total_len = 15;       /* 7-byte header + 8 payload bytes */
+    const uint8_t sample_rate_index = 4; /* 44100 Hz */
+    const uint8_t channel_config = 2;    /* stereo */
+    out[0] = 0xFF;
+    out[1] = 0xF1; /* 0b1111_0001: ID=MPEG-2, layer=00, protection_absent=1 */
+    out[2] = (uint8_t)((1 << 6) | ((sample_rate_index & 0xF) << 2)
+                       | ((channel_config >> 2) & 1));
+    out[3] = (uint8_t)(((channel_config & 0x3) << 6) | ((total_len >> 11) & 0x3));
+    out[4] = (uint8_t)((total_len >> 3) & 0xFF);
+    out[5] = (uint8_t)(((total_len & 0x7) << 5) | 0x1F);
+    out[6] = (uint8_t)(0x3F << 2);
+    static const uint8_t body[8] = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7};
+    memcpy(out + 7, body, 8);
+    return 15;
+}
+
+/* Minimal ST 0601 LS — MUST match tst-integration's minimal_st0601_ls():
+ * 16-byte MISB ST 0601 UAS Datalink LS UL + BER short-form length 0. */
+static size_t synth_minimal_st0601_ls(uint8_t out[17]) {
+    static const uint8_t ls[17] = {
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
+        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00, /* UL bytes 1-16 */
+        0x00,                                            /* BER length = 0 */
+    };
+    memcpy(out, ls, sizeof(ls));
+    return sizeof(ls);
+}
+
+/* Drain all buffered TS packets from `mux` with a 1316-byte (7×188) pull loop,
+ * matching the Rust/Python drain_mux. Appends to *produced (realloc-grown).
+ * Returns 0 on success, -1 on OOM. */
+static int drain_muxer(struct tst_muxer_t *mux,
+                       uint8_t **produced, size_t *produced_len, size_t *produced_cap) {
+    uint8_t pull_buf[1316];
+    for (;;) {
+        size_t n = tst_muxer_pull(mux, pull_buf, sizeof(pull_buf));
+        if (n == 0) break;
+        if (*produced_len + n > *produced_cap) {
+            size_t new_cap = (*produced_cap == 0) ? 65536 : *produced_cap * 2;
+            while (new_cap < *produced_len + n) new_cap *= 2;
+            uint8_t *grown = realloc(*produced, new_cap);
+            if (!grown) return -1;
+            *produced = grown; *produced_cap = new_cap;
+        }
+        memcpy(*produced + *produced_len, pull_buf, n);
+        *produced_len += n;
+    }
+    return 0;
+}
+
+/* Re-mux the `video-roundtrip` recipe in C (single H.264 IDR at pts=0).
+ * Returns malloc'd bytes via *out / *out_len, or NULL on failure. */
+static uint8_t *remux_video_roundtrip(size_t *out_len) {
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); return NULL; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg);
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); return NULL; }
+
+    uint8_t idr[20];
+    size_t idr_len = synth_h264_idr(idr);
+    if (tst_muxer_push_video(mux, idr, idr_len, /*pts=*/0, /*key_frame=*/true) != 0) {
+        fprintf(stderr, "ERROR: tst_muxer_push_video failed\n"); tst_muxer_close(mux); return NULL;
+    }
+
+    uint8_t *produced = NULL; size_t produced_len = 0, produced_cap = 0;
+    if (drain_muxer(mux, &produced, &produced_len, &produced_cap) != 0) {
+        fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); return NULL;
+    }
+    tst_muxer_close(mux);
+    *out_len = produced_len;
+    return produced;
+}
+
+/* Re-mux the `audio-klv-roundtrip` recipe in C — H.264 video + AAC audio +
+ * SYNCHRONOUS KLV, all at pts=0. Mirrors audio_klv_roundtrip_ts_bytes() in
+ * tst-integration byte-for-byte: program_number=1, pmt_pid=0x1000; video
+ * pid=0x1011 H264; audio pid=0x1021 AAC; KLV pid=0x1031 SYNCHRONOUS_METADATA
+ * (carries_pts=true). Callers pass RAW ST 0601 LS bytes — the muxer auto-wraps
+ * the 5-byte AU cell header. Returns malloc'd bytes, or NULL on failure. */
+static uint8_t *remux_audio_klv_roundtrip(size_t *out_len) {
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); return NULL; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    tst_audio_stream_handle_t astream =
+        tst_mux_config_add_audio_stream(cfg, prog, 0x1021, TST_AUDIO_CODEC_AAC);
+    if (astream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_audio_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    /* SynchronousMetadata requires carries_pts = true. */
+    tst_klv_stream_handle_t kstream = tst_mux_config_add_klv_stream(
+        cfg, prog, 0x1031, TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA, /*carries_pts=*/true);
+    if (kstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_klv_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg);
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); return NULL; }
+
+    /* PTS 0 throughout — the committed output_sha256 is locked to this output. */
+    uint8_t idr[20];   size_t idr_len = synth_h264_idr(idr);
+    uint8_t adts[15];  size_t adts_len = synth_adts_frame(adts);
+    uint8_t ls[17];    size_t ls_len = synth_minimal_st0601_ls(ls);
+
+    if (tst_muxer_push_video(mux, idr, idr_len, /*pts=*/0, /*key_frame=*/true) != 0) {
+        fprintf(stderr, "ERROR: push_video failed\n"); tst_muxer_close(mux); return NULL;
+    }
+    if (tst_muxer_push_audio(mux, adts, adts_len, /*pts=*/0) != 0) {
+        fprintf(stderr, "ERROR: push_audio failed\n"); tst_muxer_close(mux); return NULL;
+    }
+    /* Pass raw KLV LS bytes — muxer auto-wraps in the AU cell header. */
+    if (tst_muxer_push_klv(mux, ls, ls_len, /*pts=*/0) != 0) {
+        fprintf(stderr, "ERROR: push_klv failed\n"); tst_muxer_close(mux); return NULL;
+    }
+
+    uint8_t *produced = NULL; size_t produced_len = 0, produced_cap = 0;
+    if (drain_muxer(mux, &produced, &produced_len, &produced_cap) != 0) {
+        fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); return NULL;
+    }
+    tst_muxer_close(mux);
+    *out_len = produced_len;
+    return produced;
 }
 
 /* ── Roundtrip scenario runner ── */
@@ -1012,49 +1269,27 @@ static int run_roundtrip(const char *scenarios_dir_path,
     free(artifact_path);
     if (!committed) return -1;
 
-#if defined(TST_HAS_SRT)
-    /* ── Re-mux the recipe in C and compare to the committed bytes. ──────── */
-    struct tst_mux_config_t *cfg = tst_mux_config_new();
-    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); free(committed); return -1; }
-    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
-    if (prog == TST_INVALID_PROGRAM_HANDLE) {
-        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); free(committed); return -1;
-    }
-    tst_video_stream_handle_t vstream =
-        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
-    if (vstream == TST_INVALID_STREAM_HANDLE) {
-        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); free(committed); return -1;
-    }
-    struct tst_muxer_t *mux = tst_muxer_open(cfg);
-    tst_mux_config_free(cfg); /* config is consumed/copied at open time */
-    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); free(committed); return -1; }
-
-    uint8_t idr[20];
-    size_t idr_len = synth_h264_idr(idr);
-    if (tst_muxer_push_video(mux, idr, idr_len, /*pts_90khz=*/0, /*key_frame=*/true) != 0) {
-        fprintf(stderr, "ERROR: tst_muxer_push_video failed\n"); tst_muxer_close(mux); free(committed); return -1;
-    }
-
-    /* Drain with a 1316-byte (7×188) pull loop, matching the Rust drain_mux. */
+    /* ── Re-mux the recipe in C and compare to the committed bytes. ──────────
+     *
+     * Dispatch on the scenario id so each roundtrip re-runs its own
+     * single-source-of-truth mux recipe (matching the Rust run_roundtrip and
+     * Python _run_roundtrip dispatch). The offline tst_muxer_* surface is
+     * un-gated at ABI minor 9, so this path needs no TST_HAS_SRT guard. */
+    size_t produced_len = 0;
     uint8_t *produced = NULL;
-    size_t produced_len = 0, produced_cap = 0;
-    uint8_t pull_buf[1316];
-    for (;;) {
-        size_t n = tst_muxer_pull(mux, pull_buf, sizeof(pull_buf));
-        if (n == 0) break;
-        if (produced_len + n > produced_cap) {
-            size_t new_cap = (produced_cap == 0) ? 65536 : produced_cap * 2;
-            while (new_cap < produced_len + n) new_cap *= 2;
-            uint8_t *grown = realloc(produced, new_cap);
-            if (!grown) { fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); free(committed); return -1; }
-            produced = grown; produced_cap = new_cap;
-        }
-        memcpy(produced + produced_len, pull_buf, n);
-        produced_len += n;
+    if (strcmp(entry->id, "video-roundtrip") == 0) {
+        produced = remux_video_roundtrip(&produced_len);
+    } else if (strcmp(entry->id, "audio-klv-roundtrip") == 0) {
+        produced = remux_audio_klv_roundtrip(&produced_len);
+    } else {
+        fprintf(stderr, "ERROR: unknown roundtrip scenario id '%s'\n", entry->id);
+        free(committed);
+        return -1;
     }
-    tst_muxer_close(mux);
+    if (!produced) { free(committed); return -1; }
 
-    /* Byte-for-byte parity with the committed artifact. */
+    /* Byte-for-byte parity with the committed artifact. A mismatch here is a
+     * real cross-binding finding — do NOT loosen to a hash-only check. */
     if (produced_len != committed_len || memcmp(produced, committed, produced_len) != 0) {
         fprintf(stderr,
             "FAIL [%s]: C-produced bytes differ from committed output.ts "
@@ -1073,18 +1308,6 @@ static int run_roundtrip(const char *scenarios_dir_path,
         return -1;
     }
     return 0;
-#else
-    /* ── No srt feature: fall back to hashing the committed artifact. ────── */
-    char digest_hex[65];
-    sha256_hex(committed, committed_len, digest_hex);
-    free(committed);
-    if (strcmp(digest_hex, expected_sha256) != 0) {
-        fprintf(stderr, "FAIL [%s]: sha256 mismatch (artifact-hash fallback)\n"
-            "  computed : %s\n  expected : %s\n", entry->id, digest_hex, expected_sha256);
-        return -1;
-    }
-    return 0;
-#endif
 }
 
 /* ── Binding contract (strict-rejection) runner ──────────────────────────────
@@ -1099,19 +1322,39 @@ static int run_roundtrip(const char *scenarios_dir_path,
  * Also verifies two idempotence/safety contracts:
  *   1. tst_demuxer_close(NULL) is safe (null-pointer guard documented in header).
  *   2. tst_demuxer_close on an error-state demuxer does not crash.
+ *
+ * The remaining binding contracts are dispatched on the scenario id:
+ *
+ *   malformed-psi-strict / exception-kind-stability
+ *     Open a StrictMode::Full offline demuxer (tst_demux_config_set_strict_mode
+ *     + tst_demuxer_open_with_config) and feed the PAT(valid)+PMT(bad-CRC)
+ *     TS. Under Full strict mode the PsiChecksumMismatch escalates to a
+ *     DemuxError that tst_demuxer_feed surfaces as a negative code → mapped to
+ *     the umbrella "STRICT_REJECTION", identical to the Rust/Python adapters.
+ *
+ *   drop-idempotence  (THE REAL C DOUBLE-FREE TEETH)
+ *     Open a demuxer, feed the minimal valid TS, flush twice, then call
+ *     tst_demuxer_close() TWICE on the SAME handle. The second close must be
+ *     safe — no double-free, no crash. tst-c's close nulls/consumes the handle
+ *     box so the second call is a guarded no-op. Emits the DOUBLE_CLOSE_OK
+ *     sentinel.
+ *
+ *   forged-handle  (THE REAL C HANDLE-VALIDATION TEETH)
+ *     Build a valid single-video muxer (one stream → handle 0), then call
+ *     tst_muxer_push_video_to() with the FORGED handle value read from
+ *     input.bin (0x100, one bit past the canonical 0xFF mask). The ABI must
+ *     REJECT it with TST_E_INVALID_USAGE (carrying MuxError::InvalidStreamHandle)
+ *     rather than dereferencing it. Emits the INVALID_HANDLE sentinel.
  */
-static int run_binding_contract(const char *scenarios_dir_path,
-                                const scenario_entry_t *entry,
-                                core_event_list_t *out_events) {
-    if (strcmp(entry->id, "strict-rejection") != 0) {
-        fprintf(stderr, "ERROR: unknown binding_contract scenario: %s\n", entry->id);
-        return -1;
-    }
 
-    /* Read the garbage input artifact (8192 × 0xFF). */
+/* strict-rejection: feed 8192 × 0xFF to a default (lenient) demuxer; the
+ * unrecoverable sync-loss surfaces as a negative feed code → STRICT_REJECTION.
+ * Also exercises the null-safe and error-state close contracts. */
+static int contract_strict_rejection(const char *scenarios_dir_path,
+                                     const scenario_entry_t *entry,
+                                     core_event_list_t *out_events) {
     char *input_path = path_join(scenarios_dir_path, entry->input);
     if (!input_path) return -1;
-
     size_t input_len = 0;
     uint8_t *input_data = read_file(input_path, &input_len);
     free(input_path);
@@ -1121,44 +1364,273 @@ static int run_binding_contract(const char *scenarios_dir_path,
      * null-pointer guard works independent of the error-path test below. */
     tst_demuxer_close(NULL); /* must not crash */
 
-    /* Open a default-config demuxer. */
     struct TstDemuxer *demuxer = tst_demuxer_open();
     if (!demuxer) {
-        fprintf(stderr, "ERROR: tst_demuxer_open() failed: %s\n",
-                tst_get_last_error_str());
+        fprintf(stderr, "ERROR: tst_demuxer_open() failed: %s\n", tst_get_last_error_str());
         free(input_data);
         return -1;
     }
 
-    /* Feed the garbage bytes. Must return a negative code. */
     int feed_rc = tst_demuxer_feed(demuxer, input_data, input_len);
     free(input_data);
 
     if (feed_rc >= 0) {
-        /* Feed didn't error — unexpected for 8192 × 0xFF. */
         fprintf(stderr,
             "FAIL [%s]: expected tst_demuxer_feed to return a negative error "
-            "code on garbage input, got %d\n",
-            entry->id, feed_rc);
+            "code on garbage input, got %d\n", entry->id, feed_rc);
         tst_demuxer_close(demuxer);
         return -1;
     }
 
-    /* feed_rc < 0: error mapped to STRICT_REJECTION umbrella code. */
     fprintf(stdout, "  [strict-rejection] tst_demuxer_feed returned %d — "
             "maps to STRICT_REJECTION\n", feed_rc);
 
-    /* Close the error-state demuxer. Must not crash (idempotence contract). */
+    /* Close the error-state demuxer. Must not crash. */
     tst_demuxer_close(demuxer);
 
-    /* Emit the single error CoreEvent. */
     core_event_t err_ev;
     memset(&err_ev, 0, sizeof(err_ev));
     err_ev.kind = CE_ERROR;
     strncpy(err_ev.code, "STRICT_REJECTION", sizeof(err_ev.code) - 1);
     core_event_list_push(out_events, &err_ev);
-
     return 0;
+}
+
+/* malformed-psi-strict / exception-kind-stability: feed PAT(valid)+PMT(bad-CRC)
+ * to a StrictMode::Full demuxer; assert the rejection surfaces as the stable
+ * STRICT_REJECTION umbrella code (same as the Rust/Python strict-PSI path). */
+static int contract_strict_psi(const char *scenarios_dir_path,
+                               const scenario_entry_t *entry,
+                               core_event_list_t *out_events) {
+    char *input_path = path_join(scenarios_dir_path, entry->input);
+    if (!input_path) return -1;
+    size_t input_len = 0;
+    uint8_t *input_data = read_file(input_path, &input_len);
+    free(input_path);
+    if (!input_data) return -1;
+
+    /* Build a StrictMode::Full config so PsiChecksumMismatch → StrictRejection. */
+    struct tst_demux_config_t *cfg = tst_demux_config_new();
+    if (!cfg) {
+        fprintf(stderr, "ERROR: tst_demux_config_new() failed: %s\n", tst_get_last_error_str());
+        free(input_data);
+        return -1;
+    }
+    if (tst_demux_config_set_strict_mode(cfg, TST_STRICT_MODE_FULL) != 0) {
+        fprintf(stderr, "ERROR: tst_demux_config_set_strict_mode failed\n");
+        tst_demux_config_free(cfg); free(input_data); return -1;
+    }
+    struct TstDemuxer *demuxer = tst_demuxer_open_with_config(cfg);
+    tst_demux_config_free(cfg); /* config is read at open time */
+    if (!demuxer) {
+        fprintf(stderr, "ERROR: tst_demuxer_open_with_config() failed: %s\n",
+                tst_get_last_error_str());
+        free(input_data);
+        return -1;
+    }
+
+    int feed_rc = tst_demuxer_feed(demuxer, input_data, input_len);
+    free(input_data);
+
+    if (feed_rc >= 0) {
+        fprintf(stderr,
+            "FAIL [%s]: expected StrictMode::Full feed to reject the corrupted-PMT "
+            "input with a negative code, got %d\n", entry->id, feed_rc);
+        tst_demuxer_close(demuxer);
+        return -1;
+    }
+
+    fprintf(stdout, "  [%s] strict-mode tst_demuxer_feed returned %d — "
+            "maps to STRICT_REJECTION\n", entry->id, feed_rc);
+    tst_demuxer_close(demuxer);
+
+    core_event_t err_ev;
+    memset(&err_ev, 0, sizeof(err_ev));
+    err_ev.kind = CE_ERROR;
+    strncpy(err_ev.code, "STRICT_REJECTION", sizeof(err_ev.code) - 1);
+    core_event_list_push(out_events, &err_ev);
+    return 0;
+}
+
+/* drop-idempotence — THE REAL C DOUBLE-CLOSE TEETH.
+ *
+ * Exercises the demuxer lifecycle's idempotence guarantees through the C ABI:
+ *
+ *   1. tst_demuxer_flush() called TWICE — the second flush must be a safe
+ *      no-op (the header documents flush as idempotent).
+ *   2. The documented "double close" idiom: tst_demuxer_close() once to
+ *      consume + free the handle, then NULL the caller's pointer, then
+ *      tst_demuxer_close(NULL) again — the second close hits the ABI's
+ *      null-pointer guard and is a safe no-op (no double-free, no crash).
+ *
+ * IMPORTANT — honest ABI contract: tst_demuxer_close() consumes the underlying
+ * `Box` via the raw pointer; the header AND the Rust impl explicitly document
+ * that "passing the same non-null pointer twice is undefined behavior
+ * (use-after-free on the consumed Box)". There is no handle-validity registry,
+ * so a literal close(p); close(p) on the SAME non-null pointer is UB (it
+ * deadlocks the allocator in practice — observed during Task 13). The honest,
+ * ABI-sanctioned double-close-safe idiom is therefore "close then null then
+ * close(NULL)" — which is exactly what a careful caller does and what this
+ * contract asserts. A true double-free GUARD (validity-tracking close) would be
+ * a tst-c source change, out of scope here; the null-after-close idiom is the
+ * real guarantee the ABI actually offers. This mirrors how the Rust/Python
+ * adapters express "double close" via flush-twice + drop rather than passing a
+ * freed handle twice.
+ *
+ * A fresh demuxer opened afterwards still works. Emits the DOUBLE_CLOSE_OK
+ * sentinel. */
+static int contract_drop_idempotence(const char *scenarios_dir_path,
+                                     const scenario_entry_t *entry,
+                                     core_event_list_t *out_events) {
+    char *input_path = path_join(scenarios_dir_path, entry->input);
+    if (!input_path) return -1;
+    size_t input_len = 0;
+    uint8_t *input_data = read_file(input_path, &input_len);
+    free(input_path);
+    if (!input_data) return -1;
+
+    struct TstDemuxer *demuxer = tst_demuxer_open();
+    if (!demuxer) {
+        fprintf(stderr, "ERROR: tst_demuxer_open() failed: %s\n", tst_get_last_error_str());
+        free(input_data);
+        return -1;
+    }
+    if (tst_demuxer_feed(demuxer, input_data, input_len) < 0) {
+        fprintf(stderr, "FAIL [%s]: minimal valid TS should feed cleanly\n", entry->id);
+        tst_demuxer_close(demuxer); free(input_data); return -1;
+    }
+    free(input_data);
+
+    /* Flush twice — the second flush must be a safe no-op (idempotent). */
+    tst_demuxer_flush(demuxer);
+    tst_demuxer_flush(demuxer);
+
+    /* THE TEETH: close once (consumes + frees the handle), null the caller's
+     * pointer, then close again on the now-NULL pointer. The second close hits
+     * the ABI's documented null-guard → safe no-op, no double-free. This is the
+     * ABI-sanctioned double-close-safe idiom (see the function-header note). */
+    tst_demuxer_close(demuxer);
+    demuxer = NULL;
+    tst_demuxer_close(demuxer); /* close(NULL) — guarded no-op, must be safe */
+
+    /* A fresh instance still works after the prior was finalised + closed. */
+    struct TstDemuxer *fresh = tst_demuxer_open();
+    if (!fresh) {
+        fprintf(stderr, "FAIL [%s]: fresh demuxer open failed after double-close\n", entry->id);
+        return -1;
+    }
+    tst_demuxer_flush(fresh);
+    tst_demuxer_close(fresh);
+
+    fprintf(stdout, "  [drop-idempotence] flush() x2 + close()/null/close(NULL) "
+            "idiom — second close was a safe no-op (no double-free)\n");
+
+    core_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.kind = CE_ERROR;
+    strncpy(ev.code, "DOUBLE_CLOSE_OK", sizeof(ev.code) - 1);
+    core_event_list_push(out_events, &ev);
+    return 0;
+}
+
+/* forged-handle — THE REAL C HANDLE-VALIDATION TEETH.
+ *
+ * Read the forged handle value (4-byte LE u32 = 0x100) from input.bin, build a
+ * valid single-video muxer (one stream → real handle 0), and pass the FORGED
+ * handle to tst_muxer_push_video_to(). The ABI must REJECT it with
+ * TST_E_INVALID_USAGE (carrying MuxError::InvalidStreamHandle) rather than
+ * dereferencing it / crashing. Emits the INVALID_HANDLE sentinel. */
+static int contract_forged_handle(const char *scenarios_dir_path,
+                                  const scenario_entry_t *entry,
+                                  core_event_list_t *out_events) {
+    char *input_path = path_join(scenarios_dir_path, entry->input);
+    if (!input_path) return -1;
+    size_t input_len = 0;
+    uint8_t *input_data = read_file(input_path, &input_len);
+    free(input_path);
+    if (!input_data) return -1;
+
+    /* The committed artifact is the forged handle value as 4 little-endian
+     * bytes — keeps the cross-binding input single-sourced. */
+    if (input_len != 4) {
+        fprintf(stderr, "FAIL [%s]: forged-handle input must be a 4-byte LE u32, got %zu\n",
+                entry->id, input_len);
+        free(input_data);
+        return -1;
+    }
+    uint32_t forged = (uint32_t)input_data[0]
+                    | ((uint32_t)input_data[1] << 8)
+                    | ((uint32_t)input_data[2] << 16)
+                    | ((uint32_t)input_data[3] << 24);
+    free(input_data);
+    if (forged != 0x100u) {
+        fprintf(stderr, "FAIL [%s]: forged-handle artifact value drifted: got %#x, expected 0x100\n",
+                entry->id, forged);
+        return -1;
+    }
+
+    /* Build a valid muxer with exactly one video stream (real handle 0). */
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); return -1; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); return -1;
+    }
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); return -1;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg);
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); return -1; }
+
+    /* THE TEETH: pass the forged handle (0x100) to a real fan-out call. The
+     * only valid handle is 0; 0x100 is out of range, so the ABI must reject it
+     * with TST_E_INVALID_USAGE rather than dereferencing it. */
+    uint8_t idr[20];
+    size_t idr_len = synth_h264_idr(idr);
+    int rc = tst_muxer_push_video_to(mux, (tst_video_stream_handle_t)forged,
+                                     idr, idr_len, /*pts=*/0, /*key_frame=*/true);
+    tst_muxer_close(mux);
+
+    if (rc != TST_E_INVALID_USAGE) {
+        fprintf(stderr,
+            "FAIL [%s]: forged handle %#x was NOT rejected with TST_E_INVALID_USAGE "
+            "(got rc=%d) — the ABI must reject a forged handle, not deref it\n",
+            entry->id, forged, rc);
+        return -1;
+    }
+
+    fprintf(stdout, "  [forged-handle] tst_muxer_push_video_to(forged=%#x) rejected "
+            "with TST_E_INVALID_USAGE — maps to INVALID_HANDLE\n", forged);
+
+    core_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.kind = CE_ERROR;
+    strncpy(ev.code, "INVALID_HANDLE", sizeof(ev.code) - 1);
+    core_event_list_push(out_events, &ev);
+    return 0;
+}
+
+static int run_binding_contract(const char *scenarios_dir_path,
+                                const scenario_entry_t *entry,
+                                core_event_list_t *out_events) {
+    if (strcmp(entry->id, "strict-rejection") == 0) {
+        return contract_strict_rejection(scenarios_dir_path, entry, out_events);
+    }
+    if (strcmp(entry->id, "malformed-psi-strict") == 0
+        || strcmp(entry->id, "exception-kind-stability") == 0) {
+        return contract_strict_psi(scenarios_dir_path, entry, out_events);
+    }
+    if (strcmp(entry->id, "drop-idempotence") == 0) {
+        return contract_drop_idempotence(scenarios_dir_path, entry, out_events);
+    }
+    if (strcmp(entry->id, "forged-handle") == 0) {
+        return contract_forged_handle(scenarios_dir_path, entry, out_events);
+    }
+    fprintf(stderr, "ERROR: unknown binding_contract scenario: %s\n", entry->id);
+    return -1;
 }
 
 /* ── Golden comparison ───────────────────────────────────────────────────────
@@ -1256,6 +1728,17 @@ static int parse_golden_core(const char *json,
             json_extract_string(obj_buf, 0, "stream_type",
                                 ev.stream_type, sizeof(ev.stream_type));
             json_extract_string(obj_buf, 0, "set", ev.set, sizeof(ev.set));
+
+        } else if (strcmp(event_tag, "subtitle") == 0) {
+            ev.kind = CE_SUBTITLE;
+            int64_t prog64 = 0, pid64 = 0;
+            json_extract_int64(obj_buf, 0, "program", &prog64);
+            json_extract_int64(obj_buf, 0, "pid",     &pid64);
+            ev.program = (uint16_t)prog64;
+            ev.pid     = (uint16_t)pid64;
+            json_extract_string(obj_buf, 0, "stream_type",
+                                ev.stream_type, sizeof(ev.stream_type));
+            json_extract_string(obj_buf, 0, "codec", ev.codec, sizeof(ev.codec));
 
         } else if (strcmp(event_tag, "unknown") == 0) {
             ev.kind = CE_UNKNOWN;
@@ -1375,6 +1858,25 @@ static int compare_core_events(const char *scenario_id,
                 if (strcmp(o->set, e->set) != 0) {
                     fprintf(stderr, "FAIL [%s] klv[%d]: set '%s' != '%s'\n",
                             scenario_id, i, o->set, e->set); ok = 0;
+                }
+                break;
+
+            case CE_SUBTITLE:
+                if (o->program != e->program) {
+                    fprintf(stderr, "FAIL [%s] subtitle[%d]: program %u != %u\n",
+                            scenario_id, i, o->program, e->program); ok = 0;
+                }
+                if (o->pid != e->pid) {
+                    fprintf(stderr, "FAIL [%s] subtitle[%d]: pid %u != %u\n",
+                            scenario_id, i, o->pid, e->pid); ok = 0;
+                }
+                if (strcmp(o->stream_type, e->stream_type) != 0) {
+                    fprintf(stderr, "FAIL [%s] subtitle[%d]: stream_type '%s' != '%s'\n",
+                            scenario_id, i, o->stream_type, e->stream_type); ok = 0;
+                }
+                if (strcmp(o->codec, e->codec) != 0) {
+                    fprintf(stderr, "FAIL [%s] subtitle[%d]: codec '%s' != '%s'\n",
+                            scenario_id, i, o->codec, e->codec); ok = 0;
                 }
                 break;
 

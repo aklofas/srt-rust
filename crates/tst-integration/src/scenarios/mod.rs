@@ -47,6 +47,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(H264SyncKlvAuCell),
         Box::new(Av1RegistrationDesc),
         Box::new(AacAudioOnly),
+        Box::new(AudioVideoMp),
     ]
 }
 
@@ -861,6 +862,93 @@ fn synthetic_av1_au() -> Vec<u8> {
     au.extend(obu(3, &[0x00])); // Frame Header placeholder
     au.extend(obu(4, &[0x00, 0x01, 0x02])); // Tile Group placeholder
     au
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 8 — audio-video-mp (demux)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "demux"`: one program with H.264 video + AAC ADTS audio + MPEG-2
+/// audio.  Exercises multi-audio programs and the `push_audio_to` path with
+/// explicit `AudioStreamHandle`s.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct AudioVideoMp;
+
+impl Scenario for AudioVideoMp {
+    fn id(&self) -> &'static str {
+        "audio-video-mp"
+    }
+    fn kind(&self) -> &'static str {
+        "demux"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.add_audio(0x1021, AudioCodec::Aac);
+            prog.add_audio(0x1022, AudioCodec::Mp2);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("valid muxer config")
+        };
+        let mut mux = Muxer::new(cfg).expect("muxer init");
+
+        let pts = Pts90khz::new(90_000); // t=1s
+
+        mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
+            .expect("push_video");
+
+        // Two audio streams — use explicit handles to avoid AmbiguousTarget.
+        let handles = mux.audio_handles();
+        assert_eq!(handles.len(), 2, "expected two audio handles");
+        let aac_handle = handles[0]; // AAC (declared first)
+        let mp2_handle = handles[1]; // MP2 (declared second)
+
+        mux.push_audio_to(aac_handle, pts, &synthetic_adts_frame())
+            .expect("push_audio_to aac");
+        mux.push_audio_to(mp2_handle, pts, &synthetic_mp2_frame())
+            .expect("push_audio_to mp2");
+
+        let ts_bytes = drain_mux(&mut mux);
+        let core = demux_to_core_events(&ts_bytes);
+
+        let artifact_rel = PathBuf::from(self.id()).join("input.ts");
+        write_file(&out_dir.join(&artifact_rel), &ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core,
+            extensions: serde_json::Value::Null,
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Minimal MPEG-2 audio frame — synthetic bytes that begin with the valid
+/// MPEG audio sync word used by the mux audio path.
+/// The muxer treats these bytes as opaque PES payload.
+fn synthetic_mp2_frame() -> Vec<u8> {
+    // MPEG-1 Layer II sync header: sync(12)=0xFFF, ID(1)=1(MPEG-1),
+    // layer(2)=0b10(Layer II), protection(1)=1(no CRC) → 0xFF 0xFD
+    let mut buf = vec![0u8; 20];
+    buf[0] = 0xFF;
+    buf[1] = 0xFD; // MPEG-1, Layer II, no CRC
+    buf[2] = 0xC0; // bitrate=384kbps, 44100Hz, no padding
+    buf[3] = 0x04; // stereo, original
+    // 16 deterministic payload bytes
+    for i in 4u8..20 {
+        buf[i as usize] = 0xB0 ^ i;
+    }
+    buf
 }
 
 /// Minimal valid H.265 IDR access unit in Annex-B framing.

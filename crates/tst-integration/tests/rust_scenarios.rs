@@ -159,9 +159,10 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
             let code = match &result {
                 Err(e) => demux_error_code_pub(e),
                 Ok(()) => {
-                    // If feed didn't error, drain events to find an Error event
-                    // (strict mode may buffer the issue before returning from feed).
-                    // For this well-formed input the strict rejection must fire.
+                    // Unreachable for this input — the PMT CRC mismatch is
+                    // detected within feed()'s packet loop, which always
+                    // returns Err(StrictRejection) before returning Ok. A
+                    // reached Ok means the malformation didn't trigger rejection.
                     panic!(
                         "malformed-psi-strict: expected StrictRejection error from feed, got Ok"
                     );

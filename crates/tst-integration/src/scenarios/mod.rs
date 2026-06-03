@@ -54,6 +54,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(MalformedPsiStrict),
         Box::new(MalformedPesLenient),
         Box::new(UnknownStreamType),
+        Box::new(AudioKlvRoundtrip),
     ]
 }
 
@@ -255,6 +256,98 @@ pub fn video_roundtrip_ts_bytes() -> Vec<u8> {
         /*key_frame=*/ true,
     )
     .expect("push_video");
+    drain_mux(&mut mux)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 14 — audio-klv-roundtrip (roundtrip)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "roundtrip"`: mux synthetic H.264 video + AAC audio + SYNCHRONOUS
+/// KLV into one TS program; golden is the output bytes + sha256 (byte-identity).
+///
+/// Unlike `video-roundtrip` (video-only), this exercises a fully-populated
+/// single program (video + audio + sync KLV) through the deterministic mux
+/// path. SynchronousMetadata KLV requires `carries_pts = true`; callers pass
+/// RAW ST 0601 LS bytes and the muxer auto-wraps the 5-byte AU cell header per
+/// ITU-T H.222.0 §2.12.4.2.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct AudioKlvRoundtrip;
+
+impl Scenario for AudioKlvRoundtrip {
+    fn id(&self) -> &'static str {
+        "audio-klv-roundtrip"
+    }
+    fn kind(&self) -> &'static str {
+        "roundtrip"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Produced via the shared single-source-of-truth helper so the adapter
+        // test can re-run the identical recipe.
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let ts_bytes = audio_klv_roundtrip_ts_bytes();
+        let digest = sha256_hex(&ts_bytes);
+
+        // Write input artifact (the TS output IS the golden artifact for
+        // roundtrip verification).
+        let artifact_rel = PathBuf::from(self.id()).join("output.ts");
+        let artifact_abs = out_dir.join(&artifact_rel);
+        write_file(&artifact_abs, &ts_bytes);
+
+        // Roundtrip carries no media events — the whole-stream byte-identity
+        // digest lives under `extensions.output_sha256` (matching the
+        // `video-roundtrip` convention).
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![],
+            extensions: serde_json::json!({ "output_sha256": digest }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Re-run the `audio-klv-roundtrip` mux and return the deterministic TS bytes.
+///
+/// Single source of truth shared by `AudioKlvRoundtrip::generate` and the Rust
+/// adapter test — no hand-retyped mux recipe.
+pub fn audio_klv_roundtrip_ts_bytes() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        prog.add_audio(0x1021, AudioCodec::Aac);
+        // SynchronousMetadata requires carries_pts = true.
+        prog.add_klv(
+            0x1031,
+            KlvStreamType::SynchronousMetadata,
+            /*carries_pts=*/ true,
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let mut mux = Muxer::new(cfg).expect("muxer init");
+
+    let pts = Pts90khz::new(0);
+    mux.push_video(&synthetic_h264_idr(), pts, /*key_frame=*/ true)
+        .expect("push_video");
+    mux.push_audio(&synthetic_adts_frame(), pts)
+        .expect("push_audio");
+    // Pass raw KLV LS bytes — muxer auto-wraps in the AU cell header.
+    mux.push_klv(
+        &minimal_st0601_ls(),
+        pts,
+        /*metadata_service_id=*/ 0x00,
+    )
+    .expect("push_klv");
     drain_mux(&mut mux)
 }
 

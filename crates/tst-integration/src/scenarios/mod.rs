@@ -1599,8 +1599,9 @@ impl Scenario for DropIdempotence {
 ///
 /// **Rust side (approach a — a real guard exists):** tst-core exposes
 /// `VideoStreamHandle::try_from_raw`, the validating sibling of `from_raw` used
-/// at every FFI / PyO3 trust boundary. A forged `u32` with any bit set above
-/// the documented 8-bit packed layout (e.g. `0x100`) is rejected with
+/// at every FFI / PyO3 trust boundary. The canonical handle mask is `0xFF`
+/// (4-bit program + 4-bit within); a forged `u32` with any bit above `0xFF` set
+/// (e.g. `0x100`, which sets bit 8, just past the mask) is rejected with
 /// `MuxError::InvalidStreamHandle`. The Rust adapter asserts this rejection
 /// directly, so the `INVALID_HANDLE` sentinel corresponds to a real pure-Rust
 /// guard — not a fabricated assertion. The raw-pointer-deref teeth (a forged
@@ -1612,10 +1613,10 @@ impl Scenario for DropIdempotence {
 /// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
 struct ForgedHandle;
 
-/// The forged handle value the adapters assert is rejected. `0x100` has a bit
-/// set above the canonical 8-bit `(program<<4)|within` layout, so
-/// `try_from_raw` returns `Err(InvalidStreamHandle)`. Shared single source of
-/// truth between `ForgedHandle::generate` and the Rust adapter test.
+/// The forged handle value the adapters assert is rejected. The canonical mask
+/// is `0xFF` (4-bit program + 4-bit within); `0x100` sets bit 8, just past the
+/// mask, so `try_from_raw` returns `Err(InvalidStreamHandle)`. Shared single
+/// source of truth between `ForgedHandle::generate` and the Rust adapter test.
 pub const FORGED_HANDLE_RAW: u32 = 0x100;
 
 impl Scenario for ForgedHandle {
@@ -1691,6 +1692,11 @@ impl Scenario for ExceptionKindStability {
         // Same malformation as malformed-psi-strict: PAT (valid CRC) + PMT
         // (corrupted CRC). Under StrictMode::Full: PsiChecksumMismatch →
         // StrictRejection → "STRICT_REJECTION".
+        // This shares both the input bytes AND the STRICT_REJECTION core with
+        // malformed-psi-strict; the only thing distinguishing the two goldens is
+        // the `extensions.contract` tag below (malformed-psi-strict carries
+        // `extensions: Null`). That is deliberate — this scenario's assertion is
+        // that the SAME stable code surfaces, named by the contract tag.
         // This generator NEVER reads from testfiles/ or local/ directories.
         let ts_bytes = synthetic_ts_bad_pmt_crc();
 
@@ -1710,11 +1716,13 @@ impl Scenario for ExceptionKindStability {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hand-crafted TS input helpers (Scenarios 11–13)
+// Hand-crafted TS input helpers (Scenarios 11–13, 17)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Low-level TS/PSI/PES byte assembly used by the malformed-input scenarios
-// (Scenarios 11+); the codec-frame builders live in "Synthetic data helpers" above.
+// Low-level TS/PSI/PES byte assembly used by the malformed-input and
+// lifecycle-contract scenarios (`synthetic_ts_bad_pmt_crc` is shared by
+// Scenarios 11 and 17); the codec-frame builders live in "Synthetic data
+// helpers" above.
 
 /// Build a 188-byte TS packet. `pid` must fit in 13 bits. `payload_unit_start`
 /// sets PUSI. `payload` must be ≤ 184 bytes; the remainder is stuffed with 0xFF.

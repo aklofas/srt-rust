@@ -82,6 +82,47 @@ fn build_mbedtls() -> PathBuf {
     prefix
 }
 
+/// Generate a meson cross-file for a Linux cross build so librist (+ its
+/// bundled C deps) compile for `$TARGET`, not the build host.
+///
+/// meson — unlike the `cmake` crate srt-sys uses for libsrt/mbedTLS — does not
+/// auto-detect the Rust target, so without a cross-file it builds for the host.
+/// Returns `None` for native builds (`HOST == TARGET`) and non-Linux targets
+/// (Windows wires its MSVC toolchain via env vars in `build_vendored`; macOS
+/// wheels build natively). GNU cross binaries are `<triple>-<tool>` on `$PATH`
+/// (the manylinux cross image puts them under `/usr/<triple>/bin`), matching
+/// the `cc` crate's own cross-naming convention.
+fn write_meson_cross_file() -> Option<PathBuf> {
+    let host = env::var("HOST").unwrap_or_default();
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.is_empty() || host == target {
+        return None;
+    }
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
+        return None;
+    }
+    let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let endian = env::var("CARGO_CFG_TARGET_ENDIAN").unwrap_or_default();
+    let content = format!(
+        "[binaries]\n\
+         c = '{target}-gcc'\n\
+         cpp = '{target}-g++'\n\
+         ar = '{target}-ar'\n\
+         strip = '{target}-strip'\n\
+         pkg-config = 'pkg-config'\n\
+         \n\
+         [host_machine]\n\
+         system = 'linux'\n\
+         cpu_family = '{arch}'\n\
+         cpu = '{arch}'\n\
+         endian = '{endian}'\n",
+    );
+    let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("meson-cross.ini");
+    std::fs::write(&path, content).expect("write meson cross-file");
+    println!("cargo:warning=rist-sys: meson cross-file for {target} (cpu_family={arch})");
+    Some(path)
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
@@ -249,6 +290,15 @@ fn build_vendored(want_mbedtls: bool) -> Vec<PathBuf> {
         meson_envs.push(("CC".to_string(), cl.path().to_string_lossy().into_owned()));
         meson_envs.push(("CXX".to_string(), cl.path().to_string_lossy().into_owned()));
         args.push("-Db_vscrt=md".into());
+    }
+    // On a Linux cross build (e.g. the aarch64 manylinux wheel, x86_64 host →
+    // aarch64 target) meson must be handed a cross-file or it builds librist
+    // for the HOST — producing x86_64 objects that fail the aarch64 link with
+    // "File in wrong format" (EM: 62). srt-sys's mbedTLS uses the `cmake` crate,
+    // which auto-cross-compiles from $TARGET; meson does not, hence this.
+    if let Some(cross_file) = write_meson_cross_file() {
+        args.push("--cross-file".into());
+        args.push(cross_file.to_string_lossy().into_owned());
     }
     // When encryption is wanted, build the SHARED workspace vendor/mbedtls
     // (3.6.x) and point librist's meson at it so it links that `mbedcrypto`

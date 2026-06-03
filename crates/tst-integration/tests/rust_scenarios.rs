@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use tst_integration::scenarios::demux_to_core_events;
-use tst_integration::scenarios::demux_to_core_events_diagnostic;
 use tst_integration::scenarios::golden::{CoreEvent, Golden};
 
 /// Path to the committed scenario fixtures.
@@ -73,17 +72,11 @@ fn load_input(input_rel: &str) -> Vec<u8> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Run a `demux` scenario: feed the input TS through tst-core and collect
-/// normalised `CoreEvent`s.
+/// normalised `CoreEvent`s.  The shared normaliser surfaces NonConformant
+/// events as `CoreEvent::Error` alongside media events, so malformed-input
+/// `demux` scenarios assert their diagnostic codes through this same path.
 fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
     demux_to_core_events(input)
-}
-
-/// Run a `demux_diagnostic` scenario: same as `demux` but also surfaces
-/// `NonConformant` events as `CoreEvent::Error { code }` using stable public
-/// string codes.  Used for scenarios that assert the demuxer emits the
-/// expected nonconformant diagnostic alongside recovered media events.
-fn run_demux_diagnostic(input: &[u8]) -> Vec<CoreEvent> {
-    demux_to_core_events_diagnostic(input)
 }
 
 /// Run a `roundtrip` scenario: re-run the generator's single-source-of-truth
@@ -199,7 +192,6 @@ fn all_scenarios_match_committed_goldens() {
 
         let observed_core: Vec<CoreEvent> = match entry.kind.as_str() {
             "demux" => run_demux(&input),
-            "demux_diagnostic" => run_demux_diagnostic(&input),
             "roundtrip" => run_roundtrip(&input, &committed),
             "binding_contract" => run_binding_contract(&entry.id, &input),
             other => panic!("unknown scenario kind '{}' in manifest", other),

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use tst_integration::scenarios::demux_to_core_events;
+use tst_integration::scenarios::demux_to_core_events_diagnostic;
 use tst_integration::scenarios::golden::{CoreEvent, Golden};
 
 /// Path to the committed scenario fixtures.
@@ -77,6 +78,14 @@ fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
     demux_to_core_events(input)
 }
 
+/// Run a `demux_diagnostic` scenario: same as `demux` but also surfaces
+/// `NonConformant` events as `CoreEvent::Error { code }` using stable public
+/// string codes.  Used for scenarios that assert the demuxer emits the
+/// expected nonconformant diagnostic alongside recovered media events.
+fn run_demux_diagnostic(input: &[u8]) -> Vec<CoreEvent> {
+    demux_to_core_events_diagnostic(input)
+}
+
 /// Run a `roundtrip` scenario: re-run the generator's single-source-of-truth
 /// mux recipe and assert byte-identity against the committed artifact.
 ///
@@ -129,34 +138,46 @@ fn run_roundtrip(committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> 
 /// For `strict-rejection`: feed garbage bytes to a demuxer and assert the
 /// error maps to the stable public code `STRICT_REJECTION`.  Also verify that
 /// dropping the demuxer after an error is idempotent (no panic).
+///
+/// For `malformed-psi-strict`: feed a TS with a valid PAT but corrupted PMT
+/// CRC to a `StrictMode::Full` demuxer. The `PsiChecksumMismatch` NonConformant
+/// escalates to `DemuxError::StrictRejection`, which maps to `"STRICT_REJECTION"`.
 fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
-    if id == "strict-rejection" {
-        use tst_core::mpegts::demux::Demuxer;
+    use tst_core::mpegts::demux::Demuxer;
+    use tst_integration::scenarios::demux_error_code_pub;
 
-        // Prove that feed on garbage errors out.
-        let mut demuxer = Demuxer::new();
-        let result = demuxer.feed(input);
-        let code = match &result {
-            Err(e) => {
-                use tst_integration::scenarios::demux_error_code_pub;
-                demux_error_code_pub(e)
-            }
-            Ok(()) => {
-                // If the garbage happened to not trigger Unrecoverable (e.g.
-                // the random bytes contained a valid-looking sync sequence),
-                // flush and check for any queued NonConformant that maps to error.
-                // For 8192 bytes of 0xFF this should never happen — the
-                // sync-search window will be exhausted.
-                panic!("expected feed to return Err on garbage input, got Ok");
-            }
-        };
-
-        // Idempotent drop: second drop (via end-of-scope) must not panic.
-        drop(demuxer);
-
-        vec![CoreEvent::Error { code }]
-    } else {
-        panic!("unknown binding_contract scenario: {id}");
+    match id {
+        "strict-rejection" => {
+            // Garbage bytes: no 0x47 sync byte → Unrecoverable → STRICT_REJECTION.
+            let mut demuxer = Demuxer::new();
+            let result = demuxer.feed(input);
+            let code = match &result {
+                Err(e) => demux_error_code_pub(e),
+                Ok(()) => panic!("expected feed to return Err on garbage input, got Ok"),
+            };
+            drop(demuxer);
+            vec![CoreEvent::Error { code }]
+        }
+        "malformed-psi-strict" => {
+            use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
+            // Use StrictMode::Full so PsiChecksumMismatch → StrictRejection.
+            let mut demuxer = DemuxerBuilder::new().strict(StrictMode::Full).build();
+            let result = demuxer.feed(input);
+            let code = match &result {
+                Err(e) => demux_error_code_pub(e),
+                Ok(()) => {
+                    // If feed didn't error, drain events to find an Error event
+                    // (strict mode may buffer the issue before returning from feed).
+                    // For this well-formed input the strict rejection must fire.
+                    panic!(
+                        "malformed-psi-strict: expected StrictRejection error from feed, got Ok"
+                    );
+                }
+            };
+            drop(demuxer);
+            vec![CoreEvent::Error { code }]
+        }
+        other => panic!("unknown binding_contract scenario: {other}"),
     }
 }
 
@@ -178,6 +199,7 @@ fn all_scenarios_match_committed_goldens() {
 
         let observed_core: Vec<CoreEvent> = match entry.kind.as_str() {
             "demux" => run_demux(&input),
+            "demux_diagnostic" => run_demux_diagnostic(&input),
             "roundtrip" => run_roundtrip(&input, &committed),
             "binding_contract" => run_binding_contract(&entry.id, &input),
             other => panic!("unknown scenario kind '{}' in manifest", other),

@@ -1,0 +1,11 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "error",
+      "code": "STRICT_REJECTION"
+    }
+  ],
+  "extensions": null
+}

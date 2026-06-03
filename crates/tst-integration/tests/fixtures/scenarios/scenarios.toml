@@ -87,3 +87,30 @@ golden = "webvtt-in-ts/golden.json"
 features = []
 tier = "A"
 schema_version = 0
+
+[[scenario]]
+id = "malformed-psi-strict"
+kind = "binding_contract"
+input = "malformed-psi-strict/input.bin"
+golden = "malformed-psi-strict/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "malformed-pes-lenient"
+kind = "demux_diagnostic"
+input = "malformed-pes-lenient/input.ts"
+golden = "malformed-pes-lenient/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
+id = "unknown-stream-type"
+kind = "demux"
+input = "unknown-stream-type/input.ts"
+golden = "unknown-stream-type/golden.json"
+features = []
+tier = "A"
+schema_version = 0

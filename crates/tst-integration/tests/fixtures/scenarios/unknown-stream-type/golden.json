@@ -1,0 +1,15 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [
+    {
+      "event": "unknown",
+      "pid": 513
+    },
+    {
+      "event": "unknown",
+      "pid": 513
+    }
+  ],
+  "extensions": null
+}

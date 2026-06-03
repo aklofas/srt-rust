@@ -104,6 +104,20 @@ jobs:
             # meson package is frequently absent or too old for librist.
             pipx install meson || python3 -m pip install --upgrade meson \
               || pip3 install --upgrade meson
+            # aarch64 is cross-compiled inside the x86_64 manylinux container.
+            # The cmake C build uses the cross gcc fine, but srt-sys/rist-sys's
+            # bindgen runs clang with host include paths and can't find the
+            # aarch64 system headers ("sys/types.h not found"). Point bindgen's
+            # clang at the cross-toolchain sysroot (gated to the aarch64 job, so
+            # the generic var only ever affects this cross build). x86_64 builds
+            # natively and needs none of this.
+            if [ "${{ matrix.target }}" = "aarch64" ]; then
+              CROSS_GCC=/usr/aarch64-unknown-linux-gnu/bin/aarch64-unknown-linux-gnu-gcc
+              SYSROOT="$("$CROSS_GCC" -print-sysroot 2>/dev/null || true)"
+              [ -n "$SYSROOT" ] || SYSROOT=/usr/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot
+              echo "aarch64 bindgen sysroot: $SYSROOT"
+              export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT"
+            fi
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"

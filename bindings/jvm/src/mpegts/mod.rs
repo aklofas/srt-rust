@@ -23,6 +23,8 @@
 //! only in JDK 22+). Real zero-copy is therefore deferred to a JDK-22+ FFM path;
 //! the keystone copies, which is unconditionally safe. See the design spec §5.4.
 
+pub mod muxer;
+
 use std::borrow::Cow;
 
 use jni::JNIEnv;

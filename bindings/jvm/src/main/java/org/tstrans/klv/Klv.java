@@ -1,6 +1,8 @@
 package org.tstrans.klv;
 
+import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.Optional;
 
 /**
  * Static facade for MISB typed-KLV decode/encode (ST 0601 / 0102 / 0605 / 0903).
@@ -323,6 +325,140 @@ public final class Klv {
 
     private static native byte[] nEncodeUasDatalinkStrictCompliance(UasDatalinkLs record)
             throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
+    // UL dispatcher
+    // -----------------------------------------------------------------------
+
+    /**
+     * Inspect the first 16 bytes of {@code buf} (the SMPTE Universal Label)
+     * and route to the matching typed decoder.
+     *
+     * <p>Returns:
+     * <ul>
+     *   <li>{@code Optional<UasDatalinkLs>} when the UL is in the ST 0601 family
+     *       (first 13 bytes match + byte 15 is {@code 0x00}).</li>
+     *   <li>{@code Optional<PrecisionTimeStampPack>} for the ST 0605 UL.</li>
+     *   <li>{@code Optional<SecurityLs>} for the ST 0102 UL (peels UL + outer BER
+     *       length, then calls {@link #decodeSecurity(byte[])} on the body).</li>
+     *   <li>{@code Optional<VmtiLs>} for the ST 0903 UL (same peel + body decode).</li>
+     *   <li>{@code Optional.empty()} for an unrecognised UL.</li>
+     * </ul>
+     *
+     * <p>Mirrors {@code tstrans.klv.parse_klv_universal} in tst-py, including the
+     * BER-peel error semantics for the body-only sets:
+     * <ul>
+     *   <li>{@code buf.length < 16}: throws {@code KlvDecodeException(BAD_UNIVERSAL_LABEL)}.</li>
+     *   <li>BER-peel failure (truncated / indefinite-length): throws
+     *       {@code KlvDecodeException(TRUNCATED_SET)}.</li>
+     *   <li>Body overflow ({@code body_end > buf.length}): throws
+     *       {@code KlvDecodeException(TRUNCATED_SET)}.</li>
+     *   <li>Trailing bytes ({@code body_end < buf.length}): throws
+     *       {@code KlvDecodeException(MALFORMED_BYTES)}.</li>
+     * </ul>
+     *
+     * @param buf the full wire-format KLV record starting with the 16-byte UL
+     * @return the decoded {@link KlvSet}, or {@code Optional.empty()} for unknown UL
+     * @throws org.tstrans.KlvDecodeException if the buffer is too short for a UL,
+     *         or if the BER-length peel or per-set decode fails
+     */
+    public static Optional<KlvSet> parseUniversal(byte[] buf)
+            throws org.tstrans.KlvDecodeException {
+        if (buf.length < 16) {
+            throw new org.tstrans.KlvDecodeException(
+                org.tstrans.KlvDecodeException.Kind.BAD_UNIVERSAL_LABEL,
+                "buffer too short for 16-byte UL: have " + buf.length + " bytes");
+        }
+        byte[] ul = Arrays.copyOf(buf, 16);
+
+        if (isSt0601Family(ul)) {
+            return Optional.of(decodeUasDatalink(buf));
+        }
+        if (Arrays.equals(ul, PRECISION_TIMESTAMP_PACK_UL)) {
+            return Optional.of(decodePrecisionTimestamp(buf));
+        }
+        if (Arrays.equals(ul, SECURITY_LS_UL)) {
+            long[] berResult = peelBer(buf, 16, "ST 0102");
+            long valueLen = berResult[0];
+            long berBytes = berResult[1];
+            long bodyStart = 16L + berBytes;
+            long bodyEnd = bodyStart + valueLen;
+            if (bodyEnd > buf.length) {
+                throw new org.tstrans.KlvDecodeException(
+                    org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                    "ST 0102 declared body length " + valueLen
+                        + " exceeds available " + (buf.length - bodyStart));
+            }
+            if (bodyEnd < buf.length) {
+                throw new org.tstrans.KlvDecodeException(
+                    org.tstrans.KlvDecodeException.Kind.MALFORMED_BYTES,
+                    "ST 0102 universal record has " + (buf.length - bodyEnd)
+                        + " trailing bytes after declared body length " + valueLen);
+            }
+            byte[] body = Arrays.copyOfRange(buf, (int) bodyStart, (int) bodyEnd);
+            return Optional.of(decodeSecurity(body));
+        }
+        if (Arrays.equals(ul, VMTI_LS_UL)) {
+            long[] berResult = peelBer(buf, 16, "ST 0903");
+            long valueLen = berResult[0];
+            long berBytes = berResult[1];
+            long bodyStart = 16L + berBytes;
+            long bodyEnd = bodyStart + valueLen;
+            if (bodyEnd > buf.length) {
+                throw new org.tstrans.KlvDecodeException(
+                    org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                    "ST 0903 declared body length " + valueLen
+                        + " exceeds available " + (buf.length - bodyStart));
+            }
+            if (bodyEnd < buf.length) {
+                throw new org.tstrans.KlvDecodeException(
+                    org.tstrans.KlvDecodeException.Kind.MALFORMED_BYTES,
+                    "ST 0903 universal record has " + (buf.length - bodyEnd)
+                        + " trailing bytes after declared body length " + valueLen);
+            }
+            byte[] body = Arrays.copyOfRange(buf, (int) bodyStart, (int) bodyEnd);
+            return Optional.of(decodeVmti(body));
+        }
+
+        return Optional.empty();
+    }
+
+    /**
+     * Read a BER short/long-form length starting at {@code offset}.
+     * Returns {@code long[] {value, bytesConsumed}}.
+     * Mirrors {@code tstrans.klv._read_ber_length}.
+     *
+     * @throws org.tstrans.KlvDecodeException with {@code TRUNCATED_SET}
+     *         if the BER encoding is truncated or uses indefinite-length form
+     */
+    private static long[] peelBer(byte[] buf, int offset, String setLabel)
+            throws org.tstrans.KlvDecodeException {
+        if (offset >= buf.length) {
+            throw new org.tstrans.KlvDecodeException(
+                org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                setLabel + " outer BER length unreadable: truncated BER length");
+        }
+        int first = buf[offset] & 0xFF;
+        if (first < 0x80) {
+            return new long[] {first, 1L};
+        }
+        int nbytes = first & 0x7F;
+        if (nbytes == 0) {
+            throw new org.tstrans.KlvDecodeException(
+                org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                setLabel + " outer BER length unreadable: indefinite-length BER not permitted in KLV");
+        }
+        if (offset + 1 + nbytes > buf.length) {
+            throw new org.tstrans.KlvDecodeException(
+                org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                setLabel + " outer BER length unreadable: truncated BER long-form length");
+        }
+        long value = 0;
+        for (int i = 0; i < nbytes; i++) {
+            value = (value << 8) | (buf[offset + 1 + i] & 0xFF);
+        }
+        return new long[] {value, 1L + nbytes};
+    }
 
     // -----------------------------------------------------------------------
     // Test-only forced-throw helpers (package-private)

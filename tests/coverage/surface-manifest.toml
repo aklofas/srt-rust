@@ -45,7 +45,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::klv::st0601::decode"
 owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
-bindings = ["python:decode_uas_datalink"]
+bindings = ["python:decode_uas_datalink", "java:org.tstrans.klv.Klv.decodeUasDatalink"]
 scenario_ids = ["h264-st0601-mp"]
 tier = "A"
 
@@ -54,8 +54,125 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::klv::st0601::encode"
 owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
-bindings = ["python:encode_uas_datalink"]
+bindings = ["python:encode_uas_datalink", "java:org.tstrans.klv.Klv.encodeUasDatalink"]
 scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0601::decode_strict"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:decode_uas_datalink", "java:org.tstrans.klv.Klv.decodeUasDatalink"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0601::decode_strict_compliance"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:decode_uas_datalink", "java:org.tstrans.klv.Klv.decodeUasDatalink"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0601::encode_strict_compliance"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:encode_uas_datalink_strict_compliance", "java:org.tstrans.klv.Klv.encodeUasDatalinkStrictCompliance"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0605::decode"
+owning_tests = ["crates/tst-core/tests/klv/typed_set_proptest.rs"]
+bindings = ["python:decode_precision_timestamp", "java:org.tstrans.klv.Klv.decodePrecisionTimestamp"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0605::encode"
+owning_tests = ["crates/tst-core/tests/klv/typed_set_proptest.rs"]
+bindings = ["python:encode_precision_timestamp", "java:org.tstrans.klv.Klv.encodePrecisionTimestamp"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0102::decode"
+owning_tests = ["crates/tst-core/tests/klv/st0102_via_st0601.rs"]
+bindings = ["python:decode_security", "java:org.tstrans.klv.Klv.decodeSecurity"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0102::decode_strict"
+owning_tests = ["crates/tst-core/tests/klv/st0102_via_st0601.rs"]
+bindings = ["python:decode_security", "java:org.tstrans.klv.Klv.decodeSecurity"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0102::encode_to_vec"
+owning_tests = ["crates/tst-core/tests/klv/st0102_via_st0601.rs"]
+bindings = ["python:encode_security", "java:org.tstrans.klv.Klv.encodeSecurity"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::decode"
+owning_tests = ["crates/tst-core/tests/klv/st0903_via_st0601.rs"]
+bindings = ["python:decode_vmti", "java:org.tstrans.klv.Klv.decodeVmti"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::decode_strict"
+owning_tests = ["crates/tst-core/tests/klv/st0903_via_st0601.rs"]
+bindings = ["python:decode_vmti", "java:org.tstrans.klv.Klv.decodeVmti"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::encode_to_vec"
+owning_tests = ["crates/tst-core/tests/klv/st0903_via_st0601.rs"]
+bindings = ["python:encode_vmti", "java:org.tstrans.klv.Klv.encodeVmti"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::encode_to_vec_standalone"
+owning_tests = ["crates/tst-core/tests/klv/st0903_standalone_ul.rs"]
+bindings = ["python:encode_vmti_standalone", "java:org.tstrans.klv.Klv.encodeVmtiStandalone"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::universal_label::UniversalLabel::is_st0601_family"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:is_st0601_family", "java:org.tstrans.klv.Klv.isSt0601Family"]
+scenario_ids = []
 tier = "A"
 
 [[surface]]
@@ -2140,19 +2257,7 @@ item = "tst_core::klv::st0102::SecurityLs"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::klv::st0102::decode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0102::decode_strict"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::klv::st0102::encode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0102::encode_to_vec"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -2244,19 +2349,7 @@ item = "tst_core::klv::st0601::UasDatalinkLs"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::klv::st0601::decode_strict"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0601::decode_strict_compliance"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::klv::st0601::decode_unchecked"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0601::encode_strict_compliance"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -2284,14 +2377,6 @@ item = "tst_core::klv::st0605::TimeStatus"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::klv::st0605::decode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0605::encode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::klv::st0903::VMTI_LS_UL"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -2304,27 +2389,11 @@ item = "tst_core::klv::st0903::VmtiLs"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::klv::st0903::decode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0903::decode_strict"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::klv::st0903::encode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
 item = "tst_core::klv::st0903::encode_standalone"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0903::encode_to_vec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::st0903::encode_to_vec_standalone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -2377,10 +2446,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::klv::universal_label::UniversalLabel::hash"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::klv::universal_label::UniversalLabel::is_st0601_family"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

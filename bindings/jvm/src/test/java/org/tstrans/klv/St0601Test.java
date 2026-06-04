@@ -306,13 +306,67 @@ class St0601Test {
 
     @Test
     void encodeStrictComplianceMissingMandatoryTagThrows() {
-        // Default record has no timestamp (Tag 2) — strict compliance requires it
+        // Default record has no timestamp (Tag 2) — strict compliance requires it.
+        // The Rust KlvEncodeError::MissingMandatoryItem { tag: 2, .. } is thrown with tag=2.
         java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
                 HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
         UasDatalinkLs rec = new UasDatalinkLs.Builder().universalLabel(ul).build();
         KlvEncodeException ex = assertThrows(KlvEncodeException.class,
                 () -> Klv.encodeUasDatalinkStrictCompliance(rec));
         assertEquals(KlvEncodeException.Kind.MISSING_MANDATORY_ITEM, ex.kind());
+        // tag-bearing: MISSING_MANDATORY_ITEM carries the offending tag (Tag 2 = timestamp)
+        assertTrue(ex.tag().isPresent(), "MISSING_MANDATORY_ITEM must carry a tag");
+        assertEquals(2L, ex.tag().get().longValue());
+    }
+
+    @Test
+    void encodeDeclaredVersionOutOfRangeThrowsIllegalArgument() {
+        // declaredVersion is stored as Java int, so values > 255 fit in the field
+        // but must be rejected on encode (Rust field is u8).
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .declaredVersion(300) // out of u8 range
+                .build();
+        assertThrows(IllegalArgumentException.class, () -> Klv.encodeUasDatalink(rec));
+    }
+
+    @Test
+    void encodeSlicedSecurityLocalSetRoundTrips() throws KlvDecodeException, KlvEncodeException {
+        // Fix 3: encode a record with a sliced (position/limit-constrained) ByteBuffer
+        // as securityLocalSet; the encode path must honour the slice, not read the full
+        // backing array.
+        //
+        // Use a minimal ST 0102 body: Tag 1 = UNCLASSIFIED (0x01, 0x01, 0x01).
+        byte[] padding = {(byte) 0xDE, (byte) 0xAD};
+        byte[] klvBody = {0x01, 0x01, 0x01};
+        byte[] backing = new byte[padding.length + klvBody.length + padding.length];
+        System.arraycopy(padding, 0, backing, 0, padding.length);
+        System.arraycopy(klvBody, 0, backing, padding.length, klvBody.length);
+        System.arraycopy(padding, 0, backing, padding.length + klvBody.length, padding.length);
+
+        // Slice to expose only the 3 klvBody bytes (skip leading + trailing padding).
+        java.nio.ByteBuffer sliced = java.nio.ByteBuffer.wrap(
+                backing, padding.length, klvBody.length).slice();
+        assertEquals(3, sliced.remaining(), "slice should have exactly 3 remaining bytes");
+
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .securityLocalSet(sliced)
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertNotNull(decoded.securityLocalSet(), "securityLocalSet should survive encode/decode");
+        // The decoded securityLocalSet must equal exactly the 3-byte klvBody window.
+        byte[] secBytes = new byte[decoded.securityLocalSet().remaining()];
+        decoded.securityLocalSet().duplicate().get(secBytes);
+        assertArrayEquals(klvBody, secBytes,
+                "encoded securityLocalSet must match the sliced window, not the full backing array");
     }
 
     @Test

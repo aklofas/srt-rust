@@ -31,7 +31,9 @@ use tst_core::klv::universal_label::UniversalLabel;
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_unknown_list, read_unknown_list, wrap_heap_byte_buffer,
+    build_field_errors, build_unknown_list, checked_u8, read_byte_buffer,
+    read_nullable_byte_buffer, read_nullable_double, read_nullable_int, read_nullable_long,
+    read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
 
 // -----------------------------------------------------------------------
@@ -599,15 +601,12 @@ fn read_uas_datalink(
     let mut r = UasDatalinkLs::default();
 
     // --- universal_label: ByteBuffer → UniversalLabel([u8;16]) ---
-    // Read via the ByteBuffer accessor (16-byte validation is in the Java compact ctor,
-    // but re-validate on the Rust side for safety).
+    // Use read_byte_buffer to honour position/limit and support direct buffers.
     {
         let bb_obj = env
             .call_method(rec, "universalLabel", "()Ljava/nio/ByteBuffer;", &[])?
             .l()?;
-        let arr_obj = env.call_method(&bb_obj, "array", "()[B", &[])?.l()?;
-        let arr = JByteArray::from(arr_obj);
-        let ul_bytes = env.convert_byte_array(&arr)?;
+        let ul_bytes = read_byte_buffer(env, &bb_obj)?;
         if ul_bytes.len() != 16 {
             let _ = env.throw_new(
                 "java/lang/IllegalArgumentException",
@@ -621,7 +620,10 @@ fn read_uas_datalink(
     }
 
     // --- declared_version: int → u8 (non-optional, primitive) ---
-    r.declared_version = env.call_method(rec, "declaredVersion", "()I", &[])?.i()? as u8;
+    {
+        let v = env.call_method(rec, "declaredVersion", "()I", &[])?.i()?;
+        r.declared_version = checked_u8(env, i64::from(v), "declaredVersion")?;
+    }
 
     // --- Identity: nullable String fields ---
     r.mission_id = read_nullable_string(env, rec, "missionId")?;
@@ -633,7 +635,7 @@ fn read_uas_datalink(
 
     // --- uasLsVersion: nullable Integer → Option<u8> ---
     if let Some(v) = read_nullable_int(env, rec, "uasLsVersion")? {
-        r.uas_ls_version = Some(v as u8);
+        r.uas_ls_version = Some(checked_u8(env, i64::from(v), "uasLsVersion")?);
     }
 
     // --- timestampUs: nullable Long → Option<u64> ---
@@ -770,7 +772,7 @@ fn read_uas_datalink(
 
     // --- Misc ---
     if let Some(v) = read_nullable_int(env, rec, "genericFlagData")? {
-        r.generic_flag_data = Some(v as u8);
+        r.generic_flag_data = Some(checked_u8(env, i64::from(v), "genericFlagData")?);
     }
     r.security_local_set = read_nullable_byte_buffer(env, rec, "securityLocalSet")?;
     r.vmti = read_nullable_byte_buffer(env, rec, "vmti")?;
@@ -785,90 +787,4 @@ fn read_uas_datalink(
 
     // field_errors is a decoder-only diagnostic; not round-tripped (mirrors tst-py).
     Ok(r)
-}
-
-// -----------------------------------------------------------------------
-// Null-safe accessor helpers (mirrors st0903.rs)
-// -----------------------------------------------------------------------
-
-/// Read a nullable `Integer` accessor. Returns `None` for null.
-fn read_nullable_int(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<i32>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/Integer;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "intValue", "()I", &[])?.i()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `Long` accessor. Returns `None` for null.
-fn read_nullable_long(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<i64>> {
-    let obj = env.call_method(rec, name, "()Ljava/lang/Long;", &[])?.l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "longValue", "()J", &[])?.j()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `Double` accessor. Returns `None` for null.
-fn read_nullable_double(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<f64>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/Double;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "doubleValue", "()D", &[])?.d()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `String` accessor. Returns `None` for null.
-fn read_nullable_string(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<String>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/String;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let j_str: &jni::objects::JString = (&obj).into();
-    let s: String = env.get_string(j_str).map(Into::into)?;
-    Ok(Some(s))
-}
-
-/// Read a nullable `ByteBuffer` accessor. Extracts backing byte[] via `array()`.
-/// Returns `None` for null.
-fn read_nullable_byte_buffer(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<Vec<u8>>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/nio/ByteBuffer;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let arr_obj = env.call_method(&obj, "array", "()[B", &[])?.l()?;
-    let arr = JByteArray::from(arr_obj);
-    let bytes = env.convert_byte_array(&arr)?;
-    Ok(Some(bytes))
 }

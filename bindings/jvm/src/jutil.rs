@@ -3,7 +3,7 @@
 //! originated; the klv module re-uses it for KLV byte payloads.
 
 use jni::JNIEnv;
-use jni::objects::{JObject, JValue};
+use jni::objects::{JByteArray, JObject, JValue};
 use tst_core::error::KlvFieldError as RustKlvFieldError;
 use tst_core::klv::OwnedRawField;
 
@@ -161,11 +161,161 @@ pub fn read_unknown_list(
         let buf_obj = env
             .call_method(&item, "value", "()Ljava/nio/ByteBuffer;", &[])?
             .l()?;
-        // Read the ByteBuffer's remaining bytes via ByteBuffer.array() (heap-backed copy).
-        let arr = env.call_method(&buf_obj, "array", "()[B", &[])?.l()?;
-        let arr = jni::objects::JByteArray::from(arr);
-        let value = env.convert_byte_array(&arr)?;
+        // Use read_byte_buffer to honour position/limit and support direct buffers.
+        let value = read_byte_buffer(env, &buf_obj)?;
         out.push(OwnedRawField { tag, value });
     }
     Ok(out)
+}
+
+// -----------------------------------------------------------------------
+// ByteBuffer helper
+// -----------------------------------------------------------------------
+
+/// Read a `ByteBuffer`'s REMAINING bytes (honouring position/limit), without
+/// mutating the caller's buffer (operates on a duplicate). Works for heap AND
+/// direct buffers.
+pub fn read_byte_buffer(env: &mut JNIEnv, buf: &JObject) -> jni::errors::Result<Vec<u8>> {
+    // duplicate() gives us an independent position/limit view on the same data,
+    // so we can call get([B) without advancing the caller's position.
+    let dup = env
+        .call_method(buf, "duplicate", "()Ljava/nio/ByteBuffer;", &[])?
+        .l()?;
+    let remaining = env.call_method(&dup, "remaining", "()I", &[])?.i()?;
+    let arr = env.new_byte_array(remaining)?;
+    env.call_method(
+        &dup,
+        "get",
+        "([B)Ljava/nio/ByteBuffer;",
+        &[JValue::Object(&arr)],
+    )?;
+    env.convert_byte_array(JByteArray::from(arr))
+}
+
+// -----------------------------------------------------------------------
+// Checked narrowing helpers (encode path)
+// -----------------------------------------------------------------------
+
+/// Range-check a Java `int`/`long` value against the u8 range, then narrow.
+/// Throws `IllegalArgumentException` and returns `Err(JavaException)` on overflow
+/// (matches tst-py's `extract::<u8>()` fail-loud semantics).
+pub fn checked_u8(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<u8> {
+    if !(0..=255).contains(&value) {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be 0..=255, got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as u8)
+}
+
+/// Range-check a Java `int`/`long` value against the u16 range, then narrow.
+/// Throws `IllegalArgumentException` and returns `Err(JavaException)` on overflow.
+pub fn checked_u16(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<u16> {
+    if !(0..=65535).contains(&value) {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be 0..=65535, got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as u16)
+}
+
+/// Range-check a Java `long` value against the u32 range, then narrow.
+/// Throws `IllegalArgumentException` and returns `Err(JavaException)` on overflow.
+pub fn checked_u32(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<u32> {
+    if !(0..=u32::MAX as i64).contains(&value) {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be 0..=4294967295, got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as u32)
+}
+
+// -----------------------------------------------------------------------
+// Shared nullable accessor helpers (encode path)
+// -----------------------------------------------------------------------
+
+/// Read a nullable `Integer` accessor. Returns `None` for null.
+pub fn read_nullable_int(
+    env: &mut JNIEnv,
+    rec: &JObject,
+    name: &str,
+) -> jni::errors::Result<Option<i32>> {
+    let obj = env
+        .call_method(rec, name, "()Ljava/lang/Integer;", &[])?
+        .l()?;
+    if obj.is_null() {
+        return Ok(None);
+    }
+    let v = env.call_method(&obj, "intValue", "()I", &[])?.i()?;
+    Ok(Some(v))
+}
+
+/// Read a nullable `Long` accessor. Returns `None` for null.
+pub fn read_nullable_long(
+    env: &mut JNIEnv,
+    rec: &JObject,
+    name: &str,
+) -> jni::errors::Result<Option<i64>> {
+    let obj = env.call_method(rec, name, "()Ljava/lang/Long;", &[])?.l()?;
+    if obj.is_null() {
+        return Ok(None);
+    }
+    let v = env.call_method(&obj, "longValue", "()J", &[])?.j()?;
+    Ok(Some(v))
+}
+
+/// Read a nullable `Double` accessor. Returns `None` for null.
+pub fn read_nullable_double(
+    env: &mut JNIEnv,
+    rec: &JObject,
+    name: &str,
+) -> jni::errors::Result<Option<f64>> {
+    let obj = env
+        .call_method(rec, name, "()Ljava/lang/Double;", &[])?
+        .l()?;
+    if obj.is_null() {
+        return Ok(None);
+    }
+    let v = env.call_method(&obj, "doubleValue", "()D", &[])?.d()?;
+    Ok(Some(v))
+}
+
+/// Read a nullable `String` accessor. Returns `None` for null.
+pub fn read_nullable_string(
+    env: &mut JNIEnv,
+    rec: &JObject,
+    name: &str,
+) -> jni::errors::Result<Option<String>> {
+    let obj = env
+        .call_method(rec, name, "()Ljava/lang/String;", &[])?
+        .l()?;
+    if obj.is_null() {
+        return Ok(None);
+    }
+    let j_str: &jni::objects::JString = (&obj).into();
+    let s: String = env.get_string(j_str).map(Into::into)?;
+    Ok(Some(s))
+}
+
+/// Read a nullable `ByteBuffer` accessor using `read_byte_buffer` (honours
+/// position/limit; works for heap and direct buffers). Returns `None` for null.
+pub fn read_nullable_byte_buffer(
+    env: &mut JNIEnv,
+    rec: &JObject,
+    name: &str,
+) -> jni::errors::Result<Option<Vec<u8>>> {
+    let obj = env
+        .call_method(rec, name, "()Ljava/nio/ByteBuffer;", &[])?
+        .l()?;
+    if obj.is_null() {
+        return Ok(None);
+    }
+    let bytes = read_byte_buffer(env, &obj)?;
+    Ok(Some(bytes))
 }

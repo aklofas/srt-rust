@@ -42,7 +42,9 @@ use tst_core::klv::st0903::{
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_unknown_list, read_unknown_list, wrap_heap_byte_buffer,
+    build_field_errors, build_unknown_list, checked_u8, checked_u16, checked_u32,
+    read_nullable_byte_buffer, read_nullable_double, read_nullable_int, read_nullable_long,
+    read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
 
 // -----------------------------------------------------------------------
@@ -740,7 +742,7 @@ fn read_vmti(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<Rus
 
     // Tag 1 — checksum (nullable Integer → Option<u16>)
     if let Some(v) = read_nullable_int(env, rec, "checksum")? {
-        r.checksum = Some(v as u16);
+        r.checksum = Some(checked_u16(env, i64::from(v), "checksum")?);
     }
 
     // Tag 2 — precisionTimeStamp (nullable Long → Option<u64>)
@@ -753,28 +755,28 @@ fn read_vmti(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<Rus
 
     // Tag 4 — versionNumber (nullable Integer → Option<u16>)
     if let Some(v) = read_nullable_int(env, rec, "versionNumber")? {
-        r.version_number = Some(v as u16);
+        r.version_number = Some(checked_u16(env, i64::from(v), "versionNumber")?);
     }
 
     // Tag 5 — totalTargetsInFrame (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "totalTargetsInFrame")? {
-        r.total_targets_in_frame = Some(v as u32);
+        r.total_targets_in_frame = Some(checked_u32(env, v, "totalTargetsInFrame")?);
     }
 
     // Tag 6 — numTargetsReported (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "numTargetsReported")? {
-        r.num_targets_reported = Some(v as u32);
+        r.num_targets_reported = Some(checked_u32(env, v, "numTargetsReported")?);
     }
 
     // Tag 7 deprecated in ST 0903.6 — skipped
     // Tag 8 — frameWidth (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "frameWidth")? {
-        r.frame_width = Some(v as u32);
+        r.frame_width = Some(checked_u32(env, v, "frameWidth")?);
     }
 
     // Tag 9 — frameHeight (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "frameHeight")? {
-        r.frame_height = Some(v as u32);
+        r.frame_height = Some(checked_u32(env, v, "frameHeight")?);
     }
 
     // Tag 10 — sourceSensor (nullable String)
@@ -843,41 +845,45 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
     let mut p = RustVTargetPack::default();
 
     // BER-OID targetId (primitive long — not nullable)
-    p.target_id = env.call_method(rec, "targetId", "()J", &[])?.j()? as u32;
+    {
+        let v = env.call_method(rec, "targetId", "()J", &[])?.j()?;
+        p.target_id = checked_u32(env, v, "targetId")?;
+    }
 
     // Tag 1 — centroidPixel (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixel")? {
-        p.centroid_pixel = Some(v as u32);
+        p.centroid_pixel = Some(checked_u32(env, v, "centroidPixel")?);
     }
 
     // Tag 2 — bboxTopLeftPixel (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "bboxTopLeftPixel")? {
-        p.bbox_top_left_pixel = Some(v as u32);
+        p.bbox_top_left_pixel = Some(checked_u32(env, v, "bboxTopLeftPixel")?);
     }
 
     // Tag 3 — bboxBottomRightPixel (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "bboxBottomRightPixel")? {
-        p.bbox_bottom_right_pixel = Some(v as u32);
+        p.bbox_bottom_right_pixel = Some(checked_u32(env, v, "bboxBottomRightPixel")?);
     }
 
     // Tag 4 — priority (nullable Integer → Option<u8>)
     if let Some(v) = read_nullable_int(env, rec, "priority")? {
-        p.priority = Some(v as u8);
+        p.priority = Some(checked_u8(env, i64::from(v), "priority")?);
     }
 
     // Tag 5 — confidenceLevel (nullable Integer → Option<u8>)
     if let Some(v) = read_nullable_int(env, rec, "confidenceLevel")? {
-        p.confidence_level = Some(v as u8);
+        p.confidence_level = Some(checked_u8(env, i64::from(v), "confidenceLevel")?);
     }
 
     // Tag 6 — history (nullable Integer → Option<u16>)
     if let Some(v) = read_nullable_int(env, rec, "history")? {
-        p.history = Some(v as u16);
+        p.history = Some(checked_u16(env, i64::from(v), "history")?);
     }
 
     // Tag 7 — percentageOfTargetPixels (nullable Integer → Option<u8>)
     if let Some(v) = read_nullable_int(env, rec, "percentageOfTargetPixels")? {
-        p.percentage_of_target_pixels = Some(v as u8);
+        p.percentage_of_target_pixels =
+            Some(checked_u8(env, i64::from(v), "percentageOfTargetPixels")?);
     }
 
     // Tag 8 — targetColor (nullable TargetColor record → Option<[u8;3]>)
@@ -891,16 +897,19 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
             )?
             .l()?;
         if !tc_obj.is_null() {
-            let r = env.call_method(&tc_obj, "r", "()I", &[])?.i()? as u8;
-            let g = env.call_method(&tc_obj, "g", "()I", &[])?.i()? as u8;
-            let b_val = env.call_method(&tc_obj, "b", "()I", &[])?.i()? as u8;
+            let r_raw = env.call_method(&tc_obj, "r", "()I", &[])?.i()?;
+            let g_raw = env.call_method(&tc_obj, "g", "()I", &[])?.i()?;
+            let b_raw = env.call_method(&tc_obj, "b", "()I", &[])?.i()?;
+            let r = checked_u8(env, i64::from(r_raw), "targetColor.r")?;
+            let g = checked_u8(env, i64::from(g_raw), "targetColor.g")?;
+            let b_val = checked_u8(env, i64::from(b_raw), "targetColor.b")?;
             p.target_color = Some([r, g, b_val]);
         }
     }
 
     // Tag 9 — targetIntensity (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "targetIntensity")? {
-        p.target_intensity = Some(v as u32);
+        p.target_intensity = Some(checked_u32(env, v, "targetIntensity")?);
     }
 
     // Tag 10 — centroidLatOffset (nullable Double)
@@ -946,23 +955,23 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
 
     // Tag 19 — centroidPixRow (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixRow")? {
-        p.centroid_pix_row = Some(v as u32);
+        p.centroid_pix_row = Some(checked_u32(env, v, "centroidPixRow")?);
     }
 
     // Tag 20 — centroidPixCol (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixCol")? {
-        p.centroid_pix_col = Some(v as u32);
+        p.centroid_pix_col = Some(checked_u32(env, v, "centroidPixCol")?);
     }
 
     // Tag 21 deprecated in ST 0903.6 — skipped
     // Tag 22 — algorithmId (nullable Long → Option<u32>)
     if let Some(v) = read_nullable_long(env, rec, "algorithmId")? {
-        p.algorithm_id = Some(v as u32);
+        p.algorithm_id = Some(checked_u32(env, v, "algorithmId")?);
     }
 
     // Tag 23 — detectionStatus (nullable Integer → Option<u8>)
     if let Some(v) = read_nullable_int(env, rec, "detectionStatus")? {
-        p.detection_status = Some(v as u8);
+        p.detection_status = Some(checked_u8(env, i64::from(v), "detectionStatus")?);
     }
 
     // Tag 101 — vmask (nullable ByteBuffer)
@@ -989,94 +998,4 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
 
     // field_errors is decoder-only diagnostic; not round-tripped.
     Ok(p)
-}
-
-// -----------------------------------------------------------------------
-// Null-safe accessor helpers
-// -----------------------------------------------------------------------
-
-/// Read a nullable `Integer` accessor: calls `rec.<name>()` returning
-/// `Ljava/lang/Integer;`, null-checks, and unboxes. Returns `None` for null.
-fn read_nullable_int(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<i32>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/Integer;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "intValue", "()I", &[])?.i()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `Long` accessor: calls `rec.<name>()` returning
-/// `Ljava/lang/Long;`, null-checks, and unboxes. Returns `None` for null.
-fn read_nullable_long(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<i64>> {
-    let obj = env.call_method(rec, name, "()Ljava/lang/Long;", &[])?.l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "longValue", "()J", &[])?.j()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `Double` accessor: calls `rec.<name>()` returning
-/// `Ljava/lang/Double;`, null-checks, and unboxes. Returns `None` for null.
-fn read_nullable_double(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<f64>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/Double;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "doubleValue", "()D", &[])?.d()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `String` accessor. Returns `None` for null.
-fn read_nullable_string(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<String>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/String;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let j_str: &jni::objects::JString = (&obj).into();
-    let s: String = env.get_string(j_str).map(Into::into)?;
-    Ok(Some(s))
-}
-
-/// Read a nullable `ByteBuffer` accessor. Extracts the backing byte[] via
-/// `array()` (works for heap-backed buffers created by `wrap_heap_byte_buffer`).
-/// Returns `None` for null.
-fn read_nullable_byte_buffer(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<Vec<u8>>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/nio/ByteBuffer;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let arr_obj = env.call_method(&obj, "array", "()[B", &[])?.l()?;
-    let arr = jni::objects::JByteArray::from(arr_obj);
-    let bytes = env.convert_byte_array(&arr)?;
-    Ok(Some(bytes))
 }

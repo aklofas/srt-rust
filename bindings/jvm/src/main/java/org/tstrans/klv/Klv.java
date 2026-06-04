@@ -448,6 +448,11 @@ public final class Klv {
                 org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
                 setLabel + " outer BER length unreadable: indefinite-length BER not permitted in KLV");
         }
+        if (nbytes > 8) {
+            throw new org.tstrans.KlvDecodeException(
+                org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,
+                setLabel + " outer BER length unreadable: long-form length exceeds 8 bytes");
+        }
         if (offset + 1 + nbytes > buf.length) {
             throw new org.tstrans.KlvDecodeException(
                 org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET,

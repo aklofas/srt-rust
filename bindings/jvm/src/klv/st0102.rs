@@ -58,7 +58,10 @@ use tst_core::klv::st0102::{
 };
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
-use crate::jutil::{build_field_errors, build_unknown_list, read_unknown_list};
+use crate::jutil::{
+    build_field_errors, build_unknown_list, checked_u8, checked_u16, read_nullable_int,
+    read_nullable_string, read_unknown_list,
+};
 
 // Builder class + method descriptor constants.
 // Matches: SecurityLs$Builder.<setter>(int) → SecurityLs$Builder
@@ -371,23 +374,25 @@ fn read_security(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result
 
     // Tag 1: securityClassificationCode() → Integer | null
     if let Some(code) = read_nullable_int(env, rec, "securityClassificationCode")? {
-        r.security_classification = Some(SecurityClassification::from_u8(code as u8));
+        let c = checked_u8(env, i64::from(code), "securityClassificationCode")?;
+        r.security_classification = Some(SecurityClassification::from_u8(c));
     }
 
     // Tag 2: classifyingCountryCodingMethodCode() → Integer | null
     if let Some(code) = read_nullable_int(env, rec, "classifyingCountryCodingMethodCode")? {
-        r.classifying_country_coding_method =
-            Some(ClassifyingCountryCodingMethod::from_u8(code as u8));
+        let c = checked_u8(env, i64::from(code), "classifyingCountryCodingMethodCode")?;
+        r.classifying_country_coding_method = Some(ClassifyingCountryCodingMethod::from_u8(c));
     }
 
     // Tag 12: objectCountryCodingMethodCode() → Integer | null
     if let Some(code) = read_nullable_int(env, rec, "objectCountryCodingMethodCode")? {
-        r.object_country_coding_method = Some(ObjectCountryCodingMethod::from_u8(code as u8));
+        let c = checked_u8(env, i64::from(code), "objectCountryCodingMethodCode")?;
+        r.object_country_coding_method = Some(ObjectCountryCodingMethod::from_u8(c));
     }
 
     // --- Integer field: version (u16) ---
     if let Some(v) = read_nullable_int(env, rec, "version")? {
-        r.version = Some(v as u16);
+        r.version = Some(checked_u16(env, i64::from(v), "version")?);
     }
 
     // --- String fields (null → None) ---
@@ -416,46 +421,4 @@ fn read_security(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result
 
     // field_errors is decoder-only diagnostic; not round-tripped (mirrors tst-py).
     Ok(r)
-}
-
-/// Read a nullable `Integer` record accessor: calls `rec.<name>()` returning
-/// `Ljava/lang/Integer;`, null-checks, and unboxes. Returns `None` when the
-/// Java value is null.
-fn read_nullable_int(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<i32>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/Integer;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    let v = env.call_method(&obj, "intValue", "()I", &[])?.i()?;
-    Ok(Some(v))
-}
-
-/// Read a nullable `String` record accessor: calls `rec.<name>()` returning
-/// `Ljava/lang/String;`, null-checks, and converts to Rust `String`. Returns
-/// `None` when the Java value is null.
-fn read_nullable_string(
-    env: &mut JNIEnv<'_>,
-    rec: &JObject<'_>,
-    name: &str,
-) -> jni::errors::Result<Option<String>> {
-    let obj = env
-        .call_method(rec, name, "()Ljava/lang/String;", &[])?
-        .l()?;
-    if obj.is_null() {
-        return Ok(None);
-    }
-    // The accessor's return type is `String`, so `obj` is a String reference
-    // here. `JString::from` is a pointer cast (jni 0.21 has no fallible
-    // conversion); the actual String-ness is validated by `get_string`, which
-    // returns a JNI error if `obj` is not a real `java.lang.String`. Propagate
-    // that error rather than panicking.
-    let j_str: &jni::objects::JString = (&obj).into();
-    let s: String = env.get_string(j_str).map(Into::into)?;
-    Ok(Some(s))
 }

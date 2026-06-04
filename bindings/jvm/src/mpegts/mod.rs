@@ -100,7 +100,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
                 throw_demux(&mut env, "STRICT_REJECTION", &e.to_string())
             }
             DemuxError::Unrecoverable { .. } => throw_demux(&mut env, "INTERNAL", &e.to_string()),
-            // DemuxError is #[non_exhaustive]; forward-compat catch-all.
+            // DemuxError is marked non-exhaustive; forward-compat catch-all.
             _ => throw_demux(&mut env, "INTERNAL", &e.to_string()),
         }
     }

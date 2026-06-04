@@ -25,7 +25,7 @@
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
-use jni::sys::{jlong, jobject};
+use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::au_cell::CellFragmentIndication;
@@ -46,6 +46,56 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpen<'local>(
     _class: JClass<'local>,
 ) -> jlong {
     Box::into_raw(Box::new(Demuxer::new())) as jlong
+}
+
+/// `nOpenWithConfig(...)` — build a configured [`Demuxer`]. The `strict`/`av1`
+/// ints are the Java enum ORDINALS (contract: must mirror the Java enum
+/// declaration order — `StrictMode`: 0=OFF,1=TIMING_ONLY,2=PSI_ONLY,3=FULL;
+/// `Av1CarriageMode`: 0=MPEG2_TS_BINDING,1=INTEROP_RAW_OBU). A `0` cap means
+/// "use the Rust default" (mapped to `None`). Mirrors tst-py's
+/// `build_demuxer_config` field-by-field.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    strict: jint,
+    pes_cap_per_pid: jlong,
+    pes_cap_total: jlong,
+    cfi: jboolean,
+    av1: jint,
+    au_cell_cap: jlong,
+    lenient_psi: jboolean,
+) -> jlong {
+    use tst_core::mpegts::demux::{DemuxerConfig, StrictMode};
+    use tst_core::mpegts::mux::Av1CarriageMode;
+
+    // `DemuxerConfig` is non-exhaustive in `tst_core`, so it can't be built with
+    // struct-expression syntax from this crate — assemble it field-by-field on
+    // top of `default()`, mirroring tst-py's `build_demuxer_config`. The Rust-only
+    // `klv_link_overrides`/`stream_kind_overrides` keep their defaults (deferred).
+    let mut opts = DemuxerConfig::default();
+    opts.strict = match strict {
+        0 => StrictMode::Off,
+        1 => StrictMode::TimingOnly,
+        2 => StrictMode::DescriptorsOnly, // Java PSI_ONLY
+        _ => StrictMode::Full,            // 3 (and any out-of-range → strictest, safe)
+    };
+    opts.av1_carriage = match av1 {
+        1 => Av1CarriageMode::InteropRawObu,
+        _ => Av1CarriageMode::Mpeg2TsBinding,
+    };
+    if pes_cap_per_pid > 0 {
+        opts.pes_cap_per_pid = Some(pes_cap_per_pid as usize);
+    }
+    if pes_cap_total > 0 {
+        opts.pes_cap_total = Some(pes_cap_total as usize);
+    }
+    if au_cell_cap > 0 {
+        opts.au_cell_cap_per_pid = Some(au_cell_cap as usize);
+    }
+    opts.cfi_tolerance = cfi != 0;
+    opts.lenient_psi_reassembly = lenient_psi != 0;
+    Box::into_raw(Box::new(Demuxer::with_config(opts))) as jlong
 }
 
 /// `nClose(handle)` — drop the boxed [`Demuxer`]. No-op on a zero

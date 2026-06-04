@@ -33,6 +33,20 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
         this.handle = nOpen();
     }
 
+    /**
+     * Construct a demuxer with a non-default configuration.
+     *
+     * <p>Ordinal contract: the {@code strict}/{@code av1} ints passed to
+     * {@code nOpenWithConfig} are the Java enum ORDINALS — the Rust side maps by
+     * ordinal in the SAME declaration order as {@link StrictMode} / {@link Av1CarriageMode}.
+     */
+    public Demuxer(DemuxerConfig cfg) {
+        this.handle = nOpenWithConfig(
+            cfg.strictMode().ordinal(), cfg.pesCapPerPid(), cfg.pesCapTotal(),
+            cfg.cfiTolerance(), cfg.av1Carriage().ordinal(),
+            cfg.auCellCapPerPid(), cfg.lenientPsiReassembly());
+    }
+
     /** Feed TS bytes. @throws DemuxException on non-conformant input. */
     public void feed(byte[] bytes) throws DemuxException {
         ensureOpen();
@@ -82,6 +96,8 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
     }
 
     private static native long nOpen();
+    private static native long nOpenWithConfig(int strict, long pesCapPerPid, long pesCapTotal,
+            boolean cfi, int av1, long auCellCap, boolean lenientPsi);
     private static native void nFeed(long handle, byte[] bytes) throws DemuxException;
     private static native void nFlush(long handle);
     private static native DemuxEvent nNextEvent(long handle) throws DemuxException;

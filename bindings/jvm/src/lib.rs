@@ -6,6 +6,8 @@
 //! in the follow-on surface-port waves.
 
 mod error;
+mod jutil;
+mod klv;
 mod mpegts;
 
 use jni::JNIEnv;

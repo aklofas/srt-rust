@@ -7,5 +7,6 @@
 module org.tstrans {
     requires java.base;
     exports org.tstrans;
+    exports org.tstrans.klv;
     exports org.tstrans.mpegts;
 }

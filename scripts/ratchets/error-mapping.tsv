@@ -23,3 +23,5 @@ py	srt	SrtErrorKind	make_srt_error	-
 py	hls	HlsErrorKind	make_hls_error	-
 java	demux	DemuxException.Kind	throw_demux	-
 java	mux	MuxException.Kind	throw_mux	-
+java	klv_decode	KlvDecodeException.Kind	throw_klv_decode	-
+java	klv_encode	KlvEncodeException.Kind	throw_klv_encode	-

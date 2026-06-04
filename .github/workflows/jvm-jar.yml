@@ -32,3 +32,6 @@ jobs:
       - name: Build + test JVM binding
         working-directory: bindings/jvm
         run: ./gradlew test --no-daemon --stacktrace
+
+      - name: check-jvm-error-mapping-coverage
+        run: bash scripts/check/jvm/error-mapping-coverage.sh

@@ -13,8 +13,8 @@ import java.util.List;
 public sealed interface DemuxEvent
         permits DemuxEvent.ProgramMap, DemuxEvent.Sample, DemuxEvent.Discontinuity {
 
-    /** PSI program map. */
-    record ProgramMap(List<ProgramInfo> programs) implements DemuxEvent {}
+    /** PSI program map for one program (mirrors tst-py mpegts.ProgramMap). */
+    record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
 
     /** Elementary-stream access unit. {@code kind} is the stream class. */
     record Sample(int pid, long pts, SampleKind kind, ByteBuffer payload) implements DemuxEvent {}

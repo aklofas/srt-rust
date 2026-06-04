@@ -2651,21 +2651,33 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::common::pts_diff_33bit"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::AudioCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.AudioCodec"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::DemuxEvent"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.DemuxEvent"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::Demuxer"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::DemuxerBuilder"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.DemuxerConfig.Builder"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid"
@@ -2747,9 +2759,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::DemuxerStats::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::DiscontinuityKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.DiscontinuityKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::KlvLink"
@@ -2759,17 +2775,25 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::LinkSource"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::MetadataKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.MetadataKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::NalUnit"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::NonConformantIssue"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.NonConformantKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::Obu"
@@ -2799,29 +2823,49 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::SamplePayload"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::StreamId"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StreamId"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::StreamInfo"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::StreamKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StreamKind"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::StrictMode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StrictMode"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::SubtitleCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.SubtitleCodec"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::VideoCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.VideoCodec"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::VideoPayload"
@@ -2894,9 +2938,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::demuxer::Demuxer::with_config"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::AudioCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.AudioCodec"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::AudioCodec::clone"
@@ -2930,9 +2978,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::Av1ObuHeaderKind::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::DemuxEvent"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.DemuxEvent"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::DemuxEvent::clone"
@@ -2946,9 +2998,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::DemuxEvent::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::DiscontinuityKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.DiscontinuityKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::DiscontinuityKind::clone"
@@ -2994,9 +3050,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::LinkSource::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::MetadataKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.MetadataKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::MetadataKind::clone"
@@ -3054,9 +3114,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::NalUnit::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::NonConformantIssue"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.NonConformantKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::NonConformantIssue::clone"
@@ -3150,9 +3214,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::SamplePayload::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::StreamId"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StreamId"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::StreamId::clone"
@@ -3186,9 +3254,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::StreamInfo::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::StreamKind"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StreamKind"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::StreamKind::clone"
@@ -3206,9 +3278,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::StreamKind::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::SubtitleCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.SubtitleCodec"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::SubtitleCodec::clone"
@@ -3226,9 +3302,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::event::SubtitleCodec::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::event::VideoCodec"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.VideoCodec"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::event::VideoCodec::clone"
@@ -3454,9 +3534,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::pts_to_duration"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::strict::StrictMode"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+bindings = ["java:org.tstrans.mpegts.StrictMode"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::strict::StrictMode::clone"

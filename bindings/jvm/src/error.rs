@@ -125,7 +125,6 @@ fn throw_klv_encode_inner(
 
 /// Map + throw a Rust `KlvDecodeError`. All 7 Kind literals appear inline
 /// (satisfies the error-mapping ratchet). Used by the per-set JNI fns (Tasks 1–4).
-#[allow(dead_code)]
 pub fn map_klv_decode_error(env: &mut JNIEnv, e: &KlvDecodeError) {
     let msg = e.to_string();
     match e {

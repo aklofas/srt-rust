@@ -10,7 +10,6 @@ use jni::objects::{JObject, JValue};
 /// Construct + throw `org.tstrans.DemuxException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `DemuxException.Kind` enum constant names
 /// (SCREAMING_SNAKE_CASE), matching the Rust `DemuxError` variants 1:1.
-#[allow(dead_code)] // call site wired in Task 1.3 (mpegts JNI); remove the allow then
 pub fn throw_demux(env: &mut JNIEnv, kind: &str, message: &str) {
     if env.exception_check().unwrap_or(false) {
         return; // don't clobber an already-pending exception

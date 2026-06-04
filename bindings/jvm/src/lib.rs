@@ -6,6 +6,7 @@
 
 mod error;
 mod jbuf;
+mod mpegts;
 
 use jni::JNIEnv;
 use jni::objects::JClass;

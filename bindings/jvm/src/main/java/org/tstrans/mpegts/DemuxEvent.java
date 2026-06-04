@@ -6,9 +6,10 @@ import java.util.List;
 /**
  * A demuxed event. Sealed sum type mirroring
  * {@code tst_core::mpegts::demux::DemuxEvent} (spec §5.2). The keystone ships
- * ProgramMap / Sample / Discontinuity; remaining variants (Metadata,
- * NonConformant, UnknownSample, ReconnectDiscontinuity) land in the
- * mpegts-completion wave and are added to {@code permits} then.
+ * ProgramMap / Sample / Discontinuity; remaining top-level variants (Metadata,
+ * NonConformant, ReconnectDiscontinuity) land in the mpegts-completion wave and
+ * are added to {@code permits} then. (An UnknownSample event is built from
+ * {@code SamplePayload::Unknown}, a Sample payload — not a top-level variant.)
  */
 public sealed interface DemuxEvent
         permits DemuxEvent.ProgramMap, DemuxEvent.Sample, DemuxEvent.Discontinuity {

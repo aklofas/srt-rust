@@ -161,6 +161,86 @@ public final class Klv {
             throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------
+    // ST 0903 — VMTI LS + VTargetPack
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode an ST 0903 VMTI LS body (lenient mode).
+     *
+     * <p>{@code buf} is body-only — no Universal Label or outer BER length wrapper.
+     * Lenient mode tolerates missing required tags and surfaces per-field decode
+     * failures in {@link VmtiLs#fieldErrors()}. Mirrors tst-py's
+     * {@code decode_vmti(buf)}.
+     *
+     * @param buf ST 0903 body bytes (no UL / outer BER length)
+     * @return the decoded {@link VmtiLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is structurally malformed
+     */
+    public static VmtiLs decodeVmti(byte[] buf) throws org.tstrans.KlvDecodeException {
+        return nDecodeVmti(buf, false);
+    }
+
+    /**
+     * Decode an ST 0903 VMTI LS body with optional strict mode.
+     *
+     * <p>{@code buf} is body-only — no Universal Label or outer BER length wrapper.
+     * When {@code strict = true}, rejects missing required tags per ST 0903.6 §6
+     * Table 1, duplicate tags, and malformed UTF-8. Mirrors tst-py's
+     * {@code decode_vmti(buf, strict=True)}.
+     *
+     * @param buf    ST 0903 body bytes (no UL / outer BER length)
+     * @param strict {@code true} for strict validation; {@code false} for lenient
+     * @return the decoded {@link VmtiLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is rejected
+     */
+    public static VmtiLs decodeVmti(byte[] buf, boolean strict)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodeVmti(buf, strict);
+    }
+
+    /**
+     * Encode a {@link VmtiLs} to ST 0903 body bytes (embedded form).
+     *
+     * <p>Returns body-only bytes — no Universal Label, no outer BER length, and
+     * no Tag 1 checksum (per ST 0903.6-120). For standalone carriage on a
+     * dedicated KLV PID, use {@link #encodeVmtiStandalone(VmtiLs)}.
+     * Mirrors tst-py's {@code encode_vmti(record)}.
+     *
+     * @param record the VMTI LS to encode
+     * @return ST 0903 embedded body bytes
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
+     *                                        a reserved tag appears in {@code unknown}
+     */
+    public static byte[] encodeVmti(VmtiLs record) throws org.tstrans.KlvEncodeException {
+        return nEncodeVmti(record);
+    }
+
+    /**
+     * Encode a {@link VmtiLs} as a standalone VMTI wire record.
+     *
+     * <p>Returns the full framing: {@code [VMTI_LS_UL:16][outer BER length][body][Tag1 checksum]}
+     * per ST 0903.4-17 / ST 0903.6-119. The Tag 1 checksum is computed from the
+     * assembled framing; any value in {@link VmtiLs#checksum()} is ignored.
+     * Mirrors tst-py's {@code encode_vmti_standalone(record)}.
+     *
+     * @param record the VMTI LS to encode
+     * @return the full standalone VMTI wire record
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
+     *                                        a reserved tag appears in {@code unknown}
+     */
+    public static byte[] encodeVmtiStandalone(VmtiLs record) throws org.tstrans.KlvEncodeException {
+        return nEncodeVmtiStandalone(record);
+    }
+
+    private static native VmtiLs nDecodeVmti(byte[] buf, boolean strict)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] nEncodeVmti(VmtiLs record) throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeVmtiStandalone(VmtiLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
     // Test-only forced-throw helpers (package-private)
     // -----------------------------------------------------------------------
 

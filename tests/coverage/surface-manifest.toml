@@ -11,7 +11,7 @@
 # Binding column prefixes are IDENTIFIERS, not filesystem paths:
 #   c:<symbol>       -> grepped in bindings/c/include/tstrans.h
 #   python:<dotted>  -> grepped in bindings/python/python/tstrans/ (all .py/.pyi)
-#   java:<dotted>    -> grepped in bindings/jvm/java/** (RESERVED; empty until tst-jni)
+#   java:<dotted>    -> grepped in bindings/jvm/src/main/java/** (tst-jni surface-port)
 #   swift:/kotlin:<symbol> [feature=X] -> tst-uniffi (RESERVED; feature-tagged)
 # The optional " [feature=X]" suffix marks a symbol absent from builds without X
 # (X in {srt,rtp,udp,tcp,hls,rist}); the ratchet skips resolving it unless X is built.
@@ -27,7 +27,7 @@ crate = "tst-core"
 item = "tst_core::mpegts::demux::demuxer::Demuxer::feed"
 owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
 # java: column added by tst-jni surface-port; that is the §8.5 parity gate
-bindings = ["c:tst_demuxer_feed", "python:decode_uas_datalink"]
+bindings = ["c:tst_demuxer_feed", "python:decode_uas_datalink", "java:org.tstrans.mpegts.Demuxer.feed"]
 scenario_ids = ["h264-st0601-mp", "malformed-pes-lenient"]
 tier = "A"
 
@@ -2827,9 +2827,16 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::VideoPayload"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::demuxer::Demuxer"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+# java: keystone Demuxer type (tst-jni surface-port); c/python expose the
+# offline demuxer surface — this is the §8.5 parity gate for the type itself.
+bindings = ["c:tst_demuxer_open", "python:Demuxer", "java:org.tstrans.mpegts.Demuxer"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::demuxer::Demuxer::default"
@@ -2839,9 +2846,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::demuxer::Demuxer::feed_aligned"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::demuxer::Demuxer::flush"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+# java: column added by tst-jni surface-port (§8.5 parity gate).
+bindings = ["c:tst_demuxer_flush", "python:flush", "java:org.tstrans.mpegts.Demuxer.flush"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::demuxer::Demuxer::fmt"
@@ -2851,9 +2864,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::demux::demuxer::Demuxer::new"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::demux::demuxer::Demuxer::next_event"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+# java: Java is camelCase -> nextEvent (tst-jni surface-port, §8.5 parity gate).
+bindings = ["c:tst_demuxer_next_event", "python:DemuxEvent", "java:org.tstrans.mpegts.Demuxer.nextEvent"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::demuxer::Demuxer::reset_stats"

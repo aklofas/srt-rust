@@ -18,10 +18,9 @@ doctest    = false
 [dependencies]
 # jni-rs: self-contained JNI bindings. Compiling the cdylib needs no JDK/JVM;
 # the JVM is only present at runtime when Java `System.load`s the library.
-# Bootstrap depends on jni ONLY — workspace crates (tst-core/tst-srt/...) are
-# added in the step-2 surface port.
 jni = "0.21"
 
-# Keystone needs only tst-core (Demuxer + DemuxEvent). tst-pipeline/tst-srt/
-# tst-rtp are added by their respective module waves, not before.
+# tst-core (pure Rust, no libsrt) backs the mpegts-demux keystone (Demuxer +
+# DemuxEvent). tst-pipeline/tst-srt/tst-rtp are added by their respective module
+# waves, not before.
 tst-core = { path = "../../crates/tst-core" }

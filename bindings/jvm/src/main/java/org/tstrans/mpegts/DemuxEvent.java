@@ -23,20 +23,17 @@ public sealed interface DemuxEvent
      * @param pid     the elementary-stream PID this sample belongs to
      * @param pts     presentation timestamp in 90&nbsp;kHz ticks
      * @param kind    coarse payload class (see {@link SampleKind})
-     * @param payload the access-unit bytes as a DIRECT (off-heap)
-     *                {@link ByteBuffer} backed by native memory (zero-copy,
-     *                spec&nbsp;§5.4). The buffer is valid <strong>only until the
-     *                next {@link Demuxer#nextEvent()} pull</strong> on the
-     *                owning demuxer — pulling the next event overwrites the
-     *                backing storage, so any earlier {@code payload} buffer is
-     *                invalidated. To retain the bytes past that point, copy them
-     *                while this sample is current, e.g.
-     *                {@code ByteBuffer copy = ByteBuffer.allocate(payload.remaining()).put(payload.duplicate()).flip();}
-     *                or {@code byte[] b = new byte[payload.remaining()]; payload.duplicate().get(b);}.
-     *                (A generation-counter guard that turns a stale read into a
-     *                defined {@link IllegalStateException} arrives in the
-     *                mpegts-completion wave; until then a stale read is
-     *                undefined.)
+     * @param payload the access-unit bytes as a heap (JVM-owned)
+     *                {@link ByteBuffer} — a copy of the demuxed bytes. Because
+     *                the JVM owns the backing array, this buffer is safe to
+     *                retain and read at any time (including after the next
+     *                {@link Demuxer#nextEvent()} pull or after {@link
+     *                Demuxer#close()}). True zero-copy (a direct buffer over
+     *                native memory with a <em>defined</em> stale-read error,
+     *                spec&nbsp;§5.4) is deferred to a future JDK&nbsp;22+ path
+     *                built on the Foreign Function &amp; Memory API
+     *                ({@code Arena}/{@code MemorySegment}); on the JDK&nbsp;17
+     *                baseline this binding copies.
      */
     record Sample(int pid, long pts, SampleKind kind, ByteBuffer payload) implements DemuxEvent {}
 

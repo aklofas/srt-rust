@@ -15,8 +15,12 @@ while IFS=$'\t' read -r lang name cls makefn _rest; do
   family="${cls%.Kind}"                      # e.g. DemuxException
   jfile="$JAVA/$family.java"
   if [ ! -f "$jfile" ]; then echo "FAIL[$name]: missing $jfile"; fail=1; continue; fi
-  # extract enum constants from `enum Kind { A, B, ... }`
-  consts=$(sed -n '/enum Kind/,/}/p' "$jfile" | grep -oE '[A-Z][A-Z0-9_]+' | grep -v '^Kind$' || true)
+  # extract enum constants from `enum Kind { A, B, ... }`. Strip // line comments
+  # and inline /* */ comments first so an UPPER_CASE token in a comment can
+  # neither poison (false FAIL) nor vacuously satisfy the check.
+  consts=$(sed -n '/enum Kind/,/}/p' "$jfile" \
+    | sed 's@//.*@@; s@/\*.*\*/@@g' \
+    | grep -oE '[A-Z][A-Z0-9_]+' | grep -v '^Kind$' || true)
   if [ -z "$consts" ]; then
     echo "FAIL[$name]: no Kind constants found in $jfile"
     fail=1

@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        # No submodules: the bootstrap crate is jni-only and never builds
-        # vendor/srt or vendor/mbedtls.
+        # No submodules: tst-jni depends only on jni + pure-Rust tst-core, so it
+        # never builds vendor/srt or vendor/mbedtls.
 
       - name: Install Rust 1.85
         uses: dtolnay/rust-toolchain@1.85

@@ -7,9 +7,18 @@
 //! `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
 //!
-//! Handle convention: `nOpen` boxes a [`JniDemuxer`] and returns the raw pointer
-//! as a `jlong`; `nClose` reconstitutes + drops the box (guarded by
-//! `handle != 0`); the per-call fns deref `&mut *(handle as *mut JniDemuxer)`.
+//! Handle convention: `nOpen` boxes a [`Demuxer`] and returns the raw pointer as
+//! a `jlong`; `nClose` reconstitutes + drops the box (guarded by `handle != 0`);
+//! the per-call fns validate the handle ([`checked_handle`] throws
+//! `IllegalStateException` on a zero handle) before dereferencing.
+//!
+//! `Sample.payload` is a COPIED, Java-owned heap `ByteBuffer` (`ByteBuffer.wrap`
+//! over a fresh `byte[]`). The earlier zero-copy direct-buffer over Rust-owned
+//! memory was a use-after-free hazard once a consumer retained the buffer past
+//! the next pull, and a JDK-17-stable primitive for *defined*-on-stale-read
+//! zero-copy does not exist (the real one is FFM `Arena`/`MemorySegment`, stable
+//! only in JDK 22+). Real zero-copy is therefore deferred to a JDK-22+ FFM path;
+//! the keystone copies, which is unconditionally safe. See the design spec §5.4.
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
@@ -20,35 +29,17 @@ use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, Video
 
 use crate::error::throw_demux;
 
-/// Native handle behind `org.tstrans.mpegts.Demuxer`. Owns the demuxer **and**
-/// the backing storage for the most-recently-yielded `Sample`'s direct
-/// `ByteBuffer` (spec §5.4).
-struct JniDemuxer {
-    demuxer: Demuxer,
-    /// Backing storage for the most-recently-yielded `Sample`'s direct
-    /// `ByteBuffer`. Lives until the next `nNextEvent` overwrites it — this IS
-    /// the "valid until next pull" contract (spec §5.4). The Java-side
-    /// generation-counter guard that turns a stale read into a defined
-    /// `IllegalStateException` is deferred to the mpegts-completion wave; until
-    /// then the contract is documented on `Sample.payload()` and callers must
-    /// copy to retain.
-    last_payload: Vec<u8>,
-}
-
-/// `org.tstrans.mpegts.Demuxer.nOpen()` — allocate a [`JniDemuxer`] and hand the
-/// JVM its raw pointer as a `jlong` handle.
+/// `org.tstrans.mpegts.Demuxer.nOpen()` — allocate a [`Demuxer`] and hand the JVM
+/// its raw pointer as a `jlong` handle.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpen<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jlong {
-    Box::into_raw(Box::new(JniDemuxer {
-        demuxer: Demuxer::new(),
-        last_payload: Vec::new(),
-    })) as jlong
+    Box::into_raw(Box::new(Demuxer::new())) as jlong
 }
 
-/// `nClose(handle)` — drop the boxed [`JniDemuxer`]. No-op on a zero
+/// `nClose(handle)` — drop the boxed [`Demuxer`]. No-op on a zero
 /// (already-closed) handle so a double `close()` is safe.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nClose<'local>(
@@ -60,7 +51,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nClose<'local>(
         // SAFETY: `handle` was produced by `Box::into_raw` in `nOpen` and is
         // dropped exactly once (Java zeroes its field after this call).
         unsafe {
-            drop(Box::from_raw(handle as *mut JniDemuxer));
+            drop(Box::from_raw(handle as *mut Demuxer));
         }
     }
 }
@@ -76,8 +67,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
     handle: jlong,
     bytes: JByteArray<'local>,
 ) {
-    // SAFETY: `handle` is a live pointer from `nOpen` (Java guards closed=0).
-    let dx = &mut unsafe { &mut *(handle as *mut JniDemuxer) }.demuxer;
+    let Some(ptr) = checked_handle(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: `checked_handle` rejected 0; the pointer is a live `Box<Demuxer>`
+    // from `nOpen` (single-threaded use per spec §5.5).
+    let dx = unsafe { &mut *ptr };
 
     let buf = match env.convert_byte_array(&bytes) {
         Ok(b) => b,
@@ -109,17 +104,20 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
 /// `nFlush(handle)` — flush in-flight PES reassembly (call once at EOF).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    // SAFETY: live pointer from `nOpen` (Java guards closed=0).
-    let dx = &mut unsafe { &mut *(handle as *mut JniDemuxer) }.demuxer;
+    let Some(ptr) = checked_handle(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live pointer from `nOpen`.
+    let dx = unsafe { &mut *ptr };
     dx.flush();
 }
 
-/// `nNextEvent(handle)` — pull the next *mappable* event, converting it to a
-/// Java `DemuxEvent` record. Events with no keystone Java mapping (`Metadata`,
+/// `nNextEvent(handle)` — pull the next *mappable* event, converting it to a Java
+/// `DemuxEvent` record. Events with no keystone Java mapping (`Metadata`,
 /// `NonConformant`, `ReconnectDiscontinuity`) are skipped; the loop pulls the
 /// next one. Returns Java `null` when the queue drains.
 #[unsafe(no_mangle)]
@@ -128,30 +126,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    // SAFETY: live pointer from `nOpen` (Java guards closed=0).
-    let dx = unsafe { &mut *(handle as *mut JniDemuxer) };
+    let Some(ptr) = checked_handle(&mut env, handle) else {
+        return JObject::null().into_raw();
+    };
+    // SAFETY: validated non-zero live pointer from `nOpen`.
+    let dx = unsafe { &mut *ptr };
 
     loop {
-        // `next_event()` returns an OWNED `DemuxEvent`; the `&mut dx.demuxer`
-        // borrow ends here, so the Sample arm below is free to mutate
-        // `dx.last_payload` without a borrow conflict.
-        let Some(ev) = dx.demuxer.next_event() else {
+        let Some(ev) = dx.next_event() else {
             return JObject::null().into_raw();
         };
-        let built = match &ev {
-            // Sample carries the direct-ByteBuffer payload — handled inline so
-            // it can move the bytes into `dx.last_payload` (the owner whose
-            // lifetime backs the direct buffer until the next pull).
-            DemuxEvent::Sample {
-                stream,
-                pts,
-                payload,
-                ..
-            } => build_sample(&mut env, dx, stream.pid, pts.as_ticks(), payload),
-            // The remaining keystone variants carry no payload.
-            other => convert_event(&mut env, other),
-        };
-        match built {
+        match convert_event(&mut env, &ev) {
             Ok(Some(obj)) => return obj.into_raw(),
             // Not a keystone-mappable event — skip it and pull the next.
             Ok(None) => continue,
@@ -163,49 +148,23 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     }
 }
 
-/// Build the `DemuxEvent.Sample` record with a zero-copy DIRECT `ByteBuffer`
-/// (spec §5.4).
-///
-/// The contiguous payload bytes are MOVED into `dx.last_payload` — replacing the
-/// previous one, which drops here (the "previous buffer invalidated on next
-/// pull" semantics) — and the direct buffer is minted over that owned storage.
-/// The buffer stays valid until the next `nNextEvent` overwrites `last_payload`.
-fn build_sample<'local>(
-    env: &mut JNIEnv<'local>,
-    dx: &mut JniDemuxer,
-    pid: u16,
-    pts: i64,
-    payload: &SamplePayload,
-) -> Result<Option<JObject<'local>>, ()> {
-    let kind = sample_kind(env, payload)?;
-    // Move the freshly-derived bytes into the wrapper-owned storage; the prior
-    // Vec drops on assignment, invalidating any earlier-minted direct buffer.
-    dx.last_payload = sample_bytes(payload);
-    // SAFETY: `dx.last_payload` is owned by the boxed `JniDemuxer` (lives until
-    // `nClose`) and is mutated only here on the next pull — stable for the JVM
-    // to read until then (spec §5.4 "valid until next event").
-    let buffer = crate::jbuf::new_direct(env, &mut dx.last_payload).map_err(|_| ())?;
-    let obj = env
-        .new_object(
-            "org/tstrans/mpegts/DemuxEvent$Sample",
-            "(IJLorg/tstrans/mpegts/DemuxEvent$SampleKind;Ljava/nio/ByteBuffer;)V",
-            &[
-                JValue::Int(pid as i32),
-                JValue::Long(pts),
-                JValue::Object(&kind),
-                JValue::Object(&buffer),
-            ],
-        )
-        .map_err(|_| ())?;
-    Ok(Some(obj))
+/// Validate a native handle. Returns the live `*mut Demuxer`, or throws
+/// `IllegalStateException` and returns `None` for a zero (closed) handle. This is
+/// the native-side enforcement of the same closed-handle contract the Java
+/// `ensureOpen()` already checks — the JNI boundary fails closed even if a
+/// private native method is reached by reflection.
+fn checked_handle(env: &mut JNIEnv, handle: jlong) -> Option<*mut Demuxer> {
+    if handle == 0 {
+        let _ = env.throw_new("java/lang/IllegalStateException", "Demuxer is closed");
+        return None;
+    }
+    Some(handle as *mut Demuxer)
 }
 
-/// Convert one payload-free `DemuxEvent` to a Java `DemuxEvent` record.
+/// Convert one `DemuxEvent` to a Java `DemuxEvent` record.
 ///
-/// `Ok(Some(obj))` — a keystone variant was built. `Ok(None)` — the event has
-/// no keystone mapping (caller should skip). `Err(())` — a JNI call failed.
-/// NOTE: `Sample` is handled inline by [`build_sample`] (it needs the wrapper's
-/// owned payload storage); the `Sample` arm here is unreachable.
+/// `Ok(Some(obj))` — a keystone variant was built. `Ok(None)` — the event has no
+/// keystone mapping (caller should skip). `Err(())` — a JNI call failed.
 fn convert_event<'local>(
     env: &mut JNIEnv<'local>,
     ev: &DemuxEvent,
@@ -226,8 +185,12 @@ fn convert_event<'local>(
                 .map_err(|_| ())?;
             Ok(Some(obj))
         }
-        // Handled inline in `nNextEvent` via `build_sample` (needs owned storage).
-        DemuxEvent::Sample { .. } => Ok(None),
+        DemuxEvent::Sample {
+            stream,
+            pts,
+            payload,
+            ..
+        } => build_sample(env, stream.pid, pts.as_ticks(), payload),
         DemuxEvent::Discontinuity { stream, .. } => {
             let obj = env
                 .new_object(
@@ -243,6 +206,52 @@ fn convert_event<'local>(
         | DemuxEvent::NonConformant { .. }
         | DemuxEvent::ReconnectDiscontinuity => Ok(None),
     }
+}
+
+/// Build the `DemuxEvent.Sample` record with a COPIED, Java-owned heap
+/// `ByteBuffer` payload (`ByteBuffer.wrap` over a fresh `byte[]`). The copy makes
+/// the buffer safe to retain indefinitely (no Rust-side lifetime). See the
+/// module doc + spec §5.4 for why zero-copy is deferred to a JDK-22+ FFM path.
+fn build_sample<'local>(
+    env: &mut JNIEnv<'local>,
+    pid: u16,
+    pts: i64,
+    payload: &SamplePayload,
+) -> Result<Option<JObject<'local>>, ()> {
+    let kind = sample_kind(env, payload)?;
+    let buffer = wrap_heap_byte_buffer(env, &sample_bytes(payload))?;
+    let obj = env
+        .new_object(
+            "org/tstrans/mpegts/DemuxEvent$Sample",
+            "(IJLorg/tstrans/mpegts/DemuxEvent$SampleKind;Ljava/nio/ByteBuffer;)V",
+            &[
+                JValue::Int(pid as i32),
+                JValue::Long(pts),
+                JValue::Object(&kind),
+                JValue::Object(&buffer),
+            ],
+        )
+        .map_err(|_| ())?;
+    Ok(Some(obj))
+}
+
+/// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
+/// (`java.nio.ByteBuffer.wrap`). The returned buffer is backed by JVM-owned
+/// memory, so it is safe to retain past the next pull / after `close()`.
+fn wrap_heap_byte_buffer<'local>(
+    env: &mut JNIEnv<'local>,
+    bytes: &[u8],
+) -> Result<JObject<'local>, ()> {
+    let arr = env.byte_array_from_slice(bytes).map_err(|_| ())?;
+    env.call_static_method(
+        "java/nio/ByteBuffer",
+        "wrap",
+        "([B)Ljava/nio/ByteBuffer;",
+        &[JValue::Object(&arr)],
+    )
+    .map_err(|_| ())?
+    .l()
+    .map_err(|_| ())
 }
 
 /// Build a `java.util.List<Integer>` (an `ArrayList`) of boxed PIDs.
@@ -305,9 +314,7 @@ fn sample_kind<'local>(
     .map_err(|_| ())
 }
 
-/// Derive a contiguous payload byte vector from a `SamplePayload`. The result is
-/// moved into `JniDemuxer::last_payload` and a zero-copy direct `ByteBuffer` is
-/// minted over it (spec §5.4) by [`build_sample`].
+/// Derive a contiguous payload byte vector from a `SamplePayload`.
 fn sample_bytes(payload: &SamplePayload) -> Vec<u8> {
     match payload {
         SamplePayload::Video {

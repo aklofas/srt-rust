@@ -5,17 +5,20 @@ import java.util.List;
 
 /**
  * A demuxed event. Sealed sum type mirroring
- * {@code tst_core::mpegts::demux::DemuxEvent} (spec §5.2). The sample variant is
- * now split into {@link Video} / {@link Audio} / {@link Subtitle} /
- * {@link UnknownSample} (mirroring tst-py), {@link Metadata} (KLV) is
- * surfaced, and {@link NonConformant} (stream-conformance diagnostics) is now
- * surfaced; the remaining top-level variant (ReconnectDiscontinuity) lands in a
- * later task of this wave-set and is added to {@code permits} then.
+ * {@code tst_core::mpegts::demux::DemuxEvent} (spec §5.2). The full top-level
+ * event set is now surfaced: {@link ProgramMap}, the four sample records
+ * ({@link Video} / {@link Audio} / {@link Subtitle} / {@link UnknownSample},
+ * mirroring tst-py), {@link Metadata} (KLV), {@link NonConformant}
+ * (stream-conformance diagnostics), {@link Discontinuity} (continuity /
+ * PES-reassembly discontinuity, carrying a {@link StreamId} and a typed
+ * {@link DiscontinuityKind}), and {@link ReconnectDiscontinuity} (transport-level
+ * reconnect). No variant is skipped.
  */
 public sealed interface DemuxEvent
         permits DemuxEvent.ProgramMap, DemuxEvent.Video, DemuxEvent.Audio,
                 DemuxEvent.Subtitle, DemuxEvent.UnknownSample, DemuxEvent.Metadata,
-                DemuxEvent.NonConformant, DemuxEvent.Discontinuity {
+                DemuxEvent.NonConformant, DemuxEvent.Discontinuity,
+                DemuxEvent.ReconnectDiscontinuity {
 
     /** PSI program map for one program (mirrors tst-py mpegts.ProgramMap). */
     record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
@@ -139,6 +142,15 @@ public sealed interface DemuxEvent
                          MultiCellAuReason multiCellAuReason, CellFragmentIndication observedCfi,
                          CellFragmentIndication treatedAs) implements DemuxEvent {}
 
-    /** Continuity-counter / PCR discontinuity on a PID. */
-    record Discontinuity(int pid) implements DemuxEvent {}
+    /**
+     * A continuity-counter / PES-reassembly discontinuity on a stream. Mirrors
+     * {@code tst_core::...::DemuxEvent::Discontinuity}.
+     *
+     * @param stream the elementary stream the discontinuity concerns
+     * @param kind   the discontinuity classification (see {@link DiscontinuityKind})
+     */
+    record Discontinuity(StreamId stream, DiscontinuityKind kind) implements DemuxEvent {}
+
+    /** Transport-level reconnect occurred between the prior event and this one; all per-stream state was dropped (re-derived from the next PAT/PMT). Mirrors {@code tst_core::...::DemuxEvent::ReconnectDiscontinuity}. */
+    record ReconnectDiscontinuity() implements DemuxEvent {}
 }

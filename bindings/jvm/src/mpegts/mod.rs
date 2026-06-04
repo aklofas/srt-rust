@@ -4,7 +4,8 @@
 //! one of the Java records (`DemuxEvent.ProgramMap` /
 //! `DemuxEvent.Video` / `DemuxEvent.Audio` / `DemuxEvent.Subtitle` /
 //! `DemuxEvent.UnknownSample` / `DemuxEvent.Metadata` /
-//! `DemuxEvent.NonConformant` / `DemuxEvent.Discontinuity`) and mapping
+//! `DemuxEvent.NonConformant` / `DemuxEvent.Discontinuity` /
+//! `DemuxEvent.ReconnectDiscontinuity`) and mapping
 //! `DemuxError` to `org.tstrans.DemuxException` via `crate::error::throw_demux`.
 //! Mirrors `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
@@ -31,8 +32,8 @@ use tst_core::mpegts::au_cell::CellFragmentIndication;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::MultiCellAuReason;
 use tst_core::mpegts::demux::{
-    AudioCodec, DemuxEvent, Demuxer, MetadataKind, NalUnit, NonConformantIssue, SamplePayload,
-    StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
+    AudioCodec, DemuxEvent, Demuxer, DiscontinuityKind, MetadataKind, NalUnit, NonConformantIssue,
+    SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 
 use crate::error::throw_demux;
@@ -124,10 +125,11 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
     dx.flush();
 }
 
-/// `nNextEvent(handle)` — pull the next *mappable* event, converting it to a Java
-/// `DemuxEvent` record. Events with no Java mapping (`ReconnectDiscontinuity`)
-/// are skipped; the loop pulls the next one. Returns Java `null` when the queue
-/// drains.
+/// `nNextEvent(handle)` — pull the next event, converting it to a Java
+/// `DemuxEvent` record. Every current `DemuxEvent` variant maps to a record, so
+/// the loop returns the first event pulled; the `Ok(None) => continue` arm is a
+/// retained forward-compat guard (currently unreachable). Returns Java `null`
+/// when the queue drains.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     mut env: JNIEnv<'local>,
@@ -146,7 +148,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
         };
         match convert_event(&mut env, &ev) {
             Ok(Some(obj)) => return obj.into_raw(),
-            // Not a keystone-mappable event — skip it and pull the next.
+            // All current `DemuxEvent` variants map to `Ok(Some(..))`, so this
+            // branch is currently unreachable; retained as a forward-compat
+            // guard should a future skip-worthy variant appear.
             Ok(None) => continue,
             Err(()) => {
                 throw_demux(&mut env, "INTERNAL", "event conversion failed");
@@ -171,8 +175,11 @@ fn checked_handle(env: &mut JNIEnv, handle: jlong) -> Option<*mut Demuxer> {
 
 /// Convert one `DemuxEvent` to a Java `DemuxEvent` record.
 ///
-/// `Ok(Some(obj))` — a keystone variant was built. `Ok(None)` — the event has no
-/// keystone mapping (caller should skip). `Err(())` — a JNI call failed.
+/// `DemuxEvent` is not marked non-exhaustive, so this match is exhaustive and
+/// every variant currently builds a record: `Ok(Some(obj))`. The `Ok(None)`
+/// "skip this event" channel is retained in the return type as a forward-compat
+/// guard (see `nNextEvent`) but is not produced today. `Err(())` — a JNI call
+/// failed.
 fn convert_event<'local>(
     env: &mut JNIEnv<'local>,
     ev: &DemuxEvent,
@@ -290,12 +297,14 @@ fn convert_event<'local>(
                 .map_err(|_| ())?;
             Ok(Some(obj))
         }
-        DemuxEvent::Discontinuity { stream, .. } => {
+        DemuxEvent::Discontinuity { stream, kind } => {
+            let stream_obj = build_stream_id(env, stream)?;
+            let kind_obj = discontinuity_kind(env, kind)?;
             let obj = env
                 .new_object(
                     "org/tstrans/mpegts/DemuxEvent$Discontinuity",
-                    "(I)V",
-                    &[JValue::Int(stream.pid as i32)],
+                    "(Lorg/tstrans/mpegts/StreamId;Lorg/tstrans/mpegts/DiscontinuityKind;)V",
+                    &[JValue::Object(&stream_obj), JValue::Object(&kind_obj)],
                 )
                 .map_err(|_| ())?;
             Ok(Some(obj))
@@ -325,10 +334,34 @@ fn convert_event<'local>(
                 .map_err(|_| ())?;
             Ok(Some(obj))
         }
-        // No keystone Java mapping yet (ReconnectDiscontinuity is wired in a
-        // later task of this wave-set).
-        DemuxEvent::ReconnectDiscontinuity => Ok(None),
+        DemuxEvent::ReconnectDiscontinuity => {
+            let obj = env
+                .new_object(
+                    "org/tstrans/mpegts/DemuxEvent$ReconnectDiscontinuity",
+                    "()V",
+                    &[],
+                )
+                .map_err(|_| ())?;
+            Ok(Some(obj))
+        }
     }
+}
+
+/// Resolve a `tst_core` [`DiscontinuityKind`] to its Java
+/// `org.tstrans.mpegts.DiscontinuityKind` enum constant. Mirrors tst-py's
+/// `DiscontinuityKindTag` mapping. [`DiscontinuityKind`] is not marked
+/// non-exhaustive, so this match is exhaustive (no catch-all).
+fn discontinuity_kind<'local>(
+    env: &mut JNIEnv<'local>,
+    kind: &DiscontinuityKind,
+) -> Result<JObject<'local>, ()> {
+    let name = match kind {
+        DiscontinuityKind::ContinuityJump { .. } => "CONTINUITY_JUMP",
+        DiscontinuityKind::PesOversize { .. } => "PES_OVERSIZE",
+        DiscontinuityKind::PesTotalOversize => "PES_TOTAL_OVERSIZE",
+        DiscontinuityKind::AdaptationFieldFlag => "ADAPTATION_FIELD_FLAG",
+    };
+    enum_const(env, "DiscontinuityKind", name)
 }
 
 /// Resolve the `org.tstrans.mpegts.NonConformantKind` enum constant for a

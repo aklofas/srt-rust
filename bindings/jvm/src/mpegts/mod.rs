@@ -1,10 +1,10 @@
 //! JNI surface for `org.tstrans.mpegts.Demuxer` — the keystone vertical.
 //!
 //! Wraps `tst_core::mpegts::demux::Demuxer`, converting each `DemuxEvent` into
-//! one of the keystone Java records (`DemuxEvent.ProgramMap` /
+//! one of the Java records (`DemuxEvent.ProgramMap` /
 //! `DemuxEvent.Video` / `DemuxEvent.Audio` / `DemuxEvent.Subtitle` /
 //! `DemuxEvent.UnknownSample` / `DemuxEvent.Metadata` /
-//! `DemuxEvent.Discontinuity`) and mapping
+//! `DemuxEvent.NonConformant` / `DemuxEvent.Discontinuity`) and mapping
 //! `DemuxError` to `org.tstrans.DemuxException` via `crate::error::throw_demux`.
 //! Mirrors `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
@@ -27,10 +27,12 @@ use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jlong, jobject};
 
 use tst_core::error::DemuxError;
+use tst_core::mpegts::au_cell::CellFragmentIndication;
 use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::demux::event::MultiCellAuReason;
 use tst_core::mpegts::demux::{
-    AudioCodec, DemuxEvent, Demuxer, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind,
-    SubtitleCodec, VideoCodec, VideoPayload,
+    AudioCodec, DemuxEvent, Demuxer, MetadataKind, NalUnit, NonConformantIssue, SamplePayload,
+    StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 
 use crate::error::throw_demux;
@@ -123,9 +125,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
 }
 
 /// `nNextEvent(handle)` — pull the next *mappable* event, converting it to a Java
-/// `DemuxEvent` record. Events with no keystone Java mapping (`NonConformant`,
-/// `ReconnectDiscontinuity`) are skipped; the loop pulls the next one. Returns
-/// Java `null` when the queue drains.
+/// `DemuxEvent` record. Events with no Java mapping (`ReconnectDiscontinuity`)
+/// are skipped; the loop pulls the next one. Returns Java `null` when the queue
+/// drains.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     mut env: JNIEnv<'local>,
@@ -298,10 +300,157 @@ fn convert_event<'local>(
                 .map_err(|_| ())?;
             Ok(Some(obj))
         }
-        // No keystone Java mapping yet (NonConformant + ReconnectDiscontinuity
-        // are wired in later tasks of this wave-set).
-        DemuxEvent::NonConformant { .. } | DemuxEvent::ReconnectDiscontinuity => Ok(None),
+        DemuxEvent::NonConformant { stream, issue } => {
+            let stream_obj = build_stream_id(env, stream)?;
+            // The human-readable detail (Rust `NonConformantIssue`'s `Display`).
+            let issue_str = env.new_string(issue.to_string()).map_err(|_| ())?;
+            let kind_obj = nonconformant_kind(env, issue)?;
+            // MultiCellAuReason constant (MULTI_CELL_AU only) or Java null.
+            let reason_obj = nonconformant_reason(env, issue)?;
+            // (observedCfi, treatedAs) CFI constants (CFI_TOLERATED only) or (null, null).
+            let (observed_obj, treated_obj) = nonconformant_cfi(env, issue)?;
+            let obj = env
+                .new_object(
+                    "org/tstrans/mpegts/DemuxEvent$NonConformant",
+                    "(Lorg/tstrans/mpegts/StreamId;Ljava/lang/String;Lorg/tstrans/mpegts/NonConformantKind;Lorg/tstrans/mpegts/MultiCellAuReason;Lorg/tstrans/mpegts/CellFragmentIndication;Lorg/tstrans/mpegts/CellFragmentIndication;)V",
+                    &[
+                        JValue::Object(&stream_obj),
+                        JValue::Object(&issue_str),
+                        JValue::Object(&kind_obj),
+                        JValue::Object(&reason_obj),
+                        JValue::Object(&observed_obj),
+                        JValue::Object(&treated_obj),
+                    ],
+                )
+                .map_err(|_| ())?;
+            Ok(Some(obj))
+        }
+        // No keystone Java mapping yet (ReconnectDiscontinuity is wired in a
+        // later task of this wave-set).
+        DemuxEvent::ReconnectDiscontinuity => Ok(None),
     }
+}
+
+/// Resolve the `org.tstrans.mpegts.NonConformantKind` enum constant for a
+/// `tst_core` [`NonConformantIssue`]. Mirrors tst-py's `non_conformant_kind_name`
+/// byte-for-byte: Rust's 30+ issue variants collapse to one of the Java
+/// constants; the per-event `issue` string carries the human-readable detail.
+/// [`NonConformantIssue`] is not marked non-exhaustive, so this match is
+/// exhaustive (no catch-all) — a new Rust variant breaks the build here.
+fn nonconformant_kind<'local>(
+    env: &mut JNIEnv<'local>,
+    issue: &NonConformantIssue,
+) -> Result<JObject<'local>, ()> {
+    use NonConformantIssue::*;
+    let name = match issue {
+        StreamTypeMismatchSyncOnAsyncPid | StreamTypeMismatchAsyncOnSyncPid => {
+            "STREAM_TYPE_MISMATCH"
+        }
+        MissingMetadataDescriptor => "MISSING_METADATA_DESCRIPTOR",
+        PcrAnomaly { .. } => "PCR_ANOMALY",
+        PsiChecksumMismatch { .. } => "PSI_CHECKSUM_MISMATCH",
+        PusiMidPes => "PUSI_MID_PES",
+        MalformedPes { .. } => "MALFORMED_PES",
+        PidReusedAcrossPrograms { .. } => "PID_REUSED_ACROSS_PROGRAMS",
+        SubtitleMissingDescriptor { .. } => "SUBTITLE_MISSING_DESCRIPTOR",
+        SubtitleDescriptorAmbiguous { .. } => "SUBTITLE_DESCRIPTOR_AMBIGUOUS",
+        SubtitleDescriptorMalformed { .. } => "SUBTITLE_DESCRIPTOR_MALFORMED",
+        Av1RegistrationMalformed { .. } => "AV1_REGISTRATION_MALFORMED",
+        Av1ObuMissingSizeField { .. } => "AV1_OBU_MISSING_SIZE_FIELD",
+        Av1TileListNotAllowed { .. } => "AV1_TILE_LIST_NOT_ALLOWED",
+        PsiOverlongSection { .. } => "PSI_OVERLONG_SECTION",
+        TransportErrorPacket { .. } => "TRANSPORT_ERROR_PACKET",
+        DvbSubDataIdentifier { .. } => "DVB_SUB_DATA_IDENTIFIER",
+        PtsAnomaly { .. } => "PTS_ANOMALY",
+        MissingRequiredPts { .. } => "MISSING_REQUIRED_PTS",
+        PesHeaderMalformed { .. } => "PES_HEADER_MALFORMED",
+        SubtitleAlignmentMissing { .. } => "SUBTITLE_ALIGNMENT_MISSING",
+        PcrMalformed { .. } => "PCR_MALFORMED",
+        NalHeader { .. } => "NAL_HEADER",
+        Av1ObuHeader { .. } => "AV1_OBU_HEADER",
+        LatmFraming { .. } => "LATM_FRAMING",
+        PsiCcDiscontinuity { .. } => "PSI_CC_DISCONTINUITY",
+        MultiCellAu { .. } => "MULTI_CELL_AU",
+        CfiTolerated { .. } => "CFI_TOLERATED",
+        PsiMultiSectionUnsupported { .. } => "PSI_MULTI_SECTION_UNSUPPORTED",
+        Ac3SyncMissing { .. } => "AC3_SYNC_MISSING",
+        Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",
+        Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
+        Other(_) => "OTHER",
+    };
+    enum_const(env, "NonConformantKind", name)
+}
+
+/// The `org.tstrans.mpegts.MultiCellAuReason` constant for a `MultiCellAu` issue,
+/// or Java `null` for every other issue kind. Mirrors tst-py: only `MultiCellAu`
+/// surfaces a typed reason.
+fn nonconformant_reason<'local>(
+    env: &mut JNIEnv<'local>,
+    issue: &NonConformantIssue,
+) -> Result<JObject<'local>, ()> {
+    match issue {
+        NonConformantIssue::MultiCellAu { reason, .. } => {
+            let name = match reason {
+                MultiCellAuReason::Orphan => "ORPHAN",
+                MultiCellAuReason::SequenceGap => "SEQUENCE_GAP",
+                MultiCellAuReason::ConcurrentFirst => "CONCURRENT_FIRST",
+                MultiCellAuReason::Overflow => "OVERFLOW",
+                // MultiCellAuReason is marked non-exhaustive; default to ORPHAN
+                // like tst-py for any future variant.
+                _ => "ORPHAN",
+            };
+            enum_const(env, "MultiCellAuReason", name)
+        }
+        _ => Ok(JObject::null()),
+    }
+}
+
+/// The `(observedCfi, treatedAs)` pair of `org.tstrans.mpegts.CellFragmentIndication`
+/// constants for a `CfiTolerated` issue, or `(null, null)` for every other issue
+/// kind. Mirrors tst-py: only `CfiTolerated` surfaces the typed CFI bits.
+fn nonconformant_cfi<'local>(
+    env: &mut JNIEnv<'local>,
+    issue: &NonConformantIssue,
+) -> Result<(JObject<'local>, JObject<'local>), ()> {
+    match issue {
+        NonConformantIssue::CfiTolerated {
+            observed_cfi,
+            treated_as,
+            ..
+        } => Ok((cfi_const(env, *observed_cfi)?, cfi_const(env, *treated_as)?)),
+        _ => Ok((JObject::null(), JObject::null())),
+    }
+}
+
+/// Resolve the `org.tstrans.mpegts.CellFragmentIndication` constant for a
+/// `tst_core` [`CellFragmentIndication`]. The enum is not marked non-exhaustive,
+/// so this match is exhaustive (no catch-all).
+fn cfi_const<'local>(
+    env: &mut JNIEnv<'local>,
+    cfi: CellFragmentIndication,
+) -> Result<JObject<'local>, ()> {
+    let name = match cfi {
+        CellFragmentIndication::Middle => "MIDDLE",
+        CellFragmentIndication::Last => "LAST",
+        CellFragmentIndication::First => "FIRST",
+        CellFragmentIndication::Complete => "COMPLETE",
+    };
+    enum_const(env, "CellFragmentIndication", name)
+}
+
+/// Fetch an `org.tstrans.mpegts.{class}.{name}` enum constant via
+/// `get_static_field`. The `mpegts`-package twin of [`codec_enum`].
+fn enum_const<'local>(
+    env: &mut JNIEnv<'local>,
+    class: &str,
+    name: &str,
+) -> Result<JObject<'local>, ()> {
+    let class_path = format!("org/tstrans/mpegts/{class}");
+    let descriptor = format!("Lorg/tstrans/mpegts/{class};");
+    env.get_static_field(&class_path, name, &descriptor)
+        .map_err(|_| ())?
+        .l()
+        .map_err(|_| ())
 }
 
 /// Resolve a `tst_core` [`MetadataKind`] to its Java `org.tstrans.mpegts.MetadataKind`
@@ -524,12 +673,7 @@ fn codec_enum<'local>(
     class: &str,
     name: &str,
 ) -> Result<JObject<'local>, ()> {
-    let class_path = format!("org/tstrans/mpegts/{class}");
-    let descriptor = format!("Lorg/tstrans/mpegts/{class};");
-    env.get_static_field(&class_path, name, &descriptor)
-        .map_err(|_| ())?
-        .l()
-        .map_err(|_| ())
+    enum_const(env, class, name)
 }
 
 /// Box an `Option<u16>` as a `java.lang.Integer` (`Integer.valueOf`) or Java

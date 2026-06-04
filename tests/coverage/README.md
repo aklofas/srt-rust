@@ -107,7 +107,7 @@ un-catalogued items, then append them to the manifest.
 
 **Graduating an exempt item to a surface row:** remove its `[[exempt]]` block and
 add a `[[surface]]` row with `owning_tests`, `bindings`, and optionally `scenario_ids`.
-When `tst-jni` lands, add a `java:com.aklofas.tstrans.XXX` column to the relevant
+When `tst-jni` lands, add a `java:org.tstrans.XXX` column to the relevant
 rows — rule (b) then forces JNI test coverage for that item (the §8.5 parity gate).
 
 **Feature-tagged binding columns:** use `"c:SYM [feature=srt]"` (space before `[`)

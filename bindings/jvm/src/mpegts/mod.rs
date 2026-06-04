@@ -25,7 +25,10 @@ use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jlong, jobject};
 
 use tst_core::error::DemuxError;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{
+    AudioCodec, DemuxEvent, Demuxer, NalUnit, SamplePayload, StreamId, StreamKind, SubtitleCodec,
+    VideoCodec, VideoPayload,
+};
 
 use crate::error::throw_demux;
 
@@ -349,5 +352,159 @@ fn nal_payload(nal: &NalUnit) -> &[u8] {
         NalUnit::H264 { payload, .. }
         | NalUnit::H265 { payload, .. }
         | NalUnit::H266 { payload, .. } => payload,
+    }
+}
+
+/// Build the Java `org.tstrans.mpegts.StreamId` record from a `tst_core`
+/// [`StreamId`], constructing its nested [`StreamKind`] via [`build_stream_kind`].
+// wired in Wave B
+#[allow(dead_code)]
+fn build_stream_id<'local>(env: &mut JNIEnv<'local>, s: &StreamId) -> Result<JObject<'local>, ()> {
+    let kind = build_stream_kind(env, &s.kind)?;
+    env.new_object(
+        "org/tstrans/mpegts/StreamId",
+        "(ILorg/tstrans/mpegts/StreamKind;I)V",
+        &[
+            JValue::Int(s.pid as i32),
+            JValue::Object(&kind),
+            JValue::Int(s.program_number as i32),
+        ],
+    )
+    .map_err(|_| ())
+}
+
+/// Build the sealed `org.tstrans.mpegts.StreamKind` variant matching a `tst_core`
+/// [`StreamKind`]. Each arm news up the corresponding nested record (JNI class
+/// names use `$`). `KlvSync`'s `declared_link: Option<u16>` boxes to a
+/// `java.lang.Integer` or Java `null`.
+// wired in Wave B
+#[allow(dead_code)]
+fn build_stream_kind<'local>(
+    env: &mut JNIEnv<'local>,
+    kind: &StreamKind,
+) -> Result<JObject<'local>, ()> {
+    match kind {
+        StreamKind::Video(c) => {
+            let codec = codec_enum(env, "VideoCodec", video_codec_name(*c))?;
+            env.new_object(
+                "org/tstrans/mpegts/StreamKind$Video",
+                "(Lorg/tstrans/mpegts/VideoCodec;)V",
+                &[JValue::Object(&codec)],
+            )
+            .map_err(|_| ())
+        }
+        StreamKind::Audio(c) => {
+            let codec = codec_enum(env, "AudioCodec", audio_codec_name(*c))?;
+            env.new_object(
+                "org/tstrans/mpegts/StreamKind$Audio",
+                "(Lorg/tstrans/mpegts/AudioCodec;)V",
+                &[JValue::Object(&codec)],
+            )
+            .map_err(|_| ())
+        }
+        StreamKind::Subtitle(c) => {
+            let codec = codec_enum(env, "SubtitleCodec", subtitle_codec_name(*c))?;
+            env.new_object(
+                "org/tstrans/mpegts/StreamKind$Subtitle",
+                "(Lorg/tstrans/mpegts/SubtitleCodec;)V",
+                &[JValue::Object(&codec)],
+            )
+            .map_err(|_| ())
+        }
+        StreamKind::KlvSync { declared_link } => {
+            let boxed = opt_boxed_int(env, *declared_link)?;
+            env.new_object(
+                "org/tstrans/mpegts/StreamKind$KlvSync",
+                "(Ljava/lang/Integer;)V",
+                &[JValue::Object(&boxed)],
+            )
+            .map_err(|_| ())
+        }
+        StreamKind::KlvAsync => env
+            .new_object("org/tstrans/mpegts/StreamKind$KlvAsync", "()V", &[])
+            .map_err(|_| ()),
+        StreamKind::Unknown(b) => env
+            .new_object(
+                "org/tstrans/mpegts/StreamKind$Unknown",
+                "(I)V",
+                &[JValue::Int(*b as i32)],
+            )
+            .map_err(|_| ()),
+    }
+}
+
+/// Fetch a codec enum constant: `org.tstrans.mpegts.{class}.{name}`. Mirrors
+/// [`sample_kind`]'s `get_static_field` shape.
+// wired in Wave B
+#[allow(dead_code)]
+fn codec_enum<'local>(
+    env: &mut JNIEnv<'local>,
+    class: &str,
+    name: &str,
+) -> Result<JObject<'local>, ()> {
+    let class_path = format!("org/tstrans/mpegts/{class}");
+    let descriptor = format!("Lorg/tstrans/mpegts/{class};");
+    env.get_static_field(&class_path, name, &descriptor)
+        .map_err(|_| ())?
+        .l()
+        .map_err(|_| ())
+}
+
+/// Box an `Option<u16>` as a `java.lang.Integer` (`Integer.valueOf`) or Java
+/// `null`. Used for `StreamKind$KlvSync`'s nullable `declaredLink`.
+// wired in Wave B
+#[allow(dead_code)]
+fn opt_boxed_int<'local>(
+    env: &mut JNIEnv<'local>,
+    value: Option<u16>,
+) -> Result<JObject<'local>, ()> {
+    match value {
+        Some(v) => env
+            .call_static_method(
+                "java/lang/Integer",
+                "valueOf",
+                "(I)Ljava/lang/Integer;",
+                &[JValue::Int(v as i32)],
+            )
+            .map_err(|_| ())?
+            .l()
+            .map_err(|_| ()),
+        None => Ok(JObject::null()),
+    }
+}
+
+/// `VideoCodec` enum-constant name in `org.tstrans.mpegts.VideoCodec`.
+// wired in Wave B
+#[allow(dead_code)]
+fn video_codec_name(c: VideoCodec) -> &'static str {
+    match c {
+        VideoCodec::H264 => "H264",
+        VideoCodec::H265 => "H265",
+        VideoCodec::H266 => "H266",
+        VideoCodec::Av1 => "AV1",
+    }
+}
+
+/// `AudioCodec` enum-constant name in `org.tstrans.mpegts.AudioCodec`.
+// wired in Wave B
+#[allow(dead_code)]
+fn audio_codec_name(c: AudioCodec) -> &'static str {
+    match c {
+        AudioCodec::Mp2 => "MP2",
+        AudioCodec::Aac => "AAC",
+        AudioCodec::AacLatm => "AAC_LATM",
+        AudioCodec::Ac3 => "AC3",
+    }
+}
+
+/// `SubtitleCodec` enum-constant name in `org.tstrans.mpegts.SubtitleCodec`.
+// wired in Wave B
+#[allow(dead_code)]
+fn subtitle_codec_name(c: SubtitleCodec) -> &'static str {
+    match c {
+        SubtitleCodec::DvbSubtitling => "DVB_SUBTITLING",
+        SubtitleCodec::DvbTeletext => "DVB_TELETEXT",
+        SubtitleCodec::Cea708Standalone => "CEA708_STANDALONE",
+        SubtitleCodec::WebVttInTs => "WEBVTT_IN_TS",
     }
 }

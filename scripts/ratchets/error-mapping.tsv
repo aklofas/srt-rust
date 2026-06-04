@@ -21,3 +21,4 @@ py	rtp	RtpErrorKind	make_rtp_error	-
 py	rtsp	RtspErrorKind	make_rtsp_error	-
 py	srt	SrtErrorKind	make_srt_error	-
 py	hls	HlsErrorKind	make_hls_error	-
+java	demux	DemuxException.Kind	throw_demux	-

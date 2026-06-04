@@ -12,7 +12,7 @@ import org.tstrans.DemuxException;
  * <pre>{@code
  * try (Demuxer d = new Demuxer()) {
  *     d.feed(tsBytes);
- *     for (DemuxEvent e : d.drain()) { ... }
+ *     for (DemuxEvent e : d) { ... }
  * }
  * }</pre>
  */

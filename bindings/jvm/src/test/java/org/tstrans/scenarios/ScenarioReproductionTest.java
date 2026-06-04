@@ -10,6 +10,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.tstrans.klv.Klv;
+import org.tstrans.klv.UasDatalinkLs;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 
@@ -151,6 +153,91 @@ class ScenarioReproductionTest {
         assertNotNull(klvMatch,
             "no Metadata event matched golden klv pid=" + expectedKlv.pid
                 + " set=" + expectedKlv.set + "; observed=" + metadataSamples);
+    }
+
+    /**
+     * Typed-decode cross-binding parity: feed the KLV Metadata payload from the
+     * {@code h264-st0601-mp} shared golden through the JVM KLV surface and verify
+     * behavior agrees with the Rust and Python adapters.
+     *
+     * <p>The {@code h264-st0601-mp} scenario carries {@code minimal_st0601_ls()} —
+     * the 16-byte ST 0601 UAS Datalink LS UL + a single BER length byte {@code 0x00}
+     * (empty body, NO populated tags, NO checksum). This is a structurally degenerate
+     * KLV record: the empty body means the mandatory Tag-1 checksum is absent, so
+     * {@code tst_core::klv::st0601::decode} (and tst-py's {@code decode_uas_datalink})
+     * both throw / raise a TRUNCATED_SET error at offset 17 ("needed 3 bytes, have 0").
+     *
+     * <p>Cross-binding parity assertion:
+     * <ol>
+     *   <li>The JVM {@link Klv#isSt0601Family(byte[])} correctly identifies the
+     *       payload as an ST 0601 family record (the UL check does not require a
+     *       valid body — it only inspects the 16-byte UL prefix).</li>
+     *   <li>The JVM {@link Klv#decodeUasDatalink(byte[])} throws a
+     *       {@link org.tstrans.KlvDecodeException} with kind {@code TRUNCATED_SET},
+     *       matching the {@code KlvDecodeError::Truncated} that Rust and Python
+     *       produce for the same input (verified: Python also raises
+     *       {@code KlvError(TRUNCATED_SET)} with message
+     *       "buffer truncated at offset 17: needed 3 bytes, have 0").</li>
+     * </ol>
+     *
+     * <p>Rich typed-field correctness is covered by {@code St0601Test} with real
+     * fixtures (synthetic_full.klv + synthetic_minimal.klv). The golden scenario
+     * fixture is intentionally minimal — its purpose is the mux/demux round-trip
+     * proof, not KLV decode richness.
+     *
+     * <p>See {@code payload_sha256: 9b3800ff…} in {@code h264-st0601-mp/golden.json}
+     * — that hash is the VIDEO NAL RBSP digest; the KLV payload sha is not committed
+     * in the golden (it is the empty-body 17-byte LS).
+     */
+    @Test
+    void typedKlvDecodeParityFromSharedGolden() throws Exception {
+        Path dir = scenarioDir();
+        Path inputPath = dir.resolve("input.ts");
+        assertTrue(Files.isRegularFile(inputPath),
+            "shared scenario input missing (expected committed fixture): " + inputPath);
+
+        byte[] tsBytes = Files.readAllBytes(inputPath);
+
+        // Collect the first ST 0601 Metadata payload from the shared scenario.
+        List<byte[]> klvPayloads = new ArrayList<>();
+        try (Demuxer d = new Demuxer()) {
+            d.feed(tsBytes);
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Metadata m) {
+                    ByteBuffer view = m.payload().duplicate();
+                    byte[] bytes = new byte[view.remaining()];
+                    view.get(bytes);
+                    if (Klv.isSt0601Family(bytes)) {
+                        klvPayloads.add(bytes);
+                    }
+                }
+            }
+        }
+
+        assertFalse(klvPayloads.isEmpty(),
+            "no ST 0601 KLV Metadata event found in " + inputPath);
+
+        byte[] payload = klvPayloads.get(0);
+
+        // Parity assertion 1: isSt0601Family correctly identifies the UL.
+        // This is the UL-prefix check (first 13 bytes + byte 15 == 0x00); it does
+        // not require a valid body. All three bindings agree: this IS an ST 0601 UL.
+        assertTrue(Klv.isSt0601Family(payload),
+            "isSt0601Family should return true for the shared golden's KLV payload UL");
+
+        // Parity assertion 2: decodeUasDatalink throws TRUNCATED_SET for this
+        // empty-body payload, exactly as Rust's tst_core::klv::st0601::decode and
+        // Python's decode_uas_datalink do.
+        // The payload is [16-byte ST 0601 UL][0x00 BER] = 17 bytes; the decoder
+        // needs the Tag-1 checksum in the body (≥3 bytes) but finds 0.
+        org.tstrans.KlvDecodeException ex = assertThrows(
+            org.tstrans.KlvDecodeException.class,
+            () -> Klv.decodeUasDatalink(payload),
+            "decodeUasDatalink should throw TRUNCATED_SET for the empty-body minimal LS");
+        assertEquals(org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET, ex.kind(),
+            "exception kind must be TRUNCATED_SET (mirrors Rust KlvDecodeError::Truncated "
+                + "and Python KlvError(TRUNCATED_SET) for the same empty-body input)");
     }
 
     /** SHA-256 the readable contents of a ByteBuffer (without disturbing it). */

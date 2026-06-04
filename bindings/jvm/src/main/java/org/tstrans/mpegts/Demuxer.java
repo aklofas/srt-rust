@@ -16,15 +16,13 @@ import org.tstrans.DemuxException;
  * }
  * }</pre>
  *
- * <p><strong>Keystone event subset.</strong> This wave surfaces only
- * {@link DemuxEvent.ProgramMap}, the sample records ({@link DemuxEvent.Video},
- * {@link DemuxEvent.Audio}, {@link DemuxEvent.Subtitle},
- * {@link DemuxEvent.UnknownSample}), and
- * {@link DemuxEvent.Discontinuity}. Other demuxer events — KLV/{@code Metadata},
- * {@code NonConformant} (recoverable stream-quality issues), and
- * {@code ReconnectDiscontinuity} — are <em>silently skipped</em> for now; they
- * are added in the mpegts-completion wave. Do not rely on this demuxer to
- * surface KLV metadata or non-conformance until then.
+ * <p><strong>Event coverage.</strong> The demuxer surfaces the full
+ * {@link DemuxEvent} sealed set: {@link DemuxEvent.ProgramMap}, the sample
+ * records ({@link DemuxEvent.Video}, {@link DemuxEvent.Audio},
+ * {@link DemuxEvent.Subtitle}, {@link DemuxEvent.UnknownSample}),
+ * {@link DemuxEvent.Metadata} (KLV), {@link DemuxEvent.NonConformant}
+ * (recoverable stream-quality diagnostics), {@link DemuxEvent.Discontinuity},
+ * and {@link DemuxEvent.ReconnectDiscontinuity}. No event type is skipped.
  */
 public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
     static { org.tstrans.NativeLoader.load(); }
@@ -48,11 +46,9 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
     }
 
     /**
-     * Pull the next ready event, or null if none queued. Skips event types not
-     * yet mapped in this keystone wave (see the class doc) — so a returned
-     * {@code null} means "no <em>keystone</em> event is currently queued", and
-     * KLV/{@code Metadata} / {@code NonConformant} / {@code ReconnectDiscontinuity}
-     * events are dropped rather than returned.
+     * Pull the next ready event, or {@code null} if none is queued. Every
+     * {@link DemuxEvent} variant is surfaced (see the class doc) — a returned
+     * {@code null} means the event queue is currently empty.
      */
     public DemuxEvent nextEvent() throws DemuxException {
         ensureOpen();

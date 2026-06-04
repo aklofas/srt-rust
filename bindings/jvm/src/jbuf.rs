@@ -14,9 +14,6 @@ use jni::objects::JObject;
 /// Mint a direct ByteBuffer view over `bytes`. SAFETY: `bytes` must outlive the
 /// returned buffer's use on the Java side (the caller owns the backing storage;
 /// the demuxer's event holds it until the next pull). Returns a local ref.
-//
-// call site wired in Task 1.5 (Sample.payload zero-copy); remove the allow then
-#[allow(dead_code)]
 pub fn new_direct<'local>(
     env: &mut JNIEnv<'local>,
     bytes: &mut [u8],

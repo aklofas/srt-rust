@@ -33,6 +33,31 @@ class DemuxerTest {
     }
 
     @Test
+    void samplePayloadIsDirectZeroCopyBuffer() throws Exception {
+        // mp2.ts yields audio Samples (keystone maps Audio -> AUDIO Sample).
+        byte[] ts = Files.readAllBytes(FIXTURE);
+        boolean sawSample = false;
+        try (Demuxer d = new Demuxer()) {
+            d.feed(ts);
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Sample s) {
+                    // Inspect the payload WHILE this sample is current — the
+                    // direct buffer is only valid until the next nextEvent()
+                    // pull overwrites the native backing storage (spec §5.4).
+                    assertTrue(s.payload().isDirect(),
+                        "Sample.payload must be a zero-copy DIRECT ByteBuffer");
+                    assertTrue(s.payload().remaining() > 0,
+                        "expected non-empty Sample payload");
+                    sawSample = true;
+                    break;
+                }
+            }
+        }
+        assertTrue(sawSample, "expected at least one Sample event from mp2.ts");
+    }
+
+    @Test
     void feedAfterCloseThrows() {
         Demuxer d = new Demuxer();
         d.close();

@@ -3,7 +3,8 @@
 //! Wraps `tst_core::mpegts::demux::Demuxer`, converting each `DemuxEvent` into
 //! one of the keystone Java records (`DemuxEvent.ProgramMap` /
 //! `DemuxEvent.Video` / `DemuxEvent.Audio` / `DemuxEvent.Subtitle` /
-//! `DemuxEvent.UnknownSample` / `DemuxEvent.Discontinuity`) and mapping
+//! `DemuxEvent.UnknownSample` / `DemuxEvent.Metadata` /
+//! `DemuxEvent.Discontinuity`) and mapping
 //! `DemuxError` to `org.tstrans.DemuxException` via `crate::error::throw_demux`.
 //! Mirrors `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
@@ -28,8 +29,8 @@ use jni::sys::{jlong, jobject};
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    AudioCodec, DemuxEvent, Demuxer, NalUnit, SamplePayload, StreamId, StreamKind, SubtitleCodec,
-    VideoCodec, VideoPayload,
+    AudioCodec, DemuxEvent, Demuxer, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind,
+    SubtitleCodec, VideoCodec, VideoPayload,
 };
 
 use crate::error::throw_demux;
@@ -122,9 +123,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
 }
 
 /// `nNextEvent(handle)` — pull the next *mappable* event, converting it to a Java
-/// `DemuxEvent` record. Events with no keystone Java mapping (`Metadata`,
-/// `NonConformant`, `ReconnectDiscontinuity`) are skipped; the loop pulls the
-/// next one. Returns Java `null` when the queue drains.
+/// `DemuxEvent` record. Events with no keystone Java mapping (`NonConformant`,
+/// `ReconnectDiscontinuity`) are skipped; the loop pulls the next one. Returns
+/// Java `null` when the queue drains.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     mut env: JNIEnv<'local>,
@@ -260,6 +261,33 @@ fn convert_event<'local>(
             };
             Ok(Some(obj))
         }
+        DemuxEvent::Metadata {
+            stream,
+            pts,
+            kind,
+            payload,
+        } => {
+            let stream_obj = build_stream_id(env, stream)?;
+            let (kind_obj, was_reassembled, cell_count) = metadata_kind(env, kind)?;
+            // Raw KLV LS bytes (AU-cell header already stripped). Heap-copied,
+            // JVM-owned (same safety story as the sample records).
+            let buf = wrap_heap_byte_buffer(env, payload)?;
+            let obj = env
+                .new_object(
+                    "org/tstrans/mpegts/DemuxEvent$Metadata",
+                    "(Lorg/tstrans/mpegts/StreamId;JLorg/tstrans/mpegts/MetadataKind;Ljava/nio/ByteBuffer;ZI)V",
+                    &[
+                        JValue::Object(&stream_obj),
+                        JValue::Long(pts.as_ticks()),
+                        JValue::Object(&kind_obj),
+                        JValue::Object(&buf),
+                        JValue::Bool(was_reassembled as u8),
+                        JValue::Int(cell_count as i32),
+                    ],
+                )
+                .map_err(|_| ())?;
+            Ok(Some(obj))
+        }
         DemuxEvent::Discontinuity { stream, .. } => {
             let obj = env
                 .new_object(
@@ -270,11 +298,39 @@ fn convert_event<'local>(
                 .map_err(|_| ())?;
             Ok(Some(obj))
         }
-        // No keystone Java mapping yet (added in the mpegts-completion wave).
-        DemuxEvent::Metadata { .. }
-        | DemuxEvent::NonConformant { .. }
-        | DemuxEvent::ReconnectDiscontinuity => Ok(None),
+        // No keystone Java mapping yet (NonConformant + ReconnectDiscontinuity
+        // are wired in later tasks of this wave-set).
+        DemuxEvent::NonConformant { .. } | DemuxEvent::ReconnectDiscontinuity => Ok(None),
     }
+}
+
+/// Resolve a `tst_core` [`MetadataKind`] to its Java `org.tstrans.mpegts.MetadataKind`
+/// enum constant, along with the `(was_reassembled, cell_count)` pair carried on the
+/// `DemuxEvent.Metadata` record. Mirrors tst-py's `convert` for the metadata event:
+/// async / unknown collapse to `(false, 1)`.
+fn metadata_kind<'local>(
+    env: &mut JNIEnv<'local>,
+    kind: &MetadataKind,
+) -> Result<(JObject<'local>, bool, u32), ()> {
+    let (name, wr, cc) = match kind {
+        MetadataKind::KlvSyncAuCell {
+            was_reassembled,
+            cell_count,
+            ..
+        } => ("KLV_SYNC_AU_CELL", *was_reassembled, *cell_count),
+        MetadataKind::KlvAsync => ("KLV_ASYNC", false, 1),
+        MetadataKind::Unknown(_) => ("UNKNOWN", false, 1),
+    };
+    let obj = env
+        .get_static_field(
+            "org/tstrans/mpegts/MetadataKind",
+            name,
+            "Lorg/tstrans/mpegts/MetadataKind;",
+        )
+        .map_err(|_| ())?
+        .l()
+        .map_err(|_| ())?;
+    Ok((obj, wr, cc))
 }
 
 /// Box an `Option<Pts90khz>` as a `java.lang.Long` (`Long.valueOf`) or Java

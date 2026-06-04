@@ -15,7 +15,8 @@ class DemuxEventShapeTest {
         assertTrue(DemuxEvent.class.isSealed(), "DemuxEvent must be sealed");
         assertEquals(
             Set.of(DemuxEvent.ProgramMap.class, DemuxEvent.Video.class, DemuxEvent.Audio.class,
-                   DemuxEvent.Subtitle.class, DemuxEvent.UnknownSample.class, DemuxEvent.Discontinuity.class),
+                   DemuxEvent.Subtitle.class, DemuxEvent.UnknownSample.class, DemuxEvent.Metadata.class,
+                   DemuxEvent.Discontinuity.class),
             Set.of(DemuxEvent.class.getPermittedSubclasses()),
             "permits set must match the keystone variants");
 
@@ -24,6 +25,7 @@ class DemuxEventShapeTest {
         assertTrue(DemuxEvent.Audio.class.isRecord());
         assertTrue(DemuxEvent.Subtitle.class.isRecord());
         assertTrue(DemuxEvent.UnknownSample.class.isRecord());
+        assertTrue(DemuxEvent.Metadata.class.isRecord());
         assertTrue(DemuxEvent.ProgramMap.class.isRecord());
         assertTrue(DemuxEvent.Discontinuity.class.isRecord());
     }

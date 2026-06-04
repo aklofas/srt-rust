@@ -36,7 +36,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_video"
 owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
-bindings = ["c:tst_muxer_push_video", "python:push_video"]
+bindings = ["c:tst_muxer_push_video", "python:push_video", "java:org.tstrans.mpegts.Muxer.pushVideo"]
 scenario_ids = ["video-roundtrip", "audio-klv-roundtrip"]
 tier = "A"
 
@@ -3842,9 +3842,14 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::MAX_SUBTITLE_STREAMS_PER_PROGRAM"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_open", "python:Muxer", "java:org.tstrans.mpegts.Muxer"]
+scenario_ids = ["video-roundtrip", "audio-klv-roundtrip"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::audio_handles"
@@ -3878,29 +3883,48 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::Muxer::pending_packets"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::pull"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_pull", "python:pull", "java:org.tstrans.mpegts.Muxer.pull"]
+scenario_ids = ["video-roundtrip"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_audio"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_push_audio", "python:push_audio", "java:org.tstrans.mpegts.Muxer.pushAudio"]
+scenario_ids = ["audio-klv-roundtrip"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::push_audio_to"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_klv"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_push_klv", "python:push_klv", "java:org.tstrans.mpegts.Muxer.pushKlv"]
+scenario_ids = ["audio-klv-roundtrip"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::push_klv_to"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_subtitle"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_push_subtitle", "python:push_subtitle", "java:org.tstrans.mpegts.Muxer.pushSubtitle"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::push_subtitle_to"
@@ -3966,9 +3990,13 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::MuxerConfig::validate"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::mpegts::mux::MuxerConfigBuilder"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["python:MuxerConfigBuilder", "java:org.tstrans.mpegts.MuxerConfig.Builder"]
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::MuxerConfigBuilder::add_program"

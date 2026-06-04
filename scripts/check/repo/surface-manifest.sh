@@ -28,6 +28,7 @@ SURFACE_CRATES="${SURFACE_CRATES:-rist-sys tst-core tst-pipeline tst-rist tst-rt
 SURFACE_BUILT_FEATURES="${SURFACE_BUILT_FEATURES:-srt rtp udp tcp hls rist}"
 SURFACE_C_HEADER="${SURFACE_C_HEADER:-$ROOT/bindings/c/include/tstrans.h}"
 SURFACE_PYI_DIR="${SURFACE_PYI_DIR:-$ROOT/bindings/python/python/tstrans}"
+SURFACE_JAVA_DIR="${SURFACE_JAVA_DIR:-$ROOT/bindings/jvm/src/main/java}"
 
 # ---------------------------------------------------------------------------
 # extract_items: stdin is a public-api.txt; stdout is one canonical key per
@@ -103,8 +104,16 @@ run_check() {
         # graduates and column (b) must be trustworthy for that symbol.
         grep -rFq "$leaf" "$SURFACE_PYI_DIR" \
           || echo "FAIL: python symbol unresolved: ${sym#python:} (leaf: $leaf)" ;;
-      java:*|swift:*|kotlin:*)
-        : ;;   # RESERVED until tst-jni / tst-uniffi land; presence-only, not resolved
+      java:*)
+        leaf="${sym#java:}"
+        leaf="${leaf##*.}"   # last dotted component (e.g. feed/nextEvent/Demuxer)
+        # Same UNBOUNDED SUBSTRING looseness as the python: arm (L3 bootstrap) —
+        # resolves the Java leaf anywhere in the JVM binding sources. Tighten to a
+        # word-boundary / AST-aware check when java: column trust matters per-symbol.
+        grep -rFq "$leaf" "$SURFACE_JAVA_DIR" \
+          || echo "FAIL: java symbol unresolved: ${sym#java:} (leaf: $leaf)" ;;
+      swift:*|kotlin:*)
+        : ;;   # RESERVED until tst-uniffi lands; presence-only, not resolved
       *)
         echo "FAIL: unknown binding prefix: $sym" ;;
     esac

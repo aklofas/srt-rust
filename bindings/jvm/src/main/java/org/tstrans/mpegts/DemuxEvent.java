@@ -32,7 +32,7 @@ public sealed interface DemuxEvent
      *                invalidated. To retain the bytes past that point, copy them
      *                while this sample is current, e.g.
      *                {@code ByteBuffer copy = ByteBuffer.allocate(payload.remaining()).put(payload.duplicate()).flip();}
-     *                or {@code byte[] b = new byte[payload.remaining()]; payload.get(b);}.
+     *                or {@code byte[] b = new byte[payload.remaining()]; payload.duplicate().get(b);}.
      *                (A generation-counter guard that turns a stale read into a
      *                defined {@link IllegalStateException} arrives in the
      *                mpegts-completion wave; until then a stale read is

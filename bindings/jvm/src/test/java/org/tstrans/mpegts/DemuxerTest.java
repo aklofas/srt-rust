@@ -43,8 +43,9 @@ class DemuxerTest {
             for (DemuxEvent e : d) {
                 if (e instanceof DemuxEvent.Sample s) {
                     // Inspect the payload WHILE this sample is current — the
-                    // direct buffer is only valid until the next nextEvent()
-                    // pull overwrites the native backing storage (spec §5.4).
+                    // direct buffer is only valid until the subsequent
+                    // nextEvent() pull overwrites the native backing storage
+                    // (spec §5.4).
                     assertTrue(s.payload().isDirect(),
                         "Sample.payload must be a zero-copy DIRECT ByteBuffer");
                     assertTrue(s.payload().remaining() > 0,

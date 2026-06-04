@@ -1,12 +1,15 @@
-//! Zero-copy payload buffers (spec §5.4). A `GenBuffer` owns a Rust allocation
-//! and hands the JVM a *direct* `java.nio.ByteBuffer` over it. The buffer is
-//! valid until `invalidate()` bumps the generation (next event pulled / parent
-//! released). Java holds the generation it was minted at; a read after
-//! invalidation is caught Java-side and raised as IllegalStateException.
+//! Zero-copy payload buffers (spec §5.4). `new_direct` hands the JVM a *direct*
+//! `java.nio.ByteBuffer` view over caller-owned Rust bytes, without copying. The
+//! caller owns the backing storage and keeps it alive for the buffer's valid
+//! window; in the mpegts keystone that owner is `JniDemuxer::last_payload`, which
+//! is overwritten on the next `nextEvent` pull (the documented
+//! "valid-until-next-pull" lifetime, see `DemuxEvent.Sample.payload`).
 //!
-//! For the keystone we expose the minting helper; the Java-side generation
-//! guard lands with the typed payload in the mpegts-completion wave. Until
-//! then callers copy (see Task 1 notes).
+//! The full generation-counter machinery (a `GenBuffer` wrapper whose
+//! `invalidate()` bumps a generation so a stale read becomes a defined
+//! `IllegalStateException` rather than undefined behaviour) is a future
+//! mpegts-completion addition; this module ships only the minting helper, so
+//! until then a read after the next pull is undefined and callers must copy.
 
 use jni::JNIEnv;
 use jni::objects::JObject;

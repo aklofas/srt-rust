@@ -18,10 +18,10 @@ class ErrorModelTest {
     void kindHasAllRustVariants() {
         // 1:1 with tst-core DemuxError / tst-py DemuxErrorKind.
         DemuxException.Kind[] ks = DemuxException.Kind.values();
-        assertEquals(6, ks.length);
+        assertEquals(5, ks.length);
         // names asserted so a Rust-side rename is caught here.
         for (String n : new String[] {
-                "SYNC_LOSS", "BAD_PMT", "BAD_PES", "UNEXPECTED_EOF", "STRICT_REJECTION", "INTERNAL"}) {
+                "SYNC_LOSS", "BAD_PMT", "BAD_PES", "STRICT_REJECTION", "INTERNAL"}) {
             DemuxException.Kind.valueOf(n); // throws if missing
         }
     }

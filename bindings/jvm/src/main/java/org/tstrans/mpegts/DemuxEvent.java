@@ -7,15 +7,15 @@ import java.util.List;
  * A demuxed event. Sealed sum type mirroring
  * {@code tst_core::mpegts::demux::DemuxEvent} (spec §5.2). The sample variant is
  * now split into {@link Video} / {@link Audio} / {@link Subtitle} /
- * {@link UnknownSample} (mirroring tst-py), and {@link Metadata} (KLV) is now
- * surfaced; the remaining top-level variants (NonConformant,
- * ReconnectDiscontinuity) land in later tasks of this wave-set and are added to
- * {@code permits} then.
+ * {@link UnknownSample} (mirroring tst-py), {@link Metadata} (KLV) is
+ * surfaced, and {@link NonConformant} (stream-conformance diagnostics) is now
+ * surfaced; the remaining top-level variant (ReconnectDiscontinuity) lands in a
+ * later task of this wave-set and is added to {@code permits} then.
  */
 public sealed interface DemuxEvent
         permits DemuxEvent.ProgramMap, DemuxEvent.Video, DemuxEvent.Audio,
                 DemuxEvent.Subtitle, DemuxEvent.UnknownSample, DemuxEvent.Metadata,
-                DemuxEvent.Discontinuity {
+                DemuxEvent.NonConformant, DemuxEvent.Discontinuity {
 
     /** PSI program map for one program (mirrors tst-py mpegts.ProgramMap). */
     record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
@@ -114,6 +114,30 @@ public sealed interface DemuxEvent
      */
     record Metadata(StreamId stream, long pts, MetadataKind kind, ByteBuffer payload,
                     boolean wasReassembled, int cellCount) implements DemuxEvent {}
+
+    /**
+     * A stream-conformance diagnostic emitted by the demuxer. Mirrors tst-py's
+     * NonConformant event: Rust's 30+ {@code NonConformantIssue} variants are
+     * collapsed to a {@link NonConformantKind} discriminator plus the
+     * human-readable {@code issue} detail string.
+     *
+     * @param stream            the elementary stream the diagnostic concerns
+     * @param issue             the human-readable detail string (Rust
+     *                          {@code NonConformantIssue}'s {@code Display})
+     * @param kind              the collapsed diagnostic discriminator
+     * @param multiCellAuReason the multi-cell AU reassembly failure reason —
+     *                          non-{@code null} only when
+     *                          {@code kind == MULTI_CELL_AU}, {@code null} otherwise
+     * @param observedCfi       the wire {@code cell_fragment_indication} bits —
+     *                          non-{@code null} only when
+     *                          {@code kind == CFI_TOLERATED}, {@code null} otherwise
+     * @param treatedAs         the {@code cell_fragment_indication} the demuxer
+     *                          substituted — non-{@code null} only when
+     *                          {@code kind == CFI_TOLERATED}, {@code null} otherwise
+     */
+    record NonConformant(StreamId stream, String issue, NonConformantKind kind,
+                         MultiCellAuReason multiCellAuReason, CellFragmentIndication observedCfi,
+                         CellFragmentIndication treatedAs) implements DemuxEvent {}
 
     /** Continuity-counter / PCR discontinuity on a PID. */
     record Discontinuity(int pid) implements DemuxEvent {}

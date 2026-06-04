@@ -16,7 +16,7 @@ class DemuxEventShapeTest {
         assertEquals(
             Set.of(DemuxEvent.ProgramMap.class, DemuxEvent.Video.class, DemuxEvent.Audio.class,
                    DemuxEvent.Subtitle.class, DemuxEvent.UnknownSample.class, DemuxEvent.Metadata.class,
-                   DemuxEvent.Discontinuity.class),
+                   DemuxEvent.NonConformant.class, DemuxEvent.Discontinuity.class),
             Set.of(DemuxEvent.class.getPermittedSubclasses()),
             "permits set must match the keystone variants");
 

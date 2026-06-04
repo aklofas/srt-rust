@@ -159,7 +159,6 @@ pub fn map_klv_decode_error(env: &mut JNIEnv, e: &KlvDecodeError) {
 /// (satisfies the error-mapping ratchet). Used by the per-set JNI fns (Tasks 1–4).
 /// The forward-compat wildcard arm aliases to `BUFFER_TOO_SMALL` (matching
 /// tst-py's `klv_encode_error_to_pyerr`), not `INTERNAL`.
-#[allow(dead_code)]
 pub fn map_klv_encode_error(env: &mut JNIEnv, e: &KlvEncodeError) {
     let msg = e.to_string();
     match e {

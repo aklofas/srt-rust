@@ -97,6 +97,70 @@ public final class Klv {
     private static native byte[] nEncodePrecisionTimestamp(PrecisionTimeStampPack pack);
 
     // -----------------------------------------------------------------------
+    // ST 0102 — Security Metadata LS
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode an ST 0102 Security Metadata LS body (lenient mode).
+     *
+     * <p>{@code buf} is body-only — no Universal Label or outer BER length wrapper.
+     * Lenient mode tolerates missing required tags, unknown enum codepoints
+     * (surfaced as null typed accessors with raw code preserved), and malformed
+     * Tag 13 UTF-16 (surfaced in {@link SecurityLs#fieldErrors()}).
+     * Mirrors tst-py's {@code decode_security(buf)}.
+     *
+     * @param buf ST 0102 body bytes (no UL / outer BER length)
+     * @return the decoded {@link SecurityLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is structurally malformed
+     */
+    public static SecurityLs decodeSecurity(byte[] buf)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodeSecurity(buf, false);
+    }
+
+    /**
+     * Decode an ST 0102 Security Metadata LS body with optional strict mode.
+     *
+     * <p>{@code buf} is body-only — no Universal Label or outer BER length wrapper.
+     * When {@code strict = true}, rejects missing required tags (1, 2, 3, 12, 13, 22),
+     * unknown enum codepoints, omitted-value codepoints, non-canonical BER, and
+     * malformed UTF-16. Mirrors tst-py's {@code decode_security(buf, strict=True)}.
+     *
+     * @param buf    ST 0102 body bytes (no UL / outer BER length)
+     * @param strict {@code true} for strict validation; {@code false} for lenient
+     * @return the decoded {@link SecurityLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is rejected (including missing
+     *                                        required tags in strict mode)
+     */
+    public static SecurityLs decodeSecurity(byte[] buf, boolean strict)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodeSecurity(buf, strict);
+    }
+
+    /**
+     * Encode a {@link SecurityLs} to ST 0102 body bytes.
+     *
+     * <p>Returns body-only bytes — no Universal Label or outer BER length wrapper.
+     * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
+     * Mirrors tst-py's {@code encode_security(record)}.
+     *
+     * @param record the Security LS to encode
+     * @return ST 0102 body bytes
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range or
+     *                                        a reserved tag appears in {@code unknown}
+     */
+    public static byte[] encodeSecurity(SecurityLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeSecurity(record);
+    }
+
+    private static native SecurityLs nDecodeSecurity(byte[] buf, boolean strict)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] nEncodeSecurity(SecurityLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
     // Test-only forced-throw helpers (package-private)
     // -----------------------------------------------------------------------
 

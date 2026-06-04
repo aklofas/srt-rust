@@ -54,14 +54,11 @@ fn field_error_kind_and_tag(fe: &RustKlvFieldError) -> (&'static str, u32) {
 /// `with_local_frame` and reclaimed at the end of the iteration — only the
 /// long-lived `list` ref (created in the outer frame) survives. Mirrors the
 /// forward-note on `build_pid_list` in `mpegts/mod.rs`.
-#[allow(dead_code)]
 pub fn build_field_errors<'local>(
     env: &mut JNIEnv<'local>,
     errs: &[RustKlvFieldError],
-) -> Result<JObject<'local>, ()> {
-    let list = env
-        .new_object("java/util/ArrayList", "()V", &[])
-        .map_err(|_| ())?;
+) -> jni::errors::Result<JObject<'local>> {
+    let list = env.new_object("java/util/ArrayList", "()V", &[])?;
     for fe in errs {
         // 8 slots: comfortably covers the 3 element refs + JNI scratch per entry.
         env.with_local_frame(8, |env| -> jni::errors::Result<()> {
@@ -90,8 +87,7 @@ pub fn build_field_errors<'local>(
                 &[JValue::Object(&obj)],
             )?;
             Ok(())
-        })
-        .map_err(|_| ())?;
+        })?;
     }
     Ok(list)
 }
@@ -105,14 +101,11 @@ pub fn build_field_errors<'local>(
 /// (the byte array + ByteBuffer + record) are minted inside a per-entry
 /// `with_local_frame` and reclaimed at the end of the iteration — only the
 /// long-lived `list` ref survives.
-#[allow(dead_code)]
 pub fn build_unknown_list<'local>(
     env: &mut JNIEnv<'local>,
     fields: &[OwnedRawField],
-) -> Result<JObject<'local>, ()> {
-    let list = env
-        .new_object("java/util/ArrayList", "()V", &[])
-        .map_err(|_| ())?;
+) -> jni::errors::Result<JObject<'local>> {
+    let list = env.new_object("java/util/ArrayList", "()V", &[])?;
     for f in fields {
         // 8 slots: covers the byte[] + ByteBuffer + record refs + JNI scratch.
         env.with_local_frame(8, |env| -> jni::errors::Result<()> {
@@ -137,8 +130,7 @@ pub fn build_unknown_list<'local>(
                 &[JValue::Object(&obj)],
             )?;
             Ok(())
-        })
-        .map_err(|_| ())?;
+        })?;
     }
     Ok(list)
 }
@@ -146,29 +138,18 @@ pub fn build_unknown_list<'local>(
 /// Read a `java.util.List<KlvUnknownField>` back into a `Vec<OwnedRawField>`,
 /// dropping any entry whose tag collides with a typed tag (typed wins). Used by klv
 /// Tasks 2–4 (call sites assign the result back to `record.unknown`).
-#[allow(dead_code)]
 pub fn read_unknown_list(
     env: &mut JNIEnv,
     list: &JObject,
     is_typed: impl Fn(u32) -> bool,
-) -> Result<Vec<OwnedRawField>, ()> {
-    let size = env
-        .call_method(list, "size", "()I", &[])
-        .map_err(|_| ())?
-        .i()
-        .map_err(|_| ())?;
+) -> jni::errors::Result<Vec<OwnedRawField>> {
+    let size = env.call_method(list, "size", "()I", &[])?.i()?;
     let mut out = Vec::new();
     for i in 0..size {
         let item = env
-            .call_method(list, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])
-            .map_err(|_| ())?
-            .l()
-            .map_err(|_| ())?;
-        let tag_long = env
-            .call_method(&item, "tag", "()J", &[])
-            .map_err(|_| ())?
-            .j()
-            .map_err(|_| ())?;
+            .call_method(list, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+            .l()?;
+        let tag_long = env.call_method(&item, "tag", "()J", &[])?.j()?;
         // KLV BER-OID tags are u32; a Java `long` tag outside 0..=u32::MAX is
         // out-of-range for a real field. Fail-closed (skip) rather than
         // truncating it into a different tag value.
@@ -179,18 +160,12 @@ pub fn read_unknown_list(
             continue; // typed field wins; drop this unknown entry
         }
         let buf_obj = env
-            .call_method(&item, "value", "()Ljava/nio/ByteBuffer;", &[])
-            .map_err(|_| ())?
-            .l()
-            .map_err(|_| ())?;
+            .call_method(&item, "value", "()Ljava/nio/ByteBuffer;", &[])?
+            .l()?;
         // Read the ByteBuffer's remaining bytes via ByteBuffer.array() (heap-backed copy).
-        let arr = env
-            .call_method(&buf_obj, "array", "()[B", &[])
-            .map_err(|_| ())?
-            .l()
-            .map_err(|_| ())?;
+        let arr = env.call_method(&buf_obj, "array", "()[B", &[])?.l()?;
         let arr = jni::objects::JByteArray::from(arr);
-        let value = env.convert_byte_array(&arr).map_err(|_| ())?;
+        let value = env.convert_byte_array(&arr)?;
         out.push(OwnedRawField { tag, value });
     }
     Ok(out)

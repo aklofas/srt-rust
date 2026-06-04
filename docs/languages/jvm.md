@@ -1,21 +1,23 @@
 # JVM bindings (`org.tstrans`)
 
 > **Who this is for:** You write Java (or any JVM language — Kotlin, Scala,
-> Clojure) and want to demux MPEG-TS + KLV streams into typed events on
-> JDK 17+.
+> Clojure) and want to demux MPEG-TS + KLV streams into typed events — or mux
+> them back into a transport stream — on JDK 17+.
 
 > **You will learn:**
 > - How to build the JVM binding from source today (Maven Central is the planned distribution)
 > - How to read a `.ts` file and dispatch typed `DemuxEvent` items
+> - How to mux a single-program `.ts` offline with the `Muxer` + config builder
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
-> - How this binding differs from the Rust core (demux only in this wave; mux / KLV-decode / transport are roadmap)
+> - How this binding differs from the Rust core (demux + offline mux this wave; KLV-decode / transport are roadmap)
 
-> **Status (mpegts demux surface shipped):** the JVM binding currently
-> ships exactly two things: the bootstrap `org.tstrans.Version` hello-world
-> and the complete `org.tstrans.mpegts` **demux** surface (`Demuxer`,
+> **Status (mpegts demux + offline mux surfaces shipped):** the JVM binding
+> currently ships the bootstrap `org.tstrans.Version` hello-world, the
+> complete `org.tstrans.mpegts` **demux** surface (`Demuxer`,
 > `DemuxerConfig`, the sealed `DemuxEvent` hierarchy, `StreamId`, and the
-> codec / kind enums). Offline `Muxer`, typed KLV decode
+> codec / kind enums), and the offline **mux** surface (`Muxer`,
+> `MuxerConfig`, the push family + `pull`). Typed KLV decode
 > (`org.tstrans.klv`), codec parsers (`org.tstrans.codec`), and SRT / RTP
 > transport are on the roadmap — the Rust core has them; only the JNI wrap
 > is the remaining work. This page documents only what exists today.
@@ -64,6 +66,53 @@ import org.tstrans.Version;
 
 System.out.println(Version.versionString());  // e.g. "0.1.0"
 ```
+
+## First send
+
+Build a single-program H.264 transport stream offline: configure the muxer,
+push one access unit, then drain assembled TS packets with `pull`. The muxer
+is deterministic — identical inputs produce byte-identical output across the
+Rust, Python, and JVM bindings.
+
+```java
+import org.tstrans.mpegts.*;
+
+MuxerConfig cfg = MuxerConfig.builder()
+    .programNumber(1).pmtPid(0x1000)
+    .addVideo(0x1011, VideoCodec.H264)
+    .build();
+
+byte[] out = new byte[8192];
+try (Muxer m = new Muxer(cfg);
+     var sink = java.nio.file.Files.newOutputStream(java.nio.file.Path.of("out.ts"))) {
+    // pts is a 90 kHz tick count; keyFrame marks a random-access point.
+    m.pushVideo(annexBNal, /*pts=*/ 0L, /*keyFrame=*/ true);
+    int n;
+    while ((n = m.pull(out)) > 0) {   // drain in a loop until pull returns 0
+        sink.write(out, 0, n);        // n is always a multiple of 188
+    }
+}
+```
+
+`Muxer implements AutoCloseable` — the native allocation is reclaimed by
+`close()`, so use try-with-resources. The push family mirrors the Rust core:
+
+- `pushVideo(byte[] nal, long pts, boolean keyFrame)` — Annex-B H.264/H.265/H.266 (or AV1 OBU bitstream).
+- `pushKlv(byte[] klv, long pts, int metadataServiceId)` — raw KLV LS bytes; for a `SYNCHRONOUS_METADATA` stream the muxer auto-prepends the 5-byte AU-cell header (do **not** pre-wrap).
+- `pushAudio(byte[] frames, long pts)` — codec-native audio frames (ADTS for AAC, raw for MP2 / AC-3 / LATM).
+- `pushSubtitle(long pts, byte[] payload)` — note the `(pts, payload)` argument order.
+
+Each `push*` targets the lone stream of that kind; a muxer configured with
+zero or more than one stream of the kind throws `MuxException(INVALID_USAGE)`.
+Build the `MuxerConfig` with `addVideo` / `addKlv` / `addAudio` / `addSubtitle`
+on `MuxerConfig.builder()`; the builder is single-program. Deep config
+validation (PID collisions, PMT-size budget, sync-KLV-without-PTS, …) runs in
+the native `Muxer` constructor and surfaces as `MuxException(CONFIG_INVALID)`.
+
+> **Scope.** This binding's `MuxerConfig` is single-program; multi-program
+> configs, per-stream/program descriptors, the `*_to(handle, …)` multi-stream
+> variants, and DVB-subtitle codec configuration are deferred. `addSubtitle`
+> accepts the no-config codecs (`CEA708_STANDALONE` / `WEBVTT_IN_TS`) today.
 
 ## First receive
 
@@ -214,13 +263,13 @@ itself a sealed interface: `Video(VideoCodec codec)`,
 
 ## Where this binding differs from the Rust core
 
-- **Demux only in this wave.** The JVM binding currently surfaces the
+- **Demux + offline mux this wave.** The JVM binding currently surfaces the
   `org.tstrans.mpegts.Demuxer` receive path (feed bytes → typed
-  `DemuxEvent`s) plus the `org.tstrans.Version` bootstrap. There is no
-  `Muxer`, so this page has **no "First send"** — offline `Muxer`, typed
-  KLV decode (`org.tstrans.klv`), codec parsers (`org.tstrans.codec`), and
-  SRT / RTP transport are all on the roadmap. The Rust core has them; only
-  the JNI wrap is the remaining work.
+  `DemuxEvent`s) and the offline `org.tstrans.mpegts.Muxer` send path
+  (config builder → push family → `pull`), plus the `org.tstrans.Version`
+  bootstrap. Typed KLV decode (`org.tstrans.klv`), codec parsers
+  (`org.tstrans.codec`), and SRT / RTP transport are on the roadmap. The
+  Rust core has them; only the JNI wrap is the remaining work.
 - **Payloads are raw `ByteBuffer`** (heap copies), not typed NAL / OBU /
   ADTS lists. Typed payloads land in the codec wave.
 - **JDK 17 baseline.** The examples use `instanceof` pattern matching, not
@@ -249,7 +298,7 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
 - **Bootstrap (`org.tstrans.Version`) — SHIPPED.** Proves the
   cargo → cdylib → Gradle → Java → JNI build pipeline and native loader.
 - **mpegts demux (`org.tstrans.mpegts.Demuxer` + `DemuxEvent` + `DemuxerConfig`) — SHIPPED (this wave).**
-- **mpegts mux** — offline `Muxer` + config builder + push family + `pull`.
+- **mpegts mux (`org.tstrans.mpegts.Muxer` + `MuxerConfig` + push family + `pull`) — SHIPPED (this wave).**
 - **klv** — typed KLV decode (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`.
 - **codec** — H.264 / H.265 / H.266 / AV1 + audio parsers under
   `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS).

@@ -21,3 +21,7 @@ doctest    = false
 # Bootstrap depends on jni ONLY — workspace crates (tst-core/tst-srt/...) are
 # added in the step-2 surface port.
 jni = "0.21"
+
+# Keystone needs only tst-core (Demuxer + DemuxEvent). tst-pipeline/tst-srt/
+# tst-rtp are added by their respective module waves, not before.
+tst-core = { path = "../../crates/tst-core" }

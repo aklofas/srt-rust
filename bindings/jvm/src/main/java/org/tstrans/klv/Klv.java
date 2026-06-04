@@ -241,6 +241,90 @@ public final class Klv {
             throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------
+    // ST 0601 — UAS Datalink Local Set
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode an ST 0601 UAS Datalink LS (lenient mode).
+     *
+     * <p>{@code buf} is the full wire-format payload starting with the 16-byte
+     * Universal Label. Lenient mode accepts any 16-byte UL, verifies the checksum,
+     * and collects per-field decode failures in {@link UasDatalinkLs#fieldErrors()}.
+     * Mirrors tst-py's {@code decode_uas_datalink(buf)}.
+     *
+     * @param buf full ST 0601 wire bytes (UL + BER length + body)
+     * @return the decoded {@link UasDatalinkLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is structurally malformed
+     */
+    public static UasDatalinkLs decodeUasDatalink(byte[] buf)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodeUasDatalink(buf, false, false);
+    }
+
+    /**
+     * Decode an ST 0601 UAS Datalink LS with optional strict / compliance mode.
+     *
+     * <p>{@code buf} is the full wire-format payload starting with the 16-byte UL.
+     * When {@code compliance = true}, also enforces Tag 2 first / Tag 1 last /
+     * Tag 65 present / no duplicate tags / canonical BER (implies {@code strict}).
+     * When {@code strict = true} only, requires the ST 0601 family UL pattern.
+     * Mirrors tst-py's {@code decode_uas_datalink(buf, strict=True, compliance=True)}.
+     *
+     * @param buf        full ST 0601 wire bytes (UL + BER length + body)
+     * @param strict     {@code true} for strict UL validation
+     * @param compliance {@code true} for full compliance validation (implies strict)
+     * @return the decoded {@link UasDatalinkLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is rejected
+     */
+    public static UasDatalinkLs decodeUasDatalink(byte[] buf, boolean strict, boolean compliance)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodeUasDatalink(buf, strict, compliance);
+    }
+
+    /**
+     * Encode a {@link UasDatalinkLs} to the full ST 0601 wire format.
+     *
+     * <p>Returns the full framing: {@code [UL:16][BER length][body][Tag1 checksum]}.
+     * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
+     * Mirrors tst-py's {@code encode_uas_datalink(record)}.
+     *
+     * @param record the UAS Datalink LS to encode
+     * @return ST 0601 wire bytes
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range or a
+     *                                        reserved tag appears in {@code unknown}
+     */
+    public static byte[] encodeUasDatalink(UasDatalinkLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeUasDatalink(record);
+    }
+
+    /**
+     * Encode a {@link UasDatalinkLs} with strict ST 0601 compliance validation.
+     *
+     * <p>Enforces mandatory-tag presence (Tag 2 precision timestamp, Tag 65 LS
+     * version, Tag 1 checksum) and structural ordering rules. Mirrors tst-py's
+     * {@code encode_uas_datalink_strict_compliance(record)}.
+     *
+     * @param record the UAS Datalink LS to encode
+     * @return ST 0601 wire bytes with checksum
+     * @throws org.tstrans.KlvEncodeException with {@code kind = MISSING_MANDATORY_ITEM}
+     *                                        if a required tag is absent
+     */
+    public static byte[] encodeUasDatalinkStrictCompliance(UasDatalinkLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeUasDatalinkStrictCompliance(record);
+    }
+
+    private static native UasDatalinkLs nDecodeUasDatalink(byte[] buf, boolean strict, boolean compliance)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] nEncodeUasDatalink(UasDatalinkLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeUasDatalinkStrictCompliance(UasDatalinkLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
     // Test-only forced-throw helpers (package-private)
     // -----------------------------------------------------------------------
 

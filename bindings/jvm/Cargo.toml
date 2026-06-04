@@ -1,0 +1,23 @@
+[package]
+name        = "tst-jni"
+description = "JVM (JNI) bindings for the ts-transformer MPEG-TS + KLV + codec parsers"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+# cdylib output is `libtstjni.so` (lib name `tstjni`); JNI symbol mangling
+# resolves `Java_org_tstrans_Version_versionString` from this object.
+name       = "tstjni"
+crate-type = ["cdylib"]
+doctest    = false
+
+[dependencies]
+# jni-rs: self-contained JNI bindings. Compiling the cdylib needs no JDK/JVM;
+# the JVM is only present at runtime when Java `System.load`s the library.
+# Bootstrap depends on jni ONLY — workspace crates (tst-core/tst-srt/...) are
+# added in the step-2 surface port.
+jni = "0.21"

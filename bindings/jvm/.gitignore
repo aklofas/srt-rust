@@ -1,0 +1,5 @@
+# Gradle build output
+/build/
+/.gradle/
+# native lib copied in from cargo at build time (regenerated, not committed)
+/src/main/resources/native/

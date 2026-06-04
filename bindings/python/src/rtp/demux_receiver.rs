@@ -215,38 +215,52 @@ impl PyDemuxReceiver {
     /// stops. Only the first sink error is surfaced; later per-packet
     /// errors are dropped.
     ///
+    /// Thread-safe to call concurrently with iteration: registration
+    /// acquires the `inner` lock with the GIL released (like `close()`),
+    /// so it simply blocks until the in-flight `recv_event` yields,
+    /// rather than deadlocking against a sink firing under the GIL.
+    ///
     /// Cost: each registered sink re-acquires the GIL once per packet
     /// inside the recv loop, so on high-bitrate streams a slow sink (or
     /// many sinks) throttles the receiver. Keep sink bodies cheap.
     ///
     /// Raises `RtpError(TRANSPORT)` if the receiver is already closed.
     fn add_byte_sink(&self, py: Python<'_>, callback: Py<PyAny>) -> PyResult<()> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"))?;
-        let rx = guard
-            .as_mut()
-            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "DemuxReceiver is closed"))?;
         // The closure runs inside `recv_event` (under `allow_threads`),
         // re-acquires the GIL per packet, and only ever touches
         // `callback` + `sink_error` — never `inner` (whose guard is held
         // by the parked `__next__`), so it cannot deadlock.
         let sink_error = self.sink_error.clone();
-        rx.add_byte_sink(Box::new(move |pkt: &[u8]| {
-            Python::with_gil(|py| {
-                let b = PyBytes::new_bound(py, pkt);
-                if let Err(e) = callback.call1(py, (b,)) {
-                    // First error wins; later packet errors are dropped.
-                    if let Ok(mut slot) = sink_error.lock() {
-                        if slot.is_none() {
-                            *slot = Some(e);
+        let inner = self.inner.clone();
+        // Acquire `inner` with the GIL RELEASED (matching `close()` /
+        // `stats()`). If we held the GIL here while a concurrent
+        // `__next__` held `inner` inside `recv_event`, a sink firing on
+        // the recv thread would block re-acquiring the GIL while we
+        // block on `inner.lock()` — a deadlock. Registering the sink (a
+        // Vec push) needs no GIL and never re-enters Python, so it is
+        // safe to do inside the released-GIL block.
+        let outcome: Result<(), &'static str> = py.allow_threads(move || {
+            let mut guard = inner.lock().map_err(|_| "poisoned")?;
+            let rx = guard.as_mut().ok_or("closed")?;
+            rx.add_byte_sink(Box::new(move |pkt: &[u8]| {
+                Python::with_gil(|py| {
+                    let b = PyBytes::new_bound(py, pkt);
+                    if let Err(e) = callback.call1(py, (b,)) {
+                        // First error wins; later packet errors are dropped.
+                        if let Ok(mut slot) = sink_error.lock() {
+                            if slot.is_none() {
+                                *slot = Some(e);
+                            }
                         }
                     }
-                }
-            });
-        }));
-        Ok(())
+                });
+            }));
+            Ok(())
+        });
+        outcome.map_err(|kind| match kind {
+            "poisoned" => make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"),
+            _ => make_rtp_error(py, "TRANSPORT", "DemuxReceiver is closed"),
+        })
     }
 
     /// Block until the next `DemuxEvent` is available. Returns a

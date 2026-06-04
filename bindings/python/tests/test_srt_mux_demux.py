@@ -298,6 +298,12 @@ def test_handle_getters_and_push_to() -> None:
         # through the audit-#10 two-path bytes-like helper.
         sender.push_video(bytearray(NAL_AUD), pts=Pts90khz.from_raw(3000))
         sender.push_video(memoryview(bytearray(NAL_AUD)), pts=Pts90khz.from_raw(6000))
+        # libsrt does not flush its `pktSentTotal` counter synchronously
+        # with `srt_send`; on a fast loopback the stats snapshot can race
+        # the send queue and read 0. Give the send path a moment to drain
+        # before sampling (matches the drain-before-stats convention in
+        # test_srt_transport.py and the pre-close sleeps elsewhere here).
+        time.sleep(0.3)
         sock_stats, mux_stats = sender.stats()
         assert sock_stats.packets_sent >= 1
         assert mux_stats.programs_configured == 1

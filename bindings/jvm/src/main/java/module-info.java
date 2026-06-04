@@ -7,5 +7,5 @@
 module org.tstrans {
     requires java.base;
     exports org.tstrans;
-    // exports org.tstrans.mpegts; -- deferred: added in Task 1.1 once the package exists
+    exports org.tstrans.mpegts;
 }

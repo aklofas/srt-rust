@@ -4,6 +4,8 @@
 //! cargo -> cdylib -> Gradle -> Java -> JNI build pipeline end to end. The full
 //! `org.tstrans.*` surface (mirroring tst-py) lands in the step-2 surface port.
 
+mod error;
+
 use jni::JNIEnv;
 use jni::objects::JClass;
 use jni::sys::jstring;

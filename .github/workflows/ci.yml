@@ -315,6 +315,15 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/repo/surface-manifest.sh
 
+      - name: check-platform-capabilities (gate-sync + I4 promotion alarm)
+        # Every test-level platform cfg-gate has a platform_skip entry; every
+        # non-resolved blocked_bug has a future expires_after; every A-soft
+        # capability has a future soft_until (lapse = intentional promotion
+        # alarm). Gated to linux-x86_64 — manifest + date semantics are
+        # platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/repo/platform-capabilities.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

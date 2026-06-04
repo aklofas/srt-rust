@@ -61,6 +61,22 @@ empty — the C/Python adapters live in their own crates' test/example surfaces)
   SHA-256 inventory for every tracked file under each `fixture-manifest.toml` group
   root. Enforced by `scripts/check/repo/fixture-hashes.sh` (full closure + hash drift).
   Regenerate and commit after any intentional fixture change.
+- **`platform-capabilities.toml`** — **platform-capability manifest** (shipped
+  2026-06-03). Two block kinds:
+  - `[[platform_skip]]` — one entry per test file that carries a top-level
+    platform `cfg`-gate (`#![cfg(not(target_os = "windows"))]`,
+    `#![cfg(target_os = "linux")]`, etc.). Fields: `file` (repo-relative path),
+    `platform` (platform(s) being skipped), `capability` (the named capability),
+    `class` (`blocked_bug` | `gap` | `portability` | `environmental`), and an
+    optional `expires_after` (required for `blocked_bug`). Mark removed gates
+    `resolved` — don't delete the row (it's history).
+  - `[[capability]]` — one entry per platform/feature capability fact. The
+    `status` field maps to the tier model (`A` = gating, `A-soft` = phasing in,
+    `gating-pending` = pending first green run). `A-soft` and `gating-pending`
+    entries MUST carry a `soft_until` date.
+  Enforced by `scripts/check/repo/platform-capabilities.sh` (three rules:
+  every gated file listed, every listed file is a real gate, all deferrals and
+  soft windows future-dated). See "Platform-capability manifest" section below.
 - **`surface-manifest.toml`** — **L3 surface-to-test ownership manifest** (shipped
   2026-06-03). Every mappable entry across the 8 `public-api.txt` baselines is either
   a `[[surface]]` row (item → owning tests + per-binding columns) or an `[[exempt]]`
@@ -98,3 +114,48 @@ rows — rule (b) then forces JNI test coverage for that item (the §8.5 parity 
 to mark a binding symbol that only exists when feature `srt` is compiled in. The
 ratchet skips resolving it unless `SURFACE_BUILT_FEATURES` includes `srt` (CI sets
 all features built by default).
+
+## Platform-capability manifest
+
+`platform-capabilities.toml` is the single source of record for platform deferral
+state and CI-matrix promotion readiness (investigation area I4). It records two
+kinds of information:
+
+**`[[platform_skip]]` rows** — one per test file that carries a top-level platform
+`cfg`-gate. This prevents deferrals from hiding in scattered `#[cfg(...)]` comments:
+every such gate must be declared here with a `class` and (for `blocked_bug`) an
+`expires_after`. Classes:
+
+| class | Meaning |
+| --- | --- |
+| `blocked_bug` | Upstream/vendored bug; `expires_after` required |
+| `gap` | Our code doesn't yet support this on the platform |
+| `portability` | Low-level compile cfg, not a behavioral deferral |
+| `environmental` | Timing/runner-sensitive (live-socket, OS-scheduler dependent) |
+
+When a gate is removed (test runs everywhere), mark its row `resolved = "YYYY-MM-DD"`
+— do not delete it (it is history).
+
+**`[[capability]]` rows** — one per platform (or platform + capability), declaring
+the current CI-promotion state:
+
+| status | Meaning |
+| --- | --- |
+| `A` | Gating — a red here blocks merge |
+| `A-soft` | `continue-on-error: true`; phasing in; `soft_until` required |
+| `gating-pending` | First green run not yet seen; `soft_until` required |
+
+The `soft_until` date on an `A-soft` or `gating-pending` row is a **deliberate
+promotion alarm**: when that date lapses the ratchet fails CI with a
+`FAIL: A-soft capability soft_until lapsed` message. This is not a flake — it is a
+forced decision point. Either promote the platform to gating (flip `continue-on-error`
+to `false` in `ci.yml` and update `status = "A"`) or extend `soft_until` with a
+note explaining why promotion is deferred.
+
+**Adding a new platform gate:** when a test file acquires a platform `#[cfg]`, add
+a `[[platform_skip]]` row here in the same commit. The ratchet (`Rule 1`) will fail
+CI otherwise.
+
+**When tst-jni lands:** add `[[capability]] platform = "macos-x86_64"` and any
+JNI-specific `[[platform_skip]]` rows here — this manifest is where the 5-platform
+matrix growth is recorded (spec §7.1 step 2).

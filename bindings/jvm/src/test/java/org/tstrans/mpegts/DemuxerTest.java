@@ -22,9 +22,9 @@ class DemuxerTest {
                     sawProgramMap = true;
                     assertFalse(pm.elementaryPids().isEmpty(), "expected >=1 elementary stream");
                 }
-                if (e instanceof DemuxEvent.Sample s) {
-                    assertTrue(s.pid() > 0);
-                    assertNotNull(s.payload());
+                if (e instanceof DemuxEvent.Audio a) {
+                    assertTrue(a.stream().pid() > 0);
+                    assertNotNull(a.payload());
                 }
             }
         }
@@ -34,9 +34,9 @@ class DemuxerTest {
 
     @Test
     void samplePayloadIsRetainableHeapCopy() throws Exception {
-        // mp2.ts yields audio Samples (keystone maps Audio -> AUDIO Sample).
-        // Sample.payload is a JVM-owned heap copy (not a direct buffer over Rust
-        // memory), so it stays valid even after further pulls and close().
+        // mp2.ts yields DemuxEvent.Audio events. The payload is a JVM-owned heap
+        // copy (not a direct buffer over Rust memory), so it stays valid even
+        // after further pulls and close().
         byte[] ts = Files.readAllBytes(FIXTURE);
         java.nio.ByteBuffer retained = null;
         byte[] snapshot = null;
@@ -44,11 +44,11 @@ class DemuxerTest {
             d.feed(ts);
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Sample s) {
-                    retained = s.payload();
+                if (e instanceof DemuxEvent.Audio a) {
+                    retained = a.payload();
                     assertFalse(retained.isDirect(),
-                        "Sample.payload is a copied heap ByteBuffer, safe to retain");
-                    assertTrue(retained.remaining() > 0, "expected non-empty Sample payload");
+                        "Audio.payload is a copied heap ByteBuffer, safe to retain");
+                    assertTrue(retained.remaining() > 0, "expected non-empty Audio payload");
                     snapshot = new byte[retained.remaining()];
                     retained.duplicate().get(snapshot);
                     break;
@@ -61,7 +61,7 @@ class DemuxerTest {
             }
         }
         // Demuxer is now closed; the JVM-owned copy is still readable and intact.
-        assertNotNull(retained, "expected at least one Sample event from mp2.ts");
+        assertNotNull(retained, "expected at least one Audio event from mp2.ts");
         byte[] afterClose = new byte[retained.remaining()];
         retained.duplicate().get(afterClose);
         assertArrayEquals(snapshot, afterClose,

@@ -29,7 +29,7 @@ import org.tstrans.mpegts.Demuxer;
  *   <li><b>video.pid</b> — the elementary-stream PID of the video sample.</li>
  *   <li><b>video.pts</b> — the 90&nbsp;kHz presentation timestamp.</li>
  *   <li><b>video.payload_sha256</b> — SHA-256 of the concatenated NAL RBSP
- *       payload bytes. The JNI keystone derives the {@code Sample.payload}
+ *       payload bytes. The JNI keystone derives the {@code Video.payload}
  *       bytes identically to the Rust/Python normalisers (concatenate every
  *       {@code NalUnit.payload}, Annex-B start codes already stripped by the
  *       demuxer — see {@code sample_bytes()} in {@code bindings/jvm/src/mpegts/mod.rs}
@@ -41,9 +41,11 @@ import org.tstrans.mpegts.Demuxer;
  * <ul>
  *   <li>the {@code klv} core event (pid 4145) — the keystone SKIPS
  *       {@code DemuxEvent::Metadata}; KLV typing lands in the completion wave.</li>
- *   <li>video {@code stream_type} / {@code key} / {@code program} — the keystone
- *       {@code Sample} record does not expose the PMT stream_type byte, the
- *       random-access flag, or the program number.</li>
+ *   <li>video {@code stream_type} / {@code key} — the {@code DemuxEvent.Video}
+ *       record exposes the stream PID, PTS, and payload (asserted here) plus the
+ *       random-access flag, but the cross-binding video subset compares only
+ *       pid / pts / payload_sha256; the golden's {@code stream_type} and
+ *       {@code key} fields stay out of scope for the keystone proof.</li>
  * </ul>
  * Full golden parity is a completion-wave concern; per the surface-port plan the
  * keystone compares only the supported subset.
@@ -82,17 +84,16 @@ class ScenarioReproductionTest {
         // rather than add a dependency just for this.
         GoldenVideo expected = extractVideoEvent(goldenJson);
 
-        // Demux the shared input through the JNI keystone, collecting VIDEO Samples.
-        // Sample.payload is a JVM-owned heap copy, so SHA-256-ing it inside the
+        // Demux the shared input through the JNI keystone, collecting Video events.
+        // Video.payload is a JVM-owned heap copy, so SHA-256-ing it inside the
         // loop (or later) is equally safe.
         List<VideoSample> videoSamples = new ArrayList<>();
         try (Demuxer d = new Demuxer()) {
             d.feed(tsBytes);
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Sample s
-                        && s.kind() == DemuxEvent.SampleKind.VIDEO) {
-                    videoSamples.add(new VideoSample(s.pid(), s.pts(), sha256(s.payload())));
+                if (e instanceof DemuxEvent.Video v) {
+                    videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256(v.payload())));
                 }
             }
         }
@@ -107,11 +108,11 @@ class ScenarioReproductionTest {
             "no VIDEO Sample matched golden pid=" + expected.pid + " pts=" + expected.pts
                 + "; observed=" + videoSamples);
 
-        // payload_sha256 cross-binding proof: the JNI keystone's Sample.payload is
+        // payload_sha256 cross-binding proof: the JNI keystone's Video.payload is
         // the concatenated NAL RBSP bytes (same derivation as the Rust/Python
         // golden builders), so the digest matches the committed golden.
         assertEquals(expected.payloadSha256, match.payloadSha256,
-            "video payload_sha256 mismatch — the JNI keystone Sample.payload bytes "
+            "video payload_sha256 mismatch — the JNI keystone Video.payload bytes "
                 + "must equal the concatenated NAL RBSP bytes the golden hashes");
     }
 

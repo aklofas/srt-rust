@@ -17,7 +17,9 @@ import org.tstrans.DemuxException;
  * }</pre>
  *
  * <p><strong>Keystone event subset.</strong> This wave surfaces only
- * {@link DemuxEvent.ProgramMap}, {@link DemuxEvent.Sample}, and
+ * {@link DemuxEvent.ProgramMap}, the sample records ({@link DemuxEvent.Video},
+ * {@link DemuxEvent.Audio}, {@link DemuxEvent.Subtitle},
+ * {@link DemuxEvent.UnknownSample}), and
  * {@link DemuxEvent.Discontinuity}. Other demuxer events — KLV/{@code Metadata},
  * {@code NonConformant} (recoverable stream-quality issues), and
  * {@code ReconnectDiscontinuity} — are <em>silently skipped</em> for now; they

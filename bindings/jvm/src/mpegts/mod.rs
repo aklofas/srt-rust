@@ -2,9 +2,10 @@
 //!
 //! Wraps `tst_core::mpegts::demux::Demuxer`, converting each `DemuxEvent` into
 //! one of the keystone Java records (`DemuxEvent.ProgramMap` /
-//! `DemuxEvent.Sample` / `DemuxEvent.Discontinuity`) and mapping `DemuxError`
-//! to `org.tstrans.DemuxException` via `crate::error::throw_demux`. Mirrors
-//! `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
+//! `DemuxEvent.Video` / `DemuxEvent.Audio` / `DemuxEvent.Subtitle` /
+//! `DemuxEvent.UnknownSample` / `DemuxEvent.Discontinuity`) and mapping
+//! `DemuxError` to `org.tstrans.DemuxException` via `crate::error::throw_demux`.
+//! Mirrors `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
 //!
 //! Handle convention: `nOpen` boxes a [`Demuxer`] and returns the raw pointer as
@@ -12,7 +13,7 @@
 //! the per-call fns validate the handle ([`checked_handle`] throws
 //! `IllegalStateException` on a zero handle) before dereferencing.
 //!
-//! `Sample.payload` is a COPIED, Java-owned heap `ByteBuffer` (`ByteBuffer.wrap`
+//! The sample-record `payload` is a COPIED, Java-owned heap `ByteBuffer` (`ByteBuffer.wrap`
 //! over a fresh `byte[]`). The earlier zero-copy direct-buffer over Rust-owned
 //! memory was a use-after-free hazard once a consumer retained the buffer past
 //! the next pull, and a JDK-17-stable primitive for *defined*-on-stale-read
@@ -25,6 +26,7 @@ use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jlong, jobject};
 
 use tst_core::error::DemuxError;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     AudioCodec, DemuxEvent, Demuxer, NalUnit, SamplePayload, StreamId, StreamKind, SubtitleCodec,
     VideoCodec, VideoPayload,
@@ -191,9 +193,73 @@ fn convert_event<'local>(
         DemuxEvent::Sample {
             stream,
             pts,
+            dts,
             payload,
-            ..
-        } => build_sample(env, stream.pid, pts.as_ticks(), payload),
+        } => {
+            // Common pieces shared by every sample record. The payload is a
+            // COPIED, Java-owned heap `ByteBuffer` (see the module doc + spec
+            // §5.4 for why zero-copy is deferred to a JDK-22+ FFM path).
+            let stream_obj = build_stream_id(env, stream)?;
+            let pts_ticks = pts.as_ticks();
+            let dts_obj = opt_long(env, *dts)?;
+            let buf = wrap_heap_byte_buffer(env, &sample_bytes(payload))?;
+            let obj = match payload {
+                SamplePayload::Video {
+                    random_access_indicator,
+                    ..
+                } => env
+                    .new_object(
+                        "org/tstrans/mpegts/DemuxEvent$Video",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;Z)V",
+                        &[
+                            JValue::Object(&stream_obj),
+                            JValue::Long(pts_ticks),
+                            JValue::Object(&dts_obj),
+                            JValue::Object(&buf),
+                            JValue::Bool(*random_access_indicator as u8),
+                        ],
+                    )
+                    .map_err(|_| ())?,
+                SamplePayload::Audio { .. } => env
+                    .new_object(
+                        "org/tstrans/mpegts/DemuxEvent$Audio",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;)V",
+                        &[
+                            JValue::Object(&stream_obj),
+                            JValue::Long(pts_ticks),
+                            JValue::Object(&dts_obj),
+                            JValue::Object(&buf),
+                        ],
+                    )
+                    .map_err(|_| ())?,
+                SamplePayload::Subtitle { .. } => env
+                    .new_object(
+                        "org/tstrans/mpegts/DemuxEvent$Subtitle",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;)V",
+                        &[
+                            JValue::Object(&stream_obj),
+                            JValue::Long(pts_ticks),
+                            JValue::Object(&dts_obj),
+                            JValue::Object(&buf),
+                        ],
+                    )
+                    .map_err(|_| ())?,
+                SamplePayload::Unknown { stream_type, .. } => env
+                    .new_object(
+                        "org/tstrans/mpegts/DemuxEvent$UnknownSample",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;ILjava/nio/ByteBuffer;)V",
+                        &[
+                            JValue::Object(&stream_obj),
+                            JValue::Long(pts_ticks),
+                            JValue::Object(&dts_obj),
+                            JValue::Int(stream_type.as_byte() as i32),
+                            JValue::Object(&buf),
+                        ],
+                    )
+                    .map_err(|_| ())?,
+            };
+            Ok(Some(obj))
+        }
         DemuxEvent::Discontinuity { stream, .. } => {
             let obj = env
                 .new_object(
@@ -211,31 +277,22 @@ fn convert_event<'local>(
     }
 }
 
-/// Build the `DemuxEvent.Sample` record with a COPIED, Java-owned heap
-/// `ByteBuffer` payload (`ByteBuffer.wrap` over a fresh `byte[]`). The copy makes
-/// the buffer safe to retain indefinitely (no Rust-side lifetime). See the
-/// module doc + spec §5.4 for why zero-copy is deferred to a JDK-22+ FFM path.
-fn build_sample<'local>(
-    env: &mut JNIEnv<'local>,
-    pid: u16,
-    pts: i64,
-    payload: &SamplePayload,
-) -> Result<Option<JObject<'local>>, ()> {
-    let kind = sample_kind(env, payload)?;
-    let buffer = wrap_heap_byte_buffer(env, &sample_bytes(payload))?;
-    let obj = env
-        .new_object(
-            "org/tstrans/mpegts/DemuxEvent$Sample",
-            "(IJLorg/tstrans/mpegts/DemuxEvent$SampleKind;Ljava/nio/ByteBuffer;)V",
-            &[
-                JValue::Int(pid as i32),
-                JValue::Long(pts),
-                JValue::Object(&kind),
-                JValue::Object(&buffer),
-            ],
-        )
-        .map_err(|_| ())?;
-    Ok(Some(obj))
+/// Box an `Option<Pts90khz>` as a `java.lang.Long` (`Long.valueOf`) or Java
+/// `null`. Used for the nullable `dts` field of every sample record.
+fn opt_long<'local>(env: &mut JNIEnv<'local>, v: Option<Pts90khz>) -> Result<JObject<'local>, ()> {
+    match v {
+        Some(p) => env
+            .call_static_method(
+                "java/lang/Long",
+                "valueOf",
+                "(J)Ljava/lang/Long;",
+                &[JValue::Long(p.as_ticks())],
+            )
+            .map_err(|_| ())?
+            .l()
+            .map_err(|_| ()),
+        None => Ok(JObject::null()),
+    }
 }
 
 /// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
@@ -292,31 +349,6 @@ fn build_pid_list<'local>(
     Ok(list)
 }
 
-/// Look up the `DemuxEvent.SampleKind` enum constant for a `SamplePayload`.
-///
-/// Note: the `KLV` SampleKind constant is never produced here — KLV arrives as a
-/// `DemuxEvent::Metadata` event (skipped this wave), not a `Sample`. `KLV` stays
-/// unused until the mpegts-completion wave wires up the Metadata mapping.
-fn sample_kind<'local>(
-    env: &mut JNIEnv<'local>,
-    payload: &SamplePayload,
-) -> Result<JObject<'local>, ()> {
-    let name = match payload {
-        SamplePayload::Video { .. } => "VIDEO",
-        SamplePayload::Audio { .. } => "AUDIO",
-        SamplePayload::Subtitle { .. } => "SUBTITLE",
-        SamplePayload::Unknown { .. } => "OTHER",
-    };
-    env.get_static_field(
-        "org/tstrans/mpegts/DemuxEvent$SampleKind",
-        name,
-        "Lorg/tstrans/mpegts/DemuxEvent$SampleKind;",
-    )
-    .map_err(|_| ())?
-    .l()
-    .map_err(|_| ())
-}
-
 /// Derive a contiguous payload byte vector from a `SamplePayload`.
 fn sample_bytes(payload: &SamplePayload) -> Vec<u8> {
     match payload {
@@ -357,8 +389,6 @@ fn nal_payload(nal: &NalUnit) -> &[u8] {
 
 /// Build the Java `org.tstrans.mpegts.StreamId` record from a `tst_core`
 /// [`StreamId`], constructing its nested [`StreamKind`] via [`build_stream_kind`].
-// wired in Wave B
-#[allow(dead_code)]
 fn build_stream_id<'local>(env: &mut JNIEnv<'local>, s: &StreamId) -> Result<JObject<'local>, ()> {
     let kind = build_stream_kind(env, &s.kind)?;
     env.new_object(
@@ -377,8 +407,6 @@ fn build_stream_id<'local>(env: &mut JNIEnv<'local>, s: &StreamId) -> Result<JOb
 /// [`StreamKind`]. Each arm news up the corresponding nested record (JNI class
 /// names use `$`). `KlvSync`'s `declared_link: Option<u16>` boxes to a
 /// `java.lang.Integer` or Java `null`.
-// wired in Wave B
-#[allow(dead_code)]
 fn build_stream_kind<'local>(
     env: &mut JNIEnv<'local>,
     kind: &StreamKind,
@@ -433,10 +461,8 @@ fn build_stream_kind<'local>(
     }
 }
 
-/// Fetch a codec enum constant: `org.tstrans.mpegts.{class}.{name}`. Mirrors
-/// [`sample_kind`]'s `get_static_field` shape.
-// wired in Wave B
-#[allow(dead_code)]
+/// Fetch a codec enum constant: `org.tstrans.mpegts.{class}.{name}` via
+/// `get_static_field`.
 fn codec_enum<'local>(
     env: &mut JNIEnv<'local>,
     class: &str,
@@ -452,8 +478,6 @@ fn codec_enum<'local>(
 
 /// Box an `Option<u16>` as a `java.lang.Integer` (`Integer.valueOf`) or Java
 /// `null`. Used for `StreamKind$KlvSync`'s nullable `declaredLink`.
-// wired in Wave B
-#[allow(dead_code)]
 fn opt_boxed_int<'local>(
     env: &mut JNIEnv<'local>,
     value: Option<u16>,
@@ -474,8 +498,6 @@ fn opt_boxed_int<'local>(
 }
 
 /// `VideoCodec` enum-constant name in `org.tstrans.mpegts.VideoCodec`.
-// wired in Wave B
-#[allow(dead_code)]
 fn video_codec_name(c: VideoCodec) -> &'static str {
     match c {
         VideoCodec::H264 => "H264",
@@ -486,8 +508,6 @@ fn video_codec_name(c: VideoCodec) -> &'static str {
 }
 
 /// `AudioCodec` enum-constant name in `org.tstrans.mpegts.AudioCodec`.
-// wired in Wave B
-#[allow(dead_code)]
 fn audio_codec_name(c: AudioCodec) -> &'static str {
     match c {
         AudioCodec::Mp2 => "MP2",
@@ -498,8 +518,6 @@ fn audio_codec_name(c: AudioCodec) -> &'static str {
 }
 
 /// `SubtitleCodec` enum-constant name in `org.tstrans.mpegts.SubtitleCodec`.
-// wired in Wave B
-#[allow(dead_code)]
 fn subtitle_codec_name(c: SubtitleCodec) -> &'static str {
     match c {
         SubtitleCodec::DvbSubtitling => "DVB_SUBTITLING",

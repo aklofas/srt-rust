@@ -1,11 +1,11 @@
-//! JVM (JNI) bindings — bootstrap surface.
+//! JVM (JNI) bindings.
 //!
-//! This crate currently exports exactly one function to prove the
-//! cargo -> cdylib -> Gradle -> Java -> JNI build pipeline end to end. The full
-//! `org.tstrans.*` surface (mirroring tst-py) lands in the step-2 surface port.
+//! Exports the bootstrap `org.tstrans.Version.versionString()` plus the Wave 1
+//! mpegts-demux keystone (`org.tstrans.mpegts.Demuxer` + `DemuxEvent`); see
+//! `mod mpegts`. The remaining `org.tstrans.*` modules (mirroring tst-py) land
+//! in the follow-on surface-port waves.
 
 mod error;
-mod jbuf;
 mod mpegts;
 
 use jni::JNIEnv;

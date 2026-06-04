@@ -19,8 +19,8 @@ val workspaceRoot = layout.projectDirectory.dir("../..").asFile
 val triple = "linux-x86_64"
 val nativeOut = layout.projectDirectory.dir("src/main/resources/native/$triple")
 
-// 1. Build the Rust cdylib (release). Bootstrap deps are jni-only, so this is
-//    a fast pure-Rust build — no libsrt/librist/meson.
+// 1. Build the Rust cdylib (release). Deps are jni + pure-Rust tst-core, so this
+//    is a fast pure-Rust build — no libsrt/librist/meson.
 val cargoBuild = tasks.register<Exec>("cargoBuild") {
     workingDir = workspaceRoot
     commandLine("cargo", "build", "--release", "-p", "tst-jni")

@@ -15,6 +15,14 @@ import org.tstrans.DemuxException;
  *     for (DemuxEvent e : d) { ... }
  * }
  * }</pre>
+ *
+ * <p><strong>Keystone event subset.</strong> This wave surfaces only
+ * {@link DemuxEvent.ProgramMap}, {@link DemuxEvent.Sample}, and
+ * {@link DemuxEvent.Discontinuity}. Other demuxer events — KLV/{@code Metadata},
+ * {@code NonConformant} (recoverable stream-quality issues), and
+ * {@code ReconnectDiscontinuity} — are <em>silently skipped</em> for now; they
+ * are added in the mpegts-completion wave. Do not rely on this demuxer to
+ * surface KLV metadata or non-conformance until then.
  */
 public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
     static { org.tstrans.NativeLoader.load(); }
@@ -37,7 +45,13 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
         nFlush(handle);
     }
 
-    /** Pull the next ready event, or null if none queued. */
+    /**
+     * Pull the next ready event, or null if none queued. Skips event types not
+     * yet mapped in this keystone wave (see the class doc) — so a returned
+     * {@code null} means "no <em>keystone</em> event is currently queued", and
+     * KLV/{@code Metadata} / {@code NonConformant} / {@code ReconnectDiscontinuity}
+     * events are dropped rather than returned.
+     */
     public DemuxEvent nextEvent() throws DemuxException {
         ensureOpen();
         return nNextEvent(handle);

@@ -16,7 +16,9 @@ class ErrorModelTest {
 
     @Test
     void kindHasAllRustVariants() {
-        // 1:1 with tst-core DemuxError / tst-py DemuxErrorKind.
+        // Mirrors the raw tst-core::DemuxError producer variants (5). tst-py's
+        // DemuxErrorKind also lists UNEXPECTED_EOF, which has no raw-feed
+        // producer; it is reserved here for the io/file-helper wave.
         DemuxException.Kind[] ks = DemuxException.Kind.values();
         assertEquals(5, ks.length);
         // names asserted so a Rust-side rename is caught here.

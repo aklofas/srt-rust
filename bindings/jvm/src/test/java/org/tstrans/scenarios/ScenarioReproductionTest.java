@@ -83,8 +83,8 @@ class ScenarioReproductionTest {
         GoldenVideo expected = extractVideoEvent(goldenJson);
 
         // Demux the shared input through the JNI keystone, collecting VIDEO Samples.
-        // The Sample.payload direct ByteBuffer is valid only while the sample is
-        // current, so SHA-256 it inside the loop before pulling the next event.
+        // Sample.payload is a JVM-owned heap copy, so SHA-256-ing it inside the
+        // loop (or later) is equally safe.
         List<VideoSample> videoSamples = new ArrayList<>();
         try (Demuxer d = new Demuxer()) {
             d.feed(tsBytes);
@@ -115,7 +115,7 @@ class ScenarioReproductionTest {
                 + "must equal the concatenated NAL RBSP bytes the golden hashes");
     }
 
-    /** SHA-256 the readable contents of a direct (off-heap) ByteBuffer. */
+    /** SHA-256 the readable contents of a ByteBuffer (without disturbing it). */
     private static String sha256(ByteBuffer buf) throws Exception {
         ByteBuffer view = buf.duplicate();
         byte[] bytes = new byte[view.remaining()];

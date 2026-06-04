@@ -1,0 +1,120 @@
+# Platform-capability manifest. Declares platform-specific test gates and
+# per-platform capability status as first-class records, so a deferral cannot
+# hide in a scattered `#[cfg(...)]` comment and a soft-promotion window cannot
+# silently lapse.
+#
+# Kept in sync with the tree by scripts/check/repo/platform-capabilities.sh:
+#   1. every test-level platform cfg-gate (a `crates/*/tests/**.rs` file with a
+#      top-level `#[cfg(not(target_os = "windows"))]` / `#[cfg(target_os = "linux")]`
+#      / `#[cfg(unix)]` / etc.) has a NON-resolved [[platform_skip]] whose `file`
+#      matches;
+#   2. every NON-resolved [[platform_skip]] still corresponds to a real gate
+#      (removed gate -> mark `resolved`, don't leave dangling);
+#   3. every NON-resolved blocked_bug [[platform_skip]] has a future expires_after;
+#      every A-soft / gating-pending [[capability]] carries a future soft_until.
+#
+# platform_skip.class ∈ { blocked_bug | gap | portability | environmental }
+#   blocked_bug  — upstream/vendored bug; expires_after REQUIRED (or resolved)
+#   gap          — our code doesn't yet support it on this platform
+#   portability  — low-level compile/portability cfg, not a behavioral deferral
+#   environmental — timing/runner sensitive (live-socket, OS-scheduler dependent)
+# capability.status ∈ { A | A-soft | gating-pending }
+#   A-soft / gating-pending — soft_until REQUIRED (forces a promotion decision)
+
+# ─── test-level platform gates (retro-audit; one per gated file) ────────────
+
+[[platform_skip]]
+file = "crates/tst-rist/tests/loopback.rs"
+platform = "windows-msvc"
+capability = "rist_runtime"
+class = "blocked_bug"
+expires_after = "2026-09-30"
+note = """
+librist rist_destroy teardown hang (~14s+, both Simple and Main+AES profiles);
+vendored-lib bug, not our code. Evidence: project_windows_multicast_rist_ci_evidence.md.
+Unaffected by the 2026-05-30 librist 0.2.16 bump (that fixed an unrelated
+entropy_poll.h build break). Compile/link is covered; only runtime is gated.
+"""
+
+[[platform_skip]]
+file = "crates/tst-rist/tests/pipeline_round_trip.rs"
+platform = "windows-msvc"
+capability = "rist_runtime"
+class = "blocked_bug"
+expires_after = "2026-09-30"
+note = "Same librist rist_destroy teardown hang as loopback.rs."
+
+[[platform_skip]]
+file = "crates/tst-udp/tests/loopback_multicast.rs"
+platform = "windows-msvc"
+capability = "ipv6_multicast"
+class = "gap"
+note = """
+IPv4 multicast is covered + green on windows-msvc since 2026-05-29 (socket2
+IP_MULTICAST_IF + receiver-side IP_MULTICAST_LOOP). IPv6 multicast stays gated:
+IPV6_MULTICAST_IF needs an interface index on Windows. `gap` (our code), not a
+vendored bug.
+"""
+
+[[platform_skip]]
+file = "crates/tst-srt/tests/pipeline/pipeline_receiver_live.rs"
+platform = "macos-arm64,windows-msvc"
+capability = "srt_live_loopback"
+class = "environmental"
+note = """
+Linux x86_64 only (file-level `#![cfg(target_os = \"linux\")]`) — same gate as
+the other live-socket tests in tst-srt. Full SRT handshake + pipeline round-trip
+over a real loopback pair; timing-sensitive and gated to the primary Tier-A
+runner by convention. Not a blocked upstream bug or a code gap — the soft-tier
+macOS/Windows runners are not yet proven for live-socket loopback timing.
+"""
+
+[[platform_skip]]
+file = "crates/tst-srt/tests/pipeline/pipeline_receiver_live_corpus.rs"
+platform = "macos-arm64,windows-msvc"
+capability = "srt_live_loopback"
+class = "environmental"
+note = """
+Linux x86_64 only (file-level `#![cfg(target_os = \"linux\")]`) — same gate as
+pipeline_receiver_live.rs. Corpus replay via a real SRT loopback pair; silently
+passes when the fixtures dir is absent. Gated by convention to the primary
+Tier-A runner, not by an upstream bug or a code gap.
+"""
+
+# ─── declarative platform capability + CI-promotion state (I4) ──────────────
+
+[[capability]]
+platform = "linux-x86_64"
+status = "A"
+note = "Primary gating platform."
+
+[[capability]]
+platform = "linux-aarch64"
+status = "A"
+note = "Gating."
+
+[[capability]]
+platform = "macos-arm64"
+status = "A-soft"
+soft_until = "2026-06-13"
+note = """
+continue-on-error: true (ci.yml matrix). Earliest gating date 2026-05-30 (plan
+#64 14-day phase-in); first clean all-green run 2026-05-30 (CI 26672638228).
+Promote by flipping matrix `continue` to false once satisfied with run count.
+"""
+
+[[capability]]
+platform = "windows-msvc"
+status = "A-soft"
+soft_until = "2026-06-13"
+note = """
+continue-on-error: true. First all-green run 2026-05-29. Promote after several
+consecutive green runs. RIST runtime + IPv6 multicast remain gated (see
+platform_skip rows); those do not block promotion of the rest of the suite.
+"""
+
+[[capability]]
+platform = "windows-msvc"
+capability = "ipv4_multicast"
+status = "A"
+note = "Un-gated + green since 2026-05-29 (socket2 IP_MULTICAST_IF)."

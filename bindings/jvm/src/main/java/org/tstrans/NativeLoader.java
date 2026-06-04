@@ -14,12 +14,12 @@ import java.nio.file.StandardCopyOption;
  * <p>Bootstrap: only {@code linux-x86_64} is shipped; the triple/ext logic is
  * written generally so the multi-platform wave only adds resources, not code.
  */
-final class NativeLoader {
+public final class NativeLoader {
     private static volatile boolean loaded = false;
 
     private NativeLoader() {}
 
-    static synchronized void load() {
+    public static synchronized void load() {
         if (loaded) {
             return;
         }

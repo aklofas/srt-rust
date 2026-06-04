@@ -62,6 +62,44 @@ public final class Klv {
         return buf[15] == 0x00;
     }
 
+    // -----------------------------------------------------------------------
+    // ST 0605 — Precision Time Stamp Pack
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode a full 26-byte ST 0605 Precision Time Stamp Pack (16-byte UL +
+     * 1-byte BER length + 1-byte TimeStatus + 8-byte big-endian microsecond
+     * timestamp).
+     *
+     * @param buf the 26-byte wire-format pack
+     * @return the decoded {@link PrecisionTimeStampPack}
+     * @throws org.tstrans.KlvDecodeException if the buffer is malformed or has the wrong UL
+     */
+    public static PrecisionTimeStampPack decodePrecisionTimestamp(byte[] buf)
+            throws org.tstrans.KlvDecodeException {
+        return nDecodePrecisionTimestamp(buf);
+    }
+
+    /**
+     * Encode a {@link PrecisionTimeStampPack} to the 26-byte wire format.
+     * Mirrors tst-py's {@code encode_precision_timestamp}; encoding is infallible.
+     *
+     * @param pack the pack to encode
+     * @return the 26-byte wire-format buffer
+     */
+    public static byte[] encodePrecisionTimestamp(PrecisionTimeStampPack pack) {
+        return nEncodePrecisionTimestamp(pack);
+    }
+
+    private static native PrecisionTimeStampPack nDecodePrecisionTimestamp(byte[] buf)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] nEncodePrecisionTimestamp(PrecisionTimeStampPack pack);
+
+    // -----------------------------------------------------------------------
+    // Test-only forced-throw helpers (package-private)
+    // -----------------------------------------------------------------------
+
     // Native entry points for test-only forced-throw paths. Package-private so
     // test classes in the same package can reach them; not part of the public API.
     static native void nRaiseDecodeForTest(String kind);

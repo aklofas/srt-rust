@@ -1,0 +1,68 @@
+# Surface-to-test ownership manifest (L3).
+#
+# Every MAPPABLE entry across the 8 public-api.txt baselines must appear here
+# either as a [[surface]] row (item -> owning tests + per-binding columns) or in
+# the [[exempt]] list. Enforced by scripts/check/repo/surface-manifest.sh:
+#   (a) every owning_tests path exists;
+#   (b) every binding column symbol resolves in that binding's source
+#       (feature-tagged entries are skipped when the feature is not built);
+#   (c) closure: every mappable baseline item is mapped-or-exempted.
+#
+# Binding column prefixes are IDENTIFIERS, not filesystem paths:
+#   c:<symbol>       -> grepped in bindings/c/include/tstrans.h
+#   python:<dotted>  -> grepped in bindings/python/python/tstrans/ (all .py/.pyi)
+#   java:<dotted>    -> grepped in bindings/jvm/java/** (RESERVED; empty until tst-jni)
+#   swift:/kotlin:<symbol> [feature=X] -> tst-uniffi (RESERVED; feature-tagged)
+# The optional " [feature=X]" suffix marks a symbol absent from builds without X
+# (X in {srt,rtp,udp,tcp,hls,rist}); the ratchet skips resolving it unless X is built.
+
+# --- Seed: key mappable surface items ------------------------------------
+# These rows map high-value items to owning tests + binding columns. All others
+# (the bulk of the baseline) appear in the [[exempt]] bootstrap list below.
+# Graduate exempted items into [[surface]] rows as test coverage is asserted.
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::demux::demuxer::Demuxer::feed"
+owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
+# java: column added by tst-jni surface-port; that is the §8.5 parity gate
+bindings = ["c:tst_demuxer_feed", "python:decode_uas_datalink"]
+scenario_ids = ["h264-st0601-mp", "malformed-pes-lenient"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::push_video"
+owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
+bindings = ["c:tst_muxer_push_video", "python:push_video"]
+scenario_ids = ["video-roundtrip", "audio-klv-roundtrip"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0601::decode"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:decode_uas_datalink"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0601::encode"
+owning_tests = ["crates/tst-core/tests/klv/st0601.rs"]
+bindings = ["python:encode_uas_datalink"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-udp"
+item = "tst_udp::transport::UdpTransport::connect"
+owning_tests = ["crates/tst-udp/tests/loopback_unicast.rs"]
+bindings = ["c:tst_udp_sender_open", "python:send"]
+scenario_ids = []
+tier = "A"

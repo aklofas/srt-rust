@@ -307,6 +307,14 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/repo/scenario-manifest.sh
 
+      - name: check-surface-manifest (L3 closure + owning-test + binding-symbol)
+        # Every mappable public-api.txt item is either mapped to an owning test
+        # + binding columns, or explicitly exempted. Enforces closure so no new
+        # public item ships un-catalogued, and paves the java: parity gate for
+        # tst-jni. Gated to linux-x86_64 — baselines are platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/repo/surface-manifest.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

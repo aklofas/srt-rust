@@ -61,4 +61,40 @@ empty — the C/Python adapters live in their own crates' test/example surfaces)
   SHA-256 inventory for every tracked file under each `fixture-manifest.toml` group
   root. Enforced by `scripts/check/repo/fixture-hashes.sh` (full closure + hash drift).
   Regenerate and commit after any intentional fixture change.
+- **`surface-manifest.toml`** — **L3 surface-to-test ownership manifest** (shipped
+  2026-06-03). Every mappable entry across the 8 `public-api.txt` baselines is either
+  a `[[surface]]` row (item → owning tests + per-binding columns) or an `[[exempt]]`
+  entry. Enforced by `scripts/check/repo/surface-manifest.sh` (three rules: owning-test
+  path exists, binding symbol resolves, closure over all mappable baseline items).
+  See "Surface manifest" section below for the graduation workflow.
 - **`TEST_CORPUS.md`** — notes on the (gitignored, local-only) real-world corpus.
+
+## Surface manifest
+
+`surface-manifest.toml` implements L3 enforcement: no new public API item can ship
+un-catalogued. The ratchet (`scripts/check/repo/surface-manifest.sh`) enforces:
+
+- **(a) owning-test existence** — every `owning_tests` path must exist on disk.
+- **(b) binding symbol resolution** — every `c:SYM` is grepped in
+  `bindings/c/include/tstrans.h`; every `python:dotted.name` resolves its leaf
+  component in `bindings/python/python/tstrans/` (both `.py` and `.pyi`).
+  Binding entries tagged `[feature=X]` are skipped when feature `X` is not built.
+  `java:` / `swift:` / `kotlin:` columns are reserved (not yet resolved).
+- **(c) closure** — every item extracted from the 8 `public-api.txt` baselines is
+  present in the manifest as either a `[[surface]]` item or an `[[exempt]]` item.
+
+**Adding a new public API item:** a CI failure means your item landed in a baseline
+without a manifest entry. Either add a `[[surface]]` row (preferred, if it has tests)
+or an `[[exempt]]` entry (acceptable for interim or internal items). Run
+`bash scripts/gen/surface-exemptions.sh` to generate `[[exempt]]` blocks for any
+un-catalogued items, then append them to the manifest.
+
+**Graduating an exempt item to a surface row:** remove its `[[exempt]]` block and
+add a `[[surface]]` row with `owning_tests`, `bindings`, and optionally `scenario_ids`.
+When `tst-jni` lands, add a `java:com.aklofas.tstrans.XXX` column to the relevant
+rows — rule (b) then forces JNI test coverage for that item (the §8.5 parity gate).
+
+**Feature-tagged binding columns:** use `"c:SYM [feature=srt]"` (space before `[`)
+to mark a binding symbol that only exists when feature `srt` is compiled in. The
+ratchet skips resolving it unless `SURFACE_BUILT_FEATURES` includes `srt` (CI sets
+all features built by default).

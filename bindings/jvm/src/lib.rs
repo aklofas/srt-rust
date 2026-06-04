@@ -5,6 +5,7 @@
 //! `org.tstrans.*` surface (mirroring tst-py) lands in the step-2 surface port.
 
 mod error;
+mod jbuf;
 
 use jni::JNIEnv;
 use jni::objects::JClass;

@@ -11,7 +11,6 @@ use tst_core::klv::OwnedRawField;
 /// (`java.nio.ByteBuffer.wrap`). The returned buffer is backed by JVM-owned
 /// memory, safe to retain past the next call / after `close()`. Used by klv
 /// Tasks 1–4.
-#[allow(dead_code)]
 pub fn wrap_heap_byte_buffer<'local>(
     env: &mut JNIEnv<'local>,
     bytes: &[u8],

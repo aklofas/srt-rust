@@ -29,6 +29,29 @@ pub fn throw_demux(env: &mut JNIEnv, kind: &str, message: &str) {
     }
 }
 
+/// Construct + throw `org.tstrans.MuxException(Kind.<kind>, message)`.
+/// `kind` MUST be one of the `MuxException.Kind` enum constant names
+/// (SCREAMING_SNAKE_CASE), matching the 5-variant `MuxSenderErrorKind` buckets.
+#[allow(dead_code)] // call sites land in Wave C (Muxer JNI); mirrors throw_demux staging
+pub fn throw_mux(env: &mut JNIEnv, kind: &str, message: &str) {
+    if env.exception_check().unwrap_or(false) {
+        return; // don't clobber an already-pending exception
+    }
+    if let Err(e) = throw_kinded(
+        env,
+        "org/tstrans/MuxException",
+        "Lorg/tstrans/MuxException$Kind;",
+        kind,
+        message,
+    ) {
+        // Fallback: a plain RuntimeException so the failure is never silent.
+        let _ = env.throw_new(
+            "java/lang/RuntimeException",
+            format!("MuxException throw failed ({kind}): {e}"),
+        );
+    }
+}
+
 /// Shared builder: looks up `Kind.<kind>` static field, calls the
 /// `(<kind_sig>, String)` constructor, throws the result.
 fn throw_kinded(

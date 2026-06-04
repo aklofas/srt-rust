@@ -12,6 +12,7 @@ CRATES="rist-sys tst-core tst-pipeline tst-rist tst-rtp tst-srt tst-tcp tst-udp"
 mapped="$(mktemp)"; trap 'rm -f "$mapped"' EXIT
 grep -E '^item = ' "$MANIFEST" 2>/dev/null | sed -E 's/^item = "(.*)"/\1/' | sort -u > "$mapped"
 
+# KEEP IN SYNC with scripts/check/repo/surface-manifest.sh extract_items.
 extract_items() {  # stdin: a public-api.txt; stdout: one canonical item key per mappable line
   awk '
     /^pub (const fn|fn|struct|enum|trait|type|const) / {

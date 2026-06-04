@@ -33,6 +33,7 @@ SURFACE_PYI_DIR="${SURFACE_PYI_DIR:-$ROOT/bindings/python/python/tstrans}"
 # extract_items: stdin is a public-api.txt; stdout is one canonical key per
 # mappable line. Mappable = pub fn/struct/enum/trait/type/const (incl. const fn).
 # auto-derived impl lines are NOT mappable and are skipped.
+# KEEP IN SYNC with scripts/gen/surface-exemptions.sh extract_items.
 # ---------------------------------------------------------------------------
 extract_items() {
   awk '
@@ -95,6 +96,11 @@ run_check() {
       python:*)
         leaf="${sym#python:}"
         leaf="${leaf##*.}"   # last dotted component
+        # NOTE: this is an UNBOUNDED SUBSTRING match anywhere in the binding
+        # sources — it can false-pass (e.g. the leaf appears only in a comment
+        # or a longer identifier). Intentional looseness for the L3 bootstrap;
+        # tighten to a word-boundary (`grep -w`) or AST-aware check when a row
+        # graduates and column (b) must be trustworthy for that symbol.
         grep -rFq "$leaf" "$SURFACE_PYI_DIR" \
           || echo "FAIL: python symbol unresolved: ${sym#python:} (leaf: $leaf)" ;;
       java:*|swift:*|kotlin:*)

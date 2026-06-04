@@ -240,7 +240,7 @@ class ScenarioReproductionTest {
     private static long extractNumber(String obj, String key) {
         String needle = "\"" + key + "\"";
         int k = obj.indexOf(needle);
-        assertTrue(k >= 0, "golden video object missing field \"" + key + "\": " + obj);
+        assertTrue(k >= 0, "golden object missing field \"" + key + "\": " + obj);
         int colon = obj.indexOf(':', k + needle.length());
         assertTrue(colon >= 0, "malformed golden field \"" + key + "\"");
         int i = colon + 1;
@@ -259,7 +259,7 @@ class ScenarioReproductionTest {
     private static String extractString(String obj, String key) {
         String needle = "\"" + key + "\"";
         int k = obj.indexOf(needle);
-        assertTrue(k >= 0, "golden video object missing field \"" + key + "\": " + obj);
+        assertTrue(k >= 0, "golden object missing field \"" + key + "\": " + obj);
         int firstQuote = obj.indexOf('"', obj.indexOf(':', k + needle.length()) + 1);
         assertTrue(firstQuote >= 0, "malformed golden field \"" + key + "\"");
         int lastQuote = obj.indexOf('"', firstQuote + 1);

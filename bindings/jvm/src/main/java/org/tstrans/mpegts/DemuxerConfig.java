@@ -54,13 +54,28 @@ public final class DemuxerConfig {
         private boolean lenientPsiReassembly = false;
 
         public Builder strictMode(StrictMode v) { this.strictMode = v; return this; }
-        public Builder pesCapPerPid(long v) { this.pesCapPerPid = v; return this; }
-        public Builder pesCapTotal(long v) { this.pesCapTotal = v; return this; }
+        /** Per-PID PES cap in bytes; {@code 0} = use the Rust default. Rejects negatives. */
+        public Builder pesCapPerPid(long v) { this.pesCapPerPid = requireNonNegativeCap(v, "pesCapPerPid"); return this; }
+        /** Aggregate PES cap in bytes; {@code 0} = use the Rust default. Rejects negatives. */
+        public Builder pesCapTotal(long v) { this.pesCapTotal = requireNonNegativeCap(v, "pesCapTotal"); return this; }
         public Builder cfiTolerance(boolean v) { this.cfiTolerance = v; return this; }
         public Builder av1Carriage(Av1CarriageMode v) { this.av1Carriage = v; return this; }
-        public Builder auCellCapPerPid(long v) { this.auCellCapPerPid = v; return this; }
+        /** Per-PID AU-cell cap in bytes; {@code 0} = use the Rust default. Rejects negatives. */
+        public Builder auCellCapPerPid(long v) { this.auCellCapPerPid = requireNonNegativeCap(v, "auCellCapPerPid"); return this; }
         public Builder lenientPsiReassembly(boolean v) { this.lenientPsiReassembly = v; return this; }
 
         public DemuxerConfig build() { return new DemuxerConfig(this); }
+
+        // 0 is the "use the Rust default" sentinel; >0 is an explicit cap. A
+        // negative would be silently coerced back to the default by the JNI
+        // bridge (which maps only >0 to Some), so reject it to keep the contract
+        // unambiguous (mirrors tst-py, whose usize marshal rejects negative ints).
+        private static long requireNonNegativeCap(long v, String name) {
+            if (v < 0) {
+                throw new IllegalArgumentException(
+                    name + " must be >= 0 (0 = use the default cap), got " + v);
+            }
+            return v;
+        }
     }
 }

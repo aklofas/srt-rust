@@ -23,6 +23,8 @@
 //! only in JDK 22+). Real zero-copy is therefore deferred to a JDK-22+ FFM path;
 //! the keystone copies, which is unconditionally safe. See the design spec §5.4.
 
+use std::borrow::Cow;
+
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
@@ -638,8 +640,10 @@ fn build_pid_list<'local>(
 }
 
 /// Derive a contiguous payload byte vector from a `SamplePayload`.
-fn sample_bytes(payload: &SamplePayload) -> Vec<u8> {
+fn sample_bytes(payload: &SamplePayload) -> Cow<'_, [u8]> {
     match payload {
+        // Video NAL/OBU payloads are split across multiple units, so the
+        // contiguous byte view must be freshly concatenated (owned).
         SamplePayload::Video {
             payload: VideoPayload::Nals(nals),
             ..
@@ -648,7 +652,7 @@ fn sample_bytes(payload: &SamplePayload) -> Vec<u8> {
             for nal in nals {
                 out.extend_from_slice(nal_payload(nal));
             }
-            out
+            Cow::Owned(out)
         }
         SamplePayload::Video {
             payload: VideoPayload::Obus(obus),
@@ -658,11 +662,13 @@ fn sample_bytes(payload: &SamplePayload) -> Vec<u8> {
             for obu in obus {
                 out.extend_from_slice(&obu.payload);
             }
-            out
+            Cow::Owned(out)
         }
-        SamplePayload::Audio { frames, .. } => frames.clone(),
-        SamplePayload::Subtitle { payload, .. } => payload.clone(),
-        SamplePayload::Unknown { raw, .. } => raw.clone(),
+        // Audio/Subtitle/Unknown already hold a contiguous buffer — borrow it so
+        // only the unavoidable Java-side heap copy happens (no intermediate clone).
+        SamplePayload::Audio { frames, .. } => Cow::Borrowed(frames),
+        SamplePayload::Subtitle { payload, .. } => Cow::Borrowed(payload),
+        SamplePayload::Unknown { raw, .. } => Cow::Borrowed(raw),
     }
 }
 

@@ -45,6 +45,7 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::Py;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::transport::TransportError;
@@ -145,6 +146,14 @@ pub struct PyDemuxReceiver {
     /// ownership of `inner` cleanly. Cloning is cheap (`Arc`); multiple
     /// `close()` calls are idempotent.
     cancel: Arc<dyn tst_core::transport::TransportCancel + Send + Sync>,
+    /// First exception raised by a registered byte sink (see
+    /// `add_byte_sink`). The sink closure runs inside `recv_event`
+    /// (under `allow_threads`) where it can't return a `PyResult` to
+    /// the iterator, so on error it stashes the `PyErr` here (first
+    /// error wins). `__next__` drains this slot AFTER `recv_event`
+    /// returns and re-raises fail-loud. Separate from `inner` so the
+    /// closure never touches the `inner` lock it runs underneath.
+    sink_error: Arc<Mutex<Option<PyErr>>>,
 }
 
 #[pymethods]
@@ -184,6 +193,7 @@ impl PyDemuxReceiver {
         Ok(Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            sink_error: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -192,13 +202,61 @@ impl PyDemuxReceiver {
         slf
     }
 
+    /// Register a fan-out callback that receives every 188-byte TS
+    /// packet — as a fresh `bytes` — BEFORE the demuxer parses it.
+    /// `callback` is `Callable[[bytes], None]`. Sinks fire in
+    /// registration order; registration is append-only for the
+    /// receiver's lifetime (there is no removal). Useful for tee'ing
+    /// the raw transport stream (record-to-disk, parallel parser, etc.)
+    /// without consuming the demuxed event iterator.
+    ///
+    /// Fail-loud: if `callback` raises, the exception is captured and
+    /// re-raised from the *next* `__next__` / event pull, and iteration
+    /// stops. Only the first sink error is surfaced; later per-packet
+    /// errors are dropped.
+    ///
+    /// Cost: each registered sink re-acquires the GIL once per packet
+    /// inside the recv loop, so on high-bitrate streams a slow sink (or
+    /// many sinks) throttles the receiver. Keep sink bodies cheap.
+    ///
+    /// Raises `RtpError(TRANSPORT)` if the receiver is already closed.
+    fn add_byte_sink(&self, py: Python<'_>, callback: Py<PyAny>) -> PyResult<()> {
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"))?;
+        let rx = guard
+            .as_mut()
+            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "DemuxReceiver is closed"))?;
+        // The closure runs inside `recv_event` (under `allow_threads`),
+        // re-acquires the GIL per packet, and only ever touches
+        // `callback` + `sink_error` — never `inner` (whose guard is held
+        // by the parked `__next__`), so it cannot deadlock.
+        let sink_error = self.sink_error.clone();
+        rx.add_byte_sink(Box::new(move |pkt: &[u8]| {
+            Python::with_gil(|py| {
+                let b = PyBytes::new_bound(py, pkt);
+                if let Err(e) = callback.call1(py, (b,)) {
+                    // First error wins; later packet errors are dropped.
+                    if let Ok(mut slot) = sink_error.lock() {
+                        if slot.is_none() {
+                            *slot = Some(e);
+                        }
+                    }
+                }
+            });
+        }));
+        Ok(())
+    }
+
     /// Block until the next `DemuxEvent` is available. Returns a
     /// `tstrans.mpegts.DemuxEvent.*` subclass instance.
     ///
     /// Raises `StopIteration` on clean EOF (transport closed cleanly,
     /// demuxer drained); `RtpError` on transport-side failure;
     /// `DemuxError` on demuxer-side failure (strict-mode rejection,
-    /// malformed PMT/PES).
+    /// malformed PMT/PES); or any exception raised by a registered
+    /// byte sink (see `add_byte_sink`), re-raised fail-loud.
     fn __next__(&self, py: Python<'_>) -> PyResult<PyObject> {
         let inner = self.inner.clone();
         // Release the GIL while parked on `recv_event`. The pipeline's
@@ -227,6 +285,16 @@ impl PyDemuxReceiver {
                 None => Err(DemuxReceiverError::from(TransportError::Closed)),
             }
         });
+        // Fail-loud: surface any sink exception captured during this
+        // `recv_event` (the `inner` guard has been dropped above, so
+        // touching `sink_error` here can't nest under it). Take it so a
+        // resumed iteration after a caught error isn't permanently
+        // poisoned.
+        if let Ok(mut slot) = self.sink_error.lock() {
+            if let Some(err) = slot.take() {
+                return Err(err);
+            }
+        }
         match res {
             Ok(None) => Err(pyo3::exceptions::PyStopIteration::new_err(())),
             Ok(Some(ev)) => crate::mpegts::convert_event(py, &ev),
@@ -344,6 +412,7 @@ impl PyDemuxReceiver {
         Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            sink_error: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -361,6 +430,7 @@ impl PyDemuxReceiver {
         Self {
             inner: Arc::new(Mutex::new(Some(receiver))),
             cancel,
+            sink_error: Arc::new(Mutex::new(None)),
         }
     }
 }

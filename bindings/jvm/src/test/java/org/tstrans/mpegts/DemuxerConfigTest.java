@@ -52,4 +52,16 @@ class DemuxerConfigTest {
                 "default config tolerates the mismatch and surfaces a NonConformant event");
         }
     }
+
+    @Test
+    void negativeCapsAreRejected() {
+        // 0 = "use the Rust default" sentinel; a negative would be silently
+        // coerced to the default by the JNI bridge, so the builder rejects it.
+        assertThrows(IllegalArgumentException.class,
+            () -> DemuxerConfig.builder().pesCapPerPid(-1));
+        assertThrows(IllegalArgumentException.class,
+            () -> DemuxerConfig.builder().pesCapTotal(-1));
+        assertThrows(IllegalArgumentException.class,
+            () -> DemuxerConfig.builder().auCellCapPerPid(-1));
+    }
 }

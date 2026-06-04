@@ -7,13 +7,15 @@ import java.util.List;
  * A demuxed event. Sealed sum type mirroring
  * {@code tst_core::mpegts::demux::DemuxEvent} (spec §5.2). The sample variant is
  * now split into {@link Video} / {@link Audio} / {@link Subtitle} /
- * {@link UnknownSample} (mirroring tst-py); remaining top-level variants
- * (Metadata, NonConformant, ReconnectDiscontinuity) land in later tasks of this
- * wave-set and are added to {@code permits} then.
+ * {@link UnknownSample} (mirroring tst-py), and {@link Metadata} (KLV) is now
+ * surfaced; the remaining top-level variants (NonConformant,
+ * ReconnectDiscontinuity) land in later tasks of this wave-set and are added to
+ * {@code permits} then.
  */
 public sealed interface DemuxEvent
         permits DemuxEvent.ProgramMap, DemuxEvent.Video, DemuxEvent.Audio,
-                DemuxEvent.Subtitle, DemuxEvent.UnknownSample, DemuxEvent.Discontinuity {
+                DemuxEvent.Subtitle, DemuxEvent.UnknownSample, DemuxEvent.Metadata,
+                DemuxEvent.Discontinuity {
 
     /** PSI program map for one program (mirrors tst-py mpegts.ProgramMap). */
     record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
@@ -92,6 +94,26 @@ public sealed interface DemuxEvent
      */
     record UnknownSample(StreamId stream, long pts, Long dts, int streamType,
                          ByteBuffer payload) implements DemuxEvent {}
+
+    /**
+     * Standalone metadata — KLV (sync AU-cell or async) or an unrecognized
+     * metadata stream. Mirrors tst-py's metadata event.
+     *
+     * @param stream         the elementary stream this metadata belongs to
+     * @param pts            presentation timestamp in 90&nbsp;kHz ticks
+     * @param kind           the metadata classification (see {@link MetadataKind})
+     * @param payload        Raw KLV LS bytes; the H.222.0 §2.12.4.2 AU-cell header
+     *                       is already stripped. Heap-copied / JVM-owned (safe to
+     *                       retain; FFM zero-copy deferred to a JDK-22+ path).
+     *                       Decode with the (future) {@code org.tstrans.klv} module.
+     * @param wasReassembled {@code true} if a multi-cell AU was reassembled from
+     *                       First + 0..n Middle + Last cells (always {@code false}
+     *                       for async / unknown metadata)
+     * @param cellCount      number of AU cells that contributed to this event
+     *                       ({@code 1} for single-cell / async / unknown)
+     */
+    record Metadata(StreamId stream, long pts, MetadataKind kind, ByteBuffer payload,
+                    boolean wasReassembled, int cellCount) implements DemuxEvent {}
 
     /** Continuity-counter / PCR discontinuity on a PID. */
     record Discontinuity(int pid) implements DemuxEvent {}

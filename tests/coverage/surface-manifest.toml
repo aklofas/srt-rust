@@ -4794,9 +4794,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::ByteSink"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# tst_pipeline::DemuxReceiver graduated to [[surface]] in the tst-jni srt wave B
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::DemuxReceiver"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/demux_receiver_malformed_pes_recovery.rs"]
+bindings = ["java:org.tstrans.srt.DemuxReceiver"]
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::DemuxReceiverStats"
@@ -4846,9 +4852,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::MuxPublisher"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# tst_pipeline::MuxSender graduated to [[surface]] in the tst-jni srt wave B
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::MuxSender"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/mux_sender_golden.rs"]
+bindings = ["java:org.tstrans.srt.MuxSender"]
+scenario_ids = ["video-roundtrip"]
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::MuxSenderStats"

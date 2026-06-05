@@ -7,9 +7,9 @@ import org.tstrans.CodecParseException;
  * Static facade for typed codec parameter-set / payload-unit parsing.
  * Mirrors tst-py's {@code tstrans.codec} free functions.
  *
- * <p>Parser entry points for further codecs (H.265 / H.266 / AV1 / audio) are
- * added in follow-on tasks of the codec wave; this facade currently exposes the
- * H.264 parameter-set / slice-header parsers.
+ * <p>Parser entry points for further codecs (H.266 / AV1 / audio) are added in
+ * follow-on tasks of the codec wave; this facade currently exposes the H.264 and
+ * H.265 parameter-set / slice-header parsers.
  */
 public final class Codec {
     private Codec() {}
@@ -93,5 +93,95 @@ public final class Codec {
     public static H264ParameterSets parseH264ParameterSets(List<NalUnit> nals)
             throws CodecParseException {
         return nParseH264ParameterSets(nals);
+    }
+
+    // --- H.265 native entry points ---------------------------------------
+
+    private static native H265Sps nParseH265Sps(byte[] rbsp);
+
+    private static native H265Pps nParseH265Pps(byte[] rbsp);
+
+    private static native H265Vps nParseH265Vps(byte[] rbsp);
+
+    private static native H265SliceHeaderLight nParseH265SliceHeaderLight(
+            byte[] rbsp, H265Sps sps, int nalUnitType);
+
+    private static native H265ParameterSets nParseH265ParameterSets(List<NalUnit> nals);
+
+    /**
+     * Parse a single H.265 SPS RBSP.
+     *
+     * <p>{@code rbsp} must be the raw RBSP body — Annex-B start code stripped,
+     * NAL header (2 bytes for H.265) stripped, emulation-prevention bytes
+     * preserved (matches {@link NalUnit#h265}'s {@code payload}).
+     *
+     * @param rbsp the SPS RBSP body
+     * @return the parsed SPS
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static H265Sps parseH265Sps(byte[] rbsp) throws CodecParseException {
+        return nParseH265Sps(rbsp);
+    }
+
+    /**
+     * Parse a single H.265 PPS RBSP. Same input contract as
+     * {@link #parseH265Sps(byte[])}.
+     *
+     * @param rbsp the PPS RBSP body
+     * @return the parsed PPS
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static H265Pps parseH265Pps(byte[] rbsp) throws CodecParseException {
+        return nParseH265Pps(rbsp);
+    }
+
+    /**
+     * Parse a single H.265 VPS RBSP. Same input contract as
+     * {@link #parseH265Sps(byte[])}.
+     *
+     * @param rbsp the VPS RBSP body
+     * @return the parsed VPS
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static H265Vps parseH265Vps(byte[] rbsp) throws CodecParseException {
+        return nParseH265Vps(rbsp);
+    }
+
+    /**
+     * Parse a light H.265 slice segment header from a slice NAL's RBSP body.
+     *
+     * <p>{@code sps} is optional SPS context — when non-null,
+     * {@code picOrderCntLsb} is read from the bitstream using the bit width
+     * {@code log2MaxPicOrderCntLsbMinus4 + 4}; when null, {@code picOrderCntLsb}
+     * is null. {@code nalUnitType} is the 6-bit NAL type used to derive
+     * {@code idr} (IDR_W_RADL=19 or IDR_N_LP=20) and to gate IRAP-specific
+     * fields.
+     *
+     * @param rbsp        the slice NAL RBSP body
+     * @param sps         SPS context, or {@code null}
+     * @param nalUnitType the 6-bit NAL unit type
+     * @return the parsed light slice header
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static H265SliceHeaderLight parseH265SliceHeaderLight(
+            byte[] rbsp, H265Sps sps, int nalUnitType) throws CodecParseException {
+        return nParseH265SliceHeaderLight(rbsp, sps, nalUnitType);
+    }
+
+    /**
+     * Parse all H.265 VPS, SPS, and PPS NAL units from a list of
+     * {@link NalUnit}.
+     *
+     * <p>Non-H.265 entries (and non-parameter-set H.265 NALs) are silently
+     * skipped. Parsing is partial-success-tolerant; a {@link CodecParseException}
+     * is raised only when every parameter-set NAL fails to parse.
+     *
+     * @param nals the NAL units to scan
+     * @return the collected VPS/SPS/PPS maps
+     * @throws CodecParseException when no parameter set could be parsed
+     */
+    public static H265ParameterSets parseH265ParameterSets(List<NalUnit> nals)
+            throws CodecParseException {
+        return nParseH265ParameterSets(nals);
     }
 }

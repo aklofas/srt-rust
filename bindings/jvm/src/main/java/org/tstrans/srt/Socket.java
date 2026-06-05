@@ -1,6 +1,7 @@
 package org.tstrans.srt;
 
 import java.util.Optional;
+import org.tstrans.MuxException;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 
@@ -85,7 +86,7 @@ public final class Socket implements AutoCloseable {
      *     ({@code CONFIG_INVALID}) if the muxer config is rejected
      */
     public MuxSender intoMuxSender(org.tstrans.mpegts.MuxerConfig programConfig)
-            throws SrtException {
+            throws SrtException, MuxException {
         ensureOpen();
         // Zero our handle BEFORE the native call. nIntoMuxSender consumes the
         // Box<Socket> unconditionally (*Box::from_raw) but can still throw
@@ -230,7 +231,7 @@ public final class Socket implements AutoCloseable {
     private static native long nIntoMuxSender(long handle, int programNumber, int pmtPid,
         int pcrPid, int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
         int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws SrtException;
+        boolean[] klvCarriesPts) throws SrtException, MuxException;
 
     /**
      * Consume the Box&lt;Socket&gt; and build a Box&lt;DemuxReceiver&gt; (default demux

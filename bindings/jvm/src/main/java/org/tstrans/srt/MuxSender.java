@@ -63,7 +63,8 @@ public final class MuxSender implements AutoCloseable {
      *     A muxer-config rejection surfaces as {@link MuxException}
      *     ({@code CONFIG_INVALID}), thrown from the same native call.
      */
-    public static MuxSender fromUrl(String url, MuxerConfig programConfig) throws SrtException {
+    public static MuxSender fromUrl(String url, MuxerConfig programConfig)
+            throws SrtException, MuxException {
         long h = nFromUrl(
             url,
             programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
@@ -314,7 +315,7 @@ public final class MuxSender implements AutoCloseable {
     private static native long nFromUrl(String url, int programNumber, int pmtPid, int pcrPid,
         int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
         int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws SrtException;
+        boolean[] klvCarriesPts) throws SrtException, MuxException;
 
     private static native void nPushVideo(long handle, byte[] nal, long pts, boolean keyFrame)
         throws MuxException, SrtException;

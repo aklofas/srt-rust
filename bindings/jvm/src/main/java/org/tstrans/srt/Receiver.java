@@ -73,8 +73,9 @@ public final class Receiver implements AutoCloseable {
      * <p>This overload defaults {@code maxLen} to 1500.
      *
      * @return a 188-byte TS packet
-     * @throws SrtException {@code CLOSED} if the receiver is closed;
-     *     {@code BROKEN} if the transport is broken; {@code IO} on other errors
+     * @throws IllegalStateException if the receiver is closed
+     * @throws SrtException {@code BROKEN} if the transport is broken;
+     *     {@code IO} on other errors
      */
     public byte[] recvBytes() throws SrtException {
         return recvBytes(1500);
@@ -88,8 +89,8 @@ public final class Receiver implements AutoCloseable {
      * @param maxLen hint for the maximum bytes to return (currently ignored
      *     beyond accepting the parameter; one 188-byte packet is returned)
      * @return a 188-byte TS packet
-     * @throws SrtException {@code CLOSED}, {@code BROKEN}, or {@code IO} on
-     *     transport failure
+     * @throws IllegalStateException if the receiver is closed
+     * @throws SrtException {@code BROKEN} or {@code IO} on transport failure
      */
     public byte[] recvBytes(int maxLen) throws SrtException {
         ensureOpen();
@@ -129,7 +130,8 @@ public final class Receiver implements AutoCloseable {
      * SRT-specific 17-field stats snapshot.
      *
      * @return a {@link SrtStats} snapshot
-     * @throws SrtException {@code CLOSED} or {@code IO} if the underlying
+     * @throws IllegalStateException if the receiver is closed
+     * @throws SrtException {@code IO} if the underlying
      *     {@code SrtTransport::stats()} call fails
      */
     public SrtStats srtStats() throws SrtException {

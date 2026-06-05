@@ -43,7 +43,8 @@ public final class Socket implements AutoCloseable {
      * <p>The underlying {@code tst_srt::Socket} moves into the new Sender; subsequent
      * calls on {@code this} will throw {@code IllegalStateException("Socket is closed")}.
      *
-     * @throws SrtException if the socket is already closed ({@code CLOSED}).
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException on transport error
      */
     public Sender intoSender() throws SrtException {
         ensureOpen();
@@ -57,7 +58,8 @@ public final class Socket implements AutoCloseable {
      *
      * <p>Same consumption semantics as {@link #intoSender()}.
      *
-     * @throws SrtException if the socket is already closed ({@code CLOSED}).
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException on transport error
      */
     public Receiver intoReceiver() throws SrtException {
         ensureOpen();
@@ -70,7 +72,8 @@ public final class Socket implements AutoCloseable {
      * Local bound address as a {@link HostPort} record. Useful when the URL
      * requested port 0 (kernel-assigned).
      *
-     * @throws SrtException if the socket handle is invalid ({@code IO}) or closed ({@code CLOSED}).
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException if the socket handle is invalid ({@code IO}).
      */
     public HostPort localAddr() throws SrtException {
         ensureOpen();

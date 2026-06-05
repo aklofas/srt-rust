@@ -47,9 +47,9 @@ import org.tstrans.mpegts.Demuxer;
  * before it can lock on sync and emit packets. To satisfy this constraint and
  * also trigger the sender-side framer to emit a full SRT bundle (which requires
  * exactly {@code 7 × 188 = 1316} bytes), the test pads the payload to
- * {@code 7 × 188 = 1316} bytes with three synthetic TS packets on PID
- * {@code 0x0000} (sync byte {@code 0x47}, no payload). The demuxer routes these
- * to empty PSI handling, so they never affect the byte-faithful or SHA
+ * {@code 7 × 188 = 1316} bytes with three MPEG-TS null/stuffing packets
+ * (PID 0x1FFF, header {@code 0x47 0x1F 0xFF 0x10}). The demuxer drops PID
+ * 0x1FFF entirely, so these packets never affect the byte-faithful or SHA
  * assertions — both operate on the first {@code input.length} real bytes only.
  *
  * <h2>Platform gate</h2>
@@ -96,8 +96,8 @@ class SrtLoopbackScenarioTest {
 
     /**
      * Build a 1316-byte send payload: the scenario {@code input.ts} (752 bytes)
-     * followed by three synthetic null-TS packets (TS sync byte + null bytes)
-     * to reach exactly {@code 7 × 188 = 1316} bytes.
+     * followed by three MPEG-TS null/stuffing packets (PID 0x1FFF) to reach
+     * exactly {@code 7 × 188 = 1316} bytes.
      *
      * <p>Why 1316 bytes? Two reasons:
      * <ol>
@@ -110,17 +110,29 @@ class SrtLoopbackScenarioTest {
      *       1316-byte SRT message the sync window is always satisfied on the
      *       first {@code srt_recv} call.</li>
      * </ol>
+     *
+     * <p>The three padding packets use the standard MPEG-TS null packet header
+     * {@code 0x47, 0x1F, 0xFF, 0x10} (sync byte; PID=0x1FFF the null PID;
+     * TSC=00, AFC=01 payload-only, CC=0), with the remaining 184 payload bytes
+     * set to zero. The demuxer drops PID 0x1FFF entirely, so these packets
+     * never produce any event and do not affect the byte-faithful or SHA
+     * assertions (both operate on the first {@code input.length} real bytes only).
      */
     private static byte[] buildSendPayload(byte[] input) {
-        // input is 4 × 188 = 752 bytes; pad to 7 × 188 = 1316 with synthetic TS packets
+        // input is 4 × 188 = 752 bytes; pad to 7 × 188 = 1316 with MPEG-TS null packets
         byte[] payload = new byte[SRT_CHUNK];
         System.arraycopy(input, 0, payload, 0, input.length);
-        // Synthetic TS packets: sync byte 0x47 + zero body → PID 0x0000 (the PAT
-        // PID), no payload. The demuxer routes them to empty PSI handling, so they
-        // never produce a video/metadata event and never affect the byte-faithful
-        // or SHA assertions (both operate on the first input.length real bytes only).
+        // MPEG-TS null packet header per ISO 13818-1:
+        //   0x47        sync byte
+        //   0x1F, 0xFF  transport_error=0, payload_unit_start=0, transport_priority=0, PID=0x1FFF (null PID)
+        //   0x10        TSC=00 (not scrambled), AFC=01 (payload only), CC=0
+        // Remaining 184 bytes are 0x00 (stuffing); the demuxer drops PID 0x1FFF entirely.
         for (int i = input.length; i < SRT_CHUNK; i += 188) {
-            payload[i] = 0x47; // TS sync byte; bytes [i+1..i+187] = 0 → PID 0x0000, no payload
+            payload[i]     = 0x47; // sync byte
+            payload[i + 1] = 0x1F; // PID high byte (null PID 0x1FFF)
+            payload[i + 2] = (byte) 0xFF; // PID low byte
+            payload[i + 3] = 0x10; // AFC=01 (payload only), CC=0
+            // bytes [i+4..i+187] = 0x00 (null packet stuffing payload)
         }
         return payload;
     }
@@ -139,7 +151,7 @@ class SrtLoopbackScenarioTest {
             "shared scenario golden missing (expected committed fixture): " + goldenPath);
 
         byte[] input = Files.readAllBytes(inputPath);
-        byte[] sendPayload = buildSendPayload(input);  // 1316 bytes (input + 3 null TS packets)
+        byte[] sendPayload = buildSendPayload(input);  // 1316 bytes (input + 3 PID-0x1FFF null packets)
         String goldenJson = Files.readString(goldenPath, StandardCharsets.UTF_8);
         String expectedSha = extractVideoPayloadSha256(goldenJson);
 

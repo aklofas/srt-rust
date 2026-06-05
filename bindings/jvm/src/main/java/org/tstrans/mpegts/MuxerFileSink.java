@@ -3,6 +3,7 @@ package org.tstrans.mpegts;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -11,15 +12,17 @@ import org.tstrans.MuxException;
 /**
  * A context-managed sink that drains a {@link Muxer}'s output to a file. Mirrors
  * tst-py's {@code MuxerFileSink}: after each {@code push*} call (and on
- * {@link #close()}) it pulls pending TS packets and writes them to disk. Construct
- * via {@link Muxer#writeFile}.
+ * {@link #close()}) it pulls pending TS packets and writes them to the file's
+ * buffered output stream. As with tst-py's buffered file handle, bytes reach the
+ * underlying file when the buffer fills or on {@link #close()} — not necessarily
+ * synchronously per push. Construct via {@link Muxer#writeFile}.
  *
  * <p>The {@link Muxer} is <b>borrowed, not owned</b> — it remains usable after the
  * try-with-resources block (including for further {@code writeFile} calls).
  *
  * <p>Unlike the bare {@link Muxer} push methods, the sink's {@code push*} methods
  * also declare {@link java.io.IOException} because each drains pending packets to
- * disk.
+ * the file's output stream.
  *
  * <p><b>Atomic mode.</b> tst-py infers success from Python's
  * {@code __exit__(exc_type)}; Java's {@link AutoCloseable#close()} has no exception
@@ -139,13 +142,26 @@ public final class MuxerFileSink implements AutoCloseable {
             }
         }
         if (atomic && committed) {
-            // ATOMIC_MOVE + REPLACE_EXISTING: intra-directory rename on the same
-            // filesystem. Some Windows filesystems reject ATOMIC_MOVE
-            // (AtomicMoveNotSupportedException); if the windows matrix is ever
-            // promoted to gating, fall back to a two-step move or accept
-            // non-atomic semantics there.
-            Files.move(tmpPath, dest,
-                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            // Promote the temp to the destination. Prefer an atomic rename so a
+            // reader never observes a torn file; fall back to a plain replacing
+            // move on filesystems that don't support atomic rename (some
+            // Windows/network/virtual FS throw AtomicMoveNotSupportedException) so
+            // commit() still yields a complete output file. If even the fallback
+            // fails, drop the temp so a failed commit leaves no stray *.partial.
+            try {
+                Files.move(tmpPath, dest,
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                try {
+                    Files.move(tmpPath, dest, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e2) {
+                    Files.deleteIfExists(tmpPath);
+                    throw e2;
+                }
+            } catch (IOException e) {
+                Files.deleteIfExists(tmpPath);
+                throw e;
+            }
         }
     }
 }

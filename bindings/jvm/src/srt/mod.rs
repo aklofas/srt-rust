@@ -1,6 +1,7 @@
 //! `org.tstrans.srt` — SRT transport JNI surface.
 
 pub(crate) mod errors;
+mod lowlevel;
 mod stats;
 mod transport;
 

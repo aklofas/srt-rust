@@ -276,4 +276,67 @@ public final class Codec {
             throws CodecParseException {
         return nParseH266ParameterSets(nals);
     }
+
+    // --- AV1 native entry points -----------------------------------------
+
+    private static native Av1SequenceHeader nParseAv1SequenceHeader(byte[] payload);
+
+    private static native Av1FrameHeaderLight nParseAv1FrameHeaderLight(
+            byte[] payload, Av1SequenceHeader seq);
+
+    // No `throws`: parse_obu_stream is infallible — failures are collected into
+    // the returned Av1ObuStream.unparseable rather than thrown.
+    private static native Av1ObuStream nParseAv1ObuStream(List<Obu> obus);
+
+    /**
+     * Parse a single AV1 Sequence Header OBU body.
+     *
+     * <p>{@code payload} carries the OBU body bytes — the OBU header byte and
+     * any LEB128 {@code obu_size} prefix are stripped (as {@link Obu#payload()}
+     * provides from a demuxed stream).
+     *
+     * @param payload the Sequence Header OBU body
+     * @return the parsed Sequence Header
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static Av1SequenceHeader parseAv1SequenceHeader(byte[] payload)
+            throws CodecParseException {
+        return nParseAv1SequenceHeader(payload);
+    }
+
+    /**
+     * Parse a light AV1 Frame Header OBU body.
+     *
+     * <p>{@code payload} carries the OBU body bytes. {@code seq} is the
+     * <em>required</em> Sequence Header context — it must correspond to the
+     * Sequence Header that precedes this Frame Header in the bitstream. Use
+     * {@link #parseAv1SequenceHeader(byte[])} to obtain it.
+     *
+     * <p>Light scope: extracts {@code frameType} + {@code showFrame} +
+     * {@code showExistingFrame} only; {@code frameSize} is always {@code null}.
+     *
+     * @param payload the Frame Header OBU body
+     * @param seq     the preceding Sequence Header context (required)
+     * @return the parsed light Frame Header
+     * @throws CodecParseException on a malformed or truncated bitstream
+     */
+    public static Av1FrameHeaderLight parseAv1FrameHeaderLight(byte[] payload, Av1SequenceHeader seq)
+            throws CodecParseException {
+        return nParseAv1FrameHeaderLight(payload, seq);
+    }
+
+    /**
+     * Walk a list of {@link Obu} objects and collect typed AV1 structs.
+     *
+     * <p>Partial-success-tolerant and <em>infallible</em>: OBUs that fail to
+     * parse accumulate in {@link Av1ObuStream#unparseable()} rather than
+     * aborting the walk — this method never throws. TemporalDelimiter,
+     * TileGroup, Metadata, TileList, and Padding OBUs are skipped silently.
+     *
+     * @param obus the OBUs to scan
+     * @return the collected Sequence Headers, Frame Headers, and failures
+     */
+    public static Av1ObuStream parseAv1ObuStream(List<Obu> obus) {
+        return nParseAv1ObuStream(obus);
+    }
 }

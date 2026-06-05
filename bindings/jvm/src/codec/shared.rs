@@ -170,7 +170,6 @@ Lorg/tstrans/codec/MatrixCoefficients;Z)V",
 /// Build `org.tstrans.codec.NalUnit` from a `tst_core` demux `NalUnit` by
 /// calling the matching Java static factory (`h264`/`h265`/`h266`), mirroring
 /// `NalUnitPy::make_h264/h265/h266`.
-#[allow(dead_code)]
 pub(crate) fn build_nal_unit<'local>(
     env: &mut JNIEnv<'local>,
     n: &NalUnit,
@@ -241,7 +240,6 @@ pub(crate) fn build_nal_unit<'local>(
 
 /// Build `org.tstrans.codec.Obu(obuType, extension, payload)` from a `tst_core`
 /// demux `Obu`. `extension` is null when absent.
-#[allow(dead_code)]
 pub(crate) fn build_obu<'local>(env: &mut JNIEnv<'local>, o: &Obu) -> Result<JObject<'local>, ()> {
     let extension = match &o.extension {
         Some(ext) => env

@@ -25,8 +25,6 @@
 
 pub mod muxer;
 
-use std::borrow::Cow;
-
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
@@ -36,11 +34,14 @@ use tst_core::mpegts::au_cell::CellFragmentIndication;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::MultiCellAuReason;
 use tst_core::mpegts::demux::{
-    AudioCodec, DemuxEvent, Demuxer, DiscontinuityKind, MetadataKind, NalUnit, NonConformantIssue,
+    AudioCodec, DemuxEvent, Demuxer, DiscontinuityKind, MetadataKind, NonConformantIssue,
     SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 
-use crate::error::throw_demux;
+use crate::codec::aac::build_adts_frame;
+use crate::codec::mpegaudio::build_mpeg2_audio_frame;
+use crate::codec::shared::{build_nal_unit, build_obu};
+use crate::error::{build_codec_exception, throw_demux};
 
 /// `org.tstrans.mpegts.Demuxer.nOpen()` — allocate a [`Demuxer`] and hand the JVM
 /// its raw pointer as a `jlong` handle.
@@ -260,56 +261,78 @@ fn convert_event<'local>(
             dts,
             payload,
         } => {
-            // Common pieces shared by every sample record. The payload is a
-            // COPIED, Java-owned heap `ByteBuffer` (see the module doc + spec
-            // §5.4 for why zero-copy is deferred to a JDK-22+ FFM path).
+            // Typed-payload sample records. Mirrors tst-py's `convert_sample_event`
+            // decision-for-decision: video → typed NAL/OBU lists; audio → typed
+            // frame lists on a clean parse, raw bytes + a `CodecParseException`
+            // on a mid-stream parse failure, raw bytes (silent) for deferred
+            // codecs; subtitle/unknown → raw heap `ByteBuffer`.
             let stream_obj = build_stream_id(env, stream)?;
             let pts_ticks = pts.as_ticks();
             let dts_obj = opt_long(env, *dts)?;
-            let buf = wrap_heap_byte_buffer(env, &sample_bytes(payload))?;
             let obj = match payload {
                 SamplePayload::Video {
+                    codec,
+                    payload,
                     random_access_indicator,
-                    ..
-                } => env
-                    .new_object(
+                } => {
+                    let units = build_video_units(env, payload)?;
+                    let codec_obj = codec_enum(env, "VideoCodec", video_codec_name(*codec))?;
+                    env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Video",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;Z)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;ZLorg/tstrans/CodecParseException;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
-                            JValue::Object(&buf),
+                            JValue::Object(&codec_obj),
+                            JValue::Object(&units),
                             JValue::Bool(*random_access_indicator as u8),
+                            // codec_parse_error: always null for video — the
+                            // demuxer already split the NALs/OBUs, so typed
+                            // payload construction cannot fail at this layer.
+                            JValue::Object(&JObject::null()),
                         ],
                     )
-                    .map_err(|_| ())?,
-                SamplePayload::Audio { .. } => env
-                    .new_object(
+                    .map_err(|_| ())?
+                }
+                SamplePayload::Audio { codec, frames } => {
+                    let (typed_list, raw_buf, parse_err) =
+                        build_audio_payload(env, *codec, frames)?;
+                    let codec_obj = codec_enum(env, "AudioCodec", audio_codec_name(*codec))?;
+                    env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Audio",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/AudioCodec;Ljava/util/List;Ljava/nio/ByteBuffer;Lorg/tstrans/CodecParseException;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
-                            JValue::Object(&buf),
+                            JValue::Object(&codec_obj),
+                            JValue::Object(&typed_list),
+                            JValue::Object(&raw_buf),
+                            JValue::Object(&parse_err),
                         ],
                     )
-                    .map_err(|_| ())?,
-                SamplePayload::Subtitle { .. } => env
-                    .new_object(
+                    .map_err(|_| ())?
+                }
+                SamplePayload::Subtitle { codec, payload } => {
+                    let buf = wrap_heap_byte_buffer(env, payload)?;
+                    let codec_obj = codec_enum(env, "SubtitleCodec", subtitle_codec_name(*codec))?;
+                    env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Subtitle",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Ljava/nio/ByteBuffer;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/SubtitleCodec;Ljava/nio/ByteBuffer;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
+                            JValue::Object(&codec_obj),
                             JValue::Object(&buf),
                         ],
                     )
-                    .map_err(|_| ())?,
-                SamplePayload::Unknown { stream_type, .. } => env
-                    .new_object(
+                    .map_err(|_| ())?
+                }
+                SamplePayload::Unknown { stream_type, raw } => {
+                    let buf = wrap_heap_byte_buffer(env, raw)?;
+                    env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$UnknownSample",
                         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;ILjava/nio/ByteBuffer;)V",
                         &[
@@ -320,7 +343,8 @@ fn convert_event<'local>(
                             JValue::Object(&buf),
                         ],
                     )
-                    .map_err(|_| ())?,
+                    .map_err(|_| ())?
+                }
             };
             Ok(Some(obj))
         }
@@ -641,45 +665,176 @@ fn build_pid_list<'local>(
     Ok(list)
 }
 
-/// Derive a contiguous payload byte vector from a `SamplePayload`.
-fn sample_bytes(payload: &SamplePayload) -> Cow<'_, [u8]> {
+/// Build a `java.util.List<VideoUnit>` from a `VideoPayload`: `List<NalUnit>`
+/// for NAL-shaped codecs (H.264/H.265/H.266), `List<Obu>` for AV1. Each unit is
+/// constructed inside a per-element local frame so its refs are reclaimed —
+/// AU unit counts are unbounded, so a flat loop would risk local-ref-table
+/// overflow. Mirrors tst-py's `convert_sample_event` video arm.
+fn build_video_units<'local>(
+    env: &mut JNIEnv<'local>,
+    payload: &VideoPayload,
+) -> Result<JObject<'local>, ()> {
+    let list = env
+        .new_object("java/util/ArrayList", "()V", &[])
+        .map_err(|_| ())?;
     match payload {
-        // Video NAL/OBU payloads are split across multiple units, so the
-        // contiguous byte view must be freshly concatenated (owned).
-        SamplePayload::Video {
-            payload: VideoPayload::Nals(nals),
-            ..
-        } => {
-            let mut out = Vec::new();
+        VideoPayload::Nals(nals) => {
             for nal in nals {
-                out.extend_from_slice(nal_payload(nal));
+                env.with_local_frame(16, |inner| {
+                    let val = build_nal_unit(inner, nal)
+                        .map_err(|()| jni::errors::Error::JavaException)?;
+                    inner.call_method(
+                        &list,
+                        "add",
+                        "(Ljava/lang/Object;)Z",
+                        &[JValue::Object(&val)],
+                    )?;
+                    Ok::<(), jni::errors::Error>(())
+                })
+                .map_err(|_| ())?;
             }
-            Cow::Owned(out)
         }
-        SamplePayload::Video {
-            payload: VideoPayload::Obus(obus),
-            ..
-        } => {
-            let mut out = Vec::new();
+        VideoPayload::Obus(obus) => {
             for obu in obus {
-                out.extend_from_slice(&obu.payload);
+                env.with_local_frame(16, |inner| {
+                    let val =
+                        build_obu(inner, obu).map_err(|()| jni::errors::Error::JavaException)?;
+                    inner.call_method(
+                        &list,
+                        "add",
+                        "(Ljava/lang/Object;)Z",
+                        &[JValue::Object(&val)],
+                    )?;
+                    Ok::<(), jni::errors::Error>(())
+                })
+                .map_err(|_| ())?;
             }
-            Cow::Owned(out)
         }
-        // Audio/Subtitle/Unknown already hold a contiguous buffer — borrow it so
-        // only the unavoidable Java-side heap copy happens (no intermediate clone).
-        SamplePayload::Audio { frames, .. } => Cow::Borrowed(frames),
-        SamplePayload::Subtitle { payload, .. } => Cow::Borrowed(payload),
-        SamplePayload::Unknown { raw, .. } => Cow::Borrowed(raw),
     }
+    Ok(list)
 }
 
-/// The RBSP payload bytes of a `NalUnit`, regardless of codec.
-fn nal_payload(nal: &NalUnit) -> &[u8] {
-    match nal {
-        NalUnit::H264 { payload, .. }
-        | NalUnit::H265 { payload, .. }
-        | NalUnit::H266 { payload, .. } => payload,
+/// Build the audio payload triple for a `DemuxEvent.Audio` record:
+/// `(typedList, rawPayload, codecParseError)`. Mirrors tst-py's
+/// `convert_sample_event` audio arm EXACTLY:
+///
+/// * AAC / MP2 clean parse (every `frames_with_resync` item `Ok`) →
+///   `(List<AudioFrame>, null, null)`.
+/// * AAC / MP2 mid-stream parse failure (first `Err`) →
+///   `(empty List, ByteBuffer raw, CodecParseException)` with codec label
+///   `"aac"` / `"mp2"`.
+/// * AAC-LATM / AC-3 / other (typed parse deferred) →
+///   `(empty List, ByteBuffer raw, null)` — silent bytes fallback.
+///
+/// Each typed frame is built inside a per-element local frame (unbounded frame
+/// counts per AU). Returns an empty list (never null) on the bytes-fallback
+/// paths so the Java `payload` field is always a `List`.
+fn build_audio_payload<'local>(
+    env: &mut JNIEnv<'local>,
+    codec: AudioCodec,
+    frames: &[u8],
+) -> Result<(JObject<'local>, JObject<'local>, JObject<'local>), ()> {
+    use tst_core::codec::aac::frames_with_resync as aac_frames;
+    use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
+
+    match codec {
+        AudioCodec::Aac => {
+            // Collect owned frames, early-returning on the first Err (strict —
+            // matches tst-py's `for res in aac_frames(..) { Ok => push, Err => return }`).
+            let mut owned = Vec::new();
+            let mut parse_err = None;
+            for res in aac_frames(frames) {
+                match res {
+                    Ok(f) => owned.push(f.to_owned()),
+                    Err(e) => {
+                        parse_err = Some(e);
+                        break;
+                    }
+                }
+            }
+            match parse_err {
+                None => {
+                    let list = env
+                        .new_object("java/util/ArrayList", "()V", &[])
+                        .map_err(|_| ())?;
+                    for f in &owned {
+                        env.with_local_frame(24, |inner| {
+                            let val = build_adts_frame(inner, f)
+                                .map_err(|()| jni::errors::Error::JavaException)?;
+                            inner.call_method(
+                                &list,
+                                "add",
+                                "(Ljava/lang/Object;)Z",
+                                &[JValue::Object(&val)],
+                            )?;
+                            Ok::<(), jni::errors::Error>(())
+                        })
+                        .map_err(|_| ())?;
+                    }
+                    Ok((list, JObject::null(), JObject::null()))
+                }
+                Some(e) => {
+                    let list = env
+                        .new_object("java/util/ArrayList", "()V", &[])
+                        .map_err(|_| ())?;
+                    let raw = wrap_heap_byte_buffer(env, frames)?;
+                    let exc = build_codec_exception(env, &e, "aac")?;
+                    Ok((list, raw, exc))
+                }
+            }
+        }
+        AudioCodec::Mp2 => {
+            let mut owned = Vec::new();
+            let mut parse_err = None;
+            for res in mpegaudio_frames(frames) {
+                match res {
+                    Ok(f) => owned.push(f.to_owned()),
+                    Err(e) => {
+                        parse_err = Some(e);
+                        break;
+                    }
+                }
+            }
+            match parse_err {
+                None => {
+                    let list = env
+                        .new_object("java/util/ArrayList", "()V", &[])
+                        .map_err(|_| ())?;
+                    for f in &owned {
+                        env.with_local_frame(24, |inner| {
+                            let val = build_mpeg2_audio_frame(inner, f)
+                                .map_err(|()| jni::errors::Error::JavaException)?;
+                            inner.call_method(
+                                &list,
+                                "add",
+                                "(Ljava/lang/Object;)Z",
+                                &[JValue::Object(&val)],
+                            )?;
+                            Ok::<(), jni::errors::Error>(())
+                        })
+                        .map_err(|_| ())?;
+                    }
+                    Ok((list, JObject::null(), JObject::null()))
+                }
+                Some(e) => {
+                    let list = env
+                        .new_object("java/util/ArrayList", "()V", &[])
+                        .map_err(|_| ())?;
+                    let raw = wrap_heap_byte_buffer(env, frames)?;
+                    let exc = build_codec_exception(env, &e, "mp2")?;
+                    Ok((list, raw, exc))
+                }
+            }
+        }
+        // AAC-LATM + AC-3 typed parsing is deferred — silent bytes fallback
+        // (empty list, raw bytes, no parse error). Matches tst-py's `_ =>` arm.
+        _ => {
+            let list = env
+                .new_object("java/util/ArrayList", "()V", &[])
+                .map_err(|_| ())?;
+            let raw = wrap_heap_byte_buffer(env, frames)?;
+            Ok((list, raw, JObject::null()))
+        }
     }
 }
 

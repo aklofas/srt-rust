@@ -389,7 +389,8 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH264ParameterSets<'loc
             if kind_str != "H264" {
                 return Ok::<Option<NalUnit>, jni::errors::Error>(None);
             }
-            let nal_type = inner.call_method(&item, "nalType", "()I", &[])?.i()? as u8;
+            let nal_type_raw = inner.call_method(&item, "nalType", "()I", &[])?.i()?;
+            let nal_type = crate::jutil::checked_u8(inner, nal_type_raw as i64, "nalType")?;
             // refIdc is a (nullable) Integer; H264 NalUnits always carry it, but
             // default to 3 if absent (mirrors tst-py `n.ref_idc.unwrap_or(3)`).
             let ref_idc_obj = inner
@@ -398,9 +399,10 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH264ParameterSets<'loc
             let ref_idc = if ref_idc_obj.is_null() {
                 3u8
             } else {
-                inner
+                let ref_idc_raw = inner
                     .call_method(&ref_idc_obj, "intValue", "()I", &[])?
-                    .i()? as u8
+                    .i()?;
+                crate::jutil::checked_u8(inner, ref_idc_raw as i64, "refIdc")?
             };
             let payload_buf = inner
                 .call_method(&item, "payload", "()Ljava/nio/ByteBuffer;", &[])?

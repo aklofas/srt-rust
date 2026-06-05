@@ -124,6 +124,16 @@ class Av1Test {
     }
 
     @Test
+    void parseObuStreamRejectsOutOfRangeObuType() {
+        // obuType is a u8 on the Rust side; an out-of-range int (300) must be
+        // rejected at the input boundary (checked narrowing) rather than
+        // silently truncated to (300 & 0xFF) == 44. The validation surfaces as
+        // an unchecked IllegalArgumentException, not a CodecParseException.
+        List<Obu> obus = List.of(new Obu(300, null, ByteBuffer.wrap(new byte[0])));
+        assertThrows(IllegalArgumentException.class, () -> Codec.parseAv1ObuStream(obus));
+    }
+
+    @Test
     void parseObuStreamSkipsUnknownObuTypes() {
         // Metadata (5) + TileGroup (4) carry no metadata for this parser and
         // are skipped silently (no unparseable entries).

@@ -189,7 +189,8 @@ fn build_frame_header<'local>(
 /// `ByteBuffer`. Reverse of `shared::build_obu`. Errors propagate as
 /// `jni::errors::Error` (a pending Java exception may be left).
 fn read_obu(env: &mut JNIEnv, item: &JObject) -> jni::errors::Result<Obu> {
-    let obu_type = env.call_method(item, "obuType", "()I", &[])?.i()? as u8;
+    let obu_type_raw = env.call_method(item, "obuType", "()I", &[])?.i()?;
+    let obu_type = crate::jutil::checked_u8(env, obu_type_raw as i64, "obuType")?;
 
     let ext_obj = env
         .call_method(item, "extension", "()Lorg/tstrans/codec/ObuExtension;", &[])?
@@ -197,8 +198,10 @@ fn read_obu(env: &mut JNIEnv, item: &JObject) -> jni::errors::Result<Obu> {
     let extension = if ext_obj.is_null() {
         None
     } else {
-        let temporal_id = env.call_method(&ext_obj, "temporalId", "()I", &[])?.i()? as u8;
-        let spatial_id = env.call_method(&ext_obj, "spatialId", "()I", &[])?.i()? as u8;
+        let temporal_id_raw = env.call_method(&ext_obj, "temporalId", "()I", &[])?.i()?;
+        let temporal_id = crate::jutil::checked_u8(env, temporal_id_raw as i64, "temporalId")?;
+        let spatial_id_raw = env.call_method(&ext_obj, "spatialId", "()I", &[])?.i()?;
+        let spatial_id = crate::jutil::checked_u8(env, spatial_id_raw as i64, "spatialId")?;
         Some(ObuExtension {
             temporal_id,
             spatial_id,

@@ -8,12 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.tstrans.codec.AdtsFrame;
 import org.tstrans.codec.AudioFrame;
 import org.tstrans.codec.NalUnit;
 import org.tstrans.codec.VideoUnit;
+import org.tstrans.io.Io;
 import org.tstrans.klv.Klv;
 import org.tstrans.klv.UasDatalinkLs;
 import org.tstrans.mpegts.AudioCodec;
@@ -190,6 +192,47 @@ class ScenarioReproductionTest {
         assertNotNull(klvMatch,
             "no Metadata event matched golden klv pid=" + expectedKlv.pid
                 + " set=" + expectedKlv.set + "; observed=" + metadataSamples);
+    }
+
+    /**
+     * Cross-binding parity for the FILE path: feed the same {@code h264-st0601-mp}
+     * shared golden through {@link org.tstrans.io.Io#parseFile} (reading the committed
+     * {@code input.ts} straight off disk) and assert the SAME video subset the
+     * in-memory feed path reproduces. Proves file-path ≡ feed-path through the JVM.
+     */
+    @Test
+    void reproducesH264St0601MpViaParseFile() throws Exception {
+        Path dir = scenarioDir();
+        Path inputPath = dir.resolve("input.ts");
+        Path goldenPath = dir.resolve("golden.json");
+        assertTrue(Files.isRegularFile(inputPath),
+            "shared scenario input missing: " + inputPath);
+        assertTrue(Files.isRegularFile(goldenPath),
+            "shared scenario golden missing: " + goldenPath);
+        GoldenVideo expected =
+            extractVideoEvent(Files.readString(goldenPath, StandardCharsets.UTF_8));
+
+        VideoSample match = null;
+        // Explicit iterator loop (not findFirst().map(...)): sha256Units throws a
+        // checked Exception, which a Stream lambda can't propagate cleanly. Iterating
+        // stream.iterator() keeps the digest call in a context that can throw, and
+        // drops the puzzling (Iterable) cast the enhanced-for-loop otherwise needs.
+        try (var stream = Io.parseFile(inputPath)) {
+            for (Iterator<DemuxEvent> it = stream.iterator(); it.hasNext(); ) {
+                DemuxEvent e = it.next();
+                if (e instanceof DemuxEvent.Video v
+                        && v.stream().pid() == expected.pid && v.pts() == expected.pts) {
+                    match = new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.payload()));
+                    break;
+                }
+            }
+        }
+        assertNotNull(match,
+            "parseFile produced no VIDEO sample matching golden pid=" + expected.pid
+                + " pts=" + expected.pts);
+        assertEquals(expected.payloadSha256, match.payloadSha256,
+            "parseFile video payload_sha256 must equal the committed golden "
+                + "(file path must reproduce the feed path byte-for-byte)");
     }
 
     /**

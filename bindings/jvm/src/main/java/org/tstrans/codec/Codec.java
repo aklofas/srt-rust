@@ -380,4 +380,48 @@ public final class Codec {
     public static List<AdtsFrame> parseAacFramesWithResync(byte[] bytes) {
         return nParseAacFramesWithResync(bytes);
     }
+
+    // --- MPEG audio native entry points ----------------------------------
+    // nParseMpeg2AudioFrames is strict: it leaves a pending
+    // CodecParseException and returns null on the first parse error.
+    // nParseMpeg2AudioFramesWithResync is best-effort: it never throws,
+    // skipping frames that fail to parse.
+
+    private static native List<Mpeg2AudioFrame> nParseMpeg2AudioFrames(byte[] bytes);
+
+    private static native List<Mpeg2AudioFrame> nParseMpeg2AudioFramesWithResync(byte[] bytes);
+
+    /**
+     * Parse all MPEG audio frames (MPEG-1/2/2.5 Layer I/II/III) from an
+     * elementary-stream buffer (strict — fail-fast).
+     *
+     * <p>{@code bytes} is MPEG-audio-framed (e.g. a PES payload). The first
+     * parse error terminates the parse and raises {@link CodecParseException};
+     * use {@link #parseMpeg2AudioFramesWithResync(byte[])} to tolerate
+     * corruption.
+     *
+     * @param bytes the MPEG-audio-framed bytes
+     * @return the decoded frames, in stream order
+     * @throws CodecParseException on the first malformed or truncated frame
+     */
+    public static List<Mpeg2AudioFrame> parseMpeg2AudioFrames(byte[] bytes)
+            throws CodecParseException {
+        return nParseMpeg2AudioFrames(bytes);
+    }
+
+    /**
+     * Parse all MPEG audio frames (MPEG-1/2/2.5 Layer I/II/III) from an
+     * elementary-stream buffer (best-effort — resyncing).
+     *
+     * <p>On a parse error the parser scans forward for the next plausible
+     * 11-bit MPEG audio syncword and resumes; frames that fail to parse are
+     * silently dropped. This method never throws — suitable for stats /
+     * telemetry over possibly-corrupted streams.
+     *
+     * @param bytes the MPEG-audio-framed bytes
+     * @return the successfully decoded frames, in stream order
+     */
+    public static List<Mpeg2AudioFrame> parseMpeg2AudioFramesWithResync(byte[] bytes) {
+        return nParseMpeg2AudioFramesWithResync(bytes);
+    }
 }

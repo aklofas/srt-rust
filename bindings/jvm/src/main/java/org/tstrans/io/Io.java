@@ -14,6 +14,7 @@ import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.Spliterator;
 import java.util.Spliterators;
@@ -21,12 +22,15 @@ import java.util.TreeSet;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.tstrans.DemuxException;
+import org.tstrans.KlvDecodeException;
 import org.tstrans.mpegts.AudioCodec;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 import org.tstrans.mpegts.DemuxerConfig;
 import org.tstrans.mpegts.SubtitleCodec;
 import org.tstrans.mpegts.VideoCodec;
+import org.tstrans.klv.Klv;
+import org.tstrans.klv.KlvSet;
 
 /**
  * Convenience helpers for reading {@code .ts} files. Mirrors tst-py's
@@ -139,6 +143,65 @@ public final class Io {
             subtitle.stream().sorted(Comparator.comparing(Enum::name)).toList(),
             hasKlv,
             readTotal / 188);
+    }
+
+    /**
+     * Iterate KLV payloads in {@code path}. Mirrors {@code tstrans.io.extract_klv}.
+     * Each yielded {@link KlvEntry} carries raw bytes or a typed {@link KlvSet} per
+     * {@code opts}; see {@link ExtractKlvOptions} for the knobs.
+     *
+     * <p>With {@code parsed=true}, each payload runs through
+     * {@link Klv#parseUniversal}. {@code skipUnknown} (default true) drops payloads
+     * whose UL is unrecognized; {@code skipMalformed} (default false) controls a
+     * {@link KlvDecodeException} from a recognized UL — propagated by default so
+     * corruption is not silently lost, skipped when true. A propagated decode error
+     * surfaces as a {@link RuntimeException} wrapping the {@link KlvDecodeException}
+     * (Java streams cannot throw checked exceptions during iteration — same idiom as
+     * {@link #parseFile}); catching the wrapped {@code KlvDecodeException}
+     * specifically still lets binding-shape regressions surface naturally.
+     */
+    public static Stream<KlvEntry> extractKlv(Path path) throws IOException {
+        return extractKlv(path, ExtractKlvOptions.defaults());
+    }
+
+    /** Like {@link #extractKlv(Path)} with explicit {@link ExtractKlvOptions}. */
+    public static Stream<KlvEntry> extractKlv(Path path, ExtractKlvOptions opts) throws IOException {
+        Stream<DemuxEvent> events = parseFile(path, opts.config());
+        return events
+            .filter(e -> e instanceof DemuxEvent.Metadata)
+            .map(e -> (DemuxEvent.Metadata) e)
+            .flatMap(m -> toEntry(m, opts).stream())
+            .onClose(events::close);
+    }
+
+    /** Project one Metadata event to zero-or-one KlvEntry per the options. */
+    private static Optional<KlvEntry> toEntry(DemuxEvent.Metadata m, ExtractKlvOptions opts) {
+        Long pts = opts.withPts() ? Long.valueOf(m.pts()) : null;
+        // Always copy the payload: needed as the raw entry (parsed=false) AND as parseUniversal's input (parsed=true).
+        java.nio.ByteBuffer view = m.payload().duplicate();
+        byte[] raw = new byte[view.remaining()];
+        view.get(raw);
+
+        if (!opts.parsed()) {
+            return Optional.of(new KlvEntry(pts, raw, null));
+        }
+        KlvSet typed;
+        try {
+            Optional<KlvSet> parsed = Klv.parseUniversal(raw);
+            if (parsed.isEmpty()) {
+                if (opts.skipUnknown()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new KlvEntry(pts, null, null)); // unknown UL, surfaced
+            }
+            typed = parsed.get();
+        } catch (KlvDecodeException ex) {
+            if (opts.skipMalformed()) {
+                return Optional.empty();
+            }
+            throw new RuntimeException(ex);
+        }
+        return Optional.of(new KlvEntry(pts, null, typed));
     }
 
     /**

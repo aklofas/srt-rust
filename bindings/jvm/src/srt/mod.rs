@@ -2,6 +2,7 @@
 
 pub(crate) mod errors;
 mod lowlevel;
+mod mux_sender;
 mod stats;
 mod transport;
 

@@ -60,30 +60,74 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
     klv_stream_types: JIntArray<'local>,
     klv_carries_pts: JBooleanArray<'local>,
 ) -> jlong {
+    // Build the MuxerConfig from the parallel arrays via the shared helper (a
+    // pending MuxException is already thrown on `Err(())`).
+    let cfg = match build_muxer_config_from_arrays(
+        &mut env,
+        program_number,
+        pmt_pid,
+        pcr_pid,
+        pcr_interval_ms,
+        psi_interval_ms,
+        buffer_packets,
+        av1_carriage,
+        &stream_pids,
+        &stream_kinds,
+        &stream_codecs,
+        &klv_stream_types,
+        &klv_carries_pts,
+    ) {
+        Ok(c) => c,
+        Err(()) => return 0,
+    };
+    let mux = match Muxer::new(cfg) {
+        Ok(m) => m,
+        Err(e) => {
+            throw_mux_error(&mut env, &e);
+            return 0;
+        }
+    };
+    Box::into_raw(Box::new(mux)) as jlong
+}
+
+/// Build a [`MuxerConfig`] from the parallel-array config description that both
+/// `Muxer::nOpen` and the srt `MuxSender` / `Socket::intoMuxSender` JNI paths
+/// marshal in a single call. The per-stream arrays (`stream_pids` /
+/// `stream_kinds` / `stream_codecs` / `klv_stream_types` / `klv_carries_pts`)
+/// are decoded by Java enum ORDINAL — see the `*_codec` / `klv_type` /
+/// `av1_mode` mappers for the exact ordinal → Rust-enum contract.
+///
+/// On ANY config or marshalling failure this throws the matching
+/// `MuxException` (or `RuntimeException` for a raw JNI array-read error) and
+/// returns `Err(())`; the caller maps that to its own `0` / null return so the
+/// pending Java exception propagates at the call site. Byte-exactness with the
+/// pre-refactor inline `nOpen` body is load-bearing for the
+/// `MuxRoundtripScenarioTest` golden.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_muxer_config_from_arrays<'local>(
+    env: &mut JNIEnv<'local>,
+    program_number: jint,
+    pmt_pid: jint,
+    pcr_pid: jint,
+    pcr_interval_ms: jint,
+    psi_interval_ms: jint,
+    buffer_packets: jint,
+    av1_carriage: jint,
+    stream_pids: &JIntArray<'local>,
+    stream_kinds: &JIntArray<'local>,
+    stream_codecs: &JIntArray<'local>,
+    klv_stream_types: &JIntArray<'local>,
+    klv_carries_pts: &JBooleanArray<'local>,
+) -> Result<MuxerConfig, ()> {
     // Read the parallel arrays. On ANY JNI read error, fail closed (throw
-    // INTERNAL, return 0) rather than panic across the FFI boundary. `n` is the
+    // INTERNAL, return Err) rather than panic across the FFI boundary. `n` is the
     // stream count, taken from `stream_pids`.
-    let pids = match read_int_array(&mut env, &stream_pids) {
-        Some(v) => v,
-        None => return 0,
-    };
+    let pids = read_int_array(env, stream_pids).ok_or(())?;
     let n = pids.len();
-    let kinds = match read_int_array(&mut env, &stream_kinds) {
-        Some(v) => v,
-        None => return 0,
-    };
-    let codecs = match read_int_array(&mut env, &stream_codecs) {
-        Some(v) => v,
-        None => return 0,
-    };
-    let klv_types = match read_int_array(&mut env, &klv_stream_types) {
-        Some(v) => v,
-        None => return 0,
-    };
-    let carries = match read_boolean_array(&mut env, &klv_carries_pts) {
-        Some(v) => v,
-        None => return 0,
-    };
+    let kinds = read_int_array(env, stream_kinds).ok_or(())?;
+    let codecs = read_int_array(env, stream_codecs).ok_or(())?;
+    let klv_types = read_int_array(env, klv_stream_types).ok_or(())?;
+    let carries = read_boolean_array(env, klv_carries_pts).ok_or(())?;
 
     let mut prog = MuxerProgramConfigBuilder::new(program_number as u16, pmt_pid as u16);
     for i in 0..n {
@@ -113,17 +157,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
                     }
                     _ => {
                         throw_mux(
-                            &mut env,
+                            env,
                             "CONFIG_INVALID",
                             "DVB subtitle codecs need config not exposed in the JVM binding",
                         );
-                        return 0;
+                        return Err(());
                     }
                 }
             }
             _ => {
-                throw_mux(&mut env, "INTERNAL", "unknown stream kind ordinal");
-                return 0;
+                throw_mux(env, "INTERNAL", "unknown stream kind ordinal");
+                return Err(());
             }
         }
     }
@@ -140,21 +184,13 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
     b.psi_interval_ms(psi_interval_ms as u32);
     b.buffer_packets(buffer_packets as usize);
     b.av1_carriage(av1_mode(av1_carriage));
-    let cfg = match b.build() {
-        Ok(c) => c,
+    match b.build() {
+        Ok(c) => Ok(c),
         Err(e) => {
-            throw_mux_error(&mut env, &e);
-            return 0;
+            throw_mux_error(env, &e);
+            Err(())
         }
-    };
-    let mux = match Muxer::new(cfg) {
-        Ok(m) => m,
-        Err(e) => {
-            throw_mux_error(&mut env, &e);
-            return 0;
-        }
-    };
-    Box::into_raw(Box::new(mux)) as jlong
+    }
 }
 
 /// `nPushVideo(handle, nal, pts, keyFrame)` — push one Annex-B access unit.
@@ -359,7 +395,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nClose<'local>(
 /// Map a `MuxError` to a thrown `org.tstrans.MuxException`, mirroring tst-py's
 /// `mux_error_to_pyerr` (route via the 5-variant `MuxSenderErrorKind`). Each
 /// inline literal is what the error-mapping ratchet greps for.
-fn throw_mux_error(env: &mut JNIEnv, e: &MuxError) {
+pub(crate) fn throw_mux_error(env: &mut JNIEnv, e: &MuxError) {
     use tst_core::error::MuxSenderErrorKind::*;
     let msg = e.to_string();
     match e.kind() {

@@ -14,7 +14,8 @@ import org.tstrans.SrtException;
  * immediately after the JNI call returns, so no double-free is possible even if
  * an exception is thrown mid-sequence.
  *
- * <p>({@code intoMuxSender}/{@code intoDemuxReceiver} arrive in the srt sub-wave B.)
+ * <p>{@link #intoMuxSender(org.tstrans.mpegts.MuxerConfig)} likewise consumes
+ * this handle. ({@code intoDemuxReceiver} arrives later in the srt sub-wave B.)
  *
  * <pre>{@code
  * try (Socket s = new Builder("srt://127.0.0.1:9000").caller().connect()) {
@@ -66,6 +67,42 @@ public final class Socket implements AutoCloseable {
         long h = nIntoReceiver(handle);
         handle = 0; // consumed — the native Socket box is moved into the Receiver
         return new Receiver(h);
+    }
+
+    /**
+     * Consume this socket and produce a {@link MuxSender} for the single-program
+     * configuration {@code programConfig}.
+     *
+     * <p>Same consumption semantics as {@link #intoSender()}: the underlying
+     * {@code tst_srt::Socket} moves into the new {@code MuxSender} and this
+     * socket's handle is zeroed. The socket is consumed even if the muxer config
+     * is rejected (the pending exception propagates from the native call).
+     *
+     * @param programConfig the muxer program configuration
+     * @return a {@code MuxSender} owning this socket + a configured muxer
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException on transport error; {@link org.tstrans.MuxException}
+     *     ({@code CONFIG_INVALID}) if the muxer config is rejected
+     */
+    public MuxSender intoMuxSender(org.tstrans.mpegts.MuxerConfig programConfig)
+            throws SrtException {
+        ensureOpen();
+        // Zero our handle BEFORE the native call. nIntoMuxSender consumes the
+        // Box<Socket> unconditionally (*Box::from_raw) but can still throw
+        // afterwards (muxer-config rejection / MuxSender::new failure). A pending
+        // JNI exception re-raises at this call site, so a statement AFTER the call
+        // (a trailing `handle = 0`) would NOT run — leaving a freed pointer that a
+        // later close() would double-free. Consume-first avoids that. Unlike
+        // intoSender/intoReceiver (infallible post-consume), this native is
+        // fallible, so the ordering is load-bearing.
+        long sock = handle;
+        handle = 0;
+        long h = nIntoMuxSender(sock, programConfig.programNumber(), programConfig.pmtPid(),
+            programConfig.pcrPid(), programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
+            programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
+            programConfig.streamPids(), programConfig.streamKinds(), programConfig.streamCodecs(),
+            programConfig.klvStreamTypes(), programConfig.klvCarriesPts());
+        return new MuxSender(h);
     }
 
     /**
@@ -132,6 +169,17 @@ public final class Socket implements AutoCloseable {
     private static native long nIntoSender(long handle) throws SrtException;
 
     private static native long nIntoReceiver(long handle) throws SrtException;
+
+    /**
+     * Consume the Box&lt;Socket&gt; and build a Box&lt;MuxSender&gt;. Returns 0 and
+     * throws on error. The Java caller MUST zero its own handle field after this
+     * returns (regardless of success/failure) since the native handle is
+     * consumed unconditionally.
+     */
+    private static native long nIntoMuxSender(long handle, int programNumber, int pmtPid,
+        int pcrPid, int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
+        boolean[] klvCarriesPts) throws SrtException;
 
     private static native HostPort nLocalAddr(long handle) throws SrtException;
 

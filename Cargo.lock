@@ -2269,6 +2269,8 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "tst-core",
+ "tst-pipeline",
+ "tst-srt",
 ]
 
 [[package]]

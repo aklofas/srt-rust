@@ -1,0 +1,1069 @@
+//! JNI surface for `org.tstrans.srt.ManagedMuxSender` and
+//! `org.tstrans.srt.ManagedDemuxReceiver` — the two convenience auto-reconnect
+//! SRT wrappers (sub-wave C, Task 2).
+//!
+//! Ports tst-py's `bindings/python/src/srt/managed_convenience.rs`. The sender
+//! wraps `MuxSender<ManagedTransport<SrtTransport>>`; the receiver wraps
+//! `ManagedDemuxReceiver<SrtTransport>` (which owns a `ManagedRecvTransport`).
+//! URL + socket config are captured at construction and replayed by the
+//! reconnect factory on each Broken/Closed event from the inner SRT socket.
+//!
+//! ## Reconnect-attempt counter (SOURCE-WINS divergence #1)
+//!
+//! Both wrappers expose `reconnectAttempts()` as a FACTORY-INSTRUMENTED ATTEMPT
+//! counter — NOT `reconnects_count()` (a SUCCESS counter). Mirroring tst-py,
+//! the factory closure bumps a captured `Arc<AtomicU64>` on every invocation
+//! BEFORE calling `connect_srt`/`listen_srt`; `nReconnectAttempts` loads it.
+//!
+//! ## Mode (SOURCE-WINS divergence #2)
+//!
+//! `ManagedMuxSender` REQUIRES `?mode=caller` (CONFIG_INVALID otherwise).
+//! `ManagedDemuxReceiver` accepts BOTH `?mode=listener` (default) AND
+//! `?mode=caller`, building `listen_srt`/`connect_srt` accordingly in both the
+//! initial connect and the factory.
+//!
+//! ## Threading model
+//!
+//! Single-threaded boxes (NO inner `Arc<Mutex>`) — the JVM follows the shipped
+//! single-thread `MuxSender`/`DemuxReceiver` model. `MuxSender` push methods
+//! reconstitute as a SHARED `&*ptr` (every `send_*` takes `&self` + internal
+//! mutex; concurrent pushes are sound). `ManagedDemuxReceiver::nNext` uses
+//! `&mut *ptr` (`recv_event` is `&mut self`). The receiver has NO byte sink.
+//!
+//! ## Stats drift (SOURCE-WINS divergence #4)
+//!
+//! `ManagedMuxSender` exposes a combined `TransportStats stats()` +
+//! `reconnectAttempts()` — NO `srtStats()`. `ManagedDemuxReceiver` exposes
+//! `SocketStats socketStats()` AND `SocketStats srtStats()` (the latter returns
+//! the SAME value as `socketStats`, return type `SocketStats`, no throw) +
+//! `reconnectAttempts()` — NO combined `stats()`.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+use jni::JNIEnv;
+use jni::objects::{JBooleanArray, JByteArray, JClass, JIntArray, JObject, JString};
+use jni::sys::{jboolean, jint, jlong, jobject};
+
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+};
+use tst_core::transport::TransportError;
+use tst_pipeline::{
+    ManagedDemuxReceiver as RustManagedDemuxReceiver, ManagedDemuxReceiverConfig,
+    ManagedRecvTransport, ManagedTransport, MuxSender as RustMuxSender, MuxSenderError,
+    MuxSenderErrorSource,
+};
+use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
+
+use crate::jutil::checked_u8;
+use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
+use crate::mpegts::{build_demux_config_from_args, convert_event};
+
+use super::JniCancel;
+use super::errors::{throw_srt, transport_error};
+use super::mux_sender::{build_muxer_stats, build_transport_stats};
+use super::stats::build_socket_stats;
+
+// ---------------------------------------------------------------------------
+// Port helpers — rebuild a fresh SrtTransport. Copied verbatim from tst-py's
+// managed_convenience.rs (every failure maps to TransportError::Broken so the
+// reconnect loop treats it as recoverable; the initial-connect path re-maps it
+// to CONNECT_FAILED at the JNI boundary, divergence #6).
+// ---------------------------------------------------------------------------
+
+/// Join `host:port`, bracketing bare IPv6 literals.
+fn join_host_port(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+/// Build a fresh `SrtTransport` connected as a caller. `cfg.merge_sender_defaults()`
+/// applies the sender-side socket defaults before connecting.
+fn connect_srt(host: &str, port: u16, cfg: &SocketConfig) -> Result<SrtTransport, TransportError> {
+    let mut cfg = cfg.clone();
+    cfg.merge_sender_defaults();
+    let addr = join_host_port(host, port);
+    let socket = Socket::connect_with(&cfg, addr.as_str()).map_err(|e| TransportError::Broken {
+        msg: format!("connect: {e}"),
+        errno_code: None,
+    })?;
+    Ok(SrtTransport::new(socket))
+}
+
+/// Bind a listener + accept one peer; return the accepted `SrtTransport`.
+fn listen_srt(host: &str, port: u16, cfg: &ListenerConfig) -> Result<SrtTransport, TransportError> {
+    let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
+    let addr = if host.contains(':') && !host.starts_with('[') {
+        format!("[{bind_host}]:{port}")
+    } else {
+        format!("{bind_host}:{port}")
+    };
+    let mut listener =
+        Listener::bind_with(cfg, addr.as_str()).map_err(|e| TransportError::Broken {
+            msg: format!("bind: {e}"),
+            errno_code: None,
+        })?;
+    let (socket, _peer) = listener.accept().map_err(|e| TransportError::Broken {
+        msg: format!("accept: {e}"),
+        errno_code: None,
+    })?;
+    Ok(SrtTransport::new(socket))
+}
+
+// ---------------------------------------------------------------------------
+// JniManagedMuxSender — wraps MuxSender<ManagedTransport<SrtTransport>>.
+// ---------------------------------------------------------------------------
+
+/// Native backing for `org.tstrans.srt.ManagedMuxSender`. Single-threaded box
+/// (NO inner mutex; the Rust shell serialises `send_*` through its own
+/// `Mutex<Inner>`). `factory_attempts` is bumped from inside the reconnect
+/// factory closure on every invocation.
+struct JniManagedMuxSender {
+    inner: RustMuxSender<ManagedTransport<SrtTransport>>,
+    factory_attempts: Arc<AtomicU64>,
+}
+
+/// Map a `MuxSenderError` (from any `send_*`) to a thrown Java exception.
+/// `Mux(...)` → `MuxException`; `Transport(...)` → `SrtException` per
+/// `TransportError` variant. Mirrors tst-py's `mux_sender_error_to_pyerr`.
+fn throw_managed_mux_sender_error(env: &mut JNIEnv, e: &MuxSenderError) {
+    match &e.source {
+        MuxSenderErrorSource::Mux(m) => throw_mux_error(env, m),
+        MuxSenderErrorSource::Transport(t) => transport_error(env, t),
+        // `MuxSenderErrorSource` may gain variants; route any future one to a
+        // generic SrtException(IO) with the Display message preserved.
+        _ => throw_srt(env, "IO", &e.to_string()),
+    }
+}
+
+/// Validate a native handle. Returns the live `*mut JniManagedMuxSender`, or
+/// throws `IllegalStateException` and returns `None` for a zero handle.
+fn checked_mux_sender(env: &mut JNIEnv, handle: jlong) -> Option<*mut JniManagedMuxSender> {
+    if handle == 0 {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedMuxSender is closed",
+        );
+        return None;
+    }
+    Some(handle as *mut JniManagedMuxSender)
+}
+
+/// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
+fn read_bytes(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
+    match env.convert_byte_array(arr) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            None
+        }
+    }
+}
+
+/// `ManagedMuxSender.nFromUrl(url, ...programConfig..., ...policyArgs...)` —
+/// build the muxer config, parse the caller-mode URL, do the initial connect,
+/// wrap it in a `ManagedTransport`, and hand it to `MuxSender`. Returns the
+/// boxed handle as `jlong`, or `0` with a pending exception on any failure.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    url: JString<'local>,
+    program_number: jint,
+    pmt_pid: jint,
+    pcr_pid: jint,
+    pcr_interval_ms: jint,
+    psi_interval_ms: jint,
+    buffer_packets: jint,
+    av1_carriage: jint,
+    stream_pids: JIntArray<'local>,
+    stream_kinds: JIntArray<'local>,
+    stream_codecs: JIntArray<'local>,
+    klv_stream_types: JIntArray<'local>,
+    klv_carries_pts: JBooleanArray<'local>,
+    max_attempts_present: jboolean,
+    max_attempts: jint,
+    backoff_kind: jint,
+    backoff_base_ms: jlong,
+    backoff_max_ms: jlong,
+    gap_buffer_capacity: jint,
+    overflow_policy: jint,
+) -> jlong {
+    // Build the MuxerConfig FIRST — a pending MuxException is thrown on Err(()).
+    let muxer_cfg = match build_muxer_config_from_arrays(
+        &mut env,
+        program_number,
+        pmt_pid,
+        pcr_pid,
+        pcr_interval_ms,
+        psi_interval_ms,
+        buffer_packets,
+        av1_carriage,
+        &stream_pids,
+        &stream_kinds,
+        &stream_codecs,
+        &klv_stream_types,
+        &klv_carries_pts,
+    ) {
+        Ok(c) => c,
+        Err(()) => return 0,
+    };
+
+    let url_str: String = match env.get_string(&url) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            return 0;
+        }
+    };
+
+    let parsed = match SrtUrl::parse(&url_str) {
+        Ok(p) => p,
+        Err(e) => {
+            super::errors::url_error(&mut env, &e);
+            return 0;
+        }
+    };
+    if parsed.mode != Mode::Caller {
+        let msg = format!(
+            "ManagedMuxSender.fromUrl requires mode=caller (default); got mode={:?}",
+            parsed.mode
+        );
+        throw_srt(&mut env, "CONFIG_INVALID", &msg);
+        return 0;
+    }
+
+    let mut sock_cfg = SocketConfig::default();
+    parsed.overlay.apply_to_socket(&mut sock_cfg);
+
+    let policy = super::build_reconnect_policy(
+        max_attempts_present != 0,
+        max_attempts,
+        backoff_kind,
+        backoff_base_ms,
+        backoff_max_ms,
+        gap_buffer_capacity,
+        overflow_policy,
+    );
+
+    // Reconnect factory: bump the attempt counter on every call, then dial.
+    // `ManagedTransport::new` requires `Fn + Send + Sync`.
+    let attempts = Arc::new(AtomicU64::new(0));
+    let attempts_for_factory = attempts.clone();
+    let host_for_factory = parsed.host.clone();
+    let port_for_factory = parsed.port;
+    let cfg_for_factory = sock_cfg.clone();
+    let factory = move || -> Result<SrtTransport, TransportError> {
+        attempts_for_factory.fetch_add(1, Ordering::Release);
+        connect_srt(&host_for_factory, port_for_factory, &cfg_for_factory)
+    };
+
+    // Initial connect — failure maps to CONNECT_FAILED (divergence #6), not
+    // BROKEN, so callers can distinguish it from runtime reconnect failures.
+    let initial = match connect_srt(&parsed.host, parsed.port, &sock_cfg) {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = match &e {
+                TransportError::Broken { msg, .. } => msg.clone(),
+                _ => format!("{e:?}"),
+            };
+            throw_srt(&mut env, "CONNECT_FAILED", &msg);
+            return 0;
+        }
+    };
+
+    let managed = ManagedTransport::new(initial, factory, policy);
+    match RustMuxSender::new(managed, muxer_cfg) {
+        Ok(sender) => Box::into_raw(Box::new(JniManagedMuxSender {
+            inner: sender,
+            factory_attempts: attempts,
+        })) as jlong,
+        Err(e) => {
+            throw_mux_error(&mut env, &e);
+            0
+        }
+    }
+}
+
+// ── Push family — single-stream variants ───────────────────────────────────
+
+/// `nPushVideo(handle, nal, pts, keyFrame)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>`. SHARED `&*ptr`
+    // borrow — `send_*` take `&self` + internal mutex (concurrent-push safe).
+    let jstruct = unsafe { &*ptr };
+    let Some(buf) = read_bytes(&mut env, &nal) else {
+        return;
+    };
+    if let Err(e) = jstruct
+        .inner
+        .send_video(&buf, Pts90khz::new(pts), key_frame != 0)
+    {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushKlv(handle, klv, pts, metadataServiceId)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    klv: JByteArray<'local>,
+    pts: jlong,
+    metadata_service_id: jint,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let Ok(service_id) = checked_u8(
+        &mut env,
+        i64::from(metadata_service_id),
+        "metadataServiceId",
+    ) else {
+        return; // IllegalArgumentException pending
+    };
+    let Some(buf) = read_bytes(&mut env, &klv) else {
+        return;
+    };
+    if let Err(e) = jstruct.inner.send_klv(&buf, Pts90khz::new(pts), service_id) {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushAudio(handle, frames, pts)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudio<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    frames: JByteArray<'local>,
+    pts: jlong,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let Some(buf) = read_bytes(&mut env, &frames) else {
+        return;
+    };
+    if let Err(e) = jstruct.inner.send_audio(&buf, Pts90khz::new(pts)) {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushSubtitle(handle, pts, payload)` — note the swapped arg order.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    pts: jlong,
+    payload: JByteArray<'local>,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let Some(buf) = read_bytes(&mut env, &payload) else {
+        return;
+    };
+    if let Err(e) = jstruct.inner.send_subtitle(&buf, Pts90khz::new(pts)) {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+// ── Push family — handle-targeted variants ─────────────────────────────────
+
+/// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
+        Ok(h) => h,
+        Err(_) => {
+            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+            return;
+        }
+    };
+    let Some(buf) = read_bytes(&mut env, &nal) else {
+        return;
+    };
+    if let Err(e) = jstruct
+        .inner
+        .send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+    {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    klv: JByteArray<'local>,
+    pts: jlong,
+    metadata_service_id: jint,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
+        Ok(h) => h,
+        Err(_) => {
+            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+            return;
+        }
+    };
+    let Ok(service_id) = checked_u8(
+        &mut env,
+        i64::from(metadata_service_id),
+        "metadataServiceId",
+    ) else {
+        return;
+    };
+    let Some(buf) = read_bytes(&mut env, &klv) else {
+        return;
+    };
+    if let Err(e) = jstruct
+        .inner
+        .send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
+    {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushAudioTo(handle, streamHandleRaw, frames, pts)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    frames: JByteArray<'local>,
+    pts: jlong,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
+        Ok(h) => h,
+        Err(_) => {
+            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+            return;
+        }
+    };
+    let Some(buf) = read_bytes(&mut env, &frames) else {
+        return;
+    };
+    if let Err(e) = jstruct.inner.send_audio_to(h, &buf, Pts90khz::new(pts)) {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+/// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    pts: jlong,
+    payload: JByteArray<'local>,
+) {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
+        Ok(h) => h,
+        Err(_) => {
+            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+            return;
+        }
+    };
+    let Some(buf) = read_bytes(&mut env, &payload) else {
+        return;
+    };
+    if let Err(e) = jstruct.inner.send_subtitle_to(h, &buf, Pts90khz::new(pts)) {
+        throw_managed_mux_sender_error(&mut env, &e);
+    }
+}
+
+// ── Handle getters ─────────────────────────────────────────────────────────
+
+/// `nVideoHandle(handle)` — first configured video stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nVideoHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return -1;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    jstruct
+        .inner
+        .video_handles()
+        .into_iter()
+        .next()
+        .map(|h| i64::from(h.raw()))
+        .unwrap_or(-1)
+}
+
+/// `nKlvHandle(handle)` — first configured KLV stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nKlvHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return -1;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    jstruct
+        .inner
+        .klv_handles()
+        .into_iter()
+        .next()
+        .map(|h| i64::from(h.raw()))
+        .unwrap_or(-1)
+}
+
+/// `nAudioHandle(handle)` — first configured audio stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nAudioHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return -1;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    jstruct
+        .inner
+        .audio_handles()
+        .into_iter()
+        .next()
+        .map(|h| i64::from(h.raw()))
+        .unwrap_or(-1)
+}
+
+/// `nSubtitleHandle(handle)` — first configured subtitle stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSubtitleHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return -1;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    jstruct
+        .inner
+        .subtitle_handles()
+        .into_iter()
+        .next()
+        .map(|h| i64::from(h.raw()))
+        .unwrap_or(-1)
+}
+
+// ── Stats + lifecycle ──────────────────────────────────────────────────────
+
+/// `nStats(handle)` — `TransportStats` projecting the SRT socket counters + the
+/// muxer's program/packet totals. Identical to `mux_sender.rs::nStats`. Returns
+/// null on a JNI builder error (non-fatal).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return JObject::null();
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    let sock = jstruct.inner.socket_stats().unwrap_or_default();
+    let pipe = jstruct.inner.stats();
+
+    let sock_obj = match build_socket_stats(&mut env, &sock) {
+        Ok(o) => o,
+        Err(_) => return JObject::null(),
+    };
+    let mux_obj = match build_muxer_stats(
+        &mut env,
+        pipe.packets_sent as i64,
+        pipe.bytes_sent as i64,
+        i64::from(pipe.programs_configured),
+    ) {
+        Ok(o) => o,
+        Err(_) => return JObject::null(),
+    };
+    match build_transport_stats(&mut env, &sock_obj, &mux_obj) {
+        Ok(o) => o,
+        Err(_) => JObject::null(),
+    }
+}
+
+/// `nReconnectAttempts(handle)` — total factory invocations since construction.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectAttempts(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+        return 0;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*ptr };
+    jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+}
+
+/// `nClose(handle)` — drop the boxed sender (best-effort drain + close). No-op on
+/// a zero handle so a double `close()` is safe.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nClose(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    if handle != 0 {
+        // SAFETY: handle was produced by Box::into_raw and is dropped exactly
+        // once (Java zeroes its field after this call).
+        let b = unsafe { Box::from_raw(handle as *mut JniManagedMuxSender) };
+        b.inner.close();
+        drop(b);
+    }
+}
+
+/// `nIsAlive(handle)` — whether the sender owns a live transport.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nIsAlive(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
+    let jstruct = unsafe { &*(handle as *const JniManagedMuxSender) };
+    u8::from(jstruct.inner.is_alive())
+}
+
+// ---------------------------------------------------------------------------
+// JniManagedDemuxReceiver — wraps ManagedDemuxReceiver<SrtTransport>.
+// ---------------------------------------------------------------------------
+
+/// Native backing for `org.tstrans.srt.ManagedDemuxReceiver`. Single-threaded
+/// box (NO inner mutex, NO byte sink — divergence #5). `factory_attempts` is
+/// bumped from inside the reconnect factory closure on every invocation.
+struct JniManagedDemuxReceiver {
+    inner: RustManagedDemuxReceiver<SrtTransport>,
+    factory_attempts: Arc<AtomicU64>,
+}
+
+/// Validate a native handle. Returns the live `*mut JniManagedDemuxReceiver`, or
+/// throws `IllegalStateException` and returns `None` for a zero handle.
+fn checked_demux_receiver(env: &mut JNIEnv, handle: jlong) -> Option<*mut JniManagedDemuxReceiver> {
+    if handle == 0 {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedDemuxReceiver is closed",
+        );
+        return None;
+    }
+    Some(handle as *mut JniManagedDemuxReceiver)
+}
+
+/// Shared construction body for `nFromUrl` / `nFromUrlWithConfig`: parse the URL
+/// (accepting BOTH listener and caller mode — divergence #2), do the initial
+/// listen/connect, wrap in a `ManagedRecvTransport` + `ManagedDemuxReceiver`.
+/// Returns the boxed handle as `jlong`, or `0` with a pending exception.
+#[allow(clippy::too_many_arguments)]
+fn build_demux_from_url(
+    env: &mut JNIEnv,
+    url: &JString,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
+    max_attempts_present: jboolean,
+    max_attempts: jint,
+    backoff_kind: jint,
+    backoff_base_ms: jlong,
+    backoff_max_ms: jlong,
+    gap_buffer_capacity: jint,
+    overflow_policy: jint,
+) -> jlong {
+    let url_str: String = match env.get_string(url) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            return 0;
+        }
+    };
+
+    let parsed = match SrtUrl::parse(&url_str) {
+        Ok(p) => p,
+        Err(e) => {
+            super::errors::url_error(env, &e);
+            return 0;
+        }
+    };
+    // Divergence #2: accept BOTH modes — listener (default) AND caller.
+    let is_listener = parsed.mode == Mode::Listener;
+    let mut listener_cfg = ListenerConfig::default();
+    let mut sock_cfg = SocketConfig::default();
+    if is_listener {
+        parsed.overlay.apply_to_listener(&mut listener_cfg);
+    } else {
+        parsed.overlay.apply_to_socket(&mut sock_cfg);
+    }
+    let host = parsed.host.clone();
+    let port = parsed.port;
+
+    let policy = super::build_reconnect_policy(
+        max_attempts_present != 0,
+        max_attempts,
+        backoff_kind,
+        backoff_base_ms,
+        backoff_max_ms,
+        gap_buffer_capacity,
+        overflow_policy,
+    );
+
+    // Reconnect factory: bump the attempt counter on every call, then re-bind /
+    // re-dial per the captured mode. `ManagedRecvTransport::new` takes
+    // `Box<dyn FnMut() -> Result<R, TransportError> + Send>` (no Sync bound).
+    let attempts = Arc::new(AtomicU64::new(0));
+    let attempts_for_factory = attempts.clone();
+    let host_for_factory = host.clone();
+    let listener_cfg_for_factory = listener_cfg.clone();
+    let sock_cfg_for_factory = sock_cfg.clone();
+    let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
+        Box::new(move || {
+            attempts_for_factory.fetch_add(1, Ordering::Release);
+            if is_listener {
+                listen_srt(&host_for_factory, port, &listener_cfg_for_factory)
+            } else {
+                connect_srt(&host_for_factory, port, &sock_cfg_for_factory)
+            }
+        });
+
+    // Initial transport (listen or connect) — failure maps to CONNECT_FAILED
+    // (divergence #6), not BROKEN.
+    let initial = if is_listener {
+        listen_srt(&host, port, &listener_cfg)
+    } else {
+        connect_srt(&host, port, &sock_cfg)
+    };
+    let initial = match initial {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = match &e {
+                TransportError::Broken { msg, .. } => msg.clone(),
+                _ => format!("{e:?}"),
+            };
+            throw_srt(env, "CONNECT_FAILED", &msg);
+            return 0;
+        }
+    };
+
+    let managed = ManagedRecvTransport::new(initial, factory, policy);
+    let receiver = match opts {
+        None => RustManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default()),
+        Some(opts) => RustManagedDemuxReceiver::with_demux_options(
+            managed,
+            opts,
+            ManagedDemuxReceiverConfig::default(),
+        ),
+    };
+    Box::into_raw(Box::new(JniManagedDemuxReceiver {
+        inner: receiver,
+        factory_attempts: attempts,
+    })) as jlong
+}
+
+/// `ManagedDemuxReceiver.nFromUrl(url, ...policyArgs...)` — default demux options.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrl<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    url: JString<'local>,
+    max_attempts_present: jboolean,
+    max_attempts: jint,
+    backoff_kind: jint,
+    backoff_base_ms: jlong,
+    backoff_max_ms: jlong,
+    gap_buffer_capacity: jint,
+    overflow_policy: jint,
+) -> jlong {
+    build_demux_from_url(
+        &mut env,
+        &url,
+        None,
+        max_attempts_present,
+        max_attempts,
+        backoff_kind,
+        backoff_base_ms,
+        backoff_max_ms,
+        gap_buffer_capacity,
+        overflow_policy,
+    )
+}
+
+/// `ManagedDemuxReceiver.nFromUrlWithConfig(url, ...policyArgs..., ...demuxArgs...)`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrlWithConfig<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    url: JString<'local>,
+    max_attempts_present: jboolean,
+    max_attempts: jint,
+    backoff_kind: jint,
+    backoff_base_ms: jlong,
+    backoff_max_ms: jlong,
+    gap_buffer_capacity: jint,
+    overflow_policy: jint,
+    strict: jint,
+    pes_cap_per_pid: jlong,
+    pes_cap_total: jlong,
+    cfi: jboolean,
+    av1: jint,
+    au_cell_cap: jlong,
+    lenient_psi: jboolean,
+) -> jlong {
+    let opts = build_demux_config_from_args(
+        strict,
+        pes_cap_per_pid,
+        pes_cap_total,
+        cfi,
+        av1,
+        au_cell_cap,
+        lenient_psi,
+    );
+    build_demux_from_url(
+        &mut env,
+        &url,
+        Some(opts),
+        max_attempts_present,
+        max_attempts,
+        backoff_kind,
+        backoff_base_ms,
+        backoff_max_ms,
+        gap_buffer_capacity,
+        overflow_policy,
+    )
+}
+
+/// `nNext(handle)` — block until the next `DemuxEvent`, returning it as a Java
+/// object; Java `null` on clean EOF. Throws `SrtException` / `DemuxException` on
+/// a recv-side error. Emits `DemuxEvent.ReconnectDiscontinuity` once after each
+/// transport reconnect. No byte sink (divergence #5), so no captured-exception
+/// drain.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nNext<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jobject {
+    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+        return JObject::null().into_raw();
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    // `recv_event` is `&mut self` (single-threaded use per the Receiver model).
+    let jstruct = unsafe { &mut *ptr };
+
+    // Bind the result so the `&mut inner` borrow ends here.
+    let res = jstruct.inner.recv_event();
+    match res {
+        Ok(None) => JObject::null().into_raw(),
+        Ok(Some(ev)) => match convert_event(&mut env, &ev) {
+            Ok(Some(obj)) => obj.into_raw(),
+            // All current `DemuxEvent` variants map to a record; retained as a
+            // forward-compat guard (mirrors demux_receiver::nNext).
+            Ok(None) => JObject::null().into_raw(),
+            Err(()) => {
+                // Event-conversion JNI failure. `throw_demux` guards against
+                // clobbering a pending exception; the INTERNAL literal stays
+                // ratchet-visible.
+                crate::error::throw_demux(&mut env, "INTERNAL", "event conversion failed");
+                JObject::null().into_raw()
+            }
+        },
+        Err(e) => {
+            super::demux_receiver::throw_demux_recv_error(&mut env, &e);
+            JObject::null().into_raw()
+        }
+    }
+}
+
+/// `nCancelHandle(handle)` — return a shareable cancel handle that wakes a thread
+/// parked in `nNext`. Throws `IllegalStateException` if the inner is
+/// mid-reconnect at the time of the call (no live cancel handle).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nCancelHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+        return 0;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    let jstruct = unsafe { &*ptr };
+    match jstruct.inner.cancel_handle() {
+        Some(arc) => JniCancel {
+            inner: arc,
+            flag: AtomicBool::new(false),
+        }
+        .into_handle(),
+        None => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedDemuxReceiver did not return a cancel handle (mid-reconnect)",
+            );
+            0
+        }
+    }
+}
+
+/// `nSocketStats(handle)` — scheme-neutral 16-field wire stats. Uses
+/// `unwrap_or_default` so a mid-reconnect receiver yields a zeroed snapshot.
+/// Returns null on a JNI builder error (non-fatal).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSocketStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+        return JObject::null();
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    let jstruct = unsafe { &*ptr };
+    let stats = jstruct.inner.socket_stats().unwrap_or_default();
+    match build_socket_stats(&mut env, &stats) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
+    }
+}
+
+/// `nSrtStats(handle)` — stats drift (divergence #4): returns the SAME
+/// `SocketStats` view as `nSocketStats` and does NOT throw. Mirrors tst-py's
+/// `PyManagedDemuxReceiver::srt_stats`, which delegates to `socket_stats`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSrtStats<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JObject<'local> {
+    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+        return JObject::null();
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    let jstruct = unsafe { &*ptr };
+    let stats = jstruct.inner.socket_stats().unwrap_or_default();
+    match build_socket_stats(&mut env, &stats) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
+    }
+}
+
+/// `nReconnectAttempts(handle)` — total factory invocations since construction.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nReconnectAttempts(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+        return 0;
+    };
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    let jstruct = unsafe { &*ptr };
+    jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+}
+
+/// `nClose(handle)` — close the underlying transport and drop the box. No-op on a
+/// zero handle so a double `close()` is safe.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nClose(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    if handle != 0 {
+        // SAFETY: handle was produced by Box::into_raw and is dropped exactly
+        // once (Java zeroes its field after this call).
+        let mut b = unsafe { Box::from_raw(handle as *mut JniManagedDemuxReceiver) };
+        b.inner.close();
+        drop(b);
+    }
+}
+
+/// `nIsAlive(handle)` — whether the receiver owns a live transport.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nIsAlive(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
+    let jstruct = unsafe { &*(handle as *const JniManagedDemuxReceiver) };
+    u8::from(jstruct.inner.is_alive())
+}

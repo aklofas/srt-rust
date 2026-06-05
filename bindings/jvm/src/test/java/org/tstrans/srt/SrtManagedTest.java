@@ -3,6 +3,8 @@ package org.tstrans.srt;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Non-live (socket-free) checks for the managed basic-bytes wrappers. URL /
@@ -75,5 +77,56 @@ class SrtManagedTest {
         assertEquals(10000, p.backoffMaxMs());
         assertEquals(256, p.gapBufferCapacity());
         assertEquals(0, p.overflowPolicy()); // DROP_OLDEST
+    }
+
+    // ── Convenience wrappers (sub-wave C, Task 2) ─────────────────────────
+
+    private static MuxerConfig sampleProgram() {
+        return MuxerConfig.builder()
+            .programNumber(1)
+            .pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+    }
+
+    /**
+     * A listener-mode URL supplied to {@code ManagedMuxSender.fromUrl} must throw
+     * {@code CONFIG_INVALID} — the sender checks {@code mode=caller} up-front,
+     * before any connect (socket-free).
+     */
+    @Test
+    void managedMuxSenderRejectsListenerModeUrl() {
+        var e = assertThrows(
+            SrtException.class,
+            () -> ManagedMuxSender.fromUrl("srt://127.0.0.1:9000?mode=listener", sampleProgram())
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
+    }
+
+    /**
+     * A clearly-malformed URL fails {@code SrtUrl::parse} → {@code CONFIG_INVALID}
+     * (rejected at parse time, before any connect).
+     */
+    @Test
+    void managedMuxSenderRejectsMalformedUrl() {
+        var e = assertThrows(
+            SrtException.class,
+            () -> ManagedMuxSender.fromUrl("not-a-url", sampleProgram())
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
+    }
+
+    /**
+     * A clearly-malformed URL fails {@code SrtUrl::parse} → {@code CONFIG_INVALID}.
+     * The receiver accepts BOTH listener and caller mode, so we only assert the
+     * malformed-URL case (a valid-but-unconnectable URL would block on bind/dial).
+     */
+    @Test
+    void managedDemuxReceiverRejectsMalformedUrl() {
+        var e = assertThrows(
+            SrtException.class,
+            () -> ManagedDemuxReceiver.fromUrl("not-a-url")
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
     }
 }

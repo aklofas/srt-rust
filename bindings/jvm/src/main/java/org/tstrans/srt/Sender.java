@@ -18,7 +18,7 @@ import org.tstrans.SrtException;
  * sender per thread, or guard with external synchronisation.
  *
  * <p><b>Closing:</b> use try-with-resources or call {@link #close()} explicitly.
- * After close, further calls throw {@code SrtException(CLOSED)}.
+ * After close, further calls throw {@code IllegalStateException}.
  *
  * <p><b>Byte-copy posture (JDK 17):</b> {@code sendBytes} copies the supplied
  * array across the JNI boundary; a zero-copy path (FFM {@code MemorySegment})
@@ -136,7 +136,7 @@ public final class Sender implements AutoCloseable {
      * Close the sender. Best-effort flushes any buffered partial bundle, then
      * closes the underlying libsrt socket. Idempotent — subsequent calls are
      * no-ops. After close, further {@link #sendBytes}/{@link #flush} calls
-     * throw {@code SrtException(CLOSED)}.
+     * throw {@code IllegalStateException}.
      */
     @Override
     public void close() {

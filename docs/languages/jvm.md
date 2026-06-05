@@ -11,21 +11,24 @@
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
 > - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
 > - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
+> - How to send and receive pre-muxed MPEG-TS over SRT (`org.tstrans.srt`)
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
 > - How this binding differs from the Rust core
 
-> **Status (mpegts demux + offline mux + typed KLV + codec parsers + file I/O
-> surfaces shipped):** the JVM binding ships the bootstrap `org.tstrans.Version`
-> hello-world; the complete `org.tstrans.mpegts` **demux** surface (`Demuxer`,
-> `DemuxerConfig`, the sealed `DemuxEvent` hierarchy, `StreamId`, codec / kind
-> enums); the offline **mux** surface (`Muxer`, `MuxerConfig`, push family +
-> `pull` + `writeFile` / `MuxerFileSink`); the full **typed KLV** surface
-> (`org.tstrans.klv` — decode/encode for ST 0601 / 0102 / 0605 / 0903, the
-> `parseUniversal` dispatcher, and the field-error model); the **codec parsers**
-> (`org.tstrans.codec` — H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio,
-> typed NAL / OBU / ADTS payloads on demux events); and the **file I/O helpers**
-> (`org.tstrans.io` — `parseFile`, `probe`, `extractKlv`). SRT / RTP transport
-> and the multi-platform fat JAR are on the roadmap.
+> **Status (mpegts demux + offline mux + typed KLV + codec parsers + file I/O +
+> SRT transport shipped):** the JVM binding ships the bootstrap
+> `org.tstrans.Version` hello-world; the complete `org.tstrans.mpegts` **demux**
+> surface (`Demuxer`, `DemuxerConfig`, the sealed `DemuxEvent` hierarchy,
+> `StreamId`, codec / kind enums); the offline **mux** surface (`Muxer`,
+> `MuxerConfig`, push family + `pull` + `writeFile` / `MuxerFileSink`); the full
+> **typed KLV** surface (`org.tstrans.klv` — decode/encode for ST 0601 / 0102 /
+> 0605 / 0903, the `parseUniversal` dispatcher, and the field-error model); the
+> **codec parsers** (`org.tstrans.codec` — H.264 / H.265 / H.266 / AV1 / AAC /
+> MPEG-2 audio, typed NAL / OBU / ADTS payloads on demux events); the **file I/O
+> helpers** (`org.tstrans.io` — `parseFile`, `probe`, `extractKlv`); and the
+> **SRT transport** (`org.tstrans.srt` — `Sender`/`Receiver` pipeline shells and
+> the `Builder`/`Socket`/`Listener`/`CancelHandle` low-level surface). RTP
+> transport and the multi-platform fat JAR are on the roadmap.
 > This page documents only what exists today.
 
 ## Install
@@ -713,6 +716,151 @@ The `MuxerFileSink` push family (`pushVideo`, `pushKlv`, `pushAudio`,
 units (90 kHz) are identical; the `(pts, payload)` argument order on
 `pushSubtitle` matches `Muxer.pushSubtitle`.
 
+## SRT transport (`org.tstrans.srt`)
+
+The `org.tstrans.srt` package wraps `tst_pipeline::Sender`/`Receiver` and the
+low-level `tst_srt::SocketBuilder`/`Socket`/`Listener` for sending and receiving
+pre-muxed MPEG-TS bytes over SRT. SRT is default-on — no feature flag is needed.
+
+### Sender hello
+
+The simplest sender: connect to a peer in caller mode and stream bytes.
+
+```java
+import org.tstrans.srt.Sender;
+import org.tstrans.SrtException;
+
+// mode=caller is the default when ?mode= is omitted.
+try (var tx = Sender.fromUrl(
+        "srt://host:9000?mode=caller&passphrase=secret")) {
+    tx.sendBytes(tsBytes);  // push pre-muxed TS bytes (any length)
+    tx.flush();             // emit any buffered partial bundle
+}
+```
+
+`sendBytes` accepts raw TS bytes of any length; the sender internally frames
+them into 7-packet (1316-byte) SRT bundles. Call `flush()` after the last push
+to emit any partial bundle.
+
+### Receiver hello
+
+The simplest receiver: bind in listener mode, accept one connection, and drain
+packets.
+
+```java
+import org.tstrans.srt.Receiver;
+import org.tstrans.SrtException;
+
+// Receiver.fromUrl does a one-shot bind + accept.
+try (var rx = Receiver.fromUrl("srt://:9000?mode=listener")) {
+    while (true) {
+        byte[] pkt = rx.recvBytes();  // one 188-byte TS packet per call
+        // process pkt ...
+    }
+}
+```
+
+`recvBytes()` returns one 188-byte TS packet per call (the SRT live-mode unit).
+Break the loop when `recvBytes()` throws `SrtException(CLOSED)` or
+`SrtException(BROKEN)` — both signal end of stream.
+
+### Builder → Socket → intoReceiver (low-level path)
+
+Use the `Builder` → `Listener` → `accept` → `Socket` → `intoReceiver()` path
+when you need the listener's bound port (for example, when binding to an
+ephemeral `:0` port and reporting it to the sender):
+
+```java
+import org.tstrans.srt.*;
+import org.tstrans.SrtException;
+
+// Bind to a kernel-assigned ephemeral port.
+try (Listener listener = new Builder("srt://127.0.0.1:0?mode=listener")
+        .listener()
+        .listen()) {
+
+    int port = listener.localAddr().port();   // get the assigned port
+    System.out.println("listening on port " + port);
+
+    // Accept the first incoming peer (infinite wait).
+    // Use accept(null) rather than accept(timeoutMs) for reliable
+    // TSBPD-wakeup on the accepted socket (see Gotchas below).
+    Socket sock = listener.accept(null);
+    try (Receiver rx = sock.intoReceiver()) { // consumes the Socket
+        byte[] pkt = rx.recvBytes();
+        // ...
+    }
+}
+```
+
+The accepted `Socket` is consumed by `intoReceiver()` — the `Socket` handle
+is zeroed immediately after the JNI call. Attempting to call any `Socket`
+method after `intoReceiver()` throws `IllegalStateException`. To produce a
+sender from an accepted socket use `sock.intoSender()` instead.
+
+`Builder` also exposes `connect()` for the caller side:
+
+```java
+try (Socket sock = new Builder("srt://host:9000")
+        .caller()
+        .latencyMs(200)
+        .passphrase("hunter2hunter2")
+        .connect()) {
+    try (Sender tx = sock.intoSender()) {
+        tx.sendBytes(tsBytes);
+        tx.flush();
+    }
+}
+```
+
+### Cancellation
+
+Obtain a `CancelHandle` from an open `Sender` or `Receiver` and call
+`cancel()` from another thread to unblock a parked `sendBytes` /
+`recvBytes` call:
+
+```java
+var tx = Sender.fromUrl("srt://host:9000?mode=caller");
+var cancel = tx.cancelHandle();
+
+// On another thread:
+cancel.cancel();  // wakes tx.sendBytes() → throws SrtException(BROKEN or CLOSED)
+```
+
+`CancelHandle` is safe to share across threads. The first `cancel()` call
+closes the underlying libsrt socket; subsequent calls are no-ops.
+
+### SRT-specific Gotchas
+
+- **One-shot accept on `Receiver.fromUrl`.** `Receiver.fromUrl` binds,
+  listens, and accepts exactly one connection — it is not a multi-client
+  server. For a server that accepts many peers, use `Builder.listener().listen()`
+  and iterate or call `listener.accept(null)` in a loop.
+- **`accept(null)` vs `accept(timeoutMs)`.** On the accepted socket,
+  `recvBytes()` uses libsrt's edge-triggered epoll internally. If you use
+  `accept(timeoutMs)` (epoll-based accept), there is a subtle interaction
+  where the accept epoll subscription can prevent `srt_recv` from waking on
+  TSBPD delivery when data arrives before `recvBytes()` is called. Prefer
+  `accept(null)` (direct `srt_accept`) for the accepted socket's receiver path.
+  `Receiver.fromUrl` always uses `srt_accept` directly and is unaffected.
+- **Cancel wakes with `BROKEN` or `CLOSED`.** `CancelHandle.cancel()` wakes a
+  thread parked in `sendBytes` or `recvBytes`; that call throws
+  `SrtException(BROKEN)` or `SrtException(CLOSED)`. Catch both if your code
+  must distinguish a cancel from a peer hangup.
+- **JDK-17 byte-copy posture.** `sendBytes` copies the supplied array across
+  the JNI boundary; `recvBytes` returns a heap `byte[]` copy. A zero-copy
+  path using FFM `MemorySegment` is deferred to a JDK-22+ release.
+- **`recvBytes()` returns one packet quantum.** Each `recvBytes()` call
+  returns exactly one 188-byte TS packet. Accumulate packets to reconstruct
+  a larger frame.
+- **`Builder.listen()` requires `?mode=listener` in the URL.** The `Builder`
+  URL must carry `?mode=listener`; calling `.listener()` sets the Java-side
+  mode but does NOT inject the URL parameter. Canonical form:
+  `new Builder("srt://:9000?mode=listener").listener().listen()`.
+- **Negative knob values throw `IllegalArgumentException`.** All non-negative
+  knob setters (`latencyMs`, `connectTimeoutMs`, etc.) reject negative values
+  at construction time, mirroring tst-py's `u32`-typed API.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each
@@ -742,7 +890,8 @@ units (90 kHz) are identical; the `(pts, payload)` argument order on
 
 ## Where this binding differs from the Rust core
 
-- **Demux + offline mux + typed KLV + codec parsers + file I/O shipped.**
+- **Demux + offline mux + typed KLV + codec parsers + file I/O + SRT
+  transport shipped.**
   The JVM binding surfaces the `org.tstrans.mpegts.Demuxer` receive path
   (feed bytes → typed `DemuxEvent`s with typed NAL / OBU / ADTS payloads),
   the offline `org.tstrans.mpegts.Muxer` send path (config builder → push
@@ -750,9 +899,11 @@ units (90 kHz) are identical; the `(pts, payload)` argument order on
   surface (ST 0601 / 0102 / 0605 / 0903 decode + encode + `parseUniversal`
   dispatcher), the `org.tstrans.codec` elementary-stream parsers (H.264 /
   H.265 / H.266 / AV1 / AAC / MPEG-2 audio), the `org.tstrans.io` file
-  helpers (`parseFile`, `probe`, `extractKlv`), and the `org.tstrans.Version`
-  bootstrap. SRT / RTP transport is on the roadmap. The Rust core has it;
-  only the JNI wrap is the remaining work.
+  helpers (`parseFile`, `probe`, `extractKlv`), the `org.tstrans.srt` SRT
+  transport surface (`Sender`/`Receiver` pipeline shells + the low-level
+  `Builder`/`Socket`/`Listener`/`CancelHandle`), and the `org.tstrans.Version`
+  bootstrap. RTP transport is on the roadmap. The Rust core has it; only
+  the JNI wrap is the remaining work.
 - **JDK 17 baseline.** The examples use `instanceof` pattern matching, not
   `switch`-on-sealed (which needs JDK 21+). `switch` patterns work on
   21+, but `instanceof` is the portable form on the 17 baseline.
@@ -784,7 +935,10 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
 - **codec** — H.264 / H.265 / H.266 / AV1 + audio parsers under
   `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS) — **SHIPPED.**
 - **io** — file inspection helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`) — **SHIPPED.**
-- **srt** — live SRT transport (Sender / Receiver / MuxSender / DemuxReceiver).
+- **srt (sub-wave A)** — `Sender` / `Receiver` pipeline shells + `Builder` /
+  `Socket` / `Listener` / `CancelHandle` / `SocketStats` / `SrtStats` — **SHIPPED.**
+- **srt (sub-wave B/C)** — `MuxSender` / `DemuxReceiver` high-level shells and
+  managed reconnect wrappers.
 - **rtp** — MPEG-TS-over-RTP transport.
 - **pipeline** — reconnect wrappers + pairing shells.
 - **multi-platform fat JAR + Maven Central publish** — single JAR bundling

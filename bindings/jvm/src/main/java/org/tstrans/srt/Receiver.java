@@ -17,7 +17,7 @@ import org.tstrans.SrtException;
  * Use one receiver per thread, or guard with external synchronisation.
  *
  * <p><b>Closing:</b> use try-with-resources or call {@link #close()} explicitly.
- * After close, further calls throw {@code SrtException(CLOSED)}.
+ * After close, further calls throw {@code IllegalStateException}.
  *
  * <p><b>Byte-copy posture (JDK 17):</b> {@link #recvBytes()} returns a heap
  * {@code byte[]} copy of the received packet. A zero-copy path (FFM
@@ -140,7 +140,7 @@ public final class Receiver implements AutoCloseable {
     /**
      * Close the receiver. Closes the underlying libsrt socket. Idempotent —
      * subsequent calls are no-ops. After close, further {@link #recvBytes}
-     * calls throw {@code SrtException(CLOSED)}.
+     * calls throw {@code IllegalStateException}.
      */
     @Override
     public void close() {

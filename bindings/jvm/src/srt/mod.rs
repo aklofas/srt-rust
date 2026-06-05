@@ -1,5 +1,9 @@
 //! `org.tstrans.srt` — SRT transport JNI surface.
 
+pub(crate) mod errors;
+mod stats;
+mod transport;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -16,7 +20,6 @@ pub(crate) struct JniCancel {
 }
 
 impl JniCancel {
-    #[allow(dead_code)] // first caller lands in Task 2 (Sender/Receiver/Builder cancel_handle)
     pub(crate) fn into_handle(self) -> jlong {
         Box::into_raw(Box::new(self)) as jlong
     }

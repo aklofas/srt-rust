@@ -8,9 +8,16 @@ public final class DemuxException extends BindingException {
     private static final long serialVersionUID = 1L;
 
     /** Discriminant; values match the Rust {@code DemuxError} variants. */
-    // UNEXPECTED_EOF (in tst-py's DemuxErrorKind) is reserved for the file-helper/io wave; the raw demux feed path produces none of it. It returns to this enum when that producer lands.
     public enum Kind {
-        SYNC_LOSS, BAD_PMT, BAD_PES, STRICT_REJECTION, INTERNAL
+        SYNC_LOSS, BAD_PMT, BAD_PES,
+        /**
+         * Parity-only constant mirroring tst-py's vestigial {@code DemuxErrorKind.UNEXPECTED_EOF}:
+         * there is NO producer in {@code tst_core::DemuxError} (the file path treats truncation as
+         * clean EOF and surfaces read failures as native {@code IOException}). Exempted in
+         * {@code scripts/check/jvm/error-mapping-coverage.sh}.
+         */
+        UNEXPECTED_EOF,
+        STRICT_REJECTION, INTERNAL
     }
 
     private final Kind kind;

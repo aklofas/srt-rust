@@ -16,14 +16,16 @@ class ErrorModelTest {
 
     @Test
     void kindHasAllRustVariants() {
-        // Mirrors the raw tst-core::DemuxError producer variants (5). tst-py's
-        // DemuxErrorKind also lists UNEXPECTED_EOF, which has no raw-feed
-        // producer; it is reserved here for the io/file-helper wave.
+        // 5 constants map raw tst-core::DemuxError producer variants; UNEXPECTED_EOF
+        // is a 6th, parity-only constant: tst-py's DemuxErrorKind carries the same
+        // dead entry (no producer in tst_core::DemuxError — the file path treats
+        // truncation as clean EOF and surfaces read failures as native IOException).
         DemuxException.Kind[] ks = DemuxException.Kind.values();
-        assertEquals(5, ks.length);
+        assertEquals(6, ks.length);
         // names asserted so a Rust-side rename is caught here.
         for (String n : new String[] {
-                "SYNC_LOSS", "BAD_PMT", "BAD_PES", "STRICT_REJECTION", "INTERNAL"}) {
+                "SYNC_LOSS", "BAD_PMT", "BAD_PES", "UNEXPECTED_EOF",
+                "STRICT_REJECTION", "INTERNAL"}) {
             DemuxException.Kind.valueOf(n); // throws if missing
         }
     }

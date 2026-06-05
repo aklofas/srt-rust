@@ -339,4 +339,45 @@ public final class Codec {
     public static Av1ObuStream parseAv1ObuStream(List<Obu> obus) {
         return nParseAv1ObuStream(obus);
     }
+
+    // --- AAC native entry points -----------------------------------------
+    // nParseAacFrames is strict: it leaves a pending CodecParseException and
+    // returns null on the first parse error. nParseAacFramesWithResync is
+    // best-effort: it never throws, skipping frames that fail to parse.
+
+    private static native List<AdtsFrame> nParseAacFrames(byte[] bytes);
+
+    private static native List<AdtsFrame> nParseAacFramesWithResync(byte[] bytes);
+
+    /**
+     * Parse all AAC ADTS frames from an elementary-stream buffer (strict —
+     * fail-fast).
+     *
+     * <p>{@code bytes} is ADTS-framed AAC (e.g. a PES payload). The first parse
+     * error terminates the parse and raises {@link CodecParseException}; use
+     * {@link #parseAacFramesWithResync(byte[])} to tolerate corruption.
+     *
+     * @param bytes the ADTS-framed AAC bytes
+     * @return the decoded frames, in stream order
+     * @throws CodecParseException on the first malformed or truncated frame
+     */
+    public static List<AdtsFrame> parseAacFrames(byte[] bytes) throws CodecParseException {
+        return nParseAacFrames(bytes);
+    }
+
+    /**
+     * Parse all AAC ADTS frames from an elementary-stream buffer (best-effort —
+     * resyncing).
+     *
+     * <p>On a parse error the parser scans forward for the next plausible 12-bit
+     * ADTS syncword and resumes; frames that fail to parse are silently dropped.
+     * This method never throws — suitable for stats / telemetry over
+     * possibly-corrupted streams.
+     *
+     * @param bytes the ADTS-framed AAC bytes
+     * @return the successfully decoded frames, in stream order
+     */
+    public static List<AdtsFrame> parseAacFramesWithResync(byte[] bytes) {
+        return nParseAacFramesWithResync(bytes);
+    }
 }

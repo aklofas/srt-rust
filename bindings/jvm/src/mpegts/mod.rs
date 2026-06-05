@@ -71,6 +71,36 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
+    let opts = build_demux_config_from_args(
+        strict,
+        pes_cap_per_pid,
+        pes_cap_total,
+        cfi,
+        av1,
+        au_cell_cap,
+        lenient_psi,
+    );
+    Box::into_raw(Box::new(Demuxer::with_config(opts))) as jlong
+}
+
+/// Assemble a `tst_core` [`DemuxerConfig`] from the 7 marshalled JNI primitives
+/// (the `nOpenWithConfig` arg shape). The `strict`/`av1` ints are the Java enum
+/// ORDINALS (contract: must mirror the Java enum declaration order —
+/// `StrictMode`: 0=OFF,1=TIMING_ONLY,2=PSI_ONLY,3=FULL; `Av1CarriageMode`:
+/// 0=MPEG2_TS_BINDING,1=INTEROP_RAW_OBU). A `0` cap means "use the Rust default"
+/// (mapped to `None`). Mirrors tst-py's `build_demuxer_config` field-by-field.
+///
+/// Shared by `nOpenWithConfig` and the srt `DemuxReceiver.nFromUrlWithConfig` /
+/// `Socket.nIntoDemuxReceiverWithConfig` paths so the config assembly is DRY.
+pub(crate) fn build_demux_config_from_args(
+    strict: jint,
+    pes_cap_per_pid: jlong,
+    pes_cap_total: jlong,
+    cfi: jboolean,
+    av1: jint,
+    au_cell_cap: jlong,
+    lenient_psi: jboolean,
+) -> tst_core::mpegts::demux::DemuxerConfig {
     use tst_core::mpegts::demux::{DemuxerConfig, StrictMode};
     use tst_core::mpegts::mux::Av1CarriageMode;
 
@@ -100,7 +130,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     }
     opts.cfi_tolerance = cfi != 0;
     opts.lenient_psi_reassembly = lenient_psi != 0;
-    Box::into_raw(Box::new(Demuxer::with_config(opts))) as jlong
+    opts
 }
 
 /// `nClose(handle)` — drop the boxed [`Demuxer`]. No-op on a zero
@@ -147,21 +177,26 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
     };
 
     if let Err(e) = dx.feed(&buf) {
-        // Mirror tst-py's `demux_error_to_pyerr` exactly. The discriminant MUST
-        // be a string literal as the 2nd arg to `throw_demux` (ratchet contract).
-        match &e {
-            DemuxError::SyncBufExhausted { .. } => {
-                throw_demux(&mut env, "SYNC_LOSS", &e.to_string())
-            }
-            DemuxError::MalformedPsi { .. } => throw_demux(&mut env, "BAD_PMT", &e.to_string()),
-            DemuxError::MalformedPes { .. } => throw_demux(&mut env, "BAD_PES", &e.to_string()),
-            DemuxError::StrictRejection(_) => {
-                throw_demux(&mut env, "STRICT_REJECTION", &e.to_string())
-            }
-            DemuxError::Unrecoverable { .. } => throw_demux(&mut env, "INTERNAL", &e.to_string()),
-            // DemuxError is marked non-exhaustive; forward-compat catch-all.
-            _ => throw_demux(&mut env, "INTERNAL", &e.to_string()),
-        }
+        throw_demux_error(&mut env, &e);
+    }
+}
+
+/// Map a `tst_core` [`DemuxError`] to a thrown `org.tstrans.DemuxException`,
+/// mirroring tst-py's `demux_error_to_pyerr` exactly. The discriminant MUST be a
+/// string literal as the 2nd arg to `throw_demux` (ratchet contract — the `java
+/// demux` error-mapping rail greps the whole tree, so these literals living here
+/// rather than at the `nFeed` call site keeps coverage intact).
+///
+/// Shared by `nFeed` and the srt `DemuxReceiver.nNext` demux-error arm.
+pub(crate) fn throw_demux_error(env: &mut JNIEnv, e: &DemuxError) {
+    match e {
+        DemuxError::SyncBufExhausted { .. } => throw_demux(env, "SYNC_LOSS", &e.to_string()),
+        DemuxError::MalformedPsi { .. } => throw_demux(env, "BAD_PMT", &e.to_string()),
+        DemuxError::MalformedPes { .. } => throw_demux(env, "BAD_PES", &e.to_string()),
+        DemuxError::StrictRejection(_) => throw_demux(env, "STRICT_REJECTION", &e.to_string()),
+        DemuxError::Unrecoverable { .. } => throw_demux(env, "INTERNAL", &e.to_string()),
+        // DemuxError is marked non-exhaustive; forward-compat catch-all.
+        _ => throw_demux(env, "INTERNAL", &e.to_string()),
     }
 }
 
@@ -235,7 +270,7 @@ fn checked_handle(env: &mut JNIEnv, handle: jlong) -> Option<*mut Demuxer> {
 /// "skip this event" channel is retained in the return type as a forward-compat
 /// guard (see `nNextEvent`) but is not produced today. `Err(())` — a JNI call
 /// failed.
-fn convert_event<'local>(
+pub(crate) fn convert_event<'local>(
     env: &mut JNIEnv<'local>,
     ev: &DemuxEvent,
 ) -> Result<Option<JObject<'local>>, ()> {

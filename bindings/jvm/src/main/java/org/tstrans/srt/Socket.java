@@ -14,8 +14,8 @@ import org.tstrans.SrtException;
  * immediately after the JNI call returns, so no double-free is possible even if
  * an exception is thrown mid-sequence.
  *
- * <p>{@link #intoMuxSender(org.tstrans.mpegts.MuxerConfig)} likewise consumes
- * this handle. ({@code intoDemuxReceiver} arrives later in the srt sub-wave B.)
+ * <p>{@link #intoMuxSender(org.tstrans.mpegts.MuxerConfig)} and
+ * {@link #intoDemuxReceiver()} likewise consume this handle.
  *
  * <pre>{@code
  * try (Socket s = new Builder("srt://127.0.0.1:9000").caller().connect()) {
@@ -106,6 +106,57 @@ public final class Socket implements AutoCloseable {
     }
 
     /**
+     * Consume this socket and produce a {@link DemuxReceiver} with default
+     * demuxer options.
+     *
+     * <p>Same consumption semantics as {@link #intoSender()}: the underlying
+     * {@code tst_srt::Socket} moves into the new {@code DemuxReceiver} and this
+     * socket's handle is zeroed.
+     *
+     * @return a {@code DemuxReceiver} owning this socket + a default-configured demuxer
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException on transport error
+     */
+    public DemuxReceiver intoDemuxReceiver() throws SrtException {
+        ensureOpen();
+        // Zero our handle BEFORE the native call (consume-first). nIntoDemuxReceiver
+        // consumes the Box<Socket> unconditionally; DemuxReceiver::new is infallible
+        // post-consume, so a trailing `handle = 0` would technically be safe here
+        // (like intoSender/intoReceiver). We still zero-first for uniformity with
+        // intoMuxSender and to stay correct if the native ever gains a fallible
+        // post-consume step.
+        long sock = handle;
+        handle = 0;
+        long h = nIntoDemuxReceiver(sock);
+        return new DemuxReceiver(h);
+    }
+
+    /**
+     * Consume this socket and produce a {@link DemuxReceiver} with the given
+     * {@link org.tstrans.mpegts.DemuxerConfig}.
+     *
+     * <p>Same consumption semantics as {@link #intoDemuxReceiver()}.
+     *
+     * @param demuxConfig the demuxer configuration
+     * @return a {@code DemuxReceiver} owning this socket + a configured demuxer
+     * @throws IllegalStateException if the socket is already closed
+     * @throws SrtException on transport error
+     */
+    public DemuxReceiver intoDemuxReceiver(org.tstrans.mpegts.DemuxerConfig demuxConfig)
+            throws SrtException {
+        ensureOpen();
+        // Consume-first (see intoDemuxReceiver()).
+        long sock = handle;
+        handle = 0;
+        long h = nIntoDemuxReceiverWithConfig(sock,
+            demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
+            demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
+            demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
+            demuxConfig.lenientPsiReassembly());
+        return new DemuxReceiver(h);
+    }
+
+    /**
      * Local bound address as a {@link HostPort} record. Useful when the URL
      * requested port 0 (kernel-assigned).
      *
@@ -180,6 +231,17 @@ public final class Socket implements AutoCloseable {
         int pcrPid, int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
         int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
         boolean[] klvCarriesPts) throws SrtException;
+
+    /**
+     * Consume the Box&lt;Socket&gt; and build a Box&lt;DemuxReceiver&gt; (default demux
+     * options). The Java caller MUST zero its own handle field before this call
+     * (consume-first) since the native handle is consumed unconditionally.
+     */
+    private static native long nIntoDemuxReceiver(long handle) throws SrtException;
+
+    private static native long nIntoDemuxReceiverWithConfig(long handle, int strict,
+        long pesCapPerPid, long pesCapTotal, boolean cfi, int av1, long auCellCap,
+        boolean lenientPsi) throws SrtException;
 
     private static native HostPort nLocalAddr(long handle) throws SrtException;
 

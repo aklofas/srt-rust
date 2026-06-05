@@ -43,26 +43,7 @@ use tst_core::mpegts::demux::event::NalUnit;
 
 use crate::codec::shared::{build_color_info, build_rational};
 use crate::error::map_codec_parse_error;
-use crate::jutil::read_byte_buffer;
-
-/// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
-/// (`java.nio.ByteBuffer.wrap`) — same heap-payload contract as the demux
-/// `Sample.payload` (RBSP bytes are JVM-owned, no Rust memory escapes).
-fn wrap_heap_byte_buffer<'local>(
-    env: &mut JNIEnv<'local>,
-    bytes: &[u8],
-) -> Result<JObject<'local>, ()> {
-    let arr = env.byte_array_from_slice(bytes).map_err(|_| ())?;
-    env.call_static_method(
-        "java/nio/ByteBuffer",
-        "wrap",
-        "([B)Ljava/nio/ByteBuffer;",
-        &[JValue::Object(&arr)],
-    )
-    .map_err(|_| ())?
-    .l()
-    .map_err(|_| ())
-}
+use crate::jutil::{read_byte_buffer, wrap_heap_byte_buffer};
 
 /// Map a Rust [`H266SliceType`] to its `org.tstrans.codec.H266SliceType`
 /// constant. The `_ =>` arm maps any future marked-non-exhaustive variant to

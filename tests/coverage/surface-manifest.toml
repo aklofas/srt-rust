@@ -184,6 +184,203 @@ bindings = ["c:tst_udp_sender_open", "python:send"]
 scenario_ids = []
 tier = "A"
 
+# ---------------------------------------------------------------------------
+# tst-jni codec wave: graduate the codec parse entry-point functions from the
+# bulk-bootstrap [[exempt]] section. Each maps to a `Codec` static-facade method
+# on the JVM side (and the parallel python parse_* free function). Data types and
+# derive-impl rows (::clone/::eq/::fmt, the *Sps/*Pps record types, OBU/NAL
+# wrappers) stay exempt — only the parse fns carry a binding method, matching the
+# klv/mpegts graduation precedent.
+# ---------------------------------------------------------------------------
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h264::parse_sps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h264_sps", "java:org.tstrans.codec.Codec.parseH264Sps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h264::parse_pps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h264_pps", "java:org.tstrans.codec.Codec.parseH264Pps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h264::parse_slice_header_light"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h264_slice_header_light", "java:org.tstrans.codec.Codec.parseH264SliceHeaderLight"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h264::parse_parameter_sets"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h264_parameter_sets", "java:org.tstrans.codec.Codec.parseH264ParameterSets"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h265::parse_sps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h265_sps", "java:org.tstrans.codec.Codec.parseH265Sps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h265::parse_pps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h265_pps", "java:org.tstrans.codec.Codec.parseH265Pps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h265::parse_vps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h265_vps", "java:org.tstrans.codec.Codec.parseH265Vps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h265::parse_slice_header_light"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h265_slice_header_light", "java:org.tstrans.codec.Codec.parseH265SliceHeaderLight"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h265::parse_parameter_sets"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h265_parameter_sets", "java:org.tstrans.codec.Codec.parseH265ParameterSets"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h266::parse_sps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h266_sps", "java:org.tstrans.codec.Codec.parseH266Sps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h266::parse_pps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h266_pps", "java:org.tstrans.codec.Codec.parseH266Pps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h266::parse_vps"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h266_vps", "java:org.tstrans.codec.Codec.parseH266Vps"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h266::parse_slice_header_light"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h266_slice_header_light", "java:org.tstrans.codec.Codec.parseH266SliceHeaderLight"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::h266::parse_parameter_sets"
+owning_tests = ["crates/tst-core/tests/codec/codec_parameter_sets.rs"]
+bindings = ["python:parse_h266_parameter_sets", "java:org.tstrans.codec.Codec.parseH266ParameterSets"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::av1::parse_sequence_header"
+owning_tests = ["crates/tst-core/tests/codec/av1_codec_integration.rs"]
+bindings = ["python:parse_av1_sequence_header", "java:org.tstrans.codec.Codec.parseAv1SequenceHeader"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::av1::parse_frame_header_light"
+owning_tests = ["crates/tst-core/tests/codec/av1_codec_integration.rs"]
+bindings = ["python:parse_av1_frame_header_light", "java:org.tstrans.codec.Codec.parseAv1FrameHeaderLight"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::av1::parse_obu_stream"
+owning_tests = ["crates/tst-core/tests/codec/av1_codec_integration.rs"]
+bindings = ["python:parse_av1_obu_stream", "java:org.tstrans.codec.Codec.parseAv1ObuStream"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::aac::frames"
+owning_tests = ["crates/tst-core/tests/codec/audio_frame_roundtrip.rs"]
+bindings = ["python:parse_aac_frames", "java:org.tstrans.codec.Codec.parseAacFrames"]
+scenario_ids = ["aac-audio-only"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::aac::frames_with_resync"
+owning_tests = ["crates/tst-core/tests/codec/audio_frame_roundtrip.rs"]
+bindings = ["python:parse_aac_frames_with_resync", "java:org.tstrans.codec.Codec.parseAacFramesWithResync"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::mpegaudio::frames"
+owning_tests = ["crates/tst-core/tests/codec/audio_frame_roundtrip.rs"]
+bindings = ["python:parse_mpeg2_audio_frames", "java:org.tstrans.codec.Codec.parseMpeg2AudioFrames"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::mpegaudio::frames_with_resync"
+owning_tests = ["crates/tst-core/tests/codec/audio_frame_roundtrip.rs"]
+bindings = ["python:parse_mpeg2_audio_frames_with_resync", "java:org.tstrans.codec.Codec.parseMpeg2AudioFramesWithResync"]
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "alloc::boxed::Box"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -1241,14 +1438,6 @@ item = "tst_core::codec::aac::MpegVersion::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::codec::aac::frames"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::aac::frames_with_resync"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::codec::aac::latm::LatmFramingKind::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -1318,18 +1507,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::codec::av1::Av1SequenceHeader::fmt"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::av1::parse_frame_header_light"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::av1::parse_obu_stream"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::av1::parse_sequence_header"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -1418,22 +1595,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::codec::h264::H264Sps::fmt"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h264::parse_parameter_sets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h264::parse_pps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h264::parse_slice_header_light"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h264::parse_sps"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -1537,26 +1698,6 @@ item = "tst_core::codec::h265::H265Vps::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::codec::h265::parse_parameter_sets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h265::parse_pps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h265::parse_slice_header_light"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h265::parse_sps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h265::parse_vps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::codec::h266::H266ParameterSets::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -1653,26 +1794,6 @@ item = "tst_core::codec::h266::H266Vps::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::codec::h266::parse_parameter_sets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h266::parse_pps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h266::parse_slice_header_light"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h266::parse_sps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::h266::parse_vps"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
 item = "tst_core::codec::mpegaudio::ChannelMode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -1742,14 +1863,6 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_core::codec::mpegaudio::Version::fmt"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::mpegaudio::frames"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
-
-[[exempt]]
-item = "tst_core::codec::mpegaudio::frames_with_resync"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

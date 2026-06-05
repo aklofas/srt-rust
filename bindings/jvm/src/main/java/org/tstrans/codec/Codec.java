@@ -7,9 +7,21 @@ import org.tstrans.CodecParseException;
  * Static facade for typed codec parameter-set / payload-unit parsing.
  * Mirrors tst-py's {@code tstrans.codec} free functions.
  *
- * <p>Parser entry points for further codecs (H.266 / AV1 / audio) are added in
- * follow-on tasks of the codec wave; this facade currently exposes the H.264 and
- * H.265 parameter-set / slice-header parsers.
+ * <p>Exposes parsers for the full codec surface:
+ * <ul>
+ *   <li><b>H.264 / H.265 / H.266</b> — SPS / PPS / VPS (H.265/H.266 only),
+ *       slice-header (light), and parameter-set collection parsers.</li>
+ *   <li><b>AV1</b> — sequence-header, frame-header (light), and OBU-stream
+ *       parsers.</li>
+ *   <li><b>AAC</b> — ADTS frame parsing ({@link #parseAacFrames} and the
+ *       resync-tolerant {@link #parseAacFramesWithResync}).</li>
+ *   <li><b>MPEG-2 audio</b> — frame parsing ({@link #parseMpeg2AudioFrames} and
+ *       the resync-tolerant {@link #parseMpeg2AudioFramesWithResync}).</li>
+ * </ul>
+ *
+ * <p>Every parser takes raw RBSP / payload bytes and returns an immutable record
+ * (or a {@link java.util.List} of them), throwing {@link CodecParseException} on
+ * malformed or truncated input.
  */
 public final class Codec {
     private Codec() {}

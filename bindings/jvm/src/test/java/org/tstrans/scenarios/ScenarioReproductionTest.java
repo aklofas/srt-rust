@@ -10,12 +10,16 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.tstrans.codec.AdtsFrame;
+import org.tstrans.codec.AudioFrame;
 import org.tstrans.codec.NalUnit;
 import org.tstrans.codec.VideoUnit;
 import org.tstrans.klv.Klv;
 import org.tstrans.klv.UasDatalinkLs;
+import org.tstrans.mpegts.AudioCodec;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
+import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Java adapter for the cross-binding scenario harness (WS-5), mirroring the
@@ -115,12 +119,19 @@ class ScenarioReproductionTest {
         // later) is equally safe.
         List<VideoSample> videoSamples = new ArrayList<>();
         List<MetadataSample> metadataSamples = new ArrayList<>();
+        // Keep the matched Video EVENT (not just the projected sample) so we can
+        // assert the typed payload structure below — the codec wave's responsibility.
+        DemuxEvent.Video matchedVideoEvent = null;
         try (Demuxer d = new Demuxer()) {
             d.feed(tsBytes);
             d.flush();
             for (DemuxEvent e : d) {
                 if (e instanceof DemuxEvent.Video v) {
                     videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.payload())));
+                    if (matchedVideoEvent == null
+                            && v.stream().pid() == expected.pid && v.pts() == expected.pts) {
+                        matchedVideoEvent = v;
+                    }
                 } else if (e instanceof DemuxEvent.Metadata m) {
                     metadataSamples.add(
                         new MetadataSample(m.stream().pid(), klvSetFromUl(m.payload())));
@@ -144,6 +155,30 @@ class ScenarioReproductionTest {
         assertEquals(expected.payloadSha256, match.payloadSha256,
             "video payload_sha256 mismatch — the JNI keystone Video.payload bytes "
                 + "must equal the concatenated NAL RBSP bytes the golden hashes");
+
+        // Typed-structure cross-binding proof (codec wave): the raw-sha above proves
+        // the bytes agree; these assertions prove the JVM typed split agrees
+        // STRUCTURALLY with Rust/Python — same codec discriminant, same VideoUnit
+        // taxonomy, same NAL typing.
+        assertNotNull(matchedVideoEvent, "matched Video event should have been captured");
+        assertEquals(VideoCodec.H264, matchedVideoEvent.codec(),
+            "the h264-st0601-mp scenario's video stream must be tagged H264");
+        List<VideoUnit> units = matchedVideoEvent.payload();
+        assertFalse(units.isEmpty(),
+            "H264 Video.payload must be a non-empty List<VideoUnit>");
+        // First unit is the IDR NAL: synthetic_h264_idr() is `00 00 00 01 65 …`,
+        // nal_type = 0x65 & 0x1F = 5 (IDR slice). Downcast via instanceof (no
+        // switch-on-sealed; JDK 17).
+        VideoUnit first = units.get(0);
+        assertTrue(first instanceof NalUnit,
+            "H264 VideoUnit must be a NalUnit, was " + first.getClass().getSimpleName());
+        NalUnit firstNal = (NalUnit) first;
+        assertEquals("H264", firstNal.kind(),
+            "first NAL unit must carry the H264 codec discriminant");
+        assertEquals(5, firstNal.nalType(),
+            "first NAL unit must be the IDR slice (nal_type 5)");
+        assertNull(matchedVideoEvent.codecParseError(),
+            "video codecParseError must be null — the H.264 payload parses cleanly");
 
         // Assert the klv core subset: a Metadata event exists whose stream PID
         // matches the golden's klv pid AND whose ST0601-UL-derived set matches the
@@ -240,6 +275,57 @@ class ScenarioReproductionTest {
         assertEquals(org.tstrans.KlvDecodeException.Kind.TRUNCATED_SET, ex.kind(),
             "exception kind must be TRUNCATED_SET (mirrors Rust KlvDecodeError::Truncated "
                 + "and Python KlvError(TRUNCATED_SET) for the same empty-body input)");
+    }
+
+    /**
+     * Typed-structure cross-binding parity for AUDIO: feed the {@code aac-audio-only}
+     * shared scenario and assert the first {@code DemuxEvent.Audio}'s typed payload
+     * agrees structurally with Rust/Python — codec {@code AAC}, first frame an
+     * {@link AdtsFrame} with {@code sampleRateHz == 44100} and
+     * {@code channelConfiguration == 2} (stereo). The companion to the H.264 video
+     * proof; the audio split is the codec wave's responsibility too.
+     */
+    @Test
+    void reproducesAacAudioOnlyTypedPayload() throws Exception {
+        Path dir = Path.of(
+                System.getProperty("user.dir"), "..", "..",
+                "crates/tst-integration/tests/fixtures/scenarios", "aac-audio-only")
+            .normalize();
+        Path inputPath = dir.resolve("input.ts");
+        assertTrue(Files.isRegularFile(inputPath),
+            "shared scenario input missing (expected committed fixture): " + inputPath);
+
+        byte[] tsBytes = Files.readAllBytes(inputPath);
+
+        DemuxEvent.Audio firstAudio = null;
+        try (Demuxer d = new Demuxer()) {
+            d.feed(tsBytes);
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Audio a) {
+                    firstAudio = a;
+                    break;
+                }
+            }
+        }
+
+        assertNotNull(firstAudio, "no DemuxEvent.Audio found in " + inputPath);
+        assertEquals(AudioCodec.AAC, firstAudio.codec(),
+            "the aac-audio-only scenario's audio stream must be tagged AAC");
+        assertNull(firstAudio.codecParseError(),
+            "audio codecParseError must be null — the ADTS payload parses cleanly");
+        List<AudioFrame> frames = firstAudio.payload();
+        assertNotNull(frames, "AAC Audio.payload must be a typed List<AudioFrame>, not raw");
+        assertFalse(frames.isEmpty(), "AAC Audio.payload must be non-empty");
+        // Downcast via instanceof (no switch-on-sealed; JDK 17).
+        AudioFrame first = frames.get(0);
+        assertTrue(first instanceof AdtsFrame,
+            "AAC AudioFrame must be an AdtsFrame, was " + first.getClass().getSimpleName());
+        AdtsFrame adts = (AdtsFrame) first;
+        assertEquals(44100L, adts.sampleRateHz(),
+            "first ADTS frame sample rate must be 44100 Hz");
+        assertEquals(2, adts.channelConfiguration(),
+            "first ADTS frame channel_configuration must be 2 (stereo)");
     }
 
     /**

@@ -140,6 +140,7 @@ class SrtMuxDemuxLoopbackTest {
 
         Thread receiverThread = new Thread(() -> {
             Listener listener = null;
+            Socket sock = null;
             DemuxReceiver rx = null;
             try {
                 listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
@@ -149,7 +150,7 @@ class SrtMuxDemuxLoopbackTest {
 
                 // accept(null) = srt_accept directly (infinite wait); avoids the
                 // accept-timeout epoll interaction (see SrtLoopbackScenarioTest).
-                Socket sock = listener.accept(null);
+                sock = listener.accept(null);
                 rx = sock.intoDemuxReceiver();
 
                 // Register the byte sink BEFORE iterating: it fires per 188-byte
@@ -192,7 +193,12 @@ class SrtMuxDemuxLoopbackTest {
                 portFuture.completeExceptionally(ex);
                 shaFuture.completeExceptionally(ex);
             } finally {
+                // sock is consumed by intoDemuxReceiver() on the success path
+                // (its handle is zeroed → close() is a no-op there); closing it
+                // here frees the accepted socket if an exception fired before/
+                // during intoDemuxReceiver().
                 if (rx != null) rx.close();
+                if (sock != null) sock.close();
                 if (listener != null) listener.close();
             }
         });

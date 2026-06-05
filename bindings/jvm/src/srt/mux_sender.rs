@@ -10,8 +10,11 @@
 //!
 //! Ports tst-py's `bindings/python/src/srt/mux_sender.rs`. The handle is a
 //! `Box<MuxSender<SrtTransport>>` (`Box::into_raw`/`from_raw`); per-call methods
-//! reconstitute as `&mut *ptr`; `nClose` drops the box. `Socket::nIntoMuxSender`
-//! CONSUMES a `Box<Socket>` (`*Box::from_raw`) and returns a fresh handle.
+//! reconstitute as a SHARED `&*ptr` borrow (every `MuxSender::send_*`/`stats`/
+//! `is_alive` takes `&self`, serialising internally via its own `Mutex<Inner>`),
+//! so concurrent pushes from multiple Java threads are sound — no aliased `&mut`.
+//! `nClose` drops the box. `Socket::nIntoMuxSender` CONSUMES a `Box<Socket>`
+//! (`*Box::from_raw`) and returns a fresh handle.
 //!
 //! Error mapping mirrors tst-py's `mux_sender_error_to_pyerr`: `Mux(...)` →
 //! `MuxException`, `Transport(...)` → `SrtException` per `TransportError`
@@ -194,7 +197,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideo<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
@@ -219,7 +222,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlv<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     // `metadata_service_id` is `u8`; range-check before narrowing.
     let Ok(service_id) = checked_u8(
         &mut env,
@@ -249,7 +252,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudio<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
@@ -271,7 +274,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitle<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
@@ -297,7 +300,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideoTo<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -328,7 +331,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlvTo<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -365,7 +368,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudioTo<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -395,7 +398,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
         return;
     };
     // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &mut *ptr };
+    let inner = unsafe { &*ptr };
     let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {

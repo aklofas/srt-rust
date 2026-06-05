@@ -3,8 +3,8 @@ package org.tstrans.srt;
 import org.tstrans.mpegts.MuxerStats;
 
 /**
- * Combined stats snapshot returned by {@code MuxSender.stats()} (and, in a later
- * sub-wave, {@code DemuxReceiver.stats()}). Pairs the SRT wire-level
+ * Combined stats snapshot returned by {@code MuxSender.stats()} and
+ * {@code DemuxReceiver.stats()}. Pairs the SRT wire-level
  * {@link SocketStats} with the inner {@link MuxerStats}.
  *
  * <p>This record is the Java stand-in for tst-py's {@code (SocketStats,

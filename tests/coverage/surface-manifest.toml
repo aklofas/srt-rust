@@ -1129,9 +1129,7 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::RecvTransport::socket_stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
-item = "tst_core::SrtCancelHandle"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_core::SrtCancelHandle graduated to [[surface]] in the tst-jni srt wave A
 
 [[exempt]]
 item = "tst_core::Transport"
@@ -4189,6 +4187,70 @@ owning_tests = ["crates/tst-core/tests/mpegts/mux.rs"]
 bindings = ["python:MuxerConfigBuilder", "java:org.tstrans.mpegts.MuxerConfig.Builder"]
 tier = "A"
 
+# ---------------------------------------------------------------------------
+# tst-jni srt wave A: graduate the SRT type-level surface rows from the bulk
+# bootstrap [[exempt]] section. Only the top-level type items graduate here;
+# method-level rows (::connect, ::bind, ::accept, etc.) and the MuxSender /
+# DemuxReceiver / ManagedTransport shells stay exempt (sub-wave B/C territory).
+# ---------------------------------------------------------------------------
+
+[[surface]]
+kind = "rust"
+crate = "tst-srt"
+item = "tst_srt::SocketBuilder"
+owning_tests = ["crates/tst-srt/tests/builder/lifecycle.rs"]
+bindings = ["java:org.tstrans.srt.Builder"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-srt"
+item = "tst_srt::Socket"
+owning_tests = ["crates/tst-srt/tests/builder/lifecycle.rs"]
+bindings = ["java:org.tstrans.srt.Socket"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-srt"
+item = "tst_srt::Listener"
+owning_tests = ["crates/tst-srt/tests/builder/listener.rs"]
+bindings = ["java:org.tstrans.srt.Listener"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::SrtCancelHandle"
+owning_tests = ["crates/tst-srt/tests/loopback/cancellation_loopback.rs"]
+bindings = ["java:org.tstrans.srt.CancelHandle"]
+# No scenario_ids: neither the owning Rust test nor the JVM loopback test
+# exercises CancelHandle via the h264-st0601-mp scenario (the loopback test
+# never calls cancelHandle()); coverage is the dedicated cancellation_loopback test.
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::Sender"
+owning_tests = ["crates/tst-pipeline/tests/pipeline_ts_sender.rs"]
+bindings = ["java:org.tstrans.srt.Sender"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
+item = "tst_pipeline::Receiver"
+owning_tests = ["crates/tst-pipeline/tests/pipeline_receiver.rs"]
+bindings = ["java:org.tstrans.srt.Receiver"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
+
 [[exempt]]
 item = "tst_core::mpegts::mux::MuxerConfigBuilder::add_program"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -4821,9 +4883,7 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::RawSender"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
-item = "tst_pipeline::Receiver"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_pipeline::Receiver graduated to [[surface]] in the tst-jni srt wave A
 
 [[exempt]]
 item = "tst_pipeline::ReceiverStats"
@@ -4833,9 +4893,7 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::ReconnectPolicy"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
-item = "tst_pipeline::Sender"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_pipeline::Sender graduated to [[surface]] in the tst-jni srt wave A
 
 [[exempt]]
 item = "tst_pipeline::SenderStats"
@@ -7493,9 +7551,7 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_srt::KeyLength"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
-item = "tst_srt::Listener"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_srt::Listener graduated to [[surface]] in the tst-jni srt wave A
 
 [[exempt]]
 item = "tst_srt::ListenerBuilder"
@@ -7513,13 +7569,9 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_srt::Passphrase"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
-item = "tst_srt::Socket"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_srt::Socket graduated to [[surface]] in the tst-jni srt wave A
 
-[[exempt]]
-item = "tst_srt::SocketBuilder"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+# tst_srt::SocketBuilder graduated to [[surface]] in the tst-jni srt wave A
 
 [[exempt]]
 item = "tst_srt::SrtTransport"

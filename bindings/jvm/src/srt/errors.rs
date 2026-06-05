@@ -61,7 +61,7 @@ pub(crate) fn connect_error(env: &mut JNIEnv, e: &ConnectError) {
         | ConnectError::Rejected { .. }
         | ConnectError::System(_)
         | ConnectError::Other { .. } => throw_srt(env, "CONNECT_FAILED", &msg),
-        // Catch-all for future #[non_exhaustive] additions.
+        // Catch-all for future non-exhaustive additions.
         _ => throw_srt(env, "CONNECT_FAILED", &msg),
     }
 }
@@ -80,7 +80,7 @@ pub(crate) fn bind_error(env: &mut JNIEnv, e: &BindError) {
         | BindError::PermissionDenied
         | BindError::System(_)
         | BindError::Other { .. } => throw_srt(env, "CONNECT_FAILED", &msg),
-        // Catch-all for future #[non_exhaustive] additions.
+        // Catch-all for future non-exhaustive additions.
         _ => throw_srt(env, "CONNECT_FAILED", &msg),
     }
 }
@@ -96,7 +96,7 @@ pub(crate) fn accept_error(env: &mut JNIEnv, e: &AcceptError) {
         AcceptError::PeerRejected { .. } | AcceptError::System(_) | AcceptError::Other { .. } => {
             throw_srt(env, "ACCEPT_FAILED", &msg)
         }
-        // Catch-all for future #[non_exhaustive] additions.
+        // Catch-all for future non-exhaustive additions.
         _ => throw_srt(env, "ACCEPT_FAILED", &msg),
     }
 }
@@ -109,7 +109,7 @@ pub(crate) fn io_error(env: &mut JNIEnv, e: &IoError) {
     match e {
         IoError::SocketClosed => throw_srt(env, "CLOSED", &msg),
         IoError::System(_) | IoError::Other { .. } => throw_srt(env, "IO", &msg),
-        // Catch-all for future #[non_exhaustive] additions.
+        // Catch-all for future non-exhaustive additions.
         _ => throw_srt(env, "IO", &msg),
     }
 }
@@ -129,7 +129,7 @@ pub(crate) fn transport_error(env: &mut JNIEnv, e: &TransportError) {
             "CONFIG_INVALID",
             &format!("payload too large: {len} bytes exceeds {max}-byte cap"),
         ),
-        // Catch-all for future #[non_exhaustive] additions.
+        // Catch-all for future non-exhaustive additions.
         other => throw_srt(env, "IO", &other.to_string()),
     }
 }

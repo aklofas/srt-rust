@@ -1,5 +1,6 @@
 //! `org.tstrans.srt` — SRT transport JNI surface.
 
+mod demux_receiver;
 pub(crate) mod errors;
 mod lowlevel;
 mod mux_sender;

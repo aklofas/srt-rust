@@ -50,4 +50,32 @@ class SrtConvenienceTest {
         );
         assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
     }
+
+    /**
+     * A caller-mode URL supplied to {@code DemuxReceiver.fromUrl} must throw
+     * {@code CONFIG_INVALID} — the wrapper checks that the parsed URL uses
+     * {@code mode=listener} before attempting to bind (proven without a live
+     * socket).
+     */
+    @Test
+    void demuxReceiverRejectsCallerModeUrl() {
+        var e = assertThrows(
+            SrtException.class,
+            () -> DemuxReceiver.fromUrl("srt://127.0.0.1:9000?mode=caller")
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
+    }
+
+    /**
+     * A clearly-malformed URL (no scheme, no port) should fail
+     * {@code SrtUrl::parse} and surface as {@code CONFIG_INVALID}.
+     */
+    @Test
+    void demuxReceiverRejectsMalformedUrl() {
+        var e = assertThrows(
+            SrtException.class,
+            () -> DemuxReceiver.fromUrl("not-a-url")
+        );
+        assertEquals(SrtException.Kind.CONFIG_INVALID, e.kind());
+    }
 }

@@ -502,7 +502,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nSubtitleHandle(
 /// Build an `org.tstrans.mpegts.MuxerStats` record from the projected
 /// pipeline counters. Ctor sig `(JJJJ)V`. `subtitle_streams_configured` is not
 /// tracked by the pipeline shell — default it to 0 (mirrors tst-py).
-fn build_muxer_stats<'local>(
+pub(crate) fn build_muxer_stats<'local>(
     env: &mut JNIEnv<'local>,
     ts_packets_emitted: i64,
     ts_bytes_emitted: i64,
@@ -523,7 +523,7 @@ fn build_muxer_stats<'local>(
 
 /// Build an `org.tstrans.srt.TransportStats` record from a `SocketStats` +
 /// `MuxerStats` pair.
-fn build_transport_stats<'local>(
+pub(crate) fn build_transport_stats<'local>(
     env: &mut JNIEnv<'local>,
     socket_stats: &JObject<'local>,
     muxer_stats: &JObject<'local>,

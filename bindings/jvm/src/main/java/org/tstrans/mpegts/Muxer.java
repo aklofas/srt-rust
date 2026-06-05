@@ -1,5 +1,7 @@
 package org.tstrans.mpegts;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import org.tstrans.MuxException;
 
 /**
@@ -132,6 +134,29 @@ public final class Muxer implements AutoCloseable {
     public long capacityPackets() {
         ensureOpen();
         return nCapacity(handle);
+    }
+
+    /**
+     * Open {@code path} for writing and return a draining {@link MuxerFileSink}
+     * that flushes pending TS packets to disk after each {@code push*} call and on
+     * close. Mirrors tst-py's {@code Muxer.write_file(path)}. The muxer is borrowed
+     * (reusable after the sink closes).
+     */
+    public MuxerFileSink writeFile(Path path) throws IOException {
+        ensureOpen();
+        return new MuxerFileSink(this, path, false);
+    }
+
+    /**
+     * Like {@link #writeFile(Path)} but, when {@code atomic} is true, writes via a
+     * {@code *.partial} temp in the destination's directory and promotes it to
+     * {@code path} only after {@link MuxerFileSink#commit()} on the success path
+     * (mirrors tst-py's {@code Muxer.write_file(path, atomic=True)}; see
+     * {@link MuxerFileSink} for the {@code commit()} contract).
+     */
+    public MuxerFileSink writeFile(Path path, boolean atomic) throws IOException {
+        ensureOpen();
+        return new MuxerFileSink(this, path, atomic);
     }
 
     @Override

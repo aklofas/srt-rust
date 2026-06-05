@@ -74,7 +74,7 @@ fn checked_receiver(env: &mut JNIEnv, handle: jlong) -> Option<*mut JniDemuxRece
 /// exception. Transport-side errors map to `SrtException` (via the shared
 /// `transport_error` helper); demux-side errors map to `DemuxException` (via the
 /// shared `throw_demux_error`). Mirrors tst-py's `demux_recv_error_to_pyerr`.
-fn throw_demux_recv_error(env: &mut JNIEnv, e: &DemuxReceiverError) {
+pub(crate) fn throw_demux_recv_error(env: &mut JNIEnv, e: &DemuxReceiverError) {
     match &e.source {
         DemuxReceiverErrorSource::Transport(t) => transport_error(env, t),
         DemuxReceiverErrorSource::Demux(d) => throw_demux_error(env, d),

@@ -32,7 +32,6 @@ fn enum_const<'local>(
 /// reserved/catch-all arm, so the mapping is exhaustive; the Java `INVALID`
 /// constant exists for the open-enum mirror but is unreachable from this path
 /// (matches tst-py's `ChromaFormatPy::from`, which is likewise exhaustive).
-#[allow(dead_code)]
 pub(crate) fn build_chroma_format<'local>(
     env: &mut JNIEnv<'local>,
     v: ChromaFormat,
@@ -47,7 +46,6 @@ pub(crate) fn build_chroma_format<'local>(
 }
 
 /// Map `ColourPrimaries` → `org.tstrans.codec.ColourPrimaries`. Wildcard → `RESERVED`.
-#[allow(dead_code)]
 pub(crate) fn build_colour_primaries<'local>(
     env: &mut JNIEnv<'local>,
     v: ColourPrimaries,
@@ -71,7 +69,6 @@ pub(crate) fn build_colour_primaries<'local>(
 }
 
 /// Map `TransferCharacteristics` → Java. Wildcard → `RESERVED`.
-#[allow(dead_code)]
 pub(crate) fn build_transfer<'local>(
     env: &mut JNIEnv<'local>,
     v: TransferCharacteristics,
@@ -100,7 +97,6 @@ pub(crate) fn build_transfer<'local>(
 }
 
 /// Map `MatrixCoefficients` → Java. Wildcard → `RESERVED`.
-#[allow(dead_code)]
 pub(crate) fn build_matrix<'local>(
     env: &mut JNIEnv<'local>,
     v: MatrixCoefficients,
@@ -129,7 +125,6 @@ pub(crate) fn build_matrix<'local>(
 }
 
 /// Build `org.tstrans.codec.Rational(long, long)` from a `Rational`.
-#[allow(dead_code)]
 pub(crate) fn build_rational<'local>(
     env: &mut JNIEnv<'local>,
     r: &Rational,
@@ -148,7 +143,6 @@ pub(crate) fn build_rational<'local>(
 /// Build `org.tstrans.codec.ColorInfo(primaries, transfer, matrix, fullRange)`.
 /// Only the binding-exposed subset is forwarded (chroma_loc /
 /// sample_aspect_ratio are intentionally dropped, matching tst-py's ColorInfoPy).
-#[allow(dead_code)]
 pub(crate) fn build_color_info<'local>(
     env: &mut JNIEnv<'local>,
     c: &ColorInfo,

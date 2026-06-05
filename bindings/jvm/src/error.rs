@@ -289,7 +289,8 @@ Ljava/lang/String;Ljava/lang/String;\
 Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;\
 Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
 Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
-Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;)V";
+Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;\
+Ljava/lang/Integer;)V";
     let exc: JObject = env.new_object(
         "org/tstrans/CodecParseException",
         ctor_sig,
@@ -320,7 +321,6 @@ Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;)V";
 /// `codec` is a short lowercase codec name (e.g. `"h264"`). Mirrors tst-py's
 /// `codec_parse_error_to_pyerr` variant-for-variant; the wildcard arm routes
 /// any future marked-non-exhaustive variant to `ENGINE_ERROR`.
-#[allow(dead_code)]
 pub fn map_codec_parse_error(env: &mut JNIEnv, e: &CodecParseError, codec: &str) {
     // The exception message is the Rust `Display` string (mirrors tst-py's
     // `format!("{err}")`); forwarded to every `throw_codec` call below.

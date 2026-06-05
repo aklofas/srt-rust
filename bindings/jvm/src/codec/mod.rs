@@ -5,4 +5,5 @@
 //! parser JNI entry points (`parse_h264_sps`, …) land in the follow-on tasks
 //! and reuse these helpers.
 
+pub mod h264;
 pub mod shared;

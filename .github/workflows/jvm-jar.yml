@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        # No submodules: tst-jni depends only on jni + pure-Rust tst-core, so it
-        # never builds vendor/srt or vendor/mbedtls.
+        with:
+          submodules: recursive  # tst-srt builds vendor/srt + vendor/mbedtls (srt wave)
 
       - name: Install Rust 1.85
         uses: dtolnay/rust-toolchain@1.85
@@ -31,6 +31,8 @@ jobs:
 
       - name: Build + test JVM binding
         working-directory: bindings/jvm
+        env:
+          SRT_FORCE_VENDORED: "1"
         run: ./gradlew test --no-daemon --stacktrace
 
       - name: check-jvm-error-mapping-coverage

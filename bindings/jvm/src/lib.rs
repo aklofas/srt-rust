@@ -2,14 +2,16 @@
 //!
 //! Exports the bootstrap `org.tstrans.Version.versionString()` plus the Wave 1
 //! mpegts-demux keystone (`org.tstrans.mpegts.Demuxer` + `DemuxEvent`); see
-//! `mod mpegts`. The remaining `org.tstrans.*` modules (mirroring tst-py) land
-//! in the follow-on surface-port waves.
+//! `mod mpegts`. The `srt` module backs `org.tstrans.srt` (Socket/Listener/
+//! Sender/Receiver/CancelHandle/Stats). The remaining `org.tstrans.*` modules
+//! (mirroring tst-py) land in the follow-on surface-port waves.
 
 mod codec;
 mod error;
 mod jutil;
 mod klv;
 mod mpegts;
+mod srt;
 
 use jni::JNIEnv;
 use jni::objects::JClass;

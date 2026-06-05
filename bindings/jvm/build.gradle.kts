@@ -19,10 +19,12 @@ val workspaceRoot = layout.projectDirectory.dir("../..").asFile
 val triple = "linux-x86_64"
 val nativeOut = layout.projectDirectory.dir("src/main/resources/native/$triple")
 
-// 1. Build the Rust cdylib (release). Deps are jni + pure-Rust tst-core, so this
-//    is a fast pure-Rust build — no libsrt/librist/meson.
+// 1. Build the Rust cdylib (release). As of the srt wave this links vendored
+//    libsrt + mbedTLS (tst-srt), so SRT_FORCE_VENDORED=1 is required and the
+//    first cold build compiles libsrt (~3-5 min); warm builds are seconds.
 val cargoBuild = tasks.register<Exec>("cargoBuild") {
     workingDir = workspaceRoot
+    environment("SRT_FORCE_VENDORED", "1")
     commandLine("cargo", "build", "--release", "-p", "tst-jni")
 }
 

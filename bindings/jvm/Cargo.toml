@@ -24,3 +24,10 @@ jni = "0.21"
 # DemuxEvent). tst-pipeline/tst-srt/tst-rtp are added by their respective module
 # waves, not before.
 tst-core = { path = "../../crates/tst-core" }
+
+# tst-pipeline (Sender/Receiver shells) + tst-srt (Socket/Listener/SrtTransport,
+# vendored libsrt + mbedTLS) back the org.tstrans.srt surface. First non-pure-Rust
+# JVM dep — cargo builds now link libsrt; set SRT_FORCE_VENDORED=1 (build.gradle +
+# CI). srt is unconditional in the JVM binding (single cdylib; spec §3.1).
+tst-pipeline = { path = "../../crates/tst-pipeline" }
+tst-srt      = { path = "../../crates/tst-srt" }

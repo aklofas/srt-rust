@@ -10,18 +10,22 @@
 > - How to mux a single-program `.ts` offline with the `Muxer` + config builder
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
 > - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
+> - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
 > - How this binding differs from the Rust core
 
-> **Status (mpegts demux + offline mux + typed KLV surfaces shipped):** the
-> JVM binding ships the bootstrap `org.tstrans.Version` hello-world; the
-> complete `org.tstrans.mpegts` **demux** surface (`Demuxer`,
-> `DemuxerConfig`, the sealed `DemuxEvent` hierarchy, `StreamId`, codec /
-> kind enums); the offline **mux** surface (`Muxer`, `MuxerConfig`, push
-> family + `pull`); and the full **typed KLV** surface (`org.tstrans.klv`
-> — decode/encode for ST 0601 / 0102 / 0605 / 0903, the `parseUniversal`
-> dispatcher, and the field-error model). Codec parsers (`org.tstrans.codec`),
-> typed NAL/OBU/ADTS payloads, and SRT / RTP transport are on the roadmap.
+> **Status (mpegts demux + offline mux + typed KLV + codec parsers + file I/O
+> surfaces shipped):** the JVM binding ships the bootstrap `org.tstrans.Version`
+> hello-world; the complete `org.tstrans.mpegts` **demux** surface (`Demuxer`,
+> `DemuxerConfig`, the sealed `DemuxEvent` hierarchy, `StreamId`, codec / kind
+> enums); the offline **mux** surface (`Muxer`, `MuxerConfig`, push family +
+> `pull` + `writeFile` / `MuxerFileSink`); the full **typed KLV** surface
+> (`org.tstrans.klv` — decode/encode for ST 0601 / 0102 / 0605 / 0903, the
+> `parseUniversal` dispatcher, and the field-error model); the **codec parsers**
+> (`org.tstrans.codec` — H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio,
+> typed NAL / OBU / ADTS payloads on demux events); and the **file I/O helpers**
+> (`org.tstrans.io` — `parseFile`, `probe`, `extractKlv`). SRT / RTP transport
+> and the multi-platform fat JAR are on the roadmap.
 > This page documents only what exists today.
 
 ## Install
@@ -500,6 +504,215 @@ audio only, in two distinct cases:
 A clean audio parse leaves `payload()` populated with `List<AudioFrame>`,
 `rawPayload()` null, and `codecParseError()` null.
 
+## File I/O (`org.tstrans.io`)
+
+The `org.tstrans.io` package wraps the file read-path in three convenience
+helpers — `parseFile`, `probe`, and `extractKlv` — and the write-path lives on
+`Muxer.writeFile`. All helpers are pure-Java orchestration over `Demuxer`; there
+is no native code in the package.
+
+### Parse a file
+
+`Io.parseFile` opens a `.ts` file, feeds it to a `Demuxer` in 64 KiB chunks,
+and yields `DemuxEvent` items lazily as a `Stream`. The stream is
+`AutoCloseable` — always wrap it in try-with-resources so the backing demuxer
+and file handle are released:
+
+```java
+import org.tstrans.io.Io;
+import org.tstrans.mpegts.*;
+import java.nio.file.Path;
+
+Path path = Path.of("capture.ts");
+try (var events = Io.parseFile(path)) {
+    events.forEach(e -> {
+        if (e instanceof DemuxEvent.ProgramMap pm) {
+            System.out.println("PMT program=" + pm.programNumber()
+                + " streams=" + pm.elementaryPids().size());
+        } else if (e instanceof DemuxEvent.Video v) {
+            System.out.println("Video pts=" + v.pts()
+                + " len=" + v.payload().size() + " units");
+        } else if (e instanceof DemuxEvent.Metadata m) {
+            System.out.println("KLV kind=" + m.kind()
+                + " len=" + m.payload().remaining());
+        } else if (e instanceof DemuxEvent.Audio a) {
+            System.out.println("Audio codec=" + a.codec()
+                + " pts=" + a.pts());
+        }
+        // NonConformant / Discontinuity / ReconnectDiscontinuity handled similarly.
+    });
+}
+```
+
+On **JDK 21+** you can replace the `instanceof` chain with a `switch` on the
+sealed `DemuxEvent` hierarchy — the examples here stay on JDK 17 (`instanceof`
+patterns) as that is the baseline. Pass a `DemuxerConfig` to the two-argument
+overload to tighten parsing (see [Configured demuxer](#configured-demuxer)):
+
+```java
+DemuxerConfig cfg = DemuxerConfig.builder().strictMode(StrictMode.FULL).build();
+try (var events = Io.parseFile(path, cfg)) { ... }
+```
+
+**Error contract.** A demux error mid-stream surfaces as a `RuntimeException`
+wrapping `DemuxException` (Java streams cannot propagate checked exceptions
+during iteration). An I/O read error surfaces as `UncheckedIOException`.
+Truncation is a clean end — the stream terminates normally with no error.
+
+> **`UNEXPECTED_EOF` note.** `DemuxException.Kind.UNEXPECTED_EOF` exists for
+> tst-py parity but is never thrown by the file path: truncation is treated as
+> clean EOF and read failures surface as `UncheckedIOException`.
+
+### Probe a file
+
+`Io.probe` scans the first 5 MiB and returns a `ProbeResult` record
+summarising what the file contains — without reading the entire file:
+
+```java
+import org.tstrans.io.Io;
+import org.tstrans.io.ProbeResult;
+import java.nio.file.Path;
+
+ProbeResult r = Io.probe(Path.of("capture.ts"));
+
+System.out.println("size:         " + r.sizeBytes() + " bytes");
+System.out.println("packets:      " + r.packetCount());
+System.out.println("programs:     " + r.programs().size());
+System.out.println("video codecs: " + r.videoCodecs());
+System.out.println("audio codecs: " + r.audioCodecs());
+System.out.println("has KLV:      " + r.hasKlv());
+System.out.println("pids:         " + r.pids());
+```
+
+`ProbeResult` fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `sizeBytes()` | `long` | Full file size in bytes (not capped at the probe window). |
+| `packetCount()` | `long` | Number of 188-byte TS packets read in the probe window. |
+| `programs()` | `List<DemuxEvent.ProgramMap>` | One entry per PMT seen in the probe window. |
+| `pids()` | `List<Integer>` | Elementary-stream PIDs seen across all programs. |
+| `videoCodecs()` | `List<VideoCodec>` | Distinct video codecs observed (sorted by name). |
+| `audioCodecs()` | `List<AudioCodec>` | Distinct audio codecs observed (sorted by name). |
+| `subtitleCodecs()` | `List<SubtitleCodec>` | Distinct subtitle codecs observed (sorted by name). |
+| `hasKlv()` | `boolean` | Whether any `Metadata` event was seen. |
+
+**Classification source.** Codec and KLV presence are derived from the
+`Video` / `Audio` / `Subtitle` / `Metadata` events observed during the scan, not
+from the PMT. This is a small, documented divergence from tst-py, where
+`ProgramMap.streams` carries per-stream type info: the JVM `DemuxEvent.ProgramMap`
+exposes only `elementaryPids`, so per-stream classification is event-derived.
+For any file that has samples within the probe window the results are equivalent.
+
+### Extract KLV
+
+`Io.extractKlv` streams only the KLV payloads from a file, optionally
+attaching 90 kHz timestamps and dispatching through the typed-KLV decoder:
+
+```java
+import org.tstrans.io.Io;
+import org.tstrans.io.ExtractKlvOptions;
+import org.tstrans.io.KlvEntry;
+import org.tstrans.klv.*;
+import java.nio.file.Path;
+
+// Parsed + with PTS: each entry carries a typed KlvSet and its 90 kHz timestamp.
+ExtractKlvOptions opts = ExtractKlvOptions.builder()
+    .withPts(true)          // include the 90 kHz PTS in each KlvEntry
+    .parsed(true)           // run Klv.parseUniversal on each payload
+    .skipUnknown(true)      // drop payloads whose UL is unrecognised (default)
+    .skipMalformed(false)   // propagate KlvDecodeException on a recognised bad payload (default)
+    .build();
+
+try (var entries = Io.extractKlv(Path.of("capture.ts"), opts)) {
+    entries.forEach(entry -> {
+        Long pts = entry.pts();                // null when withPts=false
+        KlvSet typed = entry.parsed();         // null when parsed=false
+        // byte[] entry.raw() is null when parsed=true; non-null when parsed=false
+
+        if (typed instanceof UasDatalinkLs ls) {
+            ls.sensorPosition().ifPresent(pos ->
+                System.out.printf("pts=%d sensor=%.6f,%.6f%n",
+                    pts, pos.latDeg(), pos.lonDeg()));
+        }
+    });
+}
+```
+
+**`KlvEntry` shape.** All three fields are nullable depending on the options:
+
+| Field | Non-null when |
+|---|---|
+| `pts()` (`Long`) | `withPts(true)` |
+| `raw()` (`byte[]`) | `parsed(false)` |
+| `parsed()` (`KlvSet`) | `parsed(true)` AND the UL was recognised |
+
+**Error contract for `extractKlv`.** With `parsed=true` and a recognised UL
+that fails to decode, `skipMalformed=false` (the default) re-throws the
+`KlvDecodeException` wrapped in a `RuntimeException` — corruption is surfaced,
+not silently lost. Set `skipMalformed(true)` to silently drop the malformed
+entry and continue. Unrecognised ULs are dropped when `skipUnknown=true`
+(default) and surfaced (as a `KlvEntry` with `parsed=null`) when
+`skipUnknown=false`.
+
+The defaults (`withPts=false, parsed=false, skipUnknown=true, skipMalformed=false`)
+yield raw `byte[] raw` entries with no PTS, matching the tst-py
+`extract_klv` default call.
+
+### Write a file
+
+`Muxer.writeFile` returns a `MuxerFileSink` that auto-drains pending TS
+packets to disk after each `push*` call and on `close`. The muxer is
+**borrowed**, not consumed — it remains usable after the sink closes.
+
+**Non-atomic write** (normal case):
+
+```java
+import org.tstrans.mpegts.*;
+import java.nio.file.Path;
+// annexBNal and klvBytes are byte[] values prepared beforehand.
+
+MuxerConfig cfg = MuxerConfig.builder()
+    .addVideo(0x1011, VideoCodec.H264)
+    .addKlv(0x1012, KlvStreamType.SYNCHRONOUS_METADATA, /*carriesPts=*/ true)
+    .build();
+
+try (Muxer m = new Muxer(cfg);
+     var sink = m.writeFile(Path.of("out.ts"))) {
+    sink.pushVideo(annexBNal, /*pts=*/ 0L, /*keyFrame=*/ true);
+    sink.pushKlv(klvBytes, /*pts=*/ 0L, /*metadataServiceId=*/ 0);
+}
+// out.ts now contains whatever was pushed, even if an exception was thrown
+// partway through (non-atomic: partial output is preserved).
+```
+
+**Atomic write** — the destination is only promoted from a `.partial` temp
+on explicit success:
+
+```java
+try (Muxer m = new Muxer(cfg);
+     var sink = m.writeFile(Path.of("out.ts"), /*atomic=*/ true)) {
+    sink.pushVideo(annexBNal, 0L, true);
+    sink.pushKlv(klvBytes, 0L, 0);
+    sink.commit();  // mark success — close() will now promote the temp
+}
+// Without commit(), close() discards the .partial temp; out.ts is never written.
+```
+
+**Why `commit()` exists.** Python's `with`-statement gets `exc_type` in
+`__exit__`, so tst-py can infer success automatically. Java's
+`AutoCloseable.close()` has no exception hook, so atomic mode requires an
+explicit `commit()` call on the success path: a committed sink promotes the
+`.partial` temp file to the destination on `close()`; a sink that closes
+without `commit()` — whether because of an exception or a missing call —
+discards the temp and leaves the destination untouched.
+
+The `MuxerFileSink` push family (`pushVideo`, `pushKlv`, `pushAudio`,
+`pushSubtitle`) mirrors the `Muxer` push family and also declares
+`IOException` (each call drains packets to disk). Argument shapes and PTS
+units (90 kHz) are identical; the `(pts, payload)` argument order on
+`pushSubtitle` matches `Muxer.pushSubtitle`.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each
@@ -526,22 +739,20 @@ A clean audio parse leaves `payload()` populated with `List<AudioFrame>`,
   a single `NonConformantKind` enum plus a human-readable `issue` String
   (and the optional CFI / multi-cell-reason fields). Match on `kind` for
   programmatic dispatch; read `issue` for the human-facing detail.
-- **Payloads stay raw `ByteBuffer`** — typed elementary-stream payloads
-  (NAL units, AV1 OBUs, ADTS frames) are **not** parsed in this wave. The
-  payload is raw bytes; typed payloads land in the codec wave.
 
 ## Where this binding differs from the Rust core
 
-- **Demux + offline mux + typed KLV shipped.** The JVM binding currently
-  surfaces the `org.tstrans.mpegts.Demuxer` receive path (feed bytes →
-  typed `DemuxEvent`s), the offline `org.tstrans.mpegts.Muxer` send path
-  (config builder → push family → `pull`), the full `org.tstrans.klv`
-  typed-KLV surface (ST 0601 / 0102 / 0605 / 0903 decode + encode +
-  `parseUniversal` dispatcher), and the `org.tstrans.Version` bootstrap.
-  Codec parsers (`org.tstrans.codec`) and SRT / RTP transport are on the
-  roadmap. The Rust core has them; only the JNI wrap is the remaining work.
-- **Payloads are raw `ByteBuffer`** (heap copies), not typed NAL / OBU /
-  ADTS lists. Typed payloads land in the codec wave.
+- **Demux + offline mux + typed KLV + codec parsers + file I/O shipped.**
+  The JVM binding surfaces the `org.tstrans.mpegts.Demuxer` receive path
+  (feed bytes → typed `DemuxEvent`s with typed NAL / OBU / ADTS payloads),
+  the offline `org.tstrans.mpegts.Muxer` send path (config builder → push
+  family → `pull` / `writeFile`), the full `org.tstrans.klv` typed-KLV
+  surface (ST 0601 / 0102 / 0605 / 0903 decode + encode + `parseUniversal`
+  dispatcher), the `org.tstrans.codec` elementary-stream parsers (H.264 /
+  H.265 / H.266 / AV1 / AAC / MPEG-2 audio), the `org.tstrans.io` file
+  helpers (`parseFile`, `probe`, `extractKlv`), and the `org.tstrans.Version`
+  bootstrap. SRT / RTP transport is on the roadmap. The Rust core has it;
+  only the JNI wrap is the remaining work.
 - **JDK 17 baseline.** The examples use `instanceof` pattern matching, not
   `switch`-on-sealed (which needs JDK 21+). `switch` patterns work on
   21+, but `instanceof` is the portable form on the 17 baseline.
@@ -571,8 +782,8 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
 - **mpegts mux (`org.tstrans.mpegts.Muxer` + `MuxerConfig` + push family + `pull`) — SHIPPED (this wave).**
 - **klv** — typed KLV decode/encode (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv` — **SHIPPED (this wave).**
 - **codec** — H.264 / H.265 / H.266 / AV1 + audio parsers under
-  `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS).
-- **io** — file inspection helpers.
+  `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS) — **SHIPPED.**
+- **io** — file inspection helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`) — **SHIPPED.**
 - **srt** — live SRT transport (Sender / Receiver / MuxSender / DemuxReceiver).
 - **rtp** — MPEG-TS-over-RTP transport.
 - **pipeline** — reconnect wrappers + pairing shells.

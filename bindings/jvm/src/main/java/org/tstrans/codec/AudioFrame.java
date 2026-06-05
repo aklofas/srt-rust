@@ -3,11 +3,10 @@ package org.tstrans.codec;
 /**
  * Sealed marker for a typed audio elementary-stream frame.
  *
- * <p>Currently permits {@link AdtsFrame} (AAC). The MPEG-2 audio frame type
- * ({@code Mpeg2AudioFrame}) lands in a follow-on task of the codec wave and will
- * be added to the {@code permits} clause then.
+ * <p>Permits {@link AdtsFrame} (AAC) and {@link Mpeg2AudioFrame} (MPEG-1/2/2.5
+ * Layer I/II/III audio).
  *
  * <p>Use {@code instanceof} pattern matching on JDK 17 to dispatch on the
  * concrete type; {@code switch}-on-sealed requires JDK 21+.
  */
-public sealed interface AudioFrame permits AdtsFrame {}
+public sealed interface AudioFrame permits AdtsFrame, Mpeg2AudioFrame {}

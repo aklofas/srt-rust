@@ -138,8 +138,10 @@ public final class Muxer implements AutoCloseable {
 
     /**
      * Open {@code path} for writing and return a draining {@link MuxerFileSink}
-     * that flushes pending TS packets to disk after each {@code push*} call and on
-     * close. Mirrors tst-py's {@code Muxer.write_file(path)}. The muxer is borrowed
+     * that drains pending TS packets to the file's buffered output stream after each
+     * {@code push*} call and on close (bytes reach the file when the buffer fills or
+     * on close — not necessarily synchronously per push; see {@link MuxerFileSink}).
+     * Mirrors tst-py's {@code Muxer.write_file(path)}. The muxer is borrowed
      * (reusable after the sink closes).
      */
     public MuxerFileSink writeFile(Path path) throws IOException {

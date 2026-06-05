@@ -861,6 +861,114 @@ closes the underlying libsrt socket; subsequent calls are no-ops.
   knob setters (`latencyMs`, `connectTimeoutMs`, etc.) reject negative values
   at construction time, mirroring tst-py's `u32`-typed API.
 
+## SRT convenience (`MuxSender` / `DemuxReceiver`)
+
+The `org.tstrans.srt` package also exposes the high-level convenience shells that
+own a muxer / demuxer and a transport in one object, so you never touch raw TS
+bytes: `MuxSender` wraps `tst_pipeline::MuxSender<SrtTransport>` (push elementary
+streams → it muxes + sends) and `DemuxReceiver` wraps
+`tst_pipeline::DemuxReceiver<SrtTransport>` (it recvs + demuxes → you iterate
+typed `DemuxEvent`s).
+
+### Send: `MuxSender`
+
+Build a `MuxerConfig`, connect in caller mode, and push elementary streams:
+
+```java
+import org.tstrans.srt.MuxSender;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+
+MuxerConfig program = MuxerConfig.builder()
+    .programNumber(1).pmtPid(0x1000)
+    .addVideo(0x1011, VideoCodec.H264)
+    .build();
+
+try (MuxSender s = MuxSender.fromUrl(
+        "srt://host:9000?mode=caller&latency=120", program)) {
+    long pts = 0;
+    for (byte[] annexBNal : accessUnits) {
+        s.pushVideo(annexBNal, pts, /*keyFrame=*/ true);
+        pts += 3000;  // 90 kHz PTS; advance per frame
+    }
+}
+// MuxSender has NO flush(): bytes flush per-push and again on close().
+```
+
+`pushKlv`, `pushAudio`, and `pushSubtitle` cover the other elementary-stream
+kinds; the handle-targeted `push*To` variants address a specific stream in a
+multi-stream program.
+
+### Receive: `DemuxReceiver`
+
+Bind in listener mode and iterate the same sealed `DemuxEvent` hierarchy the
+offline `org.tstrans.mpegts.Demuxer` produces:
+
+```java
+import org.tstrans.srt.DemuxReceiver;
+import org.tstrans.mpegts.DemuxEvent;
+
+try (DemuxReceiver rx = DemuxReceiver.fromUrl("srt://:9000?mode=listener")) {
+    for (DemuxEvent e : rx) {
+        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+            // v.payload() is List<VideoUnit> (typed NAL / OBU units)
+        }
+    }
+}
+// Iteration ends on clean EOF; a CLOSED/BROKEN SrtException surfaces (wrapped in
+// a RuntimeException — the Iterator contract forbids checked exceptions).
+```
+
+### Tee the raw stream: `addByteSink`
+
+`DemuxReceiver.addByteSink` fans out every **188-byte TS packet** — as a fresh
+`byte[]` — to a callback BEFORE the demuxer parses it. Useful for record-to-disk
+or a parallel parser without consuming the event iterator:
+
+```java
+try (DemuxReceiver rx = DemuxReceiver.fromUrl("srt://:9000?mode=listener")) {
+    rx.addByteSink(pkt -> recorder.write(pkt));  // pkt.length == 188
+    for (DemuxEvent e : rx) {
+        // ... normal event handling continues unaffected ...
+    }
+}
+```
+
+Gotchas:
+
+- **Fires per 188-byte packet, ahead of demux.** Each callback gets exactly one
+  raw TS packet (the SRT live-mode quantum), before parsing.
+- **Keep it cheap.** The sink runs on the receiver's own recv-loop thread; a slow
+  sink throttles the receiver.
+- **Never re-enter the receiver.** Do NOT call `next()` / `close()` / `stats()`
+  on the same `DemuxReceiver` from inside the sink.
+- **Fail-loud.** If the sink throws, the first error wins and is re-raised from
+  the **next** iteration step, which then stops iteration.
+- **Register before iterating** (or between `next()` calls) — `addByteSink` is
+  not safe to call concurrently with an in-flight `next()`.
+
+### Managed reconnect (next wave)
+
+The reconnect policy types are already present — `ReconnectPolicy`,
+`BackoffStrategy`, and `OverflowPolicy`:
+
+```java
+import org.tstrans.srt.ReconnectPolicy;
+import org.tstrans.srt.BackoffStrategy;
+import org.tstrans.srt.OverflowPolicy;
+
+ReconnectPolicy policy = ReconnectPolicy.builder()
+    .maxAttempts(5)
+    .backoff(BackoffStrategy.exponential(/*baseMs=*/ 100, /*maxMs=*/ 2000))
+    .gapBufferCapacity(256)
+    .overflowPolicy(OverflowPolicy.DROP_OLDEST)
+    .build();
+```
+
+The `Managed*` wrappers that consume this policy (auto-reconnect on transport
+drop, replay the gap buffer) arrive in the next JVM wave; the policy types ship
+now so the surface is forward-stable.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each
@@ -937,8 +1045,10 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
 - **io** — file inspection helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`) — **SHIPPED.**
 - **srt (sub-wave A)** — `Sender` / `Receiver` pipeline shells + `Builder` /
   `Socket` / `Listener` / `CancelHandle` / `SocketStats` / `SrtStats` — **SHIPPED.**
-- **srt (sub-wave B/C)** — `MuxSender` / `DemuxReceiver` high-level shells and
-  managed reconnect wrappers.
+- **srt (sub-wave B)** — `MuxSender` / `DemuxReceiver` high-level shells +
+  `DemuxReceiver.addByteSink` fan-out + the `ReconnectPolicy` /
+  `BackoffStrategy` / `OverflowPolicy` types — **SHIPPED (this wave).**
+- **srt (sub-wave C)** — `Managed*` reconnect wrappers.
 - **rtp** — MPEG-TS-over-RTP transport.
 - **pipeline** — reconnect wrappers + pairing shells.
 - **multi-platform fat JAR + Maven Central publish** — single JAR bundling

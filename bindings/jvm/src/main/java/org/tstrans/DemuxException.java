@@ -1,13 +1,19 @@
 package org.tstrans;
 
 /**
- * Thrown when the MPEG-TS demuxer rejects input. {@link Kind} mirrors
- * {@code tst_core::mpegts::demux::DemuxError} 1:1.
+ * Thrown when the MPEG-TS demuxer rejects input. {@link Kind} mirrors tst-py's
+ * {@code DemuxErrorKind}; every constant except {@code UNEXPECTED_EOF} maps to a
+ * producing {@code tst_core::mpegts::demux::DemuxError} variant. {@code UNEXPECTED_EOF}
+ * is parity-only (no Rust producer) — see its constant doc.
  */
 public final class DemuxException extends BindingException {
     private static final long serialVersionUID = 1L;
 
-    /** Discriminant; values match the Rust {@code DemuxError} variants. */
+    /**
+     * Discriminant. Every constant except {@code UNEXPECTED_EOF} maps 1:1 to a
+     * {@code tst_core::DemuxError} variant; {@code UNEXPECTED_EOF} is parity-only
+     * (documented on the constant).
+     */
     public enum Kind {
         SYNC_LOSS, BAD_PMT, BAD_PES,
         /**

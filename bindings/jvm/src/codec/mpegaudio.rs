@@ -26,24 +26,7 @@ use tst_core::codec::mpegaudio::{
 };
 
 use crate::error::map_codec_parse_error;
-
-/// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
-/// (`java.nio.ByteBuffer.wrap`) — JVM-owned, no Rust memory escapes.
-fn wrap_heap_byte_buffer<'local>(
-    env: &mut JNIEnv<'local>,
-    bytes: &[u8],
-) -> Result<JObject<'local>, ()> {
-    let arr = env.byte_array_from_slice(bytes).map_err(|_| ())?;
-    env.call_static_method(
-        "java/nio/ByteBuffer",
-        "wrap",
-        "([B)Ljava/nio/ByteBuffer;",
-        &[JValue::Object(&arr)],
-    )
-    .map_err(|_| ())?
-    .l()
-    .map_err(|_| ())
-}
+use crate::jutil::wrap_heap_byte_buffer;
 
 /// Build the Java `org.tstrans.codec.Layer` enum constant.
 fn build_layer<'local>(env: &mut JNIEnv<'local>, l: Layer) -> Result<JObject<'local>, ()> {

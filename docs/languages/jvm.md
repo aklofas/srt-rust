@@ -198,8 +198,8 @@ A `long` knob of `0` means "use the Rust core's default cap."
 `DemuxEvent` is a JDK-17 `sealed interface` whose variants are `record`s:
 
 - `ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids)` — PSI / PMT.
-- `Video(StreamId stream, long pts, Long dts, ByteBuffer payload, boolean randomAccessIndicator)`
-- `Audio(StreamId stream, long pts, Long dts, ByteBuffer payload)`
+- `Video(StreamId stream, long pts, Long dts, VideoCodec codec, List<VideoUnit> payload, boolean randomAccessIndicator, CodecParseException codecParseError)` — typed elementary units (see [Typed sample payloads](#typed-sample-payloads)).
+- `Audio(StreamId stream, long pts, Long dts, AudioCodec codec, List<AudioFrame> payload, ByteBuffer rawPayload, CodecParseException codecParseError)` — typed audio frames with a raw fallback (see [Typed sample payloads](#typed-sample-payloads)).
 - `Subtitle(StreamId stream, long pts, Long dts, ByteBuffer payload)`
 - `UnknownSample(StreamId stream, long pts, Long dts, int streamType, ByteBuffer payload)`
 - `Metadata(StreamId stream, long pts, MetadataKind kind, ByteBuffer payload, boolean wasReassembled, int cellCount)` — KLV.
@@ -424,6 +424,72 @@ vmtiLsBuilder.miisId(java.nio.ByteBuffer.wrap(miisIdBytes));
 // Wrong: direct buffer would be rejected (and unsafe on JDK < 22).
 // ByteBuffer.allocateDirect(16).put(miisIdBytes)  — do NOT do this
 ```
+
+## Codec parsing (`org.tstrans.codec`)
+
+The `org.tstrans.codec` package wraps `tst_core::codec::*` — the elementary-stream
+parsers for H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio. The static
+`Codec` facade is the entry point; every parser takes raw RBSP / payload bytes
+and returns an immutable record (or a `List` of them), throwing
+`CodecParseException` on malformed input.
+
+```java
+import org.tstrans.codec.Codec;
+import org.tstrans.codec.H264Sps;
+import org.tstrans.codec.AdtsFrame;
+import org.tstrans.CodecParseException;
+
+// Parse an H.264 sequence parameter set from its RBSP body
+// (Annex-B start code already stripped).
+H264Sps sps = Codec.parseH264Sps(rbsp);
+System.out.printf("%dx%d profile_idc=%d%n",
+    sps.codedWidth(), sps.codedHeight(), sps.profileIdc());
+
+// Parse a run of ADTS AAC frames out of an audio elementary stream.
+List<AdtsFrame> frames = Codec.parseAacFrames(adtsBytes);
+for (AdtsFrame f : frames) {
+    System.out.printf("AAC %d Hz, channel_config=%d%n",
+        f.sampleRateHz(), f.channelConfiguration());
+}
+```
+
+`CodecParseException` is a checked exception carrying a `kind()` discriminant
+(e.g. `TRUNCATED_RBSP`, `INVALID_GOLOMB`, `UNSUPPORTED_PROFILE`, `BAD_SYNC_WORD`)
+and a human-readable message. The
+H.265 / H.266 parsers mirror the H.264 method names
+(`parseH265Sps`, `parseH266Vps`, …); AV1 has `parseAv1SequenceHeader` /
+`parseAv1FrameHeaderLight` / `parseAv1ObuStream`; MPEG-2 audio has
+`parseMpeg2AudioFrames`. The `*WithResync` audio variants tolerate leading
+garbage by scanning for the next sync word instead of throwing.
+
+## Typed sample payloads
+
+Since the codec wave, the demuxer hands back **typed** elementary units rather
+than raw bytes. `DemuxEvent.Video.payload()` is a `List<VideoUnit>` —
+`NalUnit`s for H.264 / H.265 / H.266, `Obu`s for AV1 — and
+`DemuxEvent.Audio.payload()` is a `List<AudioFrame>` — `AdtsFrame`s for AAC,
+`Mpeg2AudioFrame`s for MPEG-2 audio. The `codec()` accessor on each event tags
+the discriminant (`VideoCodec` / `AudioCodec`). Downcast with `instanceof`:
+
+```java
+for (DemuxEvent e : demuxer) {
+    if (e instanceof DemuxEvent.Video v && v.codec() == VideoCodec.H264) {
+        for (VideoUnit u : v.payload()) {
+            NalUnit nal = (NalUnit) u;        // H.264 -> always NalUnit
+            int nalType = nal.nalType();      // 5 == IDR slice
+            ByteBuffer rbsp = nal.payload();  // RBSP body, start code stripped
+        }
+    }
+}
+```
+
+**Raw fallback.** When a codec parser cannot decode a payload — a mid-stream
+malformation, or a deferred carriage (AAC-LATM, AC-3) — the event's
+`payload()` list is empty, `codecParseError()` holds the
+`CodecParseException` describing the failure, and (for audio)
+`rawPayload()` carries the original bytes as a heap `ByteBuffer` so callers can
+still recover them. A clean parse leaves `codecParseError()` null; video has no
+`rawPayload` field (its `List<VideoUnit>` carries the bytes per-unit).
 
 ## Language-specific gotchas
 

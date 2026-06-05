@@ -8,6 +8,11 @@ package org.tstrans.srt;
  * Mirrors tst-py {@code tstrans.srt.CancelHandle}: {@link #isCancelled()} is a
  * per-handle observation flag; all clones forward {@code cancel()} into the same
  * shared native target.
+ *
+ * <p>{@link #cancel()}, {@link #isCancelled()}, and {@link #close()} are all
+ * {@code synchronized} on this instance to guard the cross-thread close/cancel
+ * race: {@code close()} may be called from one thread while another thread is
+ * still inside {@code cancel()} or {@code isCancelled()}.
  */
 public final class CancelHandle implements AutoCloseable {
     static { org.tstrans.NativeLoader.load(); }
@@ -17,12 +22,12 @@ public final class CancelHandle implements AutoCloseable {
     CancelHandle(long handle) { this.handle = handle; }
 
     /** Signal cancellation. Idempotent. */
-    public void cancel() { ensureOpen(); nCancel(handle); }
+    public synchronized void cancel() { ensureOpen(); nCancel(handle); }
 
     /** True once {@link #cancel()} was called on this handle (advisory). */
-    public boolean isCancelled() { ensureOpen(); return nIsCancelled(handle); }
+    public synchronized boolean isCancelled() { ensureOpen(); return nIsCancelled(handle); }
 
-    @Override public void close() { if (handle != 0) { nClose(handle); handle = 0; } }
+    @Override public synchronized void close() { if (handle != 0) { nClose(handle); handle = 0; } }
 
     private void ensureOpen() {
         if (handle == 0) throw new IllegalStateException("CancelHandle is closed");

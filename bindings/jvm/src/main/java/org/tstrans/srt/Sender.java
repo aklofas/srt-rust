@@ -69,8 +69,8 @@ public final class Sender implements AutoCloseable {
      * buffered until the next call or {@link #flush()}.
      *
      * @param data TS bytes to send (any length; need not be packet-aligned)
-     * @throws SrtException {@code CLOSED} if the sender is closed;
-     *     {@code WOULD_BLOCK} if the send queue is full (backpressure);
+     * @throws IllegalStateException if the sender is closed
+     * @throws SrtException {@code WOULD_BLOCK} if the send queue is full (backpressure);
      *     {@code BROKEN} if the transport is broken; {@code IO} on other errors
      */
     public void sendBytes(byte[] data) throws SrtException {
@@ -82,7 +82,8 @@ public final class Sender implements AutoCloseable {
      * Flush any buffered partial TS bundle. Use after the last {@link #sendBytes}
      * call in a logical unit to ensure all bytes reach the peer.
      *
-     * @throws SrtException {@code CLOSED} or {@code BROKEN} on transport failure
+     * @throws IllegalStateException if the sender is closed
+     * @throws SrtException {@code BROKEN} on transport failure
      */
     public void flush() throws SrtException {
         ensureOpen();
@@ -124,7 +125,8 @@ public final class Sender implements AutoCloseable {
      * {@link #socketStats()}.
      *
      * @return a {@link SrtStats} snapshot
-     * @throws SrtException {@code CLOSED} or {@code IO} if the underlying
+     * @throws IllegalStateException if the sender is closed
+     * @throws SrtException {@code IO} if the underlying
      *     {@code SrtTransport::stats()} call fails
      */
     public SrtStats srtStats() throws SrtException {

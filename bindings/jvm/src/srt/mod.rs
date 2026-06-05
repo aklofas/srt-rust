@@ -34,10 +34,14 @@ impl JniCancel {
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nCancel(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
+    if handle == 0 {
+        let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+        return;
+    }
     // SAFETY: handle is a valid Box<JniCancel> kept alive by the Java object.
     let c = unsafe { JniCancel::from_handle(handle) };
     c.flag.store(true, Ordering::Release);
@@ -46,10 +50,14 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nCancel(
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nIsCancelled(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
+    if handle == 0 {
+        let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+        return 0;
+    }
     // SAFETY: handle is a valid Box<JniCancel> kept alive by the Java object.
     let c = unsafe { JniCancel::from_handle(handle) };
     u8::from(c.flag.load(Ordering::Acquire))

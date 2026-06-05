@@ -512,7 +512,8 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265ParameterSets<'loc
             if kind_str != "H265" {
                 return Ok::<Option<NalUnit>, jni::errors::Error>(None);
             }
-            let nal_type = inner.call_method(&item, "nalType", "()I", &[])?.i()? as u8;
+            let nal_type_raw = inner.call_method(&item, "nalType", "()I", &[])?.i()?;
+            let nal_type = crate::jutil::checked_u8(inner, nal_type_raw as i64, "nalType")?;
             // layerId / temporalIdPlus1 are (nullable) Integer; H265 NalUnits
             // always carry them, but default to 0 / 1 if absent (mirrors tst-py
             // `layer_id.unwrap_or(0)` / `temporal_id_plus1.unwrap_or(1)`).
@@ -522,9 +523,10 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265ParameterSets<'loc
             let layer_id = if layer_id_obj.is_null() {
                 0u8
             } else {
-                inner
+                let layer_id_raw = inner
                     .call_method(&layer_id_obj, "intValue", "()I", &[])?
-                    .i()? as u8
+                    .i()?;
+                crate::jutil::checked_u8(inner, layer_id_raw as i64, "layerId")?
             };
             let tid_obj = inner
                 .call_method(&item, "temporalIdPlus1", "()Ljava/lang/Integer;", &[])?
@@ -532,7 +534,8 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265ParameterSets<'loc
             let temporal_id_plus1 = if tid_obj.is_null() {
                 1u8
             } else {
-                inner.call_method(&tid_obj, "intValue", "()I", &[])?.i()? as u8
+                let tid_raw = inner.call_method(&tid_obj, "intValue", "()I", &[])?.i()?;
+                crate::jutil::checked_u8(inner, tid_raw as i64, "temporalIdPlus1")?
             };
             let payload_buf = inner
                 .call_method(&item, "payload", "()Ljava/nio/ByteBuffer;", &[])?

@@ -483,13 +483,22 @@ for (DemuxEvent e : demuxer) {
 }
 ```
 
-**Raw fallback.** When a codec parser cannot decode a payload — a mid-stream
-malformation, or a deferred carriage (AAC-LATM, AC-3) — the event's
-`payload()` list is empty, `codecParseError()` holds the
-`CodecParseException` describing the failure, and (for audio)
-`rawPayload()` carries the original bytes as a heap `ByteBuffer` so callers can
-still recover them. A clean parse leaves `codecParseError()` null; video has no
-`rawPayload` field (its `List<VideoUnit>` carries the bytes per-unit).
+**Raw fallback (audio only).** Video always carries typed NAL/OBU units:
+`payload()` is the `List<VideoUnit>`, there is no `rawPayload`, and
+`codecParseError()` is **always** null. The raw-fallback model applies to
+audio only, in two distinct cases:
+
+- **Mid-stream malformation** — a parser hits a bad frame partway through the
+  stream. `payload()` is empty, `rawPayload()` carries the original bytes as a
+  heap `ByteBuffer`, and `codecParseError()` holds the `CodecParseException`
+  describing the failure.
+- **Deferred carriage (AAC-LATM, AC-3)** — typed parsing isn't yet
+  implemented, so the binding falls back silently. `payload()` is empty,
+  `rawPayload()` carries the original bytes, but `codecParseError()` is
+  **null** (no error — the bytes simply weren't parsed).
+
+A clean audio parse leaves `payload()` populated with `List<AudioFrame>`,
+`rawPayload()` null, and `codecParseError()` null.
 
 ## Language-specific gotchas
 

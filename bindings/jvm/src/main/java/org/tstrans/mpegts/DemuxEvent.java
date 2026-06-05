@@ -2,6 +2,9 @@ package org.tstrans.mpegts;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import org.tstrans.CodecParseException;
+import org.tstrans.codec.AudioFrame;
+import org.tstrans.codec.VideoUnit;
 
 /**
  * A demuxed event. Sealed sum type mirroring
@@ -24,37 +27,65 @@ public sealed interface DemuxEvent
     record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
 
     /**
-     * A video access unit (concatenated NAL/OBU payload bytes; typed payloads
-     * deferred to the codec wave). The codec is carried on
-     * {@code stream.kind()}, not duplicated here.
+     * A video access unit, carrying typed codec units. The {@code payload} is a
+     * {@link List} of {@link VideoUnit} — {@code NalUnit}s for H.264/H.265/H.266,
+     * {@code Obu}s for AV1. The {@code codec} field disambiguates which.
      *
      * @param stream                 the elementary stream this sample belongs to
      * @param pts                    presentation timestamp in 90&nbsp;kHz ticks
      * @param dts                    decode timestamp in 90&nbsp;kHz ticks, or
      *                               {@code null} when absent
-     * @param payload                the access-unit bytes as a heap (JVM-owned)
-     *                               {@link ByteBuffer} — a copy of the demuxed
-     *                               bytes, safe to retain and read at any time
-     *                               (including after the next
-     *                               {@link Demuxer#nextEvent()} or
-     *                               {@link Demuxer#close()}). True zero-copy
-     *                               (a direct buffer over native memory) is
-     *                               deferred to a future JDK&nbsp;22+ Foreign
-     *                               Function &amp; Memory ({@code Arena}/
-     *                               {@code MemorySegment}) path; this JDK&nbsp;17
-     *                               baseline copies.
+     * @param codec                  the video codec (also on {@code stream.kind()})
+     * @param payload                the typed access-unit units —
+     *                               {@code List<NalUnit>} for H.264/H.265/H.266,
+     *                               {@code List<Obu>} for AV1. Each unit's own
+     *                               byte payload is a heap (JVM-owned)
+     *                               {@link ByteBuffer}, safe to retain past the
+     *                               next {@link Demuxer#nextEvent()} or
+     *                               {@link Demuxer#close()}.
      * @param randomAccessIndicator  whether this access unit is a random-access
      *                               point (keyframe)
+     * @param codecParseError        always {@code null} for video — the demuxer
+     *                               already split the NALs/OBUs, so typed
+     *                               payload construction cannot fail at this layer
      */
-    record Video(StreamId stream, long pts, Long dts, ByteBuffer payload,
-                 boolean randomAccessIndicator) implements DemuxEvent {}
+    record Video(StreamId stream, long pts, Long dts, VideoCodec codec,
+                 List<VideoUnit> payload, boolean randomAccessIndicator,
+                 CodecParseException codecParseError) implements DemuxEvent {}
 
     /**
-     * An audio access unit. The codec is carried on {@code stream.kind()}.
+     * An audio access unit. On a clean AAC / MP2 parse the {@code payload} is a
+     * typed {@link List} of {@link AudioFrame} ({@code AdtsFrame} for AAC,
+     * {@code Mpeg2AudioFrame} for MP2), {@code rawPayload} and
+     * {@code codecParseError} are {@code null}. On a mid-stream parse failure the
+     * {@code payload} is an empty list, {@code rawPayload} carries the raw frame
+     * bytes (heap {@link ByteBuffer}), and {@code codecParseError} describes the
+     * failure. For deferred codecs (AAC-LATM, AC-3) the {@code payload} is empty,
+     * {@code rawPayload} carries the bytes, and {@code codecParseError} is
+     * {@code null} (silent fallback). Mirrors tst-py's audio event.
+     *
+     * @param stream          the elementary stream this sample belongs to
+     * @param pts             presentation timestamp in 90&nbsp;kHz ticks
+     * @param dts             decode timestamp in 90&nbsp;kHz ticks, or {@code null} when absent
+     * @param codec           the audio codec (also on {@code stream.kind()})
+     * @param payload         typed frames on a clean parse, else an empty list
+     * @param rawPayload      raw frame bytes (heap {@link ByteBuffer}) on a
+     *                        bytes-fallback path, else {@code null}
+     * @param codecParseError the parse failure on a mid-stream error, else
+     *                        {@code null} (also {@code null} for the silent
+     *                        deferred-codec fallback)
+     */
+    record Audio(StreamId stream, long pts, Long dts, AudioCodec codec,
+                 List<AudioFrame> payload, ByteBuffer rawPayload,
+                 CodecParseException codecParseError) implements DemuxEvent {}
+
+    /**
+     * A subtitle access unit.
      *
      * @param stream  the elementary stream this sample belongs to
      * @param pts     presentation timestamp in 90&nbsp;kHz ticks
      * @param dts     decode timestamp in 90&nbsp;kHz ticks, or {@code null} when absent
+     * @param codec   the subtitle codec (also on {@code stream.kind()})
      * @param payload the access-unit bytes as a heap (JVM-owned) {@link ByteBuffer}
      *                — a copy, safe to retain and read at any time (including
      *                after the next {@link Demuxer#nextEvent()} or
@@ -62,22 +93,8 @@ public sealed interface DemuxEvent
      *                future JDK&nbsp;22+ Foreign Function &amp; Memory path; this
      *                JDK&nbsp;17 baseline copies.
      */
-    record Audio(StreamId stream, long pts, Long dts, ByteBuffer payload) implements DemuxEvent {}
-
-    /**
-     * A subtitle access unit. The codec is carried on {@code stream.kind()}.
-     *
-     * @param stream  the elementary stream this sample belongs to
-     * @param pts     presentation timestamp in 90&nbsp;kHz ticks
-     * @param dts     decode timestamp in 90&nbsp;kHz ticks, or {@code null} when absent
-     * @param payload the access-unit bytes as a heap (JVM-owned) {@link ByteBuffer}
-     *                — a copy, safe to retain and read at any time (including
-     *                after the next {@link Demuxer#nextEvent()} or
-     *                {@link Demuxer#close()}). True zero-copy is deferred to a
-     *                future JDK&nbsp;22+ Foreign Function &amp; Memory path; this
-     *                JDK&nbsp;17 baseline copies.
-     */
-    record Subtitle(StreamId stream, long pts, Long dts, ByteBuffer payload) implements DemuxEvent {}
+    record Subtitle(StreamId stream, long pts, Long dts, SubtitleCodec codec,
+                    ByteBuffer payload) implements DemuxEvent {}
 
     /**
      * An access unit on a stream whose codec the demuxer does not recognize.

@@ -10,6 +10,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.tstrans.codec.NalUnit;
+import org.tstrans.codec.VideoUnit;
 import org.tstrans.klv.Klv;
 import org.tstrans.klv.UasDatalinkLs;
 import org.tstrans.mpegts.DemuxEvent;
@@ -31,11 +33,11 @@ import org.tstrans.mpegts.Demuxer;
  *   <li><b>video.pid</b> — the elementary-stream PID of the video sample.</li>
  *   <li><b>video.pts</b> — the 90&nbsp;kHz presentation timestamp.</li>
  *   <li><b>video.payload_sha256</b> — SHA-256 of the concatenated NAL RBSP
- *       payload bytes. The JNI binding derives the {@code Video.payload}
- *       bytes identically to the Rust/Python normalisers (concatenate every
- *       {@code NalUnit.payload}, Annex-B start codes already stripped by the
- *       demuxer — see {@code sample_bytes()} in {@code bindings/jvm/src/mpegts/mod.rs}
- *       and {@code video_payload_bytes()} in the Rust normaliser), so the digest
+ *       payload bytes. The {@code Video.payload} is now a typed
+ *       {@code List<VideoUnit>} (codec wave); this test concatenates every
+ *       {@code ((NalUnit) unit).payload()} (Annex-B start codes already stripped
+ *       by the demuxer) the same way the Rust/Python normalisers do
+ *       (see {@code video_payload_bytes()} in the Rust normaliser), so the digest
  *       matches byte-for-byte. This is the strong cross-binding proof.</li>
  *   <li><b>klv.pid</b> — the elementary-stream PID of the KLV metadata stream
  *       ({@code DemuxEvent.Metadata.stream().pid()}).</li>
@@ -118,7 +120,7 @@ class ScenarioReproductionTest {
             d.flush();
             for (DemuxEvent e : d) {
                 if (e instanceof DemuxEvent.Video v) {
-                    videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256(v.payload())));
+                    videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.payload())));
                 } else if (e instanceof DemuxEvent.Metadata m) {
                     metadataSamples.add(
                         new MetadataSample(m.stream().pid(), klvSetFromUl(m.payload())));
@@ -240,12 +242,23 @@ class ScenarioReproductionTest {
                 + "and Python KlvError(TRUNCATED_SET) for the same empty-body input)");
     }
 
-    /** SHA-256 the readable contents of a ByteBuffer (without disturbing it). */
-    private static String sha256(ByteBuffer buf) throws Exception {
-        ByteBuffer view = buf.duplicate();
-        byte[] bytes = new byte[view.remaining()];
-        view.get(bytes);
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+    /**
+     * SHA-256 of the concatenated typed-unit payload bytes. Mirrors the Rust /
+     * Python golden builders: concatenate every {@code NalUnit.payload()} (RBSP,
+     * Annex-B start codes already stripped by the demuxer). The {@code h264-st0601-mp}
+     * scenario carries H.264, so every unit is a {@link NalUnit}. The digest must
+     * still equal the committed golden's {@code video.payload_sha256}.
+     */
+    private static String sha256Units(List<VideoUnit> units) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        for (VideoUnit u : units) {
+            NalUnit n = (NalUnit) u;
+            ByteBuffer view = n.payload().duplicate();
+            byte[] bytes = new byte[view.remaining()];
+            view.get(bytes);
+            md.update(bytes);
+        }
+        byte[] digest = md.digest();
         StringBuilder sb = new StringBuilder(digest.length * 2);
         for (byte b : digest) {
             sb.append(Character.forDigit((b >> 4) & 0xF, 16));

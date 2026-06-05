@@ -4755,9 +4755,16 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::url::parse_url"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# tst_pipeline::BackoffStrategy graduated to [[surface]] in the tst-jni srt wave B
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::BackoffStrategy"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/poison_policy.rs"]
+bindings = ["java:org.tstrans.srt.BackoffStrategy"]
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::BoxedDemuxReceiver"
@@ -4847,9 +4854,16 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::MuxSenderStats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# tst_pipeline::OverflowPolicy graduated to [[surface]] in the tst-jni srt wave B
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::OverflowPolicy"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_reject_overflow.rs"]
+bindings = ["java:org.tstrans.srt.OverflowPolicy"]
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::OverflowPolicy::clone"
@@ -4889,9 +4903,16 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::ReceiverStats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# tst_pipeline::ReconnectPolicy graduated to [[surface]] in the tst-jni srt wave B
+
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::ReconnectPolicy"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_reject_overflow.rs"]
+bindings = ["java:org.tstrans.srt.ReconnectPolicy"]
+scenario_ids = []
+tier = "A"
 
 # tst_pipeline::Sender graduated to [[surface]] in the tst-jni srt wave A
 

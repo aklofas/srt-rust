@@ -5,6 +5,7 @@
 //! `mod mpegts`. The remaining `org.tstrans.*` modules (mirroring tst-py) land
 //! in the follow-on surface-port waves.
 
+mod codec;
 mod error;
 mod jutil;
 mod klv;

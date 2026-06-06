@@ -31,3 +31,8 @@ tst-core = { path = "../../crates/tst-core" }
 # CI). srt is unconditional in the JVM binding (single cdylib; spec §3.1).
 tst-pipeline = { path = "../../crates/tst-pipeline" }
 tst-srt      = { path = "../../crates/tst-srt" }
+
+# tst-rtp (pure Rust: RTP-over-UDP + RTSP) backs the org.tstrans.rtp surface.
+# default-features = false keeps the `tls` feature off (matches tst-py's rtp
+# feature, which does not enable rtsps://). No submodules/vendored libs.
+tst-rtp = { path = "../../crates/tst-rtp", default-features = false }

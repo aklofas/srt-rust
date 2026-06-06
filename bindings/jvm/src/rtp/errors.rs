@@ -17,6 +17,7 @@ use jni::objects::{JObject, JThrowable, JValue};
 use tst_core::transport::TransportError;
 use tst_rtp::ConnectError;
 use tst_rtp::RtspError;
+use tst_rtp::error::RtspServerError;
 
 /// Construct + throw `org.tstrans.RtpException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `RtpException.Kind` constant names.
@@ -135,21 +136,37 @@ fn rtsp_error_kind(e: &RtspError) -> &'static str {
     }
 }
 
+/// Map a `tst_rtp::error::RtspServerError` onto a thrown `RtspException`. Ported
+/// 1:1 from tst-py `bindings/python/src/rtp/server.rs::server_error_to_pyerr`.
+/// Each arm keeps the KIND literal on the `throw_rtsp(env, "<CONST>", ...)` call
+/// line so the jvm error-mapping ratchet sees a real site per kind.
+pub(crate) fn server_error_to_jvm(env: &mut JNIEnv, e: &RtspServerError) {
+    use RtspServerError as E;
+    let msg = e.to_string();
+    match e {
+        E::Io(_) | E::BindAddrInUse => throw_rtsp(env, "IO", &msg),
+        E::Tls(_) => throw_rtsp(env, "TLS", &msg),
+        E::UrlParse(_) => throw_rtsp(env, "PROTOCOL", &msg),
+        E::InvalidMountPath { .. }
+        | E::InvalidMulticastGroup { .. }
+        | E::DuplicateMount { .. }
+        | E::InvalidConfig { .. } => throw_rtsp(env, "MOUNT", &msg),
+        E::AlreadyStarted | E::NotStarted | E::Shutdown => throw_rtsp(env, "SERVER", &msg),
+        // RtspServerError is non-exhaustive; future variants route to SERVER.
+        _ => throw_rtsp(env, "SERVER", &msg),
+    }
+}
+
 /// Ratchet coverage anchor: the JVM error-mapping rail requires a
 /// `throw_rtsp(env, "<CONST>", ...)` call site for EVERY `RtspException.Kind`
-/// constant. `rtsp_error_kind` covers 9; `SERVER` is a server-side concept
-/// (wave D). This dead fn supplies the remaining call sites. Mirrors tst-py's
-/// `client.rs::_ratchet_coverage_anchor`. Never called.
+/// constant. The server mapper (`server_error_to_jvm`) now supplies literal sites
+/// for IO/TLS/PROTOCOL/MOUNT/SERVER; the client mapper reaches the rest only via a
+/// variable kind, so this dead fn supplies their literal sites. Never called.
 #[allow(dead_code)]
 fn _rtsp_ratchet_coverage_anchor(env: &mut JNIEnv) {
-    throw_rtsp(env, "PROTOCOL", "ratchet anchor");
     throw_rtsp(env, "AUTH_FAILED", "ratchet anchor");
     throw_rtsp(env, "AUTH_REQUIRED", "ratchet anchor");
     throw_rtsp(env, "NOT_FOUND", "ratchet anchor");
     throw_rtsp(env, "UNSUPPORTED_TRANSPORT", "ratchet anchor");
-    throw_rtsp(env, "TLS", "ratchet anchor");
-    throw_rtsp(env, "IO", "ratchet anchor");
     throw_rtsp(env, "TIMEOUT", "ratchet anchor");
-    throw_rtsp(env, "SERVER", "ratchet anchor");
-    throw_rtsp(env, "MOUNT", "ratchet anchor");
 }

@@ -176,8 +176,10 @@ public final class MuxSender implements AutoCloseable {
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param keyFrame whether this access unit is a key frame
      * @throws IllegalStateException if the sender is closed
-     * @throws RtpException on transport failure
-     * @throws MuxException on muxer/framing failure (incl. an invalid handle)
+     * @throws RtpException {@code TRANSPORT} on transport failure, or if the
+     *     stream handle is out of range / forged
+     * @throws MuxException on muxer/framing failure (incl. a handle not configured
+     *     for this muxer)
      */
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
@@ -195,8 +197,10 @@ public final class MuxSender implements AutoCloseable {
      * @param metadataServiceId AU-cell metadata service id (0..=255; default 0)
      * @throws IllegalStateException if the sender is closed
      * @throws IllegalArgumentException if {@code metadataServiceId} is out of 0..=255
-     * @throws RtpException on transport failure
-     * @throws MuxException on muxer failure (incl. an invalid handle)
+     * @throws RtpException {@code TRANSPORT} on transport failure, or if the
+     *     stream handle is out of range / forged
+     * @throws MuxException on muxer failure (incl. a handle not configured for
+     *     this muxer)
      */
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
@@ -211,8 +215,10 @@ public final class MuxSender implements AutoCloseable {
      * @param frames the encoded audio bytes
      * @param pts    90&nbsp;kHz presentation timestamp
      * @throws IllegalStateException if the sender is closed
-     * @throws RtpException on transport failure
-     * @throws MuxException on muxer failure (incl. an invalid handle)
+     * @throws RtpException {@code TRANSPORT} on transport failure, or if the
+     *     stream handle is out of range / forged
+     * @throws MuxException on muxer failure (incl. a handle not configured for
+     *     this muxer)
      */
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts)
             throws MuxException, RtpException {
@@ -227,8 +233,10 @@ public final class MuxSender implements AutoCloseable {
      * @param payload the subtitle access-unit bytes
      * @param pts     90&nbsp;kHz presentation timestamp
      * @throws IllegalStateException if the sender is closed
-     * @throws RtpException on transport failure
-     * @throws MuxException on muxer failure (incl. an invalid handle)
+     * @throws RtpException {@code TRANSPORT} on transport failure, or if the
+     *     stream handle is out of range / forged
+     * @throws MuxException on muxer failure (incl. a handle not configured for
+     *     this muxer)
      */
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws MuxException, RtpException {

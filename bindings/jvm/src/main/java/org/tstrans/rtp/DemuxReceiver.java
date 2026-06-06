@@ -46,7 +46,13 @@ import org.tstrans.mpegts.DemuxerConfig;
 public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniRtpDemuxReceiver>; 0 = closed
+    // `volatile` because close() is a sanctioned cross-thread operation on this
+    // class (the watchdog pattern — see the class javadoc), so the handle field is
+    // read by the iterator thread and written by a closing thread. volatile gives
+    // the JMM visibility + 64-bit atomicity that cross-thread contract needs; it
+    // does NOT close the in-flight free race (bounded by the single-iterator
+    // contract, as elsewhere in this binding).
+    private volatile long handle; // Box<JniRtpDemuxReceiver>; 0 = closed
 
     DemuxReceiver(long handle) { this.handle = handle; }
 
@@ -90,12 +96,18 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
 
     /**
      * Iterate the demuxed events. Each {@code hasNext()} blocks on the next
-     * {@code recv_event} until an event arrives, the receiver is closed (→ clean
-     * end of iteration), or an error occurs. Checked {@link RtpException} /
-     * {@link DemuxException} surfaced by the native pull are wrapped in an
-     * unchecked {@link RuntimeException} (the {@code Iterator} contract forbids
-     * checked exceptions); a byte-sink exception (see {@link #addByteSink}) is
-     * re-raised fail-loud and stops iteration.
+     * {@code recv_event} until an event arrives, the transport drains cleanly
+     * (→ end of iteration; rare for connectionless RTP/UDP), or an error occurs.
+     * Checked {@link RtpException} / {@link DemuxException} surfaced by the native
+     * pull are wrapped in an unchecked {@link RuntimeException} (the
+     * {@code Iterator} contract forbids checked exceptions); a byte-sink exception
+     * (see {@link #addByteSink}) is re-raised fail-loud and stops iteration.
+     *
+     * <p>A cross-thread {@link #close()} (the watchdog pattern below) does NOT end
+     * iteration via a clean {@code null}/EOF: it cancels the in-flight recv, which
+     * surfaces as an {@link RtpException} of kind {@code CANCELLED} wrapped in a
+     * {@code RuntimeException}. Catch that to distinguish a deliberate teardown
+     * from a real error.
      *
      * <p>Note: RTP/UDP is connectionless — a remote sender closing does NOT end
      * this iteration; it parks on the next datagram. Break out of the loop on a

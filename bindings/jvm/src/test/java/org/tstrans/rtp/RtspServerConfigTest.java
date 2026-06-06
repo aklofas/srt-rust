@@ -1,0 +1,101 @@
+package org.tstrans.rtp;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.Test;
+
+class RtspServerConfigTest {
+
+    @Test
+    void defaultsMatchTstPy() {
+        RtspServerConfig c = RtspServerConfig.of("0.0.0.0:8554");
+        assertEquals("0.0.0.0:8554", c.bindAddr());
+        assertTrue(c.auth().isEmpty());
+        assertEquals(100, c.maxSessions());
+        assertEquals(60, c.sessionTimeoutSecs());
+        assertEquals(256, c.fanoutCapacity());
+        assertEquals(2000, c.gracefulShutdownDrainMs());
+        assertTrue(c.tlsCertPem().isEmpty());
+        assertTrue(c.tlsKeyPem().isEmpty());
+    }
+
+    @Test
+    void builderUsesDefaultBindAddr() {
+        RtspServerConfig c = RtspServerConfig.builder().build();
+        assertEquals("0.0.0.0:8554", c.bindAddr());
+    }
+
+    @Test
+    void rejectsNonPositiveMaxSessions() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().maxSessions(0).build());
+    }
+
+    @Test
+    void rejectsNonPositiveSessionTimeout() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().sessionTimeoutSecs(0).build());
+    }
+
+    @Test
+    void rejectsNonPositiveFanoutCapacity() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().fanoutCapacity(0).build());
+    }
+
+    @Test
+    void rejectsNegativeDrain() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().gracefulShutdownDrainMs(-1).build());
+    }
+
+    @Test
+    void rejectsTlsCertWithoutKey() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().tlsCertPem(new byte[]{1}).build());
+    }
+
+    @Test
+    void rejectsTlsKeyWithoutCert() {
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().tlsKeyPem(new byte[]{1}).build());
+    }
+
+    @Test
+    void acceptsBothTlsPems() {
+        RtspServerConfig c = RtspServerConfig.builder()
+            .tlsCertPem(new byte[]{1}).tlsKeyPem(new byte[]{2}).build();
+        assertTrue(c.tlsCertPem().isPresent());
+        assertTrue(c.tlsKeyPem().isPresent());
+    }
+
+    @Test
+    void authAcceptsBasicAndDigestAndRejectsOther() {
+        RtspServerConfig b = RtspServerConfig.builder()
+            .auth(new BasicAuth("u", "p", "realm")).build();
+        assertTrue(b.auth().get() instanceof BasicAuth);
+        RtspServerConfig d = RtspServerConfig.builder()
+            .auth(new DigestAuth("u", "p", DigestAlgorithm.MD5, "realm")).build();
+        assertTrue(d.auth().get() instanceof DigestAuth);
+        assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder().auth("not-an-auth").build());
+    }
+
+    @Test
+    void serverStatsRecordRoundTrips() {
+        ServerStats s = new ServerStats(1L, 2L, 3L, 4L);
+        assertEquals(1L, s.activeSessions());
+        assertEquals(2L, s.totalRtpPacketsSent());
+        assertEquals(3L, s.totalRtpBytesSent());
+        assertEquals(4L, s.mounts());
+    }
+
+    @Test
+    void mountStatsRecordRoundTrips() {
+        MountStats m = new MountStats(10L, 20L, 30L, 40L);
+        assertEquals(10L, m.bytesPushed());
+        assertEquals(20L, m.packetsPushed());
+        assertEquals(30L, m.peerCount());
+        assertEquals(40L, m.framesDroppedTotal());
+    }
+}

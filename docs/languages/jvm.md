@@ -1181,6 +1181,40 @@ try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://0.0.0.0:5004")) {
 - `addByteSink` callbacks run on the receiver's own thread and must not re-enter
   the receiver. Sample payloads and byte-sink buffers are heap `byte[]` copies.
 
+## RTSP client (`org.tstrans.rtp`)
+
+Connect to an RTSP server, drive OPTIONS/DESCRIBE/SETUP/PLAY, and demux the RTP
+data plane. Mirrors tst-py's `tstrans.rtp` RTSP-client surface.
+
+```java
+import org.tstrans.rtp.*;
+import org.tstrans.RtspException;
+
+var cfg = RtspClientConfig.builder("rtsp://cam.local:554/stream1")
+    .auth(new DigestAuth("admin", "secret"))   // BasicAuth | DigestAuth | (none)
+    .transportPref(TransportPref.AUTO)         // UDP-first, TCP fallback on 461
+    .build();
+
+try (RtspSession session = RtspClient.connect(cfg);
+     DemuxReceiver rx = session.intoDemuxReceiver()) {
+    for (var event : rx) {
+        // handle DemuxEvent.Video / .Metadata / ...
+    }
+}
+```
+
+- **Auth secrecy.** `BasicAuth`/`DigestAuth` hold the password but expose no public
+  `password` accessor; `toString()` redacts it. The credential is handed to the
+  native connect and wrapped in Rust `secrecy::SecretString`.
+- **`auth` is `Object`.** Java has no union type; `RtspClientConfig.auth()` returns
+  `Optional<Object>` that is a `BasicAuth` or `DigestAuth` — match with `instanceof`.
+- **Cancellation.** Obtain a `RtspCancelHandle` from `session.cancelHandle()` BEFORE
+  a blocking control call; flip `cancel()` from another thread to break it out.
+  `close()` is a best-effort teardown, not a cross-thread interruptor.
+- **TLS is forward-compat only.** This binding does not link rustls; an `rtsps://`
+  URL (or a non-null `tlsRootCertsPem`) surfaces `RtspException` of kind `TLS`.
+- **`stats()`** returns a zeroed `RtspStats` for now (RTCP counters wire in later).
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each

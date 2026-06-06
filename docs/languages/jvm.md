@@ -1141,6 +1141,46 @@ cancel.cancel();  // wakes rx.recv() → throws RtpException(CANCELLED)
 See [`/docs/languages/python.md`](/docs/languages/python.md) for the canonical
 `tstrans.rtp` Python surface this binding mirrors.
 
+### RTP convenience: MuxSender / DemuxReceiver
+
+`org.tstrans.rtp.MuxSender` bundles a `Muxer` + an RTP transport — push encoded
+video/KLV/audio/subtitle and it muxes to MPEG-TS and sends over RTP/UDP in one
+call. `org.tstrans.rtp.DemuxReceiver` bundles a `Demuxer` + an RTP recv transport
+and iterates `DemuxEvent`s.
+
+```java
+MuxerConfig program = MuxerConfig.builder()
+    .programNumber(1).pmtPid(0x1000)
+    .addVideo(0x1011, VideoCodec.H264)
+    .build();
+try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:5004", program)) {
+    s.pushVideo(annexBNal, /*pts*/ 0L, /*keyFrame*/ true);
+}
+
+try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://0.0.0.0:5004")) {
+    rx.addByteSink(pkt -> record(pkt)); // fans out each raw 188-byte TS packet
+    for (DemuxEvent e : rx) {
+        if (e instanceof DemuxEvent.Video v) { /* ... */ }
+    }
+}
+```
+
+**Gotchas:**
+
+- `MuxSender.fromUrl` takes an optional `pktSize` (default 1316); a negative
+  `pktSize` is rejected with `IllegalArgumentException`. The payload cap per push
+  is `pktSize − 12` (the RTP header is prepended by the transport).
+- The RTP `MuxSender` / `DemuxReceiver` expose **no `cancelHandle()` and no
+  `socketStats()`** (matching the Python surface) — only `stats()` (a
+  `(SocketStats, MuxerStats)` snapshot). To stop a `DemuxReceiver` iteration that
+  is parked waiting for the next datagram, call `close()` from another thread; it
+  cancels the in-flight recv first, then frees the receiver (safe cross-thread).
+- RTP/UDP is connectionless: a remote sender closing does **not** end a
+  `DemuxReceiver` iteration. Break out of the loop on a sentinel event (or close
+  the receiver) rather than waiting for end-of-stream.
+- `addByteSink` callbacks run on the receiver's own thread and must not re-enter
+  the receiver. Sample payloads and byte-sink buffers are heap `byte[]` copies.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each

@@ -1221,6 +1221,69 @@ try (RtspSession session = RtspClient.connect(cfg);
   `WWW-Authenticate` challenge selects the actual digest algorithm.
 - **`stats()`** returns a zeroed `RtspStats` for now (RTCP counters wire in later).
 
+## RTSP server (`org.tstrans.rtp`)
+
+Host an RTSP server, register unicast or multicast mounts, and push elementary
+streams to all connected clients via the `MountHandle` push family. Mirrors
+tst-py's `tstrans.rtp.RtspServer`.
+
+```java
+import org.tstrans.rtp.*;
+import org.tstrans.RtspException;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+
+MuxerConfig program = MuxerConfig.builder()
+    .programNumber(1).pmtPid(0x1000)
+    .addVideo(0x1011, VideoCodec.H264)
+    .build();
+
+var cfg = RtspServerConfig.of("0.0.0.0:8554");   // defaults: maxSessions=100, etc.
+
+try (RtspServer server = RtspServer.start(cfg);
+     MountHandle mount = server.addUnicastMount("/live", program)) {
+
+    // Push frames to all connected RTSP clients.
+    // pts is a 90 kHz tick count; keyFrame marks a random-access point.
+    mount.pushVideo(annexBNal, /*pts=*/ 0L, /*keyFrame=*/ true);
+    mount.pushKlv(klvBytes, /*pts=*/ 0L, /*metadataServiceId=*/ 1);
+
+    // server.localAddr() returns the bound "ip:port" (useful when port 0 is used).
+}
+// close() performs a graceful Notice 5402 teardown of active sessions, then
+// frees the native server. MountHandle.close() frees only the handle wrapper —
+// the mount continues to serve until the server itself is closed.
+```
+
+- **`RtspServerConfig.of(bindAddr)`** is the one-liner constructor (all other
+  fields take tst-py defaults: `maxSessions=100`, `sessionTimeoutSecs=60`,
+  `fanoutCapacity=256`, `gracefulShutdownDrainMs=2000`). Use
+  `RtspServerConfig.builder()` to tune individual fields.
+- **Mount errors are `RtspException(MOUNT)`.** All `pushVideo`/`pushKlv`/
+  `pushAudio`/`pushSubtitle` calls on `MountHandle` throw `RtspException` of kind
+  `MOUNT` on failure (e.g. invalid config, server already stopped). This differs
+  from `MuxSender`, which throws `MuxException`.
+- **`MountHandle` is `Arc`-backed and thread-safe** on the push path (`&self`
+  internally). Multiple producer threads may call `push*` concurrently. Do not
+  race `close()` against a concurrent push — coordinate closes at the producer
+  boundary.
+- **`MountHandle.close()` unregisters only the handle wrapper.** The mount
+  itself stays live in the server (still accepts new connections and fans out to
+  existing ones) until `RtspServer.close()` / `stop()` is called. If you need to
+  remove a mount while the server runs, stop pushing and let connected sessions
+  drain naturally.
+- **Hard-cancel.** `server.cancelHandle()` returns a cross-thread
+  `RtspServerCancelHandle`; call `cancel()` to tear down the server immediately
+  without the graceful drain window.
+- **Auth.** Pass `new BasicAuth("user", "pass", "realm")` or
+  `new DigestAuth("user", "pass", DigestAlgorithm.SHA256, "realm")` to
+  `RtspServerConfig.builder().auth(...)`. The realm is required for server-side
+  auth; omitting it throws `IllegalArgumentException` at `start()`.
+- **TLS is forward-compat only.** This binding does not link rustls; setting
+  `tlsCertPem`/`tlsKeyPem` on the config raises `RtspException` of kind `TLS` at
+  `start()`. Both fields must be set together (both or neither) or `build()` will
+  throw `IllegalArgumentException`.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each

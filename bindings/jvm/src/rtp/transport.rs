@@ -243,7 +243,13 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
     match w.inner.recv_bytes(scratch) {
         Ok(n) => match env.byte_array_from_slice(&w.scratch[..n]) {
             Ok(arr) => arr.into_raw(),
-            Err(_) => std::ptr::null_mut(),
+            // Allocating the Java array failed (effectively OOM). Throw rather
+            // than return null silently, so `recv()` always yields bytes or an
+            // RtpException — matching tst-py's contract (it never returns None).
+            Err(_) => {
+                throw_rtp(&mut env, "TRANSPORT", "failed to allocate received packet");
+                std::ptr::null_mut()
+            }
         },
         Err(e) => {
             transport_error_to_rtp(&mut env, &e);

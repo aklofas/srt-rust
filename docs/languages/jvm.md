@@ -1076,9 +1076,10 @@ try (Sender s = Sender.fromUrl("rtp://239.0.0.1:5004")) {
 }
 ```
 
-`send(byte[])` accepts a TS payload up to the configured packet size
-(`Sender.DEFAULT_PKT_SIZE` = 1316 bytes, the RTP header + TS payload). A payload
-that exceeds the cap throws `RtpException(MALFORMED_PACKET)`.
+`send(byte[])` accepts a TS payload up to the configured packet size **minus the
+12-byte RTP header** prepended to every datagram — i.e. up to
+`Sender.DEFAULT_PKT_SIZE - 12` = 1304 bytes at the default `pkt_size` of 1316. A
+payload that exceeds the cap throws `RtpException(MALFORMED_PACKET)`.
 
 ### Receiver hello
 

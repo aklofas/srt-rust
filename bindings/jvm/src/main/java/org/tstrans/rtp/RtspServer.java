@@ -2,6 +2,7 @@ package org.tstrans.rtp;
 
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
+import org.tstrans.mpegts.MuxerConfig;
 
 /**
  * Sync RTSP server. Construct via {@link #start(RtspServerConfig)}. Mirrors tst-py
@@ -77,6 +78,63 @@ public final class RtspServer implements AutoCloseable {
     /** {@link #stop(long)} with the default drain hint (1000). */
     public void stop() throws RtspException { stop(1000L); }
 
+    /**
+     * Register a unicast mount under {@code path}. The returned {@link MountHandle}
+     * is the push surface; it is shareable across producer threads.
+     *
+     * @throws RtspException {@code MOUNT} for an invalid/duplicate path or invalid
+     *     config; {@code SERVER} if the server is stopped
+     */
+    public MountHandle addUnicastMount(String path, MuxerConfig programConfig)
+            throws RtspException {
+        ensureOpen();
+        long h = nAddUnicastMount(handle,
+            path,
+            programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
+            programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
+            programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
+            programConfig.streamPids(), programConfig.streamKinds(),
+            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
+            programConfig.klvCarriesPts());
+        if (h == 0) {
+            throw new RtspException(RtspException.Kind.MOUNT,
+                "nAddUnicastMount returned 0 without throwing");
+        }
+        return new MountHandle(h);
+    }
+
+    /** {@link #addMulticastMount(String, String, int, int, String, MuxerConfig)} with ttl=1, no iface. */
+    public MountHandle addMulticastMount(String path, String group, int port,
+            MuxerConfig programConfig) throws RtspException {
+        return addMulticastMount(path, group, port, 1, null, programConfig);
+    }
+
+    /**
+     * Register a multicast mount. {@code group} is a literal multicast IP; {@code ttl}
+     * defaults to 1 (link-local); {@code iface} pins the NIC (IPv4 literal / IPv6 iface
+     * name), or {@code null}.
+     *
+     * @throws RtspException {@code MOUNT} for an invalid path/group/config; {@code SERVER}
+     *     if the server is stopped
+     */
+    public MountHandle addMulticastMount(String path, String group, int port, int ttl,
+            String iface, MuxerConfig programConfig) throws RtspException {
+        ensureOpen();
+        long h = nAddMulticastMount(handle,
+            path, group, port, ttl, iface,
+            programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
+            programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
+            programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
+            programConfig.streamPids(), programConfig.streamKinds(),
+            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
+            programConfig.klvCarriesPts());
+        if (h == 0) {
+            throw new RtspException(RtspException.Kind.MOUNT,
+                "nAddMulticastMount returned 0 without throwing");
+        }
+        return new MountHandle(h);
+    }
+
     /** Cross-thread hard-cancel handle. @throws IllegalStateException if closed. */
     public RtspServerCancelHandle cancelHandle() {
         ensureOpen();
@@ -107,4 +165,13 @@ public final class RtspServer implements AutoCloseable {
     private static native void nStop(long handle, long drainMs) throws RtspException;
     private static native long nCancelHandle(long handle);
     private static native void nClose(long handle);
+    private static native long nAddUnicastMount(long serverHandle, String path,
+        int programNumber, int pmtPid, int pcrPid, int pcrIntervalMs, int psiIntervalMs,
+        int bufferPackets, int av1Carriage, int[] streamPids, int[] streamKinds,
+        int[] streamCodecs, int[] klvStreamTypes, boolean[] klvCarriesPts) throws RtspException;
+    private static native long nAddMulticastMount(long serverHandle, String path, String group,
+        int port, int ttl, String iface, int programNumber, int pmtPid, int pcrPid,
+        int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
+        boolean[] klvCarriesPts) throws RtspException;
 }

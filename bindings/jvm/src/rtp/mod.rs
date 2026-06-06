@@ -4,6 +4,7 @@ pub(crate) mod errors;
 mod client;
 mod demux_receiver;
 mod mux_sender;
+mod server;
 mod stats;
 mod transport;
 

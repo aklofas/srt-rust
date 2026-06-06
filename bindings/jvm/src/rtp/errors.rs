@@ -104,16 +104,12 @@ fn throw_rtsp_inner(env: &mut JNIEnv, kind: &str, message: &str) -> jni::errors:
 /// Map a `tst_rtp::RtspError` onto a thrown `RtspException`. Ported 1:1 from
 /// tst-py `bindings/python/src/rtp/client.rs::rtsp_error_kind_str`. Used by the
 /// RTSP client connect/pause/play/teardown natives.
-// used by the RTSP client natives (Task 5)
-#[allow(dead_code)]
 pub(crate) fn rtsp_error_to_jvm(env: &mut JNIEnv, e: &RtspError) {
     throw_rtsp(env, rtsp_error_kind(e), &e.to_string());
 }
 
 /// `RtspError` → SCREAMING_SNAKE `RtspException.Kind` constant name. 1:1 with
 /// tst-py `rtsp_error_kind_str`.
-// used by the RTSP client natives (Task 5)
-#[allow(dead_code)]
 fn rtsp_error_kind(e: &RtspError) -> &'static str {
     match e {
         RtspError::Io(_) => "IO",

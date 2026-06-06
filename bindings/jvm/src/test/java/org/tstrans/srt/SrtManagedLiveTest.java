@@ -1,0 +1,529 @@
+package org.tstrans.srt;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.tstrans.SrtException;
+import org.tstrans.codec.NalUnit;
+import org.tstrans.codec.VideoUnit;
+import org.tstrans.mpegts.DemuxEvent;
+import org.tstrans.mpegts.Demuxer;
+import org.tstrans.mpegts.Muxer;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+
+/**
+ * Live-socket happy-path + stats-drift parity tests for the four managed
+ * (auto-reconnect) SRT shells — {@link ManagedSender}, {@link ManagedReceiver},
+ * {@link ManagedMuxSender}, and {@link ManagedDemuxReceiver} (sub-wave C).
+ *
+ * <p>This is the live-socket companion to the socket-free {@link SrtManagedTest}.
+ * It opens real SRT socket pairs over loopback on ephemeral ports and proves two
+ * classes of behaviour <em>without</em> exercising reconnect (reconnect is a
+ * separate task):
+ *
+ * <ol>
+ *   <li><b>End-to-end happy path.</b> A {@link ManagedMuxSender} muxes synthetic
+ *       H.264 IDR access units into MPEG-TS and ships them over SRT to a plain
+ *       {@code DemuxReceiver} peer; the recovered video payload's SHA-256 must
+ *       equal the OFFLINE {@code Muxer → Demuxer} SHA computed in-test from the
+ *       same inputs (self-validating cross-binding parity, no committed golden —
+ *       same pattern as {@link SrtMuxDemuxLoopbackTest}).</li>
+ *   <li><b>The three documented stats drifts.</b>
+ *       <ul>
+ *         <li>{@link ManagedSender#srtStats()} ALWAYS throws
+ *             {@code SrtException(IO)}; {@link ManagedSender#socketStats()} works.</li>
+ *         <li>{@link ManagedReceiver#srtStats()} ALWAYS throws
+ *             {@code SrtException(IO)}.</li>
+ *         <li>{@link ManagedDemuxReceiver#srtStats()} RETURNS a
+ *             {@link SocketStats} (NOT {@code SrtStats}) and does NOT throw —
+ *             the same value as {@link ManagedDemuxReceiver#socketStats()}.</li>
+ *       </ul></li>
+ * </ol>
+ *
+ * <h2>Platform gate</h2>
+ * Every test opens real SRT sockets and is gated to Linux only via
+ * {@link org.junit.jupiter.api.Assumptions#assumeTrue} — identical to the Rust
+ * {@code #![cfg(target_os = "linux")]} gate and to {@link SrtMuxDemuxLoopbackTest}.
+ *
+ * <h2>Threading / robustness</h2>
+ * Receivers run on daemon threads. Port hand-off and results travel via
+ * {@link CompletableFuture}s / {@link CountDownLatch}es with a 15-second ceiling
+ * so a hung socket can never wedge the suite. The managed-listener tests use the
+ * sanctioned discover-then-reuse ephemeral-port pattern (bind a throwaway plain
+ * listener on {@code :0}, read its port, close it, reuse that exact port). Where
+ * the managed shell iterates/blocks on its own thread, all stats reads and the
+ * drift assertions are captured <em>on that same thread</em> (into
+ * {@link AtomicReference}/{@link AtomicLong} + a latch) so we never make racing
+ * native calls on a single non-thread-safe handle from two threads.
+ */
+class SrtManagedLiveTest {
+
+    /** Timeout in seconds for inter-thread signalling and overall test completion. */
+    private static final int TIMEOUT_SEC = 15;
+
+    /** SRT latency in milliseconds for both sides (matches SrtMuxDemuxLoopbackTest). */
+    private static final int LATENCY_MS = 120;
+
+    /**
+     * Number of synthetic IDR access units to push per stream. Chosen to exceed
+     * the receiver's TS-sync window (≥ 4×188+1 bytes) AND flow at least one full
+     * SRT bundle (7×188 = 1316 bytes) before the post-push drain pause, so the
+     * first Video event reliably arrives. (Same value/rationale as
+     * {@link SrtMuxDemuxLoopbackTest}.)
+     */
+    private static final int PUSH_COUNT = 24;
+
+    // ── Test 1 — ManagedMuxSender → (plain) DemuxReceiver, byte-faithful ──────
+
+    @Test
+    void managedMuxSenderToDemuxReceiverByteFaithful() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        // Expected SHA via the OFFLINE Muxer→Demuxer path (self-validating).
+        String offlineSha = offlineMuxDemuxSha();
+
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+        CompletableFuture<String> shaFuture = new CompletableFuture<>();
+
+        // Receiver peer is a PLAIN DemuxReceiver (the test subject is the
+        // ManagedMuxSender send path). Plain listener on :0 → publish port.
+        Thread receiverThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            DemuxReceiver rx = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                rx = sock.intoDemuxReceiver();
+
+                String sha = null;
+                try {
+                    for (DemuxEvent e : rx) {
+                        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                            sha = sha256Units(v.payload());
+                            break;
+                        }
+                    }
+                } catch (RuntimeException re) {
+                    if (!isCleanEndOfStream(re)) throw re;
+                    // else: fall through; sha may still be null → fail below
+                }
+
+                if (sha == null) {
+                    shaFuture.completeExceptionally(new AssertionError(
+                        "no typed Video event arrived before end-of-stream"));
+                } else {
+                    shaFuture.complete(sha);
+                }
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+                shaFuture.completeExceptionally(ex);
+            } finally {
+                if (rx != null) rx.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            receiverThread.interrupt();
+            throw new AssertionError("receiver thread failed to publish port", e);
+        }
+
+        // The managed shell is on the MAIN thread here (peer is plain), so the
+        // main thread can read its stats/counters directly. Read them BEFORE the
+        // try-with-resources closes the handle.
+        try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
+                roundtripConfig())) {
+            for (int i = 0; i < PUSH_COUNT; i++) {
+                s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+            }
+            long attempts = s.reconnectAttempts();
+            TransportStats st = s.stats();
+            assertEquals(0L, attempts, "no reconnect should have occurred on the happy path");
+            assertNotNull(st, "stats() must return a combined snapshot");
+            assertNotNull(st.socketStats(), "combined stats must carry a SocketStats");
+            // SRT TSBPD buffers before delivery; pause before close so the
+            // receiver drains everything (mirrors SrtMuxDemuxLoopbackTest).
+            Thread.sleep(1_000);
+        }
+
+        String liveSha;
+        try {
+            liveSha = shaFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("receiver thread failed to complete", e);
+        }
+
+        assertEquals(offlineSha, liveSha,
+            "live ManagedMuxSender→SRT→DemuxReceiver path must demux to the same video "
+                + "payload SHA as the offline Muxer→Demuxer path (cross-binding parity, "
+                + "self-validating)");
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
+    // ── Test 2 — ManagedSender.srtStats() throws IO; socketStats() works ──────
+
+    @Test
+    void managedSenderSrtStatsThrowsIo() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+
+        // Plain listener peer: accept, drain a few recvBytes() to absorb the
+        // sender's data, then stop on clean end-of-stream.
+        Thread receiverThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            Receiver r = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                r = sock.intoReceiver();
+                // Drain until the peer closes (CLOSED/BROKEN) — bounded by the
+                // main thread closing the sender after the assertions.
+                while (true) {
+                    try {
+                        r.recvBytes();
+                    } catch (SrtException e) {
+                        if (e.kind() == SrtException.Kind.CLOSED
+                                || e.kind() == SrtException.Kind.BROKEN) {
+                            break;
+                        }
+                        throw e;
+                    }
+                }
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+            } finally {
+                if (r != null) r.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            receiverThread.interrupt();
+            throw new AssertionError("receiver thread failed to publish port", e);
+        }
+
+        byte[] preMuxedTs = muxToBytes(); // a valid TS chunk; content is irrelevant to the drift
+
+        try (ManagedSender s = ManagedSender.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS)) {
+            s.sendBytes(preMuxedTs);
+            // Drift: srtStats() ALWAYS throws SrtException(IO) on a managed sender.
+            SrtException ex = assertThrows(SrtException.class, s::srtStats);
+            assertEquals(SrtException.Kind.IO, ex.kind(),
+                "ManagedSender.srtStats() must throw SrtException(IO) — documented stats drift");
+            // socketStats() works (scheme-neutral 16-field view).
+            assertNotNull(s.socketStats(), "ManagedSender.socketStats() must return a snapshot");
+            Thread.sleep(500);
+        }
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
+    // ── Test 3 — ManagedDemuxReceiver.srtStats() returns SocketStats ──────────
+
+    @Test
+    void managedDemuxReceiverSrtStatsReturnsSocketStats() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        // Topology mirrors the passing happy-path test (managed shell = the active
+        // connector on the MAIN thread; plain peer = listener on a daemon thread),
+        // but reversed direction: the managed shell here is the RECEIVER. A
+        // ManagedDemuxReceiver accepts caller mode (it dials the peer), so it lives
+        // on the main thread and reads its own stats with NO cross-thread handle
+        // race and NO discover-then-reuse port dance. The peer is a plain
+        // listener+MuxSender on a daemon thread that publishes its own ephemeral
+        // port and streams synthetic IDRs until closed.
+        CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+
+        Thread peerThread = new Thread(() -> {
+            Listener listener = null;
+            Socket sock = null;
+            MuxSender ms = null;
+            try {
+                listener = new Builder("srt://127.0.0.1:0?mode=listener&latency=" + LATENCY_MS)
+                    .listener()
+                    .listen();
+                portFuture.complete(listener.localAddr().port());
+
+                sock = listener.accept(null);
+                ms = sock.intoMuxSender(roundtripConfig());
+                // Stream enough IDRs for the receiver to lock sync + emit a Video
+                // event, with brief pauses so the demuxer drains as data flows.
+                for (int i = 0; i < PUSH_COUNT; i++) {
+                    ms.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                }
+                Thread.sleep(1_000); // let TSBPD deliver before close
+            } catch (Exception ex) {
+                portFuture.completeExceptionally(ex);
+            } finally {
+                if (ms != null) ms.close();
+                if (sock != null) sock.close();
+                if (listener != null) listener.close();
+            }
+        });
+        peerThread.setDaemon(true);
+        peerThread.start();
+
+        int port;
+        try {
+            port = portFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            peerThread.interrupt();
+            throw new AssertionError("peer thread failed to publish port", e);
+        }
+
+        boolean sawEvent = false;
+        try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
+                "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
+                fastPolicy())) {
+            try {
+                for (DemuxEvent e : rx) {
+                    sawEvent = true;
+                    // Drift: srtStats() RETURNS a SocketStats (NOT SrtStats) and
+                    // does NOT throw — read on the OWNING (main) thread.
+                    SocketStats srt = rx.srtStats();
+                    assertNotNull(srt,
+                        "ManagedDemuxReceiver.srtStats() must return a SocketStats (documented "
+                            + "drift), not throw");
+                    assertInstanceOf(SocketStats.class, srt,
+                        "ManagedDemuxReceiver.srtStats() returns SocketStats, not SrtStats");
+                    assertNotNull(rx.socketStats(),
+                        "ManagedDemuxReceiver.socketStats() must return a snapshot");
+                    assertEquals(0L, rx.reconnectAttempts(),
+                        "no reconnect should have occurred on the happy path");
+                    break;
+                }
+            } catch (RuntimeException re) {
+                if (!isCleanEndOfStream(re)) throw re;
+            }
+        }
+
+        assertTrue(sawEvent, "managed demux receiver must have seen at least one demux event");
+        peerThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
+    // ── Test 4 — ManagedReceiver.srtStats() throws IO ─────────────────────────
+
+    @Test
+    void managedReceiverSrtStatsThrowsIo() throws Exception {
+        assumeTrue(isLinux(),
+            "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        // Listener-side managed shell → discover-then-reuse ephemeral port.
+        int port = discoverFreePort();
+
+        AtomicReference<SrtException.Kind> kindRef = new AtomicReference<>();
+        AtomicLong attemptsRef = new AtomicLong(-1);
+        AtomicReference<Throwable> rxError = new AtomicReference<>();
+        CountDownLatch doneLatch = new CountDownLatch(1);
+
+        Thread receiverThread = new Thread(() -> {
+            ManagedReceiver mr = null;
+            try {
+                mr = ManagedReceiver.fromUrl(
+                    "srt://127.0.0.1:" + port + "?mode=listener&latency=" + LATENCY_MS,
+                    fastPolicy());
+                mr.recvBytes(); // blocks until first data arrives
+                // Capture the drift assertion ON THIS THREAD (owns the handle).
+                SrtException ex = assertThrows(SrtException.class, mr::srtStats);
+                kindRef.set(ex.kind());
+                attemptsRef.set(mr.reconnectAttempts());
+            } catch (Throwable t) {
+                rxError.set(t);
+            } finally {
+                doneLatch.countDown();
+                if (mr != null) mr.close();
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        byte[] preMuxedTs = muxToBytes();
+
+        // Main: retry-connect a plain Sender caller (bounded).
+        Sender sender = null;
+        for (int i = 0; i < 60 && sender == null; i++) {
+            try {
+                sender = Sender.fromUrl(
+                    "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS);
+            } catch (SrtException e) {
+                Thread.sleep(50); // not bound yet — retry
+            }
+        }
+        assertNotNull(sender, "Sender caller failed to connect to the managed listener within budget");
+        try {
+            sender.sendBytes(preMuxedTs);
+            sender.sendBytes(preMuxedTs);
+            sender.flush();
+            Thread.sleep(500);
+        } finally {
+            sender.close();
+        }
+
+        assertTrue(doneLatch.await(TIMEOUT_SEC, TimeUnit.SECONDS),
+            "receiver thread did not finish within the ceiling");
+        if (rxError.get() != null) {
+            throw new AssertionError("receiver thread failed", rxError.get());
+        }
+
+        // Drift: srtStats() ALWAYS throws SrtException(IO) on a managed receiver.
+        assertEquals(SrtException.Kind.IO, kindRef.get(),
+            "ManagedReceiver.srtStats() must throw SrtException(IO) — documented stats drift");
+        assertEquals(0L, attemptsRef.get(), "no reconnect should have occurred on the happy path");
+
+        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
+
+    /** A fast reconnect policy for the live tests: constant(0) backoff, ≤3 attempts. */
+    private static ReconnectPolicy fastPolicy() {
+        return ReconnectPolicy.builder()
+            .backoff(BackoffStrategy.constant(0))
+            .maxAttempts(3)
+            .build();
+    }
+
+    /**
+     * Discover-then-reuse: bind a throwaway plain listener on {@code :0}, read the
+     * kernel-assigned port, close it, and return that port for reuse by a
+     * managed-listener shell. The sanctioned ephemeral-port pattern for tests
+     * where the listening shell is constructed via {@code fromUrl} (which has no
+     * post-bind port accessor) — never a hardcoded fixed port.
+     */
+    private static int discoverFreePort() throws Exception {
+        try (Listener probe = new Builder("srt://127.0.0.1:0?mode=listener")
+                .listener()
+                .listen()) {
+            return probe.localAddr().port();
+        }
+    }
+
+    /**
+     * Unwrap an iterator's {@link RuntimeException} and report whether its cause
+     * is a CLOSED/BROKEN {@link SrtException} (clean end-of-stream after the peer
+     * hangs up). Any other cause is a real failure.
+     */
+    private static boolean isCleanEndOfStream(RuntimeException re) {
+        Throwable cause = re.getCause();
+        return cause instanceof SrtException se
+            && (se.kind() == SrtException.Kind.CLOSED || se.kind() == SrtException.Kind.BROKEN);
+    }
+
+    /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
+    private static byte[] syntheticH264Idr() {
+        byte[] buf = new byte[20];
+        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
+        buf[4] = 0x65;
+        for (int i = 0; i < 15; i++) {
+            buf[5 + i] = (byte) (0xA5 ^ i);
+        }
+        return buf;
+    }
+
+    /** The single-program H.264 config shared by the live and offline paths. */
+    private static MuxerConfig roundtripConfig() {
+        return MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+    }
+
+    /** Mux PUSH_COUNT synthetic IDRs at increasing PTS and return the TS bytes. */
+    private static byte[] muxToBytes() throws Exception {
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(roundtripConfig())) {
+            for (int i = 0; i < PUSH_COUNT; i++) {
+                m.pushVideo(syntheticH264Idr(), i * 3000L, true);
+            }
+            int n;
+            while ((n = m.pull(out)) > 0) {
+                acc.write(out, 0, n);
+            }
+        }
+        return acc.toByteArray();
+    }
+
+    /** Offline Muxer→Demuxer SHA of the first Video sample's NAL payloads. */
+    private static String offlineMuxDemuxSha() throws Exception {
+        byte[] ts = muxToBytes();
+        try (Demuxer d = new Demuxer()) {
+            d.feed(ts);
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                    return sha256Units(v.payload());
+                }
+            }
+        }
+        throw new AssertionError("offline path produced no typed Video event");
+    }
+
+    /**
+     * SHA-256 of the concatenated typed-unit payload bytes — concatenate every
+     * {@link NalUnit#payload()} (RBSP, Annex-B start codes already stripped by the
+     * demuxer). Identical helper to {@link SrtMuxDemuxLoopbackTest}.
+     */
+    private static String sha256Units(List<VideoUnit> units) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        for (VideoUnit u : units) {
+            NalUnit n = (NalUnit) u;
+            ByteBuffer view = n.payload().duplicate();
+            byte[] bytes = new byte[view.remaining()];
+            view.get(bytes);
+            md.update(bytes);
+        }
+        byte[] digest = md.digest();
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+}

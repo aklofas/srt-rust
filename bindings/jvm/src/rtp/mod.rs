@@ -1,6 +1,7 @@
 //! `org.tstrans.rtp` — RTP transport JNI surface.
 
 pub(crate) mod errors;
+mod mux_sender;
 mod stats;
 mod transport;
 

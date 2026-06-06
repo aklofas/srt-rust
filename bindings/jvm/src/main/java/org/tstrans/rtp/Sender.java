@@ -1,0 +1,98 @@
+package org.tstrans.rtp;
+
+import org.tstrans.NativeLoader;
+import org.tstrans.RtpException;
+
+/**
+ * RTP sender — wraps {@code tst_rtp::RtpTransport}. Constructed via
+ * {@link #fromUrl(String)} with an {@code rtp://host:port[?ttl=&iface=]} URL.
+ * Pre-muxed TS bytes are pushed via {@link #send(byte[])} (one UDP datagram per
+ * call, framed with an RTP header).
+ *
+ * <p><b>Thread safety:</b> a single {@code Sender} is NOT thread-safe; use one
+ * per thread. <b>Closing:</b> use try-with-resources or {@link #close()};
+ * after close, further calls throw {@code IllegalStateException}.
+ *
+ * <p>Mirrors {@code tstrans.rtp.Sender} in tst-py.
+ */
+public final class Sender implements AutoCloseable {
+    static { NativeLoader.load(); }
+
+    /** Default UDP datagram size (RTP header + TS payload); matches tst-py. */
+    public static final int DEFAULT_PKT_SIZE = 1316;
+
+    private long handle; // Box<JniRtpSender>; 0 = closed
+
+    Sender(long handle) { this.handle = handle; }
+
+    /** Construct a sender bound to {@code url} with default packet size and a random SSRC. */
+    public static Sender fromUrl(String url) throws RtpException {
+        return fromUrl(url, DEFAULT_PKT_SIZE, null);
+    }
+
+    /**
+     * Construct a sender bound to {@code url}.
+     *
+     * @param url     {@code rtp://host:port[?key=value&...]}
+     * @param pktSize UDP datagram size (RTP header + TS payload); must be &ge; 0
+     * @param ssrc    RTP synchronization source identifier (unsigned 32-bit), or
+     *                {@code null} to let the transport pick a random one
+     * @throws RtpException {@code TRANSPORT} on URL-parse / bind / connect failure
+     * @throws IllegalArgumentException if {@code pktSize} is negative or {@code ssrc} is out of u32 range
+     */
+    public static Sender fromUrl(String url, int pktSize, Long ssrc) throws RtpException {
+        if (pktSize < 0) throw new IllegalArgumentException("pktSize must be >= 0: " + pktSize);
+        long h = nFromUrl(url, pktSize, ssrc);
+        if (h == 0) {
+            throw new RtpException(RtpException.Kind.TRANSPORT, "nFromUrl returned 0 without throwing");
+        }
+        return new Sender(h);
+    }
+
+    /**
+     * Send one chunk of pre-muxed TS bytes over RTP.
+     *
+     * @throws IllegalStateException if the sender is closed
+     * @throws RtpException {@code MALFORMED_PACKET} if the payload exceeds the
+     *     datagram cap; {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise
+     */
+    public void send(byte[] data) throws RtpException {
+        ensureOpen();
+        nSend(handle, data);
+    }
+
+    /** Snapshot of wire-level statistics (never null in normal operation). */
+    public SocketStats socketStats() {
+        ensureOpen();
+        return nSocketStats(handle);
+    }
+
+    /**
+     * Return a shareable cancel handle. Calling {@link CancelHandle#cancel()}
+     * wakes a thread parked in {@link #send}; that call throws
+     * {@code RtpException(CANCELLED)}.
+     */
+    public CancelHandle cancelHandle() {
+        ensureOpen();
+        return new CancelHandle(nCancelHandle(handle));
+    }
+
+    /** Close the sender. Idempotent. */
+    @Override
+    public void close() {
+        if (handle != 0) {
+            nClose(handle);
+            handle = 0;
+        }
+    }
+
+    private void ensureOpen() {
+        if (handle == 0) throw new IllegalStateException("Sender is closed");
+    }
+
+    private static native long   nFromUrl(String url, int pktSize, Long ssrc) throws RtpException;
+    private static native void   nSend(long handle, byte[] data) throws RtpException;
+    private static native SocketStats nSocketStats(long handle);
+    private static native long   nCancelHandle(long handle);
+    private static native void   nClose(long handle);
+}

@@ -11,6 +11,7 @@ mod error;
 mod jutil;
 mod klv;
 mod mpegts;
+mod rtp;
 mod srt;
 
 use jni::JNIEnv;

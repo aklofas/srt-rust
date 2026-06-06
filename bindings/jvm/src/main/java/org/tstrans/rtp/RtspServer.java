@@ -1,5 +1,6 @@
 package org.tstrans.rtp;
 
+import org.tstrans.MuxException;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
 import org.tstrans.mpegts.MuxerConfig;
@@ -82,11 +83,12 @@ public final class RtspServer implements AutoCloseable {
      * Register a unicast mount under {@code path}. The returned {@link MountHandle}
      * is the push surface; it is shareable across producer threads.
      *
-     * @throws RtspException {@code MOUNT} for an invalid/duplicate path or invalid
-     *     config; {@code SERVER} if the server is stopped
+     * @throws RtspException {@code MOUNT} for an invalid/duplicate mount path; {@code SERVER}
+     *     if the server is stopped
+     * @throws MuxException if the muxer rejects {@code programConfig}
      */
     public MountHandle addUnicastMount(String path, MuxerConfig programConfig)
-            throws RtspException {
+            throws RtspException, MuxException {
         ensureOpen();
         long h = nAddUnicastMount(handle,
             path,
@@ -105,7 +107,7 @@ public final class RtspServer implements AutoCloseable {
 
     /** {@link #addMulticastMount(String, String, int, int, String, MuxerConfig)} with ttl=1, no iface. */
     public MountHandle addMulticastMount(String path, String group, int port,
-            MuxerConfig programConfig) throws RtspException {
+            MuxerConfig programConfig) throws RtspException, MuxException {
         return addMulticastMount(path, group, port, 1, null, programConfig);
     }
 
@@ -114,11 +116,12 @@ public final class RtspServer implements AutoCloseable {
      * defaults to 1 (link-local); {@code iface} pins the NIC (IPv4 literal / IPv6 iface
      * name), or {@code null}.
      *
-     * @throws RtspException {@code MOUNT} for an invalid path/group/config; {@code SERVER}
-     *     if the server is stopped
+     * @throws RtspException {@code MOUNT} for an invalid/duplicate mount path or invalid
+     *     group/address; {@code SERVER} if the server is stopped
+     * @throws MuxException if the muxer rejects {@code programConfig}
      */
     public MountHandle addMulticastMount(String path, String group, int port, int ttl,
-            String iface, MuxerConfig programConfig) throws RtspException {
+            String iface, MuxerConfig programConfig) throws RtspException, MuxException {
         ensureOpen();
         long h = nAddMulticastMount(handle,
             path, group, port, ttl, iface,
@@ -168,10 +171,11 @@ public final class RtspServer implements AutoCloseable {
     private static native long nAddUnicastMount(long serverHandle, String path,
         int programNumber, int pmtPid, int pcrPid, int pcrIntervalMs, int psiIntervalMs,
         int bufferPackets, int av1Carriage, int[] streamPids, int[] streamKinds,
-        int[] streamCodecs, int[] klvStreamTypes, boolean[] klvCarriesPts) throws RtspException;
+        int[] streamCodecs, int[] klvStreamTypes, boolean[] klvCarriesPts)
+        throws RtspException, MuxException;
     private static native long nAddMulticastMount(long serverHandle, String path, String group,
         int port, int ttl, String iface, int programNumber, int pmtPid, int pcrPid,
         int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
         int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws RtspException;
+        boolean[] klvCarriesPts) throws RtspException, MuxException;
 }

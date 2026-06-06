@@ -171,7 +171,16 @@ class RtpLoopbackScenarioTest {
                 watchdogHandle.cancel();
             }
             receiverThread.join(TimeUnit.SECONDS.toMillis(5));
-            receiver.close();
+            // Only free the receiver once its thread has provably stopped. If a
+            // wedged recv() somehow survived the cancel+join, closing here would
+            // free the native handle under an in-flight native call (UAF). Leak
+            // it instead — the test is already failing on that path.
+            if (receiverThread.isAlive()) {
+                System.err.println(
+                    "WARN: receiver thread still alive after cancel+join; skipping close to avoid UAF");
+            } else {
+                receiver.close();
+            }
             watchdogHandle.close();
         }
 

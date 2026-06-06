@@ -1,0 +1,252 @@
+package org.tstrans.rtp;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.io.ByteArrayOutputStream;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+import org.tstrans.RtpException;
+import org.tstrans.codec.NalUnit;
+import org.tstrans.codec.VideoUnit;
+import org.tstrans.mpegts.DemuxEvent;
+import org.tstrans.mpegts.Demuxer;
+import org.tstrans.mpegts.Muxer;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+
+/**
+ * Live cross-binding loopback parity test for the RTP convenience shells
+ * {@link MuxSender} and {@link DemuxReceiver}.
+ *
+ * <p>Drives a complete {@code MuxSender → RTP/UDP → DemuxReceiver} round trip over
+ * a real UDP socket pair (loopback on an ephemeral port) and proves three things:
+ * <ol>
+ *   <li>RTP is byte-faithful end-to-end through the high-level shells.</li>
+ *   <li>Cross-binding SHA parity — self-validating, no committed golden: the
+ *       expected SHA is the first Video sample's NAL-payload digest from an
+ *       OFFLINE {@link Muxer}→{@link Demuxer} run of the identical config + pushes;
+ *       the live SHA must equal it.</li>
+ *   <li>The byte-sink fan-out delivers raw 188-byte TS packets before demux.</li>
+ * </ol>
+ *
+ * <h2>RTP-specific topology</h2>
+ * UDP is connectionless: a sender close does NOT end the receiver's iteration (it
+ * parks on the next datagram). So the receiver thread breaks on the first typed
+ * Video event, and the {@link DemuxReceiver} is constructed on the MAIN thread so
+ * a watchdog can {@link DemuxReceiver#close()} it cross-thread on the failure path
+ * (the rtp convenience wrapper exposes no {@code cancelHandle}; {@code close()}
+ * cancels the parked recv first, then frees — safe via the inner mutex). The
+ * discover-then-rebind free-UDP-port pattern is safe (no SRT-style linger).
+ * Linux-gated (real sockets), mirroring the Rust {@code #![cfg(target_os =
+ * "linux")]} gate.
+ */
+class RtpMuxDemuxLoopbackTest {
+
+    private static final int TIMEOUT_SEC = 15;
+    private static final int PUSH_COUNT = 24;
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
+
+    private static byte[] syntheticH264Idr() {
+        byte[] buf = new byte[20];
+        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
+        buf[4] = 0x65;
+        for (int i = 0; i < 15; i++) buf[5 + i] = (byte) (0xA5 ^ i);
+        return buf;
+    }
+
+    private static MuxerConfig roundtripConfig() {
+        return MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+    }
+
+    private static int freeUdpPort() throws Exception {
+        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
+            return s.getLocalPort();
+        }
+    }
+
+    @Test
+    void muxSenderToDemuxReceiverIsByteFaithfulAndCrossBindingConsistent() throws Exception {
+        assumeTrue(isLinux(),
+            "RTP live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
+
+        String offlineSha = offlineMuxDemuxSha();
+
+        int port = freeUdpPort();
+
+        // Construct the receiver on MAIN (UDP bind does not block) so the watchdog
+        // can close() it cross-thread. Register the byte sink before iterating.
+        AtomicInteger sinkCount = new AtomicInteger();
+        ConcurrentLinkedQueue<Integer> sinkLens = new ConcurrentLinkedQueue<>();
+        DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:" + port);
+        rx.addByteSink(pkt -> {
+            sinkCount.incrementAndGet();
+            sinkLens.add(pkt.length);
+        });
+
+        CompletableFuture<String> shaFuture = new CompletableFuture<>();
+        Thread receiverThread = new Thread(() -> {
+            try {
+                String sha = null;
+                try {
+                    for (DemuxEvent e : rx) {
+                        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                            sha = sha256Units(v.payload());
+                            break;
+                        }
+                    }
+                } catch (RuntimeException re) {
+                    // The iterator wraps checked RtpException/DemuxException. A
+                    // CANCELLED RtpException = the watchdog/teardown close() fired.
+                    Throwable cause = re.getCause();
+                    if (cause instanceof RtpException rex
+                            && rex.kind() == RtpException.Kind.CANCELLED) {
+                        // fall through: sha may still be null → fail below
+                    } else {
+                        throw re;
+                    }
+                }
+                if (sha == null) {
+                    shaFuture.completeExceptionally(
+                        new AssertionError("no typed Video event arrived before end-of-stream"));
+                } else {
+                    shaFuture.complete(sha);
+                }
+            } catch (Exception ex) {
+                shaFuture.completeExceptionally(ex);
+            }
+        });
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        // Watchdog: close() the receiver after the ceiling so a parked next() can
+        // never wedge the gating runners. close() cancels-first then frees (safe).
+        Thread watchdog = new Thread(() -> {
+            try {
+                Thread.sleep(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC - 3));
+                if (!shaFuture.isDone()) {
+                    rx.close();
+                }
+            } catch (InterruptedException ignored) {
+                // Happy path: interrupted by the finally before the ceiling.
+            }
+        });
+        watchdog.setDaemon(true);
+        watchdog.start();
+
+        // Sender on the main thread: push PUSH_COUNT IDRs, pause for delivery,
+        // then close. (The receiver is already bound, so kernel UDP buffers hold
+        // datagrams until the daemon drains them.)
+        try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:" + port, roundtripConfig())) {
+            for (int i = 0; i < PUSH_COUNT; i++) {
+                s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+            }
+            Thread.sleep(1_000);
+        }
+
+        String liveSha;
+        try {
+            liveSha = shaFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("receiver thread failed to complete", e);
+        } finally {
+            // The watchdog is no longer needed; interrupt it so it doesn't wake
+            // at the ceiling and close a receiver we're about to free.
+            watchdog.interrupt();
+            // Trigger termination of any still-parked recv (the error/timeout path)
+            // so the daemon thread can exit, then join it BEFORE the final close so
+            // there is provably no concurrent native call (nNext) on the receiver
+            // when we free it. close() cancels the parked recv first, then frees —
+            // it's the only safe cross-thread stop here (no cancelHandle on the rtp
+            // convenience wrapper) and is idempotent, so this is a no-op on the
+            // happy path (daemon already broke + finished) and on the watchdog path
+            // (already closed). Bounded join so a wedged recv can't hang the test.
+            if (!shaFuture.isDone()) {
+                rx.close();
+            }
+            receiverThread.join(TimeUnit.SECONDS.toMillis(5));
+            // Only free the receiver once its thread has provably stopped. If a
+            // wedged recv somehow survived the close+join, closing here would free
+            // the native handle under an in-flight nNext (UAF). Leak it instead —
+            // the test is already failing on that path. close() is idempotent, so a
+            // second close after a provably-stopped daemon is harmless.
+            if (receiverThread.isAlive()) {
+                System.err.println(
+                    "WARN: receiver thread still alive after close+join; skipping close to avoid UAF");
+            } else {
+                rx.close();
+            }
+        }
+
+        assertEquals(offlineSha, liveSha,
+            "live MuxSender→RTP→DemuxReceiver path must demux to the same video "
+                + "payload SHA as the offline Muxer→Demuxer path (cross-binding parity, "
+                + "self-validating)");
+
+        assertTrue(sinkCount.get() >= 1,
+            "byte sink must have observed at least one TS packet before demux");
+        assertTrue(sinkLens.stream().anyMatch(len -> len == 188),
+            "byte sink must have observed at least one raw 188-byte TS packet ahead of the demuxer");
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────
+
+    private static byte[] muxToBytes() throws Exception {
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(roundtripConfig())) {
+            for (int i = 0; i < PUSH_COUNT; i++) {
+                m.pushVideo(syntheticH264Idr(), i * 3000L, true);
+            }
+            int n;
+            while ((n = m.pull(out)) > 0) acc.write(out, 0, n);
+        }
+        return acc.toByteArray();
+    }
+
+    private static String offlineMuxDemuxSha() throws Exception {
+        byte[] ts = muxToBytes();
+        try (Demuxer d = new Demuxer()) {
+            d.feed(ts);
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                    return sha256Units(v.payload());
+                }
+            }
+        }
+        throw new AssertionError("offline path produced no typed Video event");
+    }
+
+    private static String sha256Units(List<VideoUnit> units) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        for (VideoUnit u : units) {
+            NalUnit n = (NalUnit) u;
+            ByteBuffer view = n.payload().duplicate();
+            byte[] bytes = new byte[view.remaining()];
+            view.get(bytes);
+            md.update(bytes);
+        }
+        byte[] digest = md.digest();
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+}

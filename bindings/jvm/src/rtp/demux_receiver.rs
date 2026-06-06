@@ -102,6 +102,17 @@ fn build_from_url(
         }
     };
 
+    demux_receiver_handle_from_transport(transport, opts)
+}
+
+/// Build a `JniRtpDemuxReceiver` handle from an already-constructed
+/// `RtpRecvTransport` (used by the RTSP client's `intoDemuxReceiver` — it hands
+/// off the SETUP-time recv transport). Mirrors tst-py's
+/// `PyDemuxReceiver::from_recv_transport[_with_config]`. Infallible (box alloc).
+pub(crate) fn demux_receiver_handle_from_transport(
+    transport: RtpRecvTransport,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
+) -> jlong {
     let receiver = match opts {
         None => RustDemuxReceiver::new(transport),
         Some(opts) => RustDemuxReceiver::with_demux_options(transport, opts),

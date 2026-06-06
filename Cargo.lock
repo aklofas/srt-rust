@@ -2268,6 +2268,7 @@ name = "tst-jni"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "secrecy",
  "tst-core",
  "tst-pipeline",
  "tst-rtp",

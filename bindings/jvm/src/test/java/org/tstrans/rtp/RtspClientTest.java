@@ -159,4 +159,51 @@ class RtspClientTest {
         assertEquals(0L, s.rrPacketsReceived());
         assertEquals(0, s.fractionLostQ8());
     }
+
+    // ---- RtspClient.connect (offline; no live server) ----
+    @Test void connectIsStatic() throws Exception {
+        var m = RtspClient.class.getMethod("connect", RtspClientConfig.class);
+        assertTrue(java.lang.reflect.Modifier.isStatic(m.getModifiers()));
+    }
+
+    @org.junit.jupiter.api.Timeout(15)
+    @Test void connectMalformedUrlThrowsProtocol() {
+        var cfg = RtspClientConfig.of("not-a-url-at-all");
+        var ex = assertThrows(org.tstrans.RtspException.class, () -> RtspClient.connect(cfg));
+        assertEquals(org.tstrans.RtspException.Kind.PROTOCOL, ex.kind());
+    }
+
+    @org.junit.jupiter.api.Timeout(15)
+    @Test void connectRtspsUrlThrowsTls() {
+        // tst-rtp built WITHOUT the tls feature: rtsps:// short-circuits to
+        // RtspError::Tls in connect_with_roots BEFORE any network I/O.
+        var cfg = RtspClientConfig.of("rtsps://127.0.0.1:8322/live");
+        var ex = assertThrows(org.tstrans.RtspException.class, () -> RtspClient.connect(cfg));
+        assertEquals(org.tstrans.RtspException.Kind.TLS, ex.kind());
+    }
+
+    @org.junit.jupiter.api.Timeout(15)
+    @Test void connectRefusedThrowsRtspError() {
+        // localhost + a closed port -> instant ECONNREFUSED on all platforms.
+        var cfg = RtspClientConfig.of("rtsp://127.0.0.1:9/never");
+        var ex = assertThrows(org.tstrans.RtspException.class, () -> RtspClient.connect(cfg));
+        assertTrue(java.util.EnumSet.of(
+            org.tstrans.RtspException.Kind.IO,
+            org.tstrans.RtspException.Kind.PROTOCOL,
+            org.tstrans.RtspException.Kind.TIMEOUT).contains(ex.kind()),
+            "unexpected kind: " + ex.kind());
+    }
+
+    // ---- RtspSession surface ----
+    @Test void rtspSessionExposesControlMethods() throws Exception {
+        for (String m : new String[]{"pause","play","teardown","cancelHandle",
+                "stats","isTornDown","close"}) {
+            assertDoesNotThrow(() -> RtspSession.class.getMethod(m),
+                "RtspSession missing " + m);
+        }
+        assertDoesNotThrow(() -> RtspSession.class.getMethod("intoDemuxReceiver"));
+        assertDoesNotThrow(() ->
+            RtspSession.class.getMethod("intoDemuxReceiver", org.tstrans.mpegts.DemuxerConfig.class));
+        assertTrue(AutoCloseable.class.isAssignableFrom(RtspSession.class));
+    }
 }

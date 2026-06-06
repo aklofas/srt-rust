@@ -126,11 +126,22 @@ class RtpLoopbackScenarioTest {
         receiverThread.start();
 
         // Watchdog: cancel the parked recv after the ceiling so it can never hang.
+        // On the happy path the recv completes well before the ceiling and the
+        // finally block interrupts this thread, so the sleep is cut short and no
+        // cancel fires. Guard the cancel so a race (handle already closed, or the
+        // recv already done) cannot raise an uncaught IllegalStateException on
+        // this daemon thread — that would print a stray stack trace on a green
+        // run and could mask a real CI diagnostic.
         Thread watchdog = new Thread(() -> {
             try {
                 Thread.sleep(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC - 3));
-                watchdogHandle.cancel();
+                if (!receivedFuture.isDone()) {
+                    watchdogHandle.cancel();
+                }
             } catch (InterruptedException ignored) {
+                // Happy path: the finally interrupted us before the ceiling.
+            } catch (IllegalStateException ignored) {
+                // The handle was closed between the isDone() check and cancel().
             }
         });
         watchdog.setDaemon(true);
@@ -149,7 +160,17 @@ class RtpLoopbackScenarioTest {
         } catch (Exception e) {
             throw new AssertionError("receiver thread failed to complete", e);
         } finally {
-            watchdogHandle.cancel();
+            // The watchdog is no longer needed; interrupt it so it doesn't wake
+            // at the ceiling and cancel a handle we're about to close.
+            watchdog.interrupt();
+            // Cancel any still-parked recv (the error/timeout path) so the daemon
+            // thread can exit, then join it BEFORE close() so there is provably no
+            // concurrent native call on the receiver when we free it. Bounded join
+            // so a wedged recv can't hang the test.
+            if (!receivedFuture.isDone()) {
+                watchdogHandle.cancel();
+            }
+            receiverThread.join(TimeUnit.SECONDS.toMillis(5));
             receiver.close();
             watchdogHandle.close();
         }
@@ -166,8 +187,6 @@ class RtpLoopbackScenarioTest {
         assertEquals(expectedSha, actualSha,
             "RTP-received scenario bytes must demux to the golden payload_sha256 "
                 + "(cross-binding parity proof: JVM RTP path ≡ Rust/Python)");
-
-        receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
     }
 
     // ── helpers (replicated from SrtLoopbackScenarioTest) ───────────────────

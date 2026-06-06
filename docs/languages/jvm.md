@@ -1212,7 +1212,13 @@ try (RtspSession session = RtspClient.connect(cfg);
   a blocking control call; flip `cancel()` from another thread to break it out.
   `close()` is a best-effort teardown, not a cross-thread interruptor.
 - **TLS is forward-compat only.** This binding does not link rustls; an `rtsps://`
-  URL (or a non-null `tlsRootCertsPem`) surfaces `RtspException` of kind `TLS`.
+  URL surfaces `RtspException` of kind `TLS` (the scheme drives this). `tlsRootCertsPem`
+  is accepted for parity but is **not read** by `connect` (pass-through-only).
+- **Pass-through config fields.** `transportPref` and `rtspVersion` are informational
+  here — the underlying connect derives transport (from a `?transport=udp|tcp` query)
+  and version (from the URL scheme) from the URL, not from these fields. Likewise
+  `DigestAuth.algorithm` is retained for introspection only; the server's
+  `WWW-Authenticate` challenge selects the actual digest algorithm.
 - **`stats()`** returns a zeroed `RtspStats` for now (RTCP counters wire in later).
 
 ## Language-specific gotchas

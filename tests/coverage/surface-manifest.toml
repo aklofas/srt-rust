@@ -6162,9 +6162,14 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::RtcpStats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
 item = "tst_rtp::RtpCancelHandle"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-rtp/tests/rtp/loopback_unicast.rs"]
+bindings = ["java:org.tstrans.rtp.CancelHandle"]
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_rtp::RtpClock"
@@ -6174,21 +6179,41 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_rtp::RtpInfo"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
 item = "tst_rtp::RtpRecvSocketBuilder"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-rtp/tests/rtp/loopback_unicast.rs"]
+bindings = ["java:org.tstrans.rtp.Receiver"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
 item = "tst_rtp::RtpRecvTransport"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-rtp/tests/rtp/loopback_unicast.rs"]
+bindings = ["java:org.tstrans.rtp.Receiver"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
 item = "tst_rtp::RtpSocketBuilder"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-rtp/tests/rtp/loopback_unicast.rs"]
+bindings = ["java:org.tstrans.rtp.Sender"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
-[[exempt]]
+[[surface]]
+kind = "rust"
+crate = "tst-rtp"
 item = "tst_rtp::RtpTransport"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-rtp/tests/rtp/loopback_unicast.rs"]
+bindings = ["java:org.tstrans.rtp.Sender"]
+scenario_ids = ["h264-st0601-mp"]
+tier = "A"
 
 [[exempt]]
 item = "tst_rtp::RtpUrl"

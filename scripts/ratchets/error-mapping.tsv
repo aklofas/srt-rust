@@ -28,3 +28,4 @@ java	klv_encode	KlvEncodeException.Kind	throw_klv_encode	-
 java	codec	CodecParseException.Kind	throw_codec	-
 java	srt	SrtException.Kind	throw_srt	-
 java	rtp	RtpException.Kind	throw_rtp	-
+java	rtsp	RtspException.Kind	throw_rtsp	-

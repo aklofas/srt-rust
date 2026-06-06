@@ -97,4 +97,38 @@ class RtpConvenienceTest {
         assertThrows(org.tstrans.RtpException.class,
             () -> MuxSender.fromUrl("not-a-url", videoConfig()));
     }
+
+    // ── DemuxReceiver standalone (non-live) tests ──────────────────────────
+
+    @Test
+    void demuxReceiverConstructsAndReportsClosedState() throws Exception {
+        DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:5104");
+        assertTrue(rx.isAlive());
+        // No sender → stats are zeroed but the call succeeds.
+        TransportStats st = rx.stats();
+        assertNotNull(st.socketStats());
+        assertNotNull(st.muxerStats());
+        // addByteSink before iterating is allowed.
+        rx.addByteSink(pkt -> { /* no-op */ });
+        rx.close();
+        assertFalse(rx.isAlive());
+        assertThrows(IllegalStateException.class, () -> rx.addByteSink(pkt -> {}));
+        assertThrows(IllegalStateException.class, rx::stats);
+        rx.close(); // idempotent
+    }
+
+    @Test
+    void demuxReceiverRejectsBadUrl() {
+        assertThrows(org.tstrans.RtpException.class,
+            () -> DemuxReceiver.fromUrl("not-a-url"));
+    }
+
+    @Test
+    void demuxReceiverWithConfig() throws Exception {
+        org.tstrans.mpegts.DemuxerConfig cfg =
+            org.tstrans.mpegts.DemuxerConfig.builder().build();
+        try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:5105", cfg)) {
+            assertTrue(rx.isAlive());
+        }
+    }
 }

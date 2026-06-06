@@ -4836,17 +4836,39 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::GapBuffer::pop_front"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
-[[exempt]]
+# Graduated in the tst-jni srt sub-wave C: ManagedDemuxReceiver is the typed
+# managed-demux shell; the JVM mirror is org.tstrans.srt.ManagedDemuxReceiver.
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::ManagedDemuxReceiver"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/managed_demux_receiver_reconnect.rs"]
+bindings = ["java:org.tstrans.srt.ManagedDemuxReceiver"]
+scenario_ids = []
+tier = "A"
 
-[[exempt]]
+# Graduated in the tst-jni srt sub-wave C: ManagedRecvTransport backs the basic
+# managed recv shell; the JVM mirror is org.tstrans.srt.ManagedReceiver.
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::ManagedRecvTransport"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/managed_receive_tracing.rs"]
+bindings = ["java:org.tstrans.srt.ManagedReceiver"]
+scenario_ids = []
+tier = "A"
 
-[[exempt]]
+# Graduated in the tst-jni srt sub-wave C: ManagedTransport is the managed SEND
+# transport — both basic (org.tstrans.srt.ManagedSender) and mux
+# (org.tstrans.srt.ManagedMuxSender) JVM shells wrap it.
+[[surface]]
+kind = "rust"
+crate = "tst-pipeline"
 item = "tst_pipeline::ManagedTransport"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+owning_tests = ["crates/tst-pipeline/tests/reconnect_reject_overflow.rs"]
+bindings = ["java:org.tstrans.srt.ManagedSender", "java:org.tstrans.srt.ManagedMuxSender"]
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_pipeline::MuxPublisher"

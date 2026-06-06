@@ -947,10 +947,15 @@ Gotchas:
 - **Register before iterating** (or between `next()` calls) — `addByteSink` is
   not safe to call concurrently with an in-flight `next()`.
 
-### Managed reconnect (next wave)
+## SRT managed reconnect (`Managed*`)
 
-The reconnect policy types are already present — `ReconnectPolicy`,
-`BackoffStrategy`, and `OverflowPolicy`:
+The four `Managed*` shells add **automatic reconnect** to the plain SRT
+shells: on a Broken/Closed transport they re-dial (caller) or re-bind+re-accept
+(listener) under a `ReconnectPolicy` and resume, replaying buffered gap data.
+They mirror `tstrans.srt.Managed{Sender,Receiver,MuxSender,DemuxReceiver}` and
+wrap `tst_pipeline`'s `ManagedTransport` / `ManagedRecvTransport`.
+
+### The reconnect policy
 
 ```java
 import org.tstrans.srt.ReconnectPolicy;
@@ -958,16 +963,94 @@ import org.tstrans.srt.BackoffStrategy;
 import org.tstrans.srt.OverflowPolicy;
 
 ReconnectPolicy policy = ReconnectPolicy.builder()
-    .maxAttempts(5)
-    .backoff(BackoffStrategy.exponential(/*baseMs=*/ 100, /*maxMs=*/ 2000))
+    .maxAttempts(null)  // null = retry forever; an Integer caps the attempts
+    .backoff(BackoffStrategy.exponential(/*baseMs=*/ 100, /*maxMs=*/ 10_000))
     .gapBufferCapacity(256)
     .overflowPolicy(OverflowPolicy.DROP_OLDEST)
     .build();
 ```
 
-The `Managed*` wrappers that consume this policy (auto-reconnect on transport
-drop, replay the gap buffer) arrive in the next JVM wave; the policy types ship
-now so the surface is forward-stable.
+`maxAttempts(null)` means retry forever; pass an `Integer` to cap the attempts.
+`gapBufferCapacity <= 0` throws `IllegalArgumentException`. The all-defaults
+policy (`maxAttempts=10`, `exponential(100, 10_000)`, capacity 256,
+`DROP_OLDEST`) is `ReconnectPolicy.defaults()` — or just pass `null` for the
+policy argument.
+
+### Send with auto-reconnect: `ManagedMuxSender`
+
+Same push API as the plain `MuxSender`, but the transport silently rebuilds on a
+peer drop:
+
+```java
+import org.tstrans.srt.ManagedMuxSender;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+
+MuxerConfig program = MuxerConfig.builder()
+    .programNumber(1).pmtPid(0x1000)
+    .addVideo(0x1011, VideoCodec.H264)
+    .build();
+
+try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
+        "srt://host:9000?mode=caller&latency=120", program, policy)) {
+    long pts = 0;
+    for (byte[] annexBNal : accessUnits) {
+        s.pushVideo(annexBNal, pts, /*keyFrame=*/ true);  // auto-reconnects on Broken/Closed
+        pts += 3000;
+    }
+}
+```
+
+### Receive with auto-reconnect: `ManagedDemuxReceiver`
+
+Iterate the same sealed `DemuxEvent` hierarchy. Each transport reconnect emits
+exactly one `DemuxEvent.ReconnectDiscontinuity` before the post-reconnect events
+— **drop your per-stream caches on receipt** and rebuild from the next
+`DemuxEvent.ProgramMap`:
+
+```java
+import org.tstrans.srt.ManagedDemuxReceiver;
+import org.tstrans.mpegts.DemuxEvent;
+
+try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
+        "srt://host:9000?mode=caller&latency=120", policy)) {
+    for (DemuxEvent e : rx) {
+        if (e instanceof DemuxEvent.ReconnectDiscontinuity) {
+            caches.clear();  // transport rebuilt — re-derive from the next ProgramMap
+        } else if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+            // ... handle video ...
+        }
+    }
+}
+```
+
+Unlike the plain `DemuxReceiver` (listener only), `ManagedDemuxReceiver` accepts
+`mode=caller` too — in caller mode it re-dials on each reconnect; in listener
+mode it re-binds and re-accepts.
+
+### Stats drifts on the managed shells
+
+The managed shells inherit the same `srtStats()` drifts as tst-py — **read these
+carefully, they are not uniform across the four shells:**
+
+- **`ManagedSender.srtStats()` and `ManagedReceiver.srtStats()` always throw
+  `SrtException(IO)`** today (the managed send/recv transports expose no
+  SRT-rich shape). Use `socketStats()` instead — it returns the scheme-neutral
+  16-field `SocketStats`.
+- **`ManagedMuxSender` has no `srtStats()` at all.** It exposes a combined
+  `stats()` returning a `TransportStats` (socket + muxer); use that.
+- **`ManagedDemuxReceiver.srtStats()` returns a `SocketStats`** (NOT `SrtStats`)
+  and does NOT throw — it returns the same value as its `socketStats()`.
+
+### `reconnectAttempts()` semantics differ too
+
+- **`ManagedReceiver.reconnectAttempts()` is a SUCCESS count** — the number of
+  completed reconnects (it excludes the initial bind+accept).
+- **`ManagedMuxSender.reconnectAttempts()` and
+  `ManagedDemuxReceiver.reconnectAttempts()` are ATTEMPT counts** — every
+  reconnect-factory invocation since construction (a failed-and-retried rebuild
+  still bumps the counter).
+- **`ManagedSender` has no `reconnectAttempts()`.**
 
 ## Language-specific gotchas
 

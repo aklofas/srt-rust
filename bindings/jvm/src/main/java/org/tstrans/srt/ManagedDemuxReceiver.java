@@ -182,8 +182,15 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      * Return a shareable cancel handle. Calling {@link CancelHandle#cancel()}
      * wakes a thread parked in iteration; that pull then ends or throws.
      *
+     * <p><b>Mid-reconnect:</b> unlike the other managed shells, this receiver's
+     * cancel handle is sourced from the inner managed transport on each call, which
+     * is momentarily absent while a reconnect is in flight. If you call this exactly
+     * during a reconnect window the call throws {@link IllegalStateException}; obtain
+     * the handle before starting iteration (when the transport is live), or retry.
+     *
      * @return a new {@link CancelHandle}
-     * @throws IllegalStateException if the receiver is closed
+     * @throws IllegalStateException if the receiver is closed, or if the inner
+     *     transport is momentarily absent because a reconnect is in flight
      */
     public CancelHandle cancelHandle() {
         ensureOpen();

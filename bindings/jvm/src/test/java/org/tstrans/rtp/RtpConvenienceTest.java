@@ -42,6 +42,19 @@ class RtpConvenienceTest {
         return new DatagramSocket(new InetSocketAddress("127.0.0.1", 0));
     }
 
+    /**
+     * Discover a free UDP port by binding a throwaway socket to :0 and releasing
+     * it. Avoids fixed-port flakiness on shared CI runners. (A receiver binds the
+     * port, and the rtp transport auto-binds an RTCP companion on {@code port+1},
+     * so a literal {@code :0} URL is unusable here — the OS would put RTCP on the
+     * privileged port 1; this yields a concrete high ephemeral port instead.)
+     */
+    private static int freeUdpPort() throws Exception {
+        try (DatagramSocket s = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
+            return s.getLocalPort();
+        }
+    }
+
     @Test
     void muxSenderConstructsPushesAndReportsStats() throws Exception {
         try (DatagramSocket peer = peer()) {
@@ -102,7 +115,7 @@ class RtpConvenienceTest {
 
     @Test
     void demuxReceiverConstructsAndReportsClosedState() throws Exception {
-        DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:5104");
+        DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:" + freeUdpPort());
         assertTrue(rx.isAlive());
         // No sender → stats are zeroed but the call succeeds.
         TransportStats st = rx.stats();
@@ -127,7 +140,7 @@ class RtpConvenienceTest {
     void demuxReceiverWithConfig() throws Exception {
         org.tstrans.mpegts.DemuxerConfig cfg =
             org.tstrans.mpegts.DemuxerConfig.builder().build();
-        try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:5105", cfg)) {
+        try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://127.0.0.1:" + freeUdpPort(), cfg)) {
             assertTrue(rx.isAlive());
         }
     }

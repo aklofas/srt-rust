@@ -136,6 +136,14 @@ class RtspClientTest {
         assertArrayEquals(pem, cfg.tlsRootCertsPem().orElseThrow());   // internal state unchanged
     }
 
+    // ---- RtspCancelHandle shape ----
+    @Test void rtspCancelHandleImplementsAutoCloseable() {
+        assertTrue(AutoCloseable.class.isAssignableFrom(RtspCancelHandle.class));
+        assertDoesNotThrow(() -> RtspCancelHandle.class.getMethod("cancel"));
+        assertDoesNotThrow(() -> RtspCancelHandle.class.getMethod("isCancelled"));
+        assertDoesNotThrow(() -> RtspCancelHandle.class.getMethod("close"));
+    }
+
     // ---- RtspStats ----
     @Test void rtspStatsComponentsRoundTrip() {
         var s = new RtspStats(1L, 2L, 3L, 4L, 5L, 6);

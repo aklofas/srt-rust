@@ -174,6 +174,9 @@ class RtspServerClientLoopbackTest {
                 }
                 client.join(TimeUnit.SECONDS.toMillis(5));
                 producer.join(TimeUnit.SECONDS.toMillis(2));
+                // Close the mount after the producer thread has stopped so there
+                // is no in-flight push. MountHandle.close() is idempotent.
+                mount.close();
                 if (rx != null) {
                     if (client.isAlive()) {
                         System.err.println(

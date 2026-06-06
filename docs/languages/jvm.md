@@ -1052,6 +1052,94 @@ carefully, they are not uniform across the four shells:**
   still bumps the counter).
 - **`ManagedSender` has no `reconnectAttempts()`.**
 
+## RTP transport (`org.tstrans.rtp`)
+
+The `org.tstrans.rtp` package wraps `tst_rtp::RtpTransport` / `RtpRecvTransport`
+**directly** (the `Transport` / `RecvTransport` trait methods, not a pipeline
+shell) for sending and receiving pre-muxed MPEG-TS bytes over RTP-over-UDP. Each
+`send` produces one RTP datagram (12-byte header + TS payload); each `recv`
+returns one datagram's TS payload with the RTP header already stripped. RTP is
+default-on — no feature flag is needed.
+
+### Sender hello
+
+The simplest sender: bind to a destination and push TS bytes. Each call sends
+one datagram.
+
+```java
+import org.tstrans.rtp.Sender;
+import org.tstrans.RtpException;
+
+// Send pre-muxed TS bytes over RTP-over-UDP:
+try (Sender s = Sender.fromUrl("rtp://239.0.0.1:5004")) {
+    s.send(tsBytes);  // one UDP datagram, framed with an RTP header
+}
+```
+
+`send(byte[])` accepts a TS payload up to the configured packet size
+(`Sender.DEFAULT_PKT_SIZE` = 1316 bytes, the RTP header + TS payload). A payload
+that exceeds the cap throws `RtpException(MALFORMED_PACKET)`.
+
+### Receiver hello
+
+The simplest receiver: bind to the same group/port and read one datagram per
+`recv()` call. For multicast URLs the group is joined automatically.
+
+```java
+import org.tstrans.rtp.Receiver;
+import org.tstrans.RtpException;
+
+// Receive on the same group/port:
+try (Receiver r = Receiver.fromUrl("rtp://239.0.0.1:5004")) {
+    byte[] payload = r.recv(); // one datagram's TS payload (RTP header stripped)
+    // process payload ...
+}
+```
+
+`recv()` blocks until a datagram arrives or a cancel fires. Because `input.ts`
+in the cross-binding scenario is 752 bytes (< the 1316 packet size), one
+`send(input)` produces exactly one datagram and one `recv()` returns all 752
+bytes — no accumulation needed for that case. For larger frames, call `recv()`
+in a loop and concatenate.
+
+### Cancellation
+
+Obtain a `CancelHandle` from an open `Sender` or `Receiver` and call `cancel()`
+from another thread to unblock a parked `send` / `recv` call:
+
+```java
+var rx = Receiver.fromUrl("rtp://127.0.0.1:5004");
+var cancel = rx.cancelHandle();
+
+// On another thread:
+cancel.cancel();  // wakes rx.recv() → throws RtpException(CANCELLED)
+```
+
+`CancelHandle` is safe to share across threads; `cancel()` and `close()` are
+`synchronized`. The cancel takes effect at the next ~100 ms cancel-poll tick.
+
+### RTP-specific gotchas
+
+- **`Sender` / `Receiver` are not thread-safe.** Use one per thread. A
+  cross-thread stop goes through `cancelHandle().cancel()`, which wakes a parked
+  `send`/`recv` with `RtpException(CANCELLED)`.
+- **`org.tstrans.rtp.SocketStats` is a distinct type from
+  `org.tstrans.srt.SocketStats`.** Same 16-field shape, different package. The
+  RTCP-derived fields (`rttUs`, `packetsLost*`) stay zero until RTCP ingest is
+  wired; `RtpTransport` populates the send-side counters, `RtpRecvTransport` the
+  receive-side.
+- **`rtp` `CancelHandle` has no `isCancelled()`.** Unlike the srt
+  `CancelHandle`, the RTP one exposes only `cancel()` (mirroring tst-py's
+  `tstrans.rtp.CancelHandle`).
+- **Closed handle → `IllegalStateException`.** Calling `send` / `recv` /
+  `socketStats` / `cancelHandle` after `close()` throws `IllegalStateException`,
+  the established JVM idiom (tst-py raises `RtpError` instead).
+- **Negative `pktSize` / out-of-range `ssrc` throw `IllegalArgumentException`.**
+  Validated at construction, mirroring tst-py's `u32`-typed API.
+
+See [`/docs/languages/python.md`](/docs/languages/python.md) for the canonical
+`tstrans.rtp` Python surface this binding mirrors.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each

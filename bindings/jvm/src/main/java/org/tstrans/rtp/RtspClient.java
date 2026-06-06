@@ -10,8 +10,17 @@ import org.tstrans.RtspException;
  * {@code tstrans.rtp.RtspClient}.
  *
  * <p><b>TLS is forward-compat only.</b> This binding does not link rustls and does
- * not enable {@code tst-rtp/tls}; connecting to an {@code rtsps://} URL (or setting
- * {@code tlsRootCertsPem}) surfaces {@link RtspException} of kind {@code TLS}.
+ * not enable {@code tst-rtp/tls}; connecting to an {@code rtsps://} URL surfaces
+ * {@link RtspException} of kind {@code TLS} (the URL scheme drives this — the
+ * connect path short-circuits before any I/O). {@code RtspClientConfig.tlsRootCertsPem}
+ * is accepted for forward-compat surface parity but is NOT read by {@code connect}
+ * (pass-through-only), matching tst-py.
+ *
+ * <p><b>Pass-through config fields.</b> {@code transportPref} and {@code rtspVersion}
+ * are likewise informational/pass-through: the underlying tst-rtp connect derives
+ * the transport (from a {@code ?transport=udp|tcp} URL query) and the version (from
+ * the {@code rtsp://} vs {@code rtsps://} scheme) from the URL, not from these
+ * fields (matching tst-py). They round-trip through the config unchanged.
  */
 public final class RtspClient {
     static { NativeLoader.load(); }

@@ -29,6 +29,14 @@ public final class DigestAuth {
     }
 
     public String user() { return user; }
+
+    /**
+     * The caller-selected digest algorithm. <b>Informational:</b> tst-rtp's
+     * challenge handler picks the actual algorithm from the server's
+     * {@code WWW-Authenticate} header at connect time, so this value is NOT
+     * forwarded to the native connect (it's retained for caller introspection,
+     * matching tst-py).
+     */
     public DigestAlgorithm algorithm() { return algorithm; }
     public Optional<String> realm() { return Optional.ofNullable(realm); }
 

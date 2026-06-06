@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.tstrans.RtspException;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
 
 class RtspServerTest {
 
@@ -85,5 +87,68 @@ class RtspServerTest {
         RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"));
         s.close();
         assertThrows(IllegalStateException.class, s::stats);
+    }
+
+    @Test @Timeout(15)
+    void addUnicastMountPushAndStats() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000).addVideo(0x1011, VideoCodec.H264).build();
+            try (MountHandle m = s.addUnicastMount("/live", cfg)) {
+                assertEquals("/live", m.mountPath());
+                assertEquals("unicast", m.mountKind());
+                assertEquals(1, s.stats().mounts());
+                assertTrue(m.videoHandle().isPresent());
+                assertEquals(1, m.videoHandles().size());
+                MountStats before = m.stats();
+                m.pushVideo(idr(), 0L, true);
+                m.flush();
+                assertTrue(m.stats().bytesPushed() > before.bytesPushed());
+                m.resetStats();
+                assertEquals(0L, m.stats().bytesPushed());
+            }
+        }
+    }
+
+    @Test @Timeout(15)
+    void addMulticastMountKind() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000).addVideo(0x1011, VideoCodec.H264).build();
+            try (MountHandle m = s.addMulticastMount("/mc", "239.0.0.1", 5004, cfg)) {
+                assertEquals("multicast", m.mountKind());
+            }
+        }
+    }
+
+    @Test @Timeout(15)
+    void invalidMountPathThrowsMount() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000).addVideo(0x1011, VideoCodec.H264).build();
+            RtspException ex = assertThrows(RtspException.class,
+                () -> s.addUnicastMount("live", cfg));  // no leading slash
+            assertEquals(RtspException.Kind.MOUNT, ex.kind());
+        }
+    }
+
+    @Test @Timeout(15)
+    void duplicateMountThrowsMount() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000).addVideo(0x1011, VideoCodec.H264).build();
+            try (MountHandle ignored = s.addUnicastMount("/live", cfg)) {
+                RtspException ex = assertThrows(RtspException.class,
+                    () -> s.addUnicastMount("/live", cfg));
+                assertEquals(RtspException.Kind.MOUNT, ex.kind());
+            }
+        }
+    }
+
+    private static byte[] idr() {
+        byte[] b = new byte[20];
+        b[0]=0; b[1]=0; b[2]=0; b[3]=1; b[4]=0x65;
+        for (int i=0;i<15;i++) b[5+i]=(byte)(0xA5 ^ i);
+        return b;
     }
 }

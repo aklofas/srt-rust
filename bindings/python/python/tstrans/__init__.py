@@ -8,6 +8,7 @@ module, organized into topic-focused submodules:
 - `tstrans.codec` — H.264 / H.265 / H.266 / AV1 / AAC frame parsers
 - `tstrans.io` — convenience helpers for reading and writing .ts files
 - `tstrans.exceptions` — exception hierarchy raised by the above
+- `tstrans.pipeline` — KLV ↔ video PTS pairing (byte-feeding `Pairer`)
 
 See the per-submodule docstrings for usage.
 """
@@ -60,6 +61,14 @@ try:
 except ImportError:
     _RIST_AVAILABLE = False
 
+# `pipeline` import is conditional on the `pipeline` cargo feature
+# (default-on; published wheels always include it). Same shape as rtp/srt.
+try:
+    from tstrans import pipeline  # noqa: F401
+    _PIPELINE_AVAILABLE = True
+except ImportError:
+    _PIPELINE_AVAILABLE = False
+
 __version__: str = _native.__version__
 
 __all__: list[str] = [
@@ -83,3 +92,5 @@ if _HLS_AVAILABLE:
     __all__.append("hls")
 if _RIST_AVAILABLE:
     __all__.append("rist")
+if _PIPELINE_AVAILABLE:
+    __all__.append("pipeline")

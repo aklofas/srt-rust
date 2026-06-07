@@ -36,7 +36,8 @@ const NAL_IDR: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xAA, 0xAA, 0xAA];
 /// Returns the TS bytes (multiple of 188).
 /// Falls back to a pre-baked synthetic TS if the `srt` feature is not active
 /// (in that case the muxer C ABI is not compiled, but the demuxer C ABI is
-/// unconditional). In practice the CI matrix runs with `srt` default-on.
+/// unconditional). `srt` is opt-in (default-off); the CI matrix exercises
+/// this real-muxer path via its `--all-features` run.
 fn build_ts_bytes() -> Vec<u8> {
     // Build real TS from the C muxer when `srt` feature is on.
     // When `srt` is off we fall back to a known-good 188-byte PAT/PMT-less

@@ -284,8 +284,9 @@ baseline (by design)" for the full rationale.
       `TstAv1CarriageMode` enum. Bridges Rust-only `DemuxerConfig`
       knobs through the C builder.
     - `6` (Phase 4 Stage 1, 2026-05-26): RTP + RTSP C ABI surface.
-      Cargo features `srt` + `rtp` (both default-on) gate the SRT and
-      RTP/RTSP halves of the ABI; `TST_HAS_SRT` + `TST_HAS_RTP`
+      Cargo features `srt` + `rtp` (default-on through 2026-06-06, opt-in /
+      default-**off** thereafter — like every other transport) gate the SRT
+      and RTP/RTSP halves of the ABI; `TST_HAS_SRT` + `TST_HAS_RTP`
       `#define`s in tstrans.h let consumers `#if`-test feature presence.
       ~97 new C entry points: `tst_rtp_{sender,recv,mux_sender,demux_receiver}_*`
       open + close + data-path methods (~46 across 4 handle families) +

@@ -12,7 +12,11 @@ repository.workspace   = true
 doctest = false
 
 [features]
-default = ["std", "srt", "rtp", "mbedtls"]
+# All transports (srt/rtp/udp/tcp/hls/rist) are opt-in. `mbedtls` stays
+# default-on but is inert unless `srt` is also enabled (the `tst-srt?/mbedtls`
+# forward below only fires when tst-srt is in the dependency graph), so
+# `--features srt` is encrypted by default while a bare build pulls neither.
+default = ["std", "mbedtls"]
 # `std` gates every transport-bearing surface + std-only sinks. The offline
 # core (muxer / demuxer / config / error / handle / panic) compiles without it
 # (no_std + alloc), for the no_std embedded staticlib path (see

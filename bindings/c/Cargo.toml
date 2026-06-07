@@ -16,7 +16,14 @@ doctest    = false
 [features]
 # All features forward to `tst-c-core`, where the C-ABI logic lives. This leaf
 # crate only produces the cdylib/staticlib + cbindgen header.
-default = ["std", "srt", "rtp", "mbedtls"]
+#
+# All transports (srt/rtp/udp/tcp/hls/rist) are opt-in. `mbedtls` stays
+# default-on but is inert (zero build cost) unless `srt` is also enabled —
+# its `tst-srt?/mbedtls` forward in tst-c-core only fires when tst-srt is in
+# the graph — so `--features srt` is encrypted by default (the workspace
+# "encryption ON by default" convention) while a bare build links neither
+# libsrt nor mbedTLS.
+default = ["std", "mbedtls"]
 std     = ["tst-c-core/std"]
 srt     = ["tst-c-core/srt"]
 rtp     = ["tst-c-core/rtp"]

@@ -3,14 +3,17 @@
 //! that inserts domain-grouping section dividers (audit Finding 5).
 //! Drift indicates a forgotten regenerate-and-commit step.
 
-// The committed header is generated with the default feature set (srt +
-// rtp + mbedtls), so its content — section dividers, feature defines —
-// only matches cbindgen output when both `srt` and `rtp` are on. Under
-// `--no-default-features` (or `srt-only` / `rtp-only`) the defines and
-// per-transport sections diverge, so the drift assertion is meaningless.
-// Gate the test to the default-feature build only; the per-flavor
-// `tst-c feature matrix` CI jobs cover compile-level cfg-leak detection
-// via `scripts/check/c/header-conditional-sections.sh`.
+// The committed header is generated with `srt` + `rtp` on (cbindgen emits
+// every transport's items guarded by `#if defined(TST_HAS_*)` regardless of
+// build features, but the top-level `#define TST_HAS_SRT 1` / `TST_HAS_RTP 1`
+// injected by build.rs only appear when those features are active). All six
+// transports are now opt-in, so regenerate with
+// `cargo build -p tst-c --features srt,rtp`. The drift assertion only matches
+// cbindgen output when exactly `srt` + `rtp` are on (under all-features the
+// injected defines would also include udp/tcp/hls/rist = 1). Gate the test to
+// that flavor; the per-flavor `tst-c feature matrix` CI jobs cover
+// compile-level cfg-leak detection via
+// `scripts/check/c/header-conditional-sections.sh`.
 #![cfg(all(feature = "srt", feature = "rtp"))]
 
 use std::fs;
@@ -53,7 +56,7 @@ fn committed_header_matches_cbindgen_output() {
     if generated != expected {
         eprintln!(
             "Drift between bindings/c/include/tstrans.h and cbindgen output. \
-             Run `cargo build -p tst-c && cp target/debug/include/tstrans.h bindings/c/include/tstrans.h` \
+             Run `cargo build -p tst-c --features srt,rtp && cp target/debug/include/tstrans.h bindings/c/include/tstrans.h` \
              and commit the diff."
         );
         // Compute a small diff hint: first differing line.

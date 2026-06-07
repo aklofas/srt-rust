@@ -210,7 +210,9 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// - `6` (Phase 4 tst-rtp binding exposure, 2026-05-26):
 ///   Introduces `srt` + `rtp` cargo features in `tst-c` with
 ///   cbindgen `TST_HAS_SRT` / `TST_HAS_RTP` conditional emission.
-///   Existing SRT surface now gated on `feature = "srt"` (default-on).
+///   Existing SRT surface now gated on `feature = "srt"` (default-on
+///   through 2026-06-06; opt-in / default-off thereafter, like every
+///   other transport).
 ///   New RTP/RTSP entry points land in Tasks 2-16 behind `feature = "rtp"`.
 /// - `7` (Plan A5a, 2026-05-27): UDP + TCP + HLS + RIST entry points
 ///   plus cargo feature flags `udp`/`tcp`/`hls`/`rist` (all default-OFF

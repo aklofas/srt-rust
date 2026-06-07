@@ -408,18 +408,19 @@ jobs:
           RIST_FORCE_VENDORED: "1"
         run: cargo nextest run --workspace --no-default-features --no-fail-fast
 
-      - name: Build tst-c per-feature (udp/tcp/hls/rist) — catch single-feature breakage
-        # Plan A5a: the four new transport features are default-off, so the
+      - name: Build tst-c per-feature (srt/rtp/udp/tcp/hls/rist) — catch single-feature breakage
+        # All six transport features are now default-off (opt-in), so the
         # default build above and the all-features build below don't exercise
         # each one in isolation. These explicit single-feature builds catch
         # cross-feature dep leakage (e.g., a udp path that accidentally
         # references srt) that would only surface at a consumer's `--features
-        # udp` build time. udp/tcp/hls are pure-Rust (no vendored C); rist
-        # links vendored librist.
+        # <x>` build time. rtp/udp/tcp/hls are pure-Rust (no vendored C); srt
+        # links vendored libsrt (unencrypted here — mbedtls is off under
+        # --no-default-features); rist links vendored librist.
         #
         # MUST run BEFORE the all-features build below. Each `cargo build -p
         # tst-c --no-default-features` overwrites target/debug/libtstrans.{so,
-        # dylib} with an srt-LESS cdylib. If this step ran AFTER the
+        # dylib} with a partial-feature cdylib. If this step ran AFTER the
         # all-features build (as it did 2026-05-28, when A5a appended it there),
         # the subsequent `cargo test --all-features` smoke test links smoke.c
         # against the stripped cdylib and fails with `undefined reference to
@@ -429,6 +430,8 @@ jobs:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
         run: |
+          cargo build -p tst-c --no-default-features --features srt
+          cargo build -p tst-c --no-default-features --features rtp
           cargo build -p tst-c --no-default-features --features udp
           cargo build -p tst-c --no-default-features --features tcp
           cargo build -p tst-c --no-default-features --features hls
@@ -452,12 +455,12 @@ jobs:
         run: cargo build --workspace --all-features
 
       - name: cargo test (all features)
-        # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
-        # `file` on tst-core) is identical to defaults, so this rail is
-        # currently equivalent to the default-features run above. Kept
-        # as a guard against silent breakage when a future feature gets
-        # added that isn't in the default set — the audit (Phase 6 Theme O)
-        # called out this rail as a coverage gap.
+        # The default feature set no longer includes the transports
+        # (srt/rtp/udp/tcp/hls/rist are all opt-in), so this rail is the
+        # only one that exercises the full tst-c transport surface + its
+        # integration tests (smoke.rs, the *_loopback / *_open_smoke suites,
+        # header_drift) — the default-features run above now builds a
+        # transport-less cdylib. This is the canonical "everything on" gate.
         # Enabled on windows-msvc 2026-05-29 — see cargo test --doc comment above.
         timeout-minutes: 20
         env:

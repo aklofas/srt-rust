@@ -25,10 +25,14 @@ if [ "$(uname -s)" != "Linux" ]; then
 fi
 
 LIB="target/debug/libtstrans.so"
-if [ ! -f "$LIB" ]; then
-    echo "Building tst-c first to produce $LIB..."
-    SRT_FORCE_VENDORED=1 cargo build -p tst-c
-fi
+# Always (re)build with `--features srt` — this ratchet is only meaningful when
+# libsrt is actually statically linked in. `srt` is opt-in (default-off) since
+# the all-transports-optional change, so a stray default build of libtstrans.so
+# would link no libsrt and the check below would pass vacuously. `--features srt`
+# (without --no-default-features) keeps mbedtls on, matching a real encrypted
+# srt consumer build.
+echo "Building tst-c with --features srt to produce $LIB..."
+SRT_FORCE_VENDORED=1 cargo build -p tst-c --features srt
 
 LEAKED=$(nm -D -g --defined-only "$LIB" 2>&1 \
     | awk '$2 ~ /^[TDR]$/ { print $3 }' \

@@ -11,7 +11,10 @@ examples here mirror that taxonomy.
 
 ```sh
 cd bindings/c
-cargo build                # produces target/debug/libtstrans.{so,a} + include/tstrans.h
+# Transports are opt-in. The offline mux/demux examples build with a bare
+# `cargo build`; the transport examples (sending/, receiving/, the rtp/srt
+# scenarios) need their feature: e.g. --features srt,rtp (or udp/tcp/hls/rist).
+cargo build --features srt,rtp   # produces target/debug/libtstrans.{so,a} + include/tstrans.h
 gcc -I include -L ../../target/debug \
     -Wall -Werror -o /tmp/<name> \
     examples/<category>/<name>.c -ltstrans

@@ -231,6 +231,39 @@ impl core::marker::Unpin for tst_pipeline::ext::pairing::PairerStats
 impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::PairerStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::PairerStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::PairerStats
+pub struct tst_pipeline::ext::pairing::PairingDemuxer
+impl tst_pipeline::ext::pairing::PairingDemuxer
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::demuxer_stats(&self) -> tst_core::mpegts::demux::types::DemuxerStats
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::feed(&mut self, &[u8]) -> core::result::Result<alloc::vec::Vec<tst_pipeline::ext::pairing::PairerOutput>, tst_core::error::DemuxError>
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::flush(&mut self) -> alloc::vec::Vec<tst_pipeline::ext::pairing::PairerOutput>
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::last_before_pts(u16, u16, core::option::Option<core::time::Duration>, tst_core::mpegts::demux::types::DemuxerConfig) -> Self
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::new(u16, u16) -> Self
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::reset_stats(&mut self)
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::stats(&self) -> tst_pipeline::ext::pairing::PairerStats
+pub fn tst_pipeline::ext::pairing::PairingDemuxer::with_config(u16, u16, tst_pipeline::ext::pairing::PairingDemuxerConfig) -> Self
+impl core::marker::Freeze for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::marker::Send for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::marker::Sync for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::marker::Unpin for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::PairingDemuxer
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::PairingDemuxer
+#[non_exhaustive] pub struct tst_pipeline::ext::pairing::PairingDemuxerConfig
+pub tst_pipeline::ext::pairing::PairingDemuxerConfig::demuxer: tst_core::mpegts::demux::types::DemuxerConfig
+pub tst_pipeline::ext::pairing::PairingDemuxerConfig::pairer: tst_pipeline::ext::pairing::PairerConfig
+impl core::clone::Clone for tst_pipeline::ext::pairing::PairingDemuxerConfig
+pub fn tst_pipeline::ext::pairing::PairingDemuxerConfig::clone(&self) -> tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::default::Default for tst_pipeline::ext::pairing::PairingDemuxerConfig
+pub fn tst_pipeline::ext::pairing::PairingDemuxerConfig::default() -> tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::fmt::Debug for tst_pipeline::ext::pairing::PairingDemuxerConfig
+pub fn tst_pipeline::ext::pairing::PairingDemuxerConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::marker::Send for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::marker::Sync for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::marker::Unpin for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::PairingDemuxerConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::PairingDemuxerConfig
 pub struct tst_pipeline::ext::pairing::VideoSample
 pub tst_pipeline::ext::pairing::VideoSample::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_pipeline::ext::pairing::VideoSample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>

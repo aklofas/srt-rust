@@ -4,7 +4,9 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tst_core::net::udp_socket::{apply_multicast_recv_join, bind_udp_socket};
+use tst_core::net::udp_socket::{
+    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket,
+};
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
 
 use crate::config::SocketConfig;
@@ -88,10 +90,12 @@ impl UdpRecvTransport {
     /// (no data arrived within `deadline`). Returns `Some(n)` on success.
     ///
     /// Implemented by setting `SO_RCVTIMEO` on the underlying socket for
-    /// the duration of this call, then restoring it to no-timeout. Not
-    /// concurrency-safe — callers must ensure no concurrent `recv_bytes`
-    /// is in progress on the same transport handle (the `Mutex<Option<…>>`
-    /// in the Python binding guarantees this).
+    /// the duration of this call, then restoring it to the cancel-poll
+    /// interval so that subsequent `recv_bytes` calls continue to wake
+    /// periodically and re-check the `alive` flag. Not concurrency-safe —
+    /// callers must ensure no concurrent `recv_bytes` is in progress on
+    /// the same transport handle (the `Mutex<Option<…>>` in the Python
+    /// binding guarantees this).
     pub fn recv_timeout(
         &mut self,
         buf: &mut [u8],
@@ -101,8 +105,11 @@ impl UdpRecvTransport {
             .set_read_timeout(Some(deadline))
             .map_err(crate::error::UdpError::Io)?;
         let result = self.socket.recv(buf);
-        // Restore no-timeout; ignore error (best-effort).
-        let _ = self.socket.set_read_timeout(None);
+        // Restore the cancel-poll interval so that a subsequent recv_bytes
+        // continues to wake periodically and can observe alive=false set by
+        // close().  Restoring None (no timeout) would cause recv_bytes to
+        // block forever, making close() unable to interrupt it.
+        let _ = self.socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL));
         match result {
             Ok(n) => {
                 self.stats.datagrams_received = self.stats.datagrams_received.saturating_add(1);
@@ -167,5 +174,62 @@ impl RecvTransport for UdpRecvTransport {
 
     fn socket_stats(&self) -> Option<SocketStats> {
         Some(self.stats.to_socket_stats())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Regression test: `recv_timeout` must not permanently disable the
+    /// cancel-poll `SO_RCVTIMEO` on the socket.
+    ///
+    /// `recv_bytes` relies on the socket waking every `CANCEL_POLL_INTERVAL`
+    /// (~100 ms) to re-check the `alive` flag — that is how `close()` interrupts
+    /// a blocked recv.  Before the fix, `recv_timeout` restored `SO_RCVTIMEO` to
+    /// `None` (block forever), so a subsequent `recv_bytes` on a quiet socket
+    /// would never wake and `close()` (which only sets `alive=false`) could not
+    /// interrupt it.
+    #[test]
+    fn close_unblocks_recv_bytes_after_recv_timeout() {
+        let mut recv =
+            UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
+
+        // Step 1 — call recv_timeout with a short deadline; no sender, so it
+        // times out and returns Ok(None).  This is the call that, before the fix,
+        // would leave SO_RCVTIMEO=None on the socket.
+        let mut buf = vec![0u8; recv.max_payload()];
+        let result = recv.recv_timeout(&mut buf, Duration::from_millis(50));
+        assert!(
+            matches!(result, Ok(None)),
+            "expected timeout (Ok(None)), got {result:?}"
+        );
+
+        // Step 2 — clone the alive flag directly (we are in the same crate so
+        // private fields are accessible inside this #[cfg(test)] module) and
+        // spawn a closer thread that waits briefly then signals close().
+        let alive = Arc::clone(&recv.alive);
+        let _closer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            alive.store(false, Ordering::Release);
+        });
+
+        // Step 3 — recv_bytes must return Closed within 2 s.  If the
+        // SO_RCVTIMEO was cleared to None, recv_bytes blocks forever and the
+        // assert on elapsed fires (or the test suite hangs).
+        let start = Instant::now();
+        let err = recv.recv_bytes(&mut buf);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "recv_bytes blocked for {elapsed:?}; \
+             cancel-poll timeout was likely disabled by recv_timeout"
+        );
+        assert!(
+            matches!(err, Err(TransportError::Closed)),
+            "expected Err(TransportError::Closed), got {err:?}"
+        );
     }
 }

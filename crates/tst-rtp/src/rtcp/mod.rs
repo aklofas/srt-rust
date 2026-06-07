@@ -160,6 +160,12 @@ impl SenderReport {
         }
         let length_words = u16::from_be_bytes([input[2], input[3]]) as usize;
         let total_bytes = (length_words + 1) * 4;
+        // Fixed SR payload: 4 (SSRC) + 8 (NTP) + 4 (RTP ts) + 4 (pkt count) + 4 (octet count) = 24
+        // Plus 4-byte header = 28 minimum; plus rc * 24 for report blocks.
+        let min_bytes = 28usize.saturating_add(rc.saturating_mul(ReportBlock::WIRE_LEN));
+        if total_bytes < min_bytes {
+            return Err("RTCP SR declared length too small for fixed fields");
+        }
         if input.len() < total_bytes {
             return Err("RTCP SR truncated by length");
         }
@@ -227,6 +233,11 @@ impl ReceiverReport {
         }
         let length_words = u16::from_be_bytes([input[2], input[3]]) as usize;
         let total_bytes = (length_words + 1) * 4;
+        // Fixed RR payload: 4 (SSRC) → header + SSRC = 8 bytes minimum; plus rc * 24.
+        let min_bytes = 8usize.saturating_add(rc.saturating_mul(ReportBlock::WIRE_LEN));
+        if total_bytes < min_bytes {
+            return Err("RTCP RR declared length too small for fixed fields");
+        }
         if input.len() < total_bytes {
             return Err("RTCP RR truncated by length");
         }
@@ -303,6 +314,10 @@ impl SdesPacket {
         }
         let length_words = u16::from_be_bytes([input[2], input[3]]) as usize;
         let total_bytes = (length_words + 1) * 4;
+        // Minimum: 4-byte header + 4-byte SSRC + 1-byte item type + 1-byte item len = 10.
+        if total_bytes < 10 {
+            return Err("RTCP SDES declared length too small for SSRC and CNAME item");
+        }
         if input.len() < total_bytes {
             return Err("RTCP SDES truncated by length");
         }
@@ -324,6 +339,67 @@ impl SdesPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- DoS / panic regression tests (Step 2) ---
+    // Each buffer passes the initial slice-length gate but carries a declared
+    // length (length_words field) that is too small to cover the fixed fields.
+    // Before the fix these cause a panic (empty-cursor get_u32 / index OOB).
+    // After the fix they must return Err.
+
+    /// SR: V=2, PT=200, declared length=0 (total 4 bytes), but buffer is 32
+    /// bytes — passes the `input.len() < 28` and the `input.len() < total_bytes`
+    /// (4) gates, then hits `cursor.get_u32()` on a 0-byte slice.
+    #[test]
+    fn sr_rejects_declared_length_zero() {
+        let mut buf = vec![0u8; 32];
+        buf[0] = 0x80; // V=2, P=0, RC=0
+        buf[1] = 200; // PT=SR
+        buf[2] = 0x00; // length_words high byte = 0
+        buf[3] = 0x00; // length_words low byte  = 0  → total_bytes = 4
+        // bytes 4..31 are zeroes (SSRC etc.) — enough to pass the 28-byte gate
+        assert!(
+            SenderReport::decode(&buf).is_err(),
+            "SR with declared length 0 must return Err, not panic"
+        );
+    }
+
+    /// RR: V=2, PT=201, declared length=0 (total 4 bytes), buffer is 16 bytes —
+    /// passes the `input.len() < 8` gate and the `input.len() < 4` gate, then
+    /// hits `cursor.get_u32()` on a 0-byte slice.
+    #[test]
+    fn rr_rejects_declared_length_zero() {
+        let mut buf = vec![0u8; 16];
+        buf[0] = 0x80; // V=2, P=0, RC=0
+        buf[1] = 201; // PT=RR
+        buf[2] = 0x00; // length_words = 0 → total_bytes = 4
+        buf[3] = 0x00;
+        // bytes 4..15 are zeroes — passes the 8-byte initial check
+        assert!(
+            ReceiverReport::decode(&buf).is_err(),
+            "RR with declared length 0 must return Err, not panic"
+        );
+    }
+
+    /// SDES: V=2, SC=1, PT=202, declared length=1 (total 8 bytes), buffer is
+    /// exactly 8 bytes — passes the `input.len() < 8` gate and the
+    /// `input.len() < total_bytes (8)` gate, then hits `input[8]` (OOB: the
+    /// slice is 8 bytes, indices 0..7 only).
+    #[test]
+    fn sdes_rejects_declared_length_one() {
+        let mut buf = vec![0u8; 8]; // exactly total_bytes = 8
+        buf[0] = 0x81; // V=2, P=0, SC=1
+        buf[1] = 202; // PT=SDES
+        buf[2] = 0x00; // length_words = 1 → total_bytes = 8
+        buf[3] = 0x01;
+        // bytes 4..7: SSRC = 0 (zeroes)
+        // input[8] is out of bounds — the declared packet has no room for SDES items.
+        assert!(
+            SdesPacket::decode(&buf).is_err(),
+            "SDES with declared length 1 (8 bytes, no room for items) must return Err, not panic"
+        );
+    }
+
+    // --- Existing tests below ---
 
     #[test]
     fn rr_roundtrip_no_blocks() {

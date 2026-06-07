@@ -323,7 +323,7 @@ fn build_stream_info(
     Ok(cls.call((), Some(&kwargs))?.into())
 }
 
-fn build_stream_id(
+pub(crate) fn build_stream_id(
     py: Python<'_>,
     mpegts: &Bound<'_, PyModule>,
     s: &StreamId,
@@ -366,7 +366,7 @@ fn stream_kind_to_py(
     }
 }
 
-fn video_codec_to_py(
+pub(crate) fn video_codec_to_py(
     py: Python<'_>,
     mpegts: &Bound<'_, PyModule>,
     c: &VideoCodec,
@@ -425,14 +425,18 @@ fn link_source_to_py(
     Ok(e.getattr(name)?.into())
 }
 
-fn pts_to_py(py: Python<'_>, mpegts: &Bound<'_, PyModule>, p: Pts90khz) -> PyResult<PyObject> {
+pub(crate) fn pts_to_py(
+    py: Python<'_>,
+    mpegts: &Bound<'_, PyModule>,
+    p: Pts90khz,
+) -> PyResult<PyObject> {
     let cls = mpegts.getattr(intern!(py, "Pts90khz"))?;
     Ok(cls
         .call_method1(intern!(py, "from_raw"), (p.as_ticks(),))?
         .into())
 }
 
-fn opt_pts_to_py(
+pub(crate) fn opt_pts_to_py(
     py: Python<'_>,
     mpegts: &Bound<'_, PyModule>,
     p: Option<Pts90khz>,
@@ -440,6 +444,82 @@ fn opt_pts_to_py(
     match p {
         Some(p) => pts_to_py(py, mpegts, p),
         None => Ok(py.None()),
+    }
+}
+
+/// Convert a `VideoPayload` (parsed NAL / OBU list) to its Python form:
+/// `list[tstrans.codec.NalUnit]` or `list[tstrans.codec.Obu]`. Shared by
+/// the mpegts `Sample.Video` event projection and the pipeline
+/// `VideoSample` projection.
+pub(crate) fn convert_video_payload(
+    py: Python<'_>,
+    payload: &tst_core::mpegts::demux::VideoPayload,
+) -> PyResult<PyObject> {
+    match payload {
+        VideoPayload::Nals(nals) => {
+            let list = pyo3::types::PyList::empty_bound(py);
+            for nal in nals {
+                let nal_py = match nal {
+                    tst_core::mpegts::demux::NalUnit::H264 {
+                        nal_type,
+                        ref_idc,
+                        payload,
+                    } => Py::new(
+                        py,
+                        crate::codec::NalUnitPy::make_h264(
+                            *nal_type,
+                            *ref_idc,
+                            payload.clone(),
+                        ),
+                    )?,
+                    tst_core::mpegts::demux::NalUnit::H265 {
+                        nal_type,
+                        layer_id,
+                        temporal_id_plus1,
+                        payload,
+                    } => Py::new(
+                        py,
+                        crate::codec::NalUnitPy::make_h265(
+                            *nal_type,
+                            *layer_id,
+                            *temporal_id_plus1,
+                            payload.clone(),
+                        ),
+                    )?,
+                    tst_core::mpegts::demux::NalUnit::H266 {
+                        nal_type,
+                        layer_id,
+                        temporal_id_plus1,
+                        payload,
+                    } => Py::new(
+                        py,
+                        crate::codec::NalUnitPy::make_h266(
+                            *nal_type,
+                            *layer_id,
+                            *temporal_id_plus1,
+                            payload.clone(),
+                        ),
+                    )?,
+                };
+                list.append(nal_py)?;
+            }
+            Ok(list.into_py(py))
+        }
+        VideoPayload::Obus(obus) => {
+            let list = pyo3::types::PyList::empty_bound(py);
+            for obu in obus {
+                let ext = obu.extension.map(|e| crate::codec::ObuExtensionPy {
+                    temporal_id: e.temporal_id,
+                    spatial_id: e.spatial_id,
+                });
+                let obu_py = Py::new(
+                    py,
+                    crate::codec::ObuPy::make(obu.obu_type, ext, obu.payload.clone()),
+                )?;
+                list.append(obu_py)?;
+            }
+            Ok(list.into_py(py))
+        }
     }
 }
 
@@ -462,72 +542,7 @@ fn convert_sample_event(
             random_access_indicator,
         } => {
             // Emit typed list[NalUnit] | list[Obu].
-            let payload_py: PyObject = match payload {
-                VideoPayload::Nals(nals) => {
-                    let list = pyo3::types::PyList::empty_bound(py);
-                    for nal in nals {
-                        let nal_py = match nal {
-                            tst_core::mpegts::demux::NalUnit::H264 {
-                                nal_type,
-                                ref_idc,
-                                payload,
-                            } => Py::new(
-                                py,
-                                crate::codec::NalUnitPy::make_h264(
-                                    *nal_type,
-                                    *ref_idc,
-                                    payload.clone(),
-                                ),
-                            )?,
-                            tst_core::mpegts::demux::NalUnit::H265 {
-                                nal_type,
-                                layer_id,
-                                temporal_id_plus1,
-                                payload,
-                            } => Py::new(
-                                py,
-                                crate::codec::NalUnitPy::make_h265(
-                                    *nal_type,
-                                    *layer_id,
-                                    *temporal_id_plus1,
-                                    payload.clone(),
-                                ),
-                            )?,
-                            tst_core::mpegts::demux::NalUnit::H266 {
-                                nal_type,
-                                layer_id,
-                                temporal_id_plus1,
-                                payload,
-                            } => Py::new(
-                                py,
-                                crate::codec::NalUnitPy::make_h266(
-                                    *nal_type,
-                                    *layer_id,
-                                    *temporal_id_plus1,
-                                    payload.clone(),
-                                ),
-                            )?,
-                        };
-                        list.append(nal_py)?;
-                    }
-                    list.into_py(py)
-                }
-                VideoPayload::Obus(obus) => {
-                    let list = pyo3::types::PyList::empty_bound(py);
-                    for obu in obus {
-                        let ext = obu.extension.map(|e| crate::codec::ObuExtensionPy {
-                            temporal_id: e.temporal_id,
-                            spatial_id: e.spatial_id,
-                        });
-                        let obu_py = Py::new(
-                            py,
-                            crate::codec::ObuPy::make(obu.obu_type, ext, obu.payload.clone()),
-                        )?;
-                        list.append(obu_py)?;
-                    }
-                    list.into_py(py)
-                }
-            };
+            let payload_py: PyObject = convert_video_payload(py, payload)?;
             let cls = de.getattr(intern!(py, "Video"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
@@ -663,6 +678,24 @@ fn convert_sample_event(
     }
 }
 
+/// Map a `MetadataKind` to its `tstrans.mpegts.MetadataKindTag` Python enum
+/// discriminator value. Shared by the mpegts `Klv` event projection and the
+/// pipeline `KlvSample` projection.
+pub(crate) fn metadata_kind_to_py(
+    py: Python<'_>,
+    mpegts: &Bound<'_, PyModule>,
+    kind: &tst_core::mpegts::demux::MetadataKind,
+) -> PyResult<PyObject> {
+    let kind_enum = mpegts.getattr(intern!(py, "MetadataKindTag"))?;
+    match kind {
+        MetadataKind::KlvSyncAuCell { .. } => {
+            Ok(kind_enum.getattr(intern!(py, "KLV_SYNC_AU_CELL"))?.into())
+        }
+        MetadataKind::KlvAsync => Ok(kind_enum.getattr(intern!(py, "KLV_ASYNC"))?.into()),
+        MetadataKind::Unknown(_) => Ok(kind_enum.getattr(intern!(py, "UNKNOWN"))?.into()),
+    }
+}
+
 fn convert_metadata_event(
     py: Python<'_>,
     mpegts: &Bound<'_, PyModule>,
@@ -673,21 +706,17 @@ fn convert_metadata_event(
 ) -> PyResult<PyObject> {
     let stream_py = build_stream_id(py, mpegts, stream)?;
     let pts_py = pts_to_py(py, mpegts, pts)?;
-    let kind_enum = mpegts.getattr(intern!(py, "MetadataKindTag"))?;
+    let kind_py = metadata_kind_to_py(py, mpegts, kind)?;
     // Extract the new multi-cell reassembly fields when present.
     // Single-cell + non-KlvSyncAuCell paths default to (false, 1).
-    let (kind_py, was_reassembled, cell_count) = match kind {
+    let (was_reassembled, cell_count) = match kind {
         MetadataKind::KlvSyncAuCell {
             was_reassembled,
             cell_count,
             ..
-        } => (
-            kind_enum.getattr(intern!(py, "KLV_SYNC_AU_CELL"))?,
-            *was_reassembled,
-            *cell_count,
-        ),
-        MetadataKind::KlvAsync => (kind_enum.getattr(intern!(py, "KLV_ASYNC"))?, false, 1u32),
-        MetadataKind::Unknown(_) => (kind_enum.getattr(intern!(py, "UNKNOWN"))?, false, 1u32),
+        } => (*was_reassembled, *cell_count),
+        MetadataKind::KlvAsync => (false, 1u32),
+        MetadataKind::Unknown(_) => (false, 1u32),
     };
     let cls = mpegts
         .getattr(intern!(py, "DemuxEvent"))?
@@ -815,7 +844,7 @@ fn non_conformant_kind_name(issue: &NonConformantIssue) -> &'static str {
 // DemuxError → PyErr
 // ---------------------------------------------------------------------------
 
-fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
+pub(crate) fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
     // Map Rust DemuxError variants to Python DemuxErrorKind.
     let kind = match &e {
         DemuxError::Unrecoverable { .. } => "INTERNAL",

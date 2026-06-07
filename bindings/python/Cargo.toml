@@ -18,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 doctest    = false
 
 [features]
-default = ["rtp", "srt", "udp", "tcp", "hls", "rist"]
+default = ["rtp", "srt", "udp", "tcp", "hls", "rist", "pipeline"]
 # `rtp` pulls tst-rtp + tst-pipeline (the latter for the
 # `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>`
 # convenience wrappers added by Wave B Task 23) + secrecy (for
@@ -36,6 +36,8 @@ udp     = ["dep:tst-udp"]
 tcp     = ["dep:tst-tcp"]
 hls     = ["dep:tst-tcp", "tst-tcp?/hls", "dep:tst-pipeline"]
 rist    = ["dep:tst-rist", "dep:secrecy"]
+# pipeline pulls tst-pipeline for the ext::pairing PairingDemuxer composite.
+pipeline = ["dep:tst-pipeline"]
 
 [dependencies]
 tst-core     = { path = "../../crates/tst-core" }

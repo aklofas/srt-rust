@@ -25,6 +25,8 @@ mod tcp;
 mod hls;
 #[cfg(feature = "rist")]
 mod rist;
+#[cfg(feature = "pipeline")]
+mod pipeline;
 
 use pyo3::prelude::*;
 
@@ -99,5 +101,9 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     hls::register(m)?;
     #[cfg(feature = "rist")]
     rist::register(m)?;
+    // pipeline submodule — the ext::pairing PairingDemuxer composite,
+    // exposed as tstrans.pipeline.Pairer.
+    #[cfg(feature = "pipeline")]
+    pipeline::register(m)?;
     Ok(())
 }

@@ -219,7 +219,8 @@ impl RecvTransport for RistRecvTransport {
     }
 
     fn close(&mut self) {
-        if self.alive.swap(false, Ordering::AcqRel) && !self.ctx.is_null() {
+        self.alive.store(false, Ordering::Release);
+        if !self.ctx.is_null() {
             unsafe {
                 rist_sys::rist_destroy(self.ctx);
             }
@@ -234,9 +235,50 @@ impl Drop for RistRecvTransport {
     }
 }
 
+/// Test-only helpers mirroring those on `RistTransport`.
+#[cfg(test)]
+impl RistRecvTransport {
+    pub(crate) fn ctx_is_null(&self) -> bool {
+        self.ctx.is_null()
+    }
+
+    pub(crate) fn force_dead_for_test(&self) {
+        self.alive.store(false, Ordering::Release);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: after an error path sets alive=false WITHOUT destroying ctx,
+    /// a subsequent close() (or Drop) MUST still destroy and null the ctx.
+    #[test]
+    fn close_destroys_ctx_even_when_already_dead() {
+        let mut t = match RistRecvTransport::listen("rist://@0.0.0.0:19003") {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+        assert!(!t.ctx_is_null());
+
+        t.force_dead_for_test();
+        assert!(!t.ctx_is_null(), "ctx still non-null after force_dead");
+        assert!(!t.is_alive(), "alive is false after force_dead");
+
+        t.close();
+        assert!(t.ctx_is_null(), "ctx must be null after close() — rist_ctx was leaked");
+    }
+
+    #[test]
+    fn double_close_is_safe() {
+        let mut t = match RistRecvTransport::listen("rist://@0.0.0.0:19004") {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+        t.close();
+        assert!(t.ctx_is_null());
+        t.close(); // must not panic / double-free
+    }
 
     #[test]
     fn rejects_non_bind_url() {

@@ -191,7 +191,8 @@ impl Transport for RistTransport {
     }
 
     fn close(&mut self) {
-        if self.alive.swap(false, Ordering::AcqRel) && !self.ctx.is_null() {
+        self.alive.store(false, Ordering::Release);
+        if !self.ctx.is_null() {
             unsafe {
                 rist_sys::rist_destroy(self.ctx);
             }
@@ -305,9 +306,65 @@ fn write_c_string_field(
     Ok(())
 }
 
+/// Test-only helpers for verifying close() idempotency / leak behaviour without
+/// requiring a live network peer.
+#[cfg(test)]
+impl RistTransport {
+    /// Returns true if the internal ctx pointer has been nulled (i.e. destroyed).
+    pub(crate) fn ctx_is_null(&self) -> bool {
+        self.ctx.is_null()
+    }
+
+    /// Force the alive flag to false, simulating what the error paths do (e.g.
+    /// after `rist_sender_data_write` returns a negative code). Does NOT touch ctx.
+    pub(crate) fn force_dead_for_test(&self) {
+        self.alive.store(false, Ordering::Release);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: after an error path sets alive=false WITHOUT destroying ctx,
+    /// a subsequent close() (or Drop) MUST still destroy and null the ctx.
+    ///
+    /// Before the fix, close() used `alive.swap(false) &&` which short-circuited
+    /// when alive was already false, leaving ctx non-null (leaked rist_ctx).
+    #[test]
+    fn close_destroys_ctx_even_when_already_dead() {
+        // Attempt to construct a real sender. Port 0 on loopback is enough for
+        // the context + peer setup path; actual data-path is never exercised.
+        // If construction fails (e.g. rist_sender_create fails in CI), skip.
+        let mut t = match RistTransport::connect("rist://127.0.0.1:19001") {
+            Ok(t) => t,
+            Err(_) => return, // librist not available or port unusable — skip
+        };
+        assert!(!t.ctx_is_null(), "ctx should be non-null after construction");
+
+        // Simulate what happens when an error path fires: alive goes false, ctx
+        // stays non-null.
+        t.force_dead_for_test();
+        assert!(!t.ctx_is_null(), "ctx still non-null after force_dead");
+        assert!(!t.is_alive(), "alive is false after force_dead");
+
+        // Now close() must destroy and null ctx even though alive is already false.
+        t.close();
+        assert!(t.ctx_is_null(), "ctx must be null after close() — rist_ctx was leaked");
+    }
+
+    /// Double close must be a no-op (no double-free): calling close() twice is
+    /// safe because the second call sees ctx==null and skips rist_destroy.
+    #[test]
+    fn double_close_is_safe() {
+        let mut t = match RistTransport::connect("rist://127.0.0.1:19002") {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+        t.close();
+        assert!(t.ctx_is_null());
+        t.close(); // must not panic / double-free
+    }
 
     #[test]
     fn rejects_recv_bind_url() {

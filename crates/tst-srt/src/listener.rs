@@ -361,9 +361,22 @@ impl Listener {
         Ok(())
     }
 
-    /// Explicit close. Wakes any thread parked in `accept()` with
-    /// `AcceptError::ListenerClosed`. Drop also calls cancel; both paths
-    /// are idempotent.
+    /// Explicit close, consuming the listener. Idempotent (Drop also calls
+    /// cancel).
+    ///
+    /// **Single-owner contract.** Because `close` takes `self` by value, it is
+    /// inherently the owning thread's operation — it cannot be called while this
+    /// thread holds the `&mut self` borrow that `accept()` requires. To wake a
+    /// thread parked in `accept()` from *another* thread, use the independent
+    /// handle from [`cancel_handle`](Self::cancel_handle): `cancel()` closes the
+    /// underlying SRT socket (the parked `accept()` returns
+    /// `AcceptError::ListenerClosed`) without consuming or freeing the listener,
+    /// so the owning thread still drops/`close()`s it afterwards.
+    ///
+    /// (Bindings that expose the listener over a raw handle must uphold the same
+    /// contract: free the listener only on the owning thread once `accept()` has
+    /// returned, and use `cancel_handle()` — never a free-then-wake — for the
+    /// cross-thread wake.)
     ///
     /// **Always returns `Ok`.** The `Result` is retained for API stability
     /// and may carry an error in a future revision (the underlying
@@ -373,8 +386,9 @@ impl Listener {
         Ok(())
     }
 
-    /// Clone-able close handle. Calling `cancel()` from any thread
-    /// closes the underlying SRT listener socket. Idempotent.
+    /// Clone-able cancel handle — the sanctioned cross-thread wake for a parked
+    /// `accept()`. Calling `cancel()` from any thread closes the underlying SRT
+    /// listener socket without freeing the listener itself. Idempotent.
     pub fn cancel_handle(&self) -> tst_core::SrtCancelHandle {
         self.cancel.clone()
     }

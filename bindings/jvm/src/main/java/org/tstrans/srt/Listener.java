@@ -29,8 +29,15 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
 
     static { NativeLoader.load(); }
 
-    /** Box&lt;tst_srt::Listener&gt; pointer; 0 = closed. */
-    private long handle;
+    /**
+     * Box&lt;JniListener&gt; pointer; 0 = closed.
+     *
+     * <p>{@code volatile} because {@link #close()} may be called from a different
+     * thread than the one parked in {@link #accept(Integer)} / iterating, and the
+     * close-vs-accept handoff relies on a consistent view of this field across
+     * threads. See {@link #close()} for the threading contract.
+     */
+    private volatile long handle;
 
     /** Package-private: constructed by Builder only. */
     Listener(long handle) {
@@ -79,8 +86,26 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
     }
 
     /**
-     * Close the listener. Idempotent. Wakes any thread parked in {@link #accept(Integer)}
-     * with {@code AcceptError::ListenerClosed}.
+     * Close the listener and free the native handle. Idempotent.
+     *
+     * <p><b>Threading contract.</b> A {@link Listener} has a single owner: the thread
+     * that calls {@link #accept(Integer)} / iterates is the owner. {@code close()} is
+     * intended to be called by that owner, or while no {@code accept()} is in flight.
+     *
+     * <p>{@code close()} may also be called concurrently with a thread parked in
+     * {@code accept()} <em>only to terminate it</em>: it wakes the parked accept (which
+     * returns {@code SrtException(Kind.CLOSED)}) and frees the native allocation only
+     * once that parked accept has unwound — so it is memory-safe against a parked
+     * accept. It is <b>not</b> safe to race {@code close()} against a <em>fresh</em>
+     * {@code accept()} / iterator {@code next()} entry on another thread; that violates
+     * the single-owner contract.
+     *
+     * <p>For a purely cross-thread wake that does not itself free the listener — e.g.
+     * to stop an iterator loop from a control thread — prefer
+     * {@link #cancelHandle()}{@code .cancel()}, which the iterator converts to clean
+     * end-of-iteration. {@code cancelHandle().cancel()} never frees the listener; the
+     * owning thread still calls {@code close()} (typically via try-with-resources) to
+     * release the native handle.
      */
     @Override
     public void close() {

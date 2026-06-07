@@ -670,6 +670,56 @@ fn parse_sps_saturates_crop_on_adversarial_offsets() {
     }
 }
 
+/// Regression for the OOM-abort DoS: a crafted `num_short_term_ref_pic_sets`
+/// ue(v) near 2^31 caused `Vec::with_capacity` in `walk_short_term_ref_pic_sets`
+/// to request ~16 GB up front, aborting the process via `handle_alloc_error`.
+/// H.265 Table A.8 caps `num_short_term_ref_pic_sets` at 64; values beyond
+/// that must return `ReservedValue` immediately — NOT abort or attempt the
+/// giant allocation.
+///
+/// The pre-fix behavior on this machine was `TruncatedRbsp` (the overcommit
+/// allocation succeeded but the loop immediately exhausted the tiny RBSP
+/// buffer). On systems without memory overcommit it aborts. Either way the
+/// root cause is the unguarded `with_capacity`; the fix returns `ReservedValue`
+/// before the allocation is attempted.
+#[test]
+fn parse_sps_rejects_oversized_num_short_term_ref_pic_sets() {
+    // Use build_synthetic_sps so the RBSP prefix is valid up to the RPS field,
+    // then write a ue(v) encoding 2^31 − 1. After the fix the parser must
+    // return Err(ReservedValue) immediately, before touching the allocator.
+    let rbsp = build_synthetic_sps(|bw| {
+        bw.write_ue(u32::MAX / 2); // ~2^31 — far above the spec max of 64
+    });
+    let result = parse_sps(&rbsp);
+    assert!(
+        matches!(result, Err(CodecParseError::ReservedValue { field: "num_short_term_ref_pic_sets", .. })),
+        "expected ReservedValue for num_short_term_ref_pic_sets, got {result:?}"
+    );
+}
+
+/// Boundary: num_short_term_ref_pic_sets = 64 (H.265 spec max per Table A.8)
+/// must parse successfully. Each explicit RPS encodes num_negative=0,
+/// num_positive=0; rps_idx > 0 additionally emits the
+/// inter_ref_pic_set_prediction_flag=0 bit.
+#[test]
+fn parse_sps_accepts_num_short_term_ref_pic_sets_at_spec_max() {
+    let rbsp = build_synthetic_sps(|bw| {
+        bw.write_ue(64); // spec max — must NOT be rejected
+        for rps_idx in 0u32..64 {
+            if rps_idx > 0 {
+                bw.write(0, 1); // inter_ref_pic_set_prediction_flag = 0 (explicit)
+            }
+            bw.write_ue(0); // num_negative_pics = 0
+            bw.write_ue(0); // num_positive_pics = 0
+        }
+    });
+    let result = parse_sps(&rbsp);
+    assert!(
+        result.is_ok(),
+        "parse_sps must accept num_short_term_ref_pic_sets=64 (spec max); got {result:?}"
+    );
+}
+
 /// Full-walk structural-field check: same assertions as the old partial-parse
 /// test, but the SPS is now fully parseable (includes RPS body and VUI).
 /// VUI fields are asserted to be populated — the bit cursor reaches VUI.

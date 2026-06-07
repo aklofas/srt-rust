@@ -22,11 +22,23 @@ use alloc::vec::Vec;
 /// the loops against fuzzed input.
 const MAX_PICS_PER_SET: u32 = 32;
 
+/// H.265 Table A.8 caps `num_short_term_ref_pic_sets` at 64 for all levels.
+/// Anything beyond this is either reserved or crafted hostile input — reject
+/// it before allocating to prevent a `Vec::with_capacity` OOM abort on
+/// attacker-controlled values near 2^32.
+const MAX_SHORT_TERM_RPS: u32 = 64;
+
 /// Walk all `num_short_term_ref_pic_sets` RPSes in this SPS.
 pub(crate) fn walk_short_term_ref_pic_sets(
     br: &mut BitReader,
     num_short_term_ref_pic_sets: u32,
 ) -> Result<(), CodecParseError> {
+    if num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS {
+        return Err(CodecParseError::ReservedValue {
+            field: "num_short_term_ref_pic_sets",
+            value: num_short_term_ref_pic_sets,
+        });
+    }
     let mut num_delta_pocs: Vec<u32> = Vec::with_capacity(num_short_term_ref_pic_sets as usize);
     for rps_idx in 0..num_short_term_ref_pic_sets {
         walk_one_short_term_rps(br, rps_idx, &mut num_delta_pocs)?;

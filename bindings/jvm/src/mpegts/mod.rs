@@ -603,7 +603,7 @@ fn enum_const<'local>(
 /// enum constant, along with the `(was_reassembled, cell_count)` pair carried on the
 /// `DemuxEvent.Metadata` record. Mirrors tst-py's `convert` for the metadata event:
 /// async / unknown collapse to `(false, 1)`.
-fn metadata_kind<'local>(
+pub(crate) fn metadata_kind<'local>(
     env: &mut JNIEnv<'local>,
     kind: &MetadataKind,
 ) -> Result<(JObject<'local>, bool, u32), ()> {
@@ -630,7 +630,10 @@ fn metadata_kind<'local>(
 
 /// Box an `Option<Pts90khz>` as a `java.lang.Long` (`Long.valueOf`) or Java
 /// `null`. Used for the nullable `dts` field of every sample record.
-fn opt_long<'local>(env: &mut JNIEnv<'local>, v: Option<Pts90khz>) -> Result<JObject<'local>, ()> {
+pub(crate) fn opt_long<'local>(
+    env: &mut JNIEnv<'local>,
+    v: Option<Pts90khz>,
+) -> Result<JObject<'local>, ()> {
     match v {
         Some(p) => env
             .call_static_method(
@@ -649,7 +652,7 @@ fn opt_long<'local>(env: &mut JNIEnv<'local>, v: Option<Pts90khz>) -> Result<JOb
 /// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
 /// (`java.nio.ByteBuffer.wrap`). The returned buffer is backed by JVM-owned
 /// memory, so it is safe to retain past the next pull / after `close()`.
-fn wrap_heap_byte_buffer<'local>(
+pub(crate) fn wrap_heap_byte_buffer<'local>(
     env: &mut JNIEnv<'local>,
     bytes: &[u8],
 ) -> Result<JObject<'local>, ()> {
@@ -705,7 +708,7 @@ fn build_pid_list<'local>(
 /// constructed inside a per-element local frame so its refs are reclaimed —
 /// AU unit counts are unbounded, so a flat loop would risk local-ref-table
 /// overflow. Mirrors tst-py's `convert_sample_event` video arm.
-fn build_video_units<'local>(
+pub(crate) fn build_video_units<'local>(
     env: &mut JNIEnv<'local>,
     payload: &VideoPayload,
 ) -> Result<JObject<'local>, ()> {
@@ -875,7 +878,10 @@ fn build_audio_payload<'local>(
 
 /// Build the Java `org.tstrans.mpegts.StreamId` record from a `tst_core`
 /// [`StreamId`], constructing its nested [`StreamKind`] via [`build_stream_kind`].
-fn build_stream_id<'local>(env: &mut JNIEnv<'local>, s: &StreamId) -> Result<JObject<'local>, ()> {
+pub(crate) fn build_stream_id<'local>(
+    env: &mut JNIEnv<'local>,
+    s: &StreamId,
+) -> Result<JObject<'local>, ()> {
     let kind = build_stream_kind(env, &s.kind)?;
     env.new_object(
         "org/tstrans/mpegts/StreamId",
@@ -949,7 +955,7 @@ fn build_stream_kind<'local>(
 
 /// Fetch a codec enum constant: `org.tstrans.mpegts.{class}.{name}` via
 /// `get_static_field`.
-fn codec_enum<'local>(
+pub(crate) fn codec_enum<'local>(
     env: &mut JNIEnv<'local>,
     class: &str,
     name: &str,
@@ -979,7 +985,7 @@ fn opt_boxed_int<'local>(
 }
 
 /// `VideoCodec` enum-constant name in `org.tstrans.mpegts.VideoCodec`.
-fn video_codec_name(c: VideoCodec) -> &'static str {
+pub(crate) fn video_codec_name(c: VideoCodec) -> &'static str {
     match c {
         VideoCodec::H264 => "H264",
         VideoCodec::H265 => "H265",

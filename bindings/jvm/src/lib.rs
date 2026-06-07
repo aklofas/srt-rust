@@ -11,6 +11,7 @@ mod error;
 mod jutil;
 mod klv;
 mod mpegts;
+mod pipeline;
 mod rtp;
 mod srt;
 

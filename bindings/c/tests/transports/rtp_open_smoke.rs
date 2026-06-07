@@ -52,6 +52,28 @@ fn pick_port() -> u16 {
     sock.local_addr().unwrap().port()
 }
 
+/// Open an RTP receiver on a kernel-assigned (`:0`) port, retrying on a
+/// transient null return.
+///
+/// An RTP receiver auto-binds an RTCP companion socket on `port + 1`. A `:0`
+/// ephemeral port only guarantees the RTP port itself is free, not `port + 1`,
+/// so under concurrent test execution (cargo-nextest) the companion bind
+/// occasionally collides and the open returns null. Each retry requests a
+/// fresh ephemeral port, which clears the collision within a few attempts.
+/// (Proper fix tracked in ROADMAP P7: serialize these port-binding RTP tests
+/// in a nextest group.)
+fn open_rtp_with_retry<T>(mut open: impl FnMut() -> *mut T) -> *mut T {
+    let mut h = open();
+    for _ in 0..20 {
+        if !h.is_null() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        h = open();
+    }
+    h
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle smoke (open + close)
 // ---------------------------------------------------------------------------
@@ -61,7 +83,7 @@ fn pick_port() -> u16 {
 #[test]
 fn rtp_recv_open_unicast_zero_port_returns_handle() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let handle = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+    let handle = open_rtp_with_retry(|| unsafe { tst_rtp_recv_open(url.as_ptr()) });
     assert!(
         !handle.is_null(),
         "tst_rtp_recv_open returned null for rtp://127.0.0.1:0"
@@ -106,7 +128,7 @@ fn rtp_recv_open_malformed_url_returns_null() {
 fn rtp_sender_send_ts_roundtrip() {
     // Open a receiver first to bind the port.
     let recv_url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let recv_h = unsafe { tst_rtp_recv_open(recv_url.as_ptr()) };
+    let recv_h = open_rtp_with_retry(|| unsafe { tst_rtp_recv_open(recv_url.as_ptr()) });
     assert!(!recv_h.is_null(), "receiver open failed");
 
     // Read back the actual bound port from the stats (socket_stats is not
@@ -187,7 +209,7 @@ fn rtp_sender_cancel_returns_ok() {
 #[test]
 fn rtp_receiver_cancel_unblocks() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+    let h = open_rtp_with_retry(|| unsafe { tst_rtp_recv_open(url.as_ptr()) });
     assert!(!h.is_null());
 
     // Cancel immediately so that recv_ts returns without waiting.
@@ -209,7 +231,7 @@ fn rtp_receiver_cancel_unblocks() {
 #[test]
 fn rtp_receiver_stats_and_reset() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = unsafe { tst_rtp_recv_open(url.as_ptr()) };
+    let h = open_rtp_with_retry(|| unsafe { tst_rtp_recv_open(url.as_ptr()) });
     assert!(!h.is_null());
 
     let mut stats = TstReceiverStats::default();
@@ -327,7 +349,7 @@ fn rtp_mux_sender_cancel_returns_ok() {
 #[test]
 fn rtp_demux_receiver_cancel_unblocks_next_event() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+    let h = open_rtp_with_retry(|| unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) });
     assert!(!h.is_null());
 
     // Cancel immediately so that next_event returns without waiting.
@@ -348,7 +370,7 @@ fn rtp_demux_receiver_cancel_unblocks_next_event() {
 #[test]
 fn rtp_demux_receiver_stats_and_reset() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) };
+    let h = open_rtp_with_retry(|| unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) });
     assert!(!h.is_null());
 
     let mut stats = TstDemuxReceiverStats::default();

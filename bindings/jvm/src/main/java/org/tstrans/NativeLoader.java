@@ -11,8 +11,12 @@ import java.nio.file.StandardCopyOption;
  * from the JAR's {@code native/<triple>/} resources to a temp file and
  * {@code System.load}-ing it. Same pattern as JNA / sqlite-jdbc / LWJGL.
  *
- * <p>Bootstrap: only {@code linux-x86_64} is shipped; the triple/ext logic is
- * written generally so the multi-platform wave only adds resources, not code.
+ * <p>The fat JAR ships {@code native/<triple>/libtstjni.<ext>} for every
+ * Tier 1 platform; {@link #resourcePath} resolves the running host to that
+ * path. The library filename is always {@code libtstjni.<ext>} on every
+ * platform (Windows's cargo {@code tstjni.dll} is renamed to
+ * {@code libtstjni.dll} at packaging time); {@code System.load} takes an
+ * absolute path so the on-disk name need not match the module's internal name.
  */
 public final class NativeLoader {
     private static volatile boolean loaded = false;
@@ -23,8 +27,9 @@ public final class NativeLoader {
         if (loaded) {
             return;
         }
-        String ext = libExtension();
-        String resource = "/native/" + triple() + "/libtstjni." + ext;
+        String osName = System.getProperty("os.name", "");
+        String resource = resourcePath(osName, System.getProperty("os.arch", ""));
+        String ext = libExtension(osName);
         try (InputStream in = NativeLoader.class.getResourceAsStream(resource)) {
             if (in == null) {
                 throw new UnsatisfiedLinkError("native library not found on classpath: " + resource);
@@ -40,14 +45,18 @@ public final class NativeLoader {
         }
     }
 
-    private static String osName() {
-        return System.getProperty("os.name", "").toLowerCase();
+    /**
+     * JAR-internal resource path for the given host. Pure function of
+     * {@code os.name}/{@code os.arch} so it is testable on any host.
+     */
+    static String resourcePath(String osName, String osArch) {
+        return "/native/" + triple(osName, osArch) + "/libtstjni." + libExtension(osName);
     }
 
     /** Normalize {@code os.name}/{@code os.arch} to the JAR triple (e.g. {@code linux-x86_64}). */
-    private static String triple() {
-        String os = osName();
-        String arch = System.getProperty("os.arch", "").toLowerCase();
+    static String triple(String osName, String osArch) {
+        String os = osName.toLowerCase();
+        String arch = osArch.toLowerCase();
         String o;
         if (os.contains("win")) {
             o = "windows";
@@ -62,8 +71,8 @@ public final class NativeLoader {
         return o + "-" + a;
     }
 
-    private static String libExtension() {
-        String os = osName();
+    static String libExtension(String osName) {
+        String os = osName.toLowerCase();
         if (os.contains("win")) {
             return "dll";
         }

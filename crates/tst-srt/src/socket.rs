@@ -3,7 +3,8 @@
 use crate::addr::{from_sockaddr, to_sockaddr};
 use crate::config::SocketConfig;
 use crate::error::{
-    ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno, last_error,
+    ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno, classify_connect_error,
+    last_error, last_reject,
 };
 use crate::init::ensure_initialized;
 use crate::options::{MaxBandwidth, Passphrase};
@@ -182,8 +183,12 @@ impl Socket {
             };
             if rc < 0 {
                 let raw = last_error();
+                // MUST read the reject reason from the live handle BEFORE
+                // srt_close: once closed, libsrt's locateSocket returns null
+                // and srt_getrejectreason always yields SRT_REJ_UNKNOWN.
+                let reason = last_reject(handle);
                 unsafe { srt_sys::srt_close(handle) };
-                last_err = Some(classify_connect_error(raw));
+                last_err = Some(classify_connect_error(raw, reason));
                 continue;
             }
 
@@ -820,9 +825,6 @@ fn io_from_option_error(e: OptionError) -> IoError {
     }
 }
 
-fn classify_connect_error(raw: crate::error::RawError) -> ConnectError {
-    raw.into()
-}
 
 fn classify_send_error(raw: crate::error::RawError, payload_len: usize, limit: usize) -> SendError {
     // Deterministic check: if the caller's buffer obviously exceeds the

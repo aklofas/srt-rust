@@ -376,15 +376,55 @@ pub(crate) fn last_error() -> RawError {
     }
 }
 
-/// Read the typed reject code (only meaningful after a connection-rejected error).
+/// Read the typed reject code from a live socket handle (only meaningful after
+/// a connection-rejected error, and only BEFORE the socket is closed).
 ///
 /// Returns `RejectReason::Unknown` (raw 0 / `SRT_REJ_UNKNOWN`) when libsrt
 /// has not set a reject code (e.g. a connection error that wasn't a
 /// handshake reject). Callers that want to suppress this case should check
 /// `reason != RejectReason::Unknown`.
-pub(crate) fn last_reject() -> RejectReason {
-    let raw = unsafe { srt_sys::srt_getrejectreason(0) };
+///
+/// # Correctness
+/// `srt_getrejectreason` must be called on the **live** (not yet closed)
+/// socket. Once `srt_close` is called, `locateSocket` inside libsrt returns
+/// null and the reason is lost. Callers in the connect path must therefore
+/// call this before `srt_close`.
+pub(crate) fn last_reject(sock: srt_sys::SRTSOCKET) -> RejectReason {
+    let raw = unsafe { srt_sys::srt_getrejectreason(sock) };
     RejectReason::from_raw(raw)
+}
+
+/// Classify a failed connect attempt using a pre-captured reject reason.
+///
+/// The `reason` must be obtained via [`last_reject`] from the live socket
+/// **before** `srt_close` is called. This function is the single point where
+/// `RawError` is translated into `ConnectError`; the `From<RawError>` impl
+/// delegates here (for call sites that have already read the reject reason).
+///
+/// # Category note
+/// SRT handshake rejects produce `SRT_ECONNREJ = 1002` → major 1 →
+/// `SrtErrno::Setup`. Plain connection refusals produce major-2 codes. Both
+/// categories must be checked for a typed reject reason.
+pub(crate) fn classify_connect_error(raw: RawError, reason: RejectReason) -> ConnectError {
+    if matches!(raw.kind, SrtErrno::Connection | SrtErrno::Setup) {
+        // `reason != Unknown` means libsrt recorded a typed handshake reject.
+        if reason != RejectReason::Unknown {
+            return ConnectError::Rejected {
+                reason,
+                detail: raw.message,
+            };
+        }
+        if raw.message.contains("refused") || raw.message.contains("Refused") {
+            return ConnectError::Refused;
+        }
+    }
+    if is_timeout(&raw) {
+        return ConnectError::TimedOut;
+    }
+    ConnectError::Other {
+        kind: raw.kind,
+        message: raw.message,
+    }
 }
 
 impl SrtErrno {
@@ -528,28 +568,13 @@ pub(crate) fn is_broken(raw: &RawError) -> bool {
 // ============================================================================
 
 impl From<RawError> for ConnectError {
+    /// Convert a raw libsrt error to `ConnectError` without a pre-captured
+    /// reject reason. The connect path in `socket.rs` uses
+    /// [`classify_connect_error`] directly (which accepts a reject reason
+    /// captured from the live socket before `srt_close`); this `From` impl
+    /// is the fallback for callers that don't have a live socket.
     fn from(raw: RawError) -> Self {
-        if matches!(raw.kind, SrtErrno::Connection) {
-            // Could be a typed reject. Check.
-            let reason = last_reject();
-            // SRT_REJ_UNKNOWN (raw 0) is the libsrt sentinel for "no reject info".
-            if reason != RejectReason::Unknown {
-                return ConnectError::Rejected {
-                    reason,
-                    detail: raw.message,
-                };
-            }
-            if raw.message.contains("refused") || raw.message.contains("Refused") {
-                return ConnectError::Refused;
-            }
-        }
-        if is_timeout(&raw) {
-            return ConnectError::TimedOut;
-        }
-        ConnectError::Other {
-            kind: raw.kind,
-            message: raw.message,
-        }
+        classify_connect_error(raw, RejectReason::Unknown)
     }
 }
 
@@ -1128,5 +1153,55 @@ mod tests {
             max: 65527,
         };
         let _ = MuxError::SubtitlePidUsedAsPcrPid { pid: 0x400 };
+    }
+
+    // SRT_ECONNREJ = 1002 → major 1 → SrtErrno::Setup. Before the fix,
+    // classify_connect_error with a Setup-category raw + BadSecret reason
+    // fell through to Other because the gate only checked SrtErrno::Connection.
+    #[test]
+    fn setup_category_reject_maps_to_rejected_badsecret() {
+        let raw = RawError {
+            kind: SrtErrno::Setup,
+            message: "Connection rejected".into(),
+        };
+        let reason = RejectReason::BadSecret;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::Rejected {
+                reason: RejectReason::BadSecret,
+                ..
+            } => {}
+            other => panic!("expected Rejected(BadSecret), got {other:?}"),
+        }
+    }
+
+    // Connection-category with Unknown reason must NOT produce Rejected.
+    #[test]
+    fn connection_category_unknown_reason_maps_to_other() {
+        let raw = RawError {
+            kind: SrtErrno::Connection,
+            message: "some other connection error".into(),
+        };
+        let reason = RejectReason::Unknown;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::Other { .. } => {}
+            other => panic!("expected Other, got {other:?}"),
+        }
+    }
+
+    // Connection-category refused message with Unknown reason maps to Refused.
+    #[test]
+    fn connection_category_refused_message_maps_to_refused() {
+        let raw = RawError {
+            kind: SrtErrno::Connection,
+            message: "Connection refused".into(),
+        };
+        let reason = RejectReason::Unknown;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::Refused => {}
+            other => panic!("expected Refused, got {other:?}"),
+        }
     }
 }

@@ -88,21 +88,17 @@ fn mismatched_passphrase_rejects_connect() {
         .send_timeout(Duration::from_secs(5))
         .connect(format!("127.0.0.1:{port}"));
 
-    // Load-bearing assertion: connect must fail with mismatched passphrase.
-    // Ideal classification is `Rejected { reason: BadSecret, .. }` but the
-    // From<RawError> classifier in error.rs uses heuristics on libsrt's
-    // last-error string + last_reject() that may surface variants we didn't
-    // anticipate. Log the variant rather than fail outright if it's not the
-    // expected shape — Task 14 refines the classifier mapping if needed.
+    // Hard assertion: mismatched passphrase must surface as Rejected(BadSecret).
+    // The classifier now reads the reject reason from the live socket handle
+    // (before srt_close) and gates on SrtErrno::Setup | SrtErrno::Connection,
+    // so SRT_ECONNREJ (major 1 → Setup) + SRT_REJ_BADSECRET (reason 10) is
+    // correctly mapped to Rejected { reason: BadSecret }.
     match result {
         Err(ConnectError::Rejected {
             reason: RejectReason::BadSecret,
             ..
         }) => { /* expected */ }
-        Err(other) => {
-            eprintln!("connect rejected as: {other:?} (ideally Rejected(BadSecret))");
-        }
-        Ok(_) => panic!("connect unexpectedly succeeded with mismatched passphrase"),
+        other => panic!("expected Rejected(BadSecret), got {other:?}"),
     }
 
     drop(listener);

@@ -497,6 +497,15 @@ fn bind_server_udp_pair(
 /// the per-peer fanout task can write RFC 7826 §14 `$<channel><len>`
 /// frames on the same TCP as the RTSP control responses; the
 /// `AsyncMutex` around the write half serializes the two writers.
+/// Returns the UDP target address for a unicast PLAY: preserves the
+/// client's IP from the TCP control connection and substitutes the
+/// RTP port that the client advertised in its SETUP `client_port` field.
+///
+/// Separating this from `handle_play` makes it directly unit-testable
+/// without setting up a full `ServerState`.
+pub(crate) fn compute_udp_play_target(peer: SocketAddr, client_rtp_port: u16) -> SocketAddr {
+    SocketAddr::new(peer.ip(), client_rtp_port)
+}
 pub(crate) fn handle_play(
     req: &RtspRequest,
     state: &Arc<ServerState>,
@@ -545,18 +554,8 @@ pub(crate) fn handle_play(
             let Some((rtp_sock, _rtcp_sock)) = session.udp_sockets.clone() else {
                 return error_response(req, 500, "Internal Server Error");
             };
-            // v1 simplification: assume client RTP receive IP is
-            // 127.0.0.1 (loopback). Production binding-crate integrations
-            // need the actual peer IP plumbed onto `ServerSessionState`
-            // from `handle_connection`'s `peer: SocketAddr` arg.
-            // Documented as a follow-up; not blocking Wave D since the
-            // loopback integration tests cover the wire shape.
             let client_port = transport.client_port.unwrap_or((0, 0));
-            let peer_addr: std::net::SocketAddr =
-                match format!("127.0.0.1:{}", client_port.0).parse() {
-                    Ok(a) => a,
-                    Err(_) => return error_response(req, 500, "Internal Server Error"),
-                };
+            let peer_addr = compute_udp_play_target(session.peer_addr, client_port.0);
             crate::rtsp::server::fanout::PeerTransport::Udp {
                 socket: rtp_sock,
                 peer_addr,
@@ -1117,5 +1116,26 @@ mod tests {
             resp.headers.get("session").map(String::as_str),
             Some("abc123")
         );
+    }
+
+    /// `compute_udp_play_target` must take the IP from the TCP peer address
+    /// and combine it with the RTP port the client advertised in SETUP.
+    /// This is the core correctness property: a remote client at 10.0.0.5
+    /// whose SETUP said `client_port=5004-5005` must receive RTP at
+    /// 10.0.0.5:5004, not 127.0.0.1:5004.
+    #[test]
+    fn compute_udp_play_target_uses_real_peer_ip() {
+        let peer: std::net::SocketAddr = "10.0.0.5:40000".parse().unwrap();
+        let target = compute_udp_play_target(peer, 5004);
+        assert_eq!(target, "10.0.0.5:5004".parse::<std::net::SocketAddr>().unwrap());
+    }
+
+    /// Loopback peer: the peer IP is 127.0.0.1, so the target must also
+    /// be 127.0.0.1 (existing integration-test shape is unaffected).
+    #[test]
+    fn compute_udp_play_target_preserves_loopback() {
+        let peer: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let target = compute_udp_play_target(peer, 5004);
+        assert_eq!(target, "127.0.0.1:5004".parse::<std::net::SocketAddr>().unwrap());
     }
 }

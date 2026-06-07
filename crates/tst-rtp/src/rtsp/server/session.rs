@@ -100,6 +100,12 @@ pub struct ServerSessionState {
     /// `pub(crate)` because `OwnedWriteHalf` is a tokio internal type
     /// we don't expose across the crate boundary.
     pub(crate) tcp_write: Option<Arc<AsyncMutex<OwnedWriteHalf>>>,
+    /// The TCP peer address for this session. Set by `handle_connection_inner`
+    /// from the accepted socket's peer address. Used by `handle_play` to
+    /// direct UDP RTP packets to the client's actual IP, not loopback.
+    /// Defaults to `0.0.0.0:0` for unit-test sessions that don't go
+    /// through `handle_connection_inner`.
+    pub(crate) peer_addr: std::net::SocketAddr,
 }
 
 impl ServerSessionState {
@@ -116,6 +122,7 @@ impl ServerSessionState {
             peer_cancel: tokio_util::sync::CancellationToken::new(),
             peer_drop_counter: None,
             tcp_write: None,
+            peer_addr: std::net::SocketAddr::from(([0, 0, 0, 0], 0)),
         }
     }
 }
@@ -161,6 +168,9 @@ async fn handle_connection_inner(
     // into `PeerTransport::Interleaved` without re-plumbing through the
     // handler signature.
     session.tcp_write = Some(write_half.clone());
+    // Record the peer IP so `handle_play`'s UDP branch can direct RTP
+    // packets to the client's real address rather than loopback.
+    session.peer_addr = peer;
 
     // Stash the same write-half `Arc` on the public session registry
     // so `RtspServer::stop` can write the RFC 7826 §13.5.1 Notice 5402
@@ -395,7 +405,12 @@ async fn handle_connection_tls_inner(
     // §14 interleaved fanout writer is typed to the plain TCP
     // `OwnedWriteHalf`. `RtspServer::stop`'s Notice 5402 ANNOUNCE path
     // skips sessions whose `tcp_write` is `None` (let-else in mod.rs).
-    let session = ServerSessionState::new();
+    let mut session = ServerSessionState::new();
+    // Record the peer IP so `handle_play`'s UDP branch directs RTP to the
+    // client's real address. UDP-transport PLAY over a TLS control channel
+    // is supported (only §14 TCP-interleaved over TLS is not), so the TLS
+    // path must thread the peer the same way the plain-TCP path does.
+    session.peer_addr = peer;
     serve_requests(state, peer, session_entry, session, read_half, write_half).await
 }
 

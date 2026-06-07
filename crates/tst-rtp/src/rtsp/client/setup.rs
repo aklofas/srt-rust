@@ -86,7 +86,7 @@ impl RtspClient {
         let req = RtspRequest::new(RtspMethod::Setup, uri.to_string(), self.url.rtsp_version)
             .header("cseq", cseq.to_string())
             .header("transport", transport_hdr)
-            .header("user-agent", "tst-rtp/0.1");
+            .header("user-agent", self.user_agent.as_str());
         let bytes = req.encode();
         let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {

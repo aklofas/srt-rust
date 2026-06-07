@@ -39,6 +39,7 @@ use crate::url::RtspVersion;
 ///
 /// CSeq starts at `1_000_000` to avoid colliding with the main thread's
 /// counter (which starts at 1 and increments per request).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn(
     write_half: Arc<Mutex<Stream>>,
     cancel: Arc<AtomicBool>,
@@ -47,6 +48,7 @@ pub(crate) fn spawn(
     url: String,
     version: RtspVersion,
     session_id: Arc<Mutex<Option<String>>>,
+    user_agent: String,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
@@ -70,7 +72,7 @@ pub(crate) fn spawn(
                 cseq += 1;
                 let mut req = RtspRequest::new(RtspMethod::Options, url.clone(), version)
                     .header("cseq", cseq.to_string())
-                    .header("user-agent", "tst-rtp/0.1");
+                    .header("user-agent", user_agent.as_str());
                 if let Some(sid) = session_id
                     .lock()
                     .expect("session id mutex poisoned")

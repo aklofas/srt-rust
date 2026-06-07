@@ -16,7 +16,7 @@ use std::time::Duration;
 use secrecy::SecretString;
 
 use crate::error::{RtspError, RtspServerError};
-use crate::rtsp::client::RtspClient;
+use crate::rtsp::client::{ConnectParams, RtspClient};
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
 use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
 
@@ -300,17 +300,19 @@ impl RtspClientBuilder {
         if self.password.is_some() {
             url.password = self.password.clone();
         }
+        let params = ConnectParams {
+            connect_timeout: self.connect_timeout,
+            read_timeout: self.read_timeout,
+            user_agent: self.user_agent,
+        };
         #[cfg(feature = "tls")]
-        let mut client = RtspClient::connect_with_roots(&url, self.tls_root_certs.clone())?;
+        let mut client =
+            RtspClient::connect_with_params(&url, self.tls_root_certs.clone(), params)?;
         #[cfg(not(feature = "tls"))]
-        let mut client = RtspClient::connect_with_roots(&url, None)?;
+        let mut client = RtspClient::connect_with_params(&url, None, params)?;
         if !self.no_auto_keepalive {
             client.spawn_keepalive_if_needed(self.keepalive_interval_override);
         }
-        // `connect_timeout`, `read_timeout`, `user_agent` are stored
-        // for follow-up wiring; the TCP socket is already created with
-        // the workspace defaults in `connect_with`.
-        let _ = (self.connect_timeout, self.read_timeout, &self.user_agent);
         Ok(client)
     }
 }

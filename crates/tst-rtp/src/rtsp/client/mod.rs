@@ -127,6 +127,11 @@ pub struct RtspClient {
     /// thread can emit `Session: <id>` headers. `None` until
     /// [`Self::spawn_keepalive_if_needed`] runs.
     pub(crate) session_id_shared: Option<Arc<std::sync::Mutex<Option<String>>>>,
+    /// Value sent in the `User-Agent:` header on every outbound request.
+    /// Set at connect time from `RtspClientBuilder::user_agent`; defaults
+    /// to `"tst-rtp/0.1"` when using the bare `connect`/`connect_with`
+    /// entry points.
+    pub(crate) user_agent: String,
     /// JoinHandle for the rtsp-keepalive thread — joined in [`Drop`].
     /// `None` when keepalive is disabled or hasn't been spawned yet.
     pub(crate) keepalive_thread: Option<std::thread::JoinHandle<()>>,
@@ -191,6 +196,28 @@ impl RtspCancelHandle {
     }
 }
 
+/// Per-connection knobs carried from [`RtspClientBuilder`](crate::RtspClientBuilder)
+/// into the connect path. Internal — the public `connect`/`connect_with`/
+/// `connect_with_roots` entry points use [`ConnectParams::default`].
+pub(crate) struct ConnectParams {
+    /// TCP connect timeout.
+    pub(crate) connect_timeout: Duration,
+    /// Per-read socket timeout (cancel/interleaved-frame poll interval).
+    pub(crate) read_timeout: Duration,
+    /// `User-Agent:` header value sent on every outbound request.
+    pub(crate) user_agent: String,
+}
+
+impl Default for ConnectParams {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(10),
+            read_timeout: Duration::from_millis(100),
+            user_agent: "tst-rtp/0.1".into(),
+        }
+    }
+}
+
 impl RtspClient {
     /// Connect to an `rtsp://` or `rtsps://` URL. The `rtsps://` scheme
     /// requires the `tls` cargo feature; otherwise it returns
@@ -218,7 +245,7 @@ impl RtspClient {
     ///
     /// See [`Self::connect`].
     pub fn connect_with(url: &RtspUrl) -> Result<Self, RtspError> {
-        Self::connect_with_roots(url, None)
+        Self::connect_with_params(url, None, ConnectParams::default())
     }
 
     /// Connect with an optional client-side TLS root-cert store.
@@ -230,6 +257,9 @@ impl RtspClient {
     ///
     /// For plain `rtsp://` URLs the roots argument is ignored.
     ///
+    /// Uses the default connect/read timeouts and User-Agent. To
+    /// customize those, use [`RtspClientBuilder`](crate::RtspClientBuilder).
+    ///
     /// # Errors
     ///
     /// See [`Self::connect`].
@@ -237,6 +267,20 @@ impl RtspClient {
         url: &RtspUrl,
         #[cfg(feature = "tls")] roots: Option<rustls::RootCertStore>,
         #[cfg(not(feature = "tls"))] roots: Option<()>,
+    ) -> Result<Self, RtspError> {
+        Self::connect_with_params(url, roots, ConnectParams::default())
+    }
+
+    /// Connect with explicit per-connection parameters (timeouts +
+    /// User-Agent). Internal: callers use [`Self::connect_with_roots`]
+    /// for defaults or [`RtspClientBuilder`](crate::RtspClientBuilder) to
+    /// override `params`. Holds the real connect logic that the public
+    /// entry points delegate to.
+    pub(crate) fn connect_with_params(
+        url: &RtspUrl,
+        #[cfg(feature = "tls")] roots: Option<rustls::RootCertStore>,
+        #[cfg(not(feature = "tls"))] roots: Option<()>,
+        params: ConnectParams,
     ) -> Result<Self, RtspError> {
         let _ = &roots; // silence unused on non-tls builds
         let is_tls = matches!(url.scheme(), RtspScheme::Rtsps);
@@ -254,9 +298,9 @@ impl RtspClient {
         let peer = addrs
             .next()
             .ok_or(RtspError::Io(std::io::ErrorKind::AddrNotAvailable))?;
-        let tcp = TcpStream::connect_timeout(&peer, Duration::from_secs(10))
+        let tcp = TcpStream::connect_timeout(&peer, params.connect_timeout)
             .map_err(|e| RtspError::Io(e.kind()))?;
-        tcp.set_read_timeout(Some(Duration::from_millis(100)))
+        tcp.set_read_timeout(Some(params.read_timeout))
             .map_err(|e| RtspError::Io(e.kind()))?;
         tcp.set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| RtspError::Io(e.kind()))?;
@@ -292,6 +336,7 @@ impl RtspClient {
             last_server_version: RtspVersion::V1_0,
             session_dead: None,
             session_id_shared: None,
+            user_agent: params.user_agent,
             keepalive_thread: None,
             pump_state: None,
         })
@@ -349,6 +394,7 @@ impl RtspClient {
             self.url.render_no_credentials(),
             self.url.rtsp_version,
             session_id,
+            self.user_agent.clone(),
         );
         self.keepalive_thread = Some(handle);
     }

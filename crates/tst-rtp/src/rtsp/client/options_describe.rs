@@ -46,7 +46,7 @@ impl RtspClient {
             self.url.rtsp_version,
         )
         .header("cseq", cseq.to_string())
-        .header("user-agent", "tst-rtp/0.1");
+        .header("user-agent", self.user_agent.as_str());
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }
@@ -118,7 +118,7 @@ impl RtspClient {
         )
         .header("cseq", cseq.to_string())
         .header("accept", "application/sdp")
-        .header("user-agent", "tst-rtp/0.1");
+        .header("user-agent", self.user_agent.as_str());
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }

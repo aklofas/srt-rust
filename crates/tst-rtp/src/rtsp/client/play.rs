@@ -41,7 +41,7 @@ impl RtspClient {
         .header("cseq", cseq.to_string())
         .header("session", sid)
         .header("range", "npt=0.000-")
-        .header("user-agent", "tst-rtp/0.1");
+        .header("user-agent", self.user_agent.as_str());
         let bytes = req.encode();
         let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {
@@ -83,7 +83,7 @@ impl RtspClient {
         )
         .header("cseq", cseq.to_string())
         .header("session", sid)
-        .header("user-agent", "tst-rtp/0.1");
+        .header("user-agent", self.user_agent.as_str());
         let bytes = req.encode();
         let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {

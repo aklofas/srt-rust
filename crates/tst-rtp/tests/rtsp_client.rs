@@ -11,6 +11,8 @@
 mod fixtures;
 #[path = "rtsp_client/auth.rs"]
 mod auth;
+#[path = "rtsp_client/builder_timeouts.rs"]
+mod builder_timeouts;
 #[path = "rtsp_client/fallback.rs"]
 mod fallback;
 #[path = "rtsp_client/interleaved_e2e.rs"]

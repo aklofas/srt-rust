@@ -209,3 +209,28 @@ fn buffered_mode_flush_drains_via_oracle() {
     got.extend(during_flush);
     assert_eq!(got, expected, "buffered flush diverged from oracle");
 }
+
+#[test]
+fn demuxer_stats_and_reset_stats() {
+    let bytes = sync_klv_bytes();
+    let mut pd = PairingDemuxer::new(VIDEO_PID, KLV_PID);
+    let mut all = pd.feed(&bytes).unwrap();
+    all.extend(pd.flush());
+
+    // Demuxer parsed the PMT, so its program-map counter is non-zero.
+    // (DemuxerStats has no packet counter; program_maps_seen is the
+    // reliable "the demuxer did real work" signal for this fixture.)
+    assert!(
+        pd.demuxer_stats().program_maps_seen > 0,
+        "demuxer_stats should reflect the parsed PMT"
+    );
+    // Pairing happened.
+    assert!(pd.stats().paired > 0);
+
+    // reset_stats clears the pairer counters only (not demuxer stats).
+    pd.reset_stats();
+    assert_eq!(
+        pd.stats(),
+        tst_pipeline::ext::pairing::PairerStats::default()
+    );
+}

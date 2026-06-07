@@ -253,8 +253,8 @@ fn convert_klv_sample(py: Python<'_>, ks: &KlvSample) -> PyResult<PyObject> {
 /// Build a `PairingDemuxer` from a Python `PairingDemuxerConfig`
 /// dataclass instance.
 ///
-/// `PairingDemuxerConfig` and `PairerConfig` are both
-/// `#[non_exhaustive]`, so this cannot use struct-literal syntax from
+/// `PairingDemuxerConfig` and `PairerConfig` are both marked
+/// non-exhaustive, so this cannot use struct-literal syntax from
 /// the external `bindings/python` crate — it constructs via
 /// `Default::default()` then assigns the public fields.
 fn build_pairing_demuxer(
@@ -281,7 +281,7 @@ fn build_pairing_demuxer(
 
 /// Translate a Python `PairerConfig` dataclass instance to a Rust
 /// `PairerConfig`. Constructs via `Default::default()` + field
-/// assignment (`#[non_exhaustive]`).
+/// assignment (the type is non-exhaustive).
 fn build_pairer_config(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<PairerConfig> {
     // mode: `PairerMode.Realtime` (singleton) or `PairerMode.Buffered(...)`.
     // The Python concrete classes are `_RealtimeMode` / `_BufferedMode`;

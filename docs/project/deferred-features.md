@@ -1324,3 +1324,25 @@ the trigger that would unblock it.
   back to `MuxerProgramConfigBuilder` accepting the structured form.
   (3) Round-trip test against demux output. (4) Update CHANGELOG +
   binding-authors doc.
+
+## macOS Intel (x86_64) JVM native library
+
+- **Status:** The JVM fat JAR (`tstrans-jvm`) bundles native libraries
+  for four platforms — linux-x86_64, linux-aarch64, macos-aarch64
+  (Apple Silicon), and windows-x86_64. macOS Intel (`macos-x86_64`) is
+  not built or bundled.
+- **Why deferred:** GitHub's `macos-13` (Intel) runners are scarce and
+  winding down — a build job for it sat queued 40+ minutes waiting for a
+  runner, blocking the `assemble` job (a queued best-effort matrix entry
+  never reaches `continue-on-error`, so it stalls the train rather than
+  being skipped). The gating `ci.yml` workflow does not build macos-x86_64
+  either. Apple is phasing out Intel Macs, and JVM consumers are now
+  overwhelmingly on Apple Silicon.
+- **Trigger to revisit:** A consumer needs the binding on an Intel Mac
+  JVM, or GitHub macOS-Intel runner availability stops being a problem.
+- **Scope when added:** Re-add a `macos-x86_64` / `macos-13` entry to the
+  `jvm-jar.yml` build matrix as a **separate job** outside the gating set
+  (so a scarce runner can't block `assemble`), include its lib in the
+  staging download, and add `macos-x86_64` to the `NativeLoader` /
+  `build.gradle.kts` triple set. Until then, Intel-Mac users build the
+  cdylib from source (`cargo build --release -p tst-jni`).

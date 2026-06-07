@@ -19,9 +19,8 @@ val workspaceRoot = layout.projectDirectory.dir("../..").asFile
 val resourcesNativeRoot = layout.projectDirectory.dir("src/main/resources/native")
 
 // Triples that MUST be present in the assembled fat JAR (match ci.yml's build
-// matrix). macos-x86_64 is best-effort and intentionally not required.
+// matrix). macos-x86_64 (Intel) is deferred — see docs/deferred-features.md.
 val gatingTriples = listOf("linux-x86_64", "linux-aarch64", "macos-aarch64", "windows-x86_64")
-val bestEffortTriple = "macos-x86_64"
 
 // When set (CI assemble job), skip cargo and stage pre-built libs from this dir
 // (expected layout: <dir>/native/<triple>/libtstjni.<ext>). When null (dev),
@@ -106,7 +105,7 @@ tasks.test {
 }
 
 // --- Completeness guard: in staging mode, fail `jar` if any gating native lib
-//     is missing, and log best-effort presence (no silent truncation).
+//     is missing (no silent truncation).
 tasks.named<Jar>("jar") {
     doFirst {
         if (nativeStagingDir != null) {
@@ -116,9 +115,7 @@ tasks.named<Jar>("jar") {
             if (missing.isNotEmpty()) {
                 throw GradleException("fat JAR missing gating native libs for: $missing")
             }
-            val haveBestEffort =
-                resourcesNativeRoot.dir(bestEffortTriple).file(resourceLibName(bestEffortTriple)).asFile.exists()
-            logger.lifecycle("fat JAR native libs: gating $gatingTriples all present; $bestEffortTriple present=$haveBestEffort")
+            logger.lifecycle("fat JAR native libs: all gating triples present: $gatingTriples")
         }
     }
 }

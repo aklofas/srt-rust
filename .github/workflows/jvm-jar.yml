@@ -30,11 +30,9 @@ jobs:
           - triple: windows-x86_64
             runner: windows-latest
             continue: false
-          # macos-x86_64 is the only target ci.yml does not build; macos-13
-          # runners are scarce / winding down, so it stays best-effort.
-          - triple: macos-x86_64
-            runner: macos-13
-            continue: true
+          # macos-x86_64 (Intel) is deferred: macos-13 runners are scarce /
+          # winding down (a queued best-effort job blocked assemble), and
+          # ci.yml doesn't build it either. See docs/deferred-features.md.
     steps:
       - uses: actions/checkout@v5
         with:
@@ -86,7 +84,7 @@ jobs:
 
   assemble:
     name: assemble fat JAR
-    needs: [build] # gating matrix entries must pass; best-effort can fail
+    needs: [build] # all four gating platforms must pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

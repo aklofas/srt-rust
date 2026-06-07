@@ -30,6 +30,8 @@ mod h265_real_x265_round_trip;
 mod h266_carriage_roundtrip;
 #[path = "codec/h266_codec_integration.rs"]
 mod h266_codec_integration;
+#[path = "codec/h266_vui_overflow.rs"]
+mod h266_vui_overflow;
 #[path = "codec/h266_real_encoder_round_trip.rs"]
 mod h266_real_encoder_round_trip;
 #[path = "codec/local_codec_corpus.rs"]

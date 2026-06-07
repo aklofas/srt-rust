@@ -521,8 +521,22 @@ fn walk_sps_body(
         // cursor to the declared payload end before reading sps_extension_flag.
         let vui_start_bits = br.position();
         let color = parse_h266_vui(br)?;
-        let vui_end_bits = vui_start_bits + (8 * payload_size_bytes as u32);
-        while br.position() < vui_end_bits {
+        // Compute the VUI end boundary in u64 to avoid u32 overflow on a
+        // crafted `vui_payload_size_minus1` ≥ 0x1FFF_FFFF (DoS via debug
+        // panic). A declared payload that places `vui_end_bits` beyond u32
+        // is impossible in a valid bitstream — bail with ReservedValue.
+        let vui_end_bits: u64 = (vui_start_bits as u64)
+            .checked_add((payload_size_bytes as u64).checked_mul(8).ok_or(
+                CodecParseError::ReservedValue {
+                    field: "vui_payload_size_minus1",
+                    value: vui_payload_size_minus1 as u32,
+                },
+            )?)
+            .ok_or(CodecParseError::ReservedValue {
+                field: "vui_payload_size_minus1",
+                value: vui_payload_size_minus1 as u32,
+            })?;
+        while (br.position() as u64) < vui_end_bits {
             // Consume the optional extension+marker+pad tail. We do not
             // interpret the bits — H.266 §7.3.2.21 reserves them for future
             // use and §7.4.2.21's `more_data_in_payload()` test allows

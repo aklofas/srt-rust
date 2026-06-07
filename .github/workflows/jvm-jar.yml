@@ -9,16 +9,41 @@ permissions:
   contents: read
 
 jobs:
-  jvm-linux-x86_64:
-    name: jvm linux-x86_64 (bootstrap)
-    runs-on: ubuntu-22.04
+  build:
+    name: jvm ${{ matrix.triple }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.continue }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: linux-x86_64
+            runner: ubuntu-latest
+            continue: false
+          - triple: linux-aarch64
+            runner: ubuntu-24.04-arm
+            continue: false
+          - triple: macos-aarch64
+            runner: macos-14
+            continue: false
+          - triple: windows-x86_64
+            runner: windows-latest
+            continue: false
+          # macos-x86_64 is the only target ci.yml does not build; macos-13
+          # runners are scarce / winding down, so it stays best-effort.
+          - triple: macos-x86_64
+            runner: macos-13
+            continue: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          submodules: recursive  # tst-srt builds vendor/srt + vendor/mbedtls (srt wave)
+          submodules: recursive  # tst-srt builds vendor/srt + vendor/mbedtls
 
       - name: Install Rust 1.85
-        uses: dtolnay/rust-toolchain@1.85
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,11 +54,111 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # cmake is pre-installed on all GitHub runners; tst-jni pulls no
+      # librist/udp/tcp/hls deps, so no meson/ninja/pkg-config is needed.
       - name: Build + test JVM binding
         working-directory: bindings/jvm
+        shell: bash
         env:
           SRT_FORCE_VENDORED: "1"
         run: ./gradlew test --no-daemon --stacktrace
 
       - name: check-jvm-error-mapping-coverage
+        if: matrix.triple == 'linux-x86_64'
         run: bash scripts/check/jvm/error-mapping-coverage.sh
+
+      # The dev-mode `test` task stages the cdylib into resources/native/<triple>/
+      # already renamed to libtstjni.<ext>. Lay it out under native/ for upload.
+      - name: Stage native lib for upload
+        shell: bash
+        run: |
+          mkdir -p upload/native/${{ matrix.triple }}
+          cp bindings/jvm/src/main/resources/native/${{ matrix.triple }}/libtstjni.* \
+             upload/native/${{ matrix.triple }}/
+          ls -la upload/native/${{ matrix.triple }}/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.triple }}
+          path: upload/
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: assemble fat JAR
+    needs: [build] # gating matrix entries must pass; best-effort can fail
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        # no submodules: assembly does not build native code
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # merge-multiple flattens all native-* artifacts into one tree:
+      # staging/native/<triple>/libtstjni.<ext> for every uploaded platform.
+      - name: Download native libs
+        uses: actions/download-artifact@v4
+        with:
+          path: staging
+          pattern: native-*
+          merge-multiple: true
+
+      - name: Inventory staged native libs
+        run: |
+          echo "Staged native libs:"
+          find staging/native -type f | sort
+
+      - name: Assemble fat JAR
+        working-directory: bindings/jvm
+        shell: bash
+        run: ./gradlew jar --no-daemon --stacktrace -PnativeStagingDir="$GITHUB_WORKSPACE/staging"
+
+      - name: Assert JAR contains every gating native lib
+        shell: bash
+        run: |
+          JAR=$(ls bindings/jvm/build/libs/tstrans-jvm*.jar)
+          echo "Inspecting $JAR"
+          unzip -l "$JAR" | grep native/ || true
+          for t in linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64; do
+            case "$t" in
+              windows-*) name=libtstjni.dll ;;
+              macos-*)   name=libtstjni.dylib ;;
+              *)         name=libtstjni.so ;;
+            esac
+            if ! unzip -l "$JAR" | grep -q "native/$t/$name"; then
+              echo "FAIL: JAR missing native/$t/$name"; exit 1
+            fi
+          done
+          echo "All gating native libs present in JAR."
+
+      # Smoke-load: the assemble runner is linux-x86_64, and the JAR ships that
+      # lib. Version.versionString() triggers NativeLoader.load() via a static
+      # block, proving the packaged lib extracts + loads from the JAR.
+      - name: Smoke-load native lib from assembled JAR
+        shell: bash
+        run: |
+          JAR=$(ls bindings/jvm/build/libs/tstrans-jvm*.jar)
+          mkdir -p smoke
+          cat > smoke/Smoke.java <<'EOF'
+          public class Smoke {
+              public static void main(String[] args) {
+                  System.out.println("version=" + org.tstrans.Version.versionString());
+              }
+          }
+          EOF
+          javac -cp "$JAR" -d smoke smoke/Smoke.java
+          java -cp "$JAR:smoke" Smoke
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tstrans-jvm-fat-jar
+          path: bindings/jvm/build/libs/tstrans-jvm*.jar
+          if-no-files-found: error
+          retention-days: 7

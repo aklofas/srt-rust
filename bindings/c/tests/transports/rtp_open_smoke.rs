@@ -349,7 +349,9 @@ fn rtp_mux_sender_cancel_returns_ok() {
 #[test]
 fn rtp_demux_receiver_cancel_unblocks_next_event() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = open_rtp_with_retry(|| unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) });
+    let h = open_rtp_with_retry(|| unsafe {
+        tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null())
+    });
     assert!(!h.is_null());
 
     // Cancel immediately so that next_event returns without waiting.
@@ -370,7 +372,9 @@ fn rtp_demux_receiver_cancel_unblocks_next_event() {
 #[test]
 fn rtp_demux_receiver_stats_and_reset() {
     let url = CString::new("rtp://127.0.0.1:0").unwrap();
-    let h = open_rtp_with_retry(|| unsafe { tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null()) });
+    let h = open_rtp_with_retry(|| unsafe {
+        tst_rtp_demux_receiver_open(url.as_ptr(), std::ptr::null())
+    });
     assert!(!h.is_null());
 
     let mut stats = TstDemuxReceiverStats::default();

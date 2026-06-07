@@ -12,6 +12,11 @@
 //!   with the most recent KLV where `klv.pts <= video.pts`, optionally
 //!   bounded by a freshness ceiling.
 //!
+//! For byte-feeding callers (language bindings, offline ingest) that
+//! have TS bytes rather than [`DemuxEvent`]s, see [`PairingDemuxer`] —
+//! it owns a `Demuxer` + `Pairer` and feeds bytes straight to
+//! `PairerOutput`s.
+//!
 //! The pairer is **opt-in** — callers construct it explicitly;
 //! [`crate::DemuxReceiver`] does not reach for it by default, preserving
 //! the demux module's decoupled-pairing posture.
@@ -49,7 +54,9 @@
 //!
 //! C ABI / JNI / UniFFI exposure is deferred to the future
 //! receiver-surface plan. The Rust types in this module are designed
-//! to translate cleanly when that plan lands.
+//! to translate cleanly when that plan lands; [`PairingDemuxer`] is the
+//! byte-feeding surface those bindings consume (no `DemuxEvent` crosses
+//! the FFI boundary).
 //!
 //! # Cookbook
 //!
@@ -58,10 +65,12 @@
 //! `27-eo-ir-shared-klv-pairer.md` for canonical realtime, batch-ingest,
 //! async sample-and-hold, and EO+IR composition patterns.
 
+mod demuxer;
 mod last_before;
 mod nearest;
 mod types;
 
+pub use demuxer::{PairingDemuxer, PairingDemuxerConfig};
 pub use types::{KlvSample, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample};
 
 use std::time::Duration;

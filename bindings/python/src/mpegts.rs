@@ -466,11 +466,7 @@ pub(crate) fn convert_video_payload(
                         payload,
                     } => Py::new(
                         py,
-                        crate::codec::NalUnitPy::make_h264(
-                            *nal_type,
-                            *ref_idc,
-                            payload.clone(),
-                        ),
+                        crate::codec::NalUnitPy::make_h264(*nal_type, *ref_idc, payload.clone()),
                     )?,
                     tst_core::mpegts::demux::NalUnit::H265 {
                         nal_type,

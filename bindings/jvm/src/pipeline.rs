@@ -196,8 +196,13 @@ fn build_output_list<'local>(
         // unreachable today). Mirrors `mpegts::nNextEvent`'s skip behavior so a
         // future skip-worthy variant is dropped from the batch, not failed.
         if let Some(obj) = convert_output(env, o)? {
-            env.call_method(&list, "add", "(Ljava/lang/Object;)Z", &[JValue::Object(&obj)])
-                .map_err(|_| ())?;
+            env.call_method(
+                &list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&obj)],
+            )
+            .map_err(|_| ())?;
         }
     }
     Ok(list)

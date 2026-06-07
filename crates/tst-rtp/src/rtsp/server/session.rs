@@ -28,6 +28,26 @@ use crate::rtsp::server::auth::generate_nonce;
 use crate::rtsp::server::fanout::PeerDropCounter;
 use crate::rtsp::server::handlers;
 
+/// Hard cap on the per-connection accumulation buffer before a complete
+/// RTSP request has been parsed. A well-formed RTSP request (headers +
+/// body) must fit within this limit. Requests that exceed it are rejected
+/// with 413 and the connection is closed.
+///
+/// 64 KiB is generous for any legitimate RTSP request (typical OPTIONS /
+/// DESCRIBE / SETUP are well under 2 KiB; even large SDP offers are rarely
+/// more than a few KiB). An unauthenticated client advertising a huge
+/// Content-Length could otherwise drive the process to OOM.
+///
+/// `pub(crate)` so the interleaved-pump reader (which accumulates RTSP
+/// control messages off the same TCP after PLAY) reuses the identical cap.
+pub(crate) const MAX_RTSP_REQUEST_BYTES: usize = 64 * 1024; // 64 KiB
+
+/// Per-connection idle read timeout. If no bytes arrive within this window
+/// the session closes. Bounds slow-loris attacks that drip bytes slowly
+/// toward a huge declared Content-Length, keeping the connection alive
+/// (and memory growing) indefinitely.
+const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Per-session state. Lives for the duration of one client's TCP
 /// connection. Wave D (T16) extends with transport choice + allocated
 /// UDP sockets / interleaved channels.
@@ -188,6 +208,12 @@ where
         // Read more bytes. Use a small per-iteration buffer so we can
         // respond promptly to cancellation. tokio::select! with the
         // cancel_token gives prompt graceful-shutdown response.
+        //
+        // The idle-read timeout arm closes a slow-loris window: a client
+        // that advertises a large Content-Length but then sends bytes very
+        // slowly would cause the buffer cap (below) to trigger eventually,
+        // but could hold the connection open for a long time before it does.
+        // READ_IDLE_TIMEOUT per-read bounds that window.
         let mut chunk = [0u8; 4096];
         let n = tokio::select! {
             r = read_half.read(&mut chunk) => match r {
@@ -201,6 +227,15 @@ where
                     break;
                 }
             },
+            _ = tokio::time::sleep(READ_IDLE_TIMEOUT) => {
+                tracing::warn!(
+                    target: "tst_rtp::server",
+                    peer = %peer,
+                    timeout_secs = READ_IDLE_TIMEOUT.as_secs(),
+                    "idle read timeout; closing session"
+                );
+                break;
+            },
             _ = state.cancel_token.cancelled() => {
                 tracing::info!(target: "tst_rtp::server", peer = %peer, "graceful cancel observed");
                 break;
@@ -211,6 +246,37 @@ where
             }
         };
         buf.extend_from_slice(&chunk[..n]);
+
+        // Buffer cap: reject before attempting further parsing. A legitimate
+        // RTSP request (headers + body) must fit within MAX_RTSP_REQUEST_BYTES.
+        // If the buffer grows past this without yielding a complete, valid
+        // request, the client is either malformed or adversarial. Send a
+        // minimal 413 response and close the session so this connection
+        // cannot consume unbounded memory.
+        //
+        // Note: the buffer cap (MAX_RTSP_REQUEST_BYTES = 64 KiB) is smaller
+        // than the parser's body cap (MAX_RTSP_BODY_BYTES = 1 MiB), and that
+        // is intentional — the body cap is enforced in the parser once a full
+        // request has been read, while this buffer cap guards the pre-parse
+        // accumulation path against a client that sends headers with a huge
+        // Content-Length but then dribbles data slowly, causing the server to
+        // buffer indefinitely waiting for a body that never reaches its
+        // declared size.
+        if buf.len() > MAX_RTSP_REQUEST_BYTES {
+            tracing::warn!(
+                target: "tst_rtp::server",
+                peer = %peer,
+                buf_len = buf.len(),
+                "request buffer exceeded {} bytes; sending 413 and closing",
+                MAX_RTSP_REQUEST_BYTES
+            );
+            let response_413 =
+                b"RTSP/1.0 413 Request Entity Too Large\r\nContent-Length: 0\r\n\r\n";
+            let mut guard = write_half.lock().await;
+            let _ = guard.write_all(response_413).await;
+            let _ = guard.shutdown().await;
+            return Ok(());
+        }
 
         // Try to parse complete request(s). If the buffer doesn't yet
         // contain a full request (no CRLFCRLF, or Content-Length body

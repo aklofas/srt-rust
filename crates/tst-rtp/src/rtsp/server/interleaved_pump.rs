@@ -32,6 +32,9 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::rtsp::message::MAX_RTSP_BODY_BYTES;
+use crate::rtsp::server::session::MAX_RTSP_REQUEST_BYTES;
+
 /// Stats observable from outside the pump task.
 #[derive(Default)]
 pub(crate) struct PumpStats {
@@ -95,6 +98,23 @@ pub(crate) fn spawn_server_pump(
                 _ = cancel.cancelled() => return,
             }
 
+            // Buffer cap: mirror the session loop. If accumulated bytes exceed
+            // the per-connection cap without yielding complete frames, the peer
+            // is malformed or adversarial (e.g. an oversized declared body that
+            // never arrives, or junk that never frames). Closing the pump is the
+            // safest response on an interleaved control channel — there is no
+            // 413 to send mid-stream, and continuing would grow `buf` unbounded.
+            if buf.len() > MAX_RTSP_REQUEST_BYTES {
+                tracing::warn!(
+                    target: "tst_rtp::server::pump",
+                    buf_len = buf.len(),
+                    "pump buffer exceeded {} bytes; closing",
+                    MAX_RTSP_REQUEST_BYTES
+                );
+                stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+
             // Parse as many complete frames as possible from buf.
             loop {
                 if buf.is_empty() {
@@ -147,15 +167,34 @@ pub(crate) fn spawn_server_pump(
                             continue;
                         }
                     };
-                    let content_length: usize = header_text
+                    let content_length: usize = match header_text
                         .lines()
                         .find_map(|line| {
                             let lower = line.to_ascii_lowercase();
                             lower
                                 .strip_prefix("content-length:")
-                                .and_then(|v| v.trim().parse().ok())
-                        })
-                        .unwrap_or(0);
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                        }) {
+                        None => 0,
+                        Some(n) if n > MAX_RTSP_BODY_BYTES => {
+                            // Content-Length exceeds our cap. We cannot simply
+                            // drain the headers and continue: the declared body
+                            // bytes still sit at the front of `buf`, don't begin
+                            // with `$`, re-enter this RTSP-text branch, never find
+                            // a CRLFCRLF, and the outer loop keeps reading forever
+                            // (unbounded growth). A hostile oversized declared
+                            // body on an interleaved control channel is best
+                            // answered by closing the pump.
+                            tracing::warn!(
+                                target: "tst_rtp::server::pump",
+                                content_length = n,
+                                "RTSP Content-Length exceeds cap on interleaved channel; closing pump"
+                            );
+                            stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                            return;
+                        }
+                        Some(n) => n,
+                    };
                     let msg_end = end + 4 + content_length;
                     if buf.len() < msg_end {
                         break; // need more
@@ -301,6 +340,103 @@ mod tests {
         assert_eq!(bin.as_ref(), b"FOO");
         cancel.cancel();
         let _ = pump.await;
+        let _ = client_join.await;
+    }
+
+    /// Regression: an RTSP message on the interleaved channel that declares
+    /// an oversized Content-Length must CLOSE the pump (not desync into an
+    /// unbounded-growth loop). Before the fix, the oversized-CL branch drained
+    /// only the headers, leaving the declared body bytes at the front of `buf`;
+    /// they re-entered the RTSP-text branch, never found CRLFCRLF, and the
+    /// outer loop read forever → `buf` grew unbounded. The pump must now
+    /// terminate promptly (watchdog-bounded, deterministic).
+    #[tokio::test]
+    async fn pump_closes_on_oversized_content_length() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client_join = tokio::spawn(async move {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            // Declare a 2 GB body, then send a little junk after the header
+            // block. The pump must close on seeing the oversized CL — it must
+            // NOT wait for (or buffer toward) the impossible 2 GB body.
+            let mut buf = Vec::new();
+            buf.extend_from_slice(
+                b"OPTIONS rtsp://x RTSP/1.0\r\nCSeq: 1\r\nContent-Length: 2000000000\r\n\r\n",
+            );
+            buf.extend_from_slice(&[0x42u8; 4096]);
+            // Ignore write errors — the pump may close the read half first.
+            let _ = s.write_all(&buf).await;
+            // Hold the socket briefly so the FIN doesn't masquerade as the
+            // close cause; the cap/close logic is what we're testing.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        });
+        let (server_tcp, _) = listener.accept().await.unwrap();
+        let (read_half, _write_half) = server_tcp.into_split();
+        let (rtsp_tx, mut _rtsp_rx) = mpsc::channel(8);
+        let (rtcp_tx, mut _rtcp_rx) = mpsc::channel(8);
+        let cancel = CancellationToken::new();
+        let stats = Arc::new(PumpStats::default());
+        let pump = spawn_server_pump(
+            read_half,
+            rtsp_tx,
+            rtcp_tx,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            stats.clone(),
+        );
+        // The pump must terminate on its own (without us cancelling) because
+        // the oversized CL is fatal. Watchdog: 3 s ceiling — far below any
+        // unbounded-growth runaway.
+        tokio::time::timeout(std::time::Duration::from_secs(3), pump)
+            .await
+            .expect("pump did not close on oversized Content-Length (OOM-growth regression)")
+            .ok();
+        assert!(
+            stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+            "oversized Content-Length should be counted as a malformed frame"
+        );
+        let _ = client_join.await;
+    }
+
+    /// Regression: a flood of non-`$`, non-CRLFCRLF junk on the interleaved
+    /// channel must trip the pump-level buffer cap and CLOSE the pump rather
+    /// than reading forever (the pump's `buf` previously had no size cap at
+    /// all). Watchdog-bounded + deterministic.
+    #[tokio::test]
+    async fn pump_closes_on_unbounded_junk() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client_join = tokio::spawn(async move {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            // 256 KiB of junk that never contains CRLFCRLF and never starts a
+            // binary frame — exceeds MAX_RTSP_REQUEST_BYTES (64 KiB). Use 'A'
+            // so it stays in the RTSP-text branch (not '$').
+            let junk = vec![b'A'; 256 * 1024];
+            let _ = s.write_all(&junk).await;
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        });
+        let (server_tcp, _) = listener.accept().await.unwrap();
+        let (read_half, _write_half) = server_tcp.into_split();
+        let (rtsp_tx, mut _rtsp_rx) = mpsc::channel(8);
+        let (rtcp_tx, mut _rtcp_rx) = mpsc::channel(8);
+        let cancel = CancellationToken::new();
+        let stats = Arc::new(PumpStats::default());
+        let pump = spawn_server_pump(
+            read_half,
+            rtsp_tx,
+            rtcp_tx,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            stats.clone(),
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(3), pump)
+            .await
+            .expect("pump did not close on unbounded junk (buffer-cap regression)")
+            .ok();
+        assert!(
+            stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+            "buffer-cap trip should be counted as a malformed frame"
+        );
         let _ = client_join.await;
     }
 }

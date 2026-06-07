@@ -16,6 +16,14 @@ use bytes::Bytes;
 use crate::error::RtspError;
 use crate::url::RtspVersion;
 
+/// Maximum allowed RTSP request body (Content-Length) in bytes.
+///
+/// RTSP request bodies are small in normal use (SDP offers for ANNOUNCE,
+/// GET_PARAMETER bodies, etc.). Capping at 1 MiB is generous for any
+/// legitimate client while preventing a single unauthenticated connection
+/// from declaring a multi-GB body and driving the process to OOM.
+pub(crate) const MAX_RTSP_BODY_BYTES: usize = 1024 * 1024; // 1 MiB
+
 /// An RTSP request we construct on the client side.
 ///
 /// Wraps a method + URI + version + headers + body and serializes to the
@@ -361,12 +369,28 @@ impl RtspRequest {
         }
 
         // 4. Read body per Content-Length, if any.
-        let content_length: usize = headers
+        //
+        // Hard cap: RTSP requests from push-side clients have at most a small
+        // SDP/SDP-offer body. Anything larger is either malformed or an attempt
+        // to drive unbounded memory use (OOM DoS). Reject at parse time so the
+        // session loop can send 413 and close without buffering.
+        let content_length: usize = match headers
             .get("content-length")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            None => 0,
+            Some(n) if n > MAX_RTSP_BODY_BYTES => {
+                return Err(RtspError::BadResponse {
+                    detail: "Content-Length exceeds server maximum",
+                });
+            }
+            Some(n) => n,
+        };
         let body_start = header_end + 4;
-        let body_end = body_start + content_length;
+        // Checked addition: body_start is at most input.len() (the header_end
+        // search is within input), so overflow would require content_length to
+        // wrap usize — guarded by the cap above.
+        let body_end = body_start.saturating_add(content_length);
         if input.len() < body_end {
             return Err(RtspError::BadResponse {
                 detail: "truncated body",

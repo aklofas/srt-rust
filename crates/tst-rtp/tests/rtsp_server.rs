@@ -37,3 +37,5 @@ mod session_keepalive;
 mod shutdown;
 #[path = "rtsp_server/tls.rs"]
 mod tls;
+#[path = "rtsp_server/oom_guard.rs"]
+mod oom_guard;

@@ -325,34 +325,46 @@ impl PyDemuxReceiver {
     ///
     /// Returns zeroed defaults if the receiver is closed.
     fn stats(&self, py: Python<'_>) -> PyResult<(Py<PySocketStats>, Py<PyMuxerStats>)> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"))?;
-        let inner = guard
-            .as_ref()
+        // Release the GIL before taking the inner lock. A registered byte
+        // sink fires `Python::with_gil` inside `recv_event` while holding
+        // this same lock; if we held the GIL here we would deadlock
+        // (ABBA: iterator holds lock + blocks on GIL; this call holds GIL
+        // + blocks on lock). Matches the `close()` / `add_byte_sink()`
+        // pattern in this file. Extract plain Rust values under the lock,
+        // build Python objects after the guard is dropped and the GIL is
+        // reacquired.
+        let inner = self.inner.clone();
+        type RawStats = (tst_core::transport::SocketStats, tst_core::mpegts::mux::MuxerStats);
+        let raw: Result<Option<RawStats>, &'static str> = py.allow_threads(|| {
+            let guard = inner.lock().map_err(|_| "poisoned")?;
+            Ok(guard.as_ref().map(|rx| {
+                let combined = rx.stats();
+                // The underlying RTP transport's full SocketStats live behind a
+                // separate accessor that the pipeline shell doesn't expose
+                // directly; we synthesise a SocketStats with the
+                // bytes_received / packets_received fields populated from the
+                // pipeline projection. RTCP-derived fields stay zero until
+                // Stage 3 closes the deferred TCP RTCP wiring.
+                // `SocketStats` is `#[non_exhaustive]`; populate via mut spread.
+                let mut sock_stats = tst_core::transport::SocketStats::default();
+                sock_stats.bytes_received = combined.bytes_received;
+                sock_stats.packets_received = combined.packets_received;
+                // Re-shape the demux side as a MuxerStats projection so callers
+                // get the same `(SocketStats, MuxerStats)` tuple shape on both
+                // MuxSender + DemuxReceiver.
+                let mux_stats = tst_core::mpegts::mux::MuxerStats {
+                    ts_packets_emitted: combined.packets_received,
+                    ts_bytes_emitted: combined.bytes_received,
+                    programs_configured: combined.program_maps_seen as u32,
+                    subtitle_streams_configured: 0,
+                    per_stream: combined.per_stream,
+                };
+                (sock_stats, mux_stats)
+            }))
+        });
+        let (sock_stats, mux_stats) = raw
+            .map_err(|_| make_rtp_error(py, "TRANSPORT", "DemuxReceiver lock poisoned"))?
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "DemuxReceiver is closed"))?;
-        let combined = inner.stats();
-        // The underlying RTP transport's full SocketStats live behind a
-        // separate accessor that the pipeline shell doesn't expose
-        // directly; we synthesise a SocketStats with the
-        // bytes_received / packets_received fields populated from the
-        // pipeline projection. RTCP-derived fields stay zero until
-        // Stage 3 closes the deferred TCP RTCP wiring.
-        // `SocketStats` is `#[non_exhaustive]`; populate via mut spread.
-        let mut sock_stats = tst_core::transport::SocketStats::default();
-        sock_stats.bytes_received = combined.bytes_received;
-        sock_stats.packets_received = combined.packets_received;
-        // Re-shape the demux side as a MuxerStats projection so callers
-        // get the same `(SocketStats, MuxerStats)` tuple shape on both
-        // MuxSender + DemuxReceiver.
-        let mux_stats = tst_core::mpegts::mux::MuxerStats {
-            ts_packets_emitted: combined.packets_received,
-            ts_bytes_emitted: combined.bytes_received,
-            programs_configured: combined.program_maps_seen as u32,
-            subtitle_streams_configured: 0,
-            per_stream: combined.per_stream,
-        };
         let sock_py = Py::new(py, PySocketStats::from_core(sock_stats))?;
         let mux_py = Py::new(py, PyMuxerStats::from_inner(mux_stats))?;
         Ok((sock_py, mux_py))

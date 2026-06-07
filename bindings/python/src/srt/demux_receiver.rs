@@ -344,14 +344,21 @@ impl PyDemuxReceiver {
     /// Snapshot of the scheme-neutral 16-field wire stats (matches
     /// `tstrans.srt.SocketStats`).
     fn socket_stats(&self, py: Python<'_>) -> PyResult<Py<PySocketStats>> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?;
-        let inner = guard
-            .as_ref()
+        // Release the GIL before taking the inner lock. A registered byte
+        // sink fires `Python::with_gil` inside `recv_event` while holding
+        // this same lock; if we held the GIL here we would deadlock
+        // (ABBA: iterator holds lock + blocks on GIL; this call holds GIL
+        // + blocks on lock). Matches the `close()` / `add_byte_sink()`
+        // pattern in this file.
+        let inner = self.inner.clone();
+        let core: Result<Option<tst_core::transport::SocketStats>, &'static str> =
+            py.allow_threads(|| {
+                let guard = inner.lock().map_err(|_| "poisoned")?;
+                Ok(guard.as_ref().map(|rx| rx.socket_stats().unwrap_or_default()))
+            });
+        let core = core
+            .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?
             .ok_or_else(|| make_srt_error(py, "CLOSED", "DemuxReceiver is closed"))?;
-        let core = inner.socket_stats().unwrap_or_default();
         Py::new(py, PySocketStats::from_core(core))
     }
 
@@ -362,30 +369,39 @@ impl PyDemuxReceiver {
     ///
     /// Returns `SrtError(CLOSED)` if the receiver has been closed.
     fn stats(&self, py: Python<'_>) -> PyResult<(Py<PySocketStats>, Py<PyMuxerStats>)> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?;
-        let inner = guard
-            .as_ref()
+        // Release the GIL before taking the inner lock — same rationale
+        // as `socket_stats` above (GIL↔mutex ABBA deadlock with byte
+        // sinks). Extract plain Rust values under the lock, then build
+        // Python objects after the guard is dropped and the GIL is
+        // reacquired.
+        let inner = self.inner.clone();
+        type RawStats = (tst_core::transport::SocketStats, tst_core::mpegts::mux::MuxerStats);
+        let raw: Result<Option<RawStats>, &'static str> = py.allow_threads(|| {
+            let guard = inner.lock().map_err(|_| "poisoned")?;
+            Ok(guard.as_ref().map(|rx| {
+                let combined = rx.stats();
+                // SocketStats from the wire counters tracked at the pipeline
+                // layer (full SocketStats via the transport accessor isn't
+                // surfaced through the pipeline shell).
+                let mut sock_stats = tst_core::transport::SocketStats::default();
+                sock_stats.bytes_received = combined.bytes_received;
+                sock_stats.packets_received = combined.packets_received;
+                // Re-shape the demux side as a MuxerStats projection so callers
+                // get the same `(SocketStats, MuxerStats)` tuple shape on both
+                // MuxSender + DemuxReceiver.
+                let mux_stats = tst_core::mpegts::mux::MuxerStats {
+                    ts_packets_emitted: combined.packets_received,
+                    ts_bytes_emitted: combined.bytes_received,
+                    programs_configured: combined.program_maps_seen as u32,
+                    subtitle_streams_configured: 0,
+                    per_stream: combined.per_stream,
+                };
+                (sock_stats, mux_stats)
+            }))
+        });
+        let (sock_stats, mux_stats) = raw
+            .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?
             .ok_or_else(|| make_srt_error(py, "CLOSED", "DemuxReceiver is closed"))?;
-        let combined = inner.stats();
-        // SocketStats from the wire counters tracked at the pipeline
-        // layer (full SocketStats via the transport accessor isn't
-        // surfaced through the pipeline shell).
-        let mut sock_stats = tst_core::transport::SocketStats::default();
-        sock_stats.bytes_received = combined.bytes_received;
-        sock_stats.packets_received = combined.packets_received;
-        // Re-shape the demux side as a MuxerStats projection so callers
-        // get the same `(SocketStats, MuxerStats)` tuple shape on both
-        // MuxSender + DemuxReceiver.
-        let mux_stats = tst_core::mpegts::mux::MuxerStats {
-            ts_packets_emitted: combined.packets_received,
-            ts_bytes_emitted: combined.bytes_received,
-            programs_configured: combined.program_maps_seen as u32,
-            subtitle_streams_configured: 0,
-            per_stream: combined.per_stream,
-        };
         let sock_py = Py::new(py, PySocketStats::from_core(sock_stats))?;
         let mux_py = Py::new(py, PyMuxerStats::from_inner(mux_stats))?;
         Ok((sock_py, mux_py))

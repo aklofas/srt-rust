@@ -952,7 +952,7 @@ fn spawn_rtcp_ingest(
     stats: Arc<Mutex<RtcpStats>>,
     our_ssrc: u32,
 ) {
-    std::thread::Builder::new()
+    let spawn_result = std::thread::Builder::new()
         .name("rtsp-rtcp-ingest".to_string())
         .spawn(move || {
             while let Ok(bytes) = rtcp_rx.recv() {
@@ -990,8 +990,19 @@ fn spawn_rtcp_ingest(
                     _ => continue, // SDES/BYE/APP/etc. — ignored for stats.
                 }
             }
-        })
-        .expect("failed to spawn rtsp-rtcp-ingest thread");
+        });
+    // Degrade gracefully instead of panicking: a thread-spawn failure (OS
+    // resource exhaustion) must NOT panic — this runs on the RTSP connect path,
+    // and the JVM/C bindings do not catch unwinds across the FFI boundary, so a
+    // panic here would abort the host process. If ingest can't start, RTCP stats
+    // simply stay unpopulated (reporting is best-effort / experimental anyway).
+    if let Err(e) = spawn_result {
+        tracing::warn!(
+            target: "tst_rtp",
+            error = %e,
+            "failed to spawn rtsp-rtcp-ingest thread; RTCP stats will not be collected"
+        );
+    }
 }
 
 #[cfg(test)]

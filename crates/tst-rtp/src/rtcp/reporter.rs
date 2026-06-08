@@ -61,12 +61,23 @@ impl RtcpReporterHandle {
                     emit();
                     last_emit = std::time::Instant::now();
                 }
-            })
-            .expect("failed to spawn rtcp-reporter thread");
-        Self {
-            cancel,
-            thread: Some(thread),
-        }
+            });
+        // Degrade gracefully: a thread-spawn failure (OS resource exhaustion)
+        // must not panic — the FFI bindings do not catch unwinds, so a panic
+        // would abort the host process. If the reporter thread can't start,
+        // RTCP reporting is simply disabled (it is opt-in/experimental anyway).
+        let thread = match thread {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!(
+                    target: "tst_rtp",
+                    error = %e,
+                    "failed to spawn rtcp-reporter thread; RTCP reporting disabled"
+                );
+                None
+            }
+        };
+        Self { cancel, thread }
     }
 
     /// Signal the reporter thread to stop. Does not wait for the thread

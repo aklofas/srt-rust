@@ -9,12 +9,13 @@
 //! elementary streams; each call ends in an `SrtTransport::send_bytes` flush.
 //!
 //! Ports tst-py's `bindings/python/src/srt/mux_sender.rs`. The handle is a
-//! `Box<MuxSender<SrtTransport>>` (`Box::into_raw`/`from_raw`); per-call methods
-//! reconstitute as a SHARED `&*ptr` borrow (every `MuxSender::send_*`/`stats`/
-//! `is_alive` takes `&self`, serialising internally via its own `Mutex<Inner>`),
-//! so concurrent pushes from multiple Java threads are sound — no aliased `&mut`.
-//! `nClose` drops the box. `Socket::nIntoMuxSender` CONSUMES a `Box<Socket>`
-//! (`*Box::from_raw`) and returns a fresh handle.
+//! `jlong` key into a per-type [`crate::handle::HandleRegistry`] over the
+//! `MuxSender<SrtTransport>`; per-call methods lease via `REGISTRY.with` (every
+//! `MuxSender::send_*`/`stats`/`is_alive` takes `&self`, serialising internally
+//! via its own `Mutex<Inner>`), so concurrent pushes from multiple Java threads
+//! are sound. `nClose` takes + drops via `REGISTRY.close`.
+//! `Socket::nIntoMuxSender` CONSUMES a `Socket` (via `REGISTRY_SOCKET.close`) and
+//! returns a fresh handle.
 //!
 //! Error mapping mirrors tst-py's `mux_sender_error_to_pyerr`: `Mux(...)` →
 //! `MuxException`, `Transport(...)` → `SrtException` per `TransportError`

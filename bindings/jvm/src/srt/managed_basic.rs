@@ -8,10 +8,10 @@
 //! factory under the configured `ReconnectPolicy`.
 //!
 //! Handle lifecycle mirrors `transport.rs`:
-//! - `nFromUrl` allocates via `Box::into_raw` (a `PlSender<...>` box on the
-//!   send side; a `JniManagedReceiver` box on the recv side).
-//! - Per-call methods reconstitute as `&mut *ptr` / `&*ptr` (non-consuming).
-//! - `nClose` deallocates via `Box::from_raw`.
+//! - `nFromUrl` registers via `REGISTRY.insert` (a `ManagedSenderInner` on the
+//!   send side; a `JniManagedReceiver` on the recv side).
+//! - Per-call methods lease via `REGISTRY.with` (non-consuming).
+//! - `nClose` takes + tears down via `REGISTRY.close`.
 //!
 //! ## Stats drift (intentional — mirrors tst-py)
 //!

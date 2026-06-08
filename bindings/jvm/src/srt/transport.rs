@@ -1,11 +1,12 @@
 //! JNI exports for `org.tstrans.srt.Sender` and `org.tstrans.srt.Receiver`.
 //!
 //! Each export backs one static-native method on the Java class. The handle is
-//! a `jlong` storing a heap-allocated `Box<tst_pipeline::Sender<SrtTransport>>`
-//! or `Box<tst_pipeline::Receiver<SrtTransport>>`. Handle lifecycle:
-//! - `nFromUrl` allocates via `Box::into_raw`.
-//! - Per-call methods reconstitute as `&mut *ptr` (non-consuming).
-//! - `nClose` deallocates via `Box::from_raw`.
+//! a `jlong` key into a per-type [`HandleRegistry`] over a
+//! `tst_pipeline::Sender<SrtTransport>` / `Receiver<SrtTransport>`. Handle
+//! lifecycle:
+//! - `nFromUrl` registers via `REGISTRY.insert`.
+//! - Per-call methods lease via `REGISTRY.with` (non-consuming).
+//! - `nClose` takes + tears down via `REGISTRY.close`.
 //!
 //! The Java side guards all per-call methods with `ensureOpen()` and always
 //! passes a non-zero handle to Rust, but zero-handle checks are retained here

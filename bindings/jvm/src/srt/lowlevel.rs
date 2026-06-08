@@ -2,13 +2,13 @@
 //! `org.tstrans.srt.Listener` — the low-level SRT primitives.
 //!
 //! Handle lifecycle:
-//! - `nConnect` / `nListen` allocate via `Box::into_raw`.
-//! - Non-consuming methods reconstitute as `&mut *ptr`.
-//! - `nIntoSender` / `nIntoReceiver` CONSUME the `Box<Socket>` via `Box::from_raw`
-//!   and return a new `Box<Sender>` / `Box<Receiver>` handle. The Java caller
-//!   zeros its own socket handle on success — the `handle = 0` assignment is the
-//!   next statement after the native call.
-//! - `nClose` deallocates via `Box::from_raw`.
+//! - `nConnect` / `nListen` register via `REGISTRY.insert[_with_cancel]`.
+//! - Non-consuming methods lease via `REGISTRY.with`.
+//! - `nIntoSender` / `nIntoReceiver` CONSUME the `Socket` via `REGISTRY.close`
+//!   and return a new `Sender` / `Receiver` handle. The Java caller zeros its own
+//!   socket handle on success — the `handle = 0` assignment is the next statement
+//!   after the native call.
+//! - `nClose` takes + tears down via `REGISTRY.close`.
 //!
 //! Error mapping keeps each KIND literal on the same line as `throw_srt` so the
 //! T4 grep ratchet can verify coverage.

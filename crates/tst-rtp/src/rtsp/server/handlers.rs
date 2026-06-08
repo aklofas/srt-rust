@@ -324,11 +324,19 @@ pub(crate) fn handle_setup(
                     }
                     _ => unreachable!("multicast path gated above"),
                 };
+                // Guard: group port 65535 has no valid RTCP companion
+                // port (65536 overflows u16). Emit a single-port range
+                // in that case rather than wrapping to 0. Mirrors the
+                // guard at handlers.rs bind_server_udp_pair (rtp_port ==
+                // u16::MAX) and the transport.rs companion-port fallbacks.
+                let port_range = match group.port().checked_add(1) {
+                    Some(rtcp_port) => format!("{}-{}", group.port(), rtcp_port),
+                    None => group.port().to_string(),
+                };
                 transport_response_header = format!(
-                    "RTP/AVP;multicast;destination={};port={}-{};ttl={}",
+                    "RTP/AVP;multicast;destination={};port={};ttl={}",
                     group.ip(),
-                    group.port(),
-                    group.port() + 1,
+                    port_range,
                     ttl,
                 );
             } else {
@@ -933,11 +941,15 @@ mod tests {
     }
 
     fn make_state_with_multicast_mount() -> Arc<ServerState> {
+        make_state_with_multicast_mount_at_port(5004)
+    }
+
+    fn make_state_with_multicast_mount_at_port(group_port: u16) -> Arc<ServerState> {
         let state = make_state();
         let mount_state = MountState::new(
             "/mc",
             MountKind::Multicast {
-                group: "239.0.0.1:5004".parse().unwrap(),
+                group: format!("239.0.0.1:{group_port}").parse().unwrap(),
                 ttl: 4,
                 iface: None,
             },
@@ -1061,6 +1073,25 @@ mod tests {
         // per-mount sender (T14) drives the actual sends.
         assert!(session.udp_sockets.is_none());
         assert!(session.session_id.is_some());
+    }
+
+    /// Guard: a multicast group port of 65535 must not panic (no u16
+    /// overflow building the RTCP companion port in the Transport
+    /// header) and must emit a single-port range, not a wrap-to-0.
+    #[test]
+    fn setup_multicast_group_port_65535_does_not_panic() {
+        let state = make_state_with_multicast_mount_at_port(u16::MAX);
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/mc");
+        req.headers.insert(
+            "transport".into(),
+            "RTP/AVP;multicast;client_port=5004-5005".into(),
+        );
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 200, "got: {} {}", resp.status, resp.reason);
+        let transport_resp = resp.headers.get("transport").unwrap();
+        // Single-port range (no 65536 companion); never port=65535-0.
+        assert!(transport_resp.contains("port=65535;"), "got: {transport_resp}");
     }
 
     #[test]

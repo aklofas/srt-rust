@@ -191,7 +191,26 @@ impl RtpTransport {
                     }
                 };
                 let stats_clone = rtcp_stats.clone();
-                let rtcp_target = SocketAddr::new(peer.ip(), peer.port() + 1);
+                // Guard: port 65535 has no valid RTCP companion port
+                // (65536 overflows u16). Skip the reporter in that case,
+                // mirroring the guard in rtsp/server/handlers.rs:444.
+                let Some(rtcp_companion_port) = peer.port().checked_add(1) else {
+                    tracing::warn!("peer port 65535 has no RTCP companion; skipping SR reporter");
+                    return Self {
+                        socket: Some(socket),
+                        max_payload: url.pkt_size,
+                        clock: RtpClock::new(start_ticks),
+                        ssrc,
+                        next_seq,
+                        cancel: RtpCancelHandle::new(),
+                        bytes_sent: 0,
+                        packets_sent: 0,
+                        rtcp_socket,
+                        rtcp_stats,
+                        rtcp_reporter: None,
+                    };
+                };
+                let rtcp_target = SocketAddr::new(peer.ip(), rtcp_companion_port);
                 Some(RtcpReporterHandle::spawn(move || {
                     // Phase 2 v1: SR carries running totals snapshot.
                     // Real bytes_sent / packets_sent live on the
@@ -491,17 +510,29 @@ impl RtpRecvTransport {
         // that case, which is privileged.
         let rtcp_socket = if rtcp_enabled {
             let actual_rtp_port = socket.local_addr().map_err(ConnectError::Io)?.port();
-            let rtcp_local: SocketAddr = if is_multicast {
-                match ip {
-                    IpAddr::V4(_) => {
-                        SocketAddr::new("0.0.0.0".parse().unwrap(), actual_rtp_port + 1)
+            // Guard: if the kernel handed us port 65535 (or the caller
+            // requested it explicitly), there is no valid RTCP companion
+            // port. Skip the RTCP socket rather than wrapping to 0.
+            // Mirrors the guard in rtsp/server/handlers.rs:444.
+            if let Some(rtcp_port) = actual_rtp_port.checked_add(1) {
+                let rtcp_local: SocketAddr = if is_multicast {
+                    match ip {
+                        IpAddr::V4(_) => {
+                            SocketAddr::new("0.0.0.0".parse().unwrap(), rtcp_port)
+                        }
+                        IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), rtcp_port),
                     }
-                    IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), actual_rtp_port + 1),
-                }
+                } else {
+                    SocketAddr::new(ip, rtcp_port)
+                };
+                Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
             } else {
-                SocketAddr::new(ip, actual_rtp_port + 1)
-            };
-            Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
+                tracing::warn!(
+                    "RTP port 65535 has no valid RTCP companion; \
+                     RTCP companion socket skipped"
+                );
+                None
+            }
         } else {
             None
         };
@@ -540,7 +571,28 @@ impl RtpRecvTransport {
                 // ingest path lands that wiring). For now we still
                 // spawn the thread so the rr_packets_sent counter
                 // ticks deterministically against the URL host.
-                let rtcp_target = SocketAddr::new(ip, url.port + 1);
+                //
+                // Guard: url.port 65535 has no valid companion port.
+                // The RTCP socket is already None in that case (guarded
+                // above), so this arm is unreachable at 65535 — the
+                // checked_add is a belt-and-suspenders defence.
+                let Some(rtcp_companion_port) = url.port.checked_add(1) else {
+                    tracing::warn!("url port 65535 has no RTCP companion; skipping RR reporter");
+                    return Ok(Self {
+                        source: Some(Source::Udp(socket)),
+                        max_payload: url.pkt_size,
+                        cancel: RtpCancelHandle::new(),
+                        bytes_received: 0,
+                        packets_received: 0,
+                        malformed_packets: 0,
+                        scratch: vec![0u8; url.pkt_size],
+                        rtcp_socket,
+                        rtcp_stats,
+                        rtcp_reporter: None,
+                        ssrc,
+                    });
+                };
+                let rtcp_target = SocketAddr::new(ip, rtcp_companion_port);
                 Some(RtcpReporterHandle::spawn(move || {
                     let rr = ReceiverReport {
                         ssrc,
@@ -1065,5 +1117,20 @@ mod tests {
         assert_eq!(parse_errs, 1);
         // Stats unaffected.
         assert_eq!(t.rtcp_stats().rr_packets_received, 0);
+    }
+
+    /// Guard: RtpTransport::connect with port 65535 must not panic (no u16
+    /// overflow in RTCP companion port arithmetic). Ok or Err both accepted.
+    #[test]
+    fn rtp_connect_port_65535_does_not_panic() {
+        let _ = RtpTransport::connect("rtp://127.0.0.1:65535");
+    }
+
+    /// Guard: RtpRecvTransport::listen with port 65535 must not panic.
+    /// The RTCP companion would need port 65536, which is invalid — the
+    /// bind must be skipped, not overflowed.
+    #[test]
+    fn rtp_listen_port_65535_does_not_panic() {
+        let _ = RtpRecvTransport::listen("rtp://127.0.0.1:65535");
     }
 }

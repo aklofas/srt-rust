@@ -5909,6 +5909,30 @@ item = "tst_rist::config::EncryptionKey::rotation"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rist::RistSecret"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); root re-export; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::config::RistSecret"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); covered by debug_does_not_leak_secret; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::config::RistSecret::new"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::config::RistSecret::expose"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::config::RistSecret::clone"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); derived; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::config::RistSecret::fmt"
+reason = "round-2 4th-pass RIST PSK Debug-redaction newtype (2026-06-08); redacting Debug; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_rist::config::RistConfig::DEFAULT_PKT_SIZE"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

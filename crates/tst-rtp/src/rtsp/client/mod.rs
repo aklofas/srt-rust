@@ -435,9 +435,13 @@ impl RtspClient {
             }
         }
 
-        let (data_tx, data_rx) = mpsc::channel::<Bytes>();
-        let (rtcp_tx, rtcp_rx) = mpsc::channel::<Bytes>();
-        let (ctrl_tx, ctrl_rx) = mpsc::channel::<Bytes>();
+        // Bounded hand-off queues (B3 / T1-RTSP-QUEUE): a fast or malicious
+        // server cannot flood these to OOM the client. Media drops newest +
+        // counters on overflow; RTCP/control fail the session on overflow.
+        // See the per-class `*_QUEUE_BOUND` rationale in `interleaved_pump`.
+        let (data_tx, data_rx) = mpsc::sync_channel::<Bytes>(interleaved_pump::DATA_QUEUE_BOUND);
+        let (rtcp_tx, rtcp_rx) = mpsc::sync_channel::<Bytes>(interleaved_pump::RTCP_QUEUE_BOUND);
+        let (ctrl_tx, ctrl_rx) = mpsc::sync_channel::<Bytes>(interleaved_pump::CTRL_QUEUE_BOUND);
         let pump_cancel = Arc::new(AtomicBool::new(false));
         let write_gate = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(interleaved_pump::PumpStats::default());

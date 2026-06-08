@@ -45,6 +45,36 @@ use crate::packet::RTP_HEADER_LEN;
 use crate::rtsp::client::Stream;
 use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, content_length_from_header_text};
 
+/// Bounded depth of the media (RTP/data) hand-off queue.
+///
+/// An interleaved frame body is capped at 65535 bytes by the
+/// `$<ch><len_be16>` framing, but a normal TS bundle is `DEFAULT_PKT_SIZE`
+/// (1316) bytes. A depth of 1024 gives a generous jitter buffer for a
+/// live consumer while bounding retained memory to ~1.3 MiB in the normal
+/// case (and capping the pathological all-max-frames case at ~64 MiB vs.
+/// the unbounded growth this replaces). On overflow the pump drops the
+/// newest frame (live-stream convention) and ticks `media_frames_dropped`
+/// — it never blocks, so a slow consumer cannot wedge the pump thread.
+pub(crate) const DATA_QUEUE_BOUND: usize = 1024;
+
+/// Bounded depth of the RTCP hand-off queue.
+///
+/// RTCP is intrinsically low-rate (one compound report per few seconds per
+/// RFC 3550 §6.2). 64 deep absorbs any legitimate burst; exceeding it
+/// means the peer is flooding the control-adjacent RTCP channel, which is
+/// abnormal/hostile — the pump fails the session rather than silently
+/// dropping control-plane traffic.
+pub(crate) const RTCP_QUEUE_BOUND: usize = 64;
+
+/// Bounded depth of the RTSP control-response hand-off queue.
+///
+/// RTSP is not pipelined — at most one response is in flight at a time, so
+/// the main thread drains this almost immediately. 32 deep tolerates any
+/// legitimate interleaving slack; exceeding it means the peer is flooding
+/// unsolicited control responses, which is hostile — the pump fails the
+/// session.
+pub(crate) const CTRL_QUEUE_BOUND: usize = 32;
+
 /// Stats observable from outside the pump thread.
 #[derive(Debug, Default)]
 pub(crate) struct PumpStats {
@@ -61,6 +91,14 @@ pub(crate) struct PumpStats {
     /// too small to contain an RTP header, or had a non-UTF8 RTSP
     /// header line.
     pub(crate) malformed_frames: AtomicU64,
+    /// Count of RTP/media payloads dropped because the bounded `data_tx`
+    /// queue was full (a slow or absent consumer). Drop-newest policy:
+    /// the just-arrived frame is discarded so the pump never blocks (a
+    /// blocking send would wedge the pump thread, which also carries the
+    /// control channel — a self-DoS). Bounds retained memory regardless
+    /// of consumer speed. Not yet surfaced through a public accessor; read
+    /// by the bounded-queue test today.
+    pub(crate) media_frames_dropped: AtomicU64,
     /// Count of read attempts the pump actually performed (i.e. loop
     /// iterations where it was not yielding the lock to a control-path
     /// writer). Used by the back-off regression test to assert the pump
@@ -87,9 +125,16 @@ pub(crate) struct InterleavedChannels {
 /// lands the adapter).
 ///
 /// - `data_tx`: where stripped RTP payloads go (paired with
-///   `RtpRecvTransport::from_mpsc_placeholder`).
-/// - `rtcp_tx`: where RTCP `$<rtcp_channel>` frame payloads go.
-/// - `ctrl_tx`: where RTSP response bytes go — main thread polls.
+///   `RtpRecvTransport::from_mpsc_placeholder`). Bounded
+///   ([`DATA_QUEUE_BOUND`]); on overflow the newest frame is dropped and
+///   `media_frames_dropped` ticks (non-blocking `try_send`, never wedges
+///   the pump).
+/// - `rtcp_tx`: where RTCP `$<rtcp_channel>` frame payloads go. Bounded
+///   ([`RTCP_QUEUE_BOUND`]); an overflow is treated as a hostile flood and
+///   the pump exits (fails the session) rather than dropping silently.
+/// - `ctrl_tx`: where RTSP response bytes go — main thread polls. Bounded
+///   ([`CTRL_QUEUE_BOUND`]); an overflow is a hostile control-response
+///   flood and the pump exits (fails the session).
 /// - `channels`: SETUP-allocated channel pair.
 /// - `cancel`: flipped by `RtspClient::drop` or
 ///   [`crate::rtsp::client::RtspCancelHandle::cancel`].
@@ -106,14 +151,18 @@ pub(crate) struct InterleavedChannels {
 /// - `reader.read()` returns `Ok(0)` (EOF).
 /// - `cancel` is set and the next `read()` returns
 ///   [`std::io::ErrorKind::TimedOut`] / [`std::io::ErrorKind::WouldBlock`].
-/// - `data_tx.send()` errors (the receiver was dropped).
+/// - `data_tx.try_send()` fails with `Disconnected` (the receiver was
+///   dropped). A `Full` on `data_tx` is NOT fatal — it drops the newest
+///   media frame and ticks `media_frames_dropped`.
+/// - `rtcp_tx` / `ctrl_tx` `try_send()` returns `Full` — a control-plane
+///   flood is hostile, so the pump fails the session by exiting.
 /// - `reader.read()` returns a non-timeout error (logged at WARN).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     mut reader: R,
-    data_tx: mpsc::Sender<Bytes>,
-    rtcp_tx: mpsc::Sender<Bytes>,
-    ctrl_tx: mpsc::Sender<Bytes>,
+    data_tx: mpsc::SyncSender<Bytes>,
+    rtcp_tx: mpsc::SyncSender<Bytes>,
+    ctrl_tx: mpsc::SyncSender<Bytes>,
     channels: InterleavedChannels,
     cancel: Arc<AtomicBool>,
     write_gate: Arc<AtomicBool>,
@@ -208,14 +257,44 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                             } else {
                                 let ts_payload =
                                     Bytes::copy_from_slice(&payload_bytes[RTP_HEADER_LEN..]);
-                                if data_tx.send(ts_payload).is_err() {
-                                    // Receiver dropped — pump exits.
-                                    return;
+                                // Bounded, drop-newest, non-blocking. A `Full`
+                                // queue means a slow/absent consumer — drop the
+                                // newest frame (live-stream convention) and
+                                // counter-tick so the pump never blocks (a
+                                // blocking send would wedge this thread, which
+                                // also carries the control channel — a self-DoS).
+                                // Only a dropped RECEIVER is fatal.
+                                match data_tx.try_send(ts_payload) {
+                                    Ok(()) => {}
+                                    Err(mpsc::TrySendError::Full(_)) => {
+                                        stats.media_frames_dropped.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                                        // Receiver dropped — pump exits.
+                                        return;
+                                    }
                                 }
                             }
                         } else if channel == channels.rtcp {
                             stats.rtcp_frames_received.fetch_add(1, Ordering::Relaxed);
-                            let _ = rtcp_tx.send(Bytes::copy_from_slice(payload_bytes));
+                            // RTCP is low-rate; a full bounded queue means the
+                            // peer is flooding the control-adjacent RTCP channel.
+                            // That is abnormal/hostile — fail the session (exit)
+                            // rather than silently dropping control-plane frames.
+                            // A dropped receiver also exits.
+                            match rtcp_tx.try_send(Bytes::copy_from_slice(payload_bytes)) {
+                                Ok(()) => {}
+                                Err(mpsc::TrySendError::Full(_)) => {
+                                    tracing::warn!(
+                                        target: "tst_rtp::client::pump",
+                                        "RTCP queue flooded ({} deep); failing session",
+                                        RTCP_QUEUE_BOUND
+                                    );
+                                    stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                    return;
+                                }
+                                Err(mpsc::TrySendError::Disconnected(_)) => return,
+                            }
                         } else {
                             stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
                             tracing::warn!(
@@ -274,14 +353,29 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                         }
                         stats.rtsp_messages_received.fetch_add(1, Ordering::Relaxed);
                         let msg = Bytes::copy_from_slice(&buf[..msg_end]);
-                        if ctrl_tx.send(msg).is_err() {
-                            // Main thread isn't reading — silently drop;
-                            // the cancel flag will eventually flip on
-                            // RtspClient::drop and we'll exit.
-                            tracing::warn!(
-                                target: "tst_rtp::client::pump",
-                                "ctrl_tx closed; pump losing RTSP responses"
-                            );
+                        // RTSP is not pipelined — the main thread drains ctrl_rx
+                        // almost immediately. A full bounded queue means the peer
+                        // is flooding unsolicited control responses, which is
+                        // hostile — fail the session (exit) rather than buffer.
+                        // `Disconnected` (main thread gone) also exits.
+                        match ctrl_tx.try_send(msg) {
+                            Ok(()) => {}
+                            Err(mpsc::TrySendError::Full(_)) => {
+                                tracing::warn!(
+                                    target: "tst_rtp::client::pump",
+                                    "RTSP control queue flooded ({} deep); failing session",
+                                    CTRL_QUEUE_BOUND
+                                );
+                                stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                            Err(mpsc::TrySendError::Disconnected(_)) => {
+                                tracing::warn!(
+                                    target: "tst_rtp::client::pump",
+                                    "ctrl_rx closed; pump exiting"
+                                );
+                                return;
+                            }
                         }
                         buf.drain(..msg_end);
                     }
@@ -337,18 +431,18 @@ mod tests {
 
     #[allow(clippy::type_complexity)]
     fn make_args() -> (
-        mpsc::Sender<Bytes>,
+        mpsc::SyncSender<Bytes>,
         mpsc::Receiver<Bytes>,
-        mpsc::Sender<Bytes>,
+        mpsc::SyncSender<Bytes>,
         mpsc::Receiver<Bytes>,
-        mpsc::Sender<Bytes>,
+        mpsc::SyncSender<Bytes>,
         mpsc::Receiver<Bytes>,
         Arc<AtomicBool>,
         Arc<PumpStats>,
     ) {
-        let (dt, dr) = mpsc::channel();
-        let (rt, rr) = mpsc::channel();
-        let (ct, cr) = mpsc::channel();
+        let (dt, dr) = mpsc::sync_channel(DATA_QUEUE_BOUND);
+        let (rt, rr) = mpsc::sync_channel(RTCP_QUEUE_BOUND);
+        let (ct, cr) = mpsc::sync_channel(CTRL_QUEUE_BOUND);
         let cancel = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(PumpStats::default());
         (dt, dr, rt, rr, ct, cr, cancel, stats)
@@ -558,6 +652,148 @@ mod tests {
         assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 1);
     }
 
+    /// Build one interleaved RTP frame on `channel` carrying a 12-byte
+    /// RTP header + `payload_len` payload bytes. The frame body length
+    /// (`RTP_HEADER_LEN + payload_len`) must fit a u16.
+    fn rtp_frame(channel: u8, payload_len: usize) -> Vec<u8> {
+        let body_len = RTP_HEADER_LEN + payload_len;
+        let mut f = vec![b'$', channel];
+        f.extend_from_slice(&(body_len as u16).to_be_bytes());
+        f.extend_from_slice(&[0u8; RTP_HEADER_LEN]); // RTP header (zeros).
+        f.extend(std::iter::repeat_n(0xAB, payload_len));
+        f
+    }
+
+    /// B3 / T1-RTSP-QUEUE — adversarial: a fast producer flooding the
+    /// media (RTP) channel while the consumer never drains must NOT grow
+    /// memory without bound. The bounded `data_tx` caps retained frames at
+    /// `DATA_QUEUE_BOUND`; everything beyond is dropped-newest and ticks
+    /// `media_frames_dropped`. The pump stays alive (media drop is NOT
+    /// fatal) and processes the whole input.
+    #[test]
+    fn media_queue_bounded_drops_newest_on_slow_consumer() {
+        const EXTRA: usize = 256;
+        let total = DATA_QUEUE_BOUND + EXTRA;
+        let mut raw = Vec::new();
+        for _ in 0..total {
+            raw.extend(rtp_frame(0, 8));
+        }
+        let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        // Consumer never drains until the pump has finished (EOF → exit).
+        let _ = handle.join();
+
+        // The pump saw every frame...
+        assert_eq!(
+            stats.rtp_frames_received.load(Ordering::Relaxed),
+            total as u64
+        );
+        // ...but retained memory is bounded: at most DATA_QUEUE_BOUND frames
+        // are still queued; the EXTRA were dropped-newest + counted.
+        assert_eq!(
+            stats.media_frames_dropped.load(Ordering::Relaxed),
+            EXTRA as u64,
+            "exactly the over-cap frames must be dropped"
+        );
+        let mut queued = 0usize;
+        while dr.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(
+            queued, DATA_QUEUE_BOUND,
+            "the bounded queue must retain at most DATA_QUEUE_BOUND frames"
+        );
+    }
+
+    /// B3 / T1-RTSP-QUEUE — adversarial: an RTCP flood with an absent
+    /// consumer must FAIL the session (control-plane traffic is never
+    /// silently dropped). Once the bounded RTCP queue fills, the pump
+    /// exits and ticks `malformed_frames`. Note: `rr` is kept alive (so
+    /// the channel isn't Disconnected) but never drained, forcing `Full`.
+    #[test]
+    fn rtcp_flood_fails_session() {
+        let mut raw = Vec::new();
+        // One more than the queue can hold guarantees a `Full`.
+        for _ in 0..(RTCP_QUEUE_BOUND + 1) {
+            // RTCP frame on channel 1: $<1><len=4><DEADBEEF>.
+            raw.extend_from_slice(&[b'$', 1u8, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF]);
+        }
+        // Trailing extra frames the pump should never reach (it exits first).
+        for _ in 0..10 {
+            raw.extend_from_slice(&[b'$', 1u8, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF]);
+        }
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        // _rr kept alive → channel not Disconnected → overflow is `Full`.
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let _ = handle.join();
+        // The pump must have exited on the flood, not processed all frames.
+        assert!(
+            stats.rtcp_frames_received.load(Ordering::Relaxed) <= (RTCP_QUEUE_BOUND + 1) as u64,
+            "pump should fail the session at the first RTCP overflow"
+        );
+        assert!(
+            stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+            "an RTCP flood must counter-tick + fail the session"
+        );
+    }
+
+    /// B3 / T1-RTSP-QUEUE — adversarial: an RTSP control-response flood
+    /// with an absent main thread must FAIL the session rather than buffer
+    /// unbounded. Once the bounded ctrl queue fills, the pump exits.
+    #[test]
+    fn ctrl_flood_fails_session() {
+        let mut raw = Vec::new();
+        // Minimal complete RTSP responses (header + CRLFCRLF, no body).
+        // CTRL_QUEUE_BOUND + 1 guarantees a `Full`.
+        for i in 0..(CTRL_QUEUE_BOUND + 1) {
+            raw.extend_from_slice(format!("RTSP/1.0 200 OK\r\nCSeq: {i}\r\n\r\n").as_bytes());
+        }
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        // _cr kept alive but never drained → overflow is `Full`, not closed.
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let _ = handle.join();
+        assert!(
+            stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+            "a control-response flood must counter-tick + fail the session"
+        );
+        // The queue retained at most CTRL_QUEUE_BOUND responses (bounded).
+        let mut queued = 0usize;
+        while _cr.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert!(
+            queued <= CTRL_QUEUE_BOUND,
+            "ctrl queue must be bounded by CTRL_QUEUE_BOUND"
+        );
+    }
+
     #[test]
     fn cancel_flag_exits_pump() {
         // Use an empty Cursor — gives EOF immediately. We can't easily
@@ -614,9 +850,9 @@ mod tests {
             .unwrap();
         let stream = Arc::new(Mutex::new(Stream::Plain(client)));
 
-        let (dt, _dr) = mpsc::channel();
-        let (rt, _rr) = mpsc::channel();
-        let (ct, _cr) = mpsc::channel();
+        let (dt, _dr) = mpsc::sync_channel(DATA_QUEUE_BOUND);
+        let (rt, _rr) = mpsc::sync_channel(RTCP_QUEUE_BOUND);
+        let (ct, _cr) = mpsc::sync_channel(CTRL_QUEUE_BOUND);
         let cancel = Arc::new(AtomicBool::new(false));
         let write_gate = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(PumpStats::default());

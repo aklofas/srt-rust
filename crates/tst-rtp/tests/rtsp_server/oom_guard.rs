@@ -3,14 +3,16 @@
 //!
 //! Scenario: an unauthenticated client sends an OPTIONS request with a
 //! `Content-Length: 2_000_000_000` header, then writes a small amount of
-//! junk (just past the 64 KiB buffer cap). Before the fix, the server
-//! accumulated every byte into `buf` and waited for a 2 GB body that
-//! would never arrive — an OOM DoS for any pre-auth client.
+//! junk. Before the fix, the server accumulated every byte into `buf` and
+//! waited for a 2 GB body that would never arrive — an OOM DoS for any
+//! pre-auth client.
 //!
-//! After the fix the server must send a 413 response and close the
-//! connection promptly after the buffer cap is exceeded. This test
-//! verifies that the 413 arrives within a tight write budget (128 KiB)
-//! rather than the server keeping the connection indefinitely open.
+//! After the fix the server rejects the request as soon as the headers
+//! terminate (CRLFCRLF): the body-aware two-phase cap parses the declared
+//! `Content-Length` and finds it over the `MAX_RTSP_BODY_BYTES` (1 MiB) cap
+//! in Phase 2, so the 413 fires before the 128 KiB of junk is ever read.
+//! This test verifies the 413 arrives promptly rather than the server
+//! keeping the connection indefinitely open.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -19,10 +21,12 @@ use std::time::{Duration, Instant};
 use tst_rtp::RtspServer;
 
 /// Connect a raw TCP client, send a crafted RTSP request with
-/// `Content-Length: 2000000000`, push 128 KiB of junk (just past the
-/// 64 KiB `MAX_RTSP_REQUEST_BYTES` cap), then read and assert that the
-/// server sent a 413 response (or connection closed) rather than staying
-/// silent and accumulating bytes.
+/// `Content-Length: 2000000000` (well over the 1 MiB `MAX_RTSP_BODY_BYTES`
+/// cap), push 128 KiB of junk, then read and assert that the server sent a
+/// 413 response (or connection closed) rather than staying silent and
+/// accumulating bytes. The over-cap Content-Length is rejected in Phase 2 of
+/// the body-aware cap as soon as the header block terminates, so the junk is
+/// never consumed.
 #[test]
 fn oversized_content_length_gets_413_response() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
@@ -37,9 +41,11 @@ fn oversized_content_length_gets_413_response() {
     let request = b"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: 2000000000\r\n\r\n";
     tcp.write_all(request).unwrap();
 
-    // Write 128 KiB of junk — just enough to exceed the 64 KiB
-    // MAX_RTSP_REQUEST_BYTES cap. After the fix, the server should
-    // respond with 413 and close within this budget.
+    // Write 128 KiB of junk. The server never reads it: the over-cap
+    // Content-Length above is rejected in Phase 2 the instant the header
+    // CRLFCRLF is seen, so the 413 fires before this body matters. (The junk
+    // is kept only to exercise the write path / prove the server isn't
+    // silently buffering it.)
     let junk = vec![0x42u8; 128 * 1024];
     // Ignore write error: the server may have already closed the connection
     // before we finish writing.
@@ -97,8 +103,9 @@ fn oversized_content_length_gets_413_response() {
 
     assert!(
         got_413 || got_close,
-        "server must close or send 413 after exceeding MAX_RTSP_REQUEST_BYTES (64 KiB) \
-         but it stayed open silently for {elapsed:?}. Response so far: {:?}",
+        "server must close or send 413 after the over-cap Content-Length \
+         (> MAX_RTSP_BODY_BYTES, 1 MiB) is rejected in Phase 2, but it stayed \
+         open silently for {elapsed:?}. Response so far: {:?}",
         String::from_utf8_lossy(&response_buf)
     );
 

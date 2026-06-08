@@ -97,28 +97,41 @@ pub enum RtpParseError {
     UnsupportedPayloadType(u8),
 }
 
-/// Result of [`RtpHeader::decode`] — header struct + offset where the
-/// payload starts in the input buffer.
+/// Result of [`RtpHeader::decode`] — header struct + the byte range of
+/// the application payload within the input buffer.
+///
+/// The actual payload bytes are `&buf[payload_offset..payload_end]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Parsed {
     /// Decoded fixed-header fields.
     pub header: RtpHeader,
     /// Byte offset in the input where the application payload begins.
-    /// Equals `12 + 4*CC` for fixed-header-only packets.
+    /// Equals `12 + 4*CC` for packets with no extension (X=0).
     pub payload_offset: usize,
+    /// Byte offset (exclusive) where the application payload ends.
+    /// For packets with no padding (P=0) this equals the packet length.
+    /// Padding bytes (RFC 3550 §5.1) are excluded.
+    pub payload_end: usize,
 }
 
 impl RtpHeader {
-    /// Decode a 12-byte fixed RTP header from `buf[0..12]`, validate
-    /// `V=2` and `PT=33`, and return the parsed header + the byte
-    /// offset of the application payload (skipping any CSRC list).
+    /// Decode an RTP header from `buf`, validate `V=2` and `PT=33`, and
+    /// return the parsed header + the byte range of the application payload.
     ///
-    /// CSRC entries are skipped, not retained — Phase 1 doesn't need
-    /// them. The `X` (extension) bit is NOT honored in Phase 1: if
-    /// set, the extension header is parsed-but-not-skipped — the
-    /// returned `payload_offset` still points at the bytes immediately
-    /// after the fixed+CSRC header. A follow-up will add real
-    /// extension skipping if interop demands it.
+    /// The payload is `&buf[parsed.payload_offset..parsed.payload_end]`.
+    ///
+    /// Handles the full RFC 3550 §5.1 / §5.3.1 framing:
+    /// - **CSRC list** (`CC > 0`): skipped (not retained).
+    /// - **Header extension** (`X=1`, RFC 3550 §5.3.1): the 4-byte extension
+    ///   header (profile + length-in-32bit-words) and its data words are
+    ///   skipped; `payload_offset` is advanced past them.
+    /// - **Padding** (`P=1`, RFC 3550 §5.1): the last byte of the packet is
+    ///   the padding count; those bytes are excluded from `payload_end`.
+    ///
+    /// Malformed extension or padding (truncated / zero count) returns
+    /// `Err(RtpParseError::Truncated)` so the caller can tick the
+    /// malformed-packet counter and drop the packet.
     pub fn decode(buf: &[u8]) -> Result<Parsed, RtpParseError> {
         if buf.len() < RTP_HEADER_LEN {
             return Err(RtpParseError::Truncated {
@@ -130,24 +143,82 @@ impl RtpHeader {
         if v != RTP_VERSION {
             return Err(RtpParseError::UnsupportedVersion(v));
         }
+        let x_bit = (buf[0] >> 4) & 0x01; // header extension present
+        let p_bit = (buf[0] >> 5) & 0x01; // padding present
         let cc = (buf[0] & 0x0F) as usize;
         let pt = buf[1] & 0x7F;
         if pt != RTP_PT_MP2T {
             return Err(RtpParseError::UnsupportedPayloadType(pt));
         }
-        let need = RTP_HEADER_LEN + cc * 4;
-        if buf.len() < need {
+
+        // Byte offset right after the fixed header + CSRC list.
+        let after_csrc = RTP_HEADER_LEN + cc * 4;
+        if buf.len() < after_csrc {
             return Err(RtpParseError::Truncated {
                 got: buf.len(),
-                need,
+                need: after_csrc,
             });
         }
+
+        // RFC 3550 §5.3.1: if X=1, a 4-byte extension header follows the
+        // CSRC list.  Bytes [after_csrc..after_csrc+2] are the profile ID
+        // (unused), bytes [after_csrc+2..after_csrc+4] are the extension
+        // length in 32-bit words (not counting the 4-byte prefix).
+        let payload_offset = if x_bit == 1 {
+            // Need at least 4 bytes for the extension header itself.
+            let ext_header_end = after_csrc + 4;
+            if buf.len() < ext_header_end {
+                return Err(RtpParseError::Truncated {
+                    got: buf.len(),
+                    need: ext_header_end,
+                });
+            }
+            let ext_len_words =
+                u16::from_be_bytes([buf[after_csrc + 2], buf[after_csrc + 3]]) as usize;
+            // ext_total = 4-byte prefix + ext_len_words * 4 bytes of data.
+            let ext_total = 4 + ext_len_words * 4;
+            let after_ext = after_csrc + ext_total;
+            if buf.len() < after_ext {
+                return Err(RtpParseError::Truncated {
+                    got: buf.len(),
+                    need: after_ext,
+                });
+            }
+            after_ext
+        } else {
+            after_csrc
+        };
+
+        // RFC 3550 §5.1: if P=1, the last byte of the packet is the count
+        // of padding bytes appended (including itself).  A count of 0 is
+        // invalid, and a count larger than the remaining payload is invalid.
+        let payload_end = if p_bit == 1 {
+            // Need at least one byte for the padding count.
+            if buf.len() < payload_offset + 1 {
+                return Err(RtpParseError::Truncated {
+                    got: buf.len(),
+                    need: payload_offset + 1,
+                });
+            }
+            let pad = buf[buf.len() - 1] as usize;
+            if pad == 0 || pad > buf.len() - payload_offset {
+                return Err(RtpParseError::Truncated {
+                    got: buf.len() - payload_offset,
+                    need: pad + 1,
+                });
+            }
+            buf.len() - pad
+        } else {
+            buf.len()
+        };
+
         let seq = u16::from_be_bytes([buf[2], buf[3]]);
         let timestamp = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
         let ssrc = u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]);
         Ok(Parsed {
             header: RtpHeader::new(seq, timestamp, ssrc),
-            payload_offset: need,
+            payload_offset,
+            payload_end,
         })
     }
 }
@@ -155,6 +226,160 @@ impl RtpHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Step-2 failing tests: X=1 extension skipping and P=1 padding stripping ---
+
+    #[test]
+    fn decode_skips_rfc3550_header_extension() {
+        // RFC 3550 §5.3.1: when X=1, a 4-byte extension header follows the CSRC list.
+        // The first two bytes are a profile-specific ID, the next two are the
+        // extension length in 32-bit words (not counting the 4-byte prefix).
+        //
+        // Packet layout (24 bytes total):
+        //   Byte 0:  0x90 = V=2 | P=0 | X=1 | CC=0
+        //   Byte 1:  33   = M=0 | PT=33
+        //   Bytes 2..4:  seq=1
+        //   Bytes 4..8:  timestamp=0
+        //   Bytes 8..12: ssrc=0
+        //   Bytes 12..14: ext profile = 0xBEDE (RFC 5285 one-byte-header form)
+        //   Bytes 14..16: ext length = 1 word (= 4 bytes of extension data follow)
+        //   Bytes 16..20: ext data 0xDEADBEEF
+        //   Bytes 20..24: actual MP2T payload 0xAAAAAAAA
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0x90, 33, 0, 1,                         // V=2,X=1,CC=0 | PT=33 | seq=1
+            0, 0, 0, 0,                             // timestamp
+            0, 0, 0, 0,                             // ssrc
+            0xBE, 0xDE, 0x00, 0x01,                 // ext header: profile 0xBEDE, len=1 word
+            0xDE, 0xAD, 0xBE, 0xEF,                 // ext data (1 word = 4 bytes)
+            0xAA, 0xAA, 0xAA, 0xAA,                 // MP2T payload
+        ];
+        let parsed = RtpHeader::decode(pkt).expect("valid X=1 packet should parse");
+        assert_eq!(
+            &pkt[parsed.payload_offset..parsed.payload_end],
+            &[0xAA, 0xAA, 0xAA, 0xAA],
+            "payload must be the 4 bytes after the extension, not the extension itself"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_truncated_extension() {
+        // X=1 but the packet is only 12 bytes — the 4-byte extension header is missing.
+        let pkt: &[u8] = &[
+            0x90, 33, 0, 1,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            // no extension header bytes
+        ];
+        let err = RtpHeader::decode(pkt).unwrap_err();
+        assert!(
+            matches!(err, RtpParseError::Truncated { .. }),
+            "truncated extension must produce Truncated error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_truncated_extension_data() {
+        // X=1, extension length=2 words (8 bytes of data) but only 4 bytes present.
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0x90, 33, 0, 1,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0xBE, 0xDE, 0x00, 0x02,   // ext header: len=2 words (8 bytes expected)
+            0xDE, 0xAD, 0xBE, 0xEF,   // only 4 bytes of ext data present (packet truncated)
+        ];
+        let err = RtpHeader::decode(pkt).unwrap_err();
+        assert!(
+            matches!(err, RtpParseError::Truncated { .. }),
+            "truncated extension data must produce Truncated error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_strips_rfc3550_padding() {
+        // RFC 3550 §5.1: when P=1, the last byte of the packet is the count of
+        // padding bytes appended (including itself).  Those bytes must NOT be
+        // delivered as payload.
+        //
+        // Packet layout (16 bytes):
+        //   Bytes 0..12:  fixed RTP header, P=1
+        //   Bytes 12..14: payload 0xAA 0xAA
+        //   Bytes 14..15: padding 0x00 0x02  (pad byte 1, pad count = 2)
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0xA0, 33, 0, 1,             // V=2, P=1, X=0, CC=0 | PT=33
+            0, 0, 0, 0,                 // timestamp
+            0, 0, 0, 0,                 // ssrc
+            0xAA, 0xAA,                 // real payload
+            0x00, 0x02,                 // 2 padding bytes (last byte = count)
+        ];
+        let parsed = RtpHeader::decode(pkt).expect("valid P=1 packet should parse");
+        assert_eq!(
+            &pkt[parsed.payload_offset..parsed.payload_end],
+            &[0xAA, 0xAA],
+            "padding bytes must not be part of the returned payload"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_zero_padding_count() {
+        // P=1, last byte = 0 — RFC 3550 forbids a padding count of 0.
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0xA0, 33, 0, 1,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0xAA, 0xAA,
+            0x00,       // last byte = 0: malformed
+        ];
+        let err = RtpHeader::decode(pkt).unwrap_err();
+        assert!(
+            matches!(err, RtpParseError::Truncated { .. }),
+            "padding count 0 must produce Truncated error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_padding_exceeds_payload() {
+        // P=1, last byte = 10, but the packet only has 13 bytes total.
+        // pad count > packet_len - payload_offset → malformed.
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0xA0, 33, 0, 1,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0x0A,       // last byte = 10 (but only 1 byte available for payload+padding)
+        ];
+        let err = RtpHeader::decode(pkt).unwrap_err();
+        assert!(
+            matches!(err, RtpParseError::Truncated { .. }),
+            "over-large padding count must produce Truncated error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_x_and_p_combined() {
+        // X=1 and P=1 together: extension is skipped, padding is stripped.
+        // Header (12) + ext-header (4) + ext-data 1 word (4) + payload (4) + pad (2) = 26 bytes.
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0xB0, 33, 0, 1,             // V=2, P=1, X=1, CC=0
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0xBE, 0xDE, 0x00, 0x01,     // ext: profile, 1-word length
+            0xDE, 0xAD, 0xBE, 0xEF,     // ext data (4 bytes)
+            0xAA, 0xAA, 0xAA, 0xAA,     // real payload
+            0x00, 0x02,                 // 2 padding bytes
+        ];
+        let parsed = RtpHeader::decode(pkt).expect("valid X=1+P=1 packet should parse");
+        assert_eq!(
+            &pkt[parsed.payload_offset..parsed.payload_end],
+            &[0xAA, 0xAA, 0xAA, 0xAA],
+        );
+    }
+
+    // --- End Step-2 tests ---
 
     #[test]
     fn encode_writes_rfc_3550_byte_layout() {

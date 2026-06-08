@@ -251,8 +251,9 @@ impl core::marker::Unpin for tst_rtp::packet::RtpParseError
 impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpParseError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpParseError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpParseError
-pub struct tst_rtp::packet::Parsed
+#[non_exhaustive] pub struct tst_rtp::packet::Parsed
 pub tst_rtp::packet::Parsed::header: tst_rtp::packet::RtpHeader
+pub tst_rtp::packet::Parsed::payload_end: usize
 pub tst_rtp::packet::Parsed::payload_offset: usize
 impl core::clone::Clone for tst_rtp::packet::Parsed
 pub fn tst_rtp::packet::Parsed::clone(&self) -> tst_rtp::packet::Parsed
@@ -1810,8 +1811,9 @@ impl core::marker::Unpin for tst_rtp::rtsp::client::options_describe::OptionsRes
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::options_describe::OptionsResponse
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::options_describe::OptionsResponse
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::client::options_describe::OptionsResponse
-pub struct tst_rtp::Parsed
+#[non_exhaustive] pub struct tst_rtp::Parsed
 pub tst_rtp::Parsed::header: tst_rtp::packet::RtpHeader
+pub tst_rtp::Parsed::payload_end: usize
 pub tst_rtp::Parsed::payload_offset: usize
 impl core::clone::Clone for tst_rtp::packet::Parsed
 pub fn tst_rtp::packet::Parsed::clone(&self) -> tst_rtp::packet::Parsed

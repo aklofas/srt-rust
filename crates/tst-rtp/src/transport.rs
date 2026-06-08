@@ -748,7 +748,10 @@ impl RecvTransport for RtpRecvTransport {
                         self.packets_received += 1;
                         match RtpHeader::decode(&self.scratch[..n]) {
                             Ok(parsed) => {
-                                let payload = &self.scratch[parsed.payload_offset..n];
+                                // Use payload_end (not n) to exclude any RFC 3550
+                                // padding bytes and to reflect extension skipping.
+                                let payload =
+                                    &self.scratch[parsed.payload_offset..parsed.payload_end];
                                 if payload.len() > buf.len() {
                                     // Caller buf too small. Treat as broken,
                                     // since the recv shell is misconfigured

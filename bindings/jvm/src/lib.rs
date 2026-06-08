@@ -8,6 +8,7 @@
 
 mod codec;
 mod error;
+mod handle;
 mod jutil;
 mod klv;
 mod mpegts;

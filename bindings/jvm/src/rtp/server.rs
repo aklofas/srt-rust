@@ -1,8 +1,10 @@
 //! `org.tstrans.rtp` RTSP SERVER JNI surface — `RtspServer`, `MountHandle`,
 //! `RtspServerCancelHandle`. Ports tst-py's `bindings/python/src/rtp/server.rs`.
-//! The underlying `tst_rtp::rtsp::server::RtspServer` owns a tokio Runtime inside
-//! the native Box; there is no JNI-side async handling.
+//! The underlying `tst_rtp::rtsp::server::RtspServer` owns a tokio Runtime; it is
+//! held in a per-type leased [`HandleRegistry`] (not a raw box), and there is no
+//! JNI-side async handling.
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use jni::JNIEnv;
@@ -23,6 +25,7 @@ use tst_rtp::builder::RtspServerBuilder;
 use tst_rtp::error::RtspServerError;
 use tst_rtp::rtsp::server::mount::{MountHandle as RustMountHandle, MountKind};
 
+use crate::handle::HandleRegistry;
 use crate::jutil::checked_u8;
 use crate::mpegts::muxer::build_muxer_config_from_arrays;
 
@@ -30,14 +33,19 @@ use super::errors::{mount_error_to_jvm, server_error_to_jvm, throw_rtsp};
 
 /// Boxed behind `org.tstrans.rtp.RtspServerCancelHandle.handle`. Wraps tst-rtp's
 /// `RtspServerCancelHandle` (Clone; owns its own `Arc<AtomicBool>` flag, so it is
-/// independent of the `RtspServer` box lifetime).
+/// independent of the `RtspServer` lifetime).
 pub(super) struct JniRtspServerCancel {
     pub(super) inner: RustServerCancel,
 }
 
+/// Per-type leased-handle registry for `org.tstrans.rtp.RtspServerCancelHandle`.
+/// A cancel target (no parked op to wake) — register with `insert` (cancel = None).
+static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniRtspServerCancel>> =
+    LazyLock::new(HandleRegistry::new);
+
 impl JniRtspServerCancel {
     pub(super) fn into_handle(self) -> jlong {
-        Box::into_raw(Box::new(self)) as jlong
+        REGISTRY_CANCEL.insert(self) as jlong
     }
 }
 
@@ -48,16 +56,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
+    if REGISTRY_CANCEL
+        .with(handle as u64, |c| c.inner.cancel())
+        .is_none()
+    {
         let _ = env.throw_new(
             "java/lang/IllegalStateException",
             "RtspServerCancelHandle is closed",
         );
-        return;
     }
-    // SAFETY: valid Box<JniRtspServerCancel> kept alive by the Java object.
-    let c = unsafe { &*(handle as *const JniRtspServerCancel) };
-    c.inner.cancel();
 }
 
 /// Report whether the flag was flipped. Guards a closed handle.
@@ -67,17 +74,19 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nIsCancelled(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "RtspServerCancelHandle is closed",
-        );
-        return 0;
-    }
-    // SAFETY: valid Box<JniRtspServerCancel> kept alive by the Java object.
-    let c = unsafe { &*(handle as *const JniRtspServerCancel) };
     // tst-rtp uses American spelling is_canceled(); the JVM method is isCancelled().
-    u8::from(c.inner.is_canceled())
+    // A cancel target is never "parked", so `try_with` never reports `Locked`;
+    // treat `Locked`/`Taken` as closed.
+    match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_canceled())) {
+        crate::handle::TryWith::Ran(v) => v,
+        _ => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "RtspServerCancelHandle is closed",
+            );
+            0
+        }
+    }
 }
 
 /// Free the boxed cancel handle.
@@ -87,10 +96,8 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: valid Box<JniRtspServerCancel>; close() zeroes the field (runs once).
-        drop(unsafe { Box::from_raw(handle as *mut JniRtspServerCancel) });
-    }
+    // Atomic + idempotent drop.
+    let _ = REGISTRY_CANCEL.close(handle as u64);
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +105,12 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nClose(
 // ---------------------------------------------------------------------------
 
 type ServerInner = RustRtspServer;
+
+/// Per-type leased-handle registry for `org.tstrans.rtp.RtspServer`. Registered
+/// with a cancel hook (a HARD cancel via the server's own independent
+/// `RtspServerCancelHandle`) so a `close` racing any server op wakes it before
+/// the resource is taken for teardown.
+static REGISTRY_SERVER: LazyLock<HandleRegistry<ServerInner>> = LazyLock::new(HandleRegistry::new);
 
 /// Build the Java `org.tstrans.rtp.ServerStats` record. Ctor `(JJJJ)V`.
 fn build_server_stats<'local>(
@@ -218,15 +231,24 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
         return 0;
     }
 
-    Box::into_raw(Box::new(server)) as jlong
+    // The cancel hook drives a HARD cancel via the server's own independent
+    // `RtspServerCancelHandle` (own Arc<AtomicBool>), wiring `close` to wake any
+    // racing server op before the resource is taken for teardown.
+    let cancel = server.cancel_handle();
+    REGISTRY_SERVER.insert_with_cancel(server, Some(Box::new(move || cancel.cancel()))) as jlong
 }
 
-fn checked_server(env: &mut JNIEnv, handle: jlong) -> Option<*const ServerInner> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "RtspServer is closed");
-        return None;
+/// Lease the server for `handle` and run `f` on it under the entry's resource
+/// lock. `None` (absent/closed) → throw `IllegalStateException` (the caller maps
+/// `None` to its own default return). Every server method takes `&self`.
+fn with_server<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&ServerInner) -> R) -> Option<R> {
+    match REGISTRY_SERVER.with(handle as u64, |s| f(s)) {
+        Some(r) => Some(r),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "RtspServer is closed");
+            None
+        }
     }
-    Some(handle as *const ServerInner)
 }
 
 /// `RtspServer.nStats(handle)` → ServerStats record, or null on a JNI builder error.
@@ -236,12 +258,9 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_server(&mut env, handle) else {
+    let Some(s) = with_server(&mut env, handle, |server| server.stats()) else {
         return JObject::null();
     };
-    // SAFETY: validated non-zero live Box<RtspServer>; stats() takes &self.
-    let server = unsafe { &*ptr };
-    let s = server.stats();
     build_server_stats(&mut env, &s).unwrap_or_else(|_| JObject::null())
 }
 
@@ -252,12 +271,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nLocalAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let Some(ptr) = checked_server(&mut env, handle) else {
+    let Some(addr) = with_server(&mut env, handle, |server| server.local_addr()) else {
         return JObject::null().into();
     };
-    // SAFETY: validated non-zero live Box<RtspServer>; local_addr() takes &self.
-    let server = unsafe { &*ptr };
-    match server.local_addr() {
+    match addr {
         Some(addr) => env
             .new_string(addr.to_string())
             .unwrap_or_else(|_| JObject::null().into()),
@@ -275,12 +292,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStop(
     handle: jlong,
     _drain_ms: jlong,
 ) {
-    let Some(ptr) = checked_server(&mut env, handle) else {
+    let Some(res) = with_server(&mut env, handle, |server| server.stop()) else {
         return;
     };
-    // SAFETY: validated non-zero live Box<RtspServer>; stop() takes &self.
-    let server = unsafe { &*ptr };
-    if let Err(e) = server.stop() {
+    if let Err(e) = res {
         server_error_to_jvm(&mut env, &e);
     }
 }
@@ -292,16 +307,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_server(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live Box<RtspServer>; cancel_handle() takes &self
-    // and hands back an independent Clone (own Arc<AtomicBool>).
-    let server = unsafe { &*ptr };
-    JniRtspServerCancel {
-        inner: server.cancel_handle(),
-    }
-    .into_handle()
+    // cancel_handle() takes &self and hands back an independent Clone (own
+    // Arc<AtomicBool>), so the returned handle survives the server's lifetime.
+    with_server(&mut env, handle, |server| {
+        JniRtspServerCancel {
+            inner: server.cancel_handle(),
+        }
+        .into_handle()
+    })
+    .unwrap_or(0)
 }
 
 /// `RtspServer.nClose(handle)` — best-effort graceful stop (swallow NotStarted),
@@ -313,11 +327,13 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle from Box::into_raw, dropped once (Java zeroes its field).
-        let b = unsafe { Box::from_raw(handle as *mut ServerInner) };
-        let _ = b.stop(); // best-effort; NotStarted/Shutdown swallowed
-        drop(b);
+    // Atomic + idempotent: the cancel hook fires a HARD cancel first (waking any
+    // racing server op), then only the winning close gets the server back for a
+    // best-effort graceful stop (NotStarted/Shutdown swallowed). Dropping it fires
+    // its Drop (runtime shutdown). A second close finds the id gone → no-op.
+    if let Some(server) = REGISTRY_SERVER.close(handle as u64) {
+        let _ = server.stop(); // best-effort
+        drop(server);
     }
 }
 
@@ -327,12 +343,24 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nClose(
 
 type MountInner = RustMountHandle;
 
-fn checked_mount(env: &mut JNIEnv, handle: jlong) -> Option<*const MountInner> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
-        return None;
+/// Per-type leased-handle registry for `org.tstrans.rtp.MountHandle`. No cancel
+/// hook (push/flush calls don't park indefinitely); `close` just frees the
+/// handle wrapper — the mount itself persists in the server until stop()/close().
+static REGISTRY_MOUNT: LazyLock<HandleRegistry<MountInner>> = LazyLock::new(HandleRegistry::new);
+
+/// Lease the mount for `handle` and run `f` on it under the entry's resource
+/// lock. `None` (absent/closed) → throw `IllegalStateException` (the caller maps
+/// `None` to its own default return). Every `MountHandle` method takes `&self`
+/// (Arc-shared internally), so concurrent leases from multiple Java threads are
+/// sound.
+fn with_mount<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&MountInner) -> R) -> Option<R> {
+    match REGISTRY_MOUNT.with(handle as u64, |m| f(m)) {
+        Some(r) => Some(r),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
+            None
+        }
     }
-    Some(handle as *const MountInner)
 }
 
 /// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
@@ -368,9 +396,11 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddUnicastMount<'local>(
     klv_stream_types: JIntArray<'local>,
     klv_carries_pts: JBooleanArray<'local>,
 ) -> jlong {
-    let Some(ptr) = checked_server(&mut env, server_handle) else {
+    // Validate the server handle up front (throws if closed); the cfg/path build
+    // touches `env`, so the actual `add_mount` is leased separately below.
+    if with_server(&mut env, server_handle, |_| ()).is_none() {
         return 0;
-    };
+    }
     let cfg = match build_muxer_config_from_arrays(
         &mut env,
         program_number,
@@ -396,10 +426,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddUnicastMount<'local>(
             return 0;
         }
     };
-    // SAFETY: validated non-zero live Box<RtspServer>; add_mount takes &self.
-    let server = unsafe { &*ptr };
-    match server.add_mount(&path_str, cfg) {
-        Ok(mh) => Box::into_raw(Box::new(mh)) as jlong,
+    // add_mount takes &self; lease the server again and run it under the lock. A
+    // server closed between the two leases yields None → IllegalStateException.
+    let Some(res) = with_server(&mut env, server_handle, |server| {
+        server.add_mount(&path_str, cfg)
+    }) else {
+        return 0;
+    };
+    match res {
+        Ok(mh) => REGISTRY_MOUNT.insert(mh) as jlong,
         Err(e) => {
             server_error_to_jvm(&mut env, &e);
             0
@@ -435,9 +470,11 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddMulticastMount<'local
     klv_stream_types: JIntArray<'local>,
     klv_carries_pts: JBooleanArray<'local>,
 ) -> jlong {
-    let Some(ptr) = checked_server(&mut env, server_handle) else {
+    // Validate the server handle up front (throws if closed); the URL/cfg build
+    // touches `env`, so the actual `add_multicast_mount` is leased separately.
+    if with_server(&mut env, server_handle, |_| ()).is_none() {
         return 0;
-    };
+    }
     let cfg = match build_muxer_config_from_arrays(
         &mut env,
         program_number,
@@ -479,10 +516,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddMulticastMount<'local
             url.push_str(&i);
         }
     }
-    // SAFETY: validated non-zero live Box<RtspServer>; add_multicast_mount takes &self.
-    let server = unsafe { &*ptr };
-    match server.add_multicast_mount(&path_str, cfg, &url) {
-        Ok(mh) => Box::into_raw(Box::new(mh)) as jlong,
+    // add_multicast_mount takes &self; lease the server again and run it under the
+    // lock. A server closed between leases yields None → IllegalStateException.
+    let Some(res) = with_server(&mut env, server_handle, |server| {
+        server.add_multicast_mount(&path_str, cfg, &url)
+    }) else {
+        return 0;
+    };
+    match res {
+        Ok(mh) => REGISTRY_MOUNT.insert(mh) as jlong,
         Err(e) => {
             server_error_to_jvm(&mut env, &e);
             0
@@ -499,12 +541,10 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nMountPath<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(path) = with_mount(&mut env, handle, |inner| inner.mount_path().to_owned()) else {
         return JObject::null().into();
     };
-    // SAFETY: validated non-zero live Box<MountHandle>; mount_path takes &self.
-    let inner = unsafe { &*ptr };
-    env.new_string(inner.mount_path())
+    env.new_string(path)
         .unwrap_or_else(|_| JObject::null().into())
 }
 
@@ -515,12 +555,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPeerCount(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live Box<MountHandle>; peer_count takes &self.
-    let inner = unsafe { &*ptr };
-    inner.peer_count() as jlong
+    with_mount(&mut env, handle, |inner| inner.peer_count() as jlong).unwrap_or(0)
 }
 
 /// `MountHandle.nMountKind(handle)` → "unicast" / "multicast" / "unknown".
@@ -530,15 +565,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nMountKind<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return JObject::null().into();
-    };
-    // SAFETY: validated non-zero live Box<MountHandle>; mount_kind takes &self.
-    let inner = unsafe { &*ptr };
-    let kind = match inner.mount_kind() {
+    let Some(kind) = with_mount(&mut env, handle, |inner| match inner.mount_kind() {
         MountKind::Unicast => "unicast",
         MountKind::Multicast { .. } => "multicast",
         _ => "unknown",
+    }) else {
+        return JObject::null().into();
     };
     env.new_string(kind)
         .unwrap_or_else(|_| JObject::null().into())
@@ -569,12 +601,9 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(s) = with_mount(&mut env, handle, |inner| inner.stats()) else {
         return JObject::null();
     };
-    // SAFETY: validated non-zero live Box<MountHandle>; stats takes &self.
-    let inner = unsafe { &*ptr };
-    let s = inner.stats();
     build_mount_stats(&mut env, &s).unwrap_or_else(|_| JObject::null())
 }
 
@@ -590,16 +619,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live Box<MountHandle>; push_video takes &self, and
-    // RustMountHandle is Arc-shared so concurrent &*ptr pushes are sound (no &mut).
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = inner.push_video(&buf, Pts90khz::new(pts), key_frame != 0) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -614,11 +642,6 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlv<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let Ok(service_id) = checked_u8(
         &mut env,
         i64::from(metadata_service_id),
@@ -629,7 +652,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlv<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = inner.push_klv(&buf, Pts90khz::new(pts), service_id) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_klv(&buf, Pts90khz::new(pts), service_id)
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -643,15 +671,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudio<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = inner.push_audio(&buf, Pts90khz::new(pts)) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_audio(&buf, Pts90khz::new(pts))
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -665,15 +693,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitle<'local>(
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = inner.push_subtitle(&buf, Pts90khz::new(pts)) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_subtitle(&buf, Pts90khz::new(pts))
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -691,11 +719,6 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideoTo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -708,7 +731,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideoTo<'local>(
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = inner.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -724,11 +752,6 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlvTo<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -746,7 +769,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlvTo<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = inner.push_klv_to(h, &buf, Pts90khz::new(pts), service_id) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_klv_to(h, &buf, Pts90khz::new(pts), service_id)
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -761,11 +789,6 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudioTo<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -776,7 +799,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudioTo<'local>(
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = inner.push_audio_to(h, &buf, Pts90khz::new(pts)) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_audio_to(h, &buf, Pts90khz::new(pts))
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -791,11 +819,6 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitleTo<'local>(
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
     let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -806,7 +829,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitleTo<'local>(
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = inner.push_subtitle_to(h, &buf, Pts90khz::new(pts)) {
+    let Some(res) = with_mount(&mut env, handle, |inner| {
+        inner.push_subtitle_to(h, &buf, Pts90khz::new(pts))
+    }) else {
+        return;
+    };
+    if let Err(e) = res {
         mount_error_to_jvm(&mut env, &e);
     }
 }
@@ -820,17 +848,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nVideoHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner
-        .video_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    with_mount(&mut env, handle, |inner| {
+        inner
+            .video_handles()
+            .into_iter()
+            .next()
+            .map(|h| i64::from(h.raw()))
+            .unwrap_or(-1)
+    })
+    .unwrap_or(-1)
 }
 
 /// `MountHandle.nKlvHandle(handle)` — first configured KLV stream handle, or `-1`.
@@ -840,17 +866,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nKlvHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner
-        .klv_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    with_mount(&mut env, handle, |inner| {
+        inner
+            .klv_handles()
+            .into_iter()
+            .next()
+            .map(|h| i64::from(h.raw()))
+            .unwrap_or(-1)
+    })
+    .unwrap_or(-1)
 }
 
 /// `MountHandle.nAudioHandle(handle)` — first configured audio stream handle, or `-1`.
@@ -860,17 +884,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nAudioHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner
-        .audio_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    with_mount(&mut env, handle, |inner| {
+        inner
+            .audio_handles()
+            .into_iter()
+            .next()
+            .map(|h| i64::from(h.raw()))
+            .unwrap_or(-1)
+    })
+    .unwrap_or(-1)
 }
 
 /// `MountHandle.nSubtitleHandle(handle)` — first configured subtitle stream handle, or `-1`.
@@ -880,17 +902,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nSubtitleHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner
-        .subtitle_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    with_mount(&mut env, handle, |inner| {
+        inner
+            .subtitle_handles()
+            .into_iter()
+            .next()
+            .map(|h| i64::from(h.raw()))
+            .unwrap_or(-1)
+    })
+    .unwrap_or(-1)
 }
 
 // ── MountHandle: stream-handle accessors (all-of-kind; long[]) ──────────────
@@ -902,16 +922,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nVideoHandles<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JLongArray<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(raws) = with_mount(&mut env, handle, |inner| {
+        inner
+            .video_handles()
+            .into_iter()
+            .map(|h| i64::from(h.raw()))
+            .collect::<Vec<i64>>()
+    }) else {
         return JObject::null().into();
     };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    let raws: Vec<i64> = inner
-        .video_handles()
-        .into_iter()
-        .map(|h| i64::from(h.raw()))
-        .collect();
     let arr = match env.new_long_array(raws.len() as i32) {
         Ok(a) => a,
         Err(_) => return JObject::null().into(),
@@ -927,16 +946,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nKlvHandles<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JLongArray<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(raws) = with_mount(&mut env, handle, |inner| {
+        inner
+            .klv_handles()
+            .into_iter()
+            .map(|h| i64::from(h.raw()))
+            .collect::<Vec<i64>>()
+    }) else {
         return JObject::null().into();
     };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    let raws: Vec<i64> = inner
-        .klv_handles()
-        .into_iter()
-        .map(|h| i64::from(h.raw()))
-        .collect();
     let arr = match env.new_long_array(raws.len() as i32) {
         Ok(a) => a,
         Err(_) => return JObject::null().into(),
@@ -952,16 +970,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nAudioHandles<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JLongArray<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(raws) = with_mount(&mut env, handle, |inner| {
+        inner
+            .audio_handles()
+            .into_iter()
+            .map(|h| i64::from(h.raw()))
+            .collect::<Vec<i64>>()
+    }) else {
         return JObject::null().into();
     };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    let raws: Vec<i64> = inner
-        .audio_handles()
-        .into_iter()
-        .map(|h| i64::from(h.raw()))
-        .collect();
     let arr = match env.new_long_array(raws.len() as i32) {
         Ok(a) => a,
         Err(_) => return JObject::null().into(),
@@ -977,16 +994,15 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nSubtitleHandles<'local>
     _class: JClass<'local>,
     handle: jlong,
 ) -> JLongArray<'local> {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
+    let Some(raws) = with_mount(&mut env, handle, |inner| {
+        inner
+            .subtitle_handles()
+            .into_iter()
+            .map(|h| i64::from(h.raw()))
+            .collect::<Vec<i64>>()
+    }) else {
         return JObject::null().into();
     };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    let raws: Vec<i64> = inner
-        .subtitle_handles()
-        .into_iter()
-        .map(|h| i64::from(h.raw()))
-        .collect();
     let arr = match env.new_long_array(raws.len() as i32) {
         Ok(a) => a,
         Err(_) => return JObject::null().into(),
@@ -1004,12 +1020,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nFlush(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner.flush();
+    with_mount(&mut env, handle, |inner| inner.flush());
 }
 
 /// `MountHandle.nResetStats(handle)` — zero all flow counters.
@@ -1019,12 +1030,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nResetStats(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    let Some(ptr) = checked_mount(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: as nPushVideo.
-    let inner = unsafe { &*ptr };
-    inner.reset_stats();
+    with_mount(&mut env, handle, |inner| inner.reset_stats());
 }
 
 /// `MountHandle.nClose(handle)` — free the handle-wrapper box (the mount itself
@@ -1035,8 +1041,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle from Box::into_raw, dropped once (Java zeroes its field).
-        drop(unsafe { Box::from_raw(handle as *mut MountInner) });
-    }
+    // Atomic + idempotent: only the winning close gets the handle wrapper back to
+    // drop. No cancel hook — the mount persists in the server until stop()/close().
+    let _ = REGISTRY_MOUNT.close(handle as u64);
 }

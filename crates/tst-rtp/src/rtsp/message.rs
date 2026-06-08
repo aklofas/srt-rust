@@ -213,17 +213,28 @@ impl RtspRequest {
     /// Validate every header name and value, then serialize to wire bytes.
     ///
     /// This is the injection-safe serialization path used by all real send
-    /// sites in the client: it rejects any header name/value carrying CR,
-    /// LF, NUL, or another ASCII control byte (see [`validate_header_field`])
-    /// before producing a single byte, so a malicious User-Agent /
-    /// Authorization (built from caller credentials) / custom header can
-    /// never smuggle a second header or a whole request onto the wire.
+    /// sites in the client: it rejects any request-line URI or header
+    /// name/value carrying CR, LF, NUL, or another ASCII control byte (see
+    /// [`validate_header_field`]) before producing a single byte, so a
+    /// malicious User-Agent / Authorization (built from caller credentials) /
+    /// custom header / request URI can never smuggle a second header or a
+    /// whole request onto the wire.
+    ///
+    /// The request URI is validated too — not just headers — because the
+    /// SETUP/PLAY request-line URI can derive from a server-provided SDP
+    /// control URL (`a=control:` in the DESCRIBE response). Under Theme B's
+    /// hostile-server model a CRLF there would split the request line exactly
+    /// like a header CRLF. This serializer is THE injection-safe path and is
+    /// complete on its own — it does not rely on an upstream URL parser for
+    /// the security property.
     ///
     /// # Errors
     ///
-    /// - [`RtspError::InvalidHeader`] if any header name or value contains a
-    ///   forbidden control byte. No bytes are written in that case.
+    /// - [`RtspError::InvalidHeader`] if the request URI, any header name, or
+    ///   any header value contains a forbidden control byte. No bytes are
+    ///   written in that case.
     pub(crate) fn encode_checked(&self) -> Result<Bytes, RtspError> {
+        validate_header_field(&self.uri, "request URI contains a control byte")?;
         for (k, v) in &self.headers {
             validate_header_field(k, "header name contains a control byte")?;
             validate_header_field(v, "header value contains a control byte")?;
@@ -808,6 +819,48 @@ mod tests {
             .header("user-agent", "ok\r\nAuthorization: Basic injected");
         // The checked encoder must refuse to produce any bytes.
         assert!(req.encode_checked().is_err());
+    }
+
+    /// The request-line URI is validated too: a CR/LF in the URI splits the
+    /// request line exactly like a header CRLF. Under Theme B's hostile-server
+    /// model the SETUP/PLAY URI can derive from a server-provided SDP control
+    /// URL (`a=control:`), so a malicious server could inject here. The checked
+    /// encoder must reject it before producing any bytes.
+    #[test]
+    fn encode_checked_rejects_crlf_in_request_uri() {
+        let req = RtspRequest::new(
+            RtspMethod::Setup,
+            "rtsp://cam/track1\r\nEvil: injected",
+            RtspVersion::V1_0,
+        )
+        .header("cseq", "2");
+        let e = req.encode_checked().unwrap_err();
+        assert!(matches!(e, RtspError::InvalidHeader { .. }));
+        // Raw-wire: the checked encoder produces NO bytes — no split request line.
+        assert!(req.encode_checked().is_err());
+    }
+
+    /// Realistic vector: a server-provided SDP control URL carrying a CRLF,
+    /// after the client substitutes it as the SETUP request-line URI, is
+    /// rejected before any SETUP byte is sent. This mirrors the substitution
+    /// `RtspSession::setup` performs (an absolute `rtsp://` control URL is used
+    /// verbatim as the request URI).
+    #[test]
+    fn encode_checked_rejects_malicious_sdp_control_url() {
+        // Stand in for `media.control = Some("rtsp://cam/evil\r\n...")` flowing
+        // into `setup_uri` and then into the SETUP request line.
+        let malicious_control_url = "rtsp://cam/track1\r\nAuthorization: Basic injected";
+        let req = RtspRequest::new(
+            RtspMethod::Setup,
+            malicious_control_url.to_string(),
+            RtspVersion::V1_0,
+        )
+        .header("cseq", "3")
+        .header("user-agent", "tst-rtp/0.1");
+        assert!(matches!(
+            req.encode_checked(),
+            Err(RtspError::InvalidHeader { .. })
+        ));
     }
 
     /// A clean request still encodes fine through the checked path (no false

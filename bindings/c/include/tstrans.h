@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 9` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 10` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -98,8 +98,15 @@
  *   cargo feature; now lives in the top-level `muxer` module. Additive —
  *   no symbol removed, no signature changed; SRT builds are unaffected,
  *   non-SRT / no_std builds gain the offline muxer.
+ * - `10` — two appended `TstMultiCellAuReason` values: `OverflowTotal`
+ *   (= 4, aggregate AU-cell byte cap exceeded) and `TooManyPids`
+ *   (= 5, too many in-flight AU PIDs). Both previously fell through to
+ *   `Orphan` (0) via the forward-compat default. Additive — existing
+ *   discriminants 0..=3 are unchanged, no symbol/signature change; a
+ *   consumer now observes the distinct value instead of a misleading
+ *   `Orphan` for these two memory-limit rejections.
  */
-#define TST_ABI_VERSION_MINOR 9
+#define TST_ABI_VERSION_MINOR 10
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -718,6 +725,23 @@ enum tst_multi_cell_au_reason
    * (default 1 MiB). The partial buffer is dropped.
    */
   TST_MULTI_CELL_AU_REASON_OVERFLOW = 3,
+  /**
+   * The aggregate in-flight AU-cell bytes across all PIDs would exceed
+   * [`tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_total`]
+   * (default 16 MiB). Defends a multi-PID flood where each PID stays
+   * under its own per-PID cap but the total explodes. The offending
+   * PID's partial buffer is dropped.
+   */
+  TST_MULTI_CELL_AU_REASON_OVERFLOW_TOTAL = 4,
+  /**
+   * A new `First` cell would open reassembly on a PID beyond
+   * [`tst_core::mpegts::demux::DemuxerConfig::au_cell_max_in_flight_pids`]
+   * (default 64) concurrently in-flight PIDs. Bounds active-PID count
+   * against an adversary that opens a `First` for thousands of distinct
+   * PIDs and never sends `Last`. The new cell is rejected; existing
+   * in-flight reassemblies are left intact.
+   */
+  TST_MULTI_CELL_AU_REASON_TOO_MANY_PIDS = 5,
 };
 #ifndef __cplusplus
 typedef int32_t tst_multi_cell_au_reason;
@@ -1600,7 +1624,8 @@ typedef struct TstEventNonConformant {
    * `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
    * Valid only when `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`;
    * values match `TstMultiCellAuReason` discriminants
-   * (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3).
+   * (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3,
+   * OverflowTotal=4, TooManyPids=5).
    * Zero (Orphan) for unrelated issue codes — gate on `issue_code`
    * before reading. The accompanying `observed_len` field carries
    * the cumulative inner-byte count discarded.

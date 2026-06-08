@@ -249,6 +249,19 @@ pub enum TstMultiCellAuReason {
     /// [`tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid`]
     /// (default 1 MiB). The partial buffer is dropped.
     Overflow = 3,
+    /// The aggregate in-flight AU-cell bytes across all PIDs would exceed
+    /// [`tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_total`]
+    /// (default 16 MiB). Defends a multi-PID flood where each PID stays
+    /// under its own per-PID cap but the total explodes. The offending
+    /// PID's partial buffer is dropped.
+    OverflowTotal = 4,
+    /// A new `First` cell would open reassembly on a PID beyond
+    /// [`tst_core::mpegts::demux::DemuxerConfig::au_cell_max_in_flight_pids`]
+    /// (default 64) concurrently in-flight PIDs. Bounds active-PID count
+    /// against an adversary that opens a `First` for thousands of distinct
+    /// PIDs and never sends `Last`. The new cell is rejected; existing
+    /// in-flight reassemblies are left intact.
+    TooManyPids = 5,
 }
 
 // ------------------------------------------------------------------
@@ -499,7 +512,8 @@ pub struct TstEventNonConformant {
     /// `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
     /// Valid only when `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`;
     /// values match `TstMultiCellAuReason` discriminants
-    /// (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3).
+    /// (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3,
+    /// OverflowTotal=4, TooManyPids=5).
     /// Zero (Orphan) for unrelated issue codes — gate on `issue_code`
     /// before reading. The accompanying `observed_len` field carries
     /// the cumulative inner-byte count discarded.
@@ -1085,6 +1099,8 @@ fn fill_nonconformant(
                     TstMultiCellAuReason::ConcurrentFirst as c_int
                 }
                 MultiCellAuReason::Overflow => TstMultiCellAuReason::Overflow as c_int,
+                MultiCellAuReason::OverflowTotal => TstMultiCellAuReason::OverflowTotal as c_int,
+                MultiCellAuReason::TooManyPids => TstMultiCellAuReason::TooManyPids as c_int,
                 _ => TstMultiCellAuReason::Orphan as c_int,
             };
         }

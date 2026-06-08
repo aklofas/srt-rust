@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 9` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 10` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -228,7 +228,14 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   cargo feature; now lives in the top-level `muxer` module. Additive —
 ///   no symbol removed, no signature changed; SRT builds are unaffected,
 ///   non-SRT / no_std builds gain the offline muxer.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 9;
+/// - `10` — two appended `TstMultiCellAuReason` values: `OverflowTotal`
+///   (= 4, aggregate AU-cell byte cap exceeded) and `TooManyPids`
+///   (= 5, too many in-flight AU PIDs). Both previously fell through to
+///   `Orphan` (0) via the forward-compat default. Additive — existing
+///   discriminants 0..=3 are unchanged, no symbol/signature change; a
+///   consumer now observes the distinct value instead of a misleading
+///   `Orphan` for these two memory-limit rejections.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 10;
 
 // =========================================================================
 // Runtime version accessors

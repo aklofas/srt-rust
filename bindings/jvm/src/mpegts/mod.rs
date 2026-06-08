@@ -10,10 +10,12 @@
 //! Mirrors `bindings/python/src/mpegts.rs` (`convert_*`/`demux_error_to_pyerr`)
 //! decision-for-decision.
 //!
-//! Handle convention: `nOpen` boxes a [`Demuxer`] and returns the raw pointer as
-//! a `jlong`; `nClose` reconstitutes + drops the box (guarded by `handle != 0`);
-//! the per-call fns validate the handle ([`checked_handle`] throws
-//! `IllegalStateException` on a zero handle) before dereferencing.
+//! Handle convention: the `jlong` is an opaque key into a per-type
+//! [`crate::handle::HandleRegistry`] over the [`Demuxer`]; `nOpen`/`nOpenWithConfig`
+//! register via `REGISTRY.insert`; per-call fns lease via `REGISTRY.with`
+//! (mapping a closed/absent handle to a thrown `IllegalStateException`); `nClose`
+//! takes + drops via `REGISTRY.close` (atomic + idempotent, so a double
+//! `close()` is UAF/double-free-safe).
 //!
 //! The sample-record `payload` is a COPIED, Java-owned heap `ByteBuffer` (`ByteBuffer.wrap`
 //! over a fresh `byte[]`). The earlier zero-copy direct-buffer over Rust-owned
@@ -24,6 +26,8 @@
 //! the keystone copies, which is unconditionally safe. See the design spec §5.4.
 
 pub mod muxer;
+
+use std::sync::LazyLock;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
@@ -42,6 +46,10 @@ use crate::codec::aac::build_adts_frame;
 use crate::codec::mpegaudio::build_mpeg2_audio_frame;
 use crate::codec::shared::{build_nal_unit, build_obu};
 use crate::error::{build_codec_exception, throw_demux};
+use crate::handle::HandleRegistry;
+
+/// Per-type leased-handle registry for `org.tstrans.mpegts.Demuxer`.
+static REGISTRY: LazyLock<HandleRegistry<Demuxer>> = LazyLock::new(HandleRegistry::new);
 
 /// `org.tstrans.mpegts.Demuxer.nOpen()` — allocate a [`Demuxer`] and hand the JVM
 /// its raw pointer as a `jlong` handle.
@@ -50,7 +58,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpen<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jlong {
-    Box::into_raw(Box::new(Demuxer::new())) as jlong
+    REGISTRY.insert(Demuxer::new()) as jlong
 }
 
 /// `nOpenWithConfig(...)` — build a configured [`Demuxer`]. The `strict`/`av1`
@@ -80,7 +88,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
         au_cell_cap,
         lenient_psi,
     );
-    Box::into_raw(Box::new(Demuxer::with_config(opts))) as jlong
+    REGISTRY.insert(Demuxer::with_config(opts)) as jlong
 }
 
 /// Assemble a `tst_core` [`DemuxerConfig`] from the 7 marshalled JNI primitives
@@ -133,21 +141,19 @@ pub(crate) fn build_demux_config_from_args(
     opts
 }
 
-/// `nClose(handle)` — drop the boxed [`Demuxer`]. No-op on a zero
-/// (already-closed) handle so a double `close()` is safe.
+/// `nClose(handle)` — take + drop the registered [`Demuxer`]. Atomic +
+/// idempotent via `REGISTRY.close`, so a double `close()` is
+/// UAF/double-free-safe. The demuxer's teardown is a plain drop (no
+/// flush/finalize).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nClose<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: `handle` was produced by `Box::into_raw` in `nOpen` and is
-        // dropped exactly once (Java zeroes its field after this call).
-        unsafe {
-            drop(Box::from_raw(handle as *mut Demuxer));
-        }
-    }
+    // The winning close gets the demuxer back; it has no extra teardown, so just
+    // let it drop here.
+    let _ = REGISTRY.close(handle as u64);
 }
 
 /// `nFeed(handle, bytes)` — read the Java byte array into a Rust buffer and feed
@@ -161,13 +167,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
     handle: jlong,
     bytes: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_handle(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: `checked_handle` rejected 0; the pointer is a live `Box<Demuxer>`
-    // from `nOpen` (single-threaded use per spec §5.5).
-    let dx = unsafe { &mut *ptr };
-
     let buf = match env.convert_byte_array(&bytes) {
         Ok(b) => b,
         Err(_) => {
@@ -176,8 +175,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
         }
     };
 
-    if let Err(e) = dx.feed(&buf) {
-        throw_demux_error(&mut env, &e);
+    match REGISTRY.with(handle as u64, |dx| dx.feed(&buf)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_demux_error(&mut env, &e),
+        None => closed(&mut env),
     }
 }
 
@@ -207,12 +208,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    let Some(ptr) = checked_handle(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let dx = unsafe { &mut *ptr };
-    dx.flush();
+    if REGISTRY.with(handle as u64, |dx| dx.flush()).is_none() {
+        closed(&mut env);
+    }
 }
 
 /// `nNextEvent(handle)` — pull the next event, converting it to a Java
@@ -226,41 +224,43 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_handle(&mut env, handle) else {
-        return JObject::null().into_raw();
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let dx = unsafe { &mut *ptr };
-
-    loop {
-        let Some(ev) = dx.next_event() else {
-            return JObject::null().into_raw();
-        };
-        match convert_event(&mut env, &ev) {
-            Ok(Some(obj)) => return obj.into_raw(),
-            // All current `DemuxEvent` variants map to `Ok(Some(..))`, so this
-            // branch is currently unreachable; retained as a forward-compat
-            // guard should a future skip-worthy variant appear.
-            Ok(None) => continue,
-            Err(()) => {
-                throw_demux(&mut env, "INTERNAL", "event conversion failed");
+    // Lease + drive the pull loop under the resource lock. `with` runs the
+    // closure synchronously, so capturing `&mut env` to build the Java record
+    // in-place is sound. `None` (closed/absent) → IllegalStateException.
+    let env = &mut env;
+    let result = REGISTRY.with(handle as u64, |dx| {
+        loop {
+            let Some(ev) = dx.next_event() else {
                 return JObject::null().into_raw();
+            };
+            match convert_event(env, &ev) {
+                Ok(Some(obj)) => return obj.into_raw(),
+                // All current `DemuxEvent` variants map to `Ok(Some(..))`, so this
+                // branch is currently unreachable; retained as a forward-compat
+                // guard should a future skip-worthy variant appear.
+                Ok(None) => continue,
+                Err(()) => {
+                    throw_demux(env, "INTERNAL", "event conversion failed");
+                    return JObject::null().into_raw();
+                }
             }
+        }
+    });
+    match result {
+        Some(obj) => obj,
+        None => {
+            closed(env);
+            JObject::null().into_raw()
         }
     }
 }
 
-/// Validate a native handle. Returns the live `*mut Demuxer`, or throws
-/// `IllegalStateException` and returns `None` for a zero (closed) handle. This is
-/// the native-side enforcement of the same closed-handle contract the Java
-/// `ensureOpen()` already checks — the JNI boundary fails closed even if a
+/// Throw `IllegalStateException` for a leased call that found a closed/absent
+/// handle — the native-side enforcement of the same closed-handle contract the
+/// Java `ensureOpen()` already checks, so the JNI boundary fails closed even if a
 /// private native method is reached by reflection.
-fn checked_handle(env: &mut JNIEnv, handle: jlong) -> Option<*mut Demuxer> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Demuxer is closed");
-        return None;
-    }
-    Some(handle as *mut Demuxer)
+fn closed(env: &mut JNIEnv) {
+    let _ = env.throw_new("java/lang/IllegalStateException", "Demuxer is closed");
 }
 
 /// Convert one `DemuxEvent` to a Java `DemuxEvent` record.

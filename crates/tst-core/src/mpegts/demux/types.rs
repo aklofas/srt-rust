@@ -61,11 +61,23 @@ pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 /// of target packs is ~hundreds of KB at most); well below the
 /// per-PES default. Configurable via
 /// [`DemuxerBuilder::au_cell_cap_per_pid`].
-//
-// Task 4 wires this into the reassembler; until then the const is
-// surfaced only to docs (referenced via `Self::au_cell_cap_per_pid`).
-#[allow(dead_code)]
 pub(super) const DEFAULT_AU_CELL_CAP_PER_PID: usize = 1024 * 1024;
+
+/// Default aggregate AU cell reassembly cap across all PIDs (16 MiB).
+/// Defends a multi-PID flood where each PID stays under its own per-PID
+/// cap but the in-flight total explodes — mirrors `DEFAULT_PES_CAP_TOTAL`.
+/// 16 PIDs at the per-PID default (1 MiB) fit; breach surfaces as
+/// `NonConformantIssue::MultiCellAu { reason: OverflowTotal, .. }` and the
+/// offending PID's partial buffer is dropped.
+pub(super) const DEFAULT_AU_CELL_CAP_TOTAL: usize = 16 * 1024 * 1024;
+
+/// Default ceiling on concurrently in-flight AU-cell reassembly PIDs (64).
+/// Real STANAG 4609 streams carry a small number of metadata PIDs; 64 is
+/// generous headroom. Bounds active-PID state against an adversary opening
+/// a `First` for thousands of distinct PIDs without ever sending `Last`.
+/// Breach surfaces as
+/// `NonConformantIssue::MultiCellAu { reason: TooManyPids, .. }`.
+pub(super) const DEFAULT_AU_CELL_MAX_IN_FLIGHT_PIDS: usize = 64;
 
 /// Caller-supplied overrides for the demuxer.
 ///
@@ -120,6 +132,24 @@ pub struct DemuxerConfig {
     /// unusually large sync-metadata AUs; tune down for adversarial-input
     /// scenarios where faster failure is preferable.
     pub au_cell_cap_per_pid: Option<usize>,
+    /// Aggregate cap on in-flight AU cell reassembly bytes across all PIDs.
+    /// `None` uses `DEFAULT_AU_CELL_CAP_TOTAL` (16 MiB). When buffering a
+    /// cell would push the aggregate total over this, the demuxer drops
+    /// the offending PID's buffer and emits
+    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with
+    /// `reason = MultiCellAuReason::OverflowTotal`. Defends a multi-PID
+    /// flood where each PID stays under `au_cell_cap_per_pid` but the
+    /// aggregate explodes.
+    pub au_cell_cap_total: Option<usize>,
+    /// Ceiling on the number of PIDs with a concurrently in-flight AU cell
+    /// reassembly (an open `First` awaiting its `Last`). `None` uses
+    /// `DEFAULT_AU_CELL_MAX_IN_FLIGHT_PIDS` (64). A `First` cell that would
+    /// open reassembly on a PID beyond this is rejected with
+    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`]
+    /// `reason = MultiCellAuReason::TooManyPids`; existing reassemblies are
+    /// left intact. Bounds active-PID state against an adversary opening a
+    /// `First` for thousands of distinct PIDs without ever sending `Last`.
+    pub au_cell_max_in_flight_pids: Option<usize>,
     /// Tolerate sync-metadata AU cells that arrive with
     /// `cell_fragment_indication` bits set to `0b00` (middle) or `0b01`
     /// (last) when there is no active reassembly buffer for the PID.
@@ -174,6 +204,8 @@ impl Default for DemuxerConfig {
             lenient_psi_reassembly: false,
             av1_carriage: crate::mpegts::mux::Av1CarriageMode::default(),
             au_cell_cap_per_pid: None,
+            au_cell_cap_total: None,
+            au_cell_max_in_flight_pids: None,
             // Tolerance-by-default — see field rustdoc above.
             cfi_tolerance: true,
         }
@@ -252,6 +284,20 @@ impl DemuxerBuilder {
     /// [`DemuxerConfig::au_cell_cap_per_pid`].
     pub fn au_cell_cap_per_pid(mut self, bytes: usize) -> Self {
         self.options.au_cell_cap_per_pid = Some(bytes);
+        self
+    }
+
+    /// Set the aggregate AU cell reassembly cap across all PIDs. See
+    /// [`DemuxerConfig::au_cell_cap_total`].
+    pub fn au_cell_cap_total(mut self, bytes: usize) -> Self {
+        self.options.au_cell_cap_total = Some(bytes);
+        self
+    }
+
+    /// Set the ceiling on concurrently in-flight AU cell reassembly PIDs.
+    /// See [`DemuxerConfig::au_cell_max_in_flight_pids`].
+    pub fn au_cell_max_in_flight_pids(mut self, pids: usize) -> Self {
+        self.options.au_cell_max_in_flight_pids = Some(pids);
         self
     }
 

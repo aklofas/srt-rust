@@ -2875,7 +2875,9 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Me
 pub tst_core::mpegts::demux::event::MultiCellAuReason::ConcurrentFirst
 pub tst_core::mpegts::demux::event::MultiCellAuReason::Orphan
 pub tst_core::mpegts::demux::event::MultiCellAuReason::Overflow
+pub tst_core::mpegts::demux::event::MultiCellAuReason::OverflowTotal
 pub tst_core::mpegts::demux::event::MultiCellAuReason::SequenceGap
+pub tst_core::mpegts::demux::event::MultiCellAuReason::TooManyPids
 impl core::clone::Clone for tst_core::mpegts::demux::event::MultiCellAuReason
 pub fn tst_core::mpegts::demux::event::MultiCellAuReason::clone(&self) -> tst_core::mpegts::demux::event::MultiCellAuReason
 impl core::cmp::Eq for tst_core::mpegts::demux::event::MultiCellAuReason
@@ -4090,6 +4092,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::demuxer::
 pub struct tst_core::mpegts::demux::DemuxerBuilder
 impl tst_core::mpegts::demux::DemuxerBuilder
 pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_total(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_max_in_flight_pids(self, usize) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::av1_carriage(self, tst_core::mpegts::mux::Av1CarriageMode) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::build(self) -> tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::DemuxerBuilder::cfi_tolerance(self, bool) -> Self
@@ -4112,6 +4116,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::Demuxe
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 #[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
 pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid: core::option::Option<usize>
+pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_total: core::option::Option<usize>
+pub tst_core::mpegts::demux::DemuxerConfig::au_cell_max_in_flight_pids: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::av1_carriage: tst_core::mpegts::mux::Av1CarriageMode
 pub tst_core::mpegts::demux::DemuxerConfig::cfi_tolerance: bool
 pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>

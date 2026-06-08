@@ -383,6 +383,19 @@ pub enum MultiCellAuReason {
     /// [`crate::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid`]
     /// (default 1 MiB). The partial buffer is dropped.
     Overflow,
+    /// The aggregate in-flight AU-cell bytes across all PIDs would exceed
+    /// [`crate::mpegts::demux::DemuxerConfig::au_cell_cap_total`]
+    /// (default 16 MiB). Defends a multi-PID flood where each PID stays
+    /// under its own per-PID cap but the total explodes. The offending
+    /// PID's partial buffer is dropped.
+    OverflowTotal,
+    /// A new `First` cell would open reassembly on a PID beyond
+    /// [`crate::mpegts::demux::DemuxerConfig::au_cell_max_in_flight_pids`]
+    /// (default 64) concurrently in-flight PIDs. Bounds active-PID count
+    /// against an adversary that opens a `First` for thousands of distinct
+    /// PIDs and never sends `Last`. The new cell is rejected; existing
+    /// in-flight reassemblies are left intact.
+    TooManyPids,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -993,6 +1006,12 @@ impl core::fmt::Display for NonConformantIssue {
                     MultiCellAuReason::SequenceGap => "sequence_number gap",
                     MultiCellAuReason::ConcurrentFirst => "new First while buffering previous AU",
                     MultiCellAuReason::Overflow => "buffer exceeded au_cell_cap_per_pid",
+                    MultiCellAuReason::OverflowTotal => {
+                        "aggregate buffers exceeded au_cell_cap_total"
+                    }
+                    MultiCellAuReason::TooManyPids => {
+                        "in-flight PID count exceeded au_cell_max_in_flight_pids"
+                    }
                 };
                 write!(
                     f,

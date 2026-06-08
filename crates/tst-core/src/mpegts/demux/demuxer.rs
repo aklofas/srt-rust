@@ -20,8 +20,8 @@ use crate::mpegts::demux::pes::Reassembler;
 use crate::mpegts::demux::psi_assembler::PsiSectionAssembler;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use crate::mpegts::demux::types::{
-    DEFAULT_AU_CELL_CAP_PER_PID, DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig,
-    DemuxerStats, ProgramTracker,
+    DEFAULT_AU_CELL_CAP_PER_PID, DEFAULT_AU_CELL_CAP_TOTAL, DEFAULT_AU_CELL_MAX_IN_FLIGHT_PIDS,
+    DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig, DemuxerStats, ProgramTracker,
 };
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec::Vec;
@@ -171,6 +171,12 @@ impl Demuxer {
         let au_cap = config
             .au_cell_cap_per_pid
             .unwrap_or(DEFAULT_AU_CELL_CAP_PER_PID);
+        let au_cap_total = config
+            .au_cell_cap_total
+            .unwrap_or(DEFAULT_AU_CELL_CAP_TOTAL);
+        let au_max_pids = config
+            .au_cell_max_in_flight_pids
+            .unwrap_or(DEFAULT_AU_CELL_MAX_IN_FLIGHT_PIDS);
         // Seed the PAT PID (0x0000) so the PSI assembler is ready without a
         // separate "first packet" initialisation step.
         let mut psi_assemblers: HashMap<u16, PsiSectionAssembler> = HashMap::new();
@@ -204,7 +210,11 @@ impl Demuxer {
             av1_registration_malformed_emitted: HashSet::new(),
             subtitle_descriptor_ambiguous_emitted: HashSet::new(),
             pid_to_program: HashMap::new(),
-            au_reassembler: crate::mpegts::demux::au_reassemble::AuCellReassembler::new(au_cap),
+            au_reassembler: crate::mpegts::demux::au_reassemble::AuCellReassembler::with_limits(
+                au_cap,
+                au_cap_total,
+                au_max_pids,
+            ),
         }
     }
 

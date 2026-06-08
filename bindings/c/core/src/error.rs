@@ -603,6 +603,11 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
         NoMp2tMedia => TstError::RtspNotFound,
         MultipleMp2tMedia { .. } => TstError::RtspNotFound,
         Url(_) => TstError::RtspProtocol,
+        // A header name/value (or the request-line URI) carried a CR/LF/NUL/
+        // control byte and was rejected before reaching the wire — a caller-side
+        // protocol violation (mirrors the JVM/Python InvalidHeader → protocol
+        // mapping).
+        InvalidHeader { .. } => TstError::RtspProtocol,
         // Required by #[non_exhaustive] — future variants fall through to the
         // generic protocol-error bucket. CI ratchet catches any new variant
         // that was not explicitly mapped above.

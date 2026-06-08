@@ -6682,6 +6682,18 @@ item = "tst_rtp::packet::RtpParseError::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rtp::rtcp::RtcpError::clone"
+reason = "round-2 T2-RTCP-ENC fallible encoders (2026-06-08); derived; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rtp::rtcp::RtcpError::eq"
+reason = "round-2 T2-RTCP-ENC fallible encoders (2026-06-08); derived; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rtp::rtcp::RtcpError::fmt"
+reason = "round-2 T2-RTCP-ENC fallible encoders (2026-06-08); Debug+Display; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_rtp::parse_rtp_info"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

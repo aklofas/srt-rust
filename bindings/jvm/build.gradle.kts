@@ -118,6 +118,14 @@ tasks.test {
     testLogging { showStandardStreams = true }
 }
 
+// javac (like javadoc below) defaults to the platform charset, which is
+// windows-1252 on the Windows CI runner and rejects the UTF-8 arrows / § /
+// em-dashes that appear in source comments. Force UTF-8 so main + test
+// compilation is deterministic across every platform.
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
+
 // --- Completeness guard: in staging mode, fail `jar` if any gating native lib
 //     is missing (no silent truncation).
 tasks.named<Jar>("jar") {

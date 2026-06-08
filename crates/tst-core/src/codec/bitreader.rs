@@ -111,8 +111,13 @@ impl<'a> BitReader<'a> {
     /// Signed Exp-Golomb (se(v)) per H.265 §9.2.3.
     pub fn read_se(&mut self) -> Result<i32, CodecParseError> {
         let v = self.read_ue()?;
+        // `v >> 1` is always <= i32::MAX, so the `as i32` cast can't truncate;
+        // but the `+ 1` overflows when v == u32::MAX (debug-panic / release-wrap).
+        // Saturate (the spec se(v) is unrepresentable for such adversarial input,
+        // and codec parsers discard the value — this just avoids the panic on a
+        // crafted ~62-bit Exp-Golomb codeword).
         Ok(if v & 1 == 1 {
-            ((v >> 1) as i32) + 1
+            ((v >> 1) as i32).saturating_add(1)
         } else {
             -((v >> 1) as i32)
         })

@@ -86,13 +86,31 @@ jobs:
         # 2026-05-29). pip drops meson.exe into the Python Scripts dir that is
         # already on PATH, sidestepping the MSI PATH-refresh problem entirely.
         if: matrix.name == 'windows-msvc'
+        # Run under bash with `set -euo pipefail`, NOT the default pwsh. pwsh
+        # only checks the LAST command's exit code, so a choco failure followed
+        # by a successful `pip install` was marked success — and choco can even
+        # exit 0 when a package fetch 504s (community feed flake, CI red
+        # 2026-06-08: ripgrep silently not installed, only caught downstream by
+        # the fail-closed ratchet). bash `set -e` fails fast on a non-zero
+        # command; the explicit per-tool `command -v` check below additionally
+        # catches choco's exit-0-but-didn't-install case (which `set -e` alone
+        # would miss).
+        shell: bash
         run: |
+          set -euo pipefail
           # pkgconfiglite provides pkg-config so librist's meson can find the
           # shared vendor/mbedtls 3.6.x via PKG_CONFIG_PATH (rist-sys build.rs)
           # instead of falling back to its bundled contrib/mbedtls 2.26.0 — a
           # version mismatch with libsrt's mbedTLS would corrupt shared state.
           choco install -y --no-progress ninja ripgrep pkgconfiglite
           python -m pip install --upgrade meson
+          # Verify each prerequisite is actually on PATH — choco can return 0
+          # without installing a package (feed 504), and a silently-missing tool
+          # must red THIS step, not a confusing later one.
+          for tool in rg ninja meson pkg-config; do
+            command -v "$tool" >/dev/null 2>&1 || { echo "FAIL: '$tool' not on PATH after prereq install (choco/pip fetch likely failed)"; exit 1; }
+          done
+          rg --version | head -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

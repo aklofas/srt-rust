@@ -24,6 +24,70 @@ use crate::url::RtspVersion;
 /// from declaring a multi-GB body and driving the process to OOM.
 pub(crate) const MAX_RTSP_BODY_BYTES: usize = 1024 * 1024; // 1 MiB
 
+/// Strictly interpret a `Content-Length` header value (already trimmed by the
+/// header parser) into a body length, rejecting hostile inputs.
+///
+/// - absent → `Ok(0)` (no body)
+/// - present but unparseable (e.g. `nope`) → `Err`
+/// - present and `> u64::MAX` / overflows `usize` → `Err`
+/// - present and `> MAX_RTSP_BODY_BYTES` → `Err`
+///
+/// Returning a silent `0` for a malformed/oversized value would let the
+/// remaining declared-body bytes desync the framing (request smuggling), so
+/// every non-clean value is an error.
+pub(crate) fn parse_content_length(value: Option<&str>) -> Result<usize, &'static str> {
+    let Some(raw) = value else {
+        return Ok(0);
+    };
+    let n: usize = raw
+        .trim()
+        .parse()
+        .map_err(|_| "unparseable Content-Length")?;
+    if n > MAX_RTSP_BODY_BYTES {
+        return Err("Content-Length exceeds maximum");
+    }
+    Ok(n)
+}
+
+/// Scan raw RTSP header text (everything before the terminating CRLFCRLF) for
+/// the `Content-Length` value, applying the same strict rules as
+/// [`parse_content_length`] plus duplicate-header rejection.
+///
+/// Used by the interleaved framing pumps, which scan header lines directly
+/// rather than building a [`HashMap`]. Returns the strict body length on
+/// success, or an error detail string on a malformed/oversized/duplicate
+/// Content-Length.
+pub(crate) fn content_length_from_header_text(header_text: &str) -> Result<usize, &'static str> {
+    let mut found: Option<&str> = None;
+    for line in header_text.lines() {
+        // Case-insensitive "content-length:" prefix without allocating per line.
+        let Some(colon) = line.find(':') else {
+            continue;
+        };
+        if line[..colon].trim().eq_ignore_ascii_case("content-length") {
+            if found.is_some() {
+                return Err("duplicate Content-Length header");
+            }
+            found = Some(line[colon + 1..].trim());
+        }
+    }
+    parse_content_length(found)
+}
+
+/// Insert a parsed header, rejecting a duplicate `Content-Length` (a classic
+/// request-smuggling vector that a last-wins `HashMap` would otherwise hide).
+fn insert_header_strict(
+    headers: &mut HashMap<String, String>,
+    name: String,
+    value: String,
+) -> Result<(), &'static str> {
+    if name == "content-length" && headers.contains_key("content-length") {
+        return Err("duplicate Content-Length header");
+    }
+    headers.insert(name, value);
+    Ok(())
+}
+
 /// An RTSP request we construct on the client side.
 ///
 /// Wraps a method + URI + version + headers + body and serializes to the
@@ -194,20 +258,25 @@ impl RtspResponse {
             })?;
             let k = line[..colon].trim().to_ascii_lowercase();
             let v = line[colon + 1..].trim().to_string();
-            headers.insert(k, v);
+            insert_header_strict(&mut headers, k, v)
+                .map_err(|detail| RtspError::BadResponse { detail })?;
         }
 
-        let content_length: usize = headers
-            .get("content-length")
-            .map(|s| s.parse().unwrap_or(0))
-            .unwrap_or(0);
+        let content_length =
+            parse_content_length(headers.get("content-length").map(String::as_str))
+                .map_err(|detail| RtspError::BadResponse { detail })?;
         let body_start = header_end + 4;
-        if input.len() < body_start + content_length {
+        let body_end = body_start
+            .checked_add(content_length)
+            .ok_or(RtspError::BadResponse {
+                detail: "Content-Length body offset overflow",
+            })?;
+        if input.len() < body_end {
             return Err(RtspError::BadResponse {
                 detail: "truncated body (Content-Length larger than available)",
             });
         }
-        let body = Bytes::copy_from_slice(&input[body_start..body_start + content_length]);
+        let body = Bytes::copy_from_slice(&input[body_start..body_end]);
         Ok((
             Self {
                 version,
@@ -216,7 +285,7 @@ impl RtspResponse {
                 headers,
                 body,
             },
-            body_start + content_length,
+            body_end,
         ))
     }
 
@@ -365,32 +434,28 @@ impl RtspRequest {
             })?;
             let name = line[..colon].trim().to_ascii_lowercase();
             let value = line[colon + 1..].trim().to_string();
-            headers.insert(name, value);
+            insert_header_strict(&mut headers, name, value)
+                .map_err(|detail| RtspError::BadResponse { detail })?;
         }
 
         // 4. Read body per Content-Length, if any.
         //
         // Hard cap: RTSP requests from push-side clients have at most a small
         // SDP/SDP-offer body. Anything larger is either malformed or an attempt
-        // to drive unbounded memory use (OOM DoS). Reject at parse time so the
-        // session loop can send 413 and close without buffering.
-        let content_length: usize = match headers
-            .get("content-length")
-            .and_then(|v| v.parse::<usize>().ok())
-        {
-            None => 0,
-            Some(n) if n > MAX_RTSP_BODY_BYTES => {
-                return Err(RtspError::BadResponse {
-                    detail: "Content-Length exceeds server maximum",
-                });
-            }
-            Some(n) => n,
-        };
+        // to drive unbounded memory use (OOM DoS). An unparseable, oversized,
+        // or duplicate Content-Length is rejected at parse time (not silently
+        // coerced to 0, which would desync the framing) so the session loop can
+        // send 413/400 and close without buffering.
+        let content_length =
+            parse_content_length(headers.get("content-length").map(String::as_str))
+                .map_err(|detail| RtspError::BadResponse { detail })?;
         let body_start = header_end + 4;
-        // Checked addition: body_start is at most input.len() (the header_end
-        // search is within input), so overflow would require content_length to
-        // wrap usize — guarded by the cap above.
-        let body_end = body_start.saturating_add(content_length);
+        // Checked addition guards against a body offset wrapping usize.
+        let body_end = body_start
+            .checked_add(content_length)
+            .ok_or(RtspError::BadResponse {
+                detail: "Content-Length body offset overflow",
+            })?;
         if input.len() < body_end {
             return Err(RtspError::BadResponse {
                 detail: "truncated body",
@@ -476,6 +541,73 @@ mod tests {
         let raw = b"RTSP/3.0 200 OK\r\nCSeq: 1\r\n\r\n";
         let e = RtspResponse::parse(raw).unwrap_err();
         assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    // --- B1: strict Content-Length (adversarial) ---
+
+    #[test]
+    fn parse_rejects_unparseable_content_length() {
+        // A non-numeric Content-Length must NOT silently become a 0-length
+        // body (request-smuggling / desync); it must error.
+        let raw = b"RTSP/1.0 200 OK\r\nContent-Length: nope\r\n\r\n";
+        let e = RtspResponse::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn parse_rejects_oversized_content_length() {
+        // u64::MAX overflows usize parse on 32-bit and exceeds the cap on
+        // 64-bit; either way must error, never wrap to 0.
+        let raw = b"RTSP/1.0 200 OK\r\nContent-Length: 18446744073709551615\r\n\r\n";
+        let e = RtspResponse::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn parse_rejects_content_length_over_cap() {
+        let raw = format!(
+            "RTSP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n",
+            MAX_RTSP_BODY_BYTES + 1
+        )
+        .into_bytes();
+        let e = RtspResponse::parse(&raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_content_length() {
+        // Two Content-Length headers — classic smuggling vector. Must error,
+        // not last-wins into a HashMap.
+        let raw = b"RTSP/1.0 200 OK\r\nContent-Length: 5\r\nContent-Length: 0\r\n\r\nHELLO";
+        let e = RtspResponse::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    // The interleaved framing pumps (server + client) and the synchronous
+    // interleaved reader all share `content_length_from_header_text`. Lock its
+    // behavior across every branch here.
+    #[test]
+    fn content_length_from_header_text_strict() {
+        assert_eq!(content_length_from_header_text("CSeq: 1").unwrap(), 0);
+        assert_eq!(
+            content_length_from_header_text("Content-Length: 5").unwrap(),
+            5
+        );
+        // Case-insensitive header name.
+        assert_eq!(
+            content_length_from_header_text("content-length: 7").unwrap(),
+            7
+        );
+        assert!(content_length_from_header_text("Content-Length: nope").is_err());
+        assert!(content_length_from_header_text("Content-Length: 18446744073709551615").is_err());
+        assert!(
+            content_length_from_header_text(&format!(
+                "Content-Length: {}",
+                MAX_RTSP_BODY_BYTES + 1
+            ))
+            .is_err()
+        );
+        assert!(content_length_from_header_text("Content-Length: 5\r\nContent-Length: 0").is_err());
     }
 }
 
@@ -583,5 +715,41 @@ mod request_parse_tests {
         assert!(wire.ends_with(body));
         // And the CRLFCRLF header terminator should be present somewhere inside.
         assert!(wire.windows(4).any(|w| w == b"\r\n\r\n"));
+    }
+
+    // --- B1: strict Content-Length (adversarial) ---
+
+    #[test]
+    fn request_rejects_unparseable_content_length() {
+        let raw = b"SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: nope\r\n\r\n";
+        let e = RtspRequest::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn request_rejects_oversized_content_length() {
+        let raw =
+            b"SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: 18446744073709551615\r\n\r\n";
+        let e = RtspRequest::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn request_rejects_content_length_over_cap() {
+        let raw = format!(
+            "SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: {}\r\n\r\n",
+            MAX_RTSP_BODY_BYTES + 1
+        )
+        .into_bytes();
+        let e = RtspRequest::parse(&raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn request_rejects_duplicate_content_length() {
+        let raw =
+            b"SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: 5\r\nContent-Length: 0\r\n\r\nHELLO";
+        let e = RtspRequest::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
     }
 }

@@ -43,6 +43,7 @@ use bytes::Bytes;
 
 use crate::packet::RTP_HEADER_LEN;
 use crate::rtsp::client::Stream;
+use crate::rtsp::message::content_length_from_header_text;
 
 /// Stats observable from outside the pump thread.
 #[derive(Debug, Default)]
@@ -219,16 +220,35 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                                 continue;
                             }
                         };
-                        let content_length: usize = header_text
-                            .lines()
-                            .find_map(|line| {
-                                let lower = line.to_ascii_lowercase();
-                                lower
-                                    .strip_prefix("content-length:")
-                                    .and_then(|v| v.trim().parse().ok())
-                            })
-                            .unwrap_or(0);
-                        let msg_end = end + 4 + content_length;
+                        // Strict Content-Length: unparseable, oversized
+                        // (> MAX_RTSP_BODY_BYTES), or duplicate are all hostile.
+                        // Silently coercing to 0 would desync framing, and an
+                        // uncapped length would let a peer drive unbounded
+                        // buffering — close the pump instead.
+                        let content_length = match content_length_from_header_text(header_text) {
+                            Ok(n) => n,
+                            Err(detail) => {
+                                tracing::warn!(
+                                    target: "tst_rtp::client::pump",
+                                    detail,
+                                    "malformed RTSP Content-Length; pump exiting"
+                                );
+                                stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                        };
+                        // content_length <= MAX_RTSP_BODY_BYTES and end < buf.len(),
+                        // so this can't overflow; checked_add for defense in depth.
+                        let msg_end = match end
+                            .checked_add(4)
+                            .and_then(|e| e.checked_add(content_length))
+                        {
+                            Some(m) => m,
+                            None => {
+                                stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                        };
                         if buf.len() < msg_end {
                             break; // Need more bytes for the body.
                         }

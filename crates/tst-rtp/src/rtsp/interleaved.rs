@@ -15,6 +15,7 @@ use std::sync::Mutex;
 use bytes::Bytes;
 
 use crate::error::RtspError;
+use crate::rtsp::message::content_length_from_header_text;
 
 /// One demuxed unit from the interleaved TCP stream.
 #[derive(Debug, Clone)]
@@ -131,16 +132,12 @@ impl<R: BufRead> InterleavedReader<R> {
         let header_text = std::str::from_utf8(&headers).map_err(|_| RtspError::BadResponse {
             detail: "non-UTF8 RTSP headers",
         })?;
-        let mut content_length = 0usize;
-        for line in header_text.split("\r\n") {
-            if let Some(rest) = line
-                .strip_prefix("Content-Length:")
-                .or_else(|| line.strip_prefix("content-length:"))
-            {
-                content_length = rest.trim().parse().unwrap_or(0);
-                break;
-            }
-        }
+        // Strict Content-Length: an unparseable, oversized (> cap), or
+        // duplicate value is rejected rather than silently treated as a
+        // 0-length body (which would desync framing) or an uncapped allocation
+        // (OOM DoS via `vec![0u8; content_length]`).
+        let content_length = content_length_from_header_text(header_text)
+            .map_err(|detail| RtspError::BadResponse { detail })?;
         let mut body = vec![0u8; content_length];
         if content_length > 0 {
             self.inner

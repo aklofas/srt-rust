@@ -32,7 +32,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::rtsp::message::MAX_RTSP_BODY_BYTES;
+use crate::rtsp::message::content_length_from_header_text;
 use crate::rtsp::server::session::MAX_RTSP_REQUEST_BYTES;
 
 /// Stats observable from outside the pump task.
@@ -167,33 +167,38 @@ pub(crate) fn spawn_server_pump(
                             continue;
                         }
                     };
-                    let content_length: usize = match header_text.lines().find_map(|line| {
-                        let lower = line.to_ascii_lowercase();
-                        lower
-                            .strip_prefix("content-length:")
-                            .and_then(|v| v.trim().parse::<usize>().ok())
-                    }) {
-                        None => 0,
-                        Some(n) if n > MAX_RTSP_BODY_BYTES => {
-                            // Content-Length exceeds our cap. We cannot simply
-                            // drain the headers and continue: the declared body
-                            // bytes still sit at the front of `buf`, don't begin
-                            // with `$`, re-enter this RTSP-text branch, never find
-                            // a CRLFCRLF, and the outer loop keeps reading forever
-                            // (unbounded growth). A hostile oversized declared
-                            // body on an interleaved control channel is best
-                            // answered by closing the pump.
+                    // Strict Content-Length: unparseable, oversized (> cap), or
+                    // duplicate are all hostile. We cannot simply drain the
+                    // headers and continue on a bad declared length: the declared
+                    // body bytes still sit at the front of `buf`, don't begin with
+                    // `$`, re-enter this RTSP-text branch, never find a CRLFCRLF,
+                    // and the outer loop keeps reading forever (unbounded growth /
+                    // desync). The safe answer on an interleaved control channel
+                    // is to close the pump.
+                    let content_length = match content_length_from_header_text(header_text) {
+                        Ok(n) => n,
+                        Err(detail) => {
                             tracing::warn!(
                                 target: "tst_rtp::server::pump",
-                                content_length = n,
-                                "RTSP Content-Length exceeds cap on interleaved channel; closing pump"
+                                detail,
+                                "malformed RTSP Content-Length on interleaved channel; closing pump"
                             );
                             stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
                             return;
                         }
-                        Some(n) => n,
                     };
-                    let msg_end = end + 4 + content_length;
+                    // content_length <= MAX_RTSP_BODY_BYTES and end < buf.len(),
+                    // so this can't overflow; checked_add for defense in depth.
+                    let msg_end = match end
+                        .checked_add(4)
+                        .and_then(|e| e.checked_add(content_length))
+                    {
+                        Some(m) => m,
+                        None => {
+                            stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                            return;
+                        }
+                    };
                     if buf.len() < msg_end {
                         break; // need more
                     }

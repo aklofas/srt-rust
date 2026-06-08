@@ -11,6 +11,7 @@ module org.tstrans {
     exports org.tstrans.io;
     exports org.tstrans.klv;
     exports org.tstrans.mpegts;
+    exports org.tstrans.pipeline;
     exports org.tstrans.rtp;
     exports org.tstrans.srt;
 }

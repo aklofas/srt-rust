@@ -206,14 +206,31 @@ impl Socket {
     }
 
     /// Internal: wrap an already-accepted handle (called from `Listener::accept`).
+    ///
+    /// **Leak safety:** the raw accepted `handle` is wrapped in the owning
+    /// `Socket` (Drop active → `srt_close`) BEFORE any fallible option is
+    /// applied. A failed `set_int` therefore early-returns through `?` and the
+    /// constructed `Socket` is dropped, closing the descriptor — never leaking
+    /// the accepted SRT socket. (Previously options were applied to the bare
+    /// `handle` before any owner existed, so an early return leaked the fd.)
     pub(crate) fn from_accepted(
         handle: srt_sys::SRTSOCKET,
         send_timeout: Option<Duration>,
         recv_timeout: Option<Duration>,
     ) -> Result<Self, IoError> {
+        let cached_stream_id = read_stream_id(handle);
+        let cached_payload_limit = read_payload_size(handle);
+        // Construct the owner first so its Drop closes `handle` on any early
+        // return below. Option application now goes through the owned socket.
+        let socket = Self {
+            handle,
+            cancel: make_cancel_handle(handle),
+            cached_stream_id,
+            cached_payload_limit,
+        };
         if let Some(t) = send_timeout {
             set_int(
-                handle,
+                socket.handle,
                 srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO,
                 duration_to_ms(t),
             )
@@ -221,20 +238,13 @@ impl Socket {
         }
         if let Some(t) = recv_timeout {
             set_int(
-                handle,
+                socket.handle,
                 srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
                 duration_to_ms(t),
             )
             .map_err(io_from_option_error)?;
         }
-        let cached_stream_id = read_stream_id(handle);
-        let cached_payload_limit = read_payload_size(handle);
-        Ok(Self {
-            handle,
-            cancel: make_cancel_handle(handle),
-            cached_stream_id,
-            cached_payload_limit,
-        })
+        Ok(socket)
     }
 
     /// Send a buffer. Returns bytes sent. Live mode requires `buf.len() ≤ payload_size`.
@@ -891,6 +901,139 @@ mod tests {
     /// libsrt, we verify by checking that explicit close().is_ok() and
     /// drop() coexist safely (drop() must skip srt_close when cancel
     /// already ran).
+    // T2-SRT-LEAK regression. `from_accepted` now wraps the raw accepted
+    // handle in the owning `Socket` (Drop active) BEFORE applying any
+    // fallible option, so a `set_int` failure on the `?` path closes the
+    // accepted SRT socket instead of leaking it.
+    //
+    // We can't feed a bad timeout through `from_accepted`'s public signature
+    // (`duration_to_ms` clamps to `[0, i32::MAX]`, and SND/RCVTIMEO never
+    // reject those), so this test reproduces the EXACT failure structure the
+    // fix relies on: take a genuinely-live accepted handle, build the owning
+    // `Socket` from it, then trigger a deterministic post-construction
+    // option failure (a PRE-bind-only option set on a connected socket, which
+    // libsrt rejects) — the same `set_int(...)?` shape `from_accepted` runs.
+    // On the early return the `Socket` drops; we assert the handle is closed
+    // (libsrt's `locateSocket` returns null → `srt_getsockflag` errors).
+    #[test]
+    fn from_accepted_failure_path_closes_accepted_socket_no_leak() {
+        use os_socketaddr::OsSocketAddr;
+        use std::mem;
+        use std::net::TcpListener;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::Duration;
+
+        // Loopback gate (mirrors the integration harness's require_loopback!).
+        if std::env::var_os("SKIP_LOOPBACK").is_some() || TcpListener::bind("127.0.0.1:0").is_err()
+        {
+            eprintln!("SKIP: loopback unavailable");
+            return;
+        }
+
+        super::ensure_initialized();
+
+        // Bind a raw libsrt listener and capture its port.
+        let listener = unsafe { srt_sys::srt_create_socket() };
+        assert_ne!(listener, super::SRT_INVALID_SOCK);
+        let bind_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let os_bind = super::to_sockaddr(bind_addr);
+        let rc = unsafe {
+            srt_sys::srt_bind(
+                listener,
+                os_bind.as_ptr().cast(),
+                os_bind.len() as super::c_int,
+            )
+        };
+        assert!(rc >= 0, "srt_bind failed");
+        assert!(
+            unsafe { srt_sys::srt_listen(listener, 1) } >= 0,
+            "srt_listen failed"
+        );
+        let mut name = OsSocketAddr::new();
+        let mut nlen = name.capacity() as super::c_int;
+        assert!(
+            unsafe { srt_sys::srt_getsockname(listener, name.as_mut_ptr().cast(), &raw mut nlen) }
+                >= 0
+        );
+        let port = super::from_sockaddr(&name).unwrap().port();
+
+        // Connect a peer from a separate thread so the listener can accept.
+        let ready = Arc::new(AtomicBool::new(false));
+        let r = ready.clone();
+        let peer = std::thread::spawn(move || {
+            // Wait until the main thread has reached accept readiness.
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while !r.load(Ordering::SeqCst) {
+                if std::time::Instant::now() > deadline {
+                    panic!("accept-ready signal never set");
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            super::ensure_initialized();
+            let s = unsafe { srt_sys::srt_create_socket() };
+            let dst: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+            let os_dst = super::to_sockaddr(dst);
+            let rc = unsafe {
+                srt_sys::srt_connect(s, os_dst.as_ptr().cast(), os_dst.len() as super::c_int)
+            };
+            assert!(rc >= 0, "peer srt_connect failed");
+            // Keep the peer alive briefly so the accepted handle stays live.
+            std::thread::sleep(Duration::from_millis(200));
+            unsafe { srt_sys::srt_close(s) };
+        });
+
+        ready.store(true, Ordering::SeqCst);
+        let mut acc_name = OsSocketAddr::new();
+        let mut acc_len = acc_name.capacity() as super::c_int;
+        let accepted = unsafe {
+            srt_sys::srt_accept(listener, acc_name.as_mut_ptr().cast(), &raw mut acc_len)
+        };
+        assert_ne!(accepted, super::SRT_INVALID_SOCK, "srt_accept failed");
+
+        // Reproduce `from_accepted`'s post-fix structure: wrap the live handle
+        // in the owning Socket FIRST, then run a fallible option set.
+        let socket = super::Socket {
+            handle: accepted,
+            cancel: super::make_cancel_handle(accepted),
+            cached_stream_id: super::read_stream_id(accepted),
+            cached_payload_limit: super::read_payload_size(accepted),
+        };
+
+        // PRE-bind-only option (SRTO_PAYLOADSIZE) set on a CONNECTED socket is
+        // rejected by libsrt — a deterministic stand-in for the SND/RCVTIMEO
+        // `set_int(...)?` that could fail in `from_accepted`.
+        let bad = super::set_int(socket.handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, 1316);
+        assert!(
+            bad.is_err(),
+            "expected PRE-only option set on a connected socket to be rejected"
+        );
+
+        // Simulate `from_accepted`'s early return on the `?`: drop the owner.
+        // RAII (cancel.cancel() → srt_close) must close the accepted handle.
+        drop(socket);
+
+        // Proof of no-leak: libsrt no longer recognizes the handle. Any flag
+        // read on a closed socket fails (locateSocket → null → SRT_EINVSOCK).
+        let mut probe: i32 = 0;
+        let mut plen: super::c_int = mem::size_of::<i32>() as super::c_int;
+        let rc = unsafe {
+            srt_sys::srt_getsockflag(
+                accepted,
+                srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
+                (&raw mut probe).cast(),
+                &raw mut plen,
+            )
+        };
+        assert!(
+            rc < 0,
+            "accepted handle still valid after Socket drop — it was LEAKED"
+        );
+
+        peer.join().expect("peer thread panicked");
+        unsafe { srt_sys::srt_close(listener) };
+    }
+
     #[test]
     fn double_close_via_cancel_then_drop_is_safe() {
         // We construct a SrtCancelHandle by hand around a fake handle with a

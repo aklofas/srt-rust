@@ -4,6 +4,32 @@ Things deliberately out of scope today with a clear path back if they
 become load-bearing. Each entry records the reason it was deferred and
 the trigger that would unblock it.
 
+## HLS publisher (deferred from v0.1.0)
+
+- **Status:** EXPERIMENTAL. The `hls` Cargo feature (the `tst-tcp`
+  HLS publisher + built-in HTTP server, plus the `tst_core` /
+  `tst-pipeline` `Publisher` trait shell) exists and compiles, but is
+  **gated out of the v0.1.0 published artifacts** — it is not enabled in
+  the PyPI wheels (`python-wheels.yml`) and is not present in the JVM fat
+  JAR (`tst-jni` pulls no HLS dependency). It is no longer in the
+  `bindings/python` crate's `default` feature set. You can still enable
+  it for local / experimental builds with `--features hls`.
+- **Why deferred:** The built-in HTTP server is not release-ready:
+  - **Path traversal (CWE-22)** — segment requests are served from an
+    unauthenticated server bound to all interfaces, with no validated
+    confinement of the request path to the output directory.
+  - **Spec-violating `TARGETDURATION` floor** — the emitted playlist's
+    `#EXT-X-TARGETDURATION` is clamped to a floor that can understate the
+    true maximum segment duration, contrary to RFC 8216.
+  - **VOD never served** — `HlsMode::Vod` segments/playlist are written
+    but the built-in server does not serve a completed VOD playlist.
+  - The whole unauthenticated, all-interfaces server surface needs a
+    dedicated security review before it can be a supported feature.
+- **Trigger to revisit:** HLS is hardened as a real, supported feature —
+  the path-traversal fix, the `TARGETDURATION` correction, VOD serving,
+  and a security review of the unauthenticated server surface all land
+  together. Until then it stays experimental and out of published builds.
+
 ## Other PMT entries / auxiliary services
 
 - **Status:** The muxer emits PAT + PMT with video PID + KLV PID(s)

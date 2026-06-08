@@ -10,6 +10,9 @@ description = "Raw MPEG-TS over TCP (caller + listener, plain + TLS via rustls) 
 [features]
 default = ["tls", "hls"]
 tls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile"]
+# hls: EXPERIMENTAL — not shipped in v0.1.0 published wheels/JAR; see
+# docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
+# floor + VOD-never-served, all on an unauthenticated all-interfaces server).
 hls = [
     "dep:tokio",
     "dep:tokio-util",

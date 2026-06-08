@@ -11,9 +11,7 @@ use crate::rtsp::auth::{
     AuthChallenge, DigestContext, build_basic_response, build_digest_response, parse_challenges,
 };
 use crate::rtsp::client::RtspClient;
-use crate::rtsp::message::{
-    MAX_RTSP_MESSAGE_BYTES, RtspMethod, RtspRequest, RtspResponse, content_length_from_header_text,
-};
+use crate::rtsp::message::{RtspFraming, RtspMethod, RtspRequest, RtspResponse};
 use crate::sdp::Sdp;
 
 /// Response shape returned by [`RtspClient::options`]. Exposes the
@@ -246,58 +244,38 @@ impl RtspClient {
                 Ok(0) => return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof)),
                 Ok(n) => {
                     buf.extend_from_slice(&chunk[..n]);
-                    // Body-aware accumulation, mirroring the two-phase policy of
-                    // `InterleavedReader::read_rtsp_message` so the two client
-                    // paths agree:
+                    // Body-aware accumulation via the shared `rtsp_frame_decision`
+                    // two-phase policy — the SAME helper + constants the server
+                    // session request loop uses, so client and server agree
+                    // byte-for-byte:
                     //
-                    // Phase 1 — pre-terminator (no CRLFCRLF yet): cap the header
-                    // accumulation at MAX_RTSP_MESSAGE_BYTES (64 KiB). A peer
-                    // that never terminates its headers is rejected here,
+                    // Phase 1 — pre-terminator (no CRLFCRLF yet): header
+                    // accumulation is capped at MAX_RTSP_MESSAGE_BYTES (64 KiB),
                     // preserving the unterminated-header DoS bound.
                     //
-                    // Phase 2 — post-terminator: parse the (already-bounded)
-                    // Content-Length up front. A malformed/duplicate/over-cap
-                    // (> MAX_RTSP_BODY_BYTES) value is fatal — reject NOW rather
-                    // than reading toward EOF (the old `if let Ok(..)` probe
-                    // swallowed this fatal error and then blocked until the peer
-                    // closed). A legitimate body up to 1 MiB is then awaited in
-                    // full; the exact `header + 4 + content_length` ceiling
-                    // (content_length ≤ 1 MiB) bounds a peer that dribbles past
-                    // its declared body forever.
-                    let header_end = match buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                        None => {
-                            if buf.len() > MAX_RTSP_MESSAGE_BYTES {
-                                return Err(RtspError::BadResponse {
-                                    detail: "RTSP response headers exceed maximum",
-                                });
-                            }
-                            continue; // need more header bytes
+                    // Phase 2 — post-terminator: the declared Content-Length is
+                    // parsed up front; a malformed/duplicate/over-cap
+                    // (> MAX_RTSP_BODY_BYTES) value is fatal NOW rather than read
+                    // toward EOF. A legitimate body up to 1 MiB is awaited in
+                    // full (the exact header + 4 + content_length ceiling bounds
+                    // a peer dribbling past its declared body forever).
+                    match crate::rtsp::message::rtsp_frame_decision(&buf) {
+                        RtspFraming::NeedMore => continue, // bounded; read more
+                        RtspFraming::HeadersTooLong => {
+                            return Err(RtspError::BadResponse {
+                                detail: "RTSP response headers exceed maximum",
+                            });
                         }
-                        Some(end) => end,
-                    };
-                    // Scan the declared Content-Length using the shared strict
-                    // scanner (≤ MAX_RTSP_BODY_BYTES on success, else fatal).
-                    let header_text = std::str::from_utf8(&buf[..header_end]).map_err(|_| {
-                        RtspError::BadResponse {
-                            detail: "non-UTF8 RTSP response headers",
+                        RtspFraming::BadContentLength(detail) => {
+                            return Err(RtspError::BadResponse { detail });
                         }
-                    })?;
-                    let content_length = content_length_from_header_text(header_text)
-                        .map_err(|detail| RtspError::BadResponse { detail })?;
-                    // Exact body end = header + CRLFCRLF + declared body. Checked
-                    // so a near-usize::MAX header_end can't wrap.
-                    let body_end = header_end
-                        .checked_add(4)
-                        .and_then(|e| e.checked_add(content_length))
-                        .ok_or(RtspError::BadResponse {
-                            detail: "RTSP response body offset overflow",
-                        })?;
-                    if buf.len() < body_end {
-                        continue; // need more body bytes (bounded: CL ≤ 1 MiB)
+                        RtspFraming::Complete { total_len } => {
+                            // Full message present — parse + return. `total_len`
+                            // is the exact byte length of this message.
+                            let (resp, _consumed) = RtspResponse::parse(&buf[..total_len])?;
+                            return Ok(resp);
+                        }
                     }
-                    // Full message present — parse + return.
-                    let (resp, _consumed) = RtspResponse::parse(&buf)?;
-                    return Ok(resp);
                 }
                 Err(e)
                     if e.kind() == std::io::ErrorKind::WouldBlock

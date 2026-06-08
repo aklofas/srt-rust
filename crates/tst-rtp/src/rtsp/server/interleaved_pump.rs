@@ -33,7 +33,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::rtsp::message::content_length_from_header_text;
-use crate::rtsp::server::session::MAX_RTSP_REQUEST_BYTES;
+use crate::rtsp::message::pump_accumulation_exceeded;
 
 /// Stats observable from outside the pump task.
 #[derive(Default)]
@@ -98,18 +98,20 @@ pub(crate) fn spawn_server_pump(
                 _ = cancel.cancelled() => return,
             }
 
-            // Buffer cap: mirror the session loop. If accumulated bytes exceed
-            // the per-connection cap without yielding complete frames, the peer
-            // is malformed or adversarial (e.g. an oversized declared body that
-            // never arrives, or junk that never frames). Closing the pump is the
-            // safest response on an interleaved control channel — there is no
-            // 413 to send mid-stream, and continuing would grow `buf` unbounded.
-            if buf.len() > MAX_RTSP_REQUEST_BYTES {
+            // Buffer cap: coherent with the session loop and the client pump
+            // (shared `pump_accumulation_exceeded` + the same
+            // MAX_RTSP_MESSAGE_BYTES / MAX_RTSP_BODY_BYTES constants). This
+            // channel interleaves RTSP text frames with binary `$`-frames. A
+            // full u16 binary frame (65535-byte payload + 4-byte framing =
+            // 65539 B) and an RTSP message with a body up to 1 MiB are BOTH
+            // legitimate and no longer falsely rejected; only an unterminated
+            // header run > 64 KiB or a bad/over-cap Content-Length closes the
+            // pump (no 413 to send mid-stream on an interleaved channel).
+            if pump_accumulation_exceeded(&buf) {
                 tracing::warn!(
                     target: "tst_rtp::server::pump",
                     buf_len = buf.len(),
-                    "pump buffer exceeded {} bytes; closing",
-                    MAX_RTSP_REQUEST_BYTES
+                    "pump buffer exceeded RTSP header/body caps; closing"
                 );
                 stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
                 return;
@@ -266,6 +268,53 @@ mod tests {
         assert_eq!(stats.rtcp_frames_received.load(Ordering::Relaxed), 1);
     }
 
+    /// B7 (T3-PUMP-FRAME): a FULL u16 binary interleaved frame — 65535-byte
+    /// payload + 4-byte `$`/channel/len framing = 65539 B — must be ACCEPTED,
+    /// not falsely rejected. Before B7 the pump capped `buf` at 64 KiB, so any
+    /// frame larger than ~65532 B tripped the cap and closed the pump. A u16
+    /// length field permits exactly 65535 payload bytes, so this is the largest
+    /// legal frame and must round-trip.
+    #[tokio::test]
+    async fn pump_accepts_full_u16_binary_frame() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client_join = tokio::spawn(async move {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            // $<channel=1 (rtcp)><length=65535 BE><65535 payload bytes>
+            let mut frame = Vec::with_capacity(65539);
+            frame.extend_from_slice(&[0x24, 0x01, 0xFF, 0xFF]);
+            frame.extend(std::iter::repeat_n(0xAB, 65535));
+            s.write_all(&frame).await.unwrap();
+            // Hold open so the pump doesn't see EOF before delivering.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        });
+        let (server_tcp, _) = listener.accept().await.unwrap();
+        let (read_half, _write_half) = server_tcp.into_split();
+        let (rtsp_tx, mut _rtsp_rx) = mpsc::channel(8);
+        let (rtcp_tx, mut rtcp_rx) = mpsc::channel(8);
+        let cancel = CancellationToken::new();
+        let stats = Arc::new(PumpStats::default());
+        let pump = spawn_server_pump(
+            read_half,
+            rtsp_tx,
+            rtcp_tx,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            stats.clone(),
+        );
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(2), rtcp_rx.recv())
+            .await
+            .expect("full u16 frame must be delivered, not rejected by the cap")
+            .unwrap();
+        assert_eq!(frame.len(), 65535, "full payload must round-trip intact");
+        assert!(frame.iter().all(|&b| b == 0xAB));
+        cancel.cancel();
+        let _ = pump.await;
+        let _ = client_join.await;
+        assert_eq!(stats.rtcp_frames_received.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 0);
+    }
+
     /// Feed a complete RTSP request via the pump; verify it reaches rtsp_tx.
     #[tokio::test]
     async fn pump_delivers_rtsp_message() {
@@ -412,8 +461,9 @@ mod tests {
         let client_join = tokio::spawn(async move {
             let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
             // 256 KiB of junk that never contains CRLFCRLF and never starts a
-            // binary frame — exceeds MAX_RTSP_REQUEST_BYTES (64 KiB). Use 'A'
-            // so it stays in the RTSP-text branch (not '$').
+            // binary frame — exceeds the 64 KiB unterminated-header cap
+            // (MAX_RTSP_MESSAGE_BYTES). Use 'A' so it stays in the RTSP-text
+            // branch (not '$').
             let junk = vec![b'A'; 256 * 1024];
             let _ = s.write_all(&junk).await;
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;

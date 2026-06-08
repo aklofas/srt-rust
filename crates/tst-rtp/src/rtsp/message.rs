@@ -109,6 +109,95 @@ pub(crate) fn content_length_from_header_text(header_text: &str) -> Result<usize
     parse_content_length(found)
 }
 
+/// Pre-parse accumulation guard for an interleaved pump buffer, which holds at
+/// most one incomplete leading frame (the pump drains every complete frame each
+/// iteration). Returns `true` when that leading frame has provably overrun its
+/// legal bound and the pump must close:
+///
+/// - **Binary `$`-frame** (`buf[0] == b'$'`): inherently bounded — the 2-byte
+///   u16 length permits at most a 65535-byte payload, so a full frame is
+///   ≤ 65539 B. Such a frame can never overrun; return `false` (the
+///   `buf.len() < 4 + length` check in the pump awaits the rest).
+/// - **RTSP text** (any other leading byte): apply the same Phase-1 header cap
+///   as [`rtsp_frame_decision`] / the client `send_and_read` loop — once the
+///   un-terminated headers exceed [`MAX_RTSP_MESSAGE_BYTES`] (64 KiB), or a
+///   terminated message declares a bad/over-cap `Content-Length`, the peer is
+///   hostile. A legitimate body up to [`MAX_RTSP_BODY_BYTES`] (1 MiB) is *not*
+///   rejected (the pump awaits it). This keeps the unterminated-header DoS bound
+///   at a tight 64 KiB — coherent with B2 — rather than the loose
+///   header+body sum.
+pub(crate) fn pump_accumulation_exceeded(buf: &[u8]) -> bool {
+    if buf.first() == Some(&b'$') {
+        return false; // u16-bounded binary frame
+    }
+    matches!(
+        rtsp_frame_decision(buf),
+        RtspFraming::HeadersTooLong | RtspFraming::BadContentLength(_)
+    )
+}
+
+/// Two-phase framing decision for a read buffer that begins with an RTSP message
+/// (status/request line + headers + optional body). This is the single shared
+/// implementation of the body-aware cap policy used by the client
+/// `send_and_read` non-pump loop and the server session request loop, so the
+/// two agree byte-for-byte:
+///
+/// - **Phase 1** — no `CRLFCRLF` terminator yet: the headers are still
+///   accumulating. If they have already exceeded [`MAX_RTSP_MESSAGE_BYTES`]
+///   (64 KiB) without terminating, the peer is malformed/adversarial →
+///   [`RtspFraming::HeadersTooLong`]. Otherwise [`RtspFraming::NeedMore`].
+/// - **Phase 2** — terminator seen: parse the (already-bounded) `Content-Length`
+///   via the strict shared scanner. A malformed/duplicate/over-cap
+///   (> [`MAX_RTSP_BODY_BYTES`]) value is fatal →
+///   [`RtspFraming::BadContentLength`]. Otherwise the exact end is
+///   `header_end + 4 + content_length` (≤ 64 KiB + 1 MiB); if the buffer is
+///   short → [`RtspFraming::NeedMore`], else [`RtspFraming::Complete`].
+pub(crate) enum RtspFraming {
+    /// Within bounds but incomplete — keep reading.
+    NeedMore,
+    /// Pre-terminator headers exceeded [`MAX_RTSP_MESSAGE_BYTES`] — reject.
+    HeadersTooLong,
+    /// A malformed/duplicate/over-cap `Content-Length` — reject.
+    BadContentLength(&'static str),
+    /// A full message is present; `total_len` bytes (header + CRLFCRLF + body)
+    /// belong to it.
+    Complete { total_len: usize },
+}
+
+/// Apply the body-aware two-phase cap policy to a buffer that begins with an
+/// RTSP message. See [`RtspFraming`] for the phase semantics. Non-UTF8 header
+/// bytes are reported as a `BadContentLength` (they can't carry a valid
+/// `Content-Length` and must not be read toward EOF).
+pub(crate) fn rtsp_frame_decision(buf: &[u8]) -> RtspFraming {
+    let Some(header_end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+        // Phase 1: still accumulating headers.
+        if buf.len() > MAX_RTSP_MESSAGE_BYTES {
+            return RtspFraming::HeadersTooLong;
+        }
+        return RtspFraming::NeedMore;
+    };
+    // Phase 2: parse the declared body length via the strict shared scanner.
+    let Ok(header_text) = core::str::from_utf8(&buf[..header_end]) else {
+        return RtspFraming::BadContentLength("non-UTF8 RTSP headers");
+    };
+    let content_length = match content_length_from_header_text(header_text) {
+        Ok(n) => n,
+        Err(detail) => return RtspFraming::BadContentLength(detail),
+    };
+    // Exact end = header + CRLFCRLF + declared body. Checked so a near-usize::MAX
+    // header_end can't wrap (content_length ≤ 1 MiB).
+    let Some(total_len) = header_end
+        .checked_add(4)
+        .and_then(|e| e.checked_add(content_length))
+    else {
+        return RtspFraming::BadContentLength("RTSP body offset overflow");
+    };
+    if buf.len() < total_len {
+        return RtspFraming::NeedMore;
+    }
+    RtspFraming::Complete { total_len }
+}
+
 /// Insert a parsed header, rejecting a duplicate `Content-Length` (a classic
 /// request-smuggling vector that a last-wins `HashMap` would otherwise hide).
 fn insert_header_strict(

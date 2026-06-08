@@ -28,17 +28,6 @@ use crate::rtsp::server::auth::generate_nonce;
 use crate::rtsp::server::fanout::PeerDropCounter;
 use crate::rtsp::server::handlers;
 
-/// Hard cap on the per-connection accumulation buffer before a complete
-/// RTSP request has been parsed. A well-formed RTSP request (headers +
-/// body) must fit within this limit. Requests that exceed it are rejected
-/// with 413 and the connection is closed.
-///
-/// Server-side alias for the shared [`crate::rtsp::message::MAX_RTSP_MESSAGE_BYTES`]
-/// accumulation cap — one definition is shared by the server session loop,
-/// the server + client interleaved pumps, and the client `send_and_read`
-/// loop so the whole RTSP stack enforces a single coherent buffer limit.
-pub(crate) const MAX_RTSP_REQUEST_BYTES: usize = crate::rtsp::message::MAX_RTSP_MESSAGE_BYTES;
-
 /// Per-connection idle read timeout. If no bytes arrive within this window
 /// the session closes. Bounds slow-loris attacks that drip bytes slowly
 /// toward a huge declared Content-Length, keeping the connection alive
@@ -254,28 +243,42 @@ where
         };
         buf.extend_from_slice(&chunk[..n]);
 
-        // Buffer cap: reject before attempting further parsing. A legitimate
-        // RTSP request (headers + body) must fit within MAX_RTSP_REQUEST_BYTES.
-        // If the buffer grows past this without yielding a complete, valid
-        // request, the client is either malformed or adversarial. Send a
-        // minimal 413 response and close the session so this connection
-        // cannot consume unbounded memory.
+        // Body-aware cap, coherent with the client `send_and_read` loop and
+        // both interleaved pumps (all four share `rtsp_frame_decision` + the
+        // same MAX_RTSP_MESSAGE_BYTES / MAX_RTSP_BODY_BYTES constants). The
+        // earlier blanket "buf.len() > 64 KiB → 413" cap wrongly rejected a
+        // valid request whose body legitimately ran up to MAX_RTSP_BODY_BYTES
+        // (1 MiB) — the exact incoherence the B1/B2 reviewers flagged. Now:
         //
-        // Note: the buffer cap (MAX_RTSP_REQUEST_BYTES = 64 KiB) is smaller
-        // than the parser's body cap (MAX_RTSP_BODY_BYTES = 1 MiB), and that
-        // is intentional — the body cap is enforced in the parser once a full
-        // request has been read, while this buffer cap guards the pre-parse
-        // accumulation path against a client that sends headers with a huge
-        // Content-Length but then dribbles data slowly, causing the server to
-        // buffer indefinitely waiting for a body that never reaches its
-        // declared size.
-        if buf.len() > MAX_RTSP_REQUEST_BYTES {
+        //   Phase 1 (no CRLFCRLF yet): 413 only once the *headers* exceed
+        //     MAX_RTSP_MESSAGE_BYTES (64 KiB) — preserves the unterminated-
+        //     header DoS bound.
+        //   Phase 2 (CRLFCRLF seen): parse the declared Content-Length up
+        //     front. An over-cap (> 1 MiB) / malformed / duplicate value is a
+        //     413 NOW (don't read toward EOF). A legitimate body up to 1 MiB is
+        //     awaited in full; the exact header + 4 + content_length ceiling
+        //     bounds a peer dribbling past its declared body.
+        //
+        // The decision is applied to the buffer head (`rtsp_frame_decision`
+        // assumes a buffer beginning with an RTSP message); pipelined requests
+        // are drained one at a time by the inner parse loop below, so the head
+        // is always either an in-progress request or empty.
+        let cap_rejection = match crate::rtsp::message::rtsp_frame_decision(&buf) {
+            crate::rtsp::message::RtspFraming::HeadersTooLong => Some("headers exceed maximum"),
+            crate::rtsp::message::RtspFraming::BadContentLength(detail) => Some(detail),
+            // NeedMore / Complete: not a cap rejection.
+            _ => None,
+        };
+        // NeedMore / Complete fall through to parse complete request(s) below:
+        // a complete request is parsed + drained; NeedMore loops back to read
+        // more (bounded: header ≤ 64 KiB, body ≤ 1 MiB).
+        if let Some(detail) = cap_rejection {
             tracing::warn!(
                 target: "tst_rtp::server",
                 peer = %peer,
                 buf_len = buf.len(),
-                "request buffer exceeded {} bytes; sending 413 and closing",
-                MAX_RTSP_REQUEST_BYTES
+                detail,
+                "request exceeded RTSP header/body caps; sending 413 and closing"
             );
             let response_413 =
                 b"RTSP/1.0 413 Request Entity Too Large\r\nContent-Length: 0\r\n\r\n";

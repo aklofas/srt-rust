@@ -42,7 +42,7 @@ use std::thread::JoinHandle;
 use bytes::Bytes;
 
 use crate::rtsp::client::Stream;
-use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, content_length_from_header_text};
+use crate::rtsp::message::{content_length_from_header_text, pump_accumulation_exceeded};
 
 /// Bounded depth of the media (RTP/data) hand-off queue.
 ///
@@ -210,21 +210,21 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                 };
                 buf.extend_from_slice(&chunk[..n]);
 
-                // Buffer cap: mirror the server pump. If accumulated bytes
-                // exceed the shared RTSP message cap without yielding complete
-                // frames, the peer is malformed or adversarial — e.g. a binary
-                // frame header or an RTSP response that never completes (no
-                // CRLFCRLF terminator, or an oversized declared body that never
-                // arrives). There is no 413 to send mid-stream on an
-                // interleaved control channel, and continuing would grow `buf`
-                // unbounded, so close the pump. (Closes the B1-flagged gap: the
-                // client pump header buffer was previously uncapped.)
-                if buf.len() > MAX_RTSP_MESSAGE_BYTES {
+                // Buffer cap: coherent with the server pump and the session
+                // loop (shared `pump_accumulation_exceeded` + the same
+                // MAX_RTSP_MESSAGE_BYTES / MAX_RTSP_BODY_BYTES constants). This
+                // channel interleaves RTSP text frames with binary `$`-frames. A
+                // full u16 binary frame (65535-byte payload + 4-byte framing =
+                // 65539 B) and an RTSP response with a body up to 1 MiB are BOTH
+                // legitimate and no longer falsely rejected; only an
+                // unterminated header run > 64 KiB or a bad/over-cap
+                // Content-Length closes the pump. (Closes the B1-flagged gap:
+                // the client pump header buffer was previously uncapped.)
+                if pump_accumulation_exceeded(&buf) {
                     tracing::warn!(
                         target: "tst_rtp::client::pump",
                         buf_len = buf.len(),
-                        "pump buffer exceeded {} bytes; closing",
-                        MAX_RTSP_MESSAGE_BYTES
+                        "pump buffer exceeded RTSP header/body caps; closing"
                     );
                     stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
                     return;
@@ -508,6 +508,34 @@ mod tests {
         assert_eq!(payload.as_ref(), &[0xDE, 0xAD, 0xBE, 0xEF]);
         let _ = handle.join();
         assert_eq!(stats.rtcp_frames_received.load(Ordering::Relaxed), 1);
+    }
+
+    /// B7 (T3-PUMP-FRAME): a FULL u16 binary interleaved frame — 65535-byte
+    /// payload + 4-byte framing = 65539 B — must be ACCEPTED, not falsely
+    /// rejected. Before B7 the client pump capped `buf` at 64 KiB, closing the
+    /// pump on any frame > ~65532 B. Mirrors the server pump's full-u16 test.
+    #[test]
+    fn pump_accepts_full_u16_binary_frame() {
+        // $<channel=1 (rtcp)><length=65535 BE><65535 payload bytes>.
+        let mut raw = vec![b'$', 1u8, 0xFF, 0xFF];
+        raw.extend(std::iter::repeat_n(0xABu8, 65535));
+        let (dt, _dr, rt, rr, ct, _cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let payload = rr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(payload.len(), 65535, "full payload must round-trip intact");
+        assert!(payload.iter().all(|&b| b == 0xAB));
+        let _ = handle.join();
+        assert_eq!(stats.rtcp_frames_received.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 0);
     }
 
     #[test]

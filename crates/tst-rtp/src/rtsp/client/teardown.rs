@@ -48,7 +48,7 @@ impl RtspClient {
         .header("cseq", cseq.to_string())
         .header("session", sid)
         .header("user-agent", self.user_agent.as_str());
-        let bytes = req.encode();
+        let bytes = req.encode_checked()?;
         // Use the deadline-aware send if a pump is active; the non-pump
         // path's `send_and_read` already bounds via cancel-poll. With a
         // deadline, route through the pump variant unconditionally.

@@ -162,6 +162,8 @@ pub tst_rtp::error::RtspError::BadSdp
 pub tst_rtp::error::RtspError::BadSdp::detail: alloc::string::String
 pub tst_rtp::error::RtspError::InterleavedFraming
 pub tst_rtp::error::RtspError::InterleavedFraming::detail: &'static str
+pub tst_rtp::error::RtspError::InvalidHeader
+pub tst_rtp::error::RtspError::InvalidHeader::detail: &'static str
 pub tst_rtp::error::RtspError::Io(core::io::error::ErrorKind)
 pub tst_rtp::error::RtspError::LocalCancel
 pub tst_rtp::error::RtspError::MultipleMp2tMedia
@@ -1501,6 +1503,8 @@ pub tst_rtp::RtspError::BadSdp
 pub tst_rtp::RtspError::BadSdp::detail: alloc::string::String
 pub tst_rtp::RtspError::InterleavedFraming
 pub tst_rtp::RtspError::InterleavedFraming::detail: &'static str
+pub tst_rtp::RtspError::InvalidHeader
+pub tst_rtp::RtspError::InvalidHeader::detail: &'static str
 pub tst_rtp::RtspError::Io(core::io::error::ErrorKind)
 pub tst_rtp::RtspError::LocalCancel
 pub tst_rtp::RtspError::MultipleMp2tMedia

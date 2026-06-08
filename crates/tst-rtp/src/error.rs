@@ -112,6 +112,17 @@ pub enum RtspError {
     #[error("multiple MPEG-TS m-lines in SDP ({count} found)")]
     MultipleMp2tMedia { count: usize },
 
+    /// A header name or value destined for an outgoing RTSP request
+    /// contained a forbidden byte — CR, LF, NUL, or another ASCII control
+    /// character. Per RFC 7826 a header field-value is a single line of
+    /// visible ASCII (plus SP/HT); a CR/LF would let a caller-supplied
+    /// value (User-Agent, Authorization built from credentials, a custom
+    /// header) inject a second header or smuggle a whole request. Rejected
+    /// at encode time so no injected bytes ever reach the wire. `detail`
+    /// names the offending field.
+    #[error("invalid RTSP header: {detail}")]
+    InvalidHeader { detail: &'static str },
+
     /// URL parsing failed before any RTSP exchange. Wraps the
     /// underlying [`crate::RtpUrlError`] from Phase 1.
     #[error("RTSP URL parse error: {0}")]

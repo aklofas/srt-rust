@@ -87,7 +87,7 @@ impl RtspClient {
             .header("cseq", cseq.to_string())
             .header("transport", transport_hdr)
             .header("user-agent", self.user_agent.as_str());
-        let bytes = req.encode();
+        let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {
             return Err(RtspError::Protocol {

@@ -123,6 +123,32 @@ fn insert_header_strict(
     Ok(())
 }
 
+/// Reject a header NAME or VALUE that carries a byte which would let it
+/// break out of its single header line — closing the RTSP header/request
+/// injection vector (a caller-supplied User-Agent, an Authorization built
+/// from credentials, or a custom header containing `\r\n` would otherwise be
+/// serialized verbatim and smuggle an attacker-chosen header or whole
+/// request onto the wire).
+///
+/// Per RFC 7826 §5.1 a header field-value is visible ASCII plus SP/HT on a
+/// single CRLF-terminated line. We hard-reject (never silently strip —
+/// stripping hides the attack) any:
+/// - CR (`\r`) or LF (`\n`) — the line terminators that enable injection;
+/// - NUL (`\0`) — truncation hazard for C-string intermediaries;
+/// - any other ASCII control byte (`< 0x20`, plus DEL `0x7f`).
+///
+/// SP (0x20) and HT (0x09) are intentionally *not* control bytes here only
+/// in values; in names we also forbid them (a header name has no spaces).
+/// We treat HT conservatively as forbidden in both: none of the headers we
+/// emit (CSeq, User-Agent, Session, Authorization, Transport, …) legitimately
+/// contain a tab, and allowing it widens the wire surface for no benefit.
+pub(crate) fn validate_header_field(s: &str, detail: &'static str) -> Result<(), RtspError> {
+    if s.bytes().any(|b| b < 0x20 || b == 0x7f) {
+        return Err(RtspError::InvalidHeader { detail });
+    }
+    Ok(())
+}
+
 /// An RTSP request we construct on the client side.
 ///
 /// Wraps a method + URI + version + headers + body and serializes to the
@@ -184,7 +210,33 @@ impl RtspRequest {
         self
     }
 
+    /// Validate every header name and value, then serialize to wire bytes.
+    ///
+    /// This is the injection-safe serialization path used by all real send
+    /// sites in the client: it rejects any header name/value carrying CR,
+    /// LF, NUL, or another ASCII control byte (see [`validate_header_field`])
+    /// before producing a single byte, so a malicious User-Agent /
+    /// Authorization (built from caller credentials) / custom header can
+    /// never smuggle a second header or a whole request onto the wire.
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspError::InvalidHeader`] if any header name or value contains a
+    ///   forbidden control byte. No bytes are written in that case.
+    pub(crate) fn encode_checked(&self) -> Result<Bytes, RtspError> {
+        for (k, v) in &self.headers {
+            validate_header_field(k, "header name contains a control byte")?;
+            validate_header_field(v, "header value contains a control byte")?;
+        }
+        Ok(self.encode())
+    }
+
     /// Serialize to bytes ready to write to the TCP stream.
+    ///
+    /// This is the raw, infallible serializer; it does *not* validate header
+    /// names/values. Production send paths use [`Self::encode_checked`],
+    /// which validates against header injection first. Prefer that on any
+    /// path where a header value derives from caller/credential input.
     pub fn encode(&self) -> Bytes {
         let method_str = match self.method {
             RtspMethod::Options => "OPTIONS",
@@ -676,6 +728,99 @@ mod tests {
         assert!(RtspResponse::parse(raw).is_err());
         let req = b"SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: +5\r\n\r\n";
         assert!(RtspRequest::parse(req).is_err());
+    }
+
+    // --- B6: reject CR/LF/NUL/control bytes in header names and values
+    // (RTSP header/request injection — the "User-Agent CRLF injection") ---
+
+    /// A header VALUE carrying a CRLF + an injected header must be rejected
+    /// by the checked encode path, NOT serialized verbatim (which would
+    /// smuggle an attacker-chosen `Authorization:` line onto the wire).
+    #[test]
+    fn encode_checked_rejects_crlf_in_value() {
+        let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam/h264", RtspVersion::V1_0)
+            .header("cseq", "1")
+            .header("user-agent", "ok\r\nAuthorization: Basic injected");
+        let e = req.encode_checked().unwrap_err();
+        assert!(matches!(e, RtspError::InvalidHeader { .. }));
+    }
+
+    /// A bare CR or bare LF (not a full CRLF) is equally an injection — a
+    /// lone `\n` ends a header line on most servers. Reject both.
+    #[test]
+    fn encode_checked_rejects_bare_cr_and_lf() {
+        for bad in ["ok\rx", "ok\nx"] {
+            let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam", RtspVersion::V1_0)
+                .header("user-agent", bad);
+            assert!(
+                matches!(req.encode_checked(), Err(RtspError::InvalidHeader { .. })),
+                "bare control byte in {bad:?} must be rejected"
+            );
+        }
+    }
+
+    /// A NUL or other ASCII control byte in a value is rejected (defense in
+    /// depth; some intermediaries truncate at NUL).
+    #[test]
+    fn encode_checked_rejects_nul_and_control_in_value() {
+        for bad in ["ok\0x", "ok\x07x", "ok\tx"] {
+            let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam", RtspVersion::V1_0)
+                .header("user-agent", bad);
+            assert!(
+                matches!(req.encode_checked(), Err(RtspError::InvalidHeader { .. })),
+                "control byte in {bad:?} must be rejected"
+            );
+        }
+    }
+
+    /// The injection can also ride on the Authorization header (built from
+    /// caller-supplied username/realm/password) — same central check covers it.
+    #[test]
+    fn encode_checked_rejects_crlf_in_authorization_value() {
+        let req = RtspRequest::new(RtspMethod::Describe, "rtsp://cam", RtspVersion::V1_0)
+            .header("cseq", "2")
+            .header("authorization", "Basic abc\r\nX-Evil: 1");
+        assert!(matches!(
+            req.encode_checked(),
+            Err(RtspError::InvalidHeader { .. })
+        ));
+    }
+
+    /// A control byte in the header NAME is rejected too (a custom-header
+    /// caller could otherwise inject via the name side).
+    #[test]
+    fn encode_checked_rejects_control_in_name() {
+        let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam", RtspVersion::V1_0)
+            .header("x-bad\r\nevil", "1");
+        assert!(matches!(
+            req.encode_checked(),
+            Err(RtspError::InvalidHeader { .. })
+        ));
+    }
+
+    /// Raw-wire assertion: the encoded bytes of a request whose User-Agent
+    /// carries an injected CRLF must NOT contain the attacker's header. The
+    /// checked path errors (nothing reaches the wire); confirm explicitly.
+    #[test]
+    fn encode_checked_no_injected_crlf_on_wire() {
+        let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam", RtspVersion::V1_0)
+            .header("cseq", "1")
+            .header("user-agent", "ok\r\nAuthorization: Basic injected");
+        // The checked encoder must refuse to produce any bytes.
+        assert!(req.encode_checked().is_err());
+    }
+
+    /// A clean request still encodes fine through the checked path (no false
+    /// positives on normal traffic with SP/HT-free single-line values).
+    #[test]
+    fn encode_checked_accepts_clean_request() {
+        let req = RtspRequest::new(RtspMethod::Options, "rtsp://cam/h264", RtspVersion::V1_0)
+            .header("cseq", "1")
+            .header("user-agent", "tst-rtp/0.1")
+            .header("transport", "RTP/AVP/TCP;unicast;interleaved=0-1");
+        let bytes = req.encode_checked().expect("clean request must encode");
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.contains("User-Agent: tst-rtp/0.1\r\n"));
     }
 }
 

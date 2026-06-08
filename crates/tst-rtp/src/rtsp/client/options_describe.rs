@@ -52,7 +52,7 @@ impl RtspClient {
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }
-        let bytes = req.encode();
+        let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
         self.last_server_version = resp.version;
         if resp.status != 200 {
@@ -127,7 +127,7 @@ impl RtspClient {
         if let Some(auth) = authorization {
             req = req.header("authorization", auth);
         }
-        let bytes = req.encode();
+        let bytes = req.encode_checked()?;
         self.send_and_read(&bytes)
     }
 

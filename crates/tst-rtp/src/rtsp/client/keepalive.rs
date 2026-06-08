@@ -80,7 +80,15 @@ pub(crate) fn spawn(
                 {
                     req = req.header("session", sid);
                 }
-                let bytes = req.encode();
+                // Validate against header injection before writing. The
+                // User-Agent was already validated at connect time and the
+                // session id is server-issued, so this should never fail; if
+                // it somehow does, treat the session as dead rather than
+                // smuggling bytes onto the wire.
+                let Ok(bytes) = req.encode_checked() else {
+                    session_dead.store(true, Ordering::Relaxed);
+                    return;
+                };
                 // If the stream mutex is poisoned the main thread
                 // panicked mid-request — propagate by panicking the
                 // keepalive thread too (per T21 policy).

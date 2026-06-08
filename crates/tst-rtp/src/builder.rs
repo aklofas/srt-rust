@@ -13,10 +13,11 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::error::{RtspError, RtspServerError};
 use crate::rtsp::client::{ConnectParams, RtspClient};
+use crate::rtsp::message::validate_header_field;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
 use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
 
@@ -287,6 +288,24 @@ impl RtspClientBuilder {
     ///
     /// See [`RtspClient::connect_with`].
     pub fn connect(self) -> Result<RtspClient, RtspError> {
+        // Fail fast on header injection: a User-Agent or credential
+        // (username/password) carrying CR/LF/NUL/control bytes would be
+        // serialized verbatim into the User-Agent / Authorization header and
+        // smuggle a second header or whole request onto the wire (T1-UA-CRLF).
+        // Reject before opening the socket so a malicious value never reaches
+        // the network. The encode path also re-validates as a backstop, but
+        // catching it here gives a clean error and never touches the wire.
+        validate_header_field(&self.user_agent, "User-Agent contains a control byte")?;
+        if let Some(user) = &self.username {
+            validate_header_field(user, "auth username contains a control byte")?;
+        }
+        if let Some(pass) = &self.password {
+            validate_header_field(
+                pass.expose_secret(),
+                "auth password contains a control byte",
+            )?;
+        }
+
         // Bake builder-supplied credentials into the URL so the
         // auth flow (`options_describe::handle_auth_challenge_and_retry`)
         // picks them up from `client.url.username/password`. The URL
@@ -539,6 +558,58 @@ mod tests {
         let b = RtpRecvSocketBuilder::new("127.0.0.1", 0);
         // Port 0 -> OS-assigned; doesn't conflict.
         let _ = b.listen().expect("bind 127.0.0.1:0 should succeed");
+    }
+
+    // --- B6: User-Agent / credential header injection rejected at connect,
+    // before the socket opens (T1-UA-CRLF). ---
+
+    #[test]
+    fn connect_rejects_crlf_user_agent_before_socket() {
+        // A CRLF in the User-Agent would inject an Authorization header onto
+        // the wire. `connect` must reject it with InvalidHeader *before*
+        // touching the network — so this fails fast even though the host is
+        // unroutable. (If validation were skipped we'd instead get an Io/
+        // timeout error from the connect attempt.)
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:9/live")
+            .unwrap()
+            .user_agent("evil\r\nAuthorization: Basic injected");
+        let e = b.connect().unwrap_err();
+        assert!(
+            matches!(e, RtspError::InvalidHeader { .. }),
+            "expected InvalidHeader, got {e:?}"
+        );
+    }
+
+    #[test]
+    fn connect_rejects_nul_user_agent() {
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:9/live")
+            .unwrap()
+            .user_agent("evil\0nul");
+        assert!(matches!(
+            b.connect().unwrap_err(),
+            RtspError::InvalidHeader { .. }
+        ));
+    }
+
+    #[test]
+    fn connect_rejects_crlf_in_credentials() {
+        // Credentials flow into the Authorization header; a CRLF in the
+        // username is the same injection.
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:9/live")
+            .unwrap()
+            .auth("user\r\nX-Evil: 1", SecretString::new("pw".into()));
+        assert!(matches!(
+            b.connect().unwrap_err(),
+            RtspError::InvalidHeader { .. }
+        ));
+
+        let b = RtspClientBuilder::new("rtsp://127.0.0.1:9/live")
+            .unwrap()
+            .auth("user", SecretString::new("pw\r\nX-Evil: 1".into()));
+        assert!(matches!(
+            b.connect().unwrap_err(),
+            RtspError::InvalidHeader { .. }
+        ));
     }
 }
 

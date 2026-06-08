@@ -41,7 +41,6 @@ use std::thread::JoinHandle;
 
 use bytes::Bytes;
 
-use crate::packet::RTP_HEADER_LEN;
 use crate::rtsp::client::Stream;
 use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, content_length_from_header_text};
 
@@ -249,29 +248,45 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                         let payload_bytes = &buf[4..4 + length];
                         if channel == channels.rtp {
                             stats.rtp_frames_received.fetch_add(1, Ordering::Relaxed);
-                            // Strip the 12-byte RTP header. If the frame
-                            // is too small to contain a header, drop and
-                            // counter-tick.
-                            if payload_bytes.len() < RTP_HEADER_LEN {
-                                stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
-                            } else {
-                                let ts_payload =
-                                    Bytes::copy_from_slice(&payload_bytes[RTP_HEADER_LEN..]);
-                                // Bounded, drop-newest, non-blocking. A `Full`
-                                // queue means a slow/absent consumer — drop the
-                                // newest frame (live-stream convention) and
-                                // counter-tick so the pump never blocks (a
-                                // blocking send would wedge this thread, which
-                                // also carries the control channel — a self-DoS).
-                                // Only a dropped RECEIVER is fatal.
-                                match data_tx.try_send(ts_payload) {
-                                    Ok(()) => {}
-                                    Err(mpsc::TrySendError::Full(_)) => {
-                                        stats.media_frames_dropped.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {
-                                        // Receiver dropped — pump exits.
-                                        return;
+                            // Decode the RTP header instead of stripping a
+                            // fixed 12 bytes: the CSRC list (CC>0) and the
+                            // header extension (X=1) must be skipped, and any
+                            // RFC 3550 §5.1 padding (P=1) trimmed. Mirrors the
+                            // UDP RTP recv path (RtpRecvTransport::recv_bytes).
+                            // A malformed header (truncated / bad version /
+                            // wrong PT) is dropped + counter-ticked rather than
+                            // fed to the demuxer.
+                            match crate::packet::RtpHeader::decode(payload_bytes) {
+                                Err(parse_err) => {
+                                    stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                    tracing::debug!(
+                                        target: "tst_rtp::client::pump",
+                                        error = ?parse_err,
+                                        "interleaved RTP frame rejected; counter ticked",
+                                    );
+                                }
+                                Ok(parsed) => {
+                                    let ts_payload = Bytes::copy_from_slice(
+                                        &payload_bytes[parsed.payload_offset..parsed.payload_end],
+                                    );
+                                    // Bounded, drop-newest, non-blocking. A `Full`
+                                    // queue means a slow/absent consumer — drop the
+                                    // newest frame (live-stream convention) and
+                                    // counter-tick so the pump never blocks (a
+                                    // blocking send would wedge this thread, which
+                                    // also carries the control channel — a self-DoS).
+                                    // Only a dropped RECEIVER is fatal.
+                                    match data_tx.try_send(ts_payload) {
+                                        Ok(()) => {}
+                                        Err(mpsc::TrySendError::Full(_)) => {
+                                            stats
+                                                .media_frames_dropped
+                                                .fetch_add(1, Ordering::Relaxed);
+                                        }
+                                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                                            // Receiver dropped — pump exits.
+                                            return;
+                                        }
                                     }
                                 }
                             }
@@ -427,6 +442,7 @@ impl Read for SharedStreamReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packet::{RTP_HEADER_LEN, RTP_PT_MP2T, RtpHeader};
     use std::io::Cursor;
 
     #[allow(clippy::type_complexity)]
@@ -453,7 +469,7 @@ mod tests {
     #[test]
     fn rtp_frame_stripped_and_delivered() {
         let mut raw = vec![b'$', 0u8, 0x00, 20];
-        raw.extend_from_slice(&[0u8; RTP_HEADER_LEN]); // RTP header (12 zeros).
+        raw.extend_from_slice(&valid_rtp_header()); // valid V=2/PT=33 header.
         raw.extend_from_slice(b"PAYLOAD!"); // 8 bytes.
         let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
         let handle = spawn_client_pump(
@@ -652,16 +668,108 @@ mod tests {
         assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 1);
     }
 
-    /// Build one interleaved RTP frame on `channel` carrying a 12-byte
+    /// Build a minimal *valid* fixed RTP header (V=2, P=0, X=0, CC=0,
+    /// PT=33) so the body parses as MP2T-over-RTP. Used by the fixtures
+    /// that exercise the delivery path (they care about payload bytes,
+    /// not the header fields).
+    fn valid_rtp_header() -> [u8; RTP_HEADER_LEN] {
+        let mut h = [0u8; RTP_HEADER_LEN];
+        RtpHeader::new(0, 0, 0).encode_into(&mut h);
+        h
+    }
+
+    /// Wrap a raw RTP packet (`rtp`) in one interleaved frame on `channel`.
+    fn interleaved_frame(channel: u8, rtp: &[u8]) -> Vec<u8> {
+        let mut f = vec![b'$', channel];
+        f.extend_from_slice(&(rtp.len() as u16).to_be_bytes());
+        f.extend_from_slice(rtp);
+        f
+    }
+
+    /// B4 / T1-RTSP-RTP — adversarial: an interleaved RTP frame carrying a
+    /// CSRC list (CC>0), a header extension (X=1), and trailing padding
+    /// (P=1) must have ONLY the true RTP payload reach the TS channel — the
+    /// CSRC words and the extension are skipped, the padding is trimmed.
+    /// Before the fix the pump stripped a fixed 12 bytes, so the CSRC list +
+    /// extension leaked into the demuxer and padding was never trimmed.
+    #[test]
+    fn interleaved_rtp_skips_csrc_extension_and_trims_padding() {
+        // Build a packet with CC=1, X=1, P=1.
+        //   Octet 0: V=2 | P=1 | X=1 | CC=1 = 0b10_1_1_0001 = 0xB1
+        //   Octet 1: PT=33
+        //   Octets 2..12 : seq/ts/ssrc
+        //   Octets 12..16: 1 CSRC entry (4 bytes)
+        //   Octets 16..20: extension header (profile 0xBEDE + length=1 word)
+        //   Octets 20..24: 1 word (4 bytes) of extension data
+        //   Octets 24..28: the 4 real payload bytes
+        //   Octets 28..30: 2 padding bytes (last byte = pad count = 2)
+        let mut rtp = vec![0xB1, RTP_PT_MP2T];
+        rtp.extend_from_slice(&[0u8; 10]); // seq/ts/ssrc
+        rtp.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // CSRC[0]
+        rtp.extend_from_slice(&[0xBE, 0xDE, 0x00, 0x01]); // ext header, len=1 word
+        rtp.extend_from_slice(&[0x11, 0x22, 0x33, 0x44]); // ext data word
+        rtp.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]); // real payload
+        rtp.extend_from_slice(&[0x00, 0x02]); // 2 padding bytes (count=2)
+
+        let raw = interleaved_frame(0, &rtp);
+        let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let payload = dr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            payload.as_ref(),
+            &[0xDE, 0xAD, 0xBE, 0xEF],
+            "only the true RTP payload must reach the TS channel — CSRC + extension skipped, padding trimmed"
+        );
+        let _ = handle.join();
+        assert_eq!(stats.rtp_frames_received.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 0);
+    }
+
+    /// B4: an interleaved RTP frame with a structurally malformed RTP header
+    /// (here: a truncated extension — X=1 but no extension bytes present)
+    /// must be dropped and counter-ticked, never fed to the demuxer.
+    #[test]
+    fn interleaved_malformed_rtp_dropped_and_counted() {
+        // V=2, X=1, CC=0, PT=33, but only the 12-byte fixed header — the
+        // 4-byte extension header X=1 promises is missing → decode rejects.
+        let rtp = vec![0x90, RTP_PT_MP2T, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let raw = interleaved_frame(0, &rtp);
+        let (dt, dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let _ = handle.join();
+        assert!(
+            dr.try_recv().is_err(),
+            "malformed RTP must not produce a TS payload"
+        );
+        assert_eq!(stats.rtp_frames_received.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 1);
+    }
+
+    /// Build one interleaved RTP frame on `channel` carrying a valid 12-byte
     /// RTP header + `payload_len` payload bytes. The frame body length
     /// (`RTP_HEADER_LEN + payload_len`) must fit a u16.
     fn rtp_frame(channel: u8, payload_len: usize) -> Vec<u8> {
-        let body_len = RTP_HEADER_LEN + payload_len;
-        let mut f = vec![b'$', channel];
-        f.extend_from_slice(&(body_len as u16).to_be_bytes());
-        f.extend_from_slice(&[0u8; RTP_HEADER_LEN]); // RTP header (zeros).
-        f.extend(std::iter::repeat_n(0xAB, payload_len));
-        f
+        let mut rtp = valid_rtp_header().to_vec();
+        rtp.extend(std::iter::repeat_n(0xAB, payload_len));
+        interleaved_frame(channel, &rtp)
     }
 
     /// B3 / T1-RTSP-QUEUE — adversarial: a fast producer flooding the

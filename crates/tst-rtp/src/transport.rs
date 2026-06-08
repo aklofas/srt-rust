@@ -235,6 +235,10 @@ impl RtpTransport {
                     // encoders are fallible now; skip the send on the
                     // (unreachable) validation error rather than unwrapping.
                     let (Ok(mut compound), Ok(sdes_bytes)) = (sr.encode(), sdes.encode()) else {
+                        tracing::error!(
+                            "internal: locally-built RTCP SR/SDES failed to encode; skipping send"
+                        );
+                        debug_assert!(false, "locally-built RTCP SR/SDES must always encode");
                         return;
                     };
                     compound.extend_from_slice(&sdes_bytes);
@@ -608,6 +612,10 @@ impl RtpRecvTransport {
                     // short CNAME) — encode is fallible now but never fails
                     // here; skip the send on the (unreachable) error.
                     let (Ok(mut compound), Ok(sdes_bytes)) = (rr.encode(), sdes.encode()) else {
+                        tracing::error!(
+                            "internal: locally-built RTCP RR/SDES failed to encode; skipping send"
+                        );
+                        debug_assert!(false, "locally-built RTCP RR/SDES must always encode");
                         return;
                     };
                     compound.extend_from_slice(&sdes_bytes);

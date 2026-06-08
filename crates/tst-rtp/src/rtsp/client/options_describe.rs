@@ -11,7 +11,7 @@ use crate::rtsp::auth::{
     AuthChallenge, DigestContext, build_basic_response, build_digest_response, parse_challenges,
 };
 use crate::rtsp::client::RtspClient;
-use crate::rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
+use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, RtspMethod, RtspRequest, RtspResponse};
 use crate::sdp::Sdp;
 
 /// Response shape returned by [`RtspClient::options`]. Exposes the
@@ -244,6 +244,19 @@ impl RtspClient {
                 Ok(0) => return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof)),
                 Ok(n) => {
                     buf.extend_from_slice(&chunk[..n]);
+                    // Aggregate cap on the response accumulation buffer
+                    // (status line + headers + body). A hostile peer that
+                    // never sends a CRLFCRLF terminator, or declares a huge
+                    // body and dribbles bytes, would otherwise grow `buf`
+                    // unbounded since `RtspResponse::parse` only succeeds on a
+                    // complete message. Bound with the shared RTSP message cap
+                    // and error out — consistent with the server/pump
+                    // close-on-over-cap policy.
+                    if buf.len() > MAX_RTSP_MESSAGE_BYTES {
+                        return Err(RtspError::BadResponse {
+                            detail: "RTSP response exceeds maximum",
+                        });
+                    }
                     if let Ok((resp, _consumed)) = RtspResponse::parse(&buf) {
                         return Ok(resp);
                     }
@@ -386,6 +399,44 @@ mod tests {
         (port, h)
     }
 
+    /// Spawn a hostile mock server that, after the client's request, streams
+    /// `prefix` once and then floods `filler` bytes in a loop, never sending a
+    /// `CRLFCRLF` terminator (or never completing a declared body) — i.e. an
+    /// unterminated response. It keeps writing until the socket errors (the
+    /// client gave up and closed), so the client must impose its own read
+    /// budget rather than buffer unboundedly. Total bytes flooded are capped at
+    /// `budget` purely as a test watchdog so a buggy unbounded client can't
+    /// wedge the harness forever.
+    fn flooding_server(
+        prefix: &'static [u8],
+        filler: u8,
+        budget: usize,
+    ) -> (u16, std::thread::JoinHandle<usize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let h = std::thread::spawn(move || {
+            let mut written = 0usize;
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut req = [0u8; 4096];
+                let _ = sock.read(&mut req);
+                if sock.write_all(prefix).is_ok() {
+                    written += prefix.len();
+                }
+                let chunk = vec![filler; 4096];
+                // Flood until the client closes (write error) or we hit the
+                // watchdog budget — whichever comes first.
+                while written < budget {
+                    match sock.write_all(&chunk) {
+                        Ok(()) => written += chunk.len(),
+                        Err(_) => break, // client closed — the bounded-read win
+                    }
+                }
+            }
+            written
+        });
+        (port, h)
+    }
+
     #[test]
     fn options_parses_public_header() {
         let (port, h) = mock_server(
@@ -415,5 +466,68 @@ mod tests {
         assert_eq!(sdp.media.len(), 1);
         assert_eq!(sdp.media[0].payload_types, vec![33]);
         h.join().unwrap();
+    }
+
+    // --- B2: bounded client response accumulation (adversarial) ---
+
+    /// A server that streams an UNTERMINATED response (valid status line, one
+    /// header, then an endless flood of header-junk and NO `CRLFCRLF`) must
+    /// NOT drive the client to buffer unboundedly. The `send_and_read` loop
+    /// must error within the shared `MAX_RTSP_MESSAGE_BYTES` budget. The
+    /// `flooding_server`'s own watchdog `budget` (here 4 MiB) is the harness
+    /// hang-guard: a correct client closes the socket far below that, so the
+    /// server's flooded-byte count must stay well under it.
+    #[test]
+    fn options_errors_on_unterminated_response_within_budget() {
+        // Valid prefix, then never a CRLFCRLF — the client can never `parse`
+        // a complete message, so an uncapped loop would buffer forever.
+        let watchdog_budget = 4 * 1024 * 1024; // 4 MiB
+        let (port, h) = flooding_server(b"RTSP/1.0 200 OK\r\nX-Junk: ", b'A', watchdog_budget);
+        let mut client = RtspClient::connect(&format!("rtsp://127.0.0.1:{}/test", port)).unwrap();
+        let err = client.options().unwrap_err();
+        assert!(
+            matches!(err, RtspError::BadResponse { .. }),
+            "expected BadResponse on over-cap response, got {err:?}"
+        );
+        // Drop the client to close the socket so the flooding server's
+        // `write_all` errors and its thread can join. (Without this the server
+        // blocks on a full send buffer toward a non-reading-but-open socket.)
+        drop(client);
+        let flooded = h.join().unwrap();
+        // The client bounded its reads: it stopped before the harness watchdog
+        // budget — the server could not flood unboundedly.
+        assert!(
+            flooded < watchdog_budget,
+            "client did not bound its reads: server flooded {flooded} bytes (watchdog {watchdog_budget})"
+        );
+    }
+
+    /// A server that declares a HUGE body (within the parser's per-message
+    /// `Content-Length` arithmetic but far above the accumulation cap) and
+    /// dribbles body bytes forever must also be bounded — the accumulation cap
+    /// trips before the body completes. This is the slow-dribble OOM vector.
+    #[test]
+    fn options_errors_on_huge_declared_body_within_budget() {
+        let watchdog_budget = 4 * 1024 * 1024; // 4 MiB
+        // 1 MiB declared body (== MAX_RTSP_BODY_BYTES, so the parser would
+        // accept it once complete) but the body never completes — the
+        // accumulation cap (64 KiB) trips first.
+        let (port, h) = flooding_server(
+            b"RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 1048576\r\n\r\n",
+            b'B',
+            watchdog_budget,
+        );
+        let mut client = RtspClient::connect(&format!("rtsp://127.0.0.1:{}/test", port)).unwrap();
+        let err = client.options().unwrap_err();
+        assert!(
+            matches!(err, RtspError::BadResponse { .. }),
+            "expected BadResponse on over-cap body, got {err:?}"
+        );
+        drop(client);
+        let flooded = h.join().unwrap();
+        assert!(
+            flooded < watchdog_budget,
+            "client did not bound its reads: server flooded {flooded} bytes (watchdog {watchdog_budget})"
+        );
     }
 }

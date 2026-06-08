@@ -33,14 +33,11 @@ use crate::rtsp::server::handlers;
 /// body) must fit within this limit. Requests that exceed it are rejected
 /// with 413 and the connection is closed.
 ///
-/// 64 KiB is generous for any legitimate RTSP request (typical OPTIONS /
-/// DESCRIBE / SETUP are well under 2 KiB; even large SDP offers are rarely
-/// more than a few KiB). An unauthenticated client advertising a huge
-/// Content-Length could otherwise drive the process to OOM.
-///
-/// `pub(crate)` so the interleaved-pump reader (which accumulates RTSP
-/// control messages off the same TCP after PLAY) reuses the identical cap.
-pub(crate) const MAX_RTSP_REQUEST_BYTES: usize = 64 * 1024; // 64 KiB
+/// Server-side alias for the shared [`crate::rtsp::message::MAX_RTSP_MESSAGE_BYTES`]
+/// accumulation cap — one definition is shared by the server session loop,
+/// the server + client interleaved pumps, and the client `send_and_read`
+/// loop so the whole RTSP stack enforces a single coherent buffer limit.
+pub(crate) const MAX_RTSP_REQUEST_BYTES: usize = crate::rtsp::message::MAX_RTSP_MESSAGE_BYTES;
 
 /// Per-connection idle read timeout. If no bytes arrive within this window
 /// the session closes. Bounds slow-loris attacks that drip bytes slowly

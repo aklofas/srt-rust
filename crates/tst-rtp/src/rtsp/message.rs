@@ -24,6 +24,25 @@ use crate::url::RtspVersion;
 /// from declaring a multi-GB body and driving the process to OOM.
 pub(crate) const MAX_RTSP_BODY_BYTES: usize = 1024 * 1024; // 1 MiB
 
+/// Maximum bytes an in-progress RTSP message (status/request line + headers +
+/// body) may accumulate in a pre-parse read buffer before it is rejected.
+///
+/// This is the single coherent cap for *accumulation* shared by every code
+/// path that buffers raw RTSP text off a socket — the server session loop, the
+/// server interleaved pump, the client `send_and_read` non-pump loop, and the
+/// client interleaved pump. It guards the pre-parse path against a peer that
+/// declares a huge `Content-Length` (or never sends a `CRLFCRLF` terminator)
+/// and dribbles bytes, forcing the buffer to grow unbounded.
+///
+/// 64 KiB is generous for any legitimate RTSP message (typical OPTIONS /
+/// DESCRIBE / SETUP responses are well under 2 KiB; even large SDP bodies are
+/// rarely more than a few KiB). Note this accumulation cap is intentionally
+/// smaller than the parser's [`MAX_RTSP_BODY_BYTES`] (1 MiB) body cap: the
+/// body cap bounds a single already-complete message's declared body, while
+/// this caps the live read buffer so a slow-dribble peer can't grow it
+/// without bound.
+pub(crate) const MAX_RTSP_MESSAGE_BYTES: usize = 64 * 1024; // 64 KiB
+
 /// Strictly interpret a `Content-Length` header value (already trimmed by the
 /// header parser) into a body length, rejecting hostile inputs.
 ///

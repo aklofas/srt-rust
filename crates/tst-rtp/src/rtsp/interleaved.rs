@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use bytes::Bytes;
 
 use crate::error::RtspError;
-use crate::rtsp::message::content_length_from_header_text;
+use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, content_length_from_header_text};
 
 /// One demuxed unit from the interleaved TCP stream.
 #[derive(Debug, Clone)]
@@ -122,9 +122,12 @@ impl<R: BufRead> InterleavedReader<R> {
             let take = buf.len();
             headers.extend_from_slice(buf);
             self.inner.consume(take);
-            if headers.len() > 16 * 1024 {
+            // Cap the pre-terminator header accumulation with the shared RTSP
+            // message cap. A peer that never sends CRLFCRLF would otherwise
+            // drive this buffer unbounded.
+            if headers.len() > MAX_RTSP_MESSAGE_BYTES {
                 return Err(RtspError::BadResponse {
-                    detail: "RTSP headers exceed 16 KiB",
+                    detail: "RTSP headers exceed maximum",
                 });
             }
         }
@@ -263,6 +266,20 @@ mod tests {
             Frame::Rtsp(b) => assert_eq!(b.as_ref(), combined.as_slice()),
             _ => panic!("expected rtsp"),
         }
+    }
+
+    /// B2: an RTSP message whose headers never terminate (no `CRLFCRLF`) must
+    /// be rejected once the accumulated header bytes exceed the shared
+    /// `MAX_RTSP_MESSAGE_BYTES` cap, rather than buffering unboundedly.
+    #[test]
+    fn reader_rejects_unterminated_headers() {
+        let raw = vec![b'A'; 128 * 1024]; // 128 KiB, no CRLFCRLF.
+        let mut r = InterleavedReader::new(Cursor::new(raw));
+        let e = r.next_frame().unwrap_err();
+        assert!(
+            matches!(e, RtspError::BadResponse { .. }),
+            "expected BadResponse on over-cap headers, got {e:?}"
+        );
     }
 
     #[test]

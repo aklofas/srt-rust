@@ -43,7 +43,7 @@ use bytes::Bytes;
 
 use crate::packet::RTP_HEADER_LEN;
 use crate::rtsp::client::Stream;
-use crate::rtsp::message::content_length_from_header_text;
+use crate::rtsp::message::{MAX_RTSP_MESSAGE_BYTES, content_length_from_header_text};
 
 /// Stats observable from outside the pump thread.
 #[derive(Debug, Default)]
@@ -161,6 +161,26 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                     }
                 };
                 buf.extend_from_slice(&chunk[..n]);
+
+                // Buffer cap: mirror the server pump. If accumulated bytes
+                // exceed the shared RTSP message cap without yielding complete
+                // frames, the peer is malformed or adversarial — e.g. a binary
+                // frame header or an RTSP response that never completes (no
+                // CRLFCRLF terminator, or an oversized declared body that never
+                // arrives). There is no 413 to send mid-stream on an
+                // interleaved control channel, and continuing would grow `buf`
+                // unbounded, so close the pump. (Closes the B1-flagged gap: the
+                // client pump header buffer was previously uncapped.)
+                if buf.len() > MAX_RTSP_MESSAGE_BYTES {
+                    tracing::warn!(
+                        target: "tst_rtp::client::pump",
+                        buf_len = buf.len(),
+                        "pump buffer exceeded {} bytes; closing",
+                        MAX_RTSP_MESSAGE_BYTES
+                    );
+                    stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                    return;
+                }
 
                 // Parse as many complete frames as possible.
                 loop {
@@ -459,6 +479,40 @@ mod tests {
             );
             assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 0);
         }
+    }
+
+    /// B2: an RTSP response that never terminates (no `CRLFCRLF`) must NOT
+    /// drive the pump to buffer unboundedly — the buffer cap closes the pump
+    /// once accumulation exceeds `MAX_RTSP_MESSAGE_BYTES`. This is the
+    /// B1-flagged gap: the client pump header buffer was previously uncapped,
+    /// so a peer that never sends CRLFCRLF could grow `buf` without bound.
+    #[test]
+    fn pump_closes_on_unterminated_header_flood() {
+        // 128 KiB of header-junk with no CRLFCRLF terminator — well over the
+        // 64 KiB cap. Starts with a non-`$` byte so it's parsed as RTSP text.
+        let raw = vec![b'A'; 128 * 1024];
+        let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
+        let handle = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        // The pump must exit on its own once the cap is exceeded — join returns.
+        let _ = handle.join();
+        assert!(
+            cr.try_recv().is_err(),
+            "unterminated flood must not produce an RTSP message"
+        );
+        assert!(
+            stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+            "over-cap buffer should be counted as a malformed frame"
+        );
+        assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 0);
     }
 
     /// A frame on an unknown channel (not rtp, not rtcp) should be

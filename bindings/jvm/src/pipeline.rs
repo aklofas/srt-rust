@@ -10,15 +10,17 @@
 //! `crate::mpegts` projection helpers so a `VideoSample` / `KlvSample`
 //! is byte-identical to the corresponding `mpegts.Demuxer` projection.
 //!
-//! Handle convention matches `mod mpegts`: `nOpen`/`nOpenWithConfig` box
-//! a [`PairingDemuxer`] and return the raw pointer as a `jlong`; `nClose`
-//! reconstitutes + drops the box (guarded on a non-zero handle); the
-//! per-call fns validate the handle via [`checked_pairer_handle`] before
-//! dereferencing.
+//! Handle convention matches `mod mpegts`: the `jlong` is an opaque key into a
+//! per-type [`crate::handle::HandleRegistry`] over the [`PairingDemuxer`];
+//! `nOpen`/`nOpenWithConfig` register via `REGISTRY.insert`; per-call fns lease
+//! via `REGISTRY.with` (mapping a closed/absent handle to a thrown
+//! `IllegalStateException`); `nClose` takes + drops via `REGISTRY.close` (atomic
+//! + idempotent, so a double `close()` is UAF/double-free-safe).
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use tst_core::mpegts::demux::DemuxerConfig;
@@ -28,10 +30,14 @@ use tst_pipeline::ext::pairing::{
 };
 
 use crate::error::throw_demux;
+use crate::handle::HandleRegistry;
 use crate::mpegts::{
     build_demux_config_from_args, build_stream_id, build_video_units, codec_enum, convert_event,
     metadata_kind, opt_long, throw_demux_error, video_codec_name, wrap_heap_byte_buffer,
 };
+
+/// Per-type leased-handle registry for `org.tstrans.pipeline.Pairer`.
+static REGISTRY: LazyLock<HandleRegistry<PairingDemuxer>> = LazyLock::new(HandleRegistry::new);
 
 /// `nOpen(videoPid, klvPid)` — allocate a default-config [`PairingDemuxer`]
 /// and hand the JVM its raw pointer as a `jlong` handle.
@@ -42,8 +48,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpen<'local>(
     video_pid: jint,
     klv_pid: jint,
 ) -> jlong {
-    let p = Box::new(PairingDemuxer::new(video_pid as u16, klv_pid as u16));
-    Box::into_raw(p) as jlong
+    REGISTRY.insert(PairingDemuxer::new(video_pid as u16, klv_pid as u16)) as jlong
 }
 
 /// `nOpenWithConfig(...)` — build a configured [`PairingDemuxer`]. The
@@ -110,12 +115,11 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
     cfg.pairer = pairer;
     cfg.demuxer = demuxer;
 
-    let p = Box::new(PairingDemuxer::with_config(
+    REGISTRY.insert(PairingDemuxer::with_config(
         video_pid as u16,
         klv_pid as u16,
         cfg,
-    ));
-    Box::into_raw(p) as jlong
+    )) as jlong
 }
 
 /// `nFeed(handle, bytes)` — read the Java byte array, feed it, and return
@@ -129,14 +133,6 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFeed<'local>(
     handle: jlong,
     bytes: JByteArray<'local>,
 ) -> jobject {
-    let Some(ptr) = checked_pairer_handle(&mut env, handle) else {
-        return JObject::null().into_raw();
-    };
-    // SAFETY: `checked_pairer_handle` rejected 0; the pointer is a live
-    // `Box<PairingDemuxer>` from `nOpen`/`nOpenWithConfig` (single-threaded
-    // use per the Demuxer contract).
-    let pd = unsafe { &mut *ptr };
-
     let buf = match env.convert_byte_array(&bytes) {
         Ok(b) => b,
         Err(_) => {
@@ -145,7 +141,13 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFeed<'local>(
         }
     };
 
-    let outputs = match pd.feed(&buf) {
+    // Lease + feed under the resource lock; the owned `PairerOutput`s leave the
+    // closure so the Java list is built outside it. `None` → closed handle.
+    let Some(feed_result) = REGISTRY.with(handle as u64, |pd| pd.feed(&buf)) else {
+        closed(&mut env);
+        return JObject::null().into_raw();
+    };
+    let outputs = match feed_result {
         Ok(v) => v,
         Err(e) => {
             throw_demux_error(&mut env, &e);
@@ -167,12 +169,10 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFlush<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_pairer_handle(&mut env, handle) else {
+    let Some(outputs) = REGISTRY.with(handle as u64, |pd| pd.flush()) else {
+        closed(&mut env);
         return JObject::null().into_raw();
     };
-    // SAFETY: validated non-zero live pointer from `nOpen`/`nOpenWithConfig`.
-    let pd = unsafe { &mut *ptr };
-    let outputs = pd.flush();
     match build_output_list(&mut env, &outputs) {
         Ok(list) => list.into_raw(),
         Err(()) => JObject::null().into_raw(),
@@ -323,11 +323,10 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_pairer_handle(&mut env, handle) else {
+    let Some(s) = REGISTRY.with(handle as u64, |pd| pd.stats()) else {
+        closed(&mut env);
         return JObject::null().into_raw();
     };
-    // SAFETY: validated non-zero live pointer; `stats` is `&self`.
-    let s = unsafe { &*ptr }.stats();
     match env.new_object(
         "org/tstrans/pipeline/PairerStats",
         "(JJJJ)V",
@@ -353,11 +352,10 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nDemuxerStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_pairer_handle(&mut env, handle) else {
+    let Some(s) = REGISTRY.with(handle as u64, |pd| pd.demuxer_stats()) else {
+        closed(&mut env);
         return JObject::null().into_raw();
     };
-    // SAFETY: validated non-zero live pointer; `demuxer_stats` is `&self`.
-    let s = unsafe { &*ptr }.demuxer_stats();
     match env.new_object(
         "org/tstrans/mpegts/DemuxerStats",
         "(JJJJJJ)V",
@@ -382,37 +380,31 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nResetStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    let Some(ptr) = checked_pairer_handle(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live pointer; `reset_stats` is `&mut self`.
-    unsafe { &mut *ptr }.reset_stats();
+    if REGISTRY
+        .with(handle as u64, |pd| pd.reset_stats())
+        .is_none()
+    {
+        closed(&mut env);
+    }
 }
 
-/// `nClose(handle)` — drop the boxed [`PairingDemuxer`]. No-op on a zero
-/// (already-closed) handle so a double `close()` is safe.
+/// `nClose(handle)` — take + drop the registered [`PairingDemuxer`]. Atomic +
+/// idempotent via `REGISTRY.close`, so a double `close()` is
+/// UAF/double-free-safe. The pairing demuxer's teardown is a plain drop (no
+/// flush/finalize).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nClose<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: produced by `Box::into_raw` in `nOpen`/`nOpenWithConfig`;
-        // dropped exactly once (Java zeroes the handle field after).
-        unsafe {
-            drop(Box::from_raw(handle as *mut PairingDemuxer));
-        }
-    }
+    // The winning close gets the pairing demuxer back; it has no extra teardown,
+    // so just let it drop here.
+    let _ = REGISTRY.close(handle as u64);
 }
 
-/// Validate a native handle. Returns the live `*mut PairingDemuxer`, or
-/// throws `IllegalStateException` and returns `None` for a zero (closed)
+/// Throw `IllegalStateException` for a leased call that found a closed/absent
 /// handle — the native-side mirror of the Java `ensureOpen()` check.
-fn checked_pairer_handle(env: &mut JNIEnv, handle: jlong) -> Option<*mut PairingDemuxer> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Pairer is closed");
-        return None;
-    }
-    Some(handle as *mut PairingDemuxer)
+fn closed(env: &mut JNIEnv) {
+    let _ = env.throw_new("java/lang/IllegalStateException", "Pairer is closed");
 }

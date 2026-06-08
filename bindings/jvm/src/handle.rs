@@ -92,6 +92,9 @@
 //! | `rtp::server` `RtspServer` (`ServerInner`) | `Box<ServerInner>` | server stop | `stop()` then drop |
 //! | `rtp::server` `MountHandle` (`MountInner`) | `Box<MountInner>` | none | drop (mount persists in server until `stop()`) |
 //! | `rtp::server` `RtspServerCancelHandle` (`JniRtspServerCancel`) | `Box<JniRtspServerCancel>` | n/a (IS a cancel target) | drop |
+//! | `mpegts::muxer` `Muxer` | `Box<Muxer>` | none | drop |
+//! | `mpegts::mod` `Demuxer` | `Box<Demuxer>` | none | drop |
+//! | `pipeline` `PairingDemuxer` (`org.tstrans.pipeline.Pairer`) | `Box<PairingDemuxer>` | none | drop |
 //!
 //! Note: the cancel-handle classes (`JniCancel`, `JniRtpCancel`, `JniRtspCancel`,
 //! `JniRtspServerCancel`) are themselves cancel *targets* — they hold an

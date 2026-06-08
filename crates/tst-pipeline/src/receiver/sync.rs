@@ -97,8 +97,10 @@ impl Syncer {
     /// one memmove per ~7 packet emits rather than one memmove per packet.
     pub fn push(&mut self, bytes: &[u8]) {
         // Compact when the dead prefix is getting large. The threshold of SRT_TS_BUNDLE_BYTES
-        // (one SRT datagram) keeps the Vec from growing without bound while
-        // limiting compaction frequency to approximately once per push.
+        // (one SRT datagram) amortises compaction to approximately once per
+        // push. Unbounded growth in pure HUNT is prevented by the HUNT-arm
+        // discard (a sync-free window is dropped, growing `head` so this
+        // compaction reclaims it) — not by this threshold alone.
         if self.head >= SRT_TS_BUNDLE_BYTES {
             self.compact();
         }
@@ -150,7 +152,21 @@ impl Syncer {
                 SyncState::Hunt => {
                     // Scan the live region for the first 0x47 sync byte.
                     let live = &self.buf[self.head..self.head + self.len];
-                    let pos = live.iter().position(|&b| b == TS_SYNC_BYTE)?;
+                    let pos = match live.iter().position(|&b| b == TS_SYNC_BYTE) {
+                        Some(p) => p,
+                        None => {
+                            // No sync byte anywhere in the live window — none of
+                            // these bytes can begin a packet. Discard the whole
+                            // window instead of letting it accumulate without
+                            // bound (a hostile 0x47-free stream would OOM the
+                            // receiver). Mirrors the sender-side framer's
+                            // no-sync discard.
+                            self.bytes_skipped_for_sync += self.len as u64;
+                            self.head += self.len;
+                            self.len = 0;
+                            return None;
+                        }
+                    };
                     self.bytes_skipped_for_sync += pos as u64;
                     // Advance head past skipped bytes — no memmove needed.
                     self.head += pos;
@@ -224,6 +240,12 @@ impl Syncer {
     #[cfg(test)]
     pub fn state(&self) -> SyncState {
         self.state
+    }
+
+    /// Length of the internal storage Vec. Exposed for testing boundedness.
+    #[cfg(test)]
+    fn buf_len(&self) -> usize {
+        self.buf.len()
     }
 }
 
@@ -338,6 +360,42 @@ mod tests {
         // 5 leading packets + 6 trailing packets (bad packet's 188 bytes are
         // consumed by HUNT as it scans for the next 0x47).
         assert_eq!(got, 11);
+    }
+
+    /// A hostile peer streaming bytes with no 0x47 sync byte (e.g. continuous
+    /// 0x00) must not make the internal buffer grow without bound. The HUNT arm
+    /// discards a sync-free live window instead of accumulating it. After all
+    /// that garbage, the syncer must still lock on a subsequent run of real
+    /// packets.
+    #[test]
+    fn hostile_zero_stream_does_not_grow_unbounded() {
+        let mut s = Syncer::new();
+        // Feed 2000 SRT-datagram-sized chunks of 0x00 — none contain 0x47.
+        let garbage = vec![0x00u8; SRT_TS_BUNDLE_BYTES];
+        for _ in 0..2000 {
+            s.push(&garbage);
+            // Drain: there is no sync byte, so this returns None each time.
+            assert!(s.next_packet().is_none());
+        }
+        // Without the HUNT-arm discard, buf would hold ~2.6 MB. With it, the
+        // dead prefix is reclaimed by push()'s compaction, so the buffer stays
+        // bounded to a small multiple of one SRT datagram.
+        assert!(
+            s.buf_len() < 3 * SRT_TS_BUNDLE_BYTES,
+            "buffer grew to {} bytes (hostile sync-free stream not discarded)",
+            s.buf_len()
+        );
+        // Sanity: the syncer still locks on real packets after the garbage.
+        let mut buf = Vec::new();
+        for i in 0..5u16 {
+            buf.extend_from_slice(&ts_packet(i));
+        }
+        s.push(&buf);
+        let mut got = 0;
+        while s.next_packet().is_some() {
+            got += 1;
+        }
+        assert_eq!(got, 5);
     }
 
     /// Verify that the ring-buffer head-cursor invariant holds across multiple

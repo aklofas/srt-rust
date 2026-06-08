@@ -241,14 +241,14 @@ pub(crate) fn apply_peer_overrides(
     if let Some(bw) = cfg.bandwidth_kbps {
         pc.recovery_maxbitrate = bw;
     }
-    pc.recovery_length_min = cfg.buffer.as_millis() as u32;
-    pc.recovery_length_max = (cfg.buffer.as_millis() as u32).max(pc.recovery_length_max);
+    pc.recovery_length_min = duration_millis_u32(cfg.buffer);
+    pc.recovery_length_max = duration_millis_u32(cfg.buffer).max(pc.recovery_length_max);
 
     if let Some(bw) = cfg.recovery_maxbitrate_kbps {
         pc.recovery_maxbitrate = bw;
     }
     if let Some(t) = cfg.session_timeout {
-        pc.session_timeout = t.as_millis() as u32;
+        pc.session_timeout = duration_millis_u32(t);
     }
     pc.compression = if cfg.compression { 1 } else { 0 };
 
@@ -261,6 +261,19 @@ pub(crate) fn apply_peer_overrides(
     }
 
     Ok(())
+}
+
+/// Convert a [`std::time::Duration`] to whole milliseconds as a `u32`,
+/// **saturating at [`u32::MAX`]** rather than silently wrapping.
+///
+/// librist's `recovery_length_*` / `session_timeout` fields are `u32`
+/// milliseconds, so a `Duration` longer than ~49.7 days (`u32::MAX` ms)
+/// cannot be represented. A plain `as u32` cast truncates `as_millis()`
+/// (a `u128`) and would wrap such a value to a small, wrong number. We clamp
+/// to `u32::MAX` instead — these are buffer/timeout knobs where the largest
+/// representable value is the safest fallback for an over-large request.
+fn duration_millis_u32(d: std::time::Duration) -> u32 {
+    d.as_millis().min(u32::MAX as u128) as u32
 }
 
 fn apply_encryption(
@@ -396,6 +409,28 @@ mod tests {
         assert_eq!(
             rist_profile_to_c(RistProfile::Main),
             rist_sys::rist_profile_RIST_PROFILE_MAIN
+        );
+    }
+
+    #[test]
+    fn duration_millis_u32_saturates_instead_of_wrapping() {
+        use std::time::Duration;
+        // Normal value: exact.
+        assert_eq!(duration_millis_u32(Duration::from_millis(1500)), 1500);
+        // Exactly u32::MAX ms: representable, no clamp.
+        assert_eq!(
+            duration_millis_u32(Duration::from_millis(u32::MAX as u64)),
+            u32::MAX
+        );
+        // One past u32::MAX ms: a plain `as u32` cast would wrap to 0; we clamp.
+        assert_eq!(
+            duration_millis_u32(Duration::from_millis(u32::MAX as u64 + 1)),
+            u32::MAX
+        );
+        // ~100 days (well past the ~49.7-day u32::MAX ceiling): clamps, not wraps.
+        assert_eq!(
+            duration_millis_u32(Duration::from_secs(100 * 24 * 60 * 60)),
+            u32::MAX
         );
     }
 

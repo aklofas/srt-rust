@@ -179,6 +179,22 @@ impl RecvTransport for RistRecvTransport {
         let (payload_ptr, payload_len) =
             unsafe { ((*block).payload as *const u8, (*block).payload_len) };
 
+        // A non-empty payload paired with a NULL data pointer is malformed:
+        // librist promised `payload_len` bytes but handed us no buffer. Do NOT
+        // report `copy_n` "received" bytes from the caller's stale buffer —
+        // free the block (mirroring the success path's free below so we don't
+        // leak the librist block) and surface a Broken error.
+        if payload_len > 0 && payload_ptr.is_null() {
+            unsafe {
+                rist_sys::rist_receiver_data_block_free2(&mut block);
+            }
+            self.alive.store(false, Ordering::Release);
+            return Err(TransportError::Broken {
+                msg: format!("rist recv: null payload pointer with payload_len={payload_len}"),
+                errno_code: None,
+            });
+        }
+
         let copy_n = payload_len.min(buf.len());
         if copy_n > 0 && !payload_ptr.is_null() {
             unsafe {

@@ -288,7 +288,7 @@ fn apply_encryption(
     }
     pc.key_size = key.size_bits as i32;
     pc.key_rotation = key.rotation;
-    write_c_string_field(&mut pc.secret, &key.secret, "secret")?;
+    write_c_string_field(&mut pc.secret, key.secret.expose(), "secret")?;
     Ok(())
 }
 

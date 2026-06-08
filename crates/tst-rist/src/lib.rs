@@ -31,7 +31,7 @@ pub mod url;
 
 // Re-exports populated as types land. Remaining lines uncommented as Waves
 // B-E land their modules.
-pub use config::{EncryptionKey, RistConfig, RistProfile};
+pub use config::{EncryptionKey, RistConfig, RistProfile, RistSecret};
 pub use error::{RistError, RistErrorKind};
 pub use stats::RistStats;
 pub use url::{RistUrl, RistUrlError};

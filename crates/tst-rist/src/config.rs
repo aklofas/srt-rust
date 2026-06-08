@@ -4,6 +4,34 @@ use std::time::Duration;
 
 use crate::url::RistUrl;
 
+/// AES pre-shared key, redacting in `Debug` so it never leaks through a
+/// `format!("{:?}", ..)` / `tracing::debug!(?..)` of an enclosing struct.
+///
+/// A thin newtype over `String` with a manual [`Debug`] impl (mirrors the
+/// `Passphrase` pattern in `tst-srt`). The plaintext is exposed only via
+/// [`RistSecret::expose`], which is called exactly at the librist FFI
+/// hand-off site — keep the result un-logged.
+#[derive(Clone)]
+pub struct RistSecret(String);
+
+impl RistSecret {
+    /// Wrap a plaintext PSK.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Expose the plaintext PSK. Prefer not to log the result.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for RistSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RistSecret(<redacted>)")
+    }
+}
+
 /// RIST profile. See VSF TR-06-1 (Simple) and TR-06-2 (Main).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -18,7 +46,8 @@ pub enum RistProfile {
 #[derive(Debug, Clone)]
 pub struct EncryptionKey {
     pub size_bits: u32,
-    pub secret: String,
+    /// AES PSK. Redacting newtype — its plaintext never appears in `Debug`.
+    pub secret: RistSecret,
     /// Optional key-rotation interval (librist `key_rotation` field, in packet count).
     /// 0 = no rotation.
     pub rotation: u32,
@@ -29,7 +58,7 @@ impl EncryptionKey {
     pub fn aes128(secret: impl Into<String>) -> Self {
         Self {
             size_bits: 128,
-            secret: secret.into(),
+            secret: RistSecret::new(secret),
             rotation: 0,
         }
     }
@@ -37,7 +66,7 @@ impl EncryptionKey {
     pub fn aes192(secret: impl Into<String>) -> Self {
         Self {
             size_bits: 192,
-            secret: secret.into(),
+            secret: RistSecret::new(secret),
             rotation: 0,
         }
     }
@@ -45,7 +74,7 @@ impl EncryptionKey {
     pub fn aes256(secret: impl Into<String>) -> Self {
         Self {
             size_bits: 256,
-            secret: secret.into(),
+            secret: RistSecret::new(secret),
             rotation: 0,
         }
     }

@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::config::RistProfile;
+use crate::config::{RistProfile, RistSecret};
 
 /// Parsed `rist://` URL.
 #[derive(Debug, Clone)]
@@ -29,8 +29,8 @@ pub struct RistUrl {
     pub buffer_ms: Option<Duration>,
     /// AES key size in bits (128/192/256).
     pub aes_type: Option<u32>,
-    /// AES PSK (raw text from URL).
-    pub secret: Option<String>,
+    /// AES PSK from the URL. Redacting newtype — its plaintext never appears in `Debug`.
+    pub secret: Option<RistSecret>,
     /// RTCP CNAME.
     pub cname: Option<String>,
     /// Recovery retransmit bandwidth cap (kbps).
@@ -123,7 +123,7 @@ impl RistUrl {
                     }
                 }
                 "secret" => {
-                    secret = Some(value.to_string());
+                    secret = Some(RistSecret::new(value));
                 }
                 "cname" => {
                     cname = Some(value.to_string());
@@ -206,8 +206,28 @@ mod tests {
         assert_eq!(u.bandwidth_kbps, Some(10000));
         assert_eq!(u.buffer_ms, Some(Duration::from_millis(200)));
         assert_eq!(u.aes_type, Some(256));
-        assert_eq!(u.secret.as_deref(), Some("topsecret"));
+        assert_eq!(u.secret.as_ref().map(RistSecret::expose), Some("topsecret"));
         assert_eq!(u.cname.as_deref(), Some("uav-12"));
+    }
+
+    #[test]
+    fn debug_does_not_leak_secret() {
+        // The PSK is a redacting newtype, so the derived Debug of RistUrl (and
+        // of the secret field itself) must NOT print the plaintext. This would
+        // fail if `secret` were a plain `String` (derived Debug leaks it).
+        let u = RistUrl::parse("rist://1.2.3.4:8000?aes-type=256&secret=topsecret").unwrap();
+        let dbg = format!("{u:?}");
+        assert!(
+            !dbg.contains("topsecret"),
+            "RistUrl Debug leaked the PSK: {dbg}"
+        );
+        let secret_dbg = format!("{:?}", u.secret);
+        assert!(
+            !secret_dbg.contains("topsecret"),
+            "RistSecret Debug leaked the PSK: {secret_dbg}"
+        );
+        // The plaintext is still reachable via the explicit accessor.
+        assert_eq!(u.secret.as_ref().map(RistSecret::expose), Some("topsecret"));
     }
 
     #[test]

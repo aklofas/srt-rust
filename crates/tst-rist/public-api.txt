@@ -63,7 +63,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::config::RistProfile
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::config::RistProfile
 pub struct tst_rist::config::EncryptionKey
 pub tst_rist::config::EncryptionKey::rotation: u32
-pub tst_rist::config::EncryptionKey::secret: alloc::string::String
+pub tst_rist::config::EncryptionKey::secret: tst_rist::config::RistSecret
 pub tst_rist::config::EncryptionKey::size_bits: u32
 impl tst_rist::config::EncryptionKey
 pub fn tst_rist::config::EncryptionKey::aes128(impl core::convert::Into<alloc::string::String>) -> Self
@@ -107,6 +107,21 @@ impl core::marker::Unpin for tst_rist::config::RistConfig
 impl core::marker::UnsafeUnpin for tst_rist::config::RistConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::config::RistConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::config::RistConfig
+pub struct tst_rist::config::RistSecret(_)
+impl tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::expose(&self) -> &str
+pub fn tst_rist::config::RistSecret::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::clone(&self) -> tst_rist::config::RistSecret
+impl core::fmt::Debug for tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rist::config::RistSecret
+impl core::marker::Send for tst_rist::config::RistSecret
+impl core::marker::Sync for tst_rist::config::RistSecret
+impl core::marker::Unpin for tst_rist::config::RistSecret
+impl core::marker::UnsafeUnpin for tst_rist::config::RistSecret
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::config::RistSecret
+impl core::panic::unwind_safe::UnwindSafe for tst_rist::config::RistSecret
 pub mod tst_rist::error
 #[non_exhaustive] pub enum tst_rist::error::RistError
 pub tst_rist::error::RistError::Closed
@@ -280,7 +295,7 @@ pub tst_rist::url::RistUrl::is_recv_bind: bool
 pub tst_rist::url::RistUrl::port: u16
 pub tst_rist::url::RistUrl::profile: core::option::Option<tst_rist::config::RistProfile>
 pub tst_rist::url::RistUrl::recovery_maxbitrate_kbps: core::option::Option<u32>
-pub tst_rist::url::RistUrl::secret: core::option::Option<alloc::string::String>
+pub tst_rist::url::RistUrl::secret: core::option::Option<tst_rist::config::RistSecret>
 pub tst_rist::url::RistUrl::session_timeout_ms: core::option::Option<u32>
 impl tst_rist::url::RistUrl
 pub fn tst_rist::url::RistUrl::parse(&str) -> core::result::Result<Self, tst_rist::url::RistUrlError>
@@ -409,7 +424,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::url::RistUrlError
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::url::RistUrlError
 pub struct tst_rist::EncryptionKey
 pub tst_rist::EncryptionKey::rotation: u32
-pub tst_rist::EncryptionKey::secret: alloc::string::String
+pub tst_rist::EncryptionKey::secret: tst_rist::config::RistSecret
 pub tst_rist::EncryptionKey::size_bits: u32
 impl tst_rist::config::EncryptionKey
 pub fn tst_rist::config::EncryptionKey::aes128(impl core::convert::Into<alloc::string::String>) -> Self
@@ -491,6 +506,21 @@ impl core::marker::Unpin for tst_rist::builder::RistRecvTransportBuilder
 impl core::marker::UnsafeUnpin for tst_rist::builder::RistRecvTransportBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::builder::RistRecvTransportBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_rist::builder::RistRecvTransportBuilder
+pub struct tst_rist::RistSecret(_)
+impl tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::expose(&self) -> &str
+pub fn tst_rist::config::RistSecret::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::clone(&self) -> tst_rist::config::RistSecret
+impl core::fmt::Debug for tst_rist::config::RistSecret
+pub fn tst_rist::config::RistSecret::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rist::config::RistSecret
+impl core::marker::Send for tst_rist::config::RistSecret
+impl core::marker::Sync for tst_rist::config::RistSecret
+impl core::marker::Unpin for tst_rist::config::RistSecret
+impl core::marker::UnsafeUnpin for tst_rist::config::RistSecret
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rist::config::RistSecret
+impl core::panic::unwind_safe::UnwindSafe for tst_rist::config::RistSecret
 #[non_exhaustive] pub struct tst_rist::RistStats
 pub tst_rist::RistStats::bandwidth_kbps: u32
 pub tst_rist::RistStats::bytes_received: u64
@@ -568,7 +598,7 @@ pub tst_rist::RistUrl::is_recv_bind: bool
 pub tst_rist::RistUrl::port: u16
 pub tst_rist::RistUrl::profile: core::option::Option<tst_rist::config::RistProfile>
 pub tst_rist::RistUrl::recovery_maxbitrate_kbps: core::option::Option<u32>
-pub tst_rist::RistUrl::secret: core::option::Option<alloc::string::String>
+pub tst_rist::RistUrl::secret: core::option::Option<tst_rist::config::RistSecret>
 pub tst_rist::RistUrl::session_timeout_ms: core::option::Option<u32>
 impl tst_rist::url::RistUrl
 pub fn tst_rist::url::RistUrl::parse(&str) -> core::result::Result<Self, tst_rist::url::RistUrlError>

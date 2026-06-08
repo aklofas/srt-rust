@@ -40,10 +40,27 @@ pub struct TransportResponse {
     pub ssrc: Option<u32>,
 }
 
-/// Parse the server's `Transport:` response header.
+/// Parse a `Transport:` header value (server response OR client SETUP
+/// request — the syntax is shared per RFC 7826 §18.54).
 ///
-/// Recognized keys: `server_port=`, `interleaved=`, `ssrc=`. The kind is
-/// inferred from the presence of `RTP/AVP/TCP` or `interleaved=`.
+/// Recognized keys: `client_port=`, `server_port=`, `interleaved=`,
+/// `ssrc=`. The kind is inferred from the presence of `RTP/AVP/TCP` or
+/// `interleaved=`.
+///
+/// Parsing is **strict** and parameter names are matched
+/// **case-insensitively** (RFC 7826 §18.54: Transport parameter names are
+/// case-insensitive). A present-but-malformed port/channel pair —
+/// non-numeric, out-of-range, reversed (`hi < lo`), or a single value
+/// whose fabricated companion would overflow — is rejected with
+/// [`RtspError::UnsupportedTransport`] rather than silently mapped to `0`
+/// or wrapped. A *missing* `client_port`/`server_port`/`interleaved` key
+/// is left as `None` (the caller decides whether it is required for the
+/// chosen transport).
+///
+/// # Errors
+///
+/// [`RtspError::UnsupportedTransport`] if any present port/channel pair is
+/// malformed.
 pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse, RtspError> {
     let lower = header_value.to_ascii_lowercase();
     let kind = if lower.contains("rtp/avp/tcp") || lower.contains("interleaved=") {
@@ -57,29 +74,20 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
     let mut ssrc = None;
     for part in header_value.split(';') {
         let part = part.trim();
-        if let Some(v) = part.strip_prefix("server_port=") {
-            let mut it = v.split('-');
-            let lo = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-            let hi = it.next().and_then(|s| s.parse().ok()).unwrap_or(lo + 1);
-            server_port = Some((lo, hi));
-        }
-        if let Some(v) = part.strip_prefix("client_port=") {
-            let mut it = v.split('-');
-            let lo = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-            let hi = it.next().and_then(|s| s.parse().ok()).unwrap_or(lo + 1);
-            client_port = Some((lo, hi));
-        }
-        if let Some(v) = part.strip_prefix("interleaved=") {
-            let mut it = v.split('-');
-            let lo = it.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
-            let hi = it
-                .next()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(lo + 1);
-            interleaved = Some((lo, hi));
-        }
-        if let Some(v) = part.strip_prefix("ssrc=") {
-            ssrc = u32::from_str_radix(v.trim(), 16).ok();
+        // Split the `key=value` once; match the key case-insensitively
+        // per RFC 7826 §18.54 while preserving the original value casing
+        // (hex ssrc, etc.).
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        let key = key.trim().to_ascii_lowercase();
+        let value = value.trim();
+        match key.as_str() {
+            "server_port" => server_port = Some(parse_u16_pair(value)?),
+            "client_port" => client_port = Some(parse_u16_pair(value)?),
+            "interleaved" => interleaved = Some(parse_u8_pair(value)?),
+            "ssrc" => ssrc = u32::from_str_radix(value, 16).ok(),
+            _ => {}
         }
     }
     Ok(TransportResponse {
@@ -91,6 +99,50 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
     })
 }
 
+/// Parse a strict `lo-hi` `u16` port range. Rejects non-numeric,
+/// out-of-range, reversed (`hi < lo`), and single-value forms whose
+/// fabricated companion (`lo+1`) would overflow.
+fn parse_u16_pair(value: &str) -> Result<(u16, u16), RtspError> {
+    let mut it = value.split('-');
+    let lo: u16 = it
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .ok_or(RtspError::UnsupportedTransport)?;
+    let hi: u16 = match it.next() {
+        Some(s) => s
+            .trim()
+            .parse()
+            .map_err(|_| RtspError::UnsupportedTransport)?,
+        // No explicit hi: derive the RTCP companion, rejecting overflow.
+        None => lo.checked_add(1).ok_or(RtspError::UnsupportedTransport)?,
+    };
+    if it.next().is_some() || hi < lo {
+        return Err(RtspError::UnsupportedTransport);
+    }
+    Ok((lo, hi))
+}
+
+/// Parse a strict `lo-hi` `u8` interleaved-channel range. Same rejection
+/// rules as [`parse_u16_pair`], scoped to `u8`.
+fn parse_u8_pair(value: &str) -> Result<(u8, u8), RtspError> {
+    let mut it = value.split('-');
+    let lo: u8 = it
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .ok_or(RtspError::UnsupportedTransport)?;
+    let hi: u8 = match it.next() {
+        Some(s) => s
+            .trim()
+            .parse()
+            .map_err(|_| RtspError::UnsupportedTransport)?,
+        None => lo.checked_add(1).ok_or(RtspError::UnsupportedTransport)?,
+    };
+    if it.next().is_some() || hi < lo {
+        return Err(RtspError::UnsupportedTransport);
+    }
+    Ok((lo, hi))
+}
+
 /// Bind a UDP RTP+RTCP port pair on `0.0.0.0`.
 ///
 /// Returns `(rtp_socket, rtcp_socket, rtp_port)`. Tries up to 8 candidate
@@ -99,15 +151,34 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
 ///
 /// # Errors
 ///
-/// [`RtspError::Io`] with `AddrInUse` if all 8 candidate pairs fail.
+/// [`RtspError::UnsupportedTransport`] if `start` is so close to
+/// `u16::MAX` that no candidate even/odd pair fits without overflowing
+/// (the companion RTCP port is always RTP+1).
+/// [`RtspError::Io`] with `AddrInUse` if all candidate pairs fail to bind.
 pub fn bind_udp_pair(start: u16) -> Result<(UdpSocket, UdpSocket, u16), RtspError> {
-    for attempt in 0..8 {
-        let port = start + (attempt * 2);
+    let mut bound_overflow = false;
+    for attempt in 0..8u16 {
+        // start + attempt*2, then companion port+1 — both checked so a
+        // `start` near 65535 returns a typed error instead of wrapping.
+        let Some(port) = attempt
+            .checked_mul(2)
+            .and_then(|off| start.checked_add(off))
+        else {
+            bound_overflow = true;
+            break;
+        };
+        let Some(rtcp_port) = port.checked_add(1) else {
+            bound_overflow = true;
+            break;
+        };
         if let Ok(rtp) = UdpSocket::bind(("0.0.0.0", port)) {
-            if let Ok(rtcp) = UdpSocket::bind(("0.0.0.0", port + 1)) {
+            if let Ok(rtcp) = UdpSocket::bind(("0.0.0.0", rtcp_port)) {
                 return Ok((rtp, rtcp, port));
             }
         }
+    }
+    if bound_overflow {
+        return Err(RtspError::UnsupportedTransport);
     }
     Err(RtspError::Io(std::io::ErrorKind::AddrInUse))
 }
@@ -117,12 +188,26 @@ pub fn bind_udp_pair(start: u16) -> Result<(UdpSocket, UdpSocket, u16), RtspErro
 ///
 /// `PreferUdp` and `ForceUdp` both emit a UDP request; the difference is
 /// the fallback policy in [`super::setup`].
-pub fn build_transport_request(pref: RtspTransportPref, rtp_port: u16) -> String {
+///
+/// # Errors
+///
+/// [`RtspError::UnsupportedTransport`] for a UDP request when `rtp_port`
+/// is `u16::MAX` (the RTCP companion port `rtp_port + 1` would overflow
+/// `u16`).
+pub fn build_transport_request(
+    pref: RtspTransportPref,
+    rtp_port: u16,
+) -> Result<String, RtspError> {
     match pref {
         RtspTransportPref::PreferUdp | RtspTransportPref::ForceUdp => {
-            format!("RTP/AVP;unicast;client_port={}-{}", rtp_port, rtp_port + 1)
+            let rtcp_port = rtp_port
+                .checked_add(1)
+                .ok_or(RtspError::UnsupportedTransport)?;
+            Ok(format!(
+                "RTP/AVP;unicast;client_port={rtp_port}-{rtcp_port}"
+            ))
         }
-        RtspTransportPref::ForceTcp => "RTP/AVP/TCP;unicast;interleaved=0-1".to_string(),
+        RtspTransportPref::ForceTcp => Ok("RTP/AVP/TCP;unicast;interleaved=0-1".to_string()),
     }
 }
 
@@ -149,13 +234,117 @@ mod tests {
 
     #[test]
     fn build_udp_request_includes_port_pair() {
-        let h = build_transport_request(RtspTransportPref::PreferUdp, 8000);
+        let h = build_transport_request(RtspTransportPref::PreferUdp, 8000).unwrap();
         assert!(h.contains("client_port=8000-8001"));
     }
 
     #[test]
     fn build_tcp_request_uses_interleaved_0_1() {
-        let h = build_transport_request(RtspTransportPref::ForceTcp, 0);
+        let h = build_transport_request(RtspTransportPref::ForceTcp, 0).unwrap();
         assert!(h.contains("interleaved=0-1"));
+    }
+
+    // --- B5: adversarial Transport endpoint parsing / port-overflow tests ---
+
+    #[test]
+    fn build_udp_request_rejects_max_port_companion_overflow() {
+        // rtp_port == 65535 → companion 65536 overflows u16. Must Err,
+        // not wrap to 0 or panic.
+        let r = build_transport_request(RtspTransportPref::ForceUdp, 65535);
+        assert!(r.is_err(), "65535 companion overflow must be an error");
+    }
+
+    #[test]
+    fn bind_udp_pair_rejects_start_at_max_port() {
+        // start == 65535 → the very first companion (port+1) overflows.
+        // Must Err cleanly instead of wrapping/panicking.
+        let r = bind_udp_pair(65535);
+        assert!(r.is_err(), "bind_udp_pair(65535) must Err, not wrap");
+    }
+
+    #[test]
+    fn bind_udp_pair_at_65534_does_not_wrap() {
+        // start == 65534: attempt 0 gives port 65534 / companion 65535
+        // (both valid u16, may bind); attempt 1 would be 65536 which must
+        // NOT wrap to 0 — the loop breaks cleanly. So this returns either
+        // Ok (bound 65534) or Err (AddrInUse / overflow), NEVER a panic or
+        // a wrapped port-0 binding.
+        let r = bind_udp_pair(65534);
+        if let Ok((_, _, port)) = r {
+            assert_eq!(port, 65534, "must bind 65534, never a wrapped 0");
+        }
+    }
+
+    #[test]
+    fn parse_rejects_reversed_server_port_pair() {
+        // hi < lo is a malformed range.
+        let r = parse_transport_response("RTP/AVP;unicast;server_port=6971-6970");
+        assert!(r.is_err(), "reversed server_port must be rejected");
+    }
+
+    #[test]
+    fn parse_rejects_reversed_client_port_pair() {
+        let r = parse_transport_response("RTP/AVP;unicast;client_port=5005-5004");
+        assert!(r.is_err(), "reversed client_port must be rejected");
+    }
+
+    #[test]
+    fn parse_rejects_invalid_port_value() {
+        // Non-numeric port must not silently map to 0.
+        let r = parse_transport_response("RTP/AVP;unicast;client_port=abc-def");
+        assert!(r.is_err(), "non-numeric ports must be rejected");
+    }
+
+    #[test]
+    fn parse_rejects_out_of_range_port() {
+        // 70000 > u16::MAX must Err, not truncate/saturate.
+        let r = parse_transport_response("RTP/AVP;unicast;client_port=70000-70001");
+        assert!(r.is_err(), "out-of-range port must be rejected");
+    }
+
+    #[test]
+    fn parse_rejects_missing_hi_port() {
+        // A single-value range with no hi must not fabricate lo+1 (which
+        // can also overflow at 65535).
+        let r = parse_transport_response("RTP/AVP;unicast;client_port=65535");
+        assert!(r.is_err(), "missing hi port must be rejected");
+    }
+
+    #[test]
+    fn parse_matches_keys_case_insensitively() {
+        // RFC 7826: Transport header parameter names are case-insensitive.
+        let t =
+            parse_transport_response("RTP/AVP;UNICAST;Client_Port=5004-5005;SERVER_PORT=6970-6971")
+                .unwrap();
+        assert_eq!(t.kind, RtspTransportKind::Udp);
+        assert_eq!(t.client_port, Some((5004, 5005)));
+        assert_eq!(t.server_port, Some((6970, 6971)));
+    }
+
+    #[test]
+    fn parse_interleaved_case_insensitive_keys() {
+        let t = parse_transport_response("RTP/AVP/TCP;unicast;INTERLEAVED=0-1").unwrap();
+        assert_eq!(t.kind, RtspTransportKind::TcpInterleaved);
+        assert_eq!(t.interleaved, Some((0, 1)));
+    }
+
+    #[test]
+    fn parse_rejects_reversed_interleaved_pair() {
+        let r = parse_transport_response("RTP/AVP/TCP;unicast;interleaved=5-4");
+        assert!(r.is_err(), "reversed interleaved channels must be rejected");
+    }
+
+    #[test]
+    fn parse_rejects_interleaved_companion_overflow() {
+        // Single channel 255 → fabricated companion 256 overflows u8.
+        let r = parse_transport_response("RTP/AVP/TCP;unicast;interleaved=255");
+        assert!(r.is_err(), "interleaved=255 companion overflow rejected");
+    }
+
+    #[test]
+    fn parse_accepts_well_formed_lowercase_unchanged() {
+        // Regression: don't break the happy path.
+        let t = parse_transport_response("RTP/AVP;unicast;client_port=5004-5005").unwrap();
+        assert_eq!(t.client_port, Some((5004, 5005)));
     }
 }

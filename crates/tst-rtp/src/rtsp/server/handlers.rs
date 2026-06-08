@@ -340,6 +340,18 @@ pub(crate) fn handle_setup(
                     ttl,
                 );
             } else {
+                // Unicast UDP REQUIRES a valid client_port pair — the
+                // server fans RTP out to client_port.0 (RTP) and RTCP to
+                // client_port.1. A missing client_port can't be silently
+                // defaulted to 0-0 (that would point the fan-out at
+                // privileged port 0). Reject with 461 Unsupported
+                // Transport. (Malformed/reversed/out-of-range pairs are
+                // already rejected as 400 by parse_transport_response
+                // above; this guards the *absent* case.)
+                let client_port = match parsed.client_port {
+                    Some(cp) => cp,
+                    None => return error_response(req, 461, "Unsupported Transport"),
+                };
                 // Unicast UDP: bind a server-side RTP+RTCP port pair.
                 let local_ip = match *state.local_addr.lock().unwrap() {
                     Some(addr) => addr.ip(),
@@ -349,13 +361,17 @@ pub(crate) fn handle_setup(
                     Ok(t) => t,
                     Err(_) => return error_response(req, 500, "Internal Server Error"),
                 };
-                let client_port = parsed.client_port.unwrap_or((0, 0));
+                // bind_server_udp_pair already guarantees server_rtp_port
+                // != u16::MAX, so the companion can't overflow; use
+                // checked_add defensively (the +1 companion-port bug
+                // class) and fail closed if that invariant ever changes.
+                let server_rtcp_port = match server_rtp_port.checked_add(1) {
+                    Some(p) => p,
+                    None => return error_response(req, 500, "Internal Server Error"),
+                };
                 transport_response_header = format!(
                     "RTP/AVP;unicast;client_port={}-{};server_port={}-{}",
-                    client_port.0,
-                    client_port.1,
-                    server_rtp_port,
-                    server_rtp_port + 1,
+                    client_port.0, client_port.1, server_rtp_port, server_rtcp_port,
                 );
                 session.udp_sockets = Some((rtp_sock, rtcp_sock));
             }
@@ -367,9 +383,18 @@ pub(crate) fn handle_setup(
             // TCP connection has its own interleaved namespace).
             static NEXT_CHANNEL: AtomicU8 = AtomicU8::new(0);
             let base = NEXT_CHANNEL.fetch_add(2, Ordering::Relaxed);
-            session.interleaved_channels = Some((base, base + 1));
+            // base+1 is the RTCP companion channel; base==255 (or an odd
+            // base after wrap) would overflow u8. Reject rather than
+            // wrapping to channel 0 (same +1 companion bug class as the
+            // UDP port pairs). 500 — this is a server-side allocator
+            // exhaustion, not a client error.
+            let companion = match base.checked_add(1) {
+                Some(c) => c,
+                None => return error_response(req, 500, "Internal Server Error"),
+            };
+            session.interleaved_channels = Some((base, companion));
             transport_response_header =
-                format!("RTP/AVP/TCP;unicast;interleaved={}-{}", base, base + 1);
+                format!("RTP/AVP/TCP;unicast;interleaved={base}-{companion}");
         }
     }
 
@@ -449,11 +474,11 @@ fn bind_server_udp_pair(
         let rtp_port = rtp_std.local_addr()?.port();
         // Avoid the (extremely rare) case where the kernel hands us a
         // port pair like (65535, 65536) where the +1 would wrap.
-        if rtp_port == u16::MAX {
+        let Some(rtcp_port) = rtp_port.checked_add(1) else {
             drop(rtp_std);
             continue;
-        }
-        let rtcp_addr = SocketAddr::new(bind_ip, rtp_port + 1);
+        };
+        let rtcp_addr = SocketAddr::new(bind_ip, rtcp_port);
         match StdUdpSocket::bind(rtcp_addr) {
             Ok(rtcp_std) => {
                 rtcp_std.set_nonblocking(true)?;
@@ -562,7 +587,13 @@ pub(crate) fn handle_play(
             let Some((rtp_sock, _rtcp_sock)) = session.udp_sockets.clone() else {
                 return error_response(req, 500, "Internal Server Error");
             };
-            let client_port = transport.client_port.unwrap_or((0, 0));
+            // SETUP (handle_setup) already rejected a UDP unicast without a
+            // client_port (461). Defense-in-depth: never fall back to a
+            // bogus port-0 fan-out target — fail closed if it's somehow
+            // absent at PLAY time.
+            let Some(client_port) = transport.client_port else {
+                return error_response(req, 500, "Internal Server Error");
+            };
             let peer_addr = compute_udp_play_target(session.peer_addr, client_port.0);
             crate::rtsp::server::fanout::PeerTransport::Udp {
                 socket: rtp_sock,
@@ -1094,6 +1125,91 @@ mod tests {
         assert!(
             transport_resp.contains("port=65535;"),
             "got: {transport_resp}"
+        );
+    }
+
+    // ── B5: adversarial SETUP Transport parsing (unauthenticated path) ──
+
+    /// A reversed client_port pair (hi-lo) must be rejected with 400, not
+    /// silently accepted as a bogus range.
+    #[test]
+    fn setup_with_reversed_client_port_returns_400() {
+        let state = make_state_with_mount();
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/live");
+        req.headers.insert(
+            "transport".into(),
+            "RTP/AVP;unicast;client_port=5005-5004".into(),
+        );
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 400);
+    }
+
+    /// An invalid (non-numeric) client_port must be rejected with 400, not
+    /// silently mapped to 0.
+    #[test]
+    fn setup_with_invalid_client_port_returns_400() {
+        let state = make_state_with_mount();
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/live");
+        req.headers.insert(
+            "transport".into(),
+            "RTP/AVP;unicast;client_port=abc-def".into(),
+        );
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 400);
+    }
+
+    /// A UDP unicast SETUP that omits client_port must be rejected (461
+    /// Unsupported Transport) — the server must NOT bind a socket pair and
+    /// echo a bogus client_port=0-0.
+    #[tokio::test]
+    async fn setup_udp_unicast_without_client_port_returns_461() {
+        let state = make_state_with_mount();
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/live");
+        // UDP unicast with NO client_port param.
+        req.headers
+            .insert("transport".into(), "RTP/AVP;unicast".into());
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 461);
+        assert!(session.udp_sockets.is_none());
+        assert!(session.session_id.is_none());
+    }
+
+    /// client_port=65535 has no valid RTCP companion (65536 overflows
+    /// u16). The single-value form (`client_port=65535`) must be rejected
+    /// with 400 rather than fabricating a wrapped companion.
+    #[test]
+    fn setup_with_single_max_client_port_returns_400() {
+        let state = make_state_with_mount();
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/live");
+        req.headers.insert(
+            "transport".into(),
+            "RTP/AVP;unicast;client_port=65535".into(),
+        );
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 400);
+    }
+
+    /// Mixed-case Transport parameter keys (`Client_Port=`, `UNICAST`)
+    /// must parse correctly per RFC 7826 (case-insensitive param names).
+    #[tokio::test]
+    async fn setup_with_mixed_case_keys_returns_200() {
+        let state = make_state_with_mount();
+        let mut req = make_req(RtspMethod::Setup, "rtsp://127.0.0.1:8554/live");
+        req.headers.insert(
+            "transport".into(),
+            "RTP/AVP;UNICAST;Client_Port=5004-5005".into(),
+        );
+        let mut session = ServerSessionState::new();
+        let resp = handle_setup(&req, &state, &mut session);
+        assert_eq!(resp.status, 200, "got: {} {}", resp.status, resp.reason);
+        let transport_resp = resp.headers.get("transport").unwrap();
+        assert!(
+            transport_resp.contains("client_port=5004-5005"),
+            "transport missing client_port echo: {transport_resp}"
         );
     }
 

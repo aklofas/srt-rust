@@ -82,7 +82,7 @@ impl RtspClient {
             None
         };
         let local_port = local_udp.as_ref().map(|(_, _, p)| *p).unwrap_or(0);
-        let transport_hdr = build_transport_request(pref, local_port);
+        let transport_hdr = build_transport_request(pref, local_port)?;
         let req = RtspRequest::new(RtspMethod::Setup, uri.to_string(), self.url.rtsp_version)
             .header("cseq", cseq.to_string())
             .header("transport", transport_hdr)

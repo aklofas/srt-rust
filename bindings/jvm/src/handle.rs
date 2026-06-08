@@ -106,7 +106,6 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// An optional cross-thread cancel hook fired by [`HandleRegistry::close`] *before*
@@ -125,11 +124,6 @@ pub(crate) struct Entry<T> {
     /// Fired once by `close` to wake a parked op before taking the lock. `None` for
     /// types with no parked op.
     cancel: Option<CancelHook>,
-    /// Set true by the first `close`. Guards the cancel hook + take against a
-    /// double-`close` (which in practice can't reach the same entry twice, since
-    /// `close` removes it from the map under the lock — this is belt-and-suspenders
-    /// for a hypothetical re-entrant id).
-    closed: AtomicBool,
 }
 
 impl<T> Entry<T> {
@@ -140,6 +134,11 @@ impl<T> Entry<T> {
     /// `with` is the workhorse a leased native method calls: lease → `with` → done.
     /// Holding the lock across the closure is what lets `close` block until a parked
     /// op releases.
+    ///
+    /// Serialization: two threads calling a leased method on the *same* handle
+    /// serialize on the resource `Mutex` — the second blocks until the first's
+    /// closure completes. This is intended (the binding's single-iterator contract),
+    /// but a caller should expect the blocking when two ops target one handle.
     pub(crate) fn with<R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
         let mut guard = self.resource.lock().unwrap_or_else(|e| e.into_inner());
         guard.as_mut().map(f)
@@ -216,11 +215,17 @@ impl<T> HandleRegistry<T> {
     /// once, inside [`close`](HandleRegistry::close), before the resource is taken —
     /// use it to wake a parked op (e.g. `move || transport_cancel.cancel()`). Returns
     /// the opaque non-zero handle key.
+    ///
+    /// Single-iterator caveat: the cancel hook fires *exactly once* (when `close`
+    /// runs). A lease that begins a *new* parked op *after* `close` has already fired
+    /// the hook will NOT be woken by it — the registry guarantees no use-after-free,
+    /// not the wake-up of an op parked after cancel. Callers relying on cross-thread
+    /// cancel (the rtp `DemuxReceiver` / transport recv/send paths) must therefore
+    /// uphold a single-iterator contract: at most one op parked on a handle at a time.
     pub(crate) fn insert_with_cancel(&self, resource: T, cancel: Option<CancelHook>) -> u64 {
         let entry = Arc::new(Entry {
             resource: Mutex::new(Some(resource)),
             cancel,
-            closed: AtomicBool::new(false),
         });
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let id = inner.next_id;
@@ -249,14 +254,35 @@ impl<T> HandleRegistry<T> {
         inner.table.get(&id).cloned()
     }
 
+    /// Lease `id` and run `f` on the resource under its lock — the common A2 path,
+    /// folded so call sites get a single `Option<R>` instead of a nested
+    /// `Option<Option<R>>`. `None` if `id` is `0`/absent/closed OR the resource was
+    /// already taken by a concurrent `close`. A2 maps `None` → throw
+    /// `IllegalStateException`.
+    pub(crate) fn with<R>(&self, id: u64, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+        self.lease(id).and_then(|e| e.with(f))
+    }
+
+    /// Lease `id` and run `f` without blocking on a parked op — the `isAlive`-style
+    /// probe path. A `0`/absent/closed handle maps to [`TryWith::Taken`] (the entry
+    /// is gone, semantically the same as a taken resource for a probe), so call sites
+    /// match on the [`TryWith`] enum alone. Otherwise delegates to
+    /// [`Entry::try_with`] (`Ran`/`Locked`/`Taken`).
+    pub(crate) fn try_with<R>(&self, id: u64, f: impl FnOnce(&mut T) -> R) -> TryWith<R> {
+        match self.lease(id) {
+            Some(e) => e.try_with(f),
+            None => TryWith::Taken,
+        }
+    }
+
     /// Close the entry for `id`: remove it from the table (dropping the registry's
     /// strong ref), fire its cancel hook to wake any parked op, then `take()` and
     /// return the resource so the caller can run type-specific teardown + drop it.
     ///
-    /// Atomic + idempotent: the removal happens under the registry lock, so two
-    /// `close` calls can't both remove the same entry — the second sees the id gone
-    /// and returns `None`. `0` → `None`. The `closed` CAS additionally guards against
-    /// firing the cancel hook / taking the resource twice on the same `Arc`.
+    /// Atomic + idempotent: `table.remove(&id)` under the registry lock is the SOLE
+    /// gate — exactly one caller ever extracts the entry, so a second `close` finds
+    /// the id gone and returns `None` (and the cancel hook + resource `take` each run
+    /// at most once). `0` → `None`.
     ///
     /// The returned `Option<T>` is `Some` only for the winning `close`; the caller
     /// runs e.g. `if let Some(mut r) = REGISTRY.close(id) { r.close(); }`. The
@@ -266,22 +292,13 @@ impl<T> HandleRegistry<T> {
         if id == 0 {
             return None;
         }
-        // Remove under the registry lock — this is the atomic point that makes
-        // double-close a no-op (only one caller gets the entry out of the table).
+        // Remove under the registry lock — this is the single atomic gate that makes
+        // double-close a no-op: only one caller gets the entry out of the table, so
+        // the cancel hook below and the resource `take` each run at most once.
         let entry = {
             let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.table.remove(&id)
         }?;
-
-        // CAS guards a re-entrant id from firing cancel / taking twice (belt-and-
-        // suspenders; the table removal above already serialises the common path).
-        if entry
-            .closed
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return None;
-        }
 
         // Wake a parked op BEFORE we try to take the resource lock, so a blocked
         // recv/accept releases and we don't deadlock waiting for `take()`.
@@ -311,7 +328,7 @@ impl<T> HandleRegistry<T> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     use std::thread;
 
     /// A resource that bumps a shared counter on `Drop`, so tests can assert the
@@ -344,6 +361,31 @@ mod tests {
         let reg: HandleRegistry<u64> = HandleRegistry::new();
         assert!(reg.lease(0).is_none());
         assert!(reg.lease(999).is_none());
+    }
+
+    #[test]
+    fn registry_with_folds_both_layers() {
+        let reg: HandleRegistry<u64> = HandleRegistry::new();
+        let id = reg.insert(11);
+        // Live: folds to Some(R).
+        assert_eq!(reg.with(id, |v| *v * 2), Some(22));
+        // Absent / closed / zero: all fold to None.
+        assert_eq!(reg.with(0, |v| *v), None);
+        assert_eq!(reg.with(999, |v| *v), None);
+        reg.close(id);
+        assert_eq!(reg.with(id, |v| *v), None, "closed id folds to None");
+    }
+
+    #[test]
+    fn registry_try_with_maps_absent_to_taken() {
+        let reg: HandleRegistry<u64> = HandleRegistry::new();
+        let id = reg.insert(3);
+        assert!(matches!(reg.try_with(id, |v| *v), TryWith::Ran(3)));
+        // A 0/absent/closed handle is reported as Taken (entry gone).
+        assert!(matches!(reg.try_with(0, |v| *v), TryWith::Taken));
+        assert!(matches!(reg.try_with(999, |v| *v), TryWith::Taken));
+        reg.close(id);
+        assert!(matches!(reg.try_with(id, |v| *v), TryWith::Taken));
     }
 
     #[test]

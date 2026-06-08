@@ -334,9 +334,9 @@ impl RtspRequest {
     /// Serialize to bytes ready to write to the TCP stream.
     ///
     /// This is the raw, infallible serializer; it does *not* validate header
-    /// names/values. Production send paths use [`Self::encode_checked`],
-    /// which validates against header injection first. Prefer that on any
-    /// path where a header value derives from caller/credential input.
+    /// names/values. Production send paths use the crate-internal
+    /// `encode_checked`, which validates against header injection first. Prefer
+    /// that on any path where a header value derives from caller/credential input.
     pub fn encode(&self) -> Bytes {
         let method_str = match self.method {
             RtspMethod::Options => "OPTIONS",

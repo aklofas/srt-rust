@@ -18,17 +18,21 @@ import org.tstrans.mpegts.DemuxerConfig;
  * <p>Mirrors {@code tstrans.rtp.DemuxReceiver}. Wraps
  * {@code tst_pipeline::DemuxReceiver<tst_rtp::RtpRecvTransport>}.
  *
- * <p><b>Thread safety:</b> a single {@code DemuxReceiver} is NOT thread-safe and
- * is deliberately NOT {@code synchronized}. Iterate from one thread. There is no
- * {@code cancelHandle()} on the RTP convenience wrapper (matching tst-py's
- * surface), so the one sanctioned cross-thread operation is {@link #close()}: to
- * stop an iteration that is currently <em>parked</em> in {@code next()} waiting for
- * the next datagram, another thread may call {@code close()} — it cancels the
- * in-flight recv first (waking the parked {@code next()} within ~100&nbsp;ms), then
- * frees the receiver. Do NOT call any other method — including a second
- * {@code next()} or {@link #addByteSink} — concurrently with {@code close()} or
- * with an in-flight {@code next()}; register sinks before iterating, or between
- * {@code next()} calls. After {@code close()}, further calls throw
+ * <p><b>Thread safety:</b> a single {@code DemuxReceiver} is intended to be
+ * iterated from one thread. There is no {@code cancelHandle()} on the RTP
+ * convenience wrapper (matching tst-py's surface), so the sanctioned cross-thread
+ * operation is {@link #close()}: to stop an iteration currently <em>parked</em> in
+ * {@code next()} waiting for the next datagram, another thread may call
+ * {@code close()} — it cancels the in-flight recv first (waking the parked
+ * {@code next()} within ~100&nbsp;ms), then frees the receiver.
+ *
+ * <p>{@code close()} is memory-safe against ANY concurrent native call: it claims
+ * the registry id atomically and the leased {@code HandleRegistry} guarantees no
+ * use-after-free/double-free — a racing call either runs or throws a clean
+ * {@link IllegalStateException}. Note a <em>fresh</em> {@code next()} entered
+ * <em>after</em> {@code close()} fired its cancel hook is not woken by that same
+ * hook; it observes the closed handle and throws {@link IllegalStateException}
+ * (single-iterator expectation). After {@code close()}, further calls throw
  * {@code IllegalStateException}.
  *
  * <p><b>Byte-copy posture (JDK 17):</b> sample payloads and the byte-sink
@@ -46,15 +50,15 @@ import org.tstrans.mpegts.DemuxerConfig;
 public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    // `volatile` because close() is a sanctioned cross-thread operation on this
-    // class (the watchdog pattern — see the class javadoc), so the handle field is
-    // read by the iterator thread and written by a closing thread. volatile gives
-    // the JMM visibility + 64-bit atomicity that cross-thread contract needs; it
-    // does NOT close the in-flight free race (bounded by the single-iterator
-    // contract, as elsewhere in this binding).
-    private volatile long handle; // Box<JniRtpDemuxReceiver>; 0 = closed
+    // AtomicLong registry key. close() is a sanctioned cross-thread operation on
+    // this class (the watchdog pattern — see the class javadoc): the handle is read
+    // by the iterator thread and claimed (getAndSet) by a closing thread. The leased
+    // HandleRegistry closes the in-flight free race — a racing native call sees the
+    // entry gone and throws IllegalStateException, never UB.
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    DemuxReceiver(long handle) { this.handle = handle; }
+    DemuxReceiver(long h) { this.handle.set(h); }
 
     /**
      * Bind a receiver to {@code url} with default demux options.
@@ -122,7 +126,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
                 if (done) return false;
                 if (peeked != null) return true;
                 try {
-                    peeked = nNext(handle);
+                    peeked = nNext(handle.get());
                 } catch (RtpException | DemuxException e) {
                     throw new RuntimeException(e);
                 }
@@ -158,7 +162,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public void addByteSink(Consumer<byte[]> callback) {
         ensureOpen();
-        nAddByteSink(handle, callback);
+        nAddByteSink(handle.get(), callback);
     }
 
     /**
@@ -172,7 +176,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public TransportStats stats() {
         ensureOpen();
-        return nStats(handle);
+        return nStats(handle.get());
     }
 
     /**
@@ -187,20 +191,18 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /** Whether the receiver owns a live transport. */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("DemuxReceiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("DemuxReceiver is closed");
     }
 
     // --- Natives ---

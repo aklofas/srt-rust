@@ -34,7 +34,8 @@ import org.tstrans.MuxException;
 public final class Muxer implements AutoCloseable {
     static { org.tstrans.NativeLoader.load(); }
 
-    private long handle; // Box<tst_core::mpegts::mux::Muxer> pointer; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /**
      * Build a muxer from {@code cfg}. The whole single-program config is
@@ -44,12 +45,12 @@ public final class Muxer implements AutoCloseable {
      *     the config (PID collisions, PMT over budget, sync-KLV without PTS, …).
      */
     public Muxer(MuxerConfig cfg) throws MuxException {
-        this.handle = nOpen(
+        this.handle.set(nOpen(
             cfg.programNumber(), cfg.pmtPid(), cfg.pcrPid(),
             cfg.pcrIntervalMs(), cfg.psiIntervalMs(), cfg.bufferPackets(),
             cfg.av1Carriage().ordinal(),
             cfg.streamPids(), cfg.streamKinds(), cfg.streamCodecs(),
-            cfg.klvStreamTypes(), cfg.klvCarriesPts());
+            cfg.klvStreamTypes(), cfg.klvCarriesPts()));
     }
 
     /**
@@ -67,7 +68,7 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushVideo(byte[] nal, long pts, boolean keyFrame) throws MuxException {
         ensureOpen();
-        nPushVideo(handle, nal, pts, keyFrame);
+        nPushVideo(handle.get(), nal, pts, keyFrame);
     }
 
     /**
@@ -83,7 +84,7 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushKlv(byte[] klv, long pts, int metadataServiceId) throws MuxException {
         ensureOpen();
-        nPushKlv(handle, klv, pts, metadataServiceId);
+        nPushKlv(handle.get(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -97,7 +98,7 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushAudio(byte[] frames, long pts) throws MuxException {
         ensureOpen();
-        nPushAudio(handle, frames, pts);
+        nPushAudio(handle.get(), frames, pts);
     }
 
     /**
@@ -111,7 +112,7 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushSubtitle(long pts, byte[] payload) throws MuxException {
         ensureOpen();
-        nPushSubtitle(handle, pts, payload);
+        nPushSubtitle(handle.get(), pts, payload);
     }
 
     /**
@@ -121,19 +122,19 @@ public final class Muxer implements AutoCloseable {
      */
     public int pull(byte[] out) {
         ensureOpen();
-        return nPull(handle, out);
+        return nPull(handle.get(), out);
     }
 
     /** Number of 188-byte TS packets currently queued awaiting {@link #pull}. */
     public long pendingPackets() {
         ensureOpen();
-        return nPending(handle);
+        return nPending(handle.get());
     }
 
     /** Configured queue capacity in 188-byte TS packets (snapshot of {@code bufferPackets}). */
     public long capacityPackets() {
         ensureOpen();
-        return nCapacity(handle);
+        return nCapacity(handle.get());
     }
 
     /**
@@ -163,11 +164,12 @@ public final class Muxer implements AutoCloseable {
 
     @Override
     public void close() {
-        if (handle != 0) { nClose(handle); handle = 0; }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Muxer is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Muxer is closed");
     }
 
     private static native long nOpen(int programNumber, int pmtPid, int pcrPid,

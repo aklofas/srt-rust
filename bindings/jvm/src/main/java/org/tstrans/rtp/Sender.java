@@ -21,9 +21,10 @@ public final class Sender implements AutoCloseable {
     /** Default UDP datagram size (RTP header + TS payload); matches tst-py. */
     public static final int DEFAULT_PKT_SIZE = 1316;
 
-    private long handle; // Box<JniRtpSender>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    Sender(long handle) { this.handle = handle; }
+    Sender(long h) { this.handle.set(h); }
 
     /** Construct a sender bound to {@code url} with default packet size and a random SSRC. */
     public static Sender fromUrl(String url) throws RtpException {
@@ -58,13 +59,13 @@ public final class Sender implements AutoCloseable {
      */
     public void send(byte[] data) throws RtpException {
         ensureOpen();
-        nSend(handle, data);
+        nSend(handle.get(), data);
     }
 
     /** Snapshot of wire-level statistics (never null in normal operation). */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -74,20 +75,18 @@ public final class Sender implements AutoCloseable {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        return new CancelHandle(nCancelHandle(handle));
+        return new CancelHandle(nCancelHandle(handle.get()));
     }
 
     /** Close the sender. Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Sender is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Sender is closed");
     }
 
     private static native long   nFromUrl(String url, int pktSize, Long ssrc) throws RtpException;

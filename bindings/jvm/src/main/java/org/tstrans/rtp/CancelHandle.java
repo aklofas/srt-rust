@@ -7,24 +7,32 @@ package org.tstrans.rtp;
  * {@code CANCELLED}. Mirrors tst-py {@code tstrans.rtp.CancelHandle} — which
  * exposes only {@code cancel()} (no {@code isCancelled}).
  *
- * <p>{@link #cancel()} and {@link #close()} are {@code synchronized} on this
- * instance to guard the cross-thread close/cancel race: {@code close()} may run
- * on one thread while another is still inside {@code cancel()}.
+ * <p>The native handle is an {@link java.util.concurrent.atomic.AtomicLong}
+ * registry key; {@link #close()} claims it atomically with {@code getAndSet(0)},
+ * and the leased {@code HandleRegistry} guarantees no use-after-free or
+ * double-free for any native call concurrent with {@code close()} — a
+ * use-after-close is a clean {@link IllegalStateException}, never UB.
  */
 public final class CancelHandle implements AutoCloseable {
     static { org.tstrans.NativeLoader.load(); }
 
-    private long handle; // Box<JniRtpCancel>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    CancelHandle(long handle) { this.handle = handle; }
+    CancelHandle(long h) { this.handle.set(h); }
 
     /** Signal cancellation. Idempotent. */
-    public synchronized void cancel() { ensureOpen(); nCancel(handle); }
+    public synchronized void cancel() { nCancel(ensureOpen()); }
 
-    @Override public synchronized void close() { if (handle != 0) { nClose(handle); handle = 0; } }
+    @Override public synchronized void close() {
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
+    }
 
-    private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("CancelHandle is closed");
+    private long ensureOpen() {
+        long h = handle.get();
+        if (h == 0) throw new IllegalStateException("CancelHandle is closed");
+        return h;
     }
 
     private static native void nCancel(long handle);

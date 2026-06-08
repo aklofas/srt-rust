@@ -8,29 +8,37 @@ package org.tstrans.rtp;
  * {@code tstrans.rtp.RtspCancelHandle}. All handles obtained from one session
  * share the same backing flag.
  *
- * <p>{@link #cancel()}, {@link #isCancelled()} and {@link #close()} are
- * {@code synchronized} on this instance to guard the cross-thread close/cancel
- * race: {@code close()} may run on one thread while another is inside
- * {@code cancel()}/{@code isCancelled()}. The monitor is this handle's own —
- * distinct from the socket a parked control call blocks on, so no deadlock.
+ * <p>The native handle is an {@link java.util.concurrent.atomic.AtomicLong}
+ * registry key; {@link #close()} claims it atomically with {@code getAndSet(0)},
+ * and the leased {@code HandleRegistry} guarantees no use-after-free or
+ * double-free for any native call concurrent with {@code close()} — a
+ * use-after-close is a clean {@link IllegalStateException}, never UB. The methods
+ * remain {@code synchronized} only to keep the per-handle {@code isCancelled()}
+ * observation flag consistent.
  */
 public final class RtspCancelHandle implements AutoCloseable {
     static { org.tstrans.NativeLoader.load(); }
 
-    private long handle; // Box<JniRtspCancel>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    RtspCancelHandle(long handle) { this.handle = handle; }
+    RtspCancelHandle(long h) { this.handle.set(h); }
 
     /** Signal cancellation. Idempotent. */
-    public synchronized void cancel() { ensureOpen(); nCancel(handle); }
+    public synchronized void cancel() { nCancel(ensureOpen()); }
 
     /** True once {@link #cancel()} was called on the backing flag. */
-    public synchronized boolean isCancelled() { ensureOpen(); return nIsCancelled(handle); }
+    public synchronized boolean isCancelled() { return nIsCancelled(ensureOpen()); }
 
-    @Override public synchronized void close() { if (handle != 0) { nClose(handle); handle = 0; } }
+    @Override public synchronized void close() {
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
+    }
 
-    private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("RtspCancelHandle is closed");
+    private long ensureOpen() {
+        long h = handle.get();
+        if (h == 0) throw new IllegalStateException("RtspCancelHandle is closed");
+        return h;
     }
 
     private static native void nCancel(long handle);

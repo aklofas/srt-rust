@@ -17,15 +17,17 @@ import org.tstrans.mpegts.VideoStreamHandle;
  *
  * <p><b>Thread safety:</b> the underlying Rust handle is {@code Arc}-shared and all
  * {@code push*} calls take {@code &self}, so a single {@code MountHandle} may be used
- * concurrently from multiple threads. (Do not, however, race {@link #close()}
- * against a concurrent push — see below.)
+ * concurrently from multiple threads, including a concurrent {@link #close()}:
+ * {@code close()} claims the registry id atomically and the leased
+ * {@code HandleRegistry} guarantees no use-after-free/double-free — a push that
+ * races a {@code close()} either completes or throws a clean
+ * {@link IllegalStateException}.
  *
  * <p><b>Closing:</b> {@code MountHandle} is {@link AutoCloseable} as a JVM-only
  * lifecycle convenience (tst-py relies on Python GC; the JVM has no refcount-driven
  * native free). {@link #close()} frees ONLY this handle wrapper — the mount itself
  * persists in the server (and keeps fanning out) until {@link RtspServer#stop()} /
- * {@link RtspServer#close()}. Closing while another thread is mid-push is a
- * use-after-free (the standard single-owner-at-close contract); coordinate closes.
+ * {@link RtspServer#close()}.
  *
  * <p><b>Push errors</b> surface as {@link RtspException} of kind {@code MOUNT}
  * (the failure originates in the mount push path) — this differs from
@@ -34,104 +36,106 @@ import org.tstrans.mpegts.VideoStreamHandle;
 public final class MountHandle implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<tst_rtp::...::MountHandle>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    MountHandle(long handle) { this.handle = handle; }
+    MountHandle(long h) { this.handle.set(h); }
 
     // ── Identity / introspection ──────────────────────────────────────────
-    public String mountPath() { ensureOpen(); return nMountPath(handle); }
-    public long peerCount() { ensureOpen(); return nPeerCount(handle); }
+    public String mountPath() { ensureOpen(); return nMountPath(handle.get()); }
+    public long peerCount() { ensureOpen(); return nPeerCount(handle.get()); }
     /** {@code "unicast"} / {@code "multicast"} / {@code "unknown"}. */
-    public String mountKind() { ensureOpen(); return nMountKind(handle); }
-    public MountStats stats() { ensureOpen(); return nStats(handle); }
+    public String mountKind() { ensureOpen(); return nMountKind(handle.get()); }
+    public MountStats stats() { ensureOpen(); return nStats(handle.get()); }
 
     // ── Push family — single stream ───────────────────────────────────────
     public void pushVideo(byte[] nal, long pts, boolean keyFrame) throws RtspException {
-        ensureOpen(); nPushVideo(handle, nal, pts, keyFrame);
+        ensureOpen(); nPushVideo(handle.get(), nal, pts, keyFrame);
     }
     public void pushKlv(byte[] klv, long pts, int metadataServiceId) throws RtspException {
-        ensureOpen(); nPushKlv(handle, klv, pts, metadataServiceId);
+        ensureOpen(); nPushKlv(handle.get(), klv, pts, metadataServiceId);
     }
     public void pushAudio(byte[] frames, long pts) throws RtspException {
-        ensureOpen(); nPushAudio(handle, frames, pts);
+        ensureOpen(); nPushAudio(handle.get(), frames, pts);
     }
     public void pushSubtitle(byte[] payload, long pts) throws RtspException {
-        ensureOpen(); nPushSubtitle(handle, pts, payload);
+        ensureOpen(); nPushSubtitle(handle.get(), pts, payload);
     }
 
     // ── Push family — handle-targeted ─────────────────────────────────────
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws RtspException {
-        ensureOpen(); nPushVideoTo(handle, h.raw(), nal, pts, keyFrame);
+        ensureOpen(); nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
     }
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws RtspException {
-        ensureOpen(); nPushKlvTo(handle, h.raw(), klv, pts, metadataServiceId);
+        ensureOpen(); nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
     }
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws RtspException {
-        ensureOpen(); nPushAudioTo(handle, h.raw(), frames, pts);
+        ensureOpen(); nPushAudioTo(handle.get(), h.raw(), frames, pts);
     }
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws RtspException {
-        ensureOpen(); nPushSubtitleTo(handle, h.raw(), pts, payload);
+        ensureOpen(); nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
     }
 
     // ── Stream-handle accessors (first-of-kind + all-of-kind) ─────────────
     public Optional<VideoStreamHandle> videoHandle() {
-        ensureOpen(); long r = nVideoHandle(handle);
+        ensureOpen(); long r = nVideoHandle(handle.get());
         return r < 0 ? Optional.empty() : Optional.of(VideoStreamHandle.fromRaw(r));
     }
     public Optional<KlvStreamHandle> klvHandle() {
-        ensureOpen(); long r = nKlvHandle(handle);
+        ensureOpen(); long r = nKlvHandle(handle.get());
         return r < 0 ? Optional.empty() : Optional.of(KlvStreamHandle.fromRaw(r));
     }
     public Optional<AudioStreamHandle> audioHandle() {
-        ensureOpen(); long r = nAudioHandle(handle);
+        ensureOpen(); long r = nAudioHandle(handle.get());
         return r < 0 ? Optional.empty() : Optional.of(AudioStreamHandle.fromRaw(r));
     }
     public Optional<SubtitleStreamHandle> subtitleHandle() {
-        ensureOpen(); long r = nSubtitleHandle(handle);
+        ensureOpen(); long r = nSubtitleHandle(handle.get());
         return r < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(r));
     }
     public List<VideoStreamHandle> videoHandles() {
         ensureOpen();
         List<VideoStreamHandle> out = new ArrayList<>();
-        for (long r : nVideoHandles(handle)) out.add(VideoStreamHandle.fromRaw(r));
+        for (long r : nVideoHandles(handle.get())) out.add(VideoStreamHandle.fromRaw(r));
         return out;
     }
     public List<KlvStreamHandle> klvHandles() {
         ensureOpen();
         List<KlvStreamHandle> out = new ArrayList<>();
-        for (long r : nKlvHandles(handle)) out.add(KlvStreamHandle.fromRaw(r));
+        for (long r : nKlvHandles(handle.get())) out.add(KlvStreamHandle.fromRaw(r));
         return out;
     }
     public List<AudioStreamHandle> audioHandles() {
         ensureOpen();
         List<AudioStreamHandle> out = new ArrayList<>();
-        for (long r : nAudioHandles(handle)) out.add(AudioStreamHandle.fromRaw(r));
+        for (long r : nAudioHandles(handle.get())) out.add(AudioStreamHandle.fromRaw(r));
         return out;
     }
     public List<SubtitleStreamHandle> subtitleHandles() {
         ensureOpen();
         List<SubtitleStreamHandle> out = new ArrayList<>();
-        for (long r : nSubtitleHandles(handle)) out.add(SubtitleStreamHandle.fromRaw(r));
+        for (long r : nSubtitleHandles(handle.get())) out.add(SubtitleStreamHandle.fromRaw(r));
         return out;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     /** Drain buffered TS and broadcast to subscribers. Always safe. */
-    public void flush() { ensureOpen(); nFlush(handle); }
+    public void flush() { ensureOpen(); nFlush(handle.get()); }
     /** Reset all flow counters to zero. */
-    public void resetStats() { ensureOpen(); nResetStats(handle); }
+    public void resetStats() { ensureOpen(); nResetStats(handle.get()); }
 
     /** Free this handle wrapper (the mount itself persists in the server). Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) { nClose(handle); handle = 0; }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("MountHandle is closed");
+        if (handle.get() == 0) throw new IllegalStateException("MountHandle is closed");
     }
 
     // --- Natives ---

@@ -28,15 +28,18 @@ import org.tstrans.mpegts.DemuxerConfig;
  * }
  * }</pre>
  *
- * <p><b>Thread safety:</b> a single {@code DemuxReceiver} is NOT thread-safe and
- * is deliberately NOT {@code synchronized}. Iterate from one thread; the only
- * sanctioned cross-thread operation is {@link #cancelHandle()}'s
- * {@code cancel()}, which wakes a thread parked in iteration. Do NOT call
- * {@link #addByteSink} concurrently with an in-flight {@code next()} — register
- * sinks before iterating, or between {@code next()} calls.
+ * <p><b>Thread safety:</b> a single {@code DemuxReceiver} is intended to be
+ * iterated from one thread; the sanctioned cross-thread wake is
+ * {@link #cancelHandle()}'s {@code cancel()}, which wakes a thread parked in
+ * iteration. {@link #addByteSink} is a single-iterator op — register sinks before
+ * iterating, or between {@code next()} calls.
  *
  * <p><b>Closing:</b> use try-with-resources or call {@link #close()} explicitly.
- * After close, further calls throw {@code IllegalStateException}.
+ * {@code close()} is memory-safe against ANY concurrent native call: it claims the
+ * registry id atomically and the leased {@code HandleRegistry} guarantees no
+ * use-after-free/double-free — a racing call either runs or throws a clean
+ * {@link IllegalStateException}. After close, further calls throw
+ * {@code IllegalStateException}.
  *
  * <p><b>Byte-copy posture (JDK 17):</b> sample payloads and the byte-sink
  * callbacks deliver heap {@code byte[]} copies; a zero-copy path (FFM
@@ -45,10 +48,11 @@ import org.tstrans.mpegts.DemuxerConfig;
 public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniDemuxReceiver>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle. */
-    DemuxReceiver(long handle) { this.handle = handle; }
+    DemuxReceiver(long h) { this.handle.set(h); }
 
     /**
      * Bind a listener-mode SRT receiver on {@code url}, accept the first
@@ -115,7 +119,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
                 if (done) return false;
                 if (peeked != null) return true;
                 try {
-                    peeked = nNext(handle);
+                    peeked = nNext(handle.get());
                 } catch (SrtException | DemuxException e) {
                     throw new RuntimeException(e);
                 }
@@ -156,7 +160,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public void addByteSink(Consumer<byte[]> callback) {
         ensureOpen();
-        nAddByteSink(handle, callback);
+        nAddByteSink(handle.get(), callback);
     }
 
     /**
@@ -168,7 +172,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        long ch = nCancelHandle(handle);
+        long ch = nCancelHandle(handle.get());
         return new CancelHandle(ch);
     }
 
@@ -180,7 +184,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -195,7 +199,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     public TransportStats stats() {
         ensureOpen();
-        return nStats(handle);
+        return nStats(handle.get());
     }
 
     /**
@@ -204,10 +208,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -216,12 +218,12 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @return liveness state of the underlying SRT socket
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("DemuxReceiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("DemuxReceiver is closed");
     }
 
     // --- Natives ---

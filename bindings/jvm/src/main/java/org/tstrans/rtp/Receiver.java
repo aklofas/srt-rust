@@ -17,9 +17,10 @@ import org.tstrans.RtpException;
 public final class Receiver implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniRtpReceiver>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    Receiver(long handle) { this.handle = handle; }
+    Receiver(long h) { this.handle.set(h); }
 
     /** Bind a receiver to {@code url} with the default recv scratch size. */
     public static Receiver fromUrl(String url) throws RtpException {
@@ -51,13 +52,13 @@ public final class Receiver implements AutoCloseable {
      */
     public byte[] recv() throws RtpException {
         ensureOpen();
-        return nRecv(handle);
+        return nRecv(handle.get());
     }
 
     /** Snapshot of wire-level statistics (never null in normal operation). */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -67,20 +68,18 @@ public final class Receiver implements AutoCloseable {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        return new CancelHandle(nCancelHandle(handle));
+        return new CancelHandle(nCancelHandle(handle.get()));
     }
 
     /** Close the receiver. Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Receiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Receiver is closed");
     }
 
     private static native long   nFromUrl(String url, int pktSize) throws RtpException;

@@ -51,10 +51,11 @@ import org.tstrans.mpegts.VideoStreamHandle;
 public final class ManagedMuxSender implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniManagedMuxSender>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle. */
-    ManagedMuxSender(long handle) { this.handle = handle; }
+    ManagedMuxSender(long h) { this.handle.set(h); }
 
     /**
      * Build a {@code ManagedMuxSender} targeting {@code url} for the single-program
@@ -126,7 +127,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushVideo(byte[] nal, long pts, boolean keyFrame)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushVideo(handle, nal, pts, keyFrame);
+        nPushVideo(handle.get(), nal, pts, keyFrame);
     }
 
     /**
@@ -145,7 +146,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushKlv(byte[] klv, long pts, int metadataServiceId)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushKlv(handle, klv, pts, metadataServiceId);
+        nPushKlv(handle.get(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -159,7 +160,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public void pushAudio(byte[] frames, long pts) throws MuxException, SrtException {
         ensureOpen();
-        nPushAudio(handle, frames, pts);
+        nPushAudio(handle.get(), frames, pts);
     }
 
     /**
@@ -174,7 +175,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushSubtitle(byte[] payload, long pts) throws MuxException, SrtException {
         ensureOpen();
         // Native arg order is (handle, pts, payload); reorder here.
-        nPushSubtitle(handle, pts, payload);
+        nPushSubtitle(handle.get(), pts, payload);
     }
 
     // ── Push family — handle-targeted variants ────────────────────────────
@@ -193,7 +194,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushVideoTo(handle, h.raw(), nal, pts, keyFrame);
+        nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
     }
 
     /**
@@ -213,7 +214,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushKlvTo(handle, h.raw(), klv, pts, metadataServiceId);
+        nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -229,7 +230,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushAudioTo(handle, h.raw(), frames, pts);
+        nPushAudioTo(handle.get(), h.raw(), frames, pts);
     }
 
     /**
@@ -245,7 +246,7 @@ public final class ManagedMuxSender implements AutoCloseable {
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws MuxException, SrtException {
         ensureOpen();
-        nPushSubtitleTo(handle, h.raw(), pts, payload);
+        nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
     }
 
     // ── Handle getters ────────────────────────────────────────────────────
@@ -257,7 +258,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public Optional<VideoStreamHandle> videoHandle() {
         ensureOpen();
-        long raw = nVideoHandle(handle);
+        long raw = nVideoHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(VideoStreamHandle.fromRaw(raw));
     }
 
@@ -268,7 +269,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public Optional<KlvStreamHandle> klvHandle() {
         ensureOpen();
-        long raw = nKlvHandle(handle);
+        long raw = nKlvHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(KlvStreamHandle.fromRaw(raw));
     }
 
@@ -279,7 +280,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public Optional<AudioStreamHandle> audioHandle() {
         ensureOpen();
-        long raw = nAudioHandle(handle);
+        long raw = nAudioHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(AudioStreamHandle.fromRaw(raw));
     }
 
@@ -290,7 +291,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public Optional<SubtitleStreamHandle> subtitleHandle() {
         ensureOpen();
-        long raw = nSubtitleHandle(handle);
+        long raw = nSubtitleHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(raw));
     }
 
@@ -306,7 +307,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public TransportStats stats() {
         ensureOpen();
-        return nStats(handle);
+        return nStats(handle.get());
     }
 
     /**
@@ -320,7 +321,7 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     public long reconnectAttempts() {
         ensureOpen();
-        return nReconnectAttempts(handle);
+        return nReconnectAttempts(handle.get());
     }
 
     /**
@@ -329,10 +330,8 @@ public final class ManagedMuxSender implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -341,12 +340,12 @@ public final class ManagedMuxSender implements AutoCloseable {
      * @return liveness state of the underlying managed transport
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("ManagedMuxSender is closed");
+        if (handle.get() == 0) throw new IllegalStateException("ManagedMuxSender is closed");
     }
 
     // --- Natives ---

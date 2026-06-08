@@ -19,9 +19,10 @@ import org.tstrans.mpegts.MuxerConfig;
 public final class RtspServer implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<tst_rtp::RtspServer>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    RtspServer(long handle) { this.handle = handle; }
+    RtspServer(long h) { this.handle.set(h); }
 
     /**
      * Build, bind, and start a server from {@code config}.
@@ -62,10 +63,10 @@ public final class RtspServer implements AutoCloseable {
     }
 
     /** Aggregate server stats snapshot. @throws IllegalStateException if closed. */
-    public ServerStats stats() { ensureOpen(); return nStats(handle); }
+    public ServerStats stats() { ensureOpen(); return nStats(handle.get()); }
 
     /** Bound listener address as {@code "ip:port"}, or {@code null} before bind. */
-    public String localAddr() { ensureOpen(); return nLocalAddr(handle); }
+    public String localAddr() { ensureOpen(); return nLocalAddr(handle.get()); }
 
     /**
      * Graceful shutdown — fires the Notice 5402 path on each active session, waits
@@ -74,7 +75,7 @@ public final class RtspServer implements AutoCloseable {
      *
      * @throws RtspException {@code SERVER} if the server was never started
      */
-    public void stop(long drainMs) throws RtspException { ensureOpen(); nStop(handle, drainMs); }
+    public void stop(long drainMs) throws RtspException { ensureOpen(); nStop(handle.get(), drainMs); }
 
     /** {@link #stop(long)} with the default drain hint (1000). */
     public void stop() throws RtspException { stop(1000L); }
@@ -90,7 +91,7 @@ public final class RtspServer implements AutoCloseable {
     public MountHandle addUnicastMount(String path, MuxerConfig programConfig)
             throws RtspException, MuxException {
         ensureOpen();
-        long h = nAddUnicastMount(handle,
+        long h = nAddUnicastMount(handle.get(),
             path,
             programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
@@ -123,7 +124,7 @@ public final class RtspServer implements AutoCloseable {
     public MountHandle addMulticastMount(String path, String group, int port, int ttl,
             String iface, MuxerConfig programConfig) throws RtspException, MuxException {
         ensureOpen();
-        long h = nAddMulticastMount(handle,
+        long h = nAddMulticastMount(handle.get(),
             path, group, port, ttl, iface,
             programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
@@ -141,7 +142,7 @@ public final class RtspServer implements AutoCloseable {
     /** Cross-thread hard-cancel handle. @throws IllegalStateException if closed. */
     public RtspServerCancelHandle cancelHandle() {
         ensureOpen();
-        long h = nCancelHandle(handle);
+        long h = nCancelHandle(handle.get());
         if (h == 0) throw new IllegalStateException("RtspServer is closed");
         return new RtspServerCancelHandle(h);
     }
@@ -149,14 +150,12 @@ public final class RtspServer implements AutoCloseable {
     /** Graceful stop (best-effort) then free the native server. Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("RtspServer is closed");
+        if (handle.get() == 0) throw new IllegalStateException("RtspServer is closed");
     }
 
     private static native long nStart(String bindAddr, long maxSessions, long sessionTimeoutSecs,

@@ -30,10 +30,11 @@ import org.tstrans.SrtException;
 public final class ManagedSender implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<tst_pipeline::Sender<ManagedTransport<SrtTransport>>>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle returned by {@link #nFromUrl}. */
-    ManagedSender(long handle) { this.handle = handle; }
+    ManagedSender(long h) { this.handle.set(h); }
 
     /**
      * Construct a managed sender by connecting to the given SRT caller-mode URL
@@ -88,7 +89,7 @@ public final class ManagedSender implements AutoCloseable {
      */
     public void sendBytes(byte[] data) throws SrtException {
         ensureOpen();
-        nSendBytes(handle, data);
+        nSendBytes(handle.get(), data);
     }
 
     /**
@@ -99,7 +100,7 @@ public final class ManagedSender implements AutoCloseable {
      */
     public void flush() throws SrtException {
         ensureOpen();
-        nFlush(handle);
+        nFlush(handle.get());
     }
 
     /**
@@ -111,7 +112,7 @@ public final class ManagedSender implements AutoCloseable {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        long ch = nCancelHandle(handle);
+        long ch = nCancelHandle(handle.get());
         return new CancelHandle(ch);
     }
 
@@ -124,7 +125,7 @@ public final class ManagedSender implements AutoCloseable {
      */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -139,7 +140,7 @@ public final class ManagedSender implements AutoCloseable {
      */
     public SrtStats srtStats() throws SrtException {
         ensureOpen();
-        return nSrtStats(handle);
+        return nSrtStats(handle.get());
     }
 
     /**
@@ -148,10 +149,8 @@ public final class ManagedSender implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -160,12 +159,12 @@ public final class ManagedSender implements AutoCloseable {
      * @return liveness state of the underlying managed transport
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("ManagedSender is closed");
+        if (handle.get() == 0) throw new IllegalStateException("ManagedSender is closed");
     }
 
     private static native long nFromUrl(

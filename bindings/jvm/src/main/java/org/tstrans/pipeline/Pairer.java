@@ -21,11 +21,12 @@ import org.tstrans.mpegts.DemuxerStats;
 public final class Pairer implements AutoCloseable {
     static { org.tstrans.NativeLoader.load(); }
 
-    private long handle; // Box<PairingDemuxer> pointer; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Construct for the given video + KLV PIDs with default configs. */
     public Pairer(int videoPid, int klvPid) {
-        this.handle = nOpen(videoPid, klvPid);
+        this.handle.set(nOpen(videoPid, klvPid));
     }
 
     /**
@@ -42,7 +43,7 @@ public final class Pairer implements AutoCloseable {
         boolean buffered = pc.mode() instanceof PairerMode.Buffered;
         long maxLagNanos = buffered ? ((PairerMode.Buffered) pc.mode()).maxLag().toNanos() : 0L;
         DemuxerConfig dx = config.demuxer();
-        this.handle = nOpenWithConfig(videoPid, klvPid,
+        this.handle.set(nOpenWithConfig(videoPid, klvPid,
             buffered, maxLagNanos, pc.tolerance().toNanos(),
             pc.maxBufferedKlv(), pc.maxBufferedVideo(), pc.linkKlvToVideo(),
             dx != null,
@@ -52,48 +53,49 @@ public final class Pairer implements AutoCloseable {
             dx != null && dx.cfiTolerance(),
             dx != null ? dx.av1Carriage().ordinal() : 0,
             dx != null ? dx.auCellCapPerPid() : 0L,
-            dx != null && dx.lenientPsiReassembly());
+            dx != null && dx.lenientPsiReassembly()));
     }
 
     /** Feed TS bytes; returns the pairing outputs produced. @throws DemuxException on non-conformant input. */
     @SuppressWarnings("unchecked")
     public List<PairerOutput> feed(byte[] bytes) throws DemuxException {
         ensureOpen();
-        return (List<PairerOutput>) nFeed(handle, bytes);
+        return (List<PairerOutput>) nFeed(handle.get(), bytes);
     }
 
     /** Drain end-of-stream state (load-bearing in Buffered mode; no-op in Realtime). */
     @SuppressWarnings("unchecked")
     public List<PairerOutput> flush() {
         ensureOpen();
-        return (List<PairerOutput>) nFlush(handle);
+        return (List<PairerOutput>) nFlush(handle.get());
     }
 
     /** Pairing counters. */
     public PairerStats stats() {
         ensureOpen();
-        return nStats(handle);
+        return nStats(handle.get());
     }
 
     /** Underlying demuxer counters. */
     public DemuxerStats demuxerStats() {
         ensureOpen();
-        return nDemuxerStats(handle);
+        return nDemuxerStats(handle.get());
     }
 
     /** Reset the pairing counters (not demuxer stats). */
     public void resetStats() {
         ensureOpen();
-        nResetStats(handle);
+        nResetStats(handle.get());
     }
 
     @Override
     public void close() {
-        if (handle != 0) { nClose(handle); handle = 0; }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Pairer is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Pairer is closed");
     }
 
     private static native long nOpen(int videoPid, int klvPid);

@@ -80,4 +80,56 @@ final class ListenerCloseRaceTest {
             assertNull(unexpected.get(), "accept thread saw an unexpected failure (run " + i + ")");
         }
     }
+
+    /**
+     * Close-vs-fresh-entry stress. With the leased {@code HandleRegistry}, a thread that
+     * keeps calling a normal native getter ({@code localAddr()}) while another thread calls
+     * {@code close()} must never crash the JVM; the only sanctioned exception the busy thread
+     * may observe is {@link IllegalStateException} (handle claimed/closed). This is the case
+     * round-1 declared unsafe (close racing a fresh entry); the registry now makes it
+     * deterministically memory-safe.
+     */
+    @Test
+    @Timeout(30)
+    void closeVsFreshEntryIsMemorySafe() throws Exception {
+        for (int i = 0; i < 200; i++) {
+            Listener listener =
+                new Builder("srt://127.0.0.1:0?mode=listener").listener().listen();
+
+            CountDownLatch ready = new CountDownLatch(1);
+            AtomicReference<Throwable> unexpected = new AtomicReference<>();
+
+            Thread caller =
+                new Thread(
+                    () -> {
+                        ready.countDown();
+                        // Hammer a cheap, non-blocking native getter. Each call reads the
+                        // current registry id and leases it; a concurrent close() either lets
+                        // the call run or trips a clean IllegalStateException — never UB.
+                        for (int k = 0; k < 1000; k++) {
+                            try {
+                                listener.localAddr();
+                            } catch (IllegalStateException expected) {
+                                // Handle was claimed by close() — sanctioned, keep going.
+                            } catch (SrtException e) {
+                                // localAddr can surface IO if the socket is mid-teardown; not a
+                                // memory-safety failure, tolerate it.
+                            } catch (Throwable t) {
+                                unexpected.set(t);
+                                return;
+                            }
+                        }
+                    },
+                    "caller-" + i);
+            caller.start();
+
+            // Let the caller get going, then race close() against its in-flight getter calls.
+            assertTrue(ready.await(2, TimeUnit.SECONDS), "caller thread never started");
+            listener.close();
+
+            caller.join(5000);
+            assertFalse(caller.isAlive(), "caller thread did not finish (run " + i + ")");
+            assertNull(unexpected.get(), "caller thread saw an unexpected failure (run " + i + ")");
+        }
+    }
 }

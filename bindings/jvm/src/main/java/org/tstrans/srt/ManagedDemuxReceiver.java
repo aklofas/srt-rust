@@ -61,10 +61,11 @@ import org.tstrans.mpegts.DemuxerConfig;
 public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniManagedDemuxReceiver>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle. */
-    ManagedDemuxReceiver(long handle) { this.handle = handle; }
+    ManagedDemuxReceiver(long h) { this.handle.set(h); }
 
     /**
      * Bind (or connect) a managed receiver on the given SRT URL with the default
@@ -164,7 +165,7 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
                 if (done) return false;
                 if (peeked != null) return true;
                 try {
-                    peeked = nNext(handle);
+                    peeked = nNext(handle.get());
                 } catch (SrtException | DemuxException e) {
                     throw new RuntimeException(e);
                 }
@@ -194,7 +195,7 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        long ch = nCancelHandle(handle);
+        long ch = nCancelHandle(handle.get());
         return new CancelHandle(ch);
     }
 
@@ -207,7 +208,7 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -222,7 +223,7 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      */
     public SocketStats srtStats() {
         ensureOpen();
-        return nSrtStats(handle);
+        return nSrtStats(handle.get());
     }
 
     /**
@@ -236,7 +237,7 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      */
     public long reconnectAttempts() {
         ensureOpen();
-        return nReconnectAttempts(handle);
+        return nReconnectAttempts(handle.get());
     }
 
     /**
@@ -245,10 +246,8 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -257,12 +256,12 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
      * @return liveness state of the underlying SRT socket
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("ManagedDemuxReceiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("ManagedDemuxReceiver is closed");
     }
 
     // --- Natives ---

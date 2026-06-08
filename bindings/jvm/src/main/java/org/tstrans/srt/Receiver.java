@@ -38,10 +38,11 @@ import org.tstrans.SrtException;
 public final class Receiver implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<tst_pipeline::Receiver<SrtTransport>>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle returned by {@link #nFromUrl}. */
-    Receiver(long handle) { this.handle = handle; }
+    Receiver(long h) { this.handle.set(h); }
 
     /**
      * Bind a receiver listening on the given SRT URL and accept the first
@@ -94,7 +95,7 @@ public final class Receiver implements AutoCloseable {
      */
     public byte[] recvBytes(int maxLen) throws SrtException {
         ensureOpen();
-        byte[] result = nRecvBytes(handle, maxLen);
+        byte[] result = nRecvBytes(handle.get(), maxLen);
         if (result == null) {
             // nRecvBytes threw a pending SrtException; JNI framework re-raises it.
             throw new SrtException(SrtException.Kind.IO, "nRecvBytes returned null without throwing");
@@ -111,7 +112,7 @@ public final class Receiver implements AutoCloseable {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        long ch = nCancelHandle(handle);
+        long ch = nCancelHandle(handle.get());
         return new CancelHandle(ch);
     }
 
@@ -123,7 +124,7 @@ public final class Receiver implements AutoCloseable {
      */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -136,7 +137,7 @@ public final class Receiver implements AutoCloseable {
      */
     public SrtStats srtStats() throws SrtException {
         ensureOpen();
-        return nSrtStats(handle);
+        return nSrtStats(handle.get());
     }
 
     /**
@@ -146,10 +147,8 @@ public final class Receiver implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -158,12 +157,12 @@ public final class Receiver implements AutoCloseable {
      * @return liveness state of the underlying SRT socket
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Receiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Receiver is closed");
     }
 
     private static native long    nFromUrl(String url) throws SrtException;

@@ -30,18 +30,21 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
     static { NativeLoader.load(); }
 
     /**
-     * Box&lt;JniListener&gt; pointer; 0 = closed.
+     * Registry key for the native listener; 0 = closed.
      *
-     * <p>{@code volatile} because {@link #close()} may be called from a different
-     * thread than the one parked in {@link #accept(Integer)} / iterating, and the
-     * close-vs-accept handoff relies on a consistent view of this field across
-     * threads. See {@link #close()} for the threading contract.
+     * <p>An {@link java.util.concurrent.atomic.AtomicLong} because {@link #close()}
+     * may be called from a different thread than the one parked in
+     * {@link #accept(Integer)} / iterating. {@code close()} claims the id atomically
+     * with {@code getAndSet(0)}; the leased {@code HandleRegistry} guarantees no
+     * use-after-free/double-free for any native call concurrent with {@code close()}.
+     * See {@link #close()} for the threading contract.
      */
-    private volatile long handle;
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong();
 
     /** Package-private: constructed by Builder only. */
-    Listener(long handle) {
-        this.handle = handle;
+    Listener(long h) {
+        this.handle.set(h);
     }
 
     /**
@@ -55,7 +58,7 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      */
     public Socket accept(Integer timeoutMs) throws SrtException {
         ensureOpen();
-        return new Socket(nAccept(handle, timeoutMs == null ? -1L : (long) timeoutMs));
+        return new Socket(nAccept(handle.get(), timeoutMs == null ? -1L : (long) timeoutMs));
     }
 
     /**
@@ -66,7 +69,7 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        return new CancelHandle(nCancelHandle(handle));
+        return new CancelHandle(nCancelHandle(handle.get()));
     }
 
     /**
@@ -77,28 +80,30 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      */
     public HostPort localAddr() throws SrtException {
         ensureOpen();
-        return nLocalAddr(handle);
+        return nLocalAddr(handle.get());
     }
 
     /** {@code true} while this listener still owns the native handle. */
     public boolean isAlive() {
-        return handle != 0;
+        return handle.get() != 0;
     }
 
     /**
      * Close the listener and free the native handle. Idempotent.
      *
-     * <p><b>Threading contract.</b> A {@link Listener} has a single owner: the thread
-     * that calls {@link #accept(Integer)} / iterates is the owner. {@code close()} is
-     * intended to be called by that owner, or while no {@code accept()} is in flight.
+     * <p><b>Threading contract.</b> {@code close()} is memory-safe against ANY
+     * concurrent native call. It claims the registry id atomically and the leased
+     * {@code HandleRegistry} guarantees no use-after-free/double-free: a call that
+     * races a {@code close()} either runs normally or sees a closed handle and throws
+     * a clean {@link IllegalStateException} — never undefined behaviour.
      *
-     * <p>{@code close()} may also be called concurrently with a thread parked in
-     * {@code accept()} <em>only to terminate it</em>: it wakes the parked accept (which
-     * returns {@code SrtException(Kind.CLOSED)}) and frees the native allocation only
-     * once that parked accept has unwound — so it is memory-safe against a parked
-     * accept. It is <b>not</b> safe to race {@code close()} against a <em>fresh</em>
-     * {@code accept()} / iterator {@code next()} entry on another thread; that violates
-     * the single-owner contract.
+     * <p>{@code close()} may be called concurrently with a thread parked in
+     * {@code accept()} to terminate it: it wakes the parked accept (which returns
+     * {@code SrtException(Kind.CLOSED)}) and frees the native allocation only once
+     * that parked accept has unwound. Note a <em>fresh</em> {@code accept()} entered
+     * <em>after</em> {@code close()} fired its cancel hook will not be woken by that
+     * same hook; it simply observes the closed handle and throws
+     * {@link IllegalStateException} (single-iterator expectation).
      *
      * <p>For a purely cross-thread wake that does not itself free the listener — e.g.
      * to stop an iterator loop from a control thread — prefer
@@ -109,10 +114,8 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -165,7 +168,7 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Listener is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Listener is closed");
     }
 
     // --- Natives ---

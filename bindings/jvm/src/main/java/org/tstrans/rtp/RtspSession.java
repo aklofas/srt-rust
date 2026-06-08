@@ -16,34 +16,34 @@ import org.tstrans.mpegts.DemuxerConfig;
  * {@link #cancelHandle()} BEFORE issuing a (potentially blocking) control call;
  * flipping it wakes a parked {@code pause}/{@code play}/{@code teardown} (which
  * then throws {@link RtspException}). {@link #close()} performs a best-effort
- * teardown and is NOT a cross-thread interruptor — do not race it against a
- * concurrent control call.
+ * teardown; the cross-thread interrupt routes through {@link RtspCancelHandle}
+ * (exactly like srt {@code Sender}/{@code Receiver}), not through {@code close()}.
  *
- * <p>{@code handle} is non-volatile: the cross-thread stop routes through the
- * separate {@link RtspCancelHandle} (exactly like srt {@code Sender}/{@code
- * Receiver}), NOT through {@link #close()} — so unlike the rtp {@code
- * DemuxReceiver} (whose cross-thread stop IS {@code close()} and therefore needs
- * a volatile handle), there is no concurrent reader of {@code handle} to publish
- * to.
+ * <p>The native handle is an {@link java.util.concurrent.atomic.AtomicLong}
+ * registry key. {@code close()} claims it atomically with {@code getAndSet(0)};
+ * the leased {@code HandleRegistry} guarantees no use-after-free/double-free for
+ * any native call concurrent with {@code close()} — a racing call either runs or
+ * throws a clean {@link IllegalStateException}.
  */
 public final class RtspSession implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniRtspSession>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    RtspSession(long handle) { this.handle = handle; }
+    RtspSession(long h) { this.handle.set(h); }
 
     /** Send PAUSE. Server stops emitting RTP; the session stays valid for {@link #play()}. */
-    public void pause() throws RtspException { ensureOpen(); nPause(handle); }
+    public void pause() throws RtspException { ensureOpen(); nPause(handle.get()); }
 
     /** Send PLAY (resume after {@link #pause()}). */
-    public void play() throws RtspException { ensureOpen(); nPlay(handle); }
+    public void play() throws RtspException { ensureOpen(); nPlay(handle.get()); }
 
     /**
      * Send TEARDOWN. Closes the server session; subsequent {@code pause}/{@code play}
      * raise {@link RtspException}. Idempotent on the wrapper (a second call is a no-op).
      */
-    public void teardown() throws RtspException { ensureOpen(); nTeardown(handle); }
+    public void teardown() throws RtspException { ensureOpen(); nTeardown(handle.get()); }
 
     /**
      * Obtain a cross-thread cancel handle. Obtain it BEFORE a blocking control call;
@@ -54,7 +54,7 @@ public final class RtspSession implements AutoCloseable {
      */
     public RtspCancelHandle cancelHandle() {
         ensureOpen();
-        long h = nCancelHandle(handle);
+        long h = nCancelHandle(handle.get());
         if (h == 0) throw new IllegalStateException("RtspSession is torn down");
         return new RtspCancelHandle(h);
     }
@@ -73,7 +73,7 @@ public final class RtspSession implements AutoCloseable {
     /** Consume the data plane with default demux options. See {@link #intoDemuxReceiver(DemuxerConfig)}. */
     public DemuxReceiver intoDemuxReceiver() throws RtspException {
         ensureOpen();
-        long h = nIntoDemuxReceiver(handle, false, 0, 0L, 0L, false, 0, 0L, false);
+        long h = nIntoDemuxReceiver(handle.get(), false, 0, 0L, 0L, false, 0, 0L, false);
         if (h == 0) {
             throw new RtspException(RtspException.Kind.PROTOCOL,
                 "nIntoDemuxReceiver returned 0 without throwing");
@@ -92,7 +92,7 @@ public final class RtspSession implements AutoCloseable {
      */
     public DemuxReceiver intoDemuxReceiver(DemuxerConfig demuxConfig) throws RtspException {
         ensureOpen();
-        long h = nIntoDemuxReceiver(handle, true,
+        long h = nIntoDemuxReceiver(handle.get(), true,
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
             demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
@@ -106,21 +106,19 @@ public final class RtspSession implements AutoCloseable {
 
     /** Whether {@link #teardown()} (or {@link #close()}) has fired. */
     public boolean isTornDown() {
-        if (handle == 0) return true;
-        return nIsTornDown(handle);
+        if (handle.get() == 0) return true;
+        return nIsTornDown(handle.get());
     }
 
     /** Best-effort teardown, then free the native session. Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("RtspSession is closed");
+        if (handle.get() == 0) throw new IllegalStateException("RtspSession is closed");
     }
 
     private static native void nPause(long handle) throws RtspException;

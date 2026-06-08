@@ -27,10 +27,11 @@ import org.tstrans.DemuxException;
 public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
     static { org.tstrans.NativeLoader.load(); }
 
-    private long handle; // Box<tst_core::...::Demuxer> pointer; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     public Demuxer() {
-        this.handle = nOpen();
+        this.handle.set(nOpen());
     }
 
     /**
@@ -41,22 +42,22 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
      * ordinal in the SAME declaration order as {@link StrictMode} / {@link Av1CarriageMode}.
      */
     public Demuxer(DemuxerConfig cfg) {
-        this.handle = nOpenWithConfig(
+        this.handle.set(nOpenWithConfig(
             cfg.strictMode().ordinal(), cfg.pesCapPerPid(), cfg.pesCapTotal(),
             cfg.cfiTolerance(), cfg.av1Carriage().ordinal(),
-            cfg.auCellCapPerPid(), cfg.lenientPsiReassembly());
+            cfg.auCellCapPerPid(), cfg.lenientPsiReassembly()));
     }
 
     /** Feed TS bytes. @throws DemuxException on non-conformant input. */
     public void feed(byte[] bytes) throws DemuxException {
         ensureOpen();
-        nFeed(handle, bytes);
+        nFeed(handle.get(), bytes);
     }
 
     /** Flush buffered partial units (call at end of stream). */
     public void flush() {
         ensureOpen();
-        nFlush(handle);
+        nFlush(handle.get());
     }
 
     /**
@@ -66,7 +67,7 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
      */
     public DemuxEvent nextEvent() throws DemuxException {
         ensureOpen();
-        return nNextEvent(handle);
+        return nNextEvent(handle.get());
     }
 
     /** Iterate already-queued events (drains the current queue; does not feed). */
@@ -88,11 +89,12 @@ public final class Demuxer implements AutoCloseable, Iterable<DemuxEvent> {
 
     @Override
     public void close() {
-        if (handle != 0) { nClose(handle); handle = 0; }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Demuxer is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Demuxer is closed");
     }
 
     private static native long nOpen();

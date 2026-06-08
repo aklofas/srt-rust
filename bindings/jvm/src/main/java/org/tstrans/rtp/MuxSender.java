@@ -46,9 +46,10 @@ public final class MuxSender implements AutoCloseable {
     /** Default UDP datagram payload size (7 × 188 TS packets). Matches tst-py. */
     public static final int DEFAULT_PKT_SIZE = 1316;
 
-    private long handle; // Box<tst_pipeline::MuxSender<RtpTransport>>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
-    MuxSender(long handle) { this.handle = handle; }
+    MuxSender(long h) { this.handle.set(h); }
 
     /**
      * Build a {@code MuxSender} targeting {@code url} with the default packet size
@@ -114,7 +115,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushVideo(byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushVideo(handle, nal, pts, keyFrame);
+        nPushVideo(handle.get(), nal, pts, keyFrame);
     }
 
     /**
@@ -133,7 +134,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushKlv(byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushKlv(handle, klv, pts, metadataServiceId);
+        nPushKlv(handle.get(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -149,7 +150,7 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushAudio(byte[] frames, long pts) throws MuxException, RtpException {
         ensureOpen();
-        nPushAudio(handle, frames, pts);
+        nPushAudio(handle.get(), frames, pts);
     }
 
     /**
@@ -163,7 +164,7 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushSubtitle(byte[] payload, long pts) throws MuxException, RtpException {
         ensureOpen();
-        nPushSubtitle(handle, pts, payload);
+        nPushSubtitle(handle.get(), pts, payload);
     }
 
     // ── Push family — handle-targeted variants ────────────────────────────
@@ -184,7 +185,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushVideoTo(handle, h.raw(), nal, pts, keyFrame);
+        nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
     }
 
     /**
@@ -205,7 +206,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushKlvTo(handle, h.raw(), klv, pts, metadataServiceId);
+        nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -223,7 +224,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushAudioTo(handle, h.raw(), frames, pts);
+        nPushAudioTo(handle.get(), h.raw(), frames, pts);
     }
 
     /**
@@ -241,7 +242,7 @@ public final class MuxSender implements AutoCloseable {
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws MuxException, RtpException {
         ensureOpen();
-        nPushSubtitleTo(handle, h.raw(), pts, payload);
+        nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
     }
 
     // ── Handle getters ────────────────────────────────────────────────────
@@ -249,28 +250,28 @@ public final class MuxSender implements AutoCloseable {
     /** First configured video stream handle, or {@link Optional#empty()}. */
     public Optional<VideoStreamHandle> videoHandle() {
         ensureOpen();
-        long raw = nVideoHandle(handle);
+        long raw = nVideoHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(VideoStreamHandle.fromRaw(raw));
     }
 
     /** First configured KLV stream handle, or {@link Optional#empty()}. */
     public Optional<KlvStreamHandle> klvHandle() {
         ensureOpen();
-        long raw = nKlvHandle(handle);
+        long raw = nKlvHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(KlvStreamHandle.fromRaw(raw));
     }
 
     /** First configured audio stream handle, or {@link Optional#empty()}. */
     public Optional<AudioStreamHandle> audioHandle() {
         ensureOpen();
-        long raw = nAudioHandle(handle);
+        long raw = nAudioHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(AudioStreamHandle.fromRaw(raw));
     }
 
     /** First configured subtitle stream handle, or {@link Optional#empty()}. */
     public Optional<SubtitleStreamHandle> subtitleHandle() {
         ensureOpen();
-        long raw = nSubtitleHandle(handle);
+        long raw = nSubtitleHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(raw));
     }
 
@@ -286,27 +287,25 @@ public final class MuxSender implements AutoCloseable {
      */
     public TransportStats stats() {
         ensureOpen();
-        return nStats(handle);
+        return nStats(handle.get());
     }
 
     /** Close the sender. Best-effort drains pending bytes, then drops the RTP
      * transport. Idempotent. */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /** Whether the sender owns a live transport. */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("MuxSender is closed");
+        if (handle.get() == 0) throw new IllegalStateException("MuxSender is closed");
     }
 
     // --- Natives ---

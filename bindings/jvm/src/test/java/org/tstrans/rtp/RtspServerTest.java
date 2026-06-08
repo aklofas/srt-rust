@@ -89,6 +89,20 @@ class RtspServerTest {
         assertThrows(IllegalStateException.class, s::stats);
     }
 
+    /**
+     * The mount factories lease the server registry entry (twice on the native side). A server
+     * closed before the factory runs must surface a clean {@link IllegalStateException} rather
+     * than touching freed memory — the registry makes that deterministic.
+     */
+    @Test @Timeout(15)
+    void addMountAfterCloseThrows() throws Exception {
+        RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"));
+        s.close();
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000).addVideo(0x1011, VideoCodec.H264).build();
+        assertThrows(IllegalStateException.class, () -> s.addUnicastMount("/live", cfg));
+    }
+
     @Test @Timeout(15)
     void addUnicastMountPushAndStats() throws Exception {
         try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {

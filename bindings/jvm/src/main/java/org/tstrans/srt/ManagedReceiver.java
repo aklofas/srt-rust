@@ -30,10 +30,11 @@ import org.tstrans.SrtException;
 public final class ManagedReceiver implements AutoCloseable {
     static { NativeLoader.load(); }
 
-    private long handle; // Box<JniManagedReceiver>; 0 = closed
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /** Package-private constructor from a native handle returned by {@link #nFromUrl}. */
-    ManagedReceiver(long handle) { this.handle = handle; }
+    ManagedReceiver(long h) { this.handle.set(h); }
 
     /**
      * Bind a managed receiver on the given SRT listener-mode URL with the
@@ -106,7 +107,7 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     public byte[] recvBytes(int maxLen) throws SrtException {
         ensureOpen();
-        byte[] result = nRecvBytes(handle, maxLen);
+        byte[] result = nRecvBytes(handle.get(), maxLen);
         if (result == null) {
             throw new SrtException(SrtException.Kind.IO, "nRecvBytes returned null without throwing");
         }
@@ -122,7 +123,7 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     public long reconnectAttempts() {
         ensureOpen();
-        return nReconnectAttempts(handle);
+        return nReconnectAttempts(handle.get());
     }
 
     /**
@@ -134,7 +135,7 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     public CancelHandle cancelHandle() {
         ensureOpen();
-        long ch = nCancelHandle(handle);
+        long ch = nCancelHandle(handle.get());
         return new CancelHandle(ch);
     }
 
@@ -146,7 +147,7 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     public SocketStats socketStats() {
         ensureOpen();
-        return nSocketStats(handle);
+        return nSocketStats(handle.get());
     }
 
     /**
@@ -161,7 +162,7 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     public SrtStats srtStats() throws SrtException {
         ensureOpen();
-        return nSrtStats(handle);
+        return nSrtStats(handle.get());
     }
 
     /**
@@ -170,10 +171,8 @@ public final class ManagedReceiver implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     /**
@@ -182,12 +181,12 @@ public final class ManagedReceiver implements AutoCloseable {
      * @return liveness state of the underlying managed transport
      */
     public boolean isAlive() {
-        if (handle == 0) return false;
-        return nIsAlive(handle);
+        if (handle.get() == 0) return false;
+        return nIsAlive(handle.get());
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("ManagedReceiver is closed");
+        if (handle.get() == 0) throw new IllegalStateException("ManagedReceiver is closed");
     }
 
     private static native long nFromUrl(

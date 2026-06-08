@@ -32,11 +32,12 @@ public final class Socket implements AutoCloseable {
     static { NativeLoader.load(); }
 
     /** Box&lt;tst_srt::Socket&gt; pointer; 0 = consumed or closed. */
-    private long handle;
+    private final java.util.concurrent.atomic.AtomicLong handle =
+        new java.util.concurrent.atomic.AtomicLong();
 
     /** Package-private: constructed by Builder and Listener only. */
-    Socket(long handle) {
-        this.handle = handle;
+    Socket(long h) {
+        this.handle.set(h);
     }
 
     /**
@@ -50,8 +51,10 @@ public final class Socket implements AutoCloseable {
      */
     public Sender intoSender() throws SrtException {
         ensureOpen();
-        long h = nIntoSender(handle);
-        handle = 0; // consumed — the native Socket box is moved into the Sender
+        // Claim the registry id atomically; a concurrent close/consume that wins
+        // leaves us with 0 and the native call throws IllegalStateException.
+        long sock = handle.getAndSet(0); // consumed — moved into the Sender
+        long h = nIntoSender(sock);
         return new Sender(h);
     }
 
@@ -65,8 +68,8 @@ public final class Socket implements AutoCloseable {
      */
     public Receiver intoReceiver() throws SrtException {
         ensureOpen();
-        long h = nIntoReceiver(handle);
-        handle = 0; // consumed — the native Socket box is moved into the Receiver
+        long sock = handle.getAndSet(0); // consumed — moved into the Receiver
+        long h = nIntoReceiver(sock);
         return new Receiver(h);
     }
 
@@ -88,16 +91,12 @@ public final class Socket implements AutoCloseable {
     public MuxSender intoMuxSender(org.tstrans.mpegts.MuxerConfig programConfig)
             throws SrtException, MuxException {
         ensureOpen();
-        // Zero our handle BEFORE the native call. nIntoMuxSender consumes the
-        // Box<Socket> unconditionally (*Box::from_raw) but can still throw
-        // afterwards (muxer-config rejection / MuxSender::new failure). A pending
-        // JNI exception re-raises at this call site, so a statement AFTER the call
-        // (a trailing `handle = 0`) would NOT run — leaving a freed pointer that a
-        // later close() would double-free. Consume-first avoids that. Unlike
-        // intoSender/intoReceiver (infallible post-consume), this native is
-        // fallible, so the ordering is load-bearing.
-        long sock = handle;
-        handle = 0;
+        // Claim the registry id BEFORE the native call (consume-first). nIntoMuxSender
+        // closes the registry entry unconditionally but can still throw afterwards
+        // (muxer-config rejection / MuxSender::new failure); claiming first means a
+        // later close() finds 0 and is a clean no-op. (The registry already makes a
+        // double-close idempotent, but consume-first keeps the contract explicit.)
+        long sock = handle.getAndSet(0);
         long h = nIntoMuxSender(sock, programConfig.programNumber(), programConfig.pmtPid(),
             programConfig.pcrPid(), programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
@@ -120,14 +119,8 @@ public final class Socket implements AutoCloseable {
      */
     public DemuxReceiver intoDemuxReceiver() throws SrtException {
         ensureOpen();
-        // Zero our handle BEFORE the native call (consume-first). nIntoDemuxReceiver
-        // consumes the Box<Socket> unconditionally; DemuxReceiver::new is infallible
-        // post-consume, so a trailing `handle = 0` would technically be safe here
-        // (like intoSender/intoReceiver). We still zero-first for uniformity with
-        // intoMuxSender and to stay correct if the native ever gains a fallible
-        // post-consume step.
-        long sock = handle;
-        handle = 0;
+        // Claim the registry id first (consume-first), uniform with intoMuxSender.
+        long sock = handle.getAndSet(0);
         long h = nIntoDemuxReceiver(sock);
         return new DemuxReceiver(h);
     }
@@ -147,8 +140,7 @@ public final class Socket implements AutoCloseable {
             throws SrtException {
         ensureOpen();
         // Consume-first (see intoDemuxReceiver()).
-        long sock = handle;
-        handle = 0;
+        long sock = handle.getAndSet(0);
         long h = nIntoDemuxReceiverWithConfig(sock,
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
@@ -166,7 +158,7 @@ public final class Socket implements AutoCloseable {
      */
     public HostPort localAddr() throws SrtException {
         ensureOpen();
-        return nLocalAddr(handle);
+        return nLocalAddr(handle.get());
     }
 
     /**
@@ -176,7 +168,7 @@ public final class Socket implements AutoCloseable {
      */
     public HostPort peerAddr() throws SrtException {
         ensureOpen();
-        return nPeerAddr(handle);
+        return nPeerAddr(handle.get());
     }
 
     /**
@@ -185,12 +177,12 @@ public final class Socket implements AutoCloseable {
      */
     public Optional<String> streamId() {
         ensureOpen();
-        return Optional.ofNullable(nStreamId(handle));
+        return Optional.ofNullable(nStreamId(handle.get()));
     }
 
     /** {@code true} while this socket still owns the native handle. */
     public boolean isAlive() {
-        return handle != 0;
+        return handle.get() != 0;
     }
 
     /**
@@ -200,14 +192,12 @@ public final class Socket implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (handle != 0) {
-            nClose(handle);
-            handle = 0;
-        }
+        long h = handle.getAndSet(0);
+        if (h != 0) nClose(h);
     }
 
     private void ensureOpen() {
-        if (handle == 0) throw new IllegalStateException("Socket is closed");
+        if (handle.get() == 0) throw new IllegalStateException("Socket is closed");
     }
 
     // --- Natives ---

@@ -201,7 +201,7 @@ impl<R: RecvTransport> Receiver<R> {
         let _enter = span.enter();
         tracing::info!("Receiver opened");
         drop(_enter);
-        let cap = transport.max_payload();
+        let cap = crate::clamp_recv_capacity(transport.max_payload());
         Self {
             transport,
             syncer: Syncer::new(),

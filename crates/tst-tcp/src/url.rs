@@ -145,20 +145,38 @@ fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> 
     Ok(Duration::from_secs(secs))
 }
 
+/// Upper bound for any byte-size query field (`rcvbuf`, `sndbuf`).
+///
+/// 256 MiB comfortably covers any realistic socket-buffer request while
+/// rejecting absurd values (e.g. `rcvbuf=999999999999G`) that would
+/// otherwise overflow or drive a huge downstream allocation.
+const MAX_BYTE_SIZE: usize = 256 * 1024 * 1024;
+
 fn parse_byte_size(key: &str, value: &str) -> Result<usize, TcpUrlError> {
     let (num, mul) = match value.chars().last() {
         Some('K') | Some('k') => (&value[..value.len() - 1], 1024usize),
         Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
         _ => (value, 1usize),
     };
-    let n: usize =
-        num.parse()
-            .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
-                key: key.to_string(),
-                value: value.to_string(),
-                detail: e.to_string(),
-            })?;
-    Ok(n * mul)
+    let bad = |detail: String| TcpUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    };
+    let n: usize = num
+        .parse()
+        .map_err(|e: std::num::ParseIntError| bad(e.to_string()))?;
+    // Checked multiply: a value like "999999999999G" must not panic (debug)
+    // or wrap (release) into a small/huge size.
+    let bytes = n
+        .checked_mul(mul)
+        .ok_or_else(|| bad("byte size overflows usize".to_string()))?;
+    if bytes > MAX_BYTE_SIZE {
+        return Err(bad(format!(
+            "byte size {bytes} exceeds maximum {MAX_BYTE_SIZE}"
+        )));
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -195,6 +213,40 @@ mod tests {
         assert!(u.listen);
         assert_eq!(u.cert.as_deref(), Some("server.crt"));
         assert_eq!(u.key.as_deref(), Some("server.key"));
+    }
+
+    #[test]
+    fn byte_size_suffix_overflow_is_rejected_not_panic() {
+        // The "M" multiply must not panic in debug or wrap in release.
+        let err = TcpUrl::parse("tcp://1.2.3.4:7001?rcvbuf=999999999999999999999M")
+            .expect_err("overflowing rcvbuf must be rejected");
+        assert!(matches!(err, TcpUrlError::BadQueryValue { .. }));
+    }
+
+    #[test]
+    fn byte_size_enormous_but_valid_is_rejected_by_bound() {
+        // 999999M ≈ 1 TiB: valid digits + recognized suffix, but absurd.
+        let err = TcpUrl::parse("tcp://1.2.3.4:7001?sndbuf=999999M")
+            .expect_err("absurd sndbuf must exceed the byte-size ceiling");
+        match err {
+            TcpUrlError::BadQueryValue { detail, .. } => {
+                assert!(detail.contains("exceeds maximum"), "detail: {detail}");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn byte_size_at_ceiling_is_accepted() {
+        let u = TcpUrl::parse("tcp://1.2.3.4:7001?rcvbuf=256M").unwrap();
+        assert_eq!(u.rcvbuf, Some(256 * 1024 * 1024));
+    }
+
+    #[test]
+    fn cited_adversarial_input_returns_err() {
+        // The exact adversarial fixture: `999999999999G`. Rejected (never
+        // panic/wrap).
+        assert!(TcpUrl::parse("tcp://1.2.3.4:7001?rcvbuf=999999999999G").is_err());
     }
 
     #[test]

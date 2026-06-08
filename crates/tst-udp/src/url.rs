@@ -163,6 +163,13 @@ fn parse_u8_hex_or_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
     })
 }
 
+/// Upper bound for any byte-size query field (`rcvbuf`, `sndbuf`, `pkt_size`).
+///
+/// 256 MiB comfortably covers any realistic socket-buffer or recv-buffer
+/// request while rejecting absurd values that would attempt a huge
+/// pre-allocation downstream (e.g. `pkt_size=999999999999G`).
+const MAX_BYTE_SIZE: usize = 256 * 1024 * 1024;
+
 fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
     // Accept "12345", "12K", "12k", "12M", "12m"; matches ffmpeg.
     let (num, mul) = match value.chars().last() {
@@ -170,14 +177,25 @@ fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
         Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
         _ => (value, 1usize),
     };
-    let n: usize =
-        num.parse()
-            .map_err(|e: std::num::ParseIntError| UdpUrlError::BadQueryValue {
-                key: key.to_string(),
-                value: value.to_string(),
-                detail: e.to_string(),
-            })?;
-    Ok(n * mul)
+    let bad = |detail: String| UdpUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    };
+    let n: usize = num
+        .parse()
+        .map_err(|e: std::num::ParseIntError| bad(e.to_string()))?;
+    // Checked multiply: a value like "999999999999G" must not panic (debug)
+    // or wrap (release) into a small/huge size.
+    let bytes = n
+        .checked_mul(mul)
+        .ok_or_else(|| bad("byte size overflows usize".to_string()))?;
+    if bytes > MAX_BYTE_SIZE {
+        return Err(bad(format!(
+            "byte size {bytes} exceeds maximum {MAX_BYTE_SIZE}"
+        )));
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -230,6 +248,44 @@ mod tests {
         assert_eq!(u.tos, Some(0xb8));
         assert_eq!(u.sndbuf, Some(2 * 1024 * 1024));
         assert_eq!(u.rcvbuf, Some(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn byte_size_suffix_overflow_is_rejected_not_panic() {
+        // The suffix multiply (n * 1024*1024 for "M") must not panic in debug
+        // or wrap in release. A value this large overflows usize before any
+        // ceiling check.
+        let err = UdpUrl::parse("udp://239.10.0.1:5004?pkt_size=999999999999999999999M")
+            .expect_err("overflowing pkt_size must be rejected");
+        assert!(matches!(err, UdpUrlError::BadQueryValue { .. }));
+    }
+
+    #[test]
+    fn byte_size_enormous_but_valid_is_rejected_by_bound() {
+        // 999999M ≈ 1 TiB: valid digits + recognized suffix, but absurd;
+        // the transport upper bound (256 MiB) rejects it.
+        let err = UdpUrl::parse("udp://239.10.0.1:5004?pkt_size=999999M")
+            .expect_err("absurd pkt_size must exceed the byte-size ceiling");
+        match err {
+            UdpUrlError::BadQueryValue { detail, .. } => {
+                assert!(detail.contains("exceeds maximum"), "detail: {detail}");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn byte_size_at_ceiling_is_accepted() {
+        let u = UdpUrl::parse("udp://239.10.0.1:5004?rcvbuf=256M").unwrap();
+        assert_eq!(u.rcvbuf, Some(256 * 1024 * 1024));
+    }
+
+    #[test]
+    fn cited_adversarial_input_returns_err() {
+        // The exact adversarial fixture: `999999999999G`. `G` is not a
+        // recognized suffix, so this is rejected at digit-parse — the key
+        // property is Err, never panic/wrap.
+        assert!(UdpUrl::parse("udp://239.10.0.1:5004?pkt_size=999999999999G").is_err());
     }
 
     #[test]

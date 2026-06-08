@@ -174,7 +174,7 @@ impl<R: RecvTransport> RawReceiver<R> {
         let _enter = span.enter();
         tracing::info!("RawReceiver opened");
         drop(_enter);
-        let cap = transport.max_payload();
+        let cap = crate::clamp_recv_capacity(transport.max_payload());
         Self {
             transport,
             buf: vec![0u8; cap],
@@ -350,6 +350,46 @@ mod tests {
         fn is_alive(&self) -> bool {
             self.alive
         }
+    }
+
+    /// A `RecvTransport` reporting an absurd `max_payload()` (e.g. a
+    /// hostile/buggy transport, or a URL `pkt_size` that overflowed before
+    /// the URL parsers were bounds-checked). `RawReceiver::new` must clamp
+    /// the eager pre-allocation rather than attempt a usize::MAX-ish `vec!`.
+    struct HostileRecv;
+    impl RecvTransport for HostileRecv {
+        fn recv_bytes(&mut self, _buf: &mut [u8]) -> Result<usize, TransportError> {
+            Err(TransportError::Closed)
+        }
+        fn max_payload(&self) -> usize {
+            usize::MAX
+        }
+        fn is_alive(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn hostile_max_payload_does_not_oom_constructor() {
+        // Without the clamp this would attempt to allocate ~usize::MAX bytes
+        // and abort. With it, the buffer is bounded to MAX_RECV_BUFFER.
+        let r = RawReceiver::new(HostileRecv, RawReceiverConfig::default());
+        // No assertion on capacity beyond "we got here without aborting", but
+        // confirm the buffer is the bounded size, not usize::MAX.
+        assert!(r.buf.capacity() <= crate::MAX_RECV_BUFFER);
+    }
+
+    #[test]
+    fn clamp_recv_capacity_bounds_and_passes_through() {
+        assert_eq!(crate::clamp_recv_capacity(1316), 1316);
+        assert_eq!(
+            crate::clamp_recv_capacity(crate::MAX_RECV_BUFFER),
+            crate::MAX_RECV_BUFFER
+        );
+        assert_eq!(
+            crate::clamp_recv_capacity(usize::MAX),
+            crate::MAX_RECV_BUFFER
+        );
     }
 
     #[test]

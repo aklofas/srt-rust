@@ -72,6 +72,34 @@ pub mod mux_sender;
 #[cfg(feature = "std")]
 pub mod raw_receiver;
 pub mod raw_sender;
+
+/// Defensive ceiling on the receive buffer a shell eagerly pre-allocates
+/// from `transport.max_payload()`.
+///
+/// A hostile or buggy `RecvTransport` could report an absurd `max_payload()`
+/// (e.g. via a URL `pkt_size` that overflowed before the URL parsers were
+/// bounds-checked), turning the `vec![0u8; cap]` pre-allocation in
+/// [`receiver::Receiver::new`] / [`raw_receiver::RawReceiver::new`] into an
+/// OOM. 256 MiB exceeds any realistic transport payload (UDP datagrams cap
+/// at 64 KiB, SRT/TCP buffers at tens of MiB), so clamping here never
+/// truncates legitimate traffic — it only bounds the eager allocation.
+#[cfg(feature = "std")]
+pub(crate) const MAX_RECV_BUFFER: usize = 256 * 1024 * 1024;
+
+/// Clamp an eager receive-buffer pre-allocation to [`MAX_RECV_BUFFER`].
+#[cfg(feature = "std")]
+pub(crate) fn clamp_recv_capacity(cap: usize) -> usize {
+    if cap > MAX_RECV_BUFFER {
+        tracing::warn!(
+            requested = cap,
+            ceiling = MAX_RECV_BUFFER,
+            "transport.max_payload() exceeds recv-buffer ceiling; clamping pre-allocation"
+        );
+        MAX_RECV_BUFFER
+    } else {
+        cap
+    }
+}
 #[cfg(feature = "std")]
 pub mod receiver;
 #[cfg(feature = "std")]

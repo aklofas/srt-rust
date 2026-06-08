@@ -882,6 +882,14 @@ pub enum PyMultiCellAuReason {
     /// Buffered AU exceeded `au_cell_cap_per_pid`.
     #[pyo3(name = "OVERFLOW")]
     Overflow,
+    /// Aggregate in-flight AU-cell bytes across all PIDs exceeded
+    /// `au_cell_cap_total`. The offending PID's partial buffer is dropped.
+    #[pyo3(name = "OVERFLOW_TOTAL")]
+    OverflowTotal,
+    /// A new First would open reassembly beyond `au_cell_max_in_flight_pids`
+    /// concurrently in-flight PIDs. The new cell is rejected.
+    #[pyo3(name = "TOO_MANY_PIDS")]
+    TooManyPids,
 }
 
 impl From<MultiCellAuReason> for PyMultiCellAuReason {
@@ -891,6 +899,8 @@ impl From<MultiCellAuReason> for PyMultiCellAuReason {
             MultiCellAuReason::SequenceGap => Self::SequenceGap,
             MultiCellAuReason::ConcurrentFirst => Self::ConcurrentFirst,
             MultiCellAuReason::Overflow => Self::Overflow,
+            MultiCellAuReason::OverflowTotal => Self::OverflowTotal,
+            MultiCellAuReason::TooManyPids => Self::TooManyPids,
             // Forward-compat for #[non_exhaustive] additions on the Rust side.
             // Map any future variant to Orphan as a safe-but-imprecise default;
             // future Python releases should extend the enum.

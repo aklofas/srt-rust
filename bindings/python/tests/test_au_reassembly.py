@@ -21,12 +21,14 @@ from tstrans.mpegts import (
 )
 
 
-def test_multi_cell_au_reason_is_an_enum_with_four_variants() -> None:
+def test_multi_cell_au_reason_is_an_enum_with_six_variants() -> None:
     """The reason enum mirrors Rust's `MultiCellAuReason`."""
     assert MultiCellAuReason.ORPHAN is not None
     assert MultiCellAuReason.SEQUENCE_GAP is not None
     assert MultiCellAuReason.CONCURRENT_FIRST is not None
     assert MultiCellAuReason.OVERFLOW is not None
+    assert MultiCellAuReason.OVERFLOW_TOTAL is not None
+    assert MultiCellAuReason.TOO_MANY_PIDS is not None
 
 
 def test_multi_cell_au_reason_equality_uses_eq_int_semantics() -> None:
@@ -37,6 +39,8 @@ def test_multi_cell_au_reason_equality_uses_eq_int_semantics() -> None:
     assert MultiCellAuReason.ORPHAN == MultiCellAuReason.ORPHAN
     assert MultiCellAuReason.ORPHAN != MultiCellAuReason.OVERFLOW
     assert MultiCellAuReason.SEQUENCE_GAP != MultiCellAuReason.CONCURRENT_FIRST
+    assert MultiCellAuReason.OVERFLOW_TOTAL != MultiCellAuReason.OVERFLOW
+    assert MultiCellAuReason.TOO_MANY_PIDS != MultiCellAuReason.OVERFLOW_TOTAL
 
 
 def test_klv_event_has_was_reassembled_and_cell_count_with_defaults() -> None:

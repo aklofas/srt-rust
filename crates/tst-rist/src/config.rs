@@ -2,27 +2,31 @@
 
 use std::time::Duration;
 
+use secrecy::{ExposeSecret, SecretString};
+
 use crate::url::RistUrl;
 
-/// AES pre-shared key, redacting in `Debug` so it never leaks through a
-/// `format!("{:?}", ..)` / `tracing::debug!(?..)` of an enclosing struct.
+/// AES pre-shared key. Backed by `secrecy::SecretString` — zeroes the
+/// plaintext on drop and redacts in `Debug`, so it never leaks through a
+/// `format!("{:?}", ..)` / `tracing::debug!(?..)` of an enclosing struct
+/// nor lingers in freed heap.
 ///
-/// A thin newtype over `String` with a manual [`Debug`] impl (mirrors the
-/// `Passphrase` pattern in `tst-srt`). The plaintext is exposed only via
-/// [`RistSecret::expose`], which is called exactly at the librist FFI
-/// hand-off site — keep the result un-logged.
+/// Mirrors the `Passphrase` pattern in `tst-srt`. The plaintext is exposed
+/// only via [`RistSecret::expose`], which is called exactly at the librist
+/// FFI hand-off site — keep the result un-logged.
 #[derive(Clone)]
-pub struct RistSecret(String);
+pub struct RistSecret(SecretString);
 
 impl RistSecret {
     /// Wrap a plaintext PSK.
     pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
+        Self(SecretString::from(s.into()))
     }
 
     /// Expose the plaintext PSK. Prefer not to log the result.
+    #[must_use]
     pub fn expose(&self) -> &str {
-        &self.0
+        self.0.expose_secret()
     }
 }
 

@@ -2311,6 +2311,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "rist-sys",
+ "secrecy",
  "thiserror 2.0.18",
  "tracing",
  "tst-core",

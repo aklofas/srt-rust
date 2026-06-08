@@ -15,6 +15,7 @@ doctest = false
 rist-sys  = { path = "../rist-sys" }
 tst-core  = { path = "../tst-core" }
 libc      = { workspace = true }
+secrecy   = { workspace = true }
 thiserror = { workspace = true }
 tracing   = { workspace = true }
 

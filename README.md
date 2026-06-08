@@ -1,6 +1,6 @@
 # ts-transformer
 
-A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over SRT — with C, Python, and JVM (planned) bindings.
+A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over SRT, RTP, TCP, UDP, and RIST — with C, Python, and JVM bindings.
 
 *The Swiss Army Knife for MPEG-TS streams.*
 
@@ -14,7 +14,7 @@ A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over 
 | **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
 | **C** | Shipping (ABI 0.5) | [`docs/languages/c.md`](docs/languages/c.md) |
 | **Python** | Shipping (`tstrans` on PyPI; includes `tstrans.rtp` RTP + RTSP) | [`docs/languages/python.md`](docs/languages/python.md) |
-| **JVM** | Planned (`tst-jni` next) | [roadmap](docs/project/deferred-features.md) |
+| **JVM** | Shipping (`tstrans-jvm` / `org.tstrans` on Maven Central) | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
 
 ## In 30 seconds
 
@@ -50,7 +50,7 @@ Python equivalent: `pip install tstrans` — see [`docs/languages/python.md`](do
 - Embed all of the above in a Rust, C, or Python app via a stable surface.
 
 **Look elsewhere if you need:**
-- **RTMP** or **WebRTC** transports — not on the roadmap. (SRT is shipping today; **RTP** and **raw TCP / UDP** are in active development; **RIST** may follow.)
+- **RTMP** or **WebRTC** transports — not on the roadmap. (**SRT**, **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, and **RIST** all ship today.)
 - A different container — we are **MPEG-TS only** (no MP4, fMP4, HLS, DASH; pair us with FFmpeg for repackaging).
 - Arbitrary metadata schemas — we are **MISB KLV only**.
 - Video encoders or decoders — we mux + demux the wire format; pair with x264 / x265 / FFmpeg / NVENC / PyAV / a hardware codec for the actual codec work.
@@ -65,7 +65,7 @@ Python equivalent: `pip install tstrans` — see [`docs/languages/python.md`](do
 | **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3, EAC-3 |
 | **Subtitles** | DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS |
 | **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI); ST 1402 carriage + H.222.0 §2.12.4.2 Metadata AU cells |
-| **Transport** | SRT 1.5 (Haivision libsrt, vendored) shipping today; RTP and raw TCP / UDP in active development |
+| **Transport** | SRT 1.5 (Haivision libsrt, vendored), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist) — all shipping. HLS publisher is experimental, not in published artifacts (see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). |
 | **Encryption** | AES-128 / 192 / 256 over SRT via vendored mbedTLS 3.6 LTS, on by default |
 
 Full feature-by-feature matrix in [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
@@ -118,7 +118,7 @@ The wire format is standards-conformant; outputs are validated against **FFmpeg 
 
 ## Status
 
-Pre-1.0. Sender + receiver pipelines complete; **Linux x86_64 + Linux aarch64 are CI-gating**; macOS arm64 and Windows MSVC build + link verified, runtime test promotion tracked in [`docs/project/deferred-features.md`](docs/project/deferred-features.md). Hundreds of tests across both feature modes; 20 bash ratchets + `cargo public-api` baselines guard the surface on every commit.
+Pre-1.0. Sender + receiver pipelines complete; **Linux x86_64, Linux aarch64, macOS arm64, and Windows MSVC are all CI-gating** (the RIST runtime test stays gated on Windows — see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). Hundreds of tests across both feature modes; bash ratchets + `cargo public-api` baselines guard the surface on every commit.
 
 Public API may change between pre-1.0 releases; all changes recorded in [`CHANGELOG.md`](CHANGELOG.md).
 

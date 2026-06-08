@@ -16,9 +16,11 @@ not listed below are intentionally **not yet implemented**.
 | ❌ Out of scope | Deferred indefinitely. |
 
 The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 / 0903
-KLV over SRT** (with RTP and raw TCP / UDP transports in active development; RIST
-may follow). Other containers (MP4 / CMAF), other transports (RTMP / WebRTC), and
-raw elementary streams remain out of scope until a consumer asks. See
+KLV** over **SRT, RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST**.
+An HLS publisher exists behind the `hls` Cargo feature but is **experimental and
+gated out of the v0.1.0 published artifacts** — see `deferred-features.md`. Other
+containers (MP4 / CMAF), other transports (RTMP / WebRTC), and raw elementary
+streams remain out of scope until a consumer asks. See
 `tests/coverage/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
@@ -34,8 +36,8 @@ deferred — see `deferred-features.md` for triggers to revisit.
 |------------------------------|-------------------------|-----------------------------------|------------------------------------------------|
 | Linux x86_64 (GNU)           | Tier 1, gating          | Every PR + scrub/ratchet scripts  | Reference platform                             |
 | Linux aarch64 (GNU)          | Tier 1, gating          | Every PR + cargo build/test       | GHA `ubuntu-24.04-arm`; native build           |
-| macOS arm64 (Apple Silicon)  | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `macos-14`; native build; Intel not supported |
-| Windows x86_64 (MSVC)        | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `windows-latest`; MSVC toolchain only      |
+| macOS arm64 (Apple Silicon)  | Tier 1, gating          | Every PR + cargo build/test       | GHA `macos-14`; native build; Intel not supported |
+| Windows x86_64 (MSVC)        | Tier 1, gating          | Every PR + cargo build/test       | GHA `windows-latest`; MSVC toolchain only; RIST runtime test gated (see `deferred-features.md`) |
 | Linux x86_64 (musl)          | Tier 2                  | `tst-core` + `tst-pipeline` only  | libsrt-bound crates not supported under musl   |
 | Bare-metal `thumbv7em-none-eabihf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | Cortex-M4F/M7F (STM32F4/F7/H7); `#![no_std]`+`alloc` |
 | Bare-metal `riscv32imac-unknown-none-elf` | Tier 2 (compile-gate) | `tst-core --no-default-features` build | RISC-V (e.g. ESP32-P4 bare-metal); `#![no_std]`+`alloc` |
@@ -43,10 +45,11 @@ deferred — see `deferred-features.md` for triggers to revisit.
 | Windows MinGW (gcc)          | Deferred                | —                                 | See `deferred-features.md`                     |
 | macOS x86_64 (Intel)         | Deferred                | —                                 | See `deferred-features.md`                     |
 
-**"Phase-in" status meaning:** the platform is built + tested in CI but
-build failures do NOT block PR merge. After ~14 consecutive green
-nightly days the platform is promoted to "gating" via a separate
-follow-up plan, at which point build failures DO block merge.
+**"Gating" status meaning:** the platform is built + tested in CI on every
+PR and build or test failures DO block merge. All four Tier 1 platforms
+(Linux x86_64 + aarch64, macOS arm64, Windows MSVC) are gating; the only
+carve-out is the RIST runtime test on Windows (a vendored-librist teardown
+hang — see `deferred-features.md`).
 
 **Bare-metal `no_std` (compile-gate only):** `tst-core` builds under
 `#![no_std]` + `alloc` with `--no-default-features` — the MPEG-TS
@@ -410,7 +413,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 |---|---|
 | Rust API (`Pairer::with_config`, `Pairer::last_before_pts`, `feed`/`flush`/`stats`) | Shipped 2026-05-07 |
 | C ABI exposure | Deferred to future receiver-surface plan |
-| JNI exposure | Deferred to future `tst-jni` plan |
+| JNI exposure | Shipped — `org.tstrans.pipeline.Pairer` |
 | UniFFI exposure | Deferred to future `tst-uniffi` plan |
 
 ---
@@ -504,7 +507,7 @@ to ride with the future receiver-surface plan.
 | Distribution artifacts | ✅ Full | `libtstrans.so` + `libtstrans.a` + `tstrans.h` + `tstrans.pc`. Tarball staged manually; GitHub Releases publishing not automated today. |
 | End-to-end C smoke test | ✅ Full | `tests/smoke.c` compiled by `cc` and linked against the cdylib at test time; exercises muxer push/pull + every NULL-close path + invalid-URL last-error. |
 | Live-socket roundtrip test | ✅ Full | `tests/live_pair.rs` binds a real `Listener` on 127.0.0.1, connects `tst_mux_sender_t`, sends a NAL, asserts the listener receives a TS sync byte. |
-| Multi-platform Tier 1 | ✅ Full (Linux x86_64 + aarch64 gating) / phase-in (macOS arm64 + Windows MSVC) | See "Build targets" section at top of this document. |
+| Multi-platform Tier 1 | ✅ Full — Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating | See "Build targets" section at top of this document. |
 | Pre-emptive close cancellation while parked in libsrt | ✅ Full | `Sender::close()` (and the underlying `Socket::cancel_handle()`) atomically closes the SRT handle from any thread, unblocking a peer thread parked in `srt_sendmsg`/`srt_recvmsg`. See [`pipeline.md`](/docs/guides/pipeline.md). |
 
 ---
@@ -581,9 +584,9 @@ covers.
 | `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903), codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
-| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.5** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 gating; macOS arm64 + Windows MSVC phase-in). |
+| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.10** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
 | `tst-py` | ✅ Full | PyO3 bindings published to PyPI as **`tstrans`**. File I/O surface (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; optional `[pandas]` extra for DataFrame + NumPy adapters. Live SRT transport deferred to v2. |
-| `tst-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
+| `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); SRT + RTP (incl. RTSP client + server) transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 
 For full build-target / CI gating coverage see "Build targets" at the top of this document.
@@ -616,7 +619,7 @@ roadmap. They are revisitable on consumer ask — not philosophical refusals.
 
 - Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM).
 - Metadata sets other than the typed MISB family already shipped (ST 1303 MDAP, ST 0902 minimum-set).
-- WebRTC / RTMP transports (RTP and raw TCP / UDP are in active development; RIST may follow — see top-of-document scope note).
+- WebRTC / RTMP transports (SRT, RTP, raw TCP / TLS, UDP, and RIST all ship — see top-of-document scope note).
 - ST 1607 segmented multi-PES KLV reassembly.
 - ST 1201.5 §7.1.3 special-value bit (±∞ / ±NaN passthrough).
 - Async / reactor SRT API.

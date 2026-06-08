@@ -6,7 +6,7 @@
 > - What ts-transformer streams and what it doesn't
 > - The three places this library sits in a system: source, middle, display
 > - What protocols and metadata standards are involved (in plain terms)
-> - What's in the box today (Rust + C + Python + JVM-soon)
+> - What's in the box today (Rust + C + Python + JVM)
 > - What's not in the box, with links to deferred-features
 > - Where to read next based on what you're doing
 
@@ -31,21 +31,21 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 ## What's in the box
 
 - **MPEG-TS mux + demux** — the Rust core (`tst-core`, `tst-pipeline`, `tst-srt`). Single-program or multi-program TS; auto-PCR insertion; PAT/PMT generation; the full ST 1402 KLV-in-TS multiplexing pipeline.
-- **SRT transport** — vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256.
+- **Transports** — SRT (vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist). An HLS publisher exists but is experimental and not in the published artifacts — see [`project/deferred-features.md`](/docs/project/deferred-features.md).
 - **MISB KLV** — typed encode + decode for ST 0601 (Full Motion Video FMV), ST 0102 (Security Metadata), ST 0605 (Amend Tags), ST 0903 (VMTI per-target detections). H.222.0 §2.12.4.2 Metadata AU cell wrapping for synchronous KLV streams.
 - **Video codecs** — H.264, H.265, H.266/VVC, AV1. NAL/OBU parsers; SPS/PPS/VPS extraction; slice-header-light parsers for resolution + profile.
 - **Audio codecs** — AAC (ADTS + LATM), MPEG-2 Audio (MP2/MP3), AC-3, EAC-3. Frame-level parsers expose sample rate / channel count.
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
 - **C bindings** (`tst-c`) — `cdylib` + `staticlib`, `tstrans.h` via cbindgen, `tstrans.pc` for pkg-config. Stable ABI versioned `TST_ABI_VERSION_MAJOR/MINOR`.
 - **Python bindings** (`tst-py`, distributed as `tstrans` on PyPI) — file inspection and offline construction of `.ts` files; typed KLV decode/encode; typed `Sample.payload` (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame); optional pandas + NumPy adapters via `pip install tstrans[pandas]`.
-- **JVM bindings** — `tst-jni`, planned, next on roadmap.
+- **JVM bindings** — `tst-jni`, distributed as `tstrans-jvm` (`org.tstrans`) on Maven Central. Package-for-package mirror of the Python surface (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`).
 
 ## What's NOT in the box
 
 ts-transformer is intentionally narrow. If you need any of these, look elsewhere or pair the library with a complementary tool:
 
 - **Other containers** — MPEG-TS only. No MP4, MKV, fMP4, HLS, DASH. (You can transcode + repackage on the receiver side using FFmpeg, GStreamer, etc.)
-- **Other transports** — SRT 1.5 (Haivision libsrt, vendored) ships today. **RTP** and **raw TCP / UDP** are in active development. **RIST** may follow. **RTMP** and **WebRTC** are not on the roadmap.
+- **Other transports** — **SRT** 1.5 (Haivision libsrt, vendored), **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, and **RIST** (VideoLAN librist) all ship today. An **HLS** publisher exists but is experimental and gated out of the published artifacts (see [`project/deferred-features.md`](/docs/project/deferred-features.md)). **RTMP** and **WebRTC** are not on the roadmap.
 - **Other metadata formats** — MISB KLV only. No arbitrary user data, no raw timestamps, no proprietary metadata schemas. See [`project/deferred-features.md`](/docs/project/deferred-features.md) for what's deferred.
 - **Video encoding / decoding** — wire-format only. You bring the encoded NAL units / OBU frames; the library multiplexes them. Pair with x264 / x265 / FFmpeg / NVENC / GStreamer for the actual encode side; PyAV / FFmpeg / a hardware decoder for display.
 - **Live SRT in Python** — file I/O only in v1. Live SRT lands in `tstrans` v2 (Rust core is ready; Python wrap is the work).

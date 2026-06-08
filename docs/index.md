@@ -2,7 +2,7 @@
 
 > ts-transformer streams live H.264 / H.265 video plus typed KLV metadata over an unreliable network — from a camera, sensor pod, or sensor platform to a viewer — in ~30 lines of code. Reconnect, encryption, and typed metadata decoding are handled.
 >
-> Rust core. C, Python, and JVM (planned) bindings. MPEG-TS + MISB ST 0601 + SRT.
+> Rust core. C, Python, and JVM bindings. MPEG-TS + MISB ST 0601 over SRT, RTP, TCP, UDP, and RIST.
 
 > 🆕  **First time touching MPEG-TS, KLV, or SRT?**
 > Read [start/concepts.md](/docs/start/concepts.md) first — five minutes of plain-language explainers before anything else.
@@ -21,7 +21,7 @@
 | **Rust** | Full `Sender` / `Receiver` + low-level primitives | Embedding in a Rust app; want type-level guarantees |
 | **C** | Full sender + receiver surface (`cdylib` + `staticlib` + `tstrans.h`) | Embedded targets; cross-language linkage; maximum ABI stability |
 | **Python** | Inspect + offline build of `.ts` files; typed KLV decode/encode; DataFrame adapters | Notebooks; KLV-to-DataFrame ETL; offline processing. **No live SRT transport in v1** — file I/O only. |
-| **JVM** (planned, `tst-jni` next on roadmap) | Receive + demux (initial scope) | JVM backend consumers |
+| **JVM** (`tstrans-jvm` / `org.tstrans` on Maven Central) | Mirrors the Python surface: mux + demux, typed KLV, SRT + RTP (incl. RTSP) transports, pairing | JVM backend consumers |
 
 ## What kind of pages live here?
 

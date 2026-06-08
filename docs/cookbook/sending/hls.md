@@ -1,5 +1,14 @@
 # Publish MPEG-TS as an HLS stream
 
+> **⚠️ Experimental — not in the v0.1.0 published artifacts.** The HLS
+> publisher is **Rust-only** and gated behind the `hls` Cargo feature
+> (default-off). It is **not** enabled in the PyPI wheels or the JVM fat JAR.
+> The built-in HTTP server has a pending security review (path traversal,
+> a spec-violating `TARGETDURATION` floor, and unserved VOD playlists). Use
+> it only for local / experimental builds with `--features hls`. See
+> [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md)
+> for the full rationale and the trigger to promote it to a supported feature.
+
 `tst-tcp`'s HLS publisher segments your stream to `.ts` files on disk and
 serves them (plus a rolling `.m3u8`) over a built-in HTTP server. KLV
 metadata stays inside the segments — STANAG 4609-aware players continue

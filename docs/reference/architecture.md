@@ -26,7 +26,7 @@ directory owns one concern:
 | Directory | Owns | Notes |
 |---|---|---|
 | `crates/` | The pure-Rust core: library + transports + test-infra | `srt-sys`, `rist-sys` (raw FFI); `tst-core` (engine); `tst-pipeline` (shells); the transports `tst-srt` / `tst-rtp` / `tst-udp` / `tst-tcp` / `tst-rist`; `tst-integration`, `tst-test-helpers` (test infra) |
-| `bindings/` | Language bindings for downstream consumers | `bindings/c` (crate `tst-c` — cdylib/staticlib + `include/tstrans.h`) with its embeddable rlib at `bindings/c/core` (crate `tst-c-core`); `bindings/python` (crate `tst-py`); `bindings/jvm`, `bindings/apple-android` planned |
+| `bindings/` | Language bindings for downstream consumers | `bindings/c` (crate `tst-c` — cdylib/staticlib + `include/tstrans.h`) with its embeddable rlib at `bindings/c/core` (crate `tst-c-core`); `bindings/python` (crate `tst-py`); `bindings/jvm` (crate `tst-jni`); `bindings/apple-android` planned |
 | `embedded/` | Bare-metal / QEMU firmware test harnesses (workspace-excluded) | `baremetal-qemu` (no_std muxer/pipeline QEMU smoke), `baremetal-qemu-c` (C-firmware staticlib glue), `freertos-srt` (libsrt-on-FreeRTOS) |
 | `examples/` | Runnable Rust examples (crate `tst-examples`, `publish = false`) | Task-oriented subfolders; C examples mirror this taxonomy under `bindings/c/examples/` |
 | `vendor/` | Pinned submodules built statically | `vendor/srt` (libsrt 1.5.5), `vendor/mbedtls` (3.6.6 LTS) |
@@ -46,7 +46,7 @@ srt-sys (raw FFI)  ──→  tst-core  ──→  tst-c (cdylib + staticlib + c
                               │
                               ├──→  tst-pipeline (pipeline shells)
                               ├──→  tst-srt      (SRT transports)
-                              ├──→  tst-jni      (planned)
+                              ├──→  tst-jni      (JVM JNI bindings)
                               └──→  tst-uniffi   (planned)
 
 dev-only: tst-test-helpers (publish = false; shared test fixtures and

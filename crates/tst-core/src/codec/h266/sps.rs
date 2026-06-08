@@ -523,19 +523,22 @@ fn walk_sps_body(
         let color = parse_h266_vui(br)?;
         // Compute the VUI end boundary in u64 to avoid u32 overflow on a
         // crafted `vui_payload_size_minus1` ≥ 0x1FFF_FFFF (DoS via debug
-        // panic). A declared payload that places `vui_end_bits` beyond u32
-        // is impossible in a valid bitstream — bail with ReservedValue.
-        let vui_end_bits: u64 = (vui_start_bits as u64)
-            .checked_add((payload_size_bytes as u64).checked_mul(8).ok_or(
-                CodecParseError::ReservedValue {
-                    field: "vui_payload_size_minus1",
-                    value: vui_payload_size_minus1 as u32,
-                },
-            )?)
-            .ok_or(CodecParseError::ReservedValue {
+        // panic). `vui_payload_size_minus1` comes from `read_ue()` so it is at
+        // most `u32::MAX`; `(payload_size_bytes * 8) + vui_start_bits` therefore
+        // peaks near 0x8_FFFF_FFFF and can never overflow u64 — the u64 math
+        // itself is panic-free without any checked-arithmetic guard.
+        //
+        // What *can* happen is a crafted payload whose declared end lands beyond
+        // u32::MAX bits. The tail-skip loop below compares against `br.position()`
+        // (a u32), so such an end is unreachable in a valid bitstream — reject it
+        // with ReservedValue rather than spinning the loop to EOF.
+        let vui_end_bits: u64 = (vui_start_bits as u64) + (payload_size_bytes as u64) * 8;
+        if vui_end_bits > u32::MAX as u64 {
+            return Err(CodecParseError::ReservedValue {
                 field: "vui_payload_size_minus1",
                 value: vui_payload_size_minus1 as u32,
-            })?;
+            });
+        }
         while (br.position() as u64) < vui_end_bits {
             // Consume the optional extension+marker+pad tail. We do not
             // interpret the bits — H.266 §7.3.2.21 reserves them for future

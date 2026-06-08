@@ -107,9 +107,26 @@ impl UdpRecvTransport {
         // continues to wake periodically and can observe alive=false set by
         // close().  Restoring None (no timeout) would cause recv_bytes to
         // block forever, making close() unable to interrupt it.
-        let _ = self.socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL));
+        //
+        // A failed restore leaves SO_RCVTIMEO at `deadline` rather than the
+        // cancel-poll interval, silently breaking close()'s ability to
+        // interrupt a later recv_bytes. Surface it: log, and propagate it
+        // when the recv itself didn't already fail (a recv error takes
+        // priority since it is the more actionable failure).
+        let restore = self.socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL));
+        if let Err(e) = &restore {
+            tracing::warn!(
+                error = %e,
+                "failed to restore SO_RCVTIMEO after recv_timeout; \
+                 cancel-poll may be disabled for subsequent recv_bytes"
+            );
+        }
         match result {
             Ok(n) => {
+                // The datagram arrived, but the socket is now in a wrong-timeout
+                // state — report the restore failure rather than silently
+                // returning data on a broken socket.
+                restore.map_err(crate::error::UdpError::Io)?;
                 self.stats.datagrams_received = self.stats.datagrams_received.saturating_add(1);
                 self.stats.bytes_received = self.stats.bytes_received.saturating_add(n as u64);
                 Ok(Some(n))

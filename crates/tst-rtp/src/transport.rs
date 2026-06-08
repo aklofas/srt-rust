@@ -96,22 +96,40 @@ impl RtpTransport {
     ///
     /// `url` must have scheme `rtp://` and an explicit port.
     ///
-    /// As of Phase 2 Task 10, this also binds an RTCP companion socket
-    /// on `port + 1` and spawns the SR-emitter thread. Opt out via
-    /// [`crate::builder::RtpSocketBuilder::rtcp`].
+    /// The outgoing RTCP SR reporter is **off by default** (see
+    /// [`Self::connect_with_rtcp`] for the experimental opt-in and its
+    /// limitations). RTCP *reception* is unaffected.
     pub fn connect(url: &str) -> Result<Self, ConnectError> {
         let parsed = RtpUrl::parse(url).map_err(ConnectError::Url)?;
-        Self::connect_with_rtcp(&parsed, true)
+        Self::connect_with_rtcp(&parsed, false)
     }
 
     /// Connect using an already-parsed URL — convenient for callers that
-    /// hold an `RtpUrl` (e.g., binding crates). RTCP defaults on.
+    /// hold an `RtpUrl` (e.g., binding crates). The outgoing RTCP SR
+    /// reporter is **off by default** (see [`Self::connect_with_rtcp`]).
     pub fn connect_with(url: &RtpUrl) -> Result<Self, ConnectError> {
-        Self::connect_with_rtcp(url, true)
+        Self::connect_with_rtcp(url, false)
     }
 
     /// Connect using an already-parsed URL with an explicit RTCP toggle.
-    /// `rtcp_enabled = false` skips the RTCP socket-pair + reporter thread.
+    ///
+    /// `rtcp_enabled = true` binds the RTCP companion socket on `port + 1`
+    /// and spawns the periodic SR-emitter thread. `rtcp_enabled = false`
+    /// (the default for [`Self::connect`] / [`Self::connect_with`]) skips
+    /// both.
+    ///
+    /// # Experimental: the SR reporter emits placeholder statistics
+    ///
+    /// The periodic SR reporter is **experimental and off by default**. It
+    /// currently emits **placeholder (zero) statistics** — there are no
+    /// live sender counters wired into the SR (`sender_packet_count`,
+    /// `sender_octet_count`, `rtp_timestamp`, and `ntp_timestamp` are all
+    /// zero). As such it is **NOT RFC 3550-conformant** and must not be
+    /// relied on by peers for sender-side reception statistics. Enabling it
+    /// is only useful for exercising the RTCP socket-pair plumbing. RTCP
+    /// *reception* (ingesting peer SR/RR into [`Self::rtcp_stats`] and the
+    /// projected [`SocketStats`] fields) is a separate, working path and is
+    /// not affected by this toggle.
     pub fn connect_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {
@@ -469,21 +487,40 @@ pub struct RtpStats {
 impl RtpRecvTransport {
     /// Bind to `url`'s host:port and (for multicast) join the group.
     ///
-    /// As of Phase 2 Task 10, this also binds an RTCP companion socket
-    /// on `port + 1` and spawns the RR-emitter thread. Opt out via
-    /// [`crate::builder::RtpRecvSocketBuilder::rtcp`].
+    /// The outgoing RTCP RR reporter is **off by default** (see
+    /// [`Self::listen_with_rtcp`] for the experimental opt-in and its
+    /// limitations). RTCP *reception* is unaffected.
     pub fn listen(url: &str) -> Result<Self, ConnectError> {
         let parsed = RtpUrl::parse(url).map_err(ConnectError::Url)?;
-        Self::listen_with_rtcp(&parsed, true)
+        Self::listen_with_rtcp(&parsed, false)
     }
 
-    /// Bind using an already-parsed URL. RTCP defaults on.
+    /// Bind using an already-parsed URL. The outgoing RTCP RR reporter is
+    /// **off by default** (see [`Self::listen_with_rtcp`]).
     pub fn listen_with(url: &RtpUrl) -> Result<Self, ConnectError> {
-        Self::listen_with_rtcp(url, true)
+        Self::listen_with_rtcp(url, false)
     }
 
     /// Bind using an already-parsed URL with an explicit RTCP toggle.
-    /// `rtcp_enabled = false` skips the RTCP socket-pair + reporter thread.
+    ///
+    /// `rtcp_enabled = true` binds the RTCP companion socket on `port + 1`
+    /// and spawns the periodic RR-emitter thread. `rtcp_enabled = false`
+    /// (the default for [`Self::listen`] / [`Self::listen_with`]) skips
+    /// both.
+    ///
+    /// # Experimental: the RR reporter emits placeholder statistics
+    ///
+    /// The periodic RR reporter is **experimental and off by default**. It
+    /// currently emits **placeholder (zero) statistics** — there are no
+    /// live receiver counters wired into the RR (it carries an empty report
+    /// block list, so no fraction-lost / cumulative-lost / jitter / last-SR
+    /// values reach the peer). As such it is **NOT RFC 3550-conformant**
+    /// and must not be relied on by senders for receiver-side reception
+    /// quality. Enabling it is only useful for exercising the RTCP
+    /// socket-pair plumbing. RTCP *reception* (ingesting peer SR/RR into
+    /// [`Self::rtcp_stats`] and the projected [`SocketStats`] fields, e.g.
+    /// the TCP-interleaved RTSP `rtt_us` / `packets_lost_send` path) is a
+    /// separate, working path and is not affected by this toggle.
     pub fn listen_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {

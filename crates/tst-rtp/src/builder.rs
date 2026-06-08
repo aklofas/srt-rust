@@ -27,8 +27,9 @@ use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
 pub struct RtpSocketBuilder {
     url: RtpUrl,
     /// Whether to auto-bind the RTCP companion socket on `port + 1`
-    /// per RFC 3550 §11. Default `true` — opt out for callers that
-    /// want pure-RTP without the reporter thread.
+    /// per RFC 3550 §11 and spawn the periodic SR reporter. Default
+    /// `false` — the reporter is experimental and emits placeholder
+    /// (zero) statistics (see [`Self::rtcp`]).
     rtcp: bool,
 }
 
@@ -45,7 +46,7 @@ impl RtpSocketBuilder {
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
             },
-            rtcp: true,
+            rtcp: false,
         }
     }
 
@@ -54,7 +55,7 @@ impl RtpSocketBuilder {
         let parsed = RtpUrl::parse(url)?;
         Ok(Self {
             url: parsed,
-            rtcp: true,
+            rtcp: false,
         })
     }
 
@@ -85,8 +86,13 @@ impl RtpSocketBuilder {
     }
 
     /// Enable or disable the auto-bound RTCP companion socket on
-    /// `port + 1`. Default `true`. Pass `false` to skip the RTCP
-    /// socket pair + reporter thread.
+    /// `port + 1` and the periodic SR reporter thread. Default `false`.
+    ///
+    /// The SR reporter is **experimental**: when enabled it emits
+    /// **placeholder (zero) statistics** (no live sender counters wired
+    /// in) and is therefore **NOT RFC 3550-conformant**. Pass `true`
+    /// only to exercise the RTCP socket-pair plumbing. RTCP *reception*
+    /// is unaffected by this toggle.
     pub fn rtcp(mut self, enabled: bool) -> Self {
         self.rtcp = enabled;
         self
@@ -111,8 +117,9 @@ impl RtpSocketBuilder {
 pub struct RtpRecvSocketBuilder {
     url: RtpUrl,
     /// Whether to auto-bind the RTCP companion socket on `port + 1`
-    /// per RFC 3550 §11. Default `true` — opt out for callers that
-    /// want pure-RTP without the reporter thread.
+    /// per RFC 3550 §11 and spawn the periodic RR reporter. Default
+    /// `false` — the reporter is experimental and emits placeholder
+    /// (zero) statistics (see [`Self::rtcp`]).
     rtcp: bool,
 }
 
@@ -130,7 +137,7 @@ impl RtpRecvSocketBuilder {
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
             },
-            rtcp: true,
+            rtcp: false,
         }
     }
 
@@ -139,7 +146,7 @@ impl RtpRecvSocketBuilder {
         let parsed = RtpUrl::parse(url)?;
         Ok(Self {
             url: parsed,
-            rtcp: true,
+            rtcp: false,
         })
     }
 
@@ -157,8 +164,13 @@ impl RtpRecvSocketBuilder {
     }
 
     /// Enable or disable the auto-bound RTCP companion socket on
-    /// `port + 1`. Default `true`. Pass `false` to skip the RTCP
-    /// socket pair + reporter thread.
+    /// `port + 1` and the periodic RR reporter thread. Default `false`.
+    ///
+    /// The RR reporter is **experimental**: when enabled it emits
+    /// **placeholder (zero) statistics** (empty report blocks, no live
+    /// receiver counters) and is therefore **NOT RFC 3550-conformant**.
+    /// Pass `true` only to exercise the RTCP socket-pair plumbing. RTCP
+    /// *reception* is unaffected by this toggle.
     pub fn rtcp(mut self, enabled: bool) -> Self {
         self.rtcp = enabled;
         self

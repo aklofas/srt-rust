@@ -1,10 +1,15 @@
 //! `RtpHeader` — the 12-byte fixed RTP header per RFC 3550 §5.1.
 //!
-//! Phase 1 supports only the fixed header (no CSRC list, no extension).
-//! `V=2`, `P=0`, `X=0`, `CC=0`. `M` is always 0 in Phase 1 (we use a
+//! The **encoder** emits only the fixed 12-byte header (no CSRC list, no
+//! extension): `V=2`, `P=0`, `X=0`, `CC=0`. `M` is always 0 (we use a
 //! system-clock timestamp source which has no discontinuity signal —
 //! see [`RtpClock`](crate::clock::RtpClock)). `PT=33` (MP2T) per RFC
 //! 3551 §6 Table 5.
+//!
+//! The **decoder** ([`RtpHeader::decode`]) parses received packets fully —
+//! it skips any CSRC list and extension header and trims RFC 3550 padding,
+//! returning the true payload bounds — so packets from other RTP senders
+//! (CSRC/extension/padding present) depacketize correctly.
 //!
 //! Receivers accept any payload type but only MP2T (33) is meaningful
 //! for this crate; non-MP2T packets are silently dropped at the

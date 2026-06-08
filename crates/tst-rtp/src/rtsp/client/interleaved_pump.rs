@@ -423,6 +423,44 @@ mod tests {
         assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 1);
     }
 
+    /// B1 review Minor #3: an RTSP response on the interleaved channel that
+    /// declares a malformed/oversized Content-Length must CLOSE the pump (not
+    /// silently coerce to a 0-length body and desync, nor buffer toward an
+    /// uncapped body). Mirrors the server pump's close-on-bad-CL policy at this
+    /// call site. Covers both unparseable and over-cap CLs.
+    #[test]
+    fn rtsp_response_closes_pump_on_malformed_content_length() {
+        for header in [
+            "RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: nope\r\n\r\n",
+            "RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: 2000000000\r\n\r\n",
+        ] {
+            let raw = header.as_bytes().to_vec();
+            let (dt, _dr, rt, _rr, ct, cr, cancel, stats) = make_args();
+            let handle = spawn_client_pump(
+                Cursor::new(raw),
+                dt,
+                rt,
+                ct,
+                InterleavedChannels { rtp: 0, rtcp: 1 },
+                cancel.clone(),
+                Arc::new(AtomicBool::new(false)),
+                stats.clone(),
+            );
+            // The pump must exit on its own (bad CL is fatal) — join returns.
+            let _ = handle.join();
+            // No RTSP message should have been routed.
+            assert!(
+                cr.try_recv().is_err(),
+                "malformed Content-Length must not produce an RTSP message"
+            );
+            assert!(
+                stats.malformed_frames.load(Ordering::Relaxed) >= 1,
+                "malformed Content-Length should be counted as a malformed frame"
+            );
+            assert_eq!(stats.rtsp_messages_received.load(Ordering::Relaxed), 0);
+        }
+    }
+
     /// A frame on an unknown channel (not rtp, not rtcp) should be
     /// counter-ticked + dropped, but not crash the pump.
     #[test]

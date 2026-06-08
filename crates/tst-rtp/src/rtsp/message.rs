@@ -28,25 +28,40 @@ pub(crate) const MAX_RTSP_BODY_BYTES: usize = 1024 * 1024; // 1 MiB
 /// header parser) into a body length, rejecting hostile inputs.
 ///
 /// - absent → `Ok(0)` (no body)
-/// - present but unparseable (e.g. `nope`) → `Err`
-/// - present and `> u64::MAX` / overflows `usize` → `Err`
+/// - present but non-`1*DIGIT` (e.g. `nope`, `+5`, `5x`) → `Err`
+/// - present and overflows `usize` → `Err`
 /// - present and `> MAX_RTSP_BODY_BYTES` → `Err`
 ///
 /// Returning a silent `0` for a malformed/oversized value would let the
 /// remaining declared-body bytes desync the framing (request smuggling), so
-/// every non-clean value is an error.
+/// every non-clean value is an error. Per RFC 7826 Content-Length is
+/// `1*DIGIT`, so we reject any non-ASCII-digit byte (Rust's `usize::from_str`
+/// would otherwise accept a leading `+`).
 pub(crate) fn parse_content_length(value: Option<&str>) -> Result<usize, &'static str> {
     let Some(raw) = value else {
         return Ok(0);
     };
-    let n: usize = raw
-        .trim()
-        .parse()
-        .map_err(|_| "unparseable Content-Length")?;
+    let digits = raw.trim();
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("unparseable Content-Length");
+    }
+    let n: usize = digits.parse().map_err(|_| "unparseable Content-Length")?;
     if n > MAX_RTSP_BODY_BYTES {
         return Err("Content-Length exceeds maximum");
     }
     Ok(n)
+}
+
+/// Split raw RTSP header text (everything before the terminating CRLFCRLF) into
+/// header lines on `\r\n` exactly as the [`HashMap`] parsers
+/// ([`RtspResponse::parse`]/[`RtspRequest::parse`]) do.
+///
+/// All three Content-Length code paths MUST tokenize identically: splitting on
+/// bare `\n` (e.g. `str::lines`) where the HashMap parsers split on `\r\n`
+/// creates a parser-differential (the scanner sees a `Content-Length` the
+/// HashMap parser doesn't), the seed of a request-smuggle.
+fn header_lines(header_text: &str) -> impl Iterator<Item = &str> {
+    header_text.split("\r\n")
 }
 
 /// Scan raw RTSP header text (everything before the terminating CRLFCRLF) for
@@ -54,13 +69,14 @@ pub(crate) fn parse_content_length(value: Option<&str>) -> Result<usize, &'stati
 /// [`parse_content_length`] plus duplicate-header rejection.
 ///
 /// Used by the interleaved framing pumps, which scan header lines directly
-/// rather than building a [`HashMap`]. Returns the strict body length on
-/// success, or an error detail string on a malformed/oversized/duplicate
-/// Content-Length.
+/// rather than building a [`HashMap`]. Tokenizes via [`header_lines`] so it
+/// agrees byte-for-byte with the HashMap parsers' view. Returns the strict
+/// body length on success, or an error detail string on a
+/// malformed/oversized/duplicate Content-Length.
 pub(crate) fn content_length_from_header_text(header_text: &str) -> Result<usize, &'static str> {
     let mut found: Option<&str> = None;
-    for line in header_text.lines() {
-        // Case-insensitive "content-length:" prefix without allocating per line.
+    for line in header_lines(header_text) {
+        // Case-insensitive "content-length:" name without allocating per line.
         let Some(colon) = line.find(':') else {
             continue;
         };
@@ -220,7 +236,7 @@ impl RtspResponse {
             std::str::from_utf8(&input[..header_end]).map_err(|_| RtspError::BadResponse {
                 detail: "non-UTF8 headers",
             })?;
-        let mut lines = header_text.split("\r\n");
+        let mut lines = header_lines(header_text);
         let status_line = lines.next().ok_or(RtspError::BadResponse {
             detail: "empty status line",
         })?;
@@ -381,7 +397,7 @@ impl RtspRequest {
             })?;
 
         // 2. Parse request line: "METHOD URI VERSION".
-        let mut lines = header_text.split("\r\n");
+        let mut lines = header_lines(header_text);
         let request_line = lines.next().ok_or(RtspError::BadResponse {
             detail: "empty request",
         })?;
@@ -608,6 +624,39 @@ mod tests {
             .is_err()
         );
         assert!(content_length_from_header_text("Content-Length: 5\r\nContent-Length: 0").is_err());
+    }
+
+    /// B1 review Minor #1: the scanner must tokenize on `\r\n` exactly like the
+    /// HashMap parsers — a bare-`\n`-delimited `Content-Length` is NOT a header
+    /// line, so it must NOT be picked up (otherwise scanner-vs-HashMap-parser
+    /// disagree → parser-differential smuggle seed).
+    #[test]
+    fn content_length_scanner_ignores_bare_lf_delimited_header() {
+        // "X: a\nContent-Length: 5" is a SINGLE \r\n-line whose value happens to
+        // contain a `\n`; the embedded "Content-Length: 5" is part of the X
+        // value, not its own header. The HashMap parser sees header `x` only.
+        let header_text = "X: a\nContent-Length: 5";
+        assert_eq!(
+            content_length_from_header_text(header_text).unwrap(),
+            0,
+            "bare-LF-delimited Content-Length must not be treated as a header"
+        );
+        // Confirm the HashMap parser agrees (no content-length header present).
+        let raw = b"RTSP/1.0 200 OK\r\nX: a\nContent-Length: 5\r\n\r\n";
+        let (resp, _) = RtspResponse::parse(raw).unwrap();
+        assert!(!resp.headers.contains_key("content-length"));
+    }
+
+    /// B1 review Minor #2: Content-Length is RFC 7826 `1*DIGIT`; a leading `+`
+    /// (which `usize::from_str` would accept) must be rejected.
+    #[test]
+    fn content_length_rejects_leading_plus() {
+        assert!(parse_content_length(Some("+5")).is_err());
+        assert!(content_length_from_header_text("Content-Length: +5").is_err());
+        let raw = b"RTSP/1.0 200 OK\r\nContent-Length: +5\r\n\r\n";
+        assert!(RtspResponse::parse(raw).is_err());
+        let req = b"SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: +5\r\n\r\n";
+        assert!(RtspRequest::parse(req).is_err());
     }
 }
 

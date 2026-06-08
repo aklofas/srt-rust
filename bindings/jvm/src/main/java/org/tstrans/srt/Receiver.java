@@ -144,6 +144,12 @@ public final class Receiver implements AutoCloseable {
      * Close the receiver. Closes the underlying libsrt socket. Idempotent —
      * subsequent calls are no-ops. After close, further {@link #recvBytes}
      * calls throw {@code IllegalStateException}.
+     *
+     * <p>If a thread is parked in {@link #recvBytes}, {@code close()} blocks until
+     * that call returns — it acquires the receiver's resource lock, which the
+     * parked recv holds. Unlike the rtp receiver, srt {@code close()} does NOT
+     * itself wake a parked recv; to unblock it from another thread, call
+     * {@link #cancelHandle()}{@code .cancel()} first.
      */
     @Override
     public void close() {

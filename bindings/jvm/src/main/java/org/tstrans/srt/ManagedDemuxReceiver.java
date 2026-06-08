@@ -243,6 +243,14 @@ public final class ManagedDemuxReceiver implements AutoCloseable, Iterable<Demux
     /**
      * Close the receiver. Closes the underlying libsrt socket and stops further
      * reconnects. Idempotent — subsequent calls are no-ops.
+     *
+     * <p>If a thread is parked in iteration ({@code next()}), {@code close()}
+     * blocks until that call returns — it acquires the receiver's resource lock,
+     * which the parked recv holds. Unlike the rtp receiver, srt {@code close()}
+     * does NOT itself wake a parked recv; to unblock it from another thread, call
+     * {@link #cancelHandle()}{@code .cancel()} first. (Note {@code cancelHandle()}
+     * sources the handle from the inner managed transport and throws while a
+     * reconnect is in flight; obtain it before iterating.)
      */
     @Override
     public void close() {

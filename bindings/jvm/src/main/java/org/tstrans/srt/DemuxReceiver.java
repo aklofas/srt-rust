@@ -179,6 +179,10 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
     /**
      * Scheme-neutral 16-field wire stats snapshot.
      *
+     * <p>May block briefly if another thread is parked in {@code next()} — the
+     * snapshot is taken under the receiver's resource lock, which a parked recv
+     * holds until it returns.
+     *
      * @return the wire-stats snapshot (never null in normal operation)
      * @throws IllegalStateException if the receiver is closed
      */
@@ -194,6 +198,10 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * read the same {@link TransportStats} shape on both {@code MuxSender} and
      * {@code DemuxReceiver}.
      *
+     * <p>May block briefly if another thread is parked in {@code next()} — the
+     * snapshot is taken under the receiver's resource lock, which a parked recv
+     * holds until it returns.
+     *
      * @return the combined stats snapshot
      * @throws IllegalStateException if the receiver is closed
      */
@@ -205,6 +213,12 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
     /**
      * Close the receiver. Closes the underlying libsrt socket. Idempotent —
      * subsequent calls are no-ops.
+     *
+     * <p>If a thread is parked in iteration ({@code next()}), {@code close()}
+     * blocks until that call returns — it acquires the receiver's resource lock,
+     * which the parked recv holds. Unlike the rtp receiver, srt {@code close()}
+     * does NOT itself wake a parked recv; to unblock it from another thread, call
+     * {@link #cancelHandle()}{@code .cancel()} first.
      */
     @Override
     public void close() {

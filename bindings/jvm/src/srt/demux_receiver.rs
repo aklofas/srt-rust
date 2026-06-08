@@ -442,16 +442,22 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nClose(
     }
 }
 
-/// `nIsAlive(handle)` — whether the receiver owns a live transport.
+/// `nIsAlive(handle)` — whether the receiver owns a live transport. Uses the
+/// non-blocking `try_with` so a concurrent parked `nNext` reports "alive" rather
+/// than blocking on the resource lock (mirrors rtp `DemuxReceiver::nIsAlive`).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nIsAlive(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    REGISTRY
-        .with(handle as u64, |jdr| u8::from(jdr.inner.is_alive()))
-        .unwrap_or(0)
+    match REGISTRY.try_with(handle as u64, |jdr| u8::from(jdr.inner.is_alive())) {
+        crate::handle::TryWith::Ran(v) => v,
+        // Locked by a parked recv → the receiver is live.
+        crate::handle::TryWith::Locked => 1,
+        // Taken/absent → closed.
+        crate::handle::TryWith::Taken => 0,
+    }
 }
 
 // ---------------------------------------------------------------------------

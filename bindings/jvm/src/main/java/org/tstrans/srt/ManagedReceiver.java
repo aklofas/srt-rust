@@ -166,8 +166,15 @@ public final class ManagedReceiver implements AutoCloseable {
     }
 
     /**
-     * Close the receiver. Flips the cancel flag (any in-flight reconnect exits)
-     * and tears down the inner shell. Idempotent.
+     * Close the receiver, tearing down the inner shell (which flips the cancel
+     * flag so any in-flight reconnect exits). Idempotent.
+     *
+     * <p>If a thread is parked in {@link #recvBytes}, {@code close()} blocks until
+     * that call returns — it acquires the receiver's resource lock, which the
+     * parked recv holds, and only then tears down (so the cancel flag is flipped
+     * AFTER the lock is acquired, not before). Unlike the rtp receiver, srt
+     * {@code close()} does NOT itself wake a parked recv; to unblock it from
+     * another thread, call {@link #cancelHandle()}{@code .cancel()} first.
      */
     @Override
     public void close() {

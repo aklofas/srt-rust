@@ -414,9 +414,15 @@ pub(crate) fn classify_connect_error(raw: RawError, reason: RejectReason) -> Con
                 detail: raw.message,
             };
         }
-        if raw.message.contains("refused") || raw.message.contains("Refused") {
-            return ConnectError::Refused;
-        }
+    }
+    // The "refused" string heuristic is scoped to the Connection category only.
+    // A plain refusal (peer not listening) surfaces as major-2 (Connection); the
+    // Setup category (e.g. SRT_ECONNREJ handshake rejects) must NOT be reclassified
+    // as Refused on a message-substring match — it falls through to Other instead.
+    if matches!(raw.kind, SrtErrno::Connection)
+        && (raw.message.contains("refused") || raw.message.contains("Refused"))
+    {
+        return ConnectError::Refused;
     }
     if is_timeout(&raw) {
         return ConnectError::TimedOut;
@@ -1202,6 +1208,24 @@ mod tests {
         match err {
             ConnectError::Refused => {}
             other => panic!("expected Refused, got {other:?}"),
+        }
+    }
+
+    // T3-SRT-REFUSED: the "refused" substring heuristic must NOT follow the Setup
+    // category. A Setup-category error with an Unknown reason and a message that
+    // happens to contain "refused" must map to Other, not Refused — the heuristic
+    // is scoped to Connection (major-2 plain refusals) only.
+    #[test]
+    fn setup_category_refused_message_maps_to_other_not_refused() {
+        let raw = RawError {
+            kind: SrtErrno::Setup,
+            message: "Connection setup failure: connection refused".into(),
+        };
+        let reason = RejectReason::Unknown;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::Other { .. } => {}
+            other => panic!("expected Other, got {other:?}"),
         }
     }
 }

@@ -541,6 +541,8 @@ fn nonconformant_reason<'local>(
                 MultiCellAuReason::SequenceGap => "SEQUENCE_GAP",
                 MultiCellAuReason::ConcurrentFirst => "CONCURRENT_FIRST",
                 MultiCellAuReason::Overflow => "OVERFLOW",
+                MultiCellAuReason::OverflowTotal => "OVERFLOW_TOTAL",
+                MultiCellAuReason::TooManyPids => "TOO_MANY_PIDS",
                 // MultiCellAuReason is marked non-exhaustive; default to ORPHAN
                 // like tst-py for any future variant.
                 _ => "ORPHAN",

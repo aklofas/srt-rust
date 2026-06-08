@@ -290,6 +290,101 @@ jobs:
           echo "Wheel count: $(ls dist/*.whl 2>/dev/null | wc -l)"
           echo "Sdist count: $(ls dist/*.tar.gz 2>/dev/null | wc -l)"
 
+      # PyPI is IMMUTABLE: a partial first release (a required wheel silently
+      # missing because a best-effort job stole a runner, or a build-matrix
+      # change broke an upload-artifact name) can never be corrected in place.
+      # This gate asserts that every REQUIRED artifact is present EXACTLY ONCE
+      # and exits non-zero (blocking the upload below) otherwise. The
+      # best-effort targets are an EXPLICIT allow-list — anything not on it is
+      # required. A bare count threshold is deliberately NOT used.
+      #
+      # HOW TO UPDATE WHEN THE BUILD MATRIX CHANGES (jobs above):
+      #   - Wheels are abi3 (`abi3-py310` in bindings/python/Cargo.toml), so
+      #     there is ONE wheel per platform tagged `cp310-abi3` — NOT one per
+      #     Python minor. Each entry below is a unique platform tag.
+      #   - REQUIRED  = the matrix legs with `continue-on-error: false`
+      #                 (linux x86_64 + macos arm64) + the sdist.
+      #   - BEST_EFFORT = the matrix legs with `continue-on-error: true`
+      #                 (linux aarch64, macos x86_64, windows x86_64).
+      #   - Tags come from the maturin build args:
+      #       linux x86_64  : `manylinux: 2_28` + target x86_64
+      #                       -> manylinux_2_28_x86_64
+      #       macos arm64   : target aarch64-apple-darwin + MACOSX_DEPLOYMENT_TARGET=11.0
+      #                       -> macosx_11_0_arm64
+      #   - The distribution name/version prefix (tstrans-<version>-cp310-abi3-)
+      #     is asserted too, so a renamed/misversioned wheel also trips the gate.
+      - name: Require-set manifest gate (block partial PyPI publish)
+        run: |
+          python3 - <<'PY'
+          import glob, os, re, sys
+
+          DIST = "dist"
+          files = sorted(os.path.basename(p) for p in glob.glob(os.path.join(DIST, "*")))
+
+          # --- REQUIRED artifacts (must be present exactly once) ----------------
+          # Each required wheel is identified by its unique platform tag. The
+          # `cp310-abi3` Python/ABI tag and the `tstrans-<ver>-` distribution
+          # prefix are asserted via the regex so a wrong name/version also fails.
+          REQUIRED_WHEEL_PLATFORM_TAGS = [
+              "manylinux_2_28_x86_64",   # linux-wheel  target x86_64  (continue-on-error: false)
+              "macosx_11_0_arm64",       # macos-wheel  aarch64-apple-darwin (continue-on-error: false)
+          ]
+          # The sdist is required (it is the universal install fallback).
+          SDIST_RE = re.compile(r"^tstrans-[^-]+\.tar\.gz$")
+          WHEEL_RE = (
+              lambda tag: re.compile(r"^tstrans-[^-]+-cp310-abi3-" + re.escape(tag) + r"\.whl$")
+          )
+
+          # --- BEST-EFFORT allow-list (allowed to be absent) --------------------
+          # These map to the `continue-on-error: true` matrix legs. Present is
+          # fine; absent is fine. Anything NOT covered here and NOT required is a
+          # surprise artifact (treated as informational, not fatal).
+          BEST_EFFORT_PLATFORM_TAGS = [
+              "manylinux_2_28_aarch64",  # linux-wheel  target aarch64 (continue-on-error: true)
+              "macosx_.*_x86_64",        # macos-wheel  x86_64-apple-darwin (continue-on-error: true)
+              "win_amd64",               # windows-wheel x86_64           (continue-on-error: true)
+          ]
+
+          print("Downloaded artifacts:")
+          for f in files:
+              print(f"  {f}")
+          print()
+
+          errors = []
+
+          # Every REQUIRED wheel present exactly once.
+          for tag in REQUIRED_WHEEL_PLATFORM_TAGS:
+              rx = WHEEL_RE(tag)
+              matches = [f for f in files if rx.match(f)]
+              if len(matches) == 0:
+                  errors.append(f"MISSING required wheel: tstrans-*-cp310-abi3-{tag}.whl")
+              elif len(matches) > 1:
+                  errors.append(f"DUPLICATE required wheel {tag}: {matches}")
+
+          # sdist present exactly once.
+          sdists = [f for f in files if SDIST_RE.match(f)]
+          if len(sdists) == 0:
+              errors.append("MISSING required sdist: tstrans-*.tar.gz")
+          elif len(sdists) > 1:
+              errors.append(f"DUPLICATE sdist: {sdists}")
+
+          # Informational: list which best-effort wheels showed up / are absent.
+          best_effort_res = [re.compile(r"^tstrans-[^-]+-cp310-abi3-" + t + r"\.whl$")
+                             for t in BEST_EFFORT_PLATFORM_TAGS]
+          for t, rx in zip(BEST_EFFORT_PLATFORM_TAGS, best_effort_res):
+              present = any(rx.match(f) for f in files)
+              print(f"best-effort {t}: {'present' if present else 'absent (allowed)'}")
+          print()
+
+          if errors:
+              print("RELEASE GATE FAILED — refusing to publish a partial release:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+
+          print("Release manifest gate OK: all required wheels + sdist present exactly once.")
+          PY
+
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           # Trusted publishing — no `password:` needed. PyPI looks up

@@ -11,6 +11,60 @@ pub mod stats;
 
 use bytes::{Buf, BufMut};
 
+/// Errors returned by the fallible RTCP encoders (RFC 3550 §6).
+///
+/// The encoders validate that each wire field can faithfully represent the
+/// value being encoded — they reject out-of-range input rather than silently
+/// truncating (e.g. masking the 5-bit RC field) or panicking. A failure here
+/// for a locally-built packet indicates an internal construction bug.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RtcpError {
+    /// More report blocks than the 5-bit RC/SC count field can express
+    /// (max 31, RFC 3550 §6.4.1). Carries the offending block count.
+    TooManyReportBlocks(usize),
+    /// The packet's length in 32-bit words exceeds the 16-bit RTCP length
+    /// field (max 65535 words, RFC 3550 §6.4.1). Carries the offending
+    /// word count.
+    LengthOverflow(usize),
+    /// The CNAME (or another SDES item value) is longer than its 1-byte
+    /// length field can express (max 255 bytes, RFC 3550 §6.5). Carries the
+    /// offending byte length.
+    CnameTooLong(usize),
+}
+
+impl core::fmt::Display for RtcpError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::TooManyReportBlocks(n) => {
+                write!(
+                    f,
+                    "RTCP report has {n} blocks; the 5-bit RC field allows at most 31"
+                )
+            }
+            Self::LengthOverflow(n) => {
+                write!(
+                    f,
+                    "RTCP packet is {n} 32-bit words; the 16-bit length field allows at most {}",
+                    u16::MAX
+                )
+            }
+            Self::CnameTooLong(n) => {
+                write!(
+                    f,
+                    "RTCP SDES CNAME is {n} bytes; the 1-byte length field allows at most 255"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for RtcpError {}
+
+/// Maximum report blocks the 5-bit RC/SC count field can express
+/// (RFC 3550 §6.4.1).
+const MAX_REPORT_BLOCKS: usize = 31;
+
 /// RTCP packet types we encode and decode. Per RFC 3550 §6.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -123,13 +177,32 @@ pub struct SenderReport {
 }
 
 impl SenderReport {
+    /// Validate the RTCP header length field (32-bit words minus 1, the value
+    /// stored in the 16-bit `length` field) for a packet of `payload_len_words`
+    /// payload words. Returns the `u16` length-field value or
+    /// [`RtcpError::LengthOverflow`] if `length_field` would not fit in 16 bits.
+    ///
+    /// The wire `length` is the total packet length in 32-bit words minus 1;
+    /// since the 4-byte header is one word, `length == payload_len_words`.
+    fn encode_length_field(payload_len_words: usize) -> Result<u16, RtcpError> {
+        u16::try_from(payload_len_words).map_err(|_| RtcpError::LengthOverflow(payload_len_words))
+    }
+
     /// Encode as compound RTCP — version=2, padding=0, PT=200, length
     /// in 32-bit words minus 1.
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// Returns [`RtcpError::TooManyReportBlocks`] if there are more than 31
+    /// report blocks (the 5-bit RC field cannot express the count) or
+    /// [`RtcpError::LengthOverflow`] if the packet exceeds the 16-bit length
+    /// field — rather than silently masking/truncating either field.
+    pub fn encode(&self) -> Result<Vec<u8>, RtcpError> {
+        if self.report_blocks.len() > MAX_REPORT_BLOCKS {
+            return Err(RtcpError::TooManyReportBlocks(self.report_blocks.len()));
+        }
         let block_count = self.report_blocks.len() as u8;
         let payload_len_words = 6 + (self.report_blocks.len() * 6);
         // 1 word for the header itself = total length in words minus 1
-        let length_field = payload_len_words as u16;
+        let length_field = Self::encode_length_field(payload_len_words)?;
         let mut out = Vec::with_capacity((payload_len_words + 1) * 4);
         out.push(0x80 | (block_count & 0x1F));
         out.push(RtcpPacketType::SenderReport.to_u8());
@@ -142,7 +215,7 @@ impl SenderReport {
         for b in &self.report_blocks {
             b.encode(&mut out);
         }
-        out
+        Ok(out)
     }
 
     pub fn decode(input: &[u8]) -> Result<(Self, usize), &'static str> {
@@ -203,10 +276,19 @@ pub struct ReceiverReport {
 }
 
 impl ReceiverReport {
-    pub fn encode(&self) -> Vec<u8> {
+    /// Encode as compound RTCP — version=2, padding=0, PT=201, length
+    /// in 32-bit words minus 1.
+    ///
+    /// Returns [`RtcpError::TooManyReportBlocks`] if there are more than 31
+    /// report blocks or [`RtcpError::LengthOverflow`] if the packet exceeds
+    /// the 16-bit length field — rather than silently masking/truncating.
+    pub fn encode(&self) -> Result<Vec<u8>, RtcpError> {
+        if self.report_blocks.len() > MAX_REPORT_BLOCKS {
+            return Err(RtcpError::TooManyReportBlocks(self.report_blocks.len()));
+        }
         let block_count = self.report_blocks.len() as u8;
         let payload_len_words = 1 + (self.report_blocks.len() * 6);
-        let length_field = payload_len_words as u16;
+        let length_field = SenderReport::encode_length_field(payload_len_words)?;
         let mut out = Vec::with_capacity((payload_len_words + 1) * 4);
         out.push(0x80 | (block_count & 0x1F));
         out.push(RtcpPacketType::ReceiverReport.to_u8());
@@ -215,7 +297,7 @@ impl ReceiverReport {
         for b in &self.report_blocks {
             b.encode(&mut out);
         }
-        out
+        Ok(out)
     }
 
     pub fn decode(input: &[u8]) -> Result<(Self, usize), &'static str> {
@@ -270,17 +352,23 @@ pub struct SdesPacket {
 impl SdesPacket {
     /// Encode as a compound RTCP packet containing one SDES chunk with
     /// a CNAME item. RFC 3550 §6.5.
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// Returns [`RtcpError::CnameTooLong`] if the CNAME exceeds 255 bytes (the
+    /// 1-byte SDES item-length field cannot express it) — rather than the old
+    /// panicking `len as u8` conversion. A length overflow of the 16-bit RTCP
+    /// length field is impossible here (the chunk is bounded by the 255-byte
+    /// CNAME) but is checked for completeness.
+    pub fn encode(&self) -> Result<Vec<u8>, RtcpError> {
         // SDES item: type=1 (CNAME), length=len(cname), bytes=cname
         // Chunk: SSRC (4) + items + null terminator + padding to 4-byte boundary
         let cname_bytes = self.cname.as_bytes();
         if cname_bytes.len() > 255 {
-            panic!("CNAME longer than RFC 3550 max (255 bytes)");
+            return Err(RtcpError::CnameTooLong(cname_bytes.len()));
         }
         let item_size = 2 + cname_bytes.len(); // type + length + value
         let chunk_size = 4 + item_size + 1; // SSRC + item + null
         let padded_chunk_size = (chunk_size + 3) & !3;
-        let length_field = ((4 + padded_chunk_size) / 4 - 1) as u16;
+        let length_field = SenderReport::encode_length_field((4 + padded_chunk_size) / 4 - 1)?;
         let mut out = Vec::with_capacity(4 + padded_chunk_size);
         out.push(0x81); // V=2, P=0, SC=1
         out.push(RtcpPacketType::SourceDescription.to_u8());
@@ -293,7 +381,7 @@ impl SdesPacket {
         while out.len() < 4 + padded_chunk_size {
             out.push(0);
         }
-        out
+        Ok(out)
     }
 
     pub fn decode(input: &[u8]) -> Result<(Self, usize), &'static str> {
@@ -399,6 +487,106 @@ mod tests {
         );
     }
 
+    // --- H1: fallible/validated encoder tests (T2-RTCP-ENC) ---
+    // Adversarial encode inputs that the old infallible encoders silently
+    // corrupted (5-bit RC mask, 16-bit length truncation) or PANICKED on
+    // (CNAME > 255). After the fix every one returns Err.
+
+    fn dummy_block() -> ReportBlock {
+        ReportBlock {
+            ssrc: 0,
+            fraction_lost: 0,
+            cumulative_lost: 0,
+            extended_highest_seq: 0,
+            jitter: 0,
+            last_sr: 0,
+            delay_since_last_sr: 0,
+        }
+    }
+
+    /// SR with 32 report blocks: the RC field is 5 bits (max 31). The old
+    /// `len() as u8` produced 0x80 | (32 & 0x1F) = 0x80 (RC=0) — a packet
+    /// that lies about its block count. Must be Err.
+    #[test]
+    fn sr_rejects_more_than_31_blocks() {
+        let sr = SenderReport {
+            ssrc: 0,
+            ntp_timestamp: 0,
+            rtp_timestamp: 0,
+            sender_packet_count: 0,
+            sender_octet_count: 0,
+            report_blocks: vec![dummy_block(); 32],
+        };
+        assert_eq!(sr.encode().unwrap_err(), RtcpError::TooManyReportBlocks(32));
+    }
+
+    /// 31 blocks is the RFC-3550 maximum — must still succeed.
+    #[test]
+    fn sr_accepts_31_blocks() {
+        let sr = SenderReport {
+            ssrc: 0,
+            ntp_timestamp: 0,
+            rtp_timestamp: 0,
+            sender_packet_count: 0,
+            sender_octet_count: 0,
+            report_blocks: vec![dummy_block(); 31],
+        };
+        let bytes = sr.encode().expect("31 blocks must encode");
+        assert_eq!(bytes[0] & 0x1F, 31, "RC field must be 31");
+    }
+
+    /// RR with 32 report blocks: same 5-bit RC mask bug. Must be Err.
+    #[test]
+    fn rr_rejects_more_than_31_blocks() {
+        let rr = ReceiverReport {
+            ssrc: 0,
+            report_blocks: vec![dummy_block(); 32],
+        };
+        assert_eq!(rr.encode().unwrap_err(), RtcpError::TooManyReportBlocks(32));
+    }
+
+    /// SDES with a 256-byte CNAME: the item-length field is 1 byte (max 255).
+    /// The old encoder `panic!`ed. Must be Err, never panic.
+    #[test]
+    fn sdes_rejects_cname_over_255() {
+        let sdes = SdesPacket {
+            ssrc: 0,
+            cname: "a".repeat(256),
+        };
+        assert_eq!(sdes.encode().unwrap_err(), RtcpError::CnameTooLong(256));
+    }
+
+    /// A 255-byte CNAME is the maximum the 1-byte length field can express —
+    /// must still encode.
+    #[test]
+    fn sdes_accepts_cname_255() {
+        let sdes = SdesPacket {
+            ssrc: 0,
+            cname: "a".repeat(255),
+        };
+        sdes.encode().expect("255-byte CNAME must encode");
+    }
+
+    /// The 16-bit RTCP length field counts 32-bit words minus 1; a packet
+    /// whose word-length exceeds u16::MAX would silently truncate. We can't
+    /// realistically build a 256 KB report from report blocks alone (capped
+    /// at 31), so this exercises the length helper directly: the SR header is
+    /// 6 words + 6 words/block; even at 31 blocks (192 words) we never reach
+    /// the ceiling, so the cap is what protects the length field. This test
+    /// asserts the validated ceiling via a direct check on the helper using
+    /// the largest constructible packet.
+    #[test]
+    fn length_word_ceiling_is_checked() {
+        // Sanity: u16::MAX + 1 words is the rejection boundary the encoder
+        // guards. We assert the constant relationship rather than building a
+        // 256 KB allocation: payload_len_words must fit in u16.
+        // (The cap at 31 blocks keeps every constructible SR/RR well under
+        // u16::MAX; this test documents the guard exists and is exercised by
+        // the encode_length_field helper which returns Err on overflow.)
+        assert!(SenderReport::encode_length_field(u16::MAX as usize + 1).is_err());
+        assert!(SenderReport::encode_length_field(u16::MAX as usize).is_ok());
+    }
+
     // --- Existing tests below ---
 
     #[test]
@@ -407,7 +595,7 @@ mod tests {
             ssrc: 0xCAFEBABE,
             report_blocks: vec![],
         };
-        let bytes = rr.encode();
+        let bytes = rr.encode().unwrap();
         assert_eq!(bytes.len(), 8); // 2 words: header + SSRC
         let (decoded, n) = ReceiverReport::decode(&bytes).unwrap();
         assert_eq!(decoded, rr);
@@ -429,7 +617,7 @@ mod tests {
             ssrc: 0xCAFEBABE,
             report_blocks: vec![block],
         };
-        let bytes = rr.encode();
+        let bytes = rr.encode().unwrap();
         assert_eq!(bytes.len(), 8 + 24);
         let (decoded, n) = ReceiverReport::decode(&bytes).unwrap();
         assert_eq!(decoded, rr);
@@ -446,7 +634,7 @@ mod tests {
             sender_octet_count: 1316 * 1000,
             report_blocks: vec![],
         };
-        let bytes = sr.encode();
+        let bytes = sr.encode().unwrap();
         let (decoded, n) = SenderReport::decode(&bytes).unwrap();
         assert_eq!(decoded, sr);
         assert_eq!(n, bytes.len());
@@ -458,7 +646,7 @@ mod tests {
             ssrc: 0xABCDEF01,
             cname: "cam1@10.0.0.1".to_string(),
         };
-        let bytes = sdes.encode();
+        let bytes = sdes.encode().unwrap();
         // Length should be multiple of 4
         assert_eq!(bytes.len() % 4, 0);
         let (decoded, n) = SdesPacket::decode(&bytes).unwrap();
@@ -472,7 +660,8 @@ mod tests {
             ssrc: 0,
             report_blocks: vec![],
         }
-        .encode();
+        .encode()
+        .unwrap();
         bytes[0] = 0x40; // V=1
         assert!(ReceiverReport::decode(&bytes).is_err());
     }
@@ -493,7 +682,7 @@ mod tests {
             ssrc: 0,
             report_blocks: vec![block],
         };
-        let bytes = rr.encode();
+        let bytes = rr.encode().unwrap();
         let (decoded, _) = ReceiverReport::decode(&bytes).unwrap();
         assert_eq!(decoded.report_blocks[0].cumulative_lost, -10);
     }
@@ -511,7 +700,7 @@ mod tests {
             ssrc: 0xCAFEBABE,
             report_blocks: vec![],
         };
-        let bytes = rr_empty.encode();
+        let bytes = rr_empty.encode().unwrap();
         assert_eq!(bytes[0], 0x80, "V=2 P=0 RC=0 byte");
         assert_eq!(bytes[1], 201, "PT=RR");
         assert_eq!(
@@ -536,7 +725,7 @@ mod tests {
             ssrc: 0xCAFEBABE,
             report_blocks: vec![block],
         };
-        let bytes = rr.encode();
+        let bytes = rr.encode().unwrap();
         // Header: V=2 P=0 RC=1, PT=201, length = (8 + 24)/4 - 1 = 7
         assert_eq!(bytes[0], 0x81, "V=2 P=0 RC=1");
         assert_eq!(bytes[1], 201);

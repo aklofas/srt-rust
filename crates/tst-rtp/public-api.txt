@@ -366,6 +366,29 @@ impl core::marker::Unpin for tst_rtp::rtcp::stats::RtcpStats
 impl core::marker::UnsafeUnpin for tst_rtp::rtcp::stats::RtcpStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::stats::RtcpStats
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::stats::RtcpStats
+#[non_exhaustive] pub enum tst_rtp::rtcp::RtcpError
+pub tst_rtp::rtcp::RtcpError::CnameTooLong(usize)
+pub tst_rtp::rtcp::RtcpError::LengthOverflow(usize)
+pub tst_rtp::rtcp::RtcpError::TooManyReportBlocks(usize)
+impl core::clone::Clone for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::clone(&self) -> tst_rtp::rtcp::RtcpError
+impl core::cmp::Eq for tst_rtp::rtcp::RtcpError
+impl core::cmp::PartialEq for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::eq(&self, &tst_rtp::rtcp::RtcpError) -> bool
+impl core::error::Error for tst_rtp::rtcp::RtcpError
+impl core::fmt::Debug for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::rtcp::RtcpError
+impl core::marker::StructuralPartialEq for tst_rtp::rtcp::RtcpError
+impl core::marker::Freeze for tst_rtp::rtcp::RtcpError
+impl core::marker::Send for tst_rtp::rtcp::RtcpError
+impl core::marker::Sync for tst_rtp::rtcp::RtcpError
+impl core::marker::Unpin for tst_rtp::rtcp::RtcpError
+impl core::marker::UnsafeUnpin for tst_rtp::rtcp::RtcpError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::RtcpError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::RtcpError
 #[non_exhaustive] pub enum tst_rtp::rtcp::RtcpPacketType
 pub tst_rtp::rtcp::RtcpPacketType::ReceiverReport
 pub tst_rtp::rtcp::RtcpPacketType::SenderReport
@@ -394,7 +417,7 @@ pub tst_rtp::rtcp::ReceiverReport::report_blocks: alloc::vec::Vec<tst_rtp::rtcp:
 pub tst_rtp::rtcp::ReceiverReport::ssrc: u32
 impl tst_rtp::rtcp::ReceiverReport
 pub fn tst_rtp::rtcp::ReceiverReport::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::ReceiverReport::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::ReceiverReport::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::ReceiverReport
 pub fn tst_rtp::rtcp::ReceiverReport::clone(&self) -> tst_rtp::rtcp::ReceiverReport
 impl core::cmp::Eq for tst_rtp::rtcp::ReceiverReport
@@ -443,7 +466,7 @@ pub tst_rtp::rtcp::SdesPacket::cname: alloc::string::String
 pub tst_rtp::rtcp::SdesPacket::ssrc: u32
 impl tst_rtp::rtcp::SdesPacket
 pub fn tst_rtp::rtcp::SdesPacket::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::SdesPacket::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::SdesPacket::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::SdesPacket
 pub fn tst_rtp::rtcp::SdesPacket::clone(&self) -> tst_rtp::rtcp::SdesPacket
 impl core::cmp::Eq for tst_rtp::rtcp::SdesPacket
@@ -468,7 +491,7 @@ pub tst_rtp::rtcp::SenderReport::sender_packet_count: u32
 pub tst_rtp::rtcp::SenderReport::ssrc: u32
 impl tst_rtp::rtcp::SenderReport
 pub fn tst_rtp::rtcp::SenderReport::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::SenderReport::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::SenderReport::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::SenderReport
 pub fn tst_rtp::rtcp::SenderReport::clone(&self) -> tst_rtp::rtcp::SenderReport
 impl core::cmp::Eq for tst_rtp::rtcp::SenderReport
@@ -1392,6 +1415,29 @@ impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountKind
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountKind
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountKind
+#[non_exhaustive] pub enum tst_rtp::RtcpError
+pub tst_rtp::RtcpError::CnameTooLong(usize)
+pub tst_rtp::RtcpError::LengthOverflow(usize)
+pub tst_rtp::RtcpError::TooManyReportBlocks(usize)
+impl core::clone::Clone for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::clone(&self) -> tst_rtp::rtcp::RtcpError
+impl core::cmp::Eq for tst_rtp::rtcp::RtcpError
+impl core::cmp::PartialEq for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::eq(&self, &tst_rtp::rtcp::RtcpError) -> bool
+impl core::error::Error for tst_rtp::rtcp::RtcpError
+impl core::fmt::Debug for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::rtcp::RtcpError
+pub fn tst_rtp::rtcp::RtcpError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::rtcp::RtcpError
+impl core::marker::StructuralPartialEq for tst_rtp::rtcp::RtcpError
+impl core::marker::Freeze for tst_rtp::rtcp::RtcpError
+impl core::marker::Send for tst_rtp::rtcp::RtcpError
+impl core::marker::Sync for tst_rtp::rtcp::RtcpError
+impl core::marker::Unpin for tst_rtp::rtcp::RtcpError
+impl core::marker::UnsafeUnpin for tst_rtp::rtcp::RtcpError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::RtcpError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::RtcpError
 #[non_exhaustive] pub enum tst_rtp::RtcpPacketType
 pub tst_rtp::RtcpPacketType::ReceiverReport
 pub tst_rtp::RtcpPacketType::SenderReport
@@ -1840,7 +1886,7 @@ pub tst_rtp::ReceiverReport::report_blocks: alloc::vec::Vec<tst_rtp::rtcp::Repor
 pub tst_rtp::ReceiverReport::ssrc: u32
 impl tst_rtp::rtcp::ReceiverReport
 pub fn tst_rtp::rtcp::ReceiverReport::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::ReceiverReport::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::ReceiverReport::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::ReceiverReport
 pub fn tst_rtp::rtcp::ReceiverReport::clone(&self) -> tst_rtp::rtcp::ReceiverReport
 impl core::cmp::Eq for tst_rtp::rtcp::ReceiverReport
@@ -2339,7 +2385,7 @@ pub tst_rtp::SdesPacket::cname: alloc::string::String
 pub tst_rtp::SdesPacket::ssrc: u32
 impl tst_rtp::rtcp::SdesPacket
 pub fn tst_rtp::rtcp::SdesPacket::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::SdesPacket::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::SdesPacket::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::SdesPacket
 pub fn tst_rtp::rtcp::SdesPacket::clone(&self) -> tst_rtp::rtcp::SdesPacket
 impl core::cmp::Eq for tst_rtp::rtcp::SdesPacket
@@ -2401,7 +2447,7 @@ pub tst_rtp::SenderReport::sender_packet_count: u32
 pub tst_rtp::SenderReport::ssrc: u32
 impl tst_rtp::rtcp::SenderReport
 pub fn tst_rtp::rtcp::SenderReport::decode(&[u8]) -> core::result::Result<(Self, usize), &'static str>
-pub fn tst_rtp::rtcp::SenderReport::encode(&self) -> alloc::vec::Vec<u8>
+pub fn tst_rtp::rtcp::SenderReport::encode(&self) -> core::result::Result<alloc::vec::Vec<u8>, tst_rtp::rtcp::RtcpError>
 impl core::clone::Clone for tst_rtp::rtcp::SenderReport
 pub fn tst_rtp::rtcp::SenderReport::clone(&self) -> tst_rtp::rtcp::SenderReport
 impl core::cmp::Eq for tst_rtp::rtcp::SenderReport

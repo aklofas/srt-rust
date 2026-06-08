@@ -41,7 +41,7 @@ pub use error::RtspError;
 pub use rtcp::ingest::{SrAnchor, compute_rtt_us, ingest_rr, ingest_sr, system_time_to_ntp_mid};
 pub use rtcp::reporter::{RTCP_BASE_INTERVAL, RtcpReporterHandle};
 pub use rtcp::stats::RtcpStats;
-pub use rtcp::{ReceiverReport, ReportBlock, RtcpPacketType, SdesPacket, SenderReport};
+pub use rtcp::{ReceiverReport, ReportBlock, RtcpError, RtcpPacketType, SdesPacket, SenderReport};
 pub use rtsp::auth::{AuthChallenge, DigestAlgorithm, DigestChallenge, DigestContext};
 pub use rtsp::client::options_describe::OptionsResponse;
 pub use rtsp::client::play::{RtpInfo, parse_rtp_info};

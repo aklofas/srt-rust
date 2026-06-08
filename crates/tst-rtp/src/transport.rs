@@ -230,8 +230,14 @@ impl RtpTransport {
                     };
                     let cname = format!("tst-rtp-{ssrc:08x}");
                     let sdes = SdesPacket { ssrc, cname };
-                    let mut compound = sr.encode();
-                    compound.extend_from_slice(&sdes.encode());
+                    // These are locally-built, well-formed packets (no report
+                    // blocks, short CNAME) so encode never fails — but the
+                    // encoders are fallible now; skip the send on the
+                    // (unreachable) validation error rather than unwrapping.
+                    let (Ok(mut compound), Ok(sdes_bytes)) = (sr.encode(), sdes.encode()) else {
+                        return;
+                    };
+                    compound.extend_from_slice(&sdes_bytes);
                     let _ = sock_clone.send_to(&compound, rtcp_target);
                     if let Ok(mut g) = stats_clone.lock() {
                         g.sr_packets_sent = g.sr_packets_sent.saturating_add(1);
@@ -598,8 +604,13 @@ impl RtpRecvTransport {
                     };
                     let cname = format!("tst-rtp-{ssrc:08x}");
                     let sdes = SdesPacket { ssrc, cname };
-                    let mut compound = rr.encode();
-                    compound.extend_from_slice(&sdes.encode());
+                    // Locally-built, well-formed packets (no report blocks,
+                    // short CNAME) — encode is fallible now but never fails
+                    // here; skip the send on the (unreachable) error.
+                    let (Ok(mut compound), Ok(sdes_bytes)) = (rr.encode(), sdes.encode()) else {
+                        return;
+                    };
+                    compound.extend_from_slice(&sdes_bytes);
                     let _ = sock_clone.send_to(&compound, rtcp_target);
                     if let Ok(mut g) = stats_clone.lock() {
                         g.rr_packets_sent = g.rr_packets_sent.saturating_add(1);
@@ -1003,7 +1014,7 @@ mod tests {
             ssrc: 0xDEAD_BEEF,
             report_blocks: vec![rb],
         };
-        let bytes = bytes::Bytes::from(rr.encode());
+        let bytes = bytes::Bytes::from(rr.encode().unwrap());
         rtcp_tx.send(bytes).expect("send RR onto rtcp_rx");
 
         // Spin briefly for the ingest thread to wake + process.
@@ -1050,7 +1061,7 @@ mod tests {
             report_blocks: vec![],
         };
         rtcp_tx
-            .send(bytes::Bytes::from(sr.encode()))
+            .send(bytes::Bytes::from(sr.encode().unwrap()))
             .expect("send SR");
 
         // Give the ingest thread a moment to process the SR.
@@ -1072,7 +1083,7 @@ mod tests {
             report_blocks: vec![rb],
         };
         rtcp_tx
-            .send(bytes::Bytes::from(rr.encode()))
+            .send(bytes::Bytes::from(rr.encode().unwrap()))
             .expect("send RR");
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);

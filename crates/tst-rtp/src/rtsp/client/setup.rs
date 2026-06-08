@@ -139,7 +139,7 @@ impl RtspClient {
                     rtp: rtp_ch,
                     rtcp: rtcp_ch,
                 };
-                let (data_rx, rtcp_rx) = self.activate_interleaved_pump(channels);
+                let (data_rx, rtcp_rx) = self.activate_interleaved_pump(channels)?;
                 RtspSession::new_interleaved_with_data_rx(sid, transport, data_rx, rtcp_rx)
             }
         };

@@ -39,6 +39,13 @@ use crate::url::RtspVersion;
 ///
 /// CSeq starts at `1_000_000` to avoid colliding with the main thread's
 /// counter (which starts at 1 and increments per request).
+///
+/// Returns `Err` if the OS refuses to spawn the thread (resource
+/// exhaustion). This MUST be propagated rather than `.expect()`'d — the
+/// keepalive is started on the RTSP connect path and the JVM/C bindings do
+/// not catch unwinds across the FFI boundary, so a panic here would abort
+/// the host process. The caller maps the `io::Error` to a typed
+/// `RtspError`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn(
     write_half: Arc<Mutex<Stream>>,
@@ -49,7 +56,7 @@ pub(crate) fn spawn(
     version: RtspVersion,
     session_id: Arc<Mutex<Option<String>>>,
     user_agent: String,
-) -> JoinHandle<()> {
+) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
         .spawn(move || {
@@ -102,5 +109,4 @@ pub(crate) fn spawn(
                 // with any other in-flight responses by CSeq matching).
             }
         })
-        .expect("failed to spawn rtsp-keepalive thread")
 }

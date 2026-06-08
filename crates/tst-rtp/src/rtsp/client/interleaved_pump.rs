@@ -156,6 +156,12 @@ pub(crate) struct InterleavedChannels {
 /// - `rtcp_tx` / `ctrl_tx` `try_send()` returns `Full` — a control-plane
 ///   flood is hostile, so the pump fails the session by exiting.
 /// - `reader.read()` returns a non-timeout error (logged at WARN).
+///
+/// Returns `Err` if the OS refuses to spawn the thread (resource
+/// exhaustion). This MUST be propagated rather than `.expect()`'d — the
+/// pump runs on the RTSP connect path and the JVM/C bindings do not catch
+/// unwinds across the FFI boundary, so a panic here would abort the host
+/// process. The caller maps the `io::Error` to a typed `RtspError`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     mut reader: R,
@@ -166,7 +172,7 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     cancel: Arc<AtomicBool>,
     write_gate: Arc<AtomicBool>,
     stats: Arc<PumpStats>,
-) -> JoinHandle<()> {
+) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("rtsp-interleaved-pump".to_string())
         .spawn(move || {
@@ -397,7 +403,6 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                 }
             }
         })
-        .expect("failed to spawn rtsp-interleaved-pump thread")
 }
 
 /// `Read` adapter that locks `Arc<Mutex<Stream>>` per call.
@@ -464,6 +469,31 @@ mod tests {
         (dt, dr, rt, rr, ct, cr, cancel, stats)
     }
 
+    /// The happy path returns `Ok(JoinHandle)` — the spawn signature is now
+    /// fallible (it propagates an `io::Error` instead of panicking) so a
+    /// thread-spawn failure surfaces as a clean `RtspError` rather than
+    /// aborting the host process across the FFI boundary. The failure path
+    /// itself (OS thread-spawn refusal under resource exhaustion) can't be
+    /// injected deterministically without OS-level limit manipulation, so
+    /// this asserts the contract on the only path we can exercise: success.
+    #[test]
+    fn spawn_returns_ok_on_happy_path() {
+        let raw: Vec<u8> = Vec::new(); // empty → immediate EOF, pump exits.
+        let (dt, _dr, rt, _rr, ct, _cr, cancel, stats) = make_args();
+        let result = spawn_client_pump(
+            Cursor::new(raw),
+            dt,
+            rt,
+            ct,
+            InterleavedChannels { rtp: 0, rtcp: 1 },
+            cancel.clone(),
+            Arc::new(AtomicBool::new(false)),
+            stats.clone(),
+        );
+        let handle = result.expect("spawn must succeed on the happy path");
+        let _ = handle.join();
+    }
+
     /// Feed an RTP frame (channel=0, 12-byte header + 8-byte payload).
     /// Pump should strip the header and push the 8 bytes onto data_rx.
     #[test]
@@ -481,7 +511,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         // Pump should deliver one payload, then EOF and exit.
         let payload = dr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         assert_eq!(payload.as_ref(), b"PAYLOAD!");
@@ -503,7 +534,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let payload = rr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         assert_eq!(payload.as_ref(), &[0xDE, 0xAD, 0xBE, 0xEF]);
         let _ = handle.join();
@@ -529,7 +561,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let payload = rr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         assert_eq!(payload.len(), 65535, "full payload must round-trip intact");
         assert!(payload.iter().all(|&b| b == 0xAB));
@@ -551,7 +584,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let msg = cr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         let text = std::str::from_utf8(&msg).unwrap();
         assert!(text.starts_with("RTSP/1.0 200 OK"));
@@ -574,7 +608,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let msg = cr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         assert!(msg.ends_with(b"\r\n\r\nHELLO"));
         let _ = handle.join();
@@ -603,7 +638,8 @@ mod tests {
                 cancel.clone(),
                 Arc::new(AtomicBool::new(false)),
                 stats.clone(),
-            );
+            )
+            .unwrap();
             // The pump must exit on its own (bad CL is fatal) — join returns.
             let _ = handle.join();
             // No RTSP message should have been routed.
@@ -639,7 +675,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         // The pump must exit on its own once the cap is exceeded — join returns.
         let _ = handle.join();
         assert!(
@@ -668,7 +705,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
         assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 1);
         assert_eq!(stats.rtp_frames_received.load(Ordering::Relaxed), 0);
@@ -690,7 +728,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
         assert_eq!(stats.rtp_frames_received.load(Ordering::Relaxed), 1);
         assert_eq!(stats.malformed_frames.load(Ordering::Relaxed), 1);
@@ -750,7 +789,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let payload = dr.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         assert_eq!(
             payload.as_ref(),
@@ -781,7 +821,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
         assert!(
             dr.try_recv().is_err(),
@@ -824,7 +865,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         // Consumer never drains until the pump has finished (EOF → exit).
         let _ = handle.join();
 
@@ -878,7 +920,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
         // The pump must have exited on the flood, not processed all frames.
         assert!(
@@ -913,7 +956,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
         assert!(
             stats.malformed_frames.load(Ordering::Relaxed) >= 1,
@@ -948,7 +992,8 @@ mod tests {
             cancel.clone(),
             Arc::new(AtomicBool::new(false)),
             stats.clone(),
-        );
+        )
+        .unwrap();
         let _ = handle.join();
     }
 
@@ -1002,7 +1047,8 @@ mod tests {
             cancel.clone(),
             write_gate.clone(),
             stats.clone(),
-        );
+        )
+        .unwrap();
 
         // Let the pump take a few read cycles.
         std::thread::sleep(Duration::from_millis(50));

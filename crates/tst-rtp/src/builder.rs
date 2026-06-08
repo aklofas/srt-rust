@@ -342,7 +342,7 @@ impl RtspClientBuilder {
         #[cfg(not(feature = "tls"))]
         let mut client = RtspClient::connect_with_params(&url, None, params)?;
         if !self.no_auto_keepalive {
-            client.spawn_keepalive_if_needed(self.keepalive_interval_override);
+            client.spawn_keepalive_if_needed(self.keepalive_interval_override)?;
         }
         Ok(client)
     }

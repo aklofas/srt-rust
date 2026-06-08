@@ -58,7 +58,9 @@ fn keepalive_thread_pings_within_session_timeout() {
     // `spawn_keepalive_if_needed` helper directly.
     let url = format!("rtsp://127.0.0.1:{port}/test");
     let mut client = tst_rtp::RtspClient::connect(&url).unwrap();
-    client.spawn_keepalive_if_needed(Some(std::time::Duration::from_secs(2)));
+    client
+        .spawn_keepalive_if_needed(Some(std::time::Duration::from_secs(2)))
+        .unwrap();
 
     // Hold the client for 5 s — at a 2 s cadence the keepalive
     // emits its first ping at ~t+2 s, well inside the 10 s budget.

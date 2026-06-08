@@ -372,8 +372,18 @@ impl RtspClient {
     // Exposed `#[doc(hidden)] pub` so the integration test in
     // `tests/rtsp_client_keepalive.rs` can drive it without going
     // through `RtspClientBuilder`. The builder also calls this.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RtspError::Io`] if the OS refuses to spawn the keepalive
+    /// thread (resource exhaustion). The error is propagated rather than
+    /// panicked because this runs on the RTSP connect path and the JVM/C
+    /// bindings do not catch unwinds across the FFI boundary.
     #[doc(hidden)]
-    pub fn spawn_keepalive_if_needed(&mut self, override_interval: Option<Duration>) {
+    pub fn spawn_keepalive_if_needed(
+        &mut self,
+        override_interval: Option<Duration>,
+    ) -> Result<(), RtspError> {
         let interval = override_interval.unwrap_or(self.session_timeout / 2);
         // Share the same `Arc<Mutex<Stream>>` with the keepalive thread.
         // Per-ping the thread locks the mutex, writes the OPTIONS bytes,
@@ -395,8 +405,10 @@ impl RtspClient {
             self.url.rtsp_version,
             session_id,
             self.user_agent.clone(),
-        );
+        )
+        .map_err(|e| RtspError::Io(e.kind()))?;
         self.keepalive_thread = Some(handle);
+        Ok(())
     }
 
     /// Spawn the interleaved producer thread (TCP-interleaved transport).
@@ -422,10 +434,17 @@ impl RtspClient {
     /// removed and the receiver is now returned upward so a caller (T28)
     /// can route RTCP frames into the existing `RtcpReporterHandle`
     /// instead of black-holing them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RtspError::Io`] if the OS refuses to spawn the pump thread
+    /// (resource exhaustion). Propagated rather than panicked: this runs on
+    /// the RTSP SETUP path and the JVM/C bindings do not catch unwinds
+    /// across the FFI boundary.
     pub(crate) fn activate_interleaved_pump(
         &mut self,
         channels: interleaved_pump::InterleavedChannels,
-    ) -> (mpsc::Receiver<Bytes>, mpsc::Receiver<Bytes>) {
+    ) -> Result<(mpsc::Receiver<Bytes>, mpsc::Receiver<Bytes>), RtspError> {
         // Reap any prior pump (replacement semantics — should not
         // happen in normal SETUP flow, but be defensive).
         if let Some(prev) = self.pump_state.take() {
@@ -456,7 +475,8 @@ impl RtspClient {
             pump_cancel.clone(),
             write_gate.clone(),
             stats.clone(),
-        );
+        )
+        .map_err(|e| RtspError::Io(e.kind()))?;
 
         self.pump_state = Some(InterleavedPumpState {
             cancel: pump_cancel,
@@ -466,7 +486,7 @@ impl RtspClient {
             stats,
         });
 
-        (data_rx, rtcp_rx)
+        Ok((data_rx, rtcp_rx))
     }
 
     /// Returns false if the background keepalive thread has flipped the

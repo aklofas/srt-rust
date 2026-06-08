@@ -39,6 +39,7 @@
 //! `reconnectAttempts()` — NO combined `stats()`.
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use jni::JNIEnv;
@@ -57,6 +58,7 @@ use tst_pipeline::{
 };
 use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
+use crate::handle::HandleRegistry;
 use crate::jutil::checked_u8;
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 use crate::mpegts::{build_demux_config_from_args, convert_event};
@@ -128,6 +130,10 @@ struct JniManagedMuxSender {
     factory_attempts: Arc<AtomicU64>,
 }
 
+/// Per-type leased-handle registry for `org.tstrans.srt.ManagedMuxSender`.
+static REGISTRY_MUX: LazyLock<HandleRegistry<JniManagedMuxSender>> =
+    LazyLock::new(HandleRegistry::new);
+
 /// Map a `MuxSenderError` (from any `send_*`) to a thrown Java exception.
 /// `Mux(...)` → `MuxException`; `Transport(...)` → `SrtException` per
 /// `TransportError` variant. Mirrors tst-py's `mux_sender_error_to_pyerr`.
@@ -141,17 +147,43 @@ fn throw_managed_mux_sender_error(env: &mut JNIEnv, e: &MuxSenderError) {
     }
 }
 
-/// Validate a native handle. Returns the live `*mut JniManagedMuxSender`, or
-/// throws `IllegalStateException` and returns `None` for a zero handle.
-fn checked_mux_sender(env: &mut JNIEnv, handle: jlong) -> Option<*mut JniManagedMuxSender> {
-    if handle == 0 {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedMuxSender is closed",
-        );
-        return None;
+/// Lease the managed sender and run a push op under the resource lock. A closed
+/// handle throws `IllegalStateException`; any `MuxSenderError` is mapped.
+fn with_mux_push(
+    env: &mut JNIEnv,
+    handle: jlong,
+    op: impl FnOnce(&RustMuxSender<ManagedTransport<SrtTransport>>) -> Result<(), MuxSenderError>,
+) {
+    match REGISTRY_MUX.with(handle as u64, |jstruct| op(&jstruct.inner)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_managed_mux_sender_error(env, &e),
+        None => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedMuxSender is closed",
+            );
+        }
     }
-    Some(handle as *mut JniManagedMuxSender)
+}
+
+/// Lease the managed sender and return the first handle-of-kind (`-1` if none).
+/// A closed handle throws `IllegalStateException` and returns `-1`.
+fn mux_first_handle(
+    env: &mut JNIEnv,
+    handle: jlong,
+    pick: impl FnOnce(&RustMuxSender<ManagedTransport<SrtTransport>>) -> Option<u32>,
+) -> jlong {
+    match REGISTRY_MUX.with(handle as u64, |jstruct| pick(&jstruct.inner)) {
+        Some(Some(raw)) => i64::from(raw),
+        Some(None) => -1,
+        None => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedMuxSender is closed",
+            );
+            -1
+        }
+    }
 }
 
 /// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
@@ -280,10 +312,10 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
 
     let managed = ManagedTransport::new(initial, factory, policy);
     match RustMuxSender::new(managed, muxer_cfg) {
-        Ok(sender) => Box::into_raw(Box::new(JniManagedMuxSender {
+        Ok(sender) => REGISTRY_MUX.insert(JniManagedMuxSender {
             inner: sender,
             factory_attempts: attempts,
-        })) as jlong,
+        }) as jlong,
         Err(e) => {
             throw_mux_error(&mut env, &e);
             0
@@ -303,21 +335,12 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>`. SHARED `&*ptr`
-    // borrow — `send_*` take `&self` + internal mutex (concurrent-push safe).
-    let jstruct = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = jstruct
-        .inner
-        .send_video(&buf, Pts90khz::new(pts), key_frame != 0)
-    {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_video(&buf, Pts90khz::new(pts), key_frame != 0)
+    });
 }
 
 /// `nPushKlv(handle, klv, pts, metadataServiceId)`.
@@ -330,11 +353,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let Ok(service_id) = checked_u8(
         &mut env,
         i64::from(metadata_service_id),
@@ -345,9 +363,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = jstruct.inner.send_klv(&buf, Pts90khz::new(pts), service_id) {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_klv(&buf, Pts90khz::new(pts), service_id)
+    });
 }
 
 /// `nPushAudio(handle, frames, pts)`.
@@ -359,17 +377,12 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudio<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = jstruct.inner.send_audio(&buf, Pts90khz::new(pts)) {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_audio(&buf, Pts90khz::new(pts))
+    });
 }
 
 /// `nPushSubtitle(handle, pts, payload)` — note the swapped arg order.
@@ -381,17 +394,12 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'loca
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = jstruct.inner.send_subtitle(&buf, Pts90khz::new(pts)) {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_subtitle(&buf, Pts90khz::new(pts))
+    });
 }
 
 // ── Push family — handle-targeted variants ─────────────────────────────────
@@ -407,11 +415,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -422,12 +425,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = jstruct
-        .inner
-        .send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
-    {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+    });
 }
 
 /// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
@@ -441,11 +441,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -463,12 +458,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = jstruct
-        .inner
-        .send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
-    {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
+    });
 }
 
 /// `nPushAudioTo(handle, streamHandleRaw, frames, pts)`.
@@ -481,11 +473,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -496,9 +483,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = jstruct.inner.send_audio_to(h, &buf, Pts90khz::new(pts)) {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_audio_to(h, &buf, Pts90khz::new(pts))
+    });
 }
 
 /// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)`.
@@ -511,11 +498,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'lo
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
     let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -526,9 +508,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'lo
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = jstruct.inner.send_subtitle_to(h, &buf, Pts90khz::new(pts)) {
-        throw_managed_mux_sender_error(&mut env, &e);
-    }
+    with_mux_push(&mut env, handle, |inner| {
+        inner.send_subtitle_to(h, &buf, Pts90khz::new(pts))
+    });
 }
 
 // ── Handle getters ─────────────────────────────────────────────────────────
@@ -540,18 +522,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nVideoHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    jstruct
-        .inner
-        .video_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    mux_first_handle(&mut env, handle, |inner| {
+        inner.video_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nKlvHandle(handle)` — first configured KLV stream handle, or `-1`.
@@ -561,18 +534,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nKlvHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    jstruct
-        .inner
-        .klv_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    mux_first_handle(&mut env, handle, |inner| {
+        inner.klv_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nAudioHandle(handle)` — first configured audio stream handle, or `-1`.
@@ -582,18 +546,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nAudioHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    jstruct
-        .inner
-        .audio_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    mux_first_handle(&mut env, handle, |inner| {
+        inner.audio_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nSubtitleHandle(handle)` — first configured subtitle stream handle, or `-1`.
@@ -603,18 +558,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSubtitleHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    jstruct
-        .inner
-        .subtitle_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    mux_first_handle(&mut env, handle, |inner| {
+        inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 // ── Stats + lifecycle ──────────────────────────────────────────────────────
@@ -628,13 +574,18 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
+    let Some((sock, pipe)) = REGISTRY_MUX.with(handle as u64, |jstruct| {
+        (
+            jstruct.inner.socket_stats().unwrap_or_default(),
+            jstruct.inner.stats(),
+        )
+    }) else {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedMuxSender is closed",
+        );
         return JObject::null();
     };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    let sock = jstruct.inner.socket_stats().unwrap_or_default();
-    let pipe = jstruct.inner.stats();
 
     let sock_obj = match build_socket_stats(&mut env, &sock) {
         Ok(o) => o,
@@ -662,12 +613,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectAttempts(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_mux_sender(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*ptr };
-    jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+    REGISTRY_MUX
+        .with(handle as u64, |jstruct| {
+            jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+        })
+        .unwrap_or_else(|| {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedMuxSender is closed",
+            );
+            0
+        })
 }
 
 /// `nClose(handle)` — drop the boxed sender (best-effort drain + close). No-op on
@@ -678,12 +634,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle was produced by Box::into_raw and is dropped exactly
-        // once (Java zeroes its field after this call).
-        let b = unsafe { Box::from_raw(handle as *mut JniManagedMuxSender) };
-        b.inner.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(jstruct) = REGISTRY_MUX.close(handle as u64) {
+        jstruct.inner.close();
     }
 }
 
@@ -694,12 +647,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: validated non-zero live `Box<JniManagedMuxSender>` (shared borrow).
-    let jstruct = unsafe { &*(handle as *const JniManagedMuxSender) };
-    u8::from(jstruct.inner.is_alive())
+    REGISTRY_MUX
+        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -714,18 +664,10 @@ struct JniManagedDemuxReceiver {
     factory_attempts: Arc<AtomicU64>,
 }
 
-/// Validate a native handle. Returns the live `*mut JniManagedDemuxReceiver`, or
-/// throws `IllegalStateException` and returns `None` for a zero handle.
-fn checked_demux_receiver(env: &mut JNIEnv, handle: jlong) -> Option<*mut JniManagedDemuxReceiver> {
-    if handle == 0 {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedDemuxReceiver is closed",
-        );
-        return None;
-    }
-    Some(handle as *mut JniManagedDemuxReceiver)
-}
+/// Per-type leased-handle registry for `org.tstrans.srt.ManagedDemuxReceiver`. No
+/// cancel hook (single-threaded; the public cancel handle wakes a parked recv).
+static REGISTRY_DEMUX: LazyLock<HandleRegistry<JniManagedDemuxReceiver>> =
+    LazyLock::new(HandleRegistry::new);
 
 /// Shared construction body for `nFromUrl` / `nFromUrlWithConfig`: parse the URL
 /// (accepting BOTH listener and caller mode — divergence #2), do the initial
@@ -827,10 +769,10 @@ fn build_demux_from_url(
             ManagedDemuxReceiverConfig::default(),
         ),
     };
-    Box::into_raw(Box::new(JniManagedDemuxReceiver {
+    REGISTRY_DEMUX.insert(JniManagedDemuxReceiver {
         inner: receiver,
         factory_attempts: attempts,
-    })) as jlong
+    }) as jlong
 }
 
 /// `ManagedDemuxReceiver.nFromUrl(url, ...policyArgs...)` — default demux options.
@@ -918,15 +860,15 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nNext<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+    // recv_event runs INSIDE the registry lease (under the resource lock,
+    // single-threaded per the Receiver model).
+    let Some(res) = REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.recv_event()) else {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedDemuxReceiver is closed",
+        );
         return JObject::null().into_raw();
     };
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    // `recv_event` is `&mut self` (single-threaded use per the Receiver model).
-    let jstruct = unsafe { &mut *ptr };
-
-    // Bind the result so the `&mut inner` borrow ends here.
-    let res = jstruct.inner.recv_event();
     match res {
         Ok(None) => JObject::null().into_raw(),
         Ok(Some(ev)) => match convert_event(&mut env, &ev) {
@@ -958,12 +900,16 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+    let Some(maybe_arc) =
+        REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
+    else {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedDemuxReceiver is closed",
+        );
         return 0;
     };
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    let jstruct = unsafe { &*ptr };
-    match jstruct.inner.cancel_handle() {
+    match maybe_arc {
         Some(arc) => JniCancel {
             inner: arc,
             flag: AtomicBool::new(false),
@@ -988,12 +934,15 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSocketStats<'l
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+    let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
+        jstruct.inner.socket_stats().unwrap_or_default()
+    }) else {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedDemuxReceiver is closed",
+        );
         return JObject::null();
     };
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    let jstruct = unsafe { &*ptr };
-    let stats = jstruct.inner.socket_stats().unwrap_or_default();
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -1009,12 +958,15 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSrtStats<'loca
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
+    let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
+        jstruct.inner.socket_stats().unwrap_or_default()
+    }) else {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            "ManagedDemuxReceiver is closed",
+        );
         return JObject::null();
     };
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    let jstruct = unsafe { &*ptr };
-    let stats = jstruct.inner.socket_stats().unwrap_or_default();
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -1028,12 +980,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nReconnectAttem
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_demux_receiver(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    let jstruct = unsafe { &*ptr };
-    jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+    REGISTRY_DEMUX
+        .with(handle as u64, |jstruct| {
+            jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+        })
+        .unwrap_or_else(|| {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedDemuxReceiver is closed",
+            );
+            0
+        })
 }
 
 /// `nClose(handle)` — close the underlying transport and drop the box. No-op on a
@@ -1044,12 +1001,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle was produced by Box::into_raw and is dropped exactly
-        // once (Java zeroes its field after this call).
-        let mut b = unsafe { Box::from_raw(handle as *mut JniManagedDemuxReceiver) };
-        b.inner.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(mut jstruct) = REGISTRY_DEMUX.close(handle as u64) {
+        jstruct.inner.close();
     }
 }
 
@@ -1060,10 +1014,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: validated non-zero live `Box<JniManagedDemuxReceiver>`.
-    let jstruct = unsafe { &*(handle as *const JniManagedDemuxReceiver) };
-    u8::from(jstruct.inner.is_alive())
+    REGISTRY_DEMUX
+        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+        .unwrap_or(0)
 }

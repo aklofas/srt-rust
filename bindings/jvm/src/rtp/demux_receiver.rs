@@ -27,6 +27,7 @@
 //! captured first-wins into `sink_error` (as a `GlobalRef`) and re-thrown from the
 //! next `nNext` after the `inner` guard is dropped.
 
+use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
 
 use jni::JNIEnv;
@@ -34,29 +35,34 @@ use jni::objects::{GlobalRef, JClass, JObject, JString, JThrowable, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_core::mpegts::demux::DemuxEvent;
-use tst_core::transport::TransportCancel;
 use tst_pipeline::{
     DemuxReceiver as RustDemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource,
 };
 use tst_rtp::RtpRecvTransport;
 use tst_rtp::builder::RtpRecvSocketBuilder;
 
+use crate::handle::HandleRegistry;
 use crate::mpegts::{build_demux_config_from_args, convert_event, throw_demux_error};
 
 use super::errors::{connect_error_to_rtp, throw_rtp, transport_error_to_rtp};
 use super::mux_sender::{build_muxer_stats, build_rtp_transport_stats};
 use super::stats::build_socket_stats;
 
-/// Native backing for `org.tstrans.rtp.DemuxReceiver`. Faithful port of tst-py's
-/// `PyDemuxReceiver`: `inner` behind a mutex so a cross-thread `close()` can free
-/// it safely while `nNext` is parked; `cancel` held outside the mutex so `close()`
-/// can wake a parked recv before acquiring the lock; `sink_error` for the
-/// fail-loud byte-sink re-raise.
+/// Native backing for `org.tstrans.rtp.DemuxReceiver`. The registry's
+/// `Mutex<Option<Self>>` holds `inner` (replacing the round-1 bespoke
+/// `Arc<Mutex<Option<…>>>`), and the registry's cancel hook (registered with a
+/// clone of `cancel`) wakes a parked `recv_event` before `close` takes the
+/// resource. `sink_error` is the fail-loud byte-sink re-raise slot, shared with
+/// the byte-sink closure (which runs on the receiver thread inside recv_event).
 struct JniRtpDemuxReceiver {
-    inner: Arc<Mutex<Option<RustDemuxReceiver<RtpRecvTransport>>>>,
-    cancel: Arc<dyn TransportCancel + Send + Sync>,
+    inner: RustDemuxReceiver<RtpRecvTransport>,
     sink_error: Arc<Mutex<Option<GlobalRef>>>,
 }
+
+/// Per-type leased-handle registry for `org.tstrans.rtp.DemuxReceiver`. Registers
+/// a cancel hook so a cross-thread `close()` wakes a parked `recv_event` (the
+/// headline rtp divergence — there is no public cancel handle).
+static REGISTRY: LazyLock<HandleRegistry<JniRtpDemuxReceiver>> = LazyLock::new(HandleRegistry::new);
 
 /// Map a `DemuxReceiverError` raised by `recv_event` onto a thrown Java exception.
 /// Transport-side → `RtpException`; demux-side → `DemuxException`. Mirrors tst-py's
@@ -117,15 +123,16 @@ pub(crate) fn demux_receiver_handle_from_transport(
         None => RustDemuxReceiver::new(transport),
         Some(opts) => RustDemuxReceiver::with_demux_options(transport, opts),
     };
+    // The cancel handle drives the registry's cancel hook (wakes a parked recv on
+    // close); it is NOT stored in the struct.
     let cancel = receiver
         .cancel_handle()
         .expect("RtpRecvTransport always returns Some(cancel_handle)");
     let jdr = JniRtpDemuxReceiver {
-        inner: Arc::new(Mutex::new(Some(receiver))),
-        cancel,
+        inner: receiver,
         sink_error: Arc::new(Mutex::new(None)),
     };
-    Box::into_raw(Box::new(jdr)) as jlong
+    REGISTRY.insert_with_cancel(jdr, Some(Box::new(move || cancel.cancel()))) as jlong
 }
 
 /// `DemuxReceiver.nFromUrl(url)` — default demux options.
@@ -165,16 +172,6 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nFromUrlWithConfig<'lo
     build_from_url(&mut env, &url, Some(opts))
 }
 
-/// Validate a handle. Returns the live `*const JniRtpDemuxReceiver`, or throws
-/// `IllegalStateException` + returns `None` for a zero (closed) handle.
-fn checked_receiver(env: &mut JNIEnv, handle: jlong) -> Option<*const JniRtpDemuxReceiver> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
-        return None;
-    }
-    Some(handle as *const JniRtpDemuxReceiver)
-}
-
 /// `nNext(handle)` — block until the next `DemuxEvent`. Java `null` on clean end
 /// (receiver closed / drained → iterator `hasNext` returns false). Throws
 /// `RtpException` / `DemuxException` on a recv-side error, or re-raises a captured
@@ -185,39 +182,22 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nNext<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(ptr) = checked_receiver(&mut env, handle) else {
+    // recv_event runs INSIDE the registry lease — the closure holds the entry's
+    // resource lock for the duration of the (possibly parked) recv. A concurrent
+    // `close()` fires the cancel hook (waking the parked recv) BEFORE it takes the
+    // resource lock, so close is a safe cross-thread stop. `None` = the resource
+    // was already taken by close → clean end of iteration. We clone `sink_error`
+    // out so it is drained AFTER the lease releases.
+    let leased: Option<(Result<Option<DemuxEvent>, DemuxReceiverError>, _)> = REGISTRY
+        .with(handle as u64, |jdr| {
+            (jdr.inner.recv_event(), jdr.sink_error.clone())
+        });
+    let Some((res, sink_error)) = leased else {
+        // Closed/absent: a closed-during-iteration is the clean end of iteration
+        // (the iterator's hasNext returns false); an outright-absent handle is the
+        // same observable null. Match the round-1 contract: no throw on a closed
+        // receiver mid-iteration.
         return JObject::null().into_raw();
-    };
-    // SAFETY: validated non-zero live `Box<JniRtpDemuxReceiver>`. We only touch
-    // the Arc fields (clone-and-lock), never a `&mut` to the box itself. These
-    // top-of-call field reads are sound under the single-iterator + parked-close
-    // contract: `nClose` frees the box only AFTER its cancel wakes a recv that is
-    // already PARKED past this point holding the `inner` guard. A second concurrent
-    // `nNext`, or a `close()` racing a fresh `nNext` ENTRY here, is UB — the same
-    // accepted contract as the srt DemuxReceiver / wave-A Receiver in this binding.
-    let jdr = unsafe { &*ptr };
-    let inner = jdr.inner.clone();
-    let sink_error = jdr.sink_error.clone();
-
-    // Lock `inner` for the recv, then drop the guard BEFORE draining sink_error.
-    // The block is the `res` initialiser so the `MutexGuard` is dropped at its
-    // end — no `&mut env` JNI call below runs while the guard is held.
-    let res: Result<Option<DemuxEvent>, DemuxReceiverError> = {
-        let mut guard = match inner.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                throw_rtp(&mut env, "TRANSPORT", "DemuxReceiver lock poisoned");
-                return JObject::null().into_raw();
-            }
-        };
-        match guard.as_mut() {
-            Some(rx) => rx.recv_event(),
-            None => {
-                // Closed concurrently — clean end of iteration.
-                return JObject::null().into_raw();
-            }
-        }
-        // guard dropped here at end of block
     };
 
     // Fail-loud: surface any byte-sink exception captured during this recv_event
@@ -258,12 +238,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nAddByteSink<'local>(
     handle: jlong,
     consumer: JObject<'local>,
 ) {
-    let Some(ptr) = checked_receiver(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<JniRtpDemuxReceiver>`.
-    let jdr = unsafe { &*ptr };
-
+    // Build the vm + consumer global ref BEFORE leasing (these touch `env`).
     let vm = match env.get_java_vm() {
         Ok(vm) => vm,
         Err(e) => {
@@ -278,60 +253,52 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nAddByteSink<'local>(
             return;
         }
     };
-    let slot = jdr.sink_error.clone();
-    let inner = jdr.inner.clone();
 
-    // Lock `inner` to register the sink. If a concurrent `nNext` holds the lock,
-    // this blocks until it yields (registration is append-only, no re-entry into
-    // the JVM here). Throw if closed/poisoned.
-    let mut guard = match inner.lock() {
-        Ok(g) => g,
-        Err(_) => {
-            throw_rtp(&mut env, "TRANSPORT", "DemuxReceiver lock poisoned");
-            return;
-        }
-    };
-    let Some(rx) = guard.as_mut() else {
-        let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
-        return;
-    };
-
-    rx.add_byte_sink(Box::new(move |pkt: &[u8]| {
-        // Runs on the receiver's own thread inside recv_event. NO Java monitor is
-        // held across this upcall; touches ONLY `consumer` + `slot`, never `inner`.
-        let Ok(mut env) = vm.attach_current_thread() else {
-            return;
-        };
-        let arr = match env.byte_array_from_slice(pkt) {
-            Ok(a) => a,
-            // OOM-only: clear the pending exception before bailing so the next
-            // packet's fanout doesn't run JNI calls under a stale exception.
-            Err(_) => {
-                let _ = env.exception_clear();
+    // Register the sink under the registry lease. If a concurrent `nNext` holds
+    // the resource lock, this blocks until it yields (registration is append-only,
+    // no re-entry into the JVM here).
+    let registered = REGISTRY.with(handle as u64, |jdr| {
+        let slot = jdr.sink_error.clone();
+        jdr.inner.add_byte_sink(Box::new(move |pkt: &[u8]| {
+            // Runs on the receiver's own thread inside recv_event. NO Java monitor is
+            // held across this upcall; touches ONLY `consumer` + `slot`, never `inner`.
+            let Ok(mut env) = vm.attach_current_thread() else {
                 return;
-            }
-        };
-        let _ = env.call_method(
-            &consumer,
-            "accept",
-            "(Ljava/lang/Object;)V",
-            &[JValue::Object(&arr.into())],
-        );
-        // Fail-loud: capture the first callback exception as a GlobalRef; later
-        // per-packet errors are dropped. `nNext` drains + re-throws it.
-        if env.exception_check().unwrap_or(false) {
-            if let Ok(exc) = env.exception_occurred() {
-                let _ = env.exception_clear();
-                if let Ok(mut s) = slot.lock() {
-                    if s.is_none() {
-                        if let Ok(g) = env.new_global_ref(&exc) {
-                            *s = Some(g);
+            };
+            let arr = match env.byte_array_from_slice(pkt) {
+                Ok(a) => a,
+                // OOM-only: clear the pending exception before bailing so the next
+                // packet's fanout doesn't run JNI calls under a stale exception.
+                Err(_) => {
+                    let _ = env.exception_clear();
+                    return;
+                }
+            };
+            let _ = env.call_method(
+                &consumer,
+                "accept",
+                "(Ljava/lang/Object;)V",
+                &[JValue::Object(&arr.into())],
+            );
+            // Fail-loud: capture the first callback exception as a GlobalRef; later
+            // per-packet errors are dropped. `nNext` drains + re-throws it.
+            if env.exception_check().unwrap_or(false) {
+                if let Ok(exc) = env.exception_occurred() {
+                    let _ = env.exception_clear();
+                    if let Ok(mut s) = slot.lock() {
+                        if s.is_none() {
+                            if let Ok(g) = env.new_global_ref(&exc) {
+                                *s = Some(g);
+                            }
                         }
                     }
                 }
             }
-        }
-    }));
+        }));
+    });
+    if registered.is_none() {
+        let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+    }
 }
 
 /// `nStats(handle)` — `(SocketStats, MuxerStats)` projection mirroring tst-py's
@@ -342,27 +309,9 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_receiver(&mut env, handle) else {
+    let Some(combined) = REGISTRY.with(handle as u64, |jdr| jdr.inner.stats()) else {
+        let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
         return JObject::null();
-    };
-    // SAFETY: validated non-zero live `Box<JniRtpDemuxReceiver>`.
-    let jdr = unsafe { &*ptr };
-    let combined = {
-        let guard = match jdr.inner.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                throw_rtp(&mut env, "TRANSPORT", "DemuxReceiver lock poisoned");
-                return JObject::null();
-            }
-        };
-        match guard.as_ref() {
-            Some(rx) => rx.stats(),
-            None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
-                return JObject::null();
-            }
-        }
-        // guard dropped here at end of block, before any &mut env JNI calls
     };
 
     // Partial SocketStats from the pipeline-tracked recv counters (full
@@ -401,42 +350,29 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle from Box::into_raw, dropped once (Java zeroes its field).
-        let b = unsafe { Box::from_raw(handle as *mut JniRtpDemuxReceiver) };
-        // Step 1: wake any parked recv WITHOUT taking the lock.
-        b.cancel.cancel();
-        // Step 2: take + close the inner under the lock (waits briefly for the
-        // parked recv to release). Lock-poisoned → best-effort no-op (the cancel
-        // already woke any parked recv; the box drop frees everything).
-        if let Ok(mut guard) = b.inner.lock() {
-            if let Some(mut rx) = guard.take() {
-                rx.close();
-            }
-        }
-        drop(b);
+    // `REGISTRY.close` fires the cancel hook FIRST (waking any parked recv WITHOUT
+    // taking the resource lock), THEN takes + tears down the receiver under the
+    // lock — blocking briefly until the woken recv releases it. Atomic +
+    // idempotent: a double close finds the id gone → no-op.
+    if let Some(mut jdr) = REGISTRY.close(handle as u64) {
+        jdr.inner.close();
     }
 }
 
-/// `nIsAlive(handle)` — whether the receiver owns a live transport. Uses
-/// `try_lock` so a concurrent parked `nNext` reports "alive" rather than blocking.
+/// `nIsAlive(handle)` — whether the receiver owns a live transport. Uses the
+/// non-blocking `try_with` so a concurrent parked `nNext` reports "alive" rather
+/// than blocking on the resource lock.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nIsAlive(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtpDemuxReceiver>`.
-    let jdr = unsafe { &*(handle as *const JniRtpDemuxReceiver) };
-    match jdr.inner.try_lock() {
-        Ok(guard) => match guard.as_ref() {
-            Some(rx) => u8::from(rx.is_alive()),
-            None => 0,
-        },
+    match REGISTRY.try_with(handle as u64, |jdr| u8::from(jdr.inner.is_alive())) {
+        crate::handle::TryWith::Ran(v) => v,
         // Locked by a parked recv → the receiver is live.
-        Err(_) => 1,
+        crate::handle::TryWith::Locked => 1,
+        // Taken/absent → closed.
+        crate::handle::TryWith::Taken => 0,
     }
 }

@@ -15,6 +15,7 @@
 //! Callers that need cancellation call `nCancelHandle` and invoke `.cancel()`
 //! from another thread; that wakes the libsrt socket within ~3-10 ms.
 
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
 
 use jni::JNIEnv;
@@ -30,6 +31,15 @@ use super::errors::{
     accept_error, bind_error, connect_error, io_error, transport_error, url_error,
 };
 use super::stats::{build_socket_stats, build_srt_stats};
+use crate::handle::HandleRegistry;
+
+/// Per-type leased-handle registries for `org.tstrans.srt.Sender` / `Receiver`.
+/// `pub(crate)` so `srt::lowlevel::nIntoSender`/`nIntoReceiver` can register the
+/// shells they build from a consumed `Socket`.
+pub(crate) static REGISTRY_SENDER: LazyLock<HandleRegistry<PlSender<SrtTransport>>> =
+    LazyLock::new(HandleRegistry::new);
+pub(crate) static REGISTRY_RECEIVER: LazyLock<HandleRegistry<PlReceiver<SrtTransport>>> =
+    LazyLock::new(HandleRegistry::new);
 
 // -----------------------------------------------------------------------
 // Sender  (org.tstrans.srt.Sender)
@@ -90,7 +100,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nFromUrl(
 
     let transport = SrtTransport::new(socket);
     let inner = PlSender::new(transport, SenderConfig::default());
-    Box::into_raw(Box::new(inner)) as jlong
+    REGISTRY_SENDER.insert(inner) as jlong
 }
 
 /// Send pre-muxed TS bytes. Throws `SrtException` on transport/framing failure.
@@ -101,15 +111,6 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSendBytes(
     handle: jlong,
     data: JByteArray<'_>,
 ) {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
-        return;
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>> kept alive by the
-    // Java object. Reconstituted as a mutable borrow for this call only.
-    let inner: &mut PlSender<SrtTransport> =
-        unsafe { &mut *(handle as *mut PlSender<SrtTransport>) };
-
     let bytes: Vec<u8> = match env.convert_byte_array(&data) {
         Ok(b) => b,
         Err(e) => {
@@ -118,13 +119,17 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSendBytes(
         }
     };
 
-    if let Err(e) = inner.send_ts(&bytes) {
-        match e.source {
+    match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => match e.source {
             SenderErrorSource::Transport(t) => transport_error(&mut env, &t),
             SenderErrorSource::Framing(f) => {
                 super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
             }
             _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
+        },
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
         }
     }
 }
@@ -136,22 +141,17 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nFlush(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
-        return;
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>> kept alive by the
-    // Java object.
-    let inner: &mut PlSender<SrtTransport> =
-        unsafe { &mut *(handle as *mut PlSender<SrtTransport>) };
-
-    if let Err(e) = inner.flush() {
-        match e.source {
+    match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => match e.source {
             SenderErrorSource::Transport(t) => transport_error(&mut env, &t),
             SenderErrorSource::Framing(f) => {
                 super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
             }
             _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
+        },
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
         }
     }
 }
@@ -165,13 +165,11 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Closed handle → 0 (no throw, matching the original contract).
+    let Some(maybe_arc) = REGISTRY_SENDER.with(handle as u64, |inner| inner.cancel_handle()) else {
         return 0;
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>>.
-    let inner: &PlSender<SrtTransport> = unsafe { &*(handle as *const PlSender<SrtTransport>) };
-
-    match inner.cancel_handle() {
+    };
+    match maybe_arc {
         Some(arc) => JniCancel {
             inner: arc,
             flag: AtomicBool::new(false),
@@ -199,13 +197,11 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| {
+        inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>>.
-    let inner: &PlSender<SrtTransport> = unsafe { &*(handle as *const PlSender<SrtTransport>) };
-
-    let stats = inner.socket_stats().unwrap_or_default();
+    };
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -221,13 +217,10 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSrtStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| inner.transport().stats()) else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>>.
-    let inner: &PlSender<SrtTransport> = unsafe { &*(handle as *const PlSender<SrtTransport>) };
-
-    match inner.transport().stats() {
+    };
+    match stats {
         Ok(s) => match build_srt_stats(&mut env, &s) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
@@ -246,12 +239,9 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<PlSender<SrtTransport>> written by
-        // nFromUrl; nClose is called at most once (Java's close() zeroes the field).
-        let mut b = unsafe { Box::from_raw(handle as *mut PlSender<SrtTransport>) };
-        b.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(mut inner) = REGISTRY_SENDER.close(handle as u64) {
+        inner.close();
     }
 }
 
@@ -262,12 +252,9 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: handle is a valid Box<PlSender<SrtTransport>>.
-    let inner: &PlSender<SrtTransport> = unsafe { &*(handle as *const PlSender<SrtTransport>) };
-    u8::from(inner.is_alive())
+    REGISTRY_SENDER
+        .with(handle as u64, |inner| u8::from(inner.is_alive()))
+        .unwrap_or(0)
 }
 
 // -----------------------------------------------------------------------
@@ -340,7 +327,7 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nFromUrl(
 
     let transport = SrtTransport::new(socket);
     let inner = PlReceiver::new(transport, ReceiverConfig::default());
-    Box::into_raw(Box::new(inner)) as jlong
+    REGISTRY_RECEIVER.insert(inner) as jlong
 }
 
 /// Receive one TS packet (188 bytes) from the underlying transport. Returns
@@ -354,15 +341,14 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nRecvBytes(
     handle: jlong,
     _max_len: jni::sys::jint,
 ) -> jbyteArray {
-    if handle == 0 {
+    // `next_packet` may park; the closure holds the resource lock for its
+    // duration. `cancelHandle().cancel()` / a concurrent `close()` (which fires
+    // the cancel hook before taking the lock) wakes a parked recv.
+    let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |inner| inner.next_packet()) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
         return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>>.
-    let inner: &mut PlReceiver<SrtTransport> =
-        unsafe { &mut *(handle as *mut PlReceiver<SrtTransport>) };
-
-    match inner.next_packet() {
+    };
+    match res {
         Ok(bytes) => match env.byte_array_from_slice(&bytes) {
             Ok(arr) => arr.into_raw(),
             Err(_) => std::ptr::null_mut(),
@@ -385,13 +371,12 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Closed handle → 0 (no throw, matching the original contract).
+    let Some(maybe_arc) = REGISTRY_RECEIVER.with(handle as u64, |inner| inner.cancel_handle())
+    else {
         return 0;
-    }
-    // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>>.
-    let inner: &PlReceiver<SrtTransport> = unsafe { &*(handle as *const PlReceiver<SrtTransport>) };
-
-    match inner.cancel_handle() {
+    };
+    match maybe_arc {
         Some(arc) => JniCancel {
             inner: arc,
             flag: AtomicBool::new(false),
@@ -417,13 +402,11 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |inner| {
+        inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>>.
-    let inner: &PlReceiver<SrtTransport> = unsafe { &*(handle as *const PlReceiver<SrtTransport>) };
-
-    let stats = inner.socket_stats().unwrap_or_default();
+    };
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -438,13 +421,11 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nSrtStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |inner| inner.transport().stats())
+    else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>>.
-    let inner: &PlReceiver<SrtTransport> = unsafe { &*(handle as *const PlReceiver<SrtTransport>) };
-
-    match inner.transport().stats() {
+    };
+    match stats {
         Ok(s) => match build_srt_stats(&mut env, &s) {
             Ok(obj) => obj,
             Err(_) => JObject::null(),
@@ -463,12 +444,12 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>> written by
-        // nFromUrl; nClose is called at most once.
-        let mut b = unsafe { Box::from_raw(handle as *mut PlReceiver<SrtTransport>) };
-        b.close();
-        drop(b);
+    // Atomic + idempotent. NOTE: no cancel hook (srt model — the public cancel
+    // handle wakes a parked recv); a `close()` racing a parked recv blocks on the
+    // resource lock until the recv is cancelled, never UAFs (the single-iterator
+    // contract still applies for wake-up).
+    if let Some(mut inner) = REGISTRY_RECEIVER.close(handle as u64) {
+        inner.close();
     }
 }
 
@@ -479,10 +460,7 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: handle is a valid Box<PlReceiver<SrtTransport>>.
-    let inner: &PlReceiver<SrtTransport> = unsafe { &*(handle as *const PlReceiver<SrtTransport>) };
-    u8::from(inner.is_alive())
+    REGISTRY_RECEIVER
+        .with(handle as u64, |inner| u8::from(inner.is_alive()))
+        .unwrap_or(0)
 }

@@ -15,8 +15,9 @@
 
 #![allow(clippy::too_many_arguments)]
 
+use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use jni::JNIEnv;
@@ -33,7 +34,19 @@ use tst_srt::{
 
 use super::JniCancel;
 use super::errors::{accept_error, bind_error, connect_error, io_error, throw_srt, url_error};
+use crate::handle::HandleRegistry;
 use crate::jutil::checked_u16;
+
+/// Per-type leased-handle registry for `org.tstrans.srt.Socket` (an `SrtSocket`).
+/// `nConnect`/`nAccept` insert; per-call methods lease; `nClose` and the
+/// `nInto*` consumers `close` (taking the resource for teardown / hand-off).
+pub(crate) static REGISTRY_SOCKET: LazyLock<HandleRegistry<SrtSocket>> =
+    LazyLock::new(HandleRegistry::new);
+
+/// Per-type registry for `org.tstrans.srt.Listener` (a `JniListener`). Registered
+/// with a cancel hook that wakes a parked `accept`.
+static REGISTRY_LISTENER: LazyLock<HandleRegistry<SrtListener>> =
+    LazyLock::new(HandleRegistry::new);
 
 // ---------------------------------------------------------------------------
 // LowLevelSrtCancel adapter
@@ -53,48 +66,27 @@ impl TransportCancel for LowLevelSrtCancel {
 }
 
 // ---------------------------------------------------------------------------
-// JniListener — owning wrapper for a `Box<Listener>` behind the Java handle
+// Listener registration
 // ---------------------------------------------------------------------------
 //
-// MEMORY-SAFETY / LIFETIME CONTRACT. A naive `Box<SrtListener>` is unsound when
-// `close()` may race a thread parked in `accept()`: `close()`'s `Box::from_raw`
-// + drop frees the allocation while the parked `nAccept` still holds a borrow
-// into it (`srt_accept` reads `self.handle`; the success path reads
-// `self.accepted_*_timeout`). The `srt_close` that close fires WAKES that parked
-// accept, which then dereferences freed memory → use-after-free.
-//
-// The fix mirrors the safe ownership model of `srt::DemuxReceiver` /
-// `rtp::DemuxReceiver` in this binding:
-//   * `inner` — the `Listener` under `Arc<Mutex<Option<…>>>`. `nAccept` clones
-//     the Arc, locks `inner`, and runs `accept()` WHILE HOLDING the guard, so
-//     every field read happens inside the critical section.
-//   * `cancel` — the listener's independent `SrtCancelHandle` adapter, held
-//     OUTSIDE the mutex. Its `cancel()` closes the SRTSOCKET (waking a parked
-//     accept) WITHOUT touching the `Listener` allocation, so it can fire while
-//     `nAccept` holds the lock without deadlock.
-// `nClose` fires `cancel` FIRST (to wake a parked accept), then acquires the
-// SAME `inner` lock — which blocks until the woken accept has RELEASED the
-// guard — before taking + dropping the `Listener` and freeing the box. The
-// mutex is the synchronisation point that makes the free safe against a parked
-// accept. `accept()` is single-owner (single-iterator) per the Java contract.
-struct JniListener {
-    inner: Arc<Mutex<Option<SrtListener>>>,
-    cancel: Arc<dyn TransportCancel + Send + Sync>,
-}
+// MEMORY-SAFETY / LIFETIME CONTRACT. The leased `HandleRegistry` is the
+// process-global synchronisation point. `nAccept` leases the entry and runs
+// `accept()` INSIDE the entry's resource lock, so every `Listener` field read
+// happens in the critical section. `nClose` routes through `REGISTRY.close`,
+// which fires the entry's cancel hook FIRST (closing the SRTSOCKET, waking a
+// parked accept WITHOUT touching the `Listener` allocation) and only THEN takes
+// the resource under the same lock — blocking until the woken accept released
+// it. The cancel hook below is the outside-the-mutex wake the round-1 bespoke
+// `Arc<Mutex<Option<…>>>` shim provided; the registry's generic primitive
+// replaces it. `accept()` is single-owner (single-iterator) per the Java
+// contract.
 
-impl JniListener {
-    fn new(listener: SrtListener) -> Self {
-        let cancel: Arc<dyn TransportCancel + Send + Sync> =
-            Arc::new(LowLevelSrtCancel(listener.cancel_handle()));
-        JniListener {
-            inner: Arc::new(Mutex::new(Some(listener))),
-            cancel,
-        }
-    }
-
-    fn into_handle(self) -> jlong {
-        Box::into_raw(Box::new(self)) as jlong
-    }
+/// Register a `Listener`, wiring the cancel hook from its independent
+/// `SrtCancelHandle` adapter (held by the registry entry, fired by `close`).
+fn register_listener(listener: SrtListener) -> u64 {
+    let cancel: Arc<dyn TransportCancel + Send + Sync> =
+        Arc::new(LowLevelSrtCancel(listener.cancel_handle()));
+    REGISTRY_LISTENER.insert_with_cancel(listener, Some(Box::new(move || cancel.cancel())))
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +434,7 @@ pub extern "system" fn Java_org_tstrans_srt_Builder_nConnect<'local>(
         }
     };
 
-    Box::into_raw(Box::new(socket)) as jlong
+    REGISTRY_SOCKET.insert(socket) as jlong
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +549,7 @@ pub extern "system" fn Java_org_tstrans_srt_Builder_nListen<'local>(
         }
     };
 
-    JniListener::new(listener).into_handle()
+    register_listener(listener) as jlong
 }
 
 // ---------------------------------------------------------------------------
@@ -572,17 +564,15 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoSender(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Take the Socket out of its registry (atomic; idempotent). `None` = already
+    // closed/consumed → the Java caller zeroed its field, so this is a stale call.
+    let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
         return 0;
-    }
-    // SAFETY: handle is a valid Box<SrtSocket> allocated by nConnect or nAccept.
-    // We consume it here (Box::from_raw + dereference) — the Java caller must
-    // zero its own field so no double-free occurs.
-    let socket: SrtSocket = *unsafe { Box::from_raw(handle as *mut SrtSocket) };
+    };
     let transport = SrtTransport::new(socket);
     let sender = PlSender::new(transport, SenderConfig::default());
-    Box::into_raw(Box::new(sender)) as jlong
+    super::transport::REGISTRY_SENDER.insert(sender) as jlong
 }
 
 // ---------------------------------------------------------------------------
@@ -596,15 +586,13 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoReceiver(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
         return 0;
-    }
-    // SAFETY: handle is a valid Box<SrtSocket>; consumed once here.
-    let socket: SrtSocket = *unsafe { Box::from_raw(handle as *mut SrtSocket) };
+    };
     let transport = SrtTransport::new(socket);
     let receiver = PlReceiver::new(transport, ReceiverConfig::default());
-    Box::into_raw(Box::new(receiver)) as jlong
+    super::transport::REGISTRY_RECEIVER.insert(receiver) as jlong
 }
 
 // ---------------------------------------------------------------------------
@@ -617,13 +605,14 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nLocalAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-        return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid Box<SrtSocket>; reconstituted as &SrtSocket (non-consuming).
-    let socket: &SrtSocket = unsafe { &*(handle as *const SrtSocket) };
-    match socket.local_addr() {
+    let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.local_addr()) {
+        Some(r) => r,
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            return std::ptr::null_mut();
+        }
+    };
+    match addr {
         Ok(addr) => match build_host_port(&mut env, addr) {
             Ok(obj) => obj.into_raw(),
             Err(_) => std::ptr::null_mut(),
@@ -641,13 +630,14 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nPeerAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-        return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid Box<SrtSocket>; reconstituted as &SrtSocket (non-consuming).
-    let socket: &SrtSocket = unsafe { &*(handle as *const SrtSocket) };
-    match socket.peer_addr() {
+    let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.peer_addr()) {
+        Some(r) => r,
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            return std::ptr::null_mut();
+        }
+    };
+    match addr {
         Ok(addr) => match build_host_port(&mut env, addr) {
             Ok(obj) => obj.into_raw(),
             Err(_) => std::ptr::null_mut(),
@@ -665,12 +655,12 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nStreamId<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid Box<SrtSocket>.
-    let socket: &SrtSocket = unsafe { &*(handle as *const SrtSocket) };
-    match socket.stream_id() {
+    // Closed handle or absent stream-id both yield null (no throw, matching the
+    // original contract).
+    let id = REGISTRY_SOCKET
+        .with(handle as u64, |s| s.stream_id().map(str::to_owned))
+        .flatten();
+    match id {
         Some(id) => match env.new_string(id) {
             Ok(s) => s.into_raw() as jobject,
             Err(_) => std::ptr::null_mut(),
@@ -685,10 +675,8 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<SrtSocket>; close() is called at most
-        // once (Java's close() zeroes the field; consumed-handles also zero it).
-        let socket: SrtSocket = *unsafe { Box::from_raw(handle as *mut SrtSocket) };
+    // Atomic + idempotent: only the winning close gets the Socket back.
+    if let Some(socket) = REGISTRY_SOCKET.close(handle as u64) {
         let _ = socket.close();
     }
 }
@@ -704,50 +692,25 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nAccept(
     handle: jlong,
     timeout_ms: jlong,
 ) -> jlong {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-        return 0;
-    }
-    // SAFETY: handle is a valid `Box<JniListener>`. We take a shared borrow only
-    // to clone the `inner` Arc, never a `&mut` to the box itself — so `nClose`
-    // can free the box once we release the `inner` guard (single-owner accept;
-    // see the JniListener doc).
-    let jl: &JniListener = unsafe { &*(handle as *const JniListener) };
-    let inner = jl.inner.clone();
-
-    // Run accept WHILE HOLDING the `inner` guard: every field read on the
-    // Listener (`self.handle`, `self.accepted_*_timeout`) happens inside this
-    // critical section, so a racing `nClose` cannot free the Listener until we
-    // drop the guard. `nClose` cancels BEFORE taking this lock, so a parked
-    // accept here is woken (returns ListenerClosed) rather than deadlocking.
-    let result = {
-        let mut guard = match inner.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                throw_srt(&mut env, "ACCEPT_FAILED", "Listener lock poisoned");
-                return 0;
-            }
-        };
-        match guard.as_mut() {
-            Some(listener) => {
-                if timeout_ms < 0 {
-                    listener.accept()
-                } else {
-                    listener.accept_timeout(Duration::from_millis(timeout_ms as u64))
-                }
-            }
-            None => {
-                // Closed concurrently before we acquired the lock.
-                let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-                return 0;
-            }
+    // Run accept INSIDE the registry lease — the closure holds the entry's
+    // resource lock, so a racing `nClose` (which fires the cancel hook before
+    // taking the lock) wakes a parked accept rather than freeing under it.
+    // `None` = absent/closed/taken → throw and bail.
+    let result = REGISTRY_LISTENER.with(handle as u64, |listener| {
+        if timeout_ms < 0 {
+            listener.accept()
+        } else {
+            listener.accept_timeout(Duration::from_millis(timeout_ms as u64))
         }
-        // guard dropped here
-    };
+    });
     match result {
-        Ok((socket, _peer)) => Box::into_raw(Box::new(socket)) as jlong,
-        Err(e) => {
+        Some(Ok((socket, _peer))) => REGISTRY_SOCKET.insert(socket) as jlong,
+        Some(Err(e)) => {
             accept_error(&mut env, &e);
+            0
+        }
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
             0
         }
     }
@@ -763,20 +726,24 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
-        return 0;
+    // Lease + derive a fresh independent `SrtCancelHandle` from the listener.
+    // `cancel()` closes the SRTSOCKET (waking a parked accept) WITHOUT freeing
+    // the Listener — the sanctioned cross-thread wake. Mirrors tst-py's
+    // PyCancelHandle. The lease here is brief (no blocking op), so it does not
+    // contend meaningfully with a parked accept.
+    let cancel: Option<Arc<dyn TransportCancel + Send + Sync>> =
+        REGISTRY_LISTENER.with(handle as u64, |listener| {
+            Arc::new(LowLevelSrtCancel(listener.cancel_handle()))
+                as Arc<dyn TransportCancel + Send + Sync>
+        });
+    match cancel {
+        Some(inner) => JniCancel {
+            inner,
+            flag: AtomicBool::new(false),
+        }
+        .into_handle(),
+        None => 0,
     }
-    // SAFETY: handle is a valid `Box<JniListener>`. We only clone the `cancel`
-    // Arc (held outside the mutex), so this never blocks against a parked accept.
-    let jl: &JniListener = unsafe { &*(handle as *const JniListener) };
-    // Share the listener's independent cancel handle. `cancel()` closes the
-    // SRTSOCKET (waking a parked accept) WITHOUT freeing the Listener — this is
-    // the sanctioned cross-thread wake. Mirrors tst-py's PyCancelHandle.
-    JniCancel {
-        inner: jl.cancel.clone(),
-        flag: AtomicBool::new(false),
-    }
-    .into_handle()
 }
 
 // ---------------------------------------------------------------------------
@@ -789,28 +756,12 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nLocalAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-        return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid `Box<JniListener>`. Clone `inner` and read the
-    // address under the lock (consistent with nAccept's ownership model).
-    let jl: &JniListener = unsafe { &*(handle as *const JniListener) };
-    let inner = jl.inner.clone();
-    let addr_result = {
-        let guard = match inner.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Listener lock poisoned");
-                return std::ptr::null_mut();
-            }
-        };
-        match guard.as_ref() {
-            Some(listener) => listener.local_addr(),
-            None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-                return std::ptr::null_mut();
-            }
+    let addr_result = match REGISTRY_LISTENER.with(handle as u64, |listener| listener.local_addr())
+    {
+        Some(r) => r,
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
+            return std::ptr::null_mut();
         }
     };
     match addr_result {
@@ -831,26 +782,12 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle from `Box::into_raw`, dropped exactly once (Java's
-        // close() zeroes the field). Reclaim the box, but DO NOT drop the
-        // Listener while a parked accept may still borrow it.
-        let jl = unsafe { Box::from_raw(handle as *mut JniListener) };
-        // Step 1: wake any parked `nAccept` via the independent cancel handle.
-        // This closes the SRTSOCKET without touching the Listener allocation, so
-        // it cannot deadlock against the `inner` lock the parked accept holds.
-        jl.cancel.cancel();
-        // Step 2: acquire the SAME `inner` lock the parked accept holds — this
-        // blocks until the woken accept has RELEASED the guard — then take +
-        // drop the Listener. By the time we hold the lock, no thread is reading
-        // the Listener's fields, so dropping the box below is sound. A poisoned
-        // lock is best-effort no-op (the cancel already woke any parked accept;
-        // the box drop frees everything).
-        if let Ok(mut guard) = jl.inner.lock() {
-            if let Some(listener) = guard.take() {
-                let _ = listener.close();
-            }
-        }
-        drop(jl);
+    // `REGISTRY.close` fires the cancel hook FIRST (waking any parked accept via
+    // the independent SRTSOCKET cancel WITHOUT touching the Listener allocation),
+    // THEN takes the Listener under the resource lock — blocking until the woken
+    // accept released it. So the free below is sound against a parked accept.
+    // Atomic + idempotent: a double close finds the id gone → no-op.
+    if let Some(listener) = REGISTRY_LISTENER.close(handle as u64) {
+        let _ = listener.close();
     }
 }

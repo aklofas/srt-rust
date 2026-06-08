@@ -10,6 +10,7 @@ mod stats;
 mod transport;
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -18,6 +19,14 @@ use jni::objects::JClass;
 use jni::sys::{jboolean, jlong};
 use tst_core::transport::TransportCancel;
 use tst_pipeline::{BackoffStrategy, OverflowPolicy, ReconnectPolicy};
+
+use crate::handle::{HandleRegistry, TryWith};
+
+/// Per-type leased-handle registry for `org.tstrans.srt.CancelHandle`. The
+/// cancel-handle types are themselves cancel *targets* (no parked op to wake),
+/// so they register with `insert` (cancel = None); the registry kills their own
+/// UAF/double-free on `close`.
+static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniCancel>> = LazyLock::new(HandleRegistry::new);
 
 /// Reconstruct a `tst_pipeline::ReconnectPolicy` from the primitive args the
 /// JVM `Managed*.nFromUrl` natives marshal (see `org.tstrans.srt.PolicyArgs`).
@@ -66,13 +75,7 @@ pub(crate) struct JniCancel {
 
 impl JniCancel {
     pub(crate) fn into_handle(self) -> jlong {
-        Box::into_raw(Box::new(self)) as jlong
-    }
-
-    unsafe fn from_handle<'a>(handle: jlong) -> &'a JniCancel {
-        // SAFETY: handle is a valid Box<JniCancel> pointer for the lifetime of
-        // the object (closed only via nClose which drops it).
-        unsafe { &*(handle as *const JniCancel) }
+        REGISTRY_CANCEL.insert(self) as jlong
     }
 }
 
@@ -82,14 +85,13 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
+    let ran = REGISTRY_CANCEL.with(handle as u64, |c| {
+        c.flag.store(true, Ordering::Release);
+        c.inner.cancel();
+    });
+    if ran.is_none() {
         let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-        return;
     }
-    // SAFETY: handle is a valid Box<JniCancel> kept alive by the Java object.
-    let c = unsafe { JniCancel::from_handle(handle) };
-    c.flag.store(true, Ordering::Release);
-    c.inner.cancel();
 }
 
 #[unsafe(no_mangle)]
@@ -98,13 +100,15 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nIsCancelled(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-        return 0;
+    // A cancel target is never "parked", so `try_with` never reports `Locked`
+    // here; treat `Locked`/`Taken` as closed.
+    match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.flag.load(Ordering::Acquire))) {
+        TryWith::Ran(v) => v,
+        _ => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+            0
+        }
     }
-    // SAFETY: handle is a valid Box<JniCancel> kept alive by the Java object.
-    let c = unsafe { JniCancel::from_handle(handle) };
-    u8::from(c.flag.load(Ordering::Acquire))
 }
 
 #[unsafe(no_mangle)]
@@ -113,9 +117,6 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<JniCancel>; close() zeroes the field, so
-        // this runs at most once per handle.
-        drop(unsafe { Box::from_raw(handle as *mut JniCancel) });
-    }
+    // Atomic + idempotent drop.
+    let _ = REGISTRY_CANCEL.close(handle as u64);
 }

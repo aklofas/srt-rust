@@ -11,6 +11,7 @@
 //! `bindings/python/src/rtp/transport.rs` does.
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
@@ -22,6 +23,7 @@ use tst_rtp::{RtpRecvTransport, RtpSocketBuilder, RtpTransport};
 use super::JniRtpCancel;
 use super::errors::{connect_error_to_rtp, throw_rtp, transport_error_to_rtp};
 use super::stats::build_socket_stats;
+use crate::handle::HandleRegistry;
 
 struct JniRtpSender {
     inner: RtpTransport,
@@ -33,6 +35,13 @@ struct JniRtpReceiver {
     cancel: Arc<dyn TransportCancel + Send + Sync>,
     scratch: Vec<u8>,
 }
+
+/// Per-type leased-handle registries. Both register a cancel hook so a
+/// cross-thread `close()` wakes a parked `send`/`recv` before taking the
+/// resource lock (mirrors the round-1 cancel-first-then-free discipline).
+static REGISTRY_SENDER: LazyLock<HandleRegistry<JniRtpSender>> = LazyLock::new(HandleRegistry::new);
+static REGISTRY_RECEIVER: LazyLock<HandleRegistry<JniRtpReceiver>> =
+    LazyLock::new(HandleRegistry::new);
 
 /// Unbox a nullable `java.lang.Long` SSRC arg into `Option<u32>`. Returns
 /// `Err(())` (after throwing IllegalArgumentException) on out-of-range values.
@@ -103,7 +112,11 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nFromUrl(
     let cancel = inner
         .cancel_handle()
         .expect("RtpTransport always returns Some(cancel_handle)");
-    Box::into_raw(Box::new(JniRtpSender { inner, cancel })) as jlong
+    let cancel_for_hook = cancel.clone();
+    REGISTRY_SENDER.insert_with_cancel(
+        JniRtpSender { inner, cancel },
+        Some(Box::new(move || cancel_for_hook.cancel())),
+    ) as jlong
 }
 
 /// Send one MPEG-TS payload chunk over RTP. Throws `RtpException` on failure.
@@ -114,12 +127,6 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSend(
     handle: jlong,
     data: JByteArray<'_>,
 ) {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
-        return;
-    }
-    // SAFETY: valid Box<JniRtpSender>; send_bytes is &mut self.
-    let w: &mut JniRtpSender = unsafe { &mut *(handle as *mut JniRtpSender) };
     let bytes: Vec<u8> = match env.convert_byte_array(&data) {
         Ok(b) => b,
         Err(e) => {
@@ -127,8 +134,12 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSend(
             return;
         }
     };
-    if let Err(e) = w.inner.send_bytes(&bytes) {
-        transport_error_to_rtp(&mut env, &e);
+    match REGISTRY_SENDER.with(handle as u64, |w| w.inner.send_bytes(&bytes)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => transport_error_to_rtp(&mut env, &e),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
+        }
     }
 }
 
@@ -139,12 +150,11 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |w| {
+        w.inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: valid Box<JniRtpSender>; socket_stats is &self.
-    let w: &JniRtpSender = unsafe { &*(handle as *const JniRtpSender) };
-    let stats = w.inner.socket_stats().unwrap_or_default();
+    };
     build_socket_stats(&mut env, &stats).unwrap_or_else(|_| JObject::null())
 }
 
@@ -155,29 +165,27 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: valid Box<JniRtpSender>.
-    let w: &JniRtpSender = unsafe { &*(handle as *const JniRtpSender) };
-    JniRtpCancel {
-        inner: w.cancel.clone(),
-    }
-    .into_handle()
+    REGISTRY_SENDER
+        .with(handle as u64, |w| {
+            JniRtpCancel {
+                inner: w.cancel.clone(),
+            }
+            .into_handle()
+        })
+        .unwrap_or(0)
 }
 
-/// Close the Sender, freeing the native box.
+/// Close the Sender, freeing the native box. The cancel hook fires first (waking
+/// a parked `send`) before the resource is taken.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Sender_nClose(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: valid Box<JniRtpSender>; close() zeroes the Java field (runs once).
-        let mut w = unsafe { Box::from_raw(handle as *mut JniRtpSender) };
+    // Atomic + idempotent: cancel hook wakes a parked send, then take + teardown.
+    if let Some(mut w) = REGISTRY_SENDER.close(handle as u64) {
         w.inner.close();
-        drop(w);
     }
 }
 
@@ -218,11 +226,15 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nFromUrl(
     let cancel = inner
         .cancel_handle()
         .expect("RtpRecvTransport always returns Some(cancel_handle)");
-    Box::into_raw(Box::new(JniRtpReceiver {
-        inner,
-        cancel,
-        scratch: vec![0u8; scratch_len],
-    })) as jlong
+    let cancel_for_hook = cancel.clone();
+    REGISTRY_RECEIVER.insert_with_cancel(
+        JniRtpReceiver {
+            inner,
+            cancel,
+            scratch: vec![0u8; scratch_len],
+        },
+        Some(Box::new(move || cancel_for_hook.cancel())),
+    ) as jlong
 }
 
 /// Receive one MPEG-TS payload chunk (RTP header already stripped). Returns the
@@ -233,15 +245,19 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jbyteArray {
-    if handle == 0 {
+    // `recv_bytes` may park; the closure holds the resource lock for its
+    // duration. A concurrent `close()` fires the cancel hook (waking the recv)
+    // before taking the lock. We copy the received bytes OUT of `scratch` inside
+    // the closure so the Java array is built after the lease releases.
+    let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |w| {
+        let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
+        Ok::<Vec<u8>, _>(w.scratch[..n].to_vec())
+    }) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
         return std::ptr::null_mut();
-    }
-    // SAFETY: valid Box<JniRtpReceiver>; recv_bytes is &mut self.
-    let w: &mut JniRtpReceiver = unsafe { &mut *(handle as *mut JniRtpReceiver) };
-    let scratch: &mut [u8] = w.scratch.as_mut_slice();
-    match w.inner.recv_bytes(scratch) {
-        Ok(n) => match env.byte_array_from_slice(&w.scratch[..n]) {
+    };
+    match res {
+        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
             Ok(arr) => arr.into_raw(),
             // Allocating the Java array failed (effectively OOM). Throw rather
             // than return null silently, so `recv()` always yields bytes or an
@@ -265,12 +281,11 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |w| {
+        w.inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: valid Box<JniRtpReceiver>; socket_stats is &self.
-    let w: &JniRtpReceiver = unsafe { &*(handle as *const JniRtpReceiver) };
-    let stats = w.inner.socket_stats().unwrap_or_default();
+    };
     build_socket_stats(&mut env, &stats).unwrap_or_else(|_| JObject::null())
 }
 
@@ -281,30 +296,27 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: valid Box<JniRtpReceiver>.
-    let w: &JniRtpReceiver = unsafe { &*(handle as *const JniRtpReceiver) };
-    JniRtpCancel {
-        inner: w.cancel.clone(),
-    }
-    .into_handle()
+    REGISTRY_RECEIVER
+        .with(handle as u64, |w| {
+            JniRtpCancel {
+                inner: w.cancel.clone(),
+            }
+            .into_handle()
+        })
+        .unwrap_or(0)
 }
 
-/// Close the Receiver, freeing the native box. Flips the cancel first so a
-/// parked `recv` on another thread unparks (mirrors tst-py `PyReceiver.close`).
+/// Close the Receiver, freeing the native box. The cancel hook fires first
+/// (waking a parked `recv`) before the resource is taken — mirrors tst-py
+/// `PyReceiver.close`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Receiver_nClose(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: valid Box<JniRtpReceiver>; runs once (Java zeroes the field).
-        let mut w = unsafe { Box::from_raw(handle as *mut JniRtpReceiver) };
-        w.cancel.cancel();
+    // Atomic + idempotent: cancel hook wakes a parked recv, then take + teardown.
+    if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
         w.inner.close();
-        drop(w);
     }
 }

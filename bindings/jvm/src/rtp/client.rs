@@ -2,6 +2,7 @@
 //! `RtspCancelHandle`, and the auth/config/stats value types' native backing.
 //! Ports tst-py's `bindings/python/src/rtp/client.rs`. Natives added in Tasks 4-5.
 
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -17,6 +18,7 @@ use tst_rtp::rtsp::client::RtspCancelHandle as RustRtspCancel;
 use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
 use tst_rtp::rtsp::client::session::RtspSession as RustRtspSession;
 
+use crate::handle::{HandleRegistry, TryWith};
 use crate::mpegts::build_demux_config_from_args;
 
 use super::demux_receiver::demux_receiver_handle_from_transport;
@@ -28,9 +30,20 @@ pub(super) struct JniRtspCancel {
     pub(super) inner: RustRtspCancel,
 }
 
+/// Per-type leased-handle registry for `org.tstrans.rtp.RtspCancelHandle`. A
+/// cancel target — register with `insert` (cancel = None).
+static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniRtspCancel>> =
+    LazyLock::new(HandleRegistry::new);
+
+/// Per-type leased-handle registry for `org.tstrans.rtp.RtspSession`. No registry
+/// cancel hook (teardown is the session's own `torn_down` flag); the cross-thread
+/// stop routes through `RtspCancelHandle`, not `close()`.
+static REGISTRY_SESSION: LazyLock<HandleRegistry<JniRtspSession>> =
+    LazyLock::new(HandleRegistry::new);
+
 impl JniRtspCancel {
     pub(super) fn into_handle(self) -> jlong {
-        Box::into_raw(Box::new(self)) as jlong
+        REGISTRY_CANCEL.insert(self) as jlong
     }
 }
 
@@ -42,16 +55,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
+    if REGISTRY_CANCEL
+        .with(handle as u64, |c| c.inner.cancel())
+        .is_none()
+    {
         let _ = env.throw_new(
             "java/lang/IllegalStateException",
             "RtspCancelHandle is closed",
         );
-        return;
     }
-    // SAFETY: valid Box<JniRtspCancel> kept alive by the Java object.
-    let c = unsafe { &*(handle as *const JniRtspCancel) };
-    c.inner.cancel();
 }
 
 /// Report whether the backing flag has been flipped. Guards a closed handle.
@@ -61,17 +73,17 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nIsCancelled(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "RtspCancelHandle is closed",
-        );
-        return 0;
-    }
-    // SAFETY: valid Box<JniRtspCancel> kept alive by the Java object.
-    let c = unsafe { &*(handle as *const JniRtspCancel) };
     // tst-rtp uses American spelling is_canceled(); the JVM method is isCancelled().
-    u8::from(c.inner.is_canceled())
+    match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_canceled())) {
+        TryWith::Ran(v) => v,
+        _ => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "RtspCancelHandle is closed",
+            );
+            0
+        }
+    }
 }
 
 /// Free the boxed cancel handle.
@@ -81,10 +93,8 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: valid Box<JniRtspCancel>; close() zeroes the field (runs once).
-        drop(unsafe { Box::from_raw(handle as *mut JniRtspCancel) });
-    }
+    // Atomic + idempotent drop.
+    let _ = REGISTRY_CANCEL.close(handle as u64);
 }
 
 /// Native backing for `org.tstrans.rtp.RtspSession`. Faithful port of tst-py's
@@ -177,11 +187,11 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
         }
     };
 
-    Box::into_raw(Box::new(JniRtspSession {
+    REGISTRY_SESSION.insert(JniRtspSession {
         client: Arc::new(Mutex::new(Some(client))),
         session: Arc::new(Mutex::new(Some(session))),
         torn_down: Arc::new(AtomicBool::new(false)),
-    })) as jlong
+    }) as jlong
 }
 
 /// `RtspSession.nPause` — clone the client Arc, lock, `pause()`. Ports
@@ -213,26 +223,19 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nTeardown(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
+    // Lease the session and clone the `client`/`torn_down` Arcs out. The registry
+    // lease replaces the round-1 `&*ptr` deref (which raced `nClose`'s free);
+    // `close` now atomically takes the resource so a fresh entry here either sees
+    // it (Some) or finds it gone (None → IllegalStateException).
+    let Some((client, torn)) =
+        REGISTRY_SESSION.with(handle as u64, |s| (s.client.clone(), s.torn_down.clone()))
+    else {
         let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
         return;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtspSession>`. The contract for every
-    // RtspSession `&*ptr` deref, stated once here: we take ONLY `&*ptr` (shared) to
-    // clone the `Arc`s — never `&mut *ptr` — so concurrent session methods are
-    // memory-safe (the inner `Mutex` serializes the actual mutation). The single
-    // genuinely-unsafe race is `nClose` freeing the box vs another method's
-    // top-of-call `&*ptr`; that is forbidden by the documented contract: cross-thread
-    // stop routes through `RtspCancelHandle` (not `close()`), and `close()` is a
-    // same-thread best-effort teardown that must NOT race a concurrent control call.
-    // Same accepted bounded-window contract as srt `Sender`/`Receiver` (see
-    // `RtspSession.java`'s class javadoc).
-    let s = unsafe { &*(handle as *const JniRtspSession) };
-    if s.torn_down.load(Ordering::Relaxed) {
+    };
+    if torn.load(Ordering::Relaxed) {
         return;
     }
-    let client = s.client.clone();
-    let torn = s.torn_down.clone();
     let res = (|| -> Result<(), RtspError> {
         let mut guard = client.lock().map_err(|_| RtspError::SessionExpired)?;
         let r = match guard.as_mut() {
@@ -254,14 +257,10 @@ fn session_control(
     handle: jlong,
     op: impl FnOnce(&mut RustRtspClient) -> Result<(), RtspError>,
 ) {
-    if handle == 0 {
+    let Some(client) = REGISTRY_SESSION.with(handle as u64, |s| s.client.clone()) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
         return;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtspSession>`; `&*ptr` to clone the
-    // `Arc` only — see `nTeardown` for the full bounded-window contract.
-    let s = unsafe { &*(handle as *const JniRtspSession) };
-    let client = s.client.clone();
+    };
     let res = (|| -> Result<(), RtspError> {
         let mut guard = client.lock().map_err(|_| RtspError::SessionExpired)?;
         match guard.as_mut() {

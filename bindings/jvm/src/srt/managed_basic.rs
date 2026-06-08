@@ -20,6 +20,7 @@
 //! 17-field shape (no accessor in tst-pipeline). Callers use `nSocketStats`.
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use jni::JNIEnv;
@@ -36,6 +37,7 @@ use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtU
 
 use super::JniCancel;
 use super::stats::build_socket_stats;
+use crate::handle::HandleRegistry;
 
 // -----------------------------------------------------------------------
 // Factory helpers — rebuild a fresh SrtTransport from a URL string.
@@ -123,6 +125,11 @@ fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
 
 type ManagedSenderInner = PlSender<ManagedTransport<SrtTransport>>;
 
+/// Per-type leased-handle registry for `org.tstrans.srt.ManagedSender`. No cancel
+/// hook (single-threaded; the public cancel handle drives reconnect-loop exit).
+static REGISTRY_SENDER: LazyLock<HandleRegistry<ManagedSenderInner>> =
+    LazyLock::new(HandleRegistry::new);
+
 /// Allocate a `ManagedSender` from an SRT caller-mode URL + the 7 flattened
 /// reconnect-policy args. Returns a `jlong` handle on success; throws
 /// `SrtException` and returns 0 on any error.
@@ -196,7 +203,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
 
     let managed = ManagedTransport::new(initial, factory, policy);
     let inner = PlSender::new(managed, SenderConfig::default());
-    Box::into_raw(Box::new(inner)) as jlong
+    REGISTRY_SENDER.insert(inner) as jlong
 }
 
 /// Send pre-muxed TS bytes through the managed sender. Throws `SrtException` on
@@ -208,15 +215,6 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
     handle: jlong,
     data: JByteArray<'_>,
 ) {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
-        return;
-    }
-    // SAFETY: handle is a valid Box<ManagedSenderInner> kept alive by the Java
-    // object. Reconstituted as a mutable borrow for this call only (ManagedSender
-    // is not thread-safe per its Java contract, so no aliased &mut).
-    let inner: &mut ManagedSenderInner = unsafe { &mut *(handle as *mut ManagedSenderInner) };
-
     let bytes: Vec<u8> = match env.convert_byte_array(&data) {
         Ok(b) => b,
         Err(e) => {
@@ -225,13 +223,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
         }
     };
 
-    if let Err(e) = inner.send_ts(&bytes) {
-        match e.source {
+    match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => match e.source {
             SenderErrorSource::Transport(t) => super::errors::transport_error(&mut env, &t),
             SenderErrorSource::Framing(f) => {
                 super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
             }
             _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
+        },
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
         }
     }
 }
@@ -243,22 +245,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFlush(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
-        return;
-    }
-    // SAFETY: handle is a valid Box<ManagedSenderInner> kept alive by the Java
-    // object. Reconstituted as a mutable borrow for this call only (ManagedSender
-    // is not thread-safe per its Java contract, so no aliased &mut).
-    let inner: &mut ManagedSenderInner = unsafe { &mut *(handle as *mut ManagedSenderInner) };
-
-    if let Err(e) = inner.flush() {
-        match e.source {
+    match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => match e.source {
             SenderErrorSource::Transport(t) => super::errors::transport_error(&mut env, &t),
             SenderErrorSource::Framing(f) => {
                 super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
             }
             _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
+        },
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
         }
     }
 }
@@ -271,13 +268,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Closed handle → 0 (no throw, matching the original contract).
+    let Some(maybe_arc) = REGISTRY_SENDER.with(handle as u64, |inner| inner.cancel_handle()) else {
         return 0;
-    }
-    // SAFETY: handle is a valid Box<ManagedSenderInner>.
-    let inner: &ManagedSenderInner = unsafe { &*(handle as *const ManagedSenderInner) };
-
-    match inner.cancel_handle() {
+    };
+    match maybe_arc {
         Some(arc) => JniCancel {
             inner: arc,
             flag: AtomicBool::new(false),
@@ -303,13 +298,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| {
+        inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<ManagedSenderInner>.
-    let inner: &ManagedSenderInner = unsafe { &*(handle as *const ManagedSenderInner) };
-
-    let stats = inner.socket_stats().unwrap_or_default();
+    };
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -341,12 +334,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<ManagedSenderInner> written by nFromUrl;
-        // nClose is called at most once (Java's close() zeroes the field).
-        let mut b = unsafe { Box::from_raw(handle as *mut ManagedSenderInner) };
-        b.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(mut inner) = REGISTRY_SENDER.close(handle as u64) {
+        inner.close();
     }
 }
 
@@ -357,12 +347,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: handle is a valid Box<ManagedSenderInner>.
-    let inner: &ManagedSenderInner = unsafe { &*(handle as *const ManagedSenderInner) };
-    u8::from(inner.is_alive())
+    REGISTRY_SENDER
+        .with(handle as u64, |inner| u8::from(inner.is_alive()))
+        .unwrap_or(0)
 }
 
 // -----------------------------------------------------------------------
@@ -378,6 +365,11 @@ struct JniManagedReceiver {
     inner: PlReceiver<ManagedRecvTransport<SrtTransport>>,
     reconnects: Arc<AtomicU64>,
 }
+
+/// Per-type leased-handle registry for `org.tstrans.srt.ManagedReceiver`. No
+/// cancel hook (single-threaded; the public cancel handle wakes a parked recv).
+static REGISTRY_RECEIVER: LazyLock<HandleRegistry<JniManagedReceiver>> =
+    LazyLock::new(HandleRegistry::new);
 
 /// Allocate a `ManagedReceiver` from an SRT listener-mode URL + the 7 flattened
 /// reconnect-policy args. Returns a `jlong` handle on success; throws
@@ -450,7 +442,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
     // Snapshot the reconnect counter BEFORE moving `managed` into the shell.
     let reconnects = managed.reconnects_handle();
     let inner = PlReceiver::new(managed, ReceiverConfig::default());
-    Box::into_raw(Box::new(JniManagedReceiver { inner, reconnects })) as jlong
+    REGISTRY_RECEIVER.insert(JniManagedReceiver { inner, reconnects }) as jlong
 }
 
 /// Receive one TS packet (188 bytes). Returns the packet as a `jbyteArray` on
@@ -463,17 +455,15 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nRecvBytes(
     handle: jlong,
     _max_len: jint,
 ) -> jbyteArray {
-    if handle == 0 {
+    let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.next_packet())
+    else {
         let _ = env.throw_new(
             "java/lang/IllegalStateException",
             "ManagedReceiver is closed",
         );
         return std::ptr::null_mut();
-    }
-    // SAFETY: handle is a valid Box<JniManagedReceiver>.
-    let jstruct: &mut JniManagedReceiver = unsafe { &mut *(handle as *mut JniManagedReceiver) };
-
-    match jstruct.inner.next_packet() {
+    };
+    match res {
         Ok(bytes) => match env.byte_array_from_slice(&bytes) {
             Ok(arr) => arr.into_raw(),
             Err(_) => std::ptr::null_mut(),
@@ -495,12 +485,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nReconnectAttempts(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: handle is a valid Box<JniManagedReceiver>.
-    let jstruct: &JniManagedReceiver = unsafe { &*(handle as *const JniManagedReceiver) };
-    jstruct.reconnects.load(Ordering::Acquire) as jlong
+    REGISTRY_RECEIVER
+        .with(handle as u64, |jstruct| {
+            jstruct.reconnects.load(Ordering::Acquire) as jlong
+        })
+        .unwrap_or(0)
 }
 
 /// Obtain a cancel handle for this managed receiver.
@@ -510,13 +499,13 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Closed handle → 0 (no throw, matching the original contract).
+    let Some(maybe_arc) =
+        REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
+    else {
         return 0;
-    }
-    // SAFETY: handle is a valid Box<JniManagedReceiver>.
-    let jstruct: &JniManagedReceiver = unsafe { &*(handle as *const JniManagedReceiver) };
-
-    match jstruct.inner.cancel_handle() {
+    };
+    match maybe_arc {
         Some(arc) => JniCancel {
             inner: arc,
             flag: AtomicBool::new(false),
@@ -539,13 +528,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nSocketStats<'local>
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    if handle == 0 {
+    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |jstruct| {
+        jstruct.inner.socket_stats().unwrap_or_default()
+    }) else {
         return JObject::null();
-    }
-    // SAFETY: handle is a valid Box<JniManagedReceiver>.
-    let jstruct: &JniManagedReceiver = unsafe { &*(handle as *const JniManagedReceiver) };
-
-    let stats = jstruct.inner.socket_stats().unwrap_or_default();
+    };
     match build_socket_stats(&mut env, &stats) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
@@ -576,12 +563,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle is a valid Box<JniManagedReceiver> written by nFromUrl;
-        // nClose is called at most once (Java's close() zeroes the field).
-        let mut b = unsafe { Box::from_raw(handle as *mut JniManagedReceiver) };
-        b.inner.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(mut jstruct) = REGISTRY_RECEIVER.close(handle as u64) {
+        jstruct.inner.close();
     }
 }
 
@@ -592,10 +576,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: handle is a valid Box<JniManagedReceiver>.
-    let jstruct: &JniManagedReceiver = unsafe { &*(handle as *const JniManagedReceiver) };
-    u8::from(jstruct.inner.is_alive())
+    REGISTRY_RECEIVER
+        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+        .unwrap_or(0)
 }

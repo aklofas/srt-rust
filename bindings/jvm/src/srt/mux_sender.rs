@@ -20,6 +20,8 @@
 //! `MuxException`, `Transport(...)` → `SrtException` per `TransportError`
 //! variant, forward-compat catch-all → `SrtException(IO)`.
 
+use std::sync::LazyLock;
+
 use jni::JNIEnv;
 use jni::objects::{JBooleanArray, JByteArray, JClass, JIntArray, JObject, JString, JValue};
 use jni::sys::{jboolean, jint, jlong};
@@ -31,6 +33,7 @@ use tst_core::mpegts::mux::{
 use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSource};
 use tst_srt::{Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
+use crate::handle::HandleRegistry;
 use crate::jutil::checked_u8;
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 
@@ -38,6 +41,9 @@ use super::errors::{connect_error, throw_srt, transport_error};
 use super::stats::build_socket_stats;
 
 type Inner = RustMuxSender<SrtTransport>;
+
+/// Per-type leased-handle registry for `org.tstrans.srt.MuxSender`.
+static REGISTRY: LazyLock<HandleRegistry<Inner>> = LazyLock::new(HandleRegistry::new);
 
 /// Map a `MuxSenderError` (from any `send_*`) to a thrown Java exception.
 /// `Mux(...)` → `MuxException`; `Transport(...)` → `SrtException` per
@@ -109,7 +115,7 @@ fn build_from_url(
     };
 
     match RustMuxSender::new(SrtTransport::new(socket), cfg) {
-        Ok(sender) => Box::into_raw(Box::new(sender)) as jlong,
+        Ok(sender) => REGISTRY.insert(sender) as jlong,
         Err(e) => {
             throw_mux_error(env, &e);
             0
@@ -160,14 +166,39 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nFromUrl<'local>(
     build_from_url(&mut env, &url, cfg)
 }
 
-/// Validate a native handle. Returns the live `*mut Inner`, or throws
-/// `IllegalStateException` and returns `None` for a zero (closed) handle.
-fn checked_sender(env: &mut JNIEnv, handle: jlong) -> Option<*mut Inner> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
-        return None;
+/// Lease the sender and run a push op under the resource lock. A closed/absent
+/// handle throws `IllegalStateException`; otherwise any `MuxSenderError` from the
+/// op is mapped to the right Java exception. `send_*` take `&self`, so the
+/// `&mut Inner` from the registry coerces fine.
+fn with_push(
+    env: &mut JNIEnv,
+    handle: jlong,
+    op: impl FnOnce(&Inner) -> Result<(), MuxSenderError>,
+) {
+    match REGISTRY.with(handle as u64, |inner| op(inner)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_sender_error(env, &e),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+        }
     }
-    Some(handle as *mut Inner)
+}
+
+/// Lease the sender and return the first handle-of-kind (`-1` if none). A closed
+/// handle throws `IllegalStateException` and returns `-1`.
+fn first_handle(
+    env: &mut JNIEnv,
+    handle: jlong,
+    pick: impl FnOnce(&Inner) -> Option<u32>,
+) -> jlong {
+    match REGISTRY.with(handle as u64, |inner| pick(inner)) {
+        Some(Some(raw)) => i64::from(raw),
+        Some(None) => -1,
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            -1
+        }
+    }
 }
 
 /// Read a Java `byte[]` argument, or throw `RuntimeException` + return `None`.
@@ -193,17 +224,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = inner.send_video(&buf, Pts90khz::new(pts), key_frame != 0) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_video(&buf, Pts90khz::new(pts), key_frame != 0)
+    });
 }
 
 /// `nPushKlv(handle, klv, pts, metadataServiceId)` — push one KLV blob. The
@@ -218,11 +244,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlv<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     // `metadata_service_id` is `u8`; range-check before narrowing.
     let Ok(service_id) = checked_u8(
         &mut env,
@@ -234,9 +255,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlv<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = inner.send_klv(&buf, Pts90khz::new(pts), service_id) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_klv(&buf, Pts90khz::new(pts), service_id)
+    });
 }
 
 /// `nPushAudio(handle, frames, pts)` — push one encoded audio frame.
@@ -248,17 +269,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudio<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = inner.send_audio(&buf, Pts90khz::new(pts)) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_audio(&buf, Pts90khz::new(pts))
+    });
 }
 
 /// `nPushSubtitle(handle, pts, payload)` — push one subtitle access unit.
@@ -270,17 +286,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitle<'local>(
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = inner.send_subtitle(&buf, Pts90khz::new(pts)) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_subtitle(&buf, Pts90khz::new(pts))
+    });
 }
 
 // ── Push family — handle-targeted variants ─────────────────────────────────
@@ -296,11 +307,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideoTo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -311,9 +317,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideoTo<'local>(
     let Some(buf) = read_bytes(&mut env, &nal) else {
         return;
     };
-    if let Err(e) = inner.send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+    });
 }
 
 /// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
@@ -327,11 +333,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlvTo<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -349,9 +350,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlvTo<'local>(
     let Some(buf) = read_bytes(&mut env, &klv) else {
         return;
     };
-    if let Err(e) = inner.send_klv_to(h, &buf, Pts90khz::new(pts), service_id) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
+    });
 }
 
 /// `nPushAudioTo(handle, streamHandleRaw, frames, pts)`.
@@ -364,11 +365,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudioTo<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -379,9 +375,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudioTo<'local>(
     let Some(buf) = read_bytes(&mut env, &frames) else {
         return;
     };
-    if let Err(e) = inner.send_audio_to(h, &buf, Pts90khz::new(pts)) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_audio_to(h, &buf, Pts90khz::new(pts))
+    });
 }
 
 /// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)`.
@@ -394,11 +390,6 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
     let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
         Ok(h) => h,
         Err(_) => {
@@ -409,9 +400,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
     let Some(buf) = read_bytes(&mut env, &payload) else {
         return;
     };
-    if let Err(e) = inner.send_subtitle_to(h, &buf, Pts90khz::new(pts)) {
-        throw_mux_sender_error(&mut env, &e);
-    }
+    with_push(&mut env, handle, |inner| {
+        inner.send_subtitle_to(h, &buf, Pts90khz::new(pts))
+    });
 }
 
 // ── Handle getters ─────────────────────────────────────────────────────────
@@ -427,17 +418,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nVideoHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
-    inner
-        .video_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    first_handle(&mut env, handle, |inner| {
+        inner.video_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nKlvHandle(handle)` — first configured KLV stream handle, or `-1`.
@@ -447,17 +430,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nKlvHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
-    inner
-        .klv_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    first_handle(&mut env, handle, |inner| {
+        inner.klv_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nAudioHandle(handle)` — first configured audio stream handle, or `-1`.
@@ -467,17 +442,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nAudioHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
-    inner
-        .audio_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    first_handle(&mut env, handle, |inner| {
+        inner.audio_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 /// `nSubtitleHandle(handle)` — first configured subtitle stream handle, or `-1`.
@@ -487,17 +454,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nSubtitleHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
-        return -1;
-    };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
-    inner
-        .subtitle_handles()
-        .into_iter()
-        .next()
-        .map(|h| i64::from(h.raw()))
-        .unwrap_or(-1)
+    first_handle(&mut env, handle, |inner| {
+        inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+    })
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
@@ -548,13 +507,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(ptr) = checked_sender(&mut env, handle) else {
+    let Some((sock, pipe)) = REGISTRY.with(handle as u64, |inner| {
+        (inner.socket_stats().unwrap_or_default(), inner.stats())
+    }) else {
+        let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
         return JObject::null();
     };
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*ptr };
-    let sock = inner.socket_stats().unwrap_or_default();
-    let pipe = inner.stats();
 
     let sock_obj = match build_socket_stats(&mut env, &sock) {
         Ok(o) => o,
@@ -585,12 +543,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle was produced by Box::into_raw and is dropped exactly
-        // once (Java zeroes its field after this call).
-        let b = unsafe { Box::from_raw(handle as *mut Inner) };
-        b.close();
-        drop(b);
+    // Atomic + idempotent: the winning close gets the shell back for teardown.
+    if let Some(inner) = REGISTRY.close(handle as u64) {
+        inner.close();
     }
 }
 
@@ -601,12 +556,9 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nIsAlive(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: validated non-zero live `Box<Inner>` pointer from nFromUrl.
-    let inner = unsafe { &*(handle as *const Inner) };
-    u8::from(inner.is_alive())
+    REGISTRY
+        .with(handle as u64, |inner| u8::from(inner.is_alive()))
+        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -637,13 +589,11 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoMuxSender<'local>(
     klv_stream_types: JIntArray<'local>,
     klv_carries_pts: JBooleanArray<'local>,
 ) -> jlong {
-    if handle == 0 {
+    // Take the Socket out of its registry (atomic; idempotent).
+    let Some(socket) = super::lowlevel::REGISTRY_SOCKET.close(handle as u64) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
         return 0;
-    }
-    // SAFETY: handle is a valid Box<Socket> from nConnect/nAccept; consumed once
-    // here. The Java caller zeroes its own field so no double-free occurs.
-    let socket: Socket = *unsafe { Box::from_raw(handle as *mut Socket) };
+    };
 
     let cfg = match build_muxer_config_from_arrays(
         &mut env,
@@ -669,7 +619,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoMuxSender<'local>(
     };
 
     match RustMuxSender::new(SrtTransport::new(socket), cfg) {
-        Ok(sender) => Box::into_raw(Box::new(sender)) as jlong,
+        Ok(sender) => REGISTRY.insert(sender) as jlong,
         Err(e) => {
             throw_mux_error(&mut env, &e);
             0

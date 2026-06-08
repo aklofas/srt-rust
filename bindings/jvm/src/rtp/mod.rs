@@ -9,11 +9,14 @@ mod stats;
 mod transport;
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use jni::JNIEnv;
 use jni::objects::JClass;
 use jni::sys::jlong;
 use tst_core::transport::TransportCancel;
+
+use crate::handle::HandleRegistry;
 
 /// Boxed behind `org.tstrans.rtp.CancelHandle.handle`. Mirrors tst-py's rtp
 /// `PyCancelHandle`: a shared trait-erased cancel target. Unlike the srt
@@ -23,9 +26,13 @@ pub(crate) struct JniRtpCancel {
     pub inner: Arc<dyn TransportCancel + Send + Sync>,
 }
 
+/// Per-type leased-handle registry for `org.tstrans.rtp.CancelHandle`. A cancel
+/// target (no parked op to wake) — register with `insert` (cancel = None).
+static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniRtpCancel>> = LazyLock::new(HandleRegistry::new);
+
 impl JniRtpCancel {
     pub(crate) fn into_handle(self) -> jlong {
-        Box::into_raw(Box::new(self)) as jlong
+        REGISTRY_CANCEL.insert(self) as jlong
     }
 }
 
@@ -37,13 +44,12 @@ pub extern "system" fn Java_org_tstrans_rtp_CancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle == 0 {
+    if REGISTRY_CANCEL
+        .with(handle as u64, |c| c.inner.cancel())
+        .is_none()
+    {
         let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-        return;
     }
-    // SAFETY: handle is a valid Box<JniRtpCancel> kept alive by the Java object.
-    let c = unsafe { &*(handle as *const JniRtpCancel) };
-    c.inner.cancel();
 }
 
 /// Free the boxed cancel handle.
@@ -53,8 +59,6 @@ pub extern "system" fn Java_org_tstrans_rtp_CancelHandle_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: valid Box<JniRtpCancel>; close() zeroes the field so this runs once.
-        drop(unsafe { Box::from_raw(handle as *mut JniRtpCancel) });
-    }
+    // Atomic + idempotent drop.
+    let _ = REGISTRY_CANCEL.close(handle as u64);
 }

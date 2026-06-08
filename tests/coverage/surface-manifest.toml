@@ -9016,7 +9016,7 @@ item = "tst_tcp::tls::TlsStream::read"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::tls::TlsStream::write_all"
+item = "tst_tcp::tls::TlsStream::write"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

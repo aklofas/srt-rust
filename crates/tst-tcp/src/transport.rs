@@ -33,11 +33,11 @@ impl InnerStream {
             Self::Tls(s) => s.read(buf),
         }
     }
-    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
-            Self::Plain(s) => s.write_all(buf),
+            Self::Plain(s) => s.write(buf),
             #[cfg(feature = "tls")]
-            Self::Tls(s) => s.write_all(buf),
+            Self::Tls(s) => s.write(buf),
         }
     }
     fn shutdown(&mut self) {
@@ -158,6 +158,78 @@ impl TcpTransport {
     }
 }
 
+/// Drive a manual write loop so partial progress is observable.
+///
+/// `Write::write_all` hides how many bytes it consumed before failing, so it
+/// cannot distinguish a zero-progress `WouldBlock` (the slice is intact — safe
+/// to retry per the [`Transport`] contract) from a partial-prefix-then-
+/// `WouldBlock` (the prefix is already on the wire — retrying would duplicate
+/// it and desync the receiver's 188-byte TS framing).
+///
+/// Returns `Ok(())` on a full write. On error the `bool` is `true` when the
+/// transport must be marked dead (any partial/broken outcome) and `false` for
+/// a clean zero-progress `Backpressure` that the caller may retry.
+fn write_loop<W: FnMut(&[u8]) -> std::io::Result<usize>>(
+    msg: &[u8],
+    mut write: W,
+) -> Result<(), (TransportError, bool)> {
+    let mut written = 0usize;
+    while written < msg.len() {
+        match write(&msg[written..]) {
+            Ok(0) => {
+                // Peer closed mid-message: stream is now desynced — undefined state.
+                return Err((
+                    TransportError::Broken {
+                        msg: "write returned 0 (peer closed mid-message)".to_string(),
+                        errno_code: None,
+                    },
+                    true,
+                ));
+            }
+            Ok(n) => written += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => { /* EINTR: retry */ }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if written == 0 {
+                    // Nothing was consumed — the slice is intact and safe to
+                    // retry per the Transport contract.
+                    return Err((
+                        TransportError::Backpressure {
+                            msg: format!("write WouldBlock: {e}"),
+                            errno_code: e.raw_os_error(),
+                        },
+                        false,
+                    ));
+                }
+                // A partial prefix is already committed to the stream. We cannot
+                // report Backpressure (a retry would duplicate the prefix and
+                // desync the receiver's TS framing). The stream is in an undefined
+                // state — mark the transport dead and report Broken so the caller
+                // rebuilds rather than re-sending onto a corrupted stream.
+                return Err((
+                    TransportError::Broken {
+                        msg: format!(
+                            "partial write then WouldBlock ({written}/{} bytes); stream desynced, rebuild required",
+                            msg.len()
+                        ),
+                        errno_code: e.raw_os_error(),
+                    },
+                    true,
+                ));
+            }
+            Err(e) => {
+                return Err((
+                    TransportError::Broken {
+                        msg: format!("write error: {e}"),
+                        errno_code: e.raw_os_error(),
+                    },
+                    true,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Transport for TcpTransport {
     fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
         if !self.alive.load(Ordering::Acquire) {
@@ -170,24 +242,18 @@ impl Transport for TcpTransport {
                 max: self.pkt_size,
             });
         }
-        match self.inner.write_all(msg) {
+        match write_loop(msg, |b| self.inner.write(b)) {
             Ok(()) => {
                 self.stats.send_calls = self.stats.send_calls.saturating_add(1);
                 self.stats.bytes_sent = self.stats.bytes_sent.saturating_add(msg.len() as u64);
                 Ok(())
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                Err(TransportError::Backpressure {
-                    msg: format!("write WouldBlock: {e}"),
-                    errno_code: e.raw_os_error(),
-                })
-            }
-            Err(e) => {
-                self.stats.send_errors = self.stats.send_errors.saturating_add(1);
-                Err(TransportError::Broken {
-                    msg: format!("write error: {e}"),
-                    errno_code: e.raw_os_error(),
-                })
+            Err((err, mark_dead)) => {
+                if mark_dead {
+                    self.alive.store(false, Ordering::Release);
+                    self.stats.send_errors = self.stats.send_errors.saturating_add(1);
+                }
+                Err(err)
             }
         }
     }
@@ -260,5 +326,96 @@ impl RecvTransport for TcpTransport {
 
     fn socket_stats(&self) -> Option<SocketStats> {
         Some(self.stats.to_socket_stats())
+    }
+}
+
+#[cfg(test)]
+mod write_loop_tests {
+    use super::write_loop;
+    use std::io;
+    use tst_core::transport::TransportError;
+
+    /// Scripted writer: pops one outcome per call from a queue.
+    fn scripted(steps: Vec<io::Result<usize>>) -> impl FnMut(&[u8]) -> io::Result<usize> {
+        let mut it = steps.into_iter();
+        move |_buf| it.next().expect("write called more times than scripted")
+    }
+
+    #[test]
+    fn full_write_in_one_call_is_ok() {
+        let msg = vec![0u8; 188];
+        let r = write_loop(&msg, scripted(vec![Ok(188)]));
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn full_write_across_multiple_calls_is_ok() {
+        let msg = vec![0u8; 188];
+        let r = write_loop(&msg, scripted(vec![Ok(100), Ok(88)]));
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn zero_progress_wouldblock_is_backpressure_not_dead() {
+        let msg = vec![0u8; 188];
+        let err = io::Error::new(io::ErrorKind::WouldBlock, "ewouldblock");
+        let r = write_loop(&msg, scripted(vec![Err(err)]));
+        match r {
+            Err((TransportError::Backpressure { .. }, mark_dead)) => {
+                assert!(!mark_dead, "zero-progress backpressure must NOT mark dead");
+            }
+            other => panic!("expected Backpressure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn partial_then_wouldblock_is_broken_and_dead() {
+        let msg = vec![0u8; 188];
+        let err = io::Error::new(io::ErrorKind::WouldBlock, "ewouldblock");
+        // First write commits a partial prefix, then the next blocks.
+        let r = write_loop(&msg, scripted(vec![Ok(100), Err(err)]));
+        match r {
+            Err((TransportError::Broken { msg, .. }, mark_dead)) => {
+                assert!(mark_dead, "partial-write Broken must mark dead");
+                assert!(
+                    msg.contains("partial write") && msg.contains("100/188"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected Broken, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn write_returns_zero_is_broken_and_dead() {
+        let msg = vec![0u8; 188];
+        let r = write_loop(&msg, scripted(vec![Ok(0)]));
+        match r {
+            Err((TransportError::Broken { msg, .. }, mark_dead)) => {
+                assert!(mark_dead);
+                assert!(msg.contains("peer closed mid-message"), "got: {msg}");
+            }
+            other => panic!("expected Broken, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interrupted_is_retried() {
+        let msg = vec![0u8; 188];
+        let eintr = io::Error::new(io::ErrorKind::Interrupted, "eintr");
+        // EINTR mid-flight must be transparently retried, not surfaced.
+        let r = write_loop(&msg, scripted(vec![Ok(50), Err(eintr), Ok(138)]));
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn hard_error_is_broken_and_dead() {
+        let msg = vec![0u8; 188];
+        let err = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
+        let r = write_loop(&msg, scripted(vec![Err(err)]));
+        match r {
+            Err((TransportError::Broken { .. }, mark_dead)) => assert!(mark_dead),
+            other => panic!("expected Broken, got {other:?}"),
+        }
     }
 }

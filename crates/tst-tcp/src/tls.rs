@@ -26,10 +26,10 @@ impl TlsStream {
             Self::Server(s) => s.read(buf),
         }
     }
-    pub fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
-            Self::Client(s) => s.write_all(buf),
-            Self::Server(s) => s.write_all(buf),
+            Self::Client(s) => s.write(buf),
+            Self::Server(s) => s.write(buf),
         }
     }
 }

@@ -613,7 +613,7 @@ pub tst_tcp::tls::TlsStream::Client(rustls::stream::StreamOwned<rustls::client::
 pub tst_tcp::tls::TlsStream::Server(rustls::stream::StreamOwned<rustls::server::server_conn::connection::ServerConnection, std::net::tcp::TcpStream>)
 impl tst_tcp::tls::TlsStream
 pub fn tst_tcp::tls::TlsStream::read(&mut self, &mut [u8]) -> std::io::error::Result<usize>
-pub fn tst_tcp::tls::TlsStream::write_all(&mut self, &[u8]) -> std::io::error::Result<()>
+pub fn tst_tcp::tls::TlsStream::write(&mut self, &[u8]) -> std::io::error::Result<usize>
 impl core::marker::Freeze for tst_tcp::tls::TlsStream
 impl core::marker::Send for tst_tcp::tls::TlsStream
 impl core::marker::Sync for tst_tcp::tls::TlsStream

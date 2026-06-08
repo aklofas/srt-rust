@@ -282,13 +282,13 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    if handle == 0 {
+    // Lease the session and clone the `client` Arc out. `None` (absent/closed) →
+    // 0 (the Java side converts that to IllegalStateException), matching the
+    // torn-down → 0 contract.
+    let Some(client) = REGISTRY_SESSION.with(handle as u64, |s| s.client.clone()) else {
         return 0;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtspSession>`; `&*ptr` to clone the
-    // `Arc` only — see `nTeardown` for the full bounded-window contract.
-    let s = unsafe { &*(handle as *const JniRtspSession) };
-    let guard = match s.client.lock() {
+    };
+    let guard = match client.lock() {
         Ok(g) => g,
         Err(_) => return 0,
     };
@@ -319,16 +319,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    if handle == 0 {
+    // Lease the session and clone the data-plane `session` Arc out. `None`
+    // (absent/closed) → IllegalStateException.
+    let Some(session_slot) = REGISTRY_SESSION.with(handle as u64, |s| s.session.clone()) else {
         let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
         return 0;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtspSession>`; `&*ptr` to clone/lock the
-    // `Arc` only — see `nTeardown` for the full bounded-window contract.
-    let s = unsafe { &*(handle as *const JniRtspSession) };
+    };
     // Take the data-plane RtspSession; double-consume = protocol error.
     let session = {
-        let mut guard = match s.session.lock() {
+        let mut guard = match session_slot.lock() {
             Ok(g) => g,
             Err(_) => {
                 throw_rtsp(&mut env, "PROTOCOL", "RtspSession lock poisoned");
@@ -371,13 +370,12 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIsTornDown(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 1;
-    }
-    // SAFETY: validated non-zero live `Box<JniRtspSession>`; `&*ptr` to read the
-    // atomic flag only — see `nTeardown` for the full bounded-window contract.
-    let s = unsafe { &*(handle as *const JniRtspSession) };
-    u8::from(s.torn_down.load(Ordering::Relaxed))
+    // Absent/closed reads as torn down (1). A live session reads its atomic flag.
+    REGISTRY_SESSION
+        .with(handle as u64, |s| {
+            u8::from(s.torn_down.load(Ordering::Relaxed))
+        })
+        .unwrap_or(1)
 }
 
 /// `RtspSession.nClose` — best-effort teardown (swallow errors, like tst-py's
@@ -388,9 +386,11 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nClose(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: handle from Box::into_raw, dropped once (Java zeroes its field).
-        let b = unsafe { Box::from_raw(handle as *mut JniRtspSession) };
+    // Atomic + idempotent: only the winning close gets the session back for
+    // best-effort teardown (errors swallowed, like tst-py's `__exit__`). A second
+    // close finds the id gone → no-op. No registry cancel hook (the cross-thread
+    // stop routes through RtspCancelHandle, not close).
+    if let Some(b) = REGISTRY_SESSION.close(handle as u64) {
         if !b.torn_down.load(Ordering::Relaxed) {
             if let Ok(mut guard) = b.client.lock() {
                 if let Some(c) = guard.as_mut() {

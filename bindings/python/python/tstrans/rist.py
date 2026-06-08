@@ -14,7 +14,13 @@ from __future__ import annotations
 from . import _native
 from .exceptions import RistError, RistErrorKind
 
-_rist = _native.rist
+try:
+    _rist = _native.rist
+except (ImportError, AttributeError) as exc:  # pragma: no cover
+    raise ImportError(
+        "tstrans.rist is unavailable. Published wheels include RIST by default; "
+        "if you built from source, enable the `rist` cargo feature (on by default)."
+    ) from exc
 
 # Re-export native classes from the compiled extension module.
 RistProfile = _rist.RistProfile

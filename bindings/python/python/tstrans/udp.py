@@ -31,7 +31,13 @@ from __future__ import annotations
 
 from . import _native
 
-_udp = _native.udp
+try:
+    _udp = _native.udp
+except (ImportError, AttributeError) as exc:  # pragma: no cover
+    raise ImportError(
+        "tstrans.udp is unavailable. Published wheels include UDP by default; "
+        "if you built from source, enable the `udp` cargo feature (on by default)."
+    ) from exc
 
 # Re-export native classes so users can write ``from tstrans.udp import Transport``.
 Transport = _udp.Transport

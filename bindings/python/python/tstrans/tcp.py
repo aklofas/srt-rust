@@ -37,7 +37,13 @@ from __future__ import annotations
 
 from . import _native
 
-_tcp = _native.tcp
+try:
+    _tcp = _native.tcp
+except (ImportError, AttributeError) as exc:  # pragma: no cover
+    raise ImportError(
+        "tstrans.tcp is unavailable. Published wheels include TCP by default; "
+        "if you built from source, enable the `tcp` cargo feature (on by default)."
+    ) from exc
 
 # Re-export native classes so users can write ``from tstrans.tcp import Transport``.
 Transport = _tcp.Transport

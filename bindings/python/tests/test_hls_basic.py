@@ -21,6 +21,14 @@ import tempfile
 
 import pytest
 
+# HLS is EXPERIMENTAL and gated off the default/published build (its `hls` cargo
+# feature is off by default). Skip the whole module unless it was built in.
+pytest.importorskip(
+    "tstrans.hls",
+    reason="HLS is experimental and off by default; build with --features hls to test it.",
+    exc_type=ImportError,
+)
+
 import tstrans
 import tstrans.hls
 from tstrans import _native

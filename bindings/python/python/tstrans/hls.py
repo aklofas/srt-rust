@@ -36,7 +36,14 @@ import abc
 from . import _native
 from .exceptions import HlsError, HlsErrorKind
 
-_hls = _native.hls
+try:
+    _hls = _native.hls
+except (ImportError, AttributeError) as exc:  # pragma: no cover
+    raise ImportError(
+        "tstrans.hls is unavailable. HLS is EXPERIMENTAL and is NOT included "
+        "in the published v0.1.0 wheels (the `hls` cargo feature is off by "
+        "default); build from source with `--features hls` to enable it."
+    ) from exc
 
 # Native PyClasses populated by `bindings/python/src/hls/`.
 PublisherStats = _hls.PublisherStats

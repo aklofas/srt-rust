@@ -75,22 +75,45 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
             accept_res = listener.accept() => {
                 match accept_res {
                     Ok((tcp, peer)) => {
-                        // Max-sessions guard.
-                        let n = state.active_sessions.load(Ordering::Relaxed);
-                        if n >= state.builder.max_sessions {
+                        // Max-sessions guard — reserve the slot ATOMICALLY here,
+                        // in the single-threaded accept loop, BEFORE spawning the
+                        // per-session task. A plain load-then-check raced an
+                        // unauthenticated connection burst: the loop accepts +
+                        // spawns faster than the spawned tasks get polled to
+                        // increment, so every accept read the same low count and
+                        // all passed the check, blowing past the cap. `fetch_add`
+                        // makes the count accurate at accept time; a burst now
+                        // correctly observes the incremented value. On over-cap we
+                        // immediately `fetch_sub` the reservation and refuse (drop
+                        // the TCP + continue). On success the reservation is owned
+                        // by a `SessionSlot` RAII guard moved into the spawned task,
+                        // whose `Drop` releases the slot on EVERY exit path
+                        // (including a TLS-handshake failure that returns before the
+                        // session loop runs — the leak the old in-session
+                        // `fetch_sub` couldn't cover).
+                        let prev = state.active_sessions.fetch_add(1, Ordering::Relaxed);
+                        if prev >= state.builder.max_sessions {
+                            state.active_sessions.fetch_sub(1, Ordering::Relaxed);
                             tracing::warn!(
                                 target: "tst_rtp::server",
-                                "max sessions ({n}) reached; refusing {peer}"
+                                "max sessions ({}) reached; refusing {peer}",
+                                state.builder.max_sessions
                             );
                             drop(tcp);
                             continue;
                         }
                         let st = state.clone();
+                        let slot = crate::rtsp::server::session::SessionSlot::new(state.clone());
                         #[cfg(feature = "tls")]
                         {
                             let cfg = tls_config.clone();
                             if let Some(cfg) = cfg {
                                 tokio::spawn(async move {
+                                    // `slot` is moved into this task so the reserved
+                                    // slot is released (its `Drop` fires) on BOTH the
+                                    // handshake-failure path and the normal session
+                                    // path.
+                                    let _slot = slot;
                                     match cfg.accept(tcp).await {
                                         Ok(tls_stream) => {
                                             if let Err(e) = crate::rtsp::server::session::handle_connection_tls(st, tls_stream, peer).await {
@@ -115,7 +138,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
                         }
                         // Plain TCP path (always available regardless of `tls` feature):
                         tokio::spawn(async move {
-                            if let Err(e) = crate::rtsp::server::session::handle_connection(st, tcp, peer).await {
+                            if let Err(e) = crate::rtsp::server::session::handle_connection(st, tcp, peer, slot).await {
                                 tracing::warn!(
                                     target: "tst_rtp::server",
                                     peer = %peer, error = ?e,

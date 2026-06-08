@@ -28,6 +28,32 @@ use crate::rtsp::server::auth::generate_nonce;
 use crate::rtsp::server::fanout::PeerDropCounter;
 use crate::rtsp::server::handlers;
 
+/// RAII guard for one reserved `active_sessions` slot.
+///
+/// The accept loop reserves a slot atomically (`fetch_add` + bound check)
+/// *before* spawning the per-session task, then moves this guard into the
+/// task. `Drop` releases the slot (`fetch_sub`) on EVERY task exit path —
+/// normal close, session error, or (for `rtsps://`) a TLS-handshake
+/// failure that returns before the session loop ever runs. Centralizing
+/// the decrement here is what prevents a leaked slot on the handshake-fail
+/// path, where the old in-`handle_connection` `fetch_sub` was never
+/// reached.
+pub(crate) struct SessionSlot(Arc<ServerState>);
+
+impl SessionSlot {
+    /// Construct a guard for an already-reserved slot (the accept loop has
+    /// done the `fetch_add` + bound check). Dropping it releases the slot.
+    pub(crate) fn new(state: Arc<ServerState>) -> Self {
+        SessionSlot(state)
+    }
+}
+
+impl Drop for SessionSlot {
+    fn drop(&mut self) {
+        self.0.active_sessions.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 /// Per-connection idle read timeout. If no bytes arrive within this window
 /// the session closes. Bounds slow-loris attacks that drip bytes slowly
 /// toward a huge declared Content-Length, keeping the connection alive
@@ -115,6 +141,12 @@ impl ServerSessionState {
 
 /// Handle one client TCP connection until disconnect or cancel.
 ///
+/// `_slot` is the [`SessionSlot`] guard for the `active_sessions` slot the
+/// accept loop reserved before spawning this task; holding it here (and
+/// dropping it when this future ends) releases the slot on every exit
+/// path. The counter is therefore touched only by the accept loop (+reserve)
+/// and this guard's `Drop` (-release) — never here directly.
+///
 /// `dead_code` allowed because T8 (the listener) is in flight in a
 /// parallel worktree — it dispatches into this function. Once T8 lands
 /// the allow can come off.
@@ -123,12 +155,11 @@ pub(crate) async fn handle_connection(
     state: Arc<ServerState>,
     tcp: TcpStream,
     peer: SocketAddr,
+    _slot: SessionSlot,
 ) -> Result<(), RtspServerError> {
-    state.active_sessions.fetch_add(1, Ordering::Relaxed);
     let entry = crate::rtsp::server::register_session(&state, peer);
     let res = handle_connection_inner(state.clone(), tcp, peer, entry.clone()).await;
     crate::rtsp::server::unregister_session(&state, &entry);
-    state.active_sessions.fetch_sub(1, Ordering::Relaxed);
     res
 }
 
@@ -377,17 +408,21 @@ fn dispatch(
 /// interleaved fanout writer is typed to the plain TCP `OwnedWriteHalf`.
 ///
 /// Listener (Task 8) calls this when the bind URL scheme is `rtsps://`.
+///
+/// The accept loop reserves the `active_sessions` slot *before* the TLS
+/// handshake and moves the [`SessionSlot`] guard into the spawning task
+/// (so the slot is released even when the handshake fails before this
+/// function runs). By the time control reaches here the slot is already
+/// accounted for; this function does not touch the counter.
 #[cfg(feature = "tls")]
 pub(crate) async fn handle_connection_tls(
     state: Arc<ServerState>,
     tls: crate::rtsp::server::tls::TokioTlsServerStream,
     peer: SocketAddr,
 ) -> Result<(), RtspServerError> {
-    state.active_sessions.fetch_add(1, Ordering::Relaxed);
     let entry = crate::rtsp::server::register_session(&state, peer);
     let res = handle_connection_tls_inner(state.clone(), tls, peer, entry.clone()).await;
     crate::rtsp::server::unregister_session(&state, &entry);
-    state.active_sessions.fetch_sub(1, Ordering::Relaxed);
     res
 }
 
@@ -444,7 +479,13 @@ mod session_tests {
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
             });
-            handle_connection(state, tcp, peer).await
+            // Mimic the accept loop: reserve a slot, then move the guard
+            // into the session task.
+            state
+                .active_sessions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let slot = SessionSlot::new(state.clone());
+            handle_connection(state, tcp, peer, slot).await
         });
 
         let mut client = tokio::net::TcpStream::connect(("127.0.0.1", port))
@@ -502,7 +543,13 @@ mod session_tests {
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
             });
-            handle_connection(state, tcp, peer).await
+            // Mimic the accept loop: reserve a slot, then move the guard
+            // into the session task.
+            state
+                .active_sessions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let slot = SessionSlot::new(state.clone());
+            handle_connection(state, tcp, peer, slot).await
         });
 
         let mut client = tokio::net::TcpStream::connect(("127.0.0.1", port))

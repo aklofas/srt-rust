@@ -83,3 +83,61 @@ fn rtsps_handshake_succeeds_with_trusted_root() {
     client.options().expect("OPTIONS over TLS");
     server.stop().ok();
 }
+
+/// A TLS-handshake FAILURE must not leak an `active_sessions` slot.
+///
+/// The accept loop reserves the slot atomically BEFORE the TLS handshake
+/// (so a connection burst can't bypass the cap), then moves the
+/// `SessionSlot` guard into the spawned task. When the handshake fails —
+/// here, by sending plaintext at an `rtsps://` server — the session loop
+/// never runs, so the old in-`handle_connection` `fetch_sub` would never
+/// fire and the slot would leak permanently, eventually wedging the server
+/// at its cap forever. The RAII guard's `Drop` releases the slot on this
+/// path too, so the counter must return to 0 after the handshakes fail.
+#[test]
+fn tls_handshake_failure_does_not_leak_session_slot() {
+    use std::io::Write;
+    use std::net::TcpStream;
+    use std::time::{Duration, Instant};
+
+    let certs = SelfSignedCert::generate();
+    let mut b = RtspServerBuilder::new("rtsps://127.0.0.1:0").expect("URL parse");
+    b.tls_cert(certs.cert_path.clone(), certs.key_path.clone());
+    // Small cap so a leak would be obvious (and would wedge the server).
+    b.max_sessions(2);
+    let server = b.build().expect("server build");
+    let _mount = server
+        .add_mount("/live", make_muxer_cfg())
+        .expect("add_mount");
+    server.start().expect("server start");
+    let addr = server.local_addr().expect("local_addr");
+
+    // Drive a burst of plaintext connections at the TLS port — each one
+    // fails the handshake (the server's `cfg.accept` rejects non-TLS bytes).
+    for _ in 0..16 {
+        if let Ok(mut s) = TcpStream::connect(addr) {
+            // Send obviously-non-TLS bytes so the handshake fails fast.
+            let _ = s.write_all(b"OPTIONS rtsp://127.0.0.1/live RTSP/1.0\r\n\r\n");
+            // Drop the stream — the server side observes a handshake error.
+        }
+    }
+
+    // The counter must drain back to 0 (no leaked slots) within a bounded
+    // window. If the guard didn't cover the handshake-fail path this would
+    // stay pinned at the number of failed handshakes (≥ the cap).
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut final_count = usize::MAX;
+    while Instant::now() < deadline {
+        final_count = server.stats().active_sessions;
+        if final_count == 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        final_count, 0,
+        "active_sessions leaked after TLS handshake failures (stuck at {final_count})"
+    );
+
+    server.stop().ok();
+}

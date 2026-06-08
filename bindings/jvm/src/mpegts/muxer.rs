@@ -14,11 +14,15 @@
 //! `mux_error_to_pyerr` decision-for-decision: it routes via the 5-variant
 //! [`MuxSenderErrorKind`] (`MuxError::kind()`), NOT a per-variant inline match.
 //!
-//! Handle convention + handle-validation (`checked_muxer` throws
-//! `IllegalStateException` on a zero handle before dereferencing) mirror the
-//! Demuxer JNI in [`super`]. All JNI array-read failures fail closed (a thrown
-//! `MuxException`/`RuntimeException` + a Rust default), never an `.unwrap()`
-//! panic across the FFI boundary.
+//! Handle convention: the `jlong` is an opaque key into a per-type
+//! [`crate::handle::HandleRegistry`] over the [`Muxer`]; per-call methods lease
+//! via `REGISTRY.with` (mapping a closed/absent handle to a thrown
+//! `IllegalStateException`), and `nClose` takes + drops via `REGISTRY.close`
+//! (atomic + idempotent, so a double `close()` is UAF/double-free-safe). All JNI
+//! array-read failures fail closed (a thrown `MuxException`/`RuntimeException` +
+//! a Rust default), never an `.unwrap()` panic across the FFI boundary.
+
+use std::sync::LazyLock;
 
 use jni::JNIEnv;
 use jni::objects::{JBooleanArray, JByteArray, JClass, JIntArray};
@@ -32,6 +36,10 @@ use tst_core::mpegts::mux::{
 };
 
 use crate::error::throw_mux;
+use crate::handle::HandleRegistry;
+
+/// Per-type leased-handle registry for `org.tstrans.mpegts.Muxer`.
+static REGISTRY: LazyLock<HandleRegistry<Muxer>> = LazyLock::new(HandleRegistry::new);
 
 /// `org.tstrans.mpegts.Muxer.nOpen(...)` — build a configured [`Muxer`] from the
 /// parallel-array config description and hand the JVM its raw pointer as a
@@ -87,7 +95,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
             return 0;
         }
     };
-    Box::into_raw(Box::new(mux)) as jlong
+    REGISTRY.insert(mux) as jlong
 }
 
 /// Build a [`MuxerConfig`] from the parallel-array config description that both
@@ -203,12 +211,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: `checked_muxer` rejected 0; the pointer is a live `Box<Muxer>`
-    // from `nOpen` (single-threaded use per the JNI handle contract).
-    let mux = unsafe { &mut *ptr };
     let buf = match env.convert_byte_array(&nal) {
         Ok(b) => b,
         Err(_) => {
@@ -216,8 +218,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideo<'local>(
             return;
         }
     };
-    if let Err(e) = mux.push_video(&buf, Pts90khz::new(pts), key_frame != 0) {
-        throw_mux_error(&mut env, &e);
+    match REGISTRY.with(handle as u64, |mux| {
+        mux.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
+    }) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
     }
 }
 
@@ -233,11 +239,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlv<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &mut *ptr };
     let buf = match env.convert_byte_array(&klv) {
         Ok(b) => b,
         Err(_) => {
@@ -246,8 +247,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlv<'local>(
         }
     };
     // `metadata_service_id` is `u8` in `Muxer::push_klv` (spec default 0x00).
-    if let Err(e) = mux.push_klv(&buf, Pts90khz::new(pts), metadata_service_id as u8) {
-        throw_mux_error(&mut env, &e);
+    match REGISTRY.with(handle as u64, |mux| {
+        mux.push_klv(&buf, Pts90khz::new(pts), metadata_service_id as u8)
+    }) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
     }
 }
 
@@ -260,11 +265,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudio<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &mut *ptr };
     let buf = match env.convert_byte_array(&frames) {
         Ok(b) => b,
         Err(_) => {
@@ -272,8 +272,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudio<'local>(
             return;
         }
     };
-    if let Err(e) = mux.push_audio(&buf, Pts90khz::new(pts)) {
-        throw_mux_error(&mut env, &e);
+    match REGISTRY.with(handle as u64, |mux| {
+        mux.push_audio(&buf, Pts90khz::new(pts))
+    }) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
     }
 }
 
@@ -287,11 +291,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitle<'local>(
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &mut *ptr };
     let buf = match env.convert_byte_array(&payload) {
         Ok(b) => b,
         Err(_) => {
@@ -299,8 +298,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitle<'local>(
             return;
         }
     };
-    if let Err(e) = mux.push_subtitle(Pts90khz::new(pts), &buf) {
-        throw_mux_error(&mut env, &e);
+    match REGISTRY.with(handle as u64, |mux| {
+        mux.push_subtitle(Pts90khz::new(pts), &buf)
+    }) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
     }
 }
 
@@ -314,12 +317,6 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
     handle: jlong,
     out: JByteArray<'local>,
 ) -> jint {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &mut *ptr };
-
     let out_len = match env.get_array_length(&out) {
         Ok(l) => l as usize,
         Err(_) => {
@@ -328,7 +325,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
         }
     };
     let mut scratch = vec![0u8; out_len];
-    let n = mux.pull(&mut scratch);
+    let Some(n) = REGISTRY.with(handle as u64, |mux| mux.pull(&mut scratch)) else {
+        closed(&mut env);
+        return 0;
+    };
     if n == 0 {
         return 0;
     }
@@ -352,12 +352,13 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPending<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &*ptr };
-    mux.pending_packets() as jlong
+    match REGISTRY.with(handle as u64, |mux| mux.pending_packets() as jlong) {
+        Some(v) => v,
+        None => {
+            closed(&mut env);
+            0
+        }
+    }
 }
 
 /// `nCapacity(handle)` — configured queue capacity in TS packets.
@@ -367,29 +368,34 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nCapacity<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jlong {
-    let Some(ptr) = checked_muxer(&mut env, handle) else {
-        return 0;
-    };
-    // SAFETY: validated non-zero live pointer from `nOpen`.
-    let mux = unsafe { &*ptr };
-    mux.capacity_packets() as jlong
+    match REGISTRY.with(handle as u64, |mux| mux.capacity_packets() as jlong) {
+        Some(v) => v,
+        None => {
+            closed(&mut env);
+            0
+        }
+    }
 }
 
-/// `nClose(handle)` — drop the boxed [`Muxer`]. No-op on a zero
-/// (already-closed) handle so a double `close()` is safe.
+/// `nClose(handle)` — take + drop the registered [`Muxer`]. Atomic + idempotent
+/// via `REGISTRY.close`, so a double `close()` is UAF/double-free-safe. The
+/// muxer's teardown is a plain drop (no flush/finalize).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nClose<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    if handle != 0 {
-        // SAFETY: `handle` was produced by `Box::into_raw` in `nOpen` and is
-        // dropped exactly once (Java zeroes its field after this call).
-        unsafe {
-            drop(Box::from_raw(handle as *mut Muxer));
-        }
-    }
+    // The winning close gets the muxer back; it has no extra teardown, so just
+    // let it drop here.
+    let _ = REGISTRY.close(handle as u64);
+}
+
+/// Throw `IllegalStateException` for a leased call that found a
+/// closed/absent handle — the native-side enforcement of the Java
+/// `ensureOpen()` contract.
+fn closed(env: &mut JNIEnv) {
+    let _ = env.throw_new("java/lang/IllegalStateException", "Muxer is closed");
 }
 
 /// Map a `MuxError` to a thrown `org.tstrans.MuxException`, mirroring tst-py's
@@ -407,19 +413,6 @@ pub(crate) fn throw_mux_error(env: &mut JNIEnv, e: &MuxError) {
         // MuxSenderErrorKind is non-exhaustive; forward-compat catch-all.
         _ => throw_mux(env, "INTERNAL", &msg),
     }
-}
-
-/// Validate a native handle. Returns the live `*mut Muxer`, or throws
-/// `IllegalStateException` and returns `None` for a zero (closed) handle —
-/// the native-side enforcement of the Java `ensureOpen()` contract, so the JNI
-/// boundary fails closed even if a private native method is reached by
-/// reflection.
-fn checked_muxer(env: &mut JNIEnv, handle: jlong) -> Option<*mut Muxer> {
-    if handle == 0 {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Muxer is closed");
-        return None;
-    }
-    Some(handle as *mut Muxer)
 }
 
 /// Read a Java `int[]` into a `Vec<i32>`, or throw INTERNAL + return `None` on a

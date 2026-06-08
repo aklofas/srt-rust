@@ -895,30 +895,18 @@ mod tests {
         };
     }
 
-    /// Construction-shape test that doesn't need a live socket: building
-    /// a Socket from a fake handle and double-closing it should NOT
-    /// double-call srt_close. Without an integration test running real
-    /// libsrt, we verify by checking that explicit close().is_ok() and
-    /// drop() coexist safely (drop() must skip srt_close when cancel
-    /// already ran).
-    // T2-SRT-LEAK regression. `from_accepted` now wraps the raw accepted
-    // handle in the owning `Socket` (Drop active) BEFORE applying any
-    // fallible option, so a `set_int` failure on the `?` path closes the
-    // accepted SRT socket instead of leaking it.
-    //
-    // We can't feed a bad timeout through `from_accepted`'s public signature
-    // (`duration_to_ms` clamps to `[0, i32::MAX]`, and SND/RCVTIMEO never
-    // reject those), so this test reproduces the EXACT failure structure the
-    // fix relies on: take a genuinely-live accepted handle, build the owning
-    // `Socket` from it, then trigger a deterministic post-construction
-    // option failure (a PRE-bind-only option set on a connected socket, which
-    // libsrt rejects) — the same `set_int(...)?` shape `from_accepted` runs.
-    // On the early return the `Socket` drops; we assert the handle is closed
-    // (libsrt's `locateSocket` returns null → `srt_getsockflag` errors).
-    #[test]
-    fn from_accepted_failure_path_closes_accepted_socket_no_leak() {
+    /// Live accepted-handle test scaffold. Binds a raw libsrt listener on
+    /// `127.0.0.1:0`, connects a peer from a daemon thread, and blocks until
+    /// one connection is accepted. Returns `None` if loopback is unavailable
+    /// (caller should SKIP). On `Some`, the caller owns the raw `accepted`
+    /// handle and MUST eventually close it (or hand it to a `Socket` that
+    /// will); the returned `Cleanup` closes the listener and joins the peer
+    /// thread on drop.
+    ///
+    /// Shared by the two `from_accepted` tests below so they don't duplicate
+    /// the ~40 lines of raw libsrt listen/connect/accept boilerplate.
+    fn accept_one_live() -> Option<(srt_sys::SRTSOCKET, Cleanup)> {
         use os_socketaddr::OsSocketAddr;
-        use std::mem;
         use std::net::TcpListener;
         use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -927,8 +915,7 @@ mod tests {
         // Loopback gate (mirrors the integration harness's require_loopback!).
         if std::env::var_os("SKIP_LOOPBACK").is_some() || TcpListener::bind("127.0.0.1:0").is_err()
         {
-            eprintln!("SKIP: loopback unavailable");
-            return;
+            return None;
         }
 
         super::ensure_initialized();
@@ -991,6 +978,59 @@ mod tests {
         };
         assert_ne!(accepted, super::SRT_INVALID_SOCK, "srt_accept failed");
 
+        Some((
+            accepted,
+            Cleanup {
+                listener,
+                peer: Some(peer),
+            },
+        ))
+    }
+
+    /// RAII cleanup for [`accept_one_live`]: closes the listener and joins the
+    /// peer daemon thread when the test body ends (even on panic).
+    struct Cleanup {
+        listener: srt_sys::SRTSOCKET,
+        peer: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            if let Some(peer) = self.peer.take() {
+                let _ = peer.join();
+            }
+            unsafe { srt_sys::srt_close(self.listener) };
+        }
+    }
+
+    // T2-SRT-LEAK regression (failure path). `from_accepted` now wraps the raw
+    // accepted handle in the owning `Socket` (Drop active) BEFORE applying any
+    // fallible option, so a `set_int` failure on the `?` path closes the
+    // accepted SRT socket instead of leaking it.
+    //
+    // We can't feed a bad timeout through `from_accepted`'s public signature
+    // (`duration_to_ms` clamps to `[0, i32::MAX]`, and SND/RCVTIMEO never
+    // reject those), so this test reproduces the EXACT failure structure the
+    // fix relies on: take a genuinely-live accepted handle, build the owning
+    // `Socket` from it, then trigger a deterministic post-construction
+    // option failure (a PRE-bind-only option set on a connected socket, which
+    // libsrt rejects) — the same `set_int(...)?` shape `from_accepted` runs.
+    // On the early return the `Socket` drops; we assert the handle is closed
+    // (libsrt's `locateSocket` returns null → `srt_getsockflag` errors).
+    //
+    // It is paired with `from_accepted_happy_path_yields_usable_socket` below,
+    // which calls the REAL `from_accepted` so a regression in the function's
+    // own ordering (re-applying options on the bare handle, or adding a
+    // pre-wrap fallible step) is caught instead of silently passing here.
+    #[test]
+    fn from_accepted_failure_path_closes_accepted_socket_no_leak() {
+        use std::mem;
+
+        let Some((accepted, _cleanup)) = accept_one_live() else {
+            eprintln!("SKIP: loopback unavailable");
+            return;
+        };
+
         // Reproduce `from_accepted`'s post-fix structure: wrap the live handle
         // in the owning Socket FIRST, then run a fallible option set.
         let socket = super::Socket {
@@ -1029,11 +1069,56 @@ mod tests {
             rc < 0,
             "accepted handle still valid after Socket drop — it was LEAKED"
         );
-
-        peer.join().expect("peer thread panicked");
-        unsafe { srt_sys::srt_close(listener) };
     }
 
+    // T2-SRT-LEAK regression (happy path / drift guard). Calls the REAL
+    // `from_accepted` on a genuinely-live accepted handle and asserts it
+    // returns a usable `Socket`. This keeps `from_accepted` referenced by a
+    // test (signature/field drift breaks compilation) and exercises its happy
+    // path against live libsrt — so a regression in the FUNCTION (not just the
+    // RAII property the failure-path test reconstructs) is caught.
+    #[test]
+    fn from_accepted_happy_path_yields_usable_socket() {
+        use std::time::Duration;
+
+        let Some((accepted, _cleanup)) = accept_one_live() else {
+            eprintln!("SKIP: loopback unavailable");
+            return;
+        };
+
+        // The real function, both with default (None) and explicit timeouts.
+        let socket = super::Socket::from_accepted(
+            accepted,
+            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(5)),
+        )
+        .expect("from_accepted should succeed on a freshly-accepted live socket");
+
+        // The returned Socket owns the accepted handle and is usable: a
+        // local_addr round-trip proves libsrt still recognizes the handle
+        // (it was NOT closed by a spurious early return) and that the owner
+        // wraps the same descriptor we handed in.
+        assert_eq!(
+            socket.raw_handle(),
+            accepted,
+            "from_accepted must own the handle it was given"
+        );
+        let local = socket
+            .local_addr()
+            .expect("local_addr on the accepted socket should succeed");
+        assert!(local.ip().is_loopback(), "expected a loopback local addr");
+
+        // Dropping the Socket closes the accepted handle (no leak on the
+        // success path either).
+        drop(socket);
+    }
+
+    /// Construction-shape test that doesn't need a live socket: building
+    /// a Socket from a fake handle and double-closing it should NOT
+    /// double-call srt_close. Without an integration test running real
+    /// libsrt, we verify by checking that explicit close().is_ok() and
+    /// drop() coexist safely (drop() must skip srt_close when cancel
+    /// already ran).
     #[test]
     fn double_close_via_cancel_then_drop_is_safe() {
         // We construct a SrtCancelHandle by hand around a fake handle with a

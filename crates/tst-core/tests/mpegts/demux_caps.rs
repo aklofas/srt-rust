@@ -20,6 +20,15 @@ fn demux_rejects_unbounded_sync_buf_growth() {
         matches!(result, Err(DemuxError::SyncBufExhausted { .. })),
         "expected SyncBufExhausted, got {result:?}"
     );
+    // The `observed` figure reports the projected post-extend total even
+    // though the bytes were never copied in (check-before-extend, T2-DEMUX-INGRESS).
+    if let Err(DemuxError::SyncBufExhausted { observed, max }) = result {
+        assert_eq!(observed, 8 * 1024 * 1024);
+        assert_eq!(max, 4 * 1024 * 1024);
+    }
+    // Post-rejection the buffer is cleared, so the demuxer remains usable:
+    // a subsequent small, well-under-cap feed is accepted (returns Ok).
+    assert!(dx.feed(&[0xFFu8; 16]).is_ok());
 }
 
 /// Regression: both `Demuxer::new()` and `Demuxer::with_config(default)`

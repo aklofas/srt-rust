@@ -230,18 +230,25 @@ impl Demuxer {
     ///
     /// `tst_demuxer_feed` — see `bindings/c/include/tstrans.h`.
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
-        self.sync_buf.extend_from_slice(bytes);
-        // Enforce the hard ceiling immediately — the inner sync-search-window
-        // check below only fires per loop iteration, but the `extend_from_slice`
-        // above has already allocated the entire input. A single oversized
-        // adversarial feed must be rejected before we walk the buffer.
-        if self.sync_buf.len() > super::sync_ingress::MAX_SYNC_BUF_BYTES {
-            let observed = self.sync_buf.len();
+        // Enforce the hard ceiling BEFORE copying the caller's bytes. The
+        // inner sync-search-window check below only fires per loop
+        // iteration; if we extended first, a single oversized adversarial
+        // feed would already have allocated (and copied) the entire input
+        // — potentially OOMing the host — before any check could bail.
+        // Compare the projected post-extend length against the ceiling
+        // using checked arithmetic so a pathological `bytes.len()` near
+        // `usize::MAX` can't wrap.
+        let projected = self.sync_buf.len().checked_add(bytes.len());
+        if projected.is_none_or(|n| n > super::sync_ingress::MAX_SYNC_BUF_BYTES) {
+            // Report what the total would have been (saturating, so the
+            // checked-add-overflow case still yields a meaningful figure).
+            let observed = self.sync_buf.len().saturating_add(bytes.len());
             // Defensive: once the cap is exceeded, the parser is in a known-bad
-            // state and we should release the adversarial bytes. Subsequent
+            // state and we should release the buffered bytes. Subsequent
             // feed calls will start from an empty buffer; if the peer is still
             // hostile, they'll trip the cap again. The caller's only sane
-            // response is to teardown the demuxer.
+            // response is to teardown the demuxer. The incoming `bytes` are
+            // dropped without ever being copied in.
             self.sync_buf.clear();
             self.sync_consumed = 0;
             self.is_synced = false;
@@ -250,6 +257,20 @@ impl Demuxer {
                 max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
             });
         }
+        // Reserve up front so a partial copy can't leave the buffer in a
+        // half-grown state, and surface an allocation failure as a clean
+        // error rather than aborting on a panic.
+        if self.sync_buf.try_reserve(bytes.len()).is_err() {
+            let observed = self.sync_buf.len().saturating_add(bytes.len());
+            self.sync_buf.clear();
+            self.sync_consumed = 0;
+            self.is_synced = false;
+            return Err(DemuxError::SyncBufExhausted {
+                observed,
+                max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
+            });
+        }
+        self.sync_buf.extend_from_slice(bytes);
         // `resyncing` tracks whether the next 0x47 we find arrived via
         // a SCAN (loss-of-sync recovery path) — in which case it must
         // pass N-of-M validation before acceptance. Initial acquisition
@@ -697,6 +718,41 @@ mod tests {
         let d = DemuxerBuilder::new().build();
         assert_eq!(d.options.strict, StrictMode::Off);
         assert_eq!(d.options.pes_cap_per_pid, None);
+    }
+
+    /// A `feed` that overflows `MAX_SYNC_BUF_BYTES` must reject WITHOUT
+    /// first copying the caller's bytes into `sync_buf`. The pre-fix code
+    /// did `extend_from_slice` (a full copy + realloc of the entire input)
+    /// and only then checked the ceiling, so an adversarial multi-GiB feed
+    /// could OOM the host before the check fired. This guards the
+    /// check-before-extend contract by asserting the buffer's *capacity*
+    /// does not grow across a rejected feed. White-box (reads the private
+    /// `sync_buf.capacity()`), so it lives here rather than in the
+    /// integration `demux_caps.rs`.
+    #[test]
+    fn oversized_feed_rejects_without_growing_capacity() {
+        let mut dx = Demuxer::new();
+        let cap_before = dx.sync_buf.capacity();
+        let len_before = dx.sync_buf.len();
+
+        // One byte past the ceiling — the smallest oversized feed.
+        let garbage = vec![0xFFu8; crate::mpegts::demux::sync_ingress::MAX_SYNC_BUF_BYTES + 1];
+        let result = dx.feed(&garbage);
+        assert!(
+            matches!(
+                result,
+                Err(crate::error::DemuxError::SyncBufExhausted { .. })
+            ),
+            "expected SyncBufExhausted, got {result:?}"
+        );
+
+        // The rejected bytes were never copied: capacity (and len) unchanged.
+        assert_eq!(
+            dx.sync_buf.capacity(),
+            cap_before,
+            "rejected oversized feed grew sync_buf capacity (check-before-extend violated)"
+        );
+        assert_eq!(dx.sync_buf.len(), len_before);
     }
 
     #[test]

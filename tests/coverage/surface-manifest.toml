@@ -2873,6 +2873,14 @@ item = "tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_total"
+reason = "round-2 T2-AUCELL aggregate byte cap (2026-06-08); sibling of au_cell_cap_per_pid; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::mpegts::demux::DemuxerBuilder::au_cell_max_in_flight_pids"
+reason = "round-2 T2-AUCELL active-PID cap (2026-06-08); sibling of au_cell_cap_per_pid; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_core::mpegts::demux::DemuxerBuilder::av1_carriage"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

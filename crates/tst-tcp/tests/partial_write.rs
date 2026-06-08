@@ -76,11 +76,16 @@ fn partial_write_then_wouldblock_is_broken_not_backpressure() {
                 // happen before a partial commit. Keep trying.
                 continue;
             }
-            Err(TransportError::Broken { msg, .. }) => {
-                assert!(
-                    msg.contains("partial write") || msg.contains("desynced"),
-                    "expected partial-write Broken message, got: {msg}"
-                );
+            Err(TransportError::Broken { .. }) => {
+                // A stalled-peer write that cannot complete is reported as
+                // Broken (never Backpressure) and the transport is marked dead
+                // — the contract-relevant outcome. How it manifests is
+                // platform-dependent: Linux/macOS commit a partial prefix then
+                // time out with WouldBlock (the "partial write ..." message);
+                // Windows surfaces the SO_SNDTIMEO expiry as a hard TimedOut
+                // (WSAETIMEDOUT). Both correctly map to Broken + dead. The exact
+                // partial-vs-zero-progress decision is verified deterministically
+                // by the write_loop unit tests in src/transport.rs.
                 saw_broken = true;
                 break;
             }

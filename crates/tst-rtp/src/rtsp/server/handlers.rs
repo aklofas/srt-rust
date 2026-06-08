@@ -1091,7 +1091,10 @@ mod tests {
         assert_eq!(resp.status, 200, "got: {} {}", resp.status, resp.reason);
         let transport_resp = resp.headers.get("transport").unwrap();
         // Single-port range (no 65536 companion); never port=65535-0.
-        assert!(transport_resp.contains("port=65535;"), "got: {transport_resp}");
+        assert!(
+            transport_resp.contains("port=65535;"),
+            "got: {transport_resp}"
+        );
     }
 
     #[test]
@@ -1158,7 +1161,10 @@ mod tests {
     fn compute_udp_play_target_uses_real_peer_ip() {
         let peer: std::net::SocketAddr = "10.0.0.5:40000".parse().unwrap();
         let target = compute_udp_play_target(peer, 5004);
-        assert_eq!(target, "10.0.0.5:5004".parse::<std::net::SocketAddr>().unwrap());
+        assert_eq!(
+            target,
+            "10.0.0.5:5004".parse::<std::net::SocketAddr>().unwrap()
+        );
     }
 
     /// Loopback peer: the peer IP is 127.0.0.1, so the target must also
@@ -1167,6 +1173,9 @@ mod tests {
     fn compute_udp_play_target_preserves_loopback() {
         let peer: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
         let target = compute_udp_play_target(peer, 5004);
-        assert_eq!(target, "127.0.0.1:5004".parse::<std::net::SocketAddr>().unwrap());
+        assert_eq!(
+            target,
+            "127.0.0.1:5004".parse::<std::net::SocketAddr>().unwrap()
+        );
     }
 }

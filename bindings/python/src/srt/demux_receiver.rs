@@ -351,10 +351,12 @@ impl PyDemuxReceiver {
         // + blocks on lock). Matches the `close()` / `add_byte_sink()`
         // pattern in this file.
         let inner = self.inner.clone();
-        let core: Result<Option<tst_core::transport::SocketStats>, &'static str> =
-            py.allow_threads(|| {
+        let core: Result<Option<tst_core::transport::SocketStats>, &'static str> = py
+            .allow_threads(|| {
                 let guard = inner.lock().map_err(|_| "poisoned")?;
-                Ok(guard.as_ref().map(|rx| rx.socket_stats().unwrap_or_default()))
+                Ok(guard
+                    .as_ref()
+                    .map(|rx| rx.socket_stats().unwrap_or_default()))
             });
         let core = core
             .map_err(|_| make_srt_error(py, "IO", "DemuxReceiver lock poisoned"))?
@@ -375,7 +377,10 @@ impl PyDemuxReceiver {
         // Python objects after the guard is dropped and the GIL is
         // reacquired.
         let inner = self.inner.clone();
-        type RawStats = (tst_core::transport::SocketStats, tst_core::mpegts::mux::MuxerStats);
+        type RawStats = (
+            tst_core::transport::SocketStats,
+            tst_core::mpegts::mux::MuxerStats,
+        );
         let raw: Result<Option<RawStats>, &'static str> = py.allow_threads(|| {
             let guard = inner.lock().map_err(|_| "poisoned")?;
             Ok(guard.as_ref().map(|rx| {

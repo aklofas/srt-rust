@@ -266,7 +266,10 @@ mod tests {
         assert!(!t.is_alive(), "alive is false after force_dead");
 
         t.close();
-        assert!(t.ctx_is_null(), "ctx must be null after close() — rist_ctx was leaked");
+        assert!(
+            t.ctx_is_null(),
+            "ctx must be null after close() — rist_ctx was leaked"
+        );
     }
 
     #[test]

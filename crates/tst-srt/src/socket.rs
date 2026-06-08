@@ -825,7 +825,6 @@ fn io_from_option_error(e: OptionError) -> IoError {
     }
 }
 
-
 fn classify_send_error(raw: crate::error::RawError, payload_len: usize, limit: usize) -> SendError {
     // Deterministic check: if the caller's buffer obviously exceeds the
     // configured payload size, classify regardless of libsrt's specific

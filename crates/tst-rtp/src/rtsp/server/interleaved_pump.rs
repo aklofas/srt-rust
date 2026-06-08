@@ -167,14 +167,12 @@ pub(crate) fn spawn_server_pump(
                             continue;
                         }
                     };
-                    let content_length: usize = match header_text
-                        .lines()
-                        .find_map(|line| {
-                            let lower = line.to_ascii_lowercase();
-                            lower
-                                .strip_prefix("content-length:")
-                                .and_then(|v| v.trim().parse::<usize>().ok())
-                        }) {
+                    let content_length: usize = match header_text.lines().find_map(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        lower
+                            .strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    }) {
                         None => 0,
                         Some(n) if n > MAX_RTSP_BODY_BYTES => {
                             // Content-Length exceeds our cap. We cannot simply

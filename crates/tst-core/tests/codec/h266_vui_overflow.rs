@@ -18,7 +18,10 @@ struct BitWriter {
 
 impl BitWriter {
     fn new() -> Self {
-        Self { bytes: Vec::new(), pos: 0 }
+        Self {
+            bytes: Vec::new(),
+            pos: 0,
+        }
     }
 
     fn write(&mut self, value: u32, n: u32) {

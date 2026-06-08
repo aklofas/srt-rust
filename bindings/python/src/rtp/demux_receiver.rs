@@ -334,7 +334,10 @@ impl PyDemuxReceiver {
         // build Python objects after the guard is dropped and the GIL is
         // reacquired.
         let inner = self.inner.clone();
-        type RawStats = (tst_core::transport::SocketStats, tst_core::mpegts::mux::MuxerStats);
+        type RawStats = (
+            tst_core::transport::SocketStats,
+            tst_core::mpegts::mux::MuxerStats,
+        );
         let raw: Result<Option<RawStats>, &'static str> = py.allow_threads(|| {
             let guard = inner.lock().map_err(|_| "poisoned")?;
             Ok(guard.as_ref().map(|rx| {

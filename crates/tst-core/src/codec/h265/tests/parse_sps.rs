@@ -692,7 +692,13 @@ fn parse_sps_rejects_oversized_num_short_term_ref_pic_sets() {
     });
     let result = parse_sps(&rbsp);
     assert!(
-        matches!(result, Err(CodecParseError::ReservedValue { field: "num_short_term_ref_pic_sets", .. })),
+        matches!(
+            result,
+            Err(CodecParseError::ReservedValue {
+                field: "num_short_term_ref_pic_sets",
+                ..
+            })
+        ),
         "expected ReservedValue for num_short_term_ref_pic_sets, got {result:?}"
     );
 }

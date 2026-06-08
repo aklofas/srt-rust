@@ -517,9 +517,7 @@ impl RtpRecvTransport {
             if let Some(rtcp_port) = actual_rtp_port.checked_add(1) {
                 let rtcp_local: SocketAddr = if is_multicast {
                     match ip {
-                        IpAddr::V4(_) => {
-                            SocketAddr::new("0.0.0.0".parse().unwrap(), rtcp_port)
-                        }
+                        IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), rtcp_port),
                         IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), rtcp_port),
                     }
                 } else {

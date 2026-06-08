@@ -4,9 +4,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tst_core::net::udp_socket::{
-    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket,
-};
+use tst_core::net::udp_socket::{CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket};
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
 
 use crate::config::SocketConfig;
@@ -193,8 +191,7 @@ mod tests {
     /// interrupt it.
     #[test]
     fn close_unblocks_recv_bytes_after_recv_timeout() {
-        let mut recv =
-            UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
+        let mut recv = UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
 
         // Step 1 — call recv_timeout with a short deadline; no sender, so it
         // times out and returns Ok(None).  This is the call that, before the fix,

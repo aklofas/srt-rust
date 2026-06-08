@@ -340,7 +340,10 @@ mod tests {
             Ok(t) => t,
             Err(_) => return, // librist not available or port unusable — skip
         };
-        assert!(!t.ctx_is_null(), "ctx should be non-null after construction");
+        assert!(
+            !t.ctx_is_null(),
+            "ctx should be non-null after construction"
+        );
 
         // Simulate what happens when an error path fires: alive goes false, ctx
         // stays non-null.
@@ -350,7 +353,10 @@ mod tests {
 
         // Now close() must destroy and null ctx even though alive is already false.
         t.close();
-        assert!(t.ctx_is_null(), "ctx must be null after close() — rist_ctx was leaked");
+        assert!(
+            t.ctx_is_null(),
+            "ctx must be null after close() — rist_ctx was leaked"
+        );
     }
 
     /// Double close must be a no-op (no double-free): calling close() twice is

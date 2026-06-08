@@ -266,9 +266,7 @@ mod tests {
     fn decode_rejects_truncated_extension() {
         // X=1 but the packet is only 12 bytes — the 4-byte extension header is missing.
         let pkt: &[u8] = &[
-            0x90, 33, 0, 1,
-            0, 0, 0, 0,
-            0, 0, 0, 0,
+            0x90, 33, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
             // no extension header bytes
         ];
         let err = RtpHeader::decode(pkt).unwrap_err();

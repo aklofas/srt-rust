@@ -4,6 +4,7 @@ use tst_core::codec::av1::parse_obu_stream;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -61,13 +62,16 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
             payload:
                 SamplePayload::Video {
                     codec: VideoCodec::Av1,
-                    payload: VideoPayload::Obus(obus),
+                    raw,
                     ..
                 },
             ..
         } = e
         {
-            all_obus.extend(obus);
+            // Raw-first: split the encoded AU into OBUs via the opt-in call.
+            if let VideoPayload::Obus(obus) = split_video(&raw, VideoCodec::Av1).0 {
+                all_obus.extend(obus);
+            }
         }
     }
     assert!(

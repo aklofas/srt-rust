@@ -11,7 +11,7 @@
 //! wrapped in a struct). The audit's recommended `stream_classifier.rs`
 //! shape is collapsed into this module — narrower scope (PMT-specific).
 
-use crate::mpegts::demux::event::{AudioCodec, NalUnit, StreamKind, SubtitleCodec, VideoCodec};
+use crate::mpegts::demux::event::{AudioCodec, StreamKind, SubtitleCodec, VideoCodec};
 use crate::mpegts::demux::psi::{
     classify_audio_stream_type, extract_metadata_link, has_klva_registration,
 };
@@ -69,17 +69,6 @@ pub(super) fn extract_metadata_link_for_pid(
         .iter()
         .find(|s| s.elementary_pid == pid)
         .and_then(|s| extract_metadata_link(&s.descriptors))
-}
-
-/// Compute the total payload byte count for a slice of NAL units.
-pub(super) fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
-    nals.iter()
-        .map(|n| match n {
-            NalUnit::H264 { payload, .. }
-            | NalUnit::H265 { payload, .. }
-            | NalUnit::H266 { payload, .. } => payload.len(),
-        })
-        .sum()
 }
 
 /// Map a `StreamKind` to its MPEG-TS `stream_type` byte (PMT value).

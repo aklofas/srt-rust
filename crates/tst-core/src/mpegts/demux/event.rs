@@ -149,7 +149,13 @@ pub enum SubtitleCodec {
 pub enum SamplePayload {
     Video {
         codec: VideoCodec,
-        payload: VideoPayload,
+        /// The exact encoded access unit as demuxed (raw-first). The demuxer
+        /// no longer splits the video elementary stream during demux; parsing
+        /// NAL/OBU units is an opt-in call via
+        /// [`split_video`](crate::mpegts::demux::split_video) (or the strict
+        /// variant). This mirrors how KLV surfaces raw payload with an
+        /// opt-in decode.
+        raw: crate::shared::SharedBytes,
         /// True if the TS adaptation field carried `random_access_indicator`
         /// on the PES_start packet for this access unit. Source per ISO/IEC
         /// 13818-1 §2.4.3.4 flags byte bit 6 (0x40). Encoders + muxers set
@@ -747,14 +753,17 @@ pub enum NonConformantIssue {
     /// (`0x00 0x00 0x01`, the 3-byte `obu_start_code` = `uimsbf(24)` =
     /// `0x000001` per the binding syntax table).
     ///
-    /// Emitted only when the demuxer is configured for binding-conformant
-    /// AV1 carriage (`DemuxerConfig::av1_carriage == Av1CarriageMode::Mpeg2TsBinding`).
-    /// Indicates the payload is being interpreted as raw OBUs (interop
-    /// shape) rather than binding-framed.
-    ///
-    /// Lenient mode (`StrictMode::Off`): the demuxer falls back to raw-OBU
-    /// parsing and the OBUs surface on the `Sample` event. Strict mode
-    /// (`StrictMode::Full`): escalates to `DemuxError::StrictRejection`.
+    /// Raised by the opt-in
+    /// [`split_video`](crate::mpegts::demux::split_video) parse (NOT by the
+    /// demuxer, which is raw-first for video and never inspects the OBU
+    /// framing). When `split_video` finds no binding start code it falls back
+    /// to raw-OBU parsing — recovering the OBUs for interop-shaped carriage —
+    /// and includes this issue in its returned issue list. There is no
+    /// `StrictMode` gating: the demuxer's strict modes no longer apply to
+    /// video ES content (use
+    /// [`split_video_strict`](crate::mpegts::demux::split_video_strict) for a
+    /// fail-fast parse). `pid` is `0` — the opt-in parse path has no PID
+    /// context.
     Av1MissingTsObuFraming { pid: u16 },
 
     /// Other.

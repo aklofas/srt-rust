@@ -20,7 +20,9 @@
 use std::path::Path;
 use std::process::Command;
 use tst_core::codec::av1;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
+};
 
 fn ffprobe_available() -> bool {
     Command::new("ffprobe").arg("-version").output().is_ok()
@@ -109,13 +111,16 @@ fn av1_fixtures_match_ffprobe() {
                 payload:
                     SamplePayload::Video {
                         codec: VideoCodec::Av1,
-                        payload: VideoPayload::Obus(obus),
+                        raw,
                         ..
                     },
                 ..
             } = ev
             {
-                all_obus.extend(obus);
+                // Raw-first: split the encoded AU into OBUs via the opt-in call.
+                if let VideoPayload::Obus(obus) = split_video(&raw, VideoCodec::Av1).0 {
+                    all_obus.extend(obus);
+                }
             }
         }
 

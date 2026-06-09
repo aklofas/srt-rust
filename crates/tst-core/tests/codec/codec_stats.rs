@@ -14,12 +14,15 @@
 //! duplicate dozens of LoC of muxer logic for no real coverage gain.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::Demuxer;
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
+};
 use tst_core::mpegts::mux::{
     AudioCodec as MuxAudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder,
     SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
 };
 use tst_core::mpegts::stats::StreamCodecStats;
+use tst_core::shared::SharedBytes;
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -123,17 +126,32 @@ fn stream_codec_stats_h264_idr_increments_video_counters() {
         .unwrap();
     let bytes = drain_all(&mut mux);
 
-    let demux = demux_drain(&bytes);
-    match demux.stream_codec_stats(0x100) {
+    // Raw-first: the demuxer counts `random_access_aus` (from the PES_start
+    // RAI bit) but no longer counts `nals_or_obus` — NAL splitting is the
+    // opt-in `split_video` call, so the demux-side counter stays 0. The "2
+    // NALs (AUD + IDR)" intent is preserved by splitting the raw AU below.
+    let mut d = Demuxer::new();
+    d.feed(&bytes).unwrap();
+    d.flush();
+    let mut raw_au: Option<SharedBytes> = None;
+    while let Some(ev) = d.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { raw, .. },
+            ..
+        } = ev
+        {
+            raw_au = Some(raw);
+        }
+    }
+    match d.stream_codec_stats(0x100) {
         Some(StreamCodecStats::Video {
             nals_or_obus,
             random_access_aus,
             ..
         }) => {
-            // AUD + IDR ⇒ 2 NALs.
-            assert!(
-                nals_or_obus >= 2,
-                "expected ≥ 2 NALs (AUD + IDR), got {nals_or_obus}"
+            assert_eq!(
+                nals_or_obus, 0,
+                "raw-first demuxer no longer counts NALs (split is opt-in)"
             );
             assert_eq!(
                 random_access_aus, 1,
@@ -142,6 +160,16 @@ fn stream_codec_stats_h264_idr_increments_video_counters() {
         }
         other => panic!("expected Some(Video {{..}}), got {:?}", other),
     }
+    // The 2 NALs (AUD + IDR) are still recoverable via the opt-in split.
+    let raw = raw_au.expect("expected a Video Sample event");
+    let VideoPayload::Nals(nals) = split_video(&raw, VideoCodec::H264).0 else {
+        panic!("expected NALs from split_video");
+    };
+    assert!(
+        nals.len() >= 2,
+        "expected ≥ 2 NALs (AUD + IDR), got {}",
+        nals.len()
+    );
 }
 
 #[test]

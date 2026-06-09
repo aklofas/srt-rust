@@ -8,7 +8,7 @@
 
 use tst_core::codec::h264;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload, split_video};
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 
 const SPS_RBSP: &[u8] = include_bytes!("../fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
@@ -97,14 +97,14 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
     let mut found_sps = false;
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload:
-                SamplePayload::Video {
-                    payload: VideoPayload::Nals(nals),
-                    ..
-                },
+            payload: SamplePayload::Video { codec, raw, .. },
             ..
         } = ev
         {
+            // Raw-first: split the encoded AU into NALs via the opt-in call.
+            let VideoPayload::Nals(nals) = split_video(&raw, codec).0 else {
+                continue;
+            };
             // parse_parameter_sets walks every NalUnit in the AU and collects
             // SPS and PPS entries into typed maps.  Non-parameter-set NALs
             // (slice headers, IDR slices) are silently skipped.

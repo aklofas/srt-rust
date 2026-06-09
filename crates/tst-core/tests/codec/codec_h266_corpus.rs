@@ -21,7 +21,9 @@
 use std::path::Path;
 use std::process::Command;
 use tst_core::codec::h266;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
+};
 
 fn ffprobe_available() -> bool {
     Command::new("ffprobe").arg("-version").output().is_ok()
@@ -111,12 +113,16 @@ fn h266_fixtures_match_ffprobe() {
                 payload:
                     SamplePayload::Video {
                         codec: VideoCodec::H266,
-                        payload: VideoPayload::Nals(nals),
+                        raw,
                         ..
                     },
                 ..
             } = ev
             {
+                // Raw-first: split the encoded AU into NALs via the opt-in call.
+                let VideoPayload::Nals(nals) = split_video(&raw, VideoCodec::H266).0 else {
+                    continue;
+                };
                 if let Ok(sets) = h266::parse_parameter_sets(&nals) {
                     if let Some(sps) = sets.spses.first() {
                         got_dims = Some((sps.width, sps.height));

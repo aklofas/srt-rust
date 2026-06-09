@@ -8,21 +8,21 @@
 //! - `handle_complete_pes` — the central event-construction site.
 //!   Dispatches by `StreamKind`; constructs `DemuxEvent::Sample` /
 //!   `DemuxEvent::Metadata` with codec-specific payload shapes
-//!   (NAL split for H.264/265/266; OBU split for AV1; envelope strip
-//!   for DVB-sub; AU cell peel for sync KLV; raw pass-through for
-//!   audio / async KLV / unknown).
+//!   (raw AU pass-through for video — parsing into NAL/OBU units is the
+//!   consumer's opt-in `split_video` call; envelope strip for DVB-sub;
+//!   AU cell peel for sync KLV; raw pass-through for audio / async KLV /
+//!   unknown).
 //!
 //! All items are `pub(super)`.
 
-use super::pmt_classify::{nal_payload_bytes, stream_type_from_kind};
+use super::pmt_classify::stream_type_from_kind;
 use crate::mpegts::common::{Pts90khz, StreamTypeCode, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, MetadataKind, NonConformantIssue, SamplePayload,
-    StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
+    StreamId, StreamKind, SubtitleCodec, VideoCodec,
 };
 use crate::mpegts::demux::payload::{
-    Av1BindingUnwrap, DvbSubStripResult, KlvShape, classify_klv, iter_au_cells, split_nals,
-    split_obus, strip_dvb_sub_envelope, unwrap_av1_binding,
+    DvbSubStripResult, KlvShape, classify_klv, iter_au_cells, strip_dvb_sub_envelope,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
 use crate::shared::SharedBytes;
@@ -184,144 +184,39 @@ impl super::demuxer::Demuxer {
         }
         match kind {
             StreamKind::Video(codec) => {
-                // Codec dispatches the payload-shape: H.26x splits Annex-B NAL
-                // units (split_nals); AV1 splits OBUs (split_obus). The two
-                // share the same Sample event surface but emit different
-                // VideoPayload variants — the invariant is documented on
-                // VideoPayload.
+                // Raw-first: the demuxer no longer parses the video elementary
+                // stream. It emits the encoded access unit verbatim; splitting
+                // NAL/OBU units is the consumer's opt-in call via
+                // `split_video`. ES-content conformance (NAL/OBU header bits,
+                // OBU framing) moved off the demuxer's StrictMode and onto
+                // `split_video_strict`.
                 let rai = pes.random_access_indicator;
-                let (sample, payload_bytes, suppress_sample) = match codec {
-                    VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
-                        // Bridge copy: removed in the raw-first demuxer task (the demuxer will hold
-                        // the AU as a SharedBytes and pass it directly to the opt-in split).
-                        let (nals, issues) =
-                            split_nals(&SharedBytes::from_vec(pes.payload.clone()), codec);
-                        // NAL-header issues from B9 — forward to the
-                        // non-conformance pipeline. If strict mode rejects
-                        // any of them, suppress the Sample event so strict
-                        // consumers see only the StrictRejection (mirrors
-                        // C10's DvbSubDataIdentifier handling).
-                        let mut reject_sample = false;
-                        for issue in issues {
-                            if self.options.strict.rejects(&issue) {
-                                reject_sample = true;
-                            }
-                            self.queue_nonconformant(stream, issue);
-                        }
-                        let bytes = nal_payload_bytes(&nals);
-                        (
-                            SamplePayload::Video {
-                                codec,
-                                payload: VideoPayload::Nals(nals),
-                                random_access_indicator: rai,
-                            },
-                            bytes,
-                            reject_sample,
-                        )
-                    }
-                    VideoCodec::Av1 => {
-                        // AV1-in-MPEG-2-TS binding §3.2 + §3.4 conformance —
-                        // surface binding-spec violations BEFORE running the
-                        // OBU splitter. In `Mpeg2TsBinding` mode the demuxer
-                        // expects PES `stream_id=0xBD` (§3.4) and a
-                        // `ts_open_bitstream_unit()` start-code prefix on
-                        // each OBU (§3.2). The matching mux-side carriage
-                        // is `MuxerConfig::av1_carriage = Mpeg2TsBinding`.
-                        //
-                        // In `InteropRawObu` mode (matches ffmpeg / libaom
-                        // / hls.js / mediamtx today) the demuxer accepts
-                        // `stream_id=0xE0` and raw OBUs without raising
-                        // any binding issues. Senders that emit interop
-                        // carriage but consumers running binding-strict
-                        // demuxers will see one each of `Av1WrongStreamId`
-                        // + `Av1MissingTsObuFraming` per PES — both are
-                        // best-effort detectors; lenient mode still
-                        // surfaces the OBUs via the raw-OBU fallback.
-                        use crate::mpegts::mux::Av1CarriageMode;
-                        let binding_mode =
-                            matches!(self.options.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
-                        let mut reject_sample = false;
 
-                        // Per AV1-in-MPEG-2-TS binding §3.4 PES stream_id
-                        // MUST be 0xBD. Surface the observed byte when it
-                        // disagrees, but only in binding mode — interop
-                        // mode tolerates 0xE0 silently.
-                        if binding_mode && pes.stream_id != 0xBD {
-                            let issue = NonConformantIssue::Av1WrongStreamId {
+                // PES-layer (not ES-content) AV1 binding check: §3.4 mandates
+                // PES `stream_id = 0xBD` (private_stream_1) in binding mode.
+                // This inspects the PES/TS-layer stream_id, is independent of
+                // OBU splitting, and stays at the demux layer. In `InteropRawObu`
+                // mode the demuxer tolerates `stream_id = 0xE0` silently.
+                if codec == VideoCodec::Av1 {
+                    use crate::mpegts::mux::Av1CarriageMode;
+                    let binding_mode =
+                        matches!(self.options.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+                    if binding_mode && pes.stream_id != 0xBD {
+                        self.queue_nonconformant(
+                            stream,
+                            NonConformantIssue::Av1WrongStreamId {
                                 pid: stream.pid,
                                 observed: pes.stream_id,
-                            };
-                            if self.options.strict.rejects(&issue) {
-                                reject_sample = true;
-                            }
-                            self.queue_nonconformant(stream, issue);
-                        }
-
-                        // Try the `ts_open_bitstream_unit()` unwrap in
-                        // binding mode. If it fails, surface
-                        // `Av1MissingTsObuFraming` and fall back to raw-OBU
-                        // parsing on the original payload — strict mode
-                        // will still reject via `reject_sample`.
-                        let owned_payload: Vec<u8>;
-                        let obu_input: &[u8] = if binding_mode {
-                            match unwrap_av1_binding(&pes.payload) {
-                                Av1BindingUnwrap::Conformant(v) => {
-                                    owned_payload = v;
-                                    &owned_payload
-                                }
-                                Av1BindingUnwrap::MissingFraming => {
-                                    let issue = NonConformantIssue::Av1MissingTsObuFraming {
-                                        pid: stream.pid,
-                                    };
-                                    if self.options.strict.rejects(&issue) {
-                                        reject_sample = true;
-                                    }
-                                    self.queue_nonconformant(stream, issue);
-                                    &pes.payload
-                                }
-                            }
-                        } else {
-                            &pes.payload
-                        };
-
-                        // Bridge copy: removed in the raw-first demuxer task (the demuxer will hold
-                        // the AU as a SharedBytes and pass it directly to the opt-in split).
-                        let (obus, mut issues) =
-                            split_obus(&SharedBytes::from_vec(obu_input.to_vec()));
-                        // split_obus uses pid=0 as a sentinel on the issues it
-                        // raises (it doesn't know its own PID context). Patch
-                        // each issue with the real stream pid before forwarding
-                        // to the non-conformance pipeline.
-                        for issue in &mut issues {
-                            match issue {
-                                NonConformantIssue::Av1ObuMissingSizeField { pid, .. } => {
-                                    *pid = stream.pid
-                                }
-                                NonConformantIssue::Av1TileListNotAllowed { pid } => {
-                                    *pid = stream.pid
-                                }
-                                NonConformantIssue::Av1ObuHeader { pid, .. } => *pid = stream.pid,
-                                _ => {}
-                            }
-                        }
-                        for issue in issues {
-                            if self.options.strict.rejects(&issue) {
-                                reject_sample = true;
-                            }
-                            self.queue_nonconformant(stream, issue);
-                        }
-                        let bytes: usize = obus.iter().map(|o| o.payload.len()).sum();
-                        (
-                            SamplePayload::Video {
-                                codec,
-                                payload: VideoPayload::Obus(obus),
-                                random_access_indicator: rai,
                             },
-                            bytes,
-                            reject_sample,
-                        )
+                        );
                     }
-                };
+                }
+
+                // Wrap the AU once and emit it. The owned PES payload moves
+                // into the SharedBytes (zero copy of the bytes themselves).
+                let raw = SharedBytes::from_vec(pes.payload);
+                let raw_len = raw.len();
+
                 self.stats_per_stream
                     .entry(stream.pid)
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
@@ -331,45 +226,24 @@ impl super::demuxer::Demuxer {
                         ..Default::default()
                     })
                     .items += 1;
-                self.stats_per_stream.get_mut(&stream.pid).unwrap().bytes += payload_bytes as u64;
-                // Codec-specific counter bump. `nals_or_obus` counts the units
-                // split off this AU; `random_access_aus` increments by 1 when
-                // the TS adaptation-field RAI bit was set on the PES_start
-                // packet (latched into `random_access_indicator` on the Video
-                // variant).
-                let (nals_or_obus_count, ra_count) = match &sample {
-                    SamplePayload::Video {
-                        payload: VideoPayload::Nals(nals),
-                        random_access_indicator,
-                        ..
-                    } => (
-                        nals.len() as u64,
-                        if *random_access_indicator { 1 } else { 0 },
-                    ),
-                    SamplePayload::Video {
-                        payload: VideoPayload::Obus(obus),
-                        random_access_indicator,
-                        ..
-                    } => (
-                        obus.len() as u64,
-                        if *random_access_indicator { 1 } else { 0 },
-                    ),
-                    _ => (0, 0),
-                };
-                if nals_or_obus_count > 0 || ra_count > 0 {
-                    self.bump_video_counters(stream.pid, nals_or_obus_count, ra_count);
+                self.stats_per_stream.get_mut(&stream.pid).unwrap().bytes += raw_len as u64;
+                // `nals_or_obus` is no longer counted here (it required the
+                // split the demuxer no longer performs). The `random_access_aus`
+                // counter still increments from the PES_start RAI bit.
+                let ra_count = if rai { 1 } else { 0 };
+                if ra_count > 0 {
+                    self.bump_video_counters(stream.pid, 0, ra_count);
                 }
-                // In strict mode, NAL/OBU header violations suppress the
-                // Sample event so consumers see only the StrictRejection
-                // (same shape as C10's DvbSubDataIdentifier handling).
-                if !suppress_sample {
-                    self.queue.push_back(DemuxEvent::Sample {
-                        stream,
-                        pts,
-                        dts: pes.dts,
-                        payload: sample,
-                    });
-                }
+                self.queue.push_back(DemuxEvent::Sample {
+                    stream,
+                    pts,
+                    dts: pes.dts,
+                    payload: SamplePayload::Video {
+                        codec,
+                        raw,
+                        random_access_indicator: rai,
+                    },
+                });
             }
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
                 let shape = classify_klv(&pes.payload);

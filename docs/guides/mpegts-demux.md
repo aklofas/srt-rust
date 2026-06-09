@@ -31,6 +31,8 @@ same vocabulary — `VideoCodec`, `KlvStreamType` ↔ `MetadataKind`, PSI
 cadence — but the demuxer's contract is bigger because it has to cope
 with the messy reality of real-world captures.
 
+> **Python:** `tstrans` ships `py.typed` type stubs for the core `io`/`codec`/`klv`/`mpegts` modules, so editors and `mypy` resolve these types directly.
+
 **Decoupled pairing.** The demuxer does **NOT** pair sync-KLV records
 with video access units. Each KLV record and each video AU surfaces as
 an independent stream-tagged event with full timing info; pairing

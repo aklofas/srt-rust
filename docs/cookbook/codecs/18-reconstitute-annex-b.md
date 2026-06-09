@@ -14,20 +14,23 @@ already IS the Annex-B AU, start codes intact. This recipe is for isolating the
 parameter sets out of that AU.)
 
 Split the AU into NAL units with `split_video(&raw, codec)`, parse the
-parameter sets, and rebuild start codes around each one. The `raw_rbsp` field on
-each parsed struct preserves the input bytes verbatim (including
-emulation-prevention bytes). Prepend a 4-byte start code to get conformant
-Annex B framing:
+parameter sets, and rebuild Annex-B framing around each one. The `raw_rbsp` field on
+each parsed struct preserves the NAL's **RBSP body** verbatim (emulation-prevention
+bytes intact) — but the 1-byte NAL header was stripped during the split, so a
+conformant Annex-B NAL needs **both** a start code **and** the NAL header byte
+re-prepended (`0x67` for SPS, `0x68` for PPS):
 
 ```rust,no_run
 use tst_core::codec::h264;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
-fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
-    // Same for H.264 and H.265 — `split_video` includes the NAL header byte(s)
-    // in each unit's payload, so raw_rbsp already contains the full NAL unit
-    // minus its Annex-B start code. Just prepend the start code.
-    let mut out = vec![0x00, 0x00, 0x00, 0x01];
+fn to_annex_b(nal_header: u8, rbsp: &[u8]) -> Vec<u8> {
+    // `split_video` strips the 1-byte H.264 NAL header from each unit's payload,
+    // so `raw_rbsp` is the RBSP body only (emulation-prevention bytes preserved).
+    // Rebuild a conformant Annex-B NAL by prepending the start code AND the NAL
+    // header byte. (H.265 / H.266 use a 2-byte NAL header — prepend those two
+    // bytes instead.)
+    let mut out = vec![0x00, 0x00, 0x00, 0x01, nal_header];
     out.extend_from_slice(rbsp);
     out
 }
@@ -47,10 +50,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(ps) = h264::parse_parameter_sets(&nals) {
                 let mut decoder_config: Vec<u8> = Vec::new();
                 for sps in ps.sps_by_id.values() {
-                    decoder_config.extend(to_annex_b(&sps.raw_rbsp));
+                    // SPS NAL header: nal_ref_idc=3, nal_unit_type=7 -> 0x67
+                    decoder_config.extend(to_annex_b(0x67, &sps.raw_rbsp));
                 }
                 for pps in ps.pps_by_id.values() {
-                    decoder_config.extend(to_annex_b(&pps.raw_rbsp));
+                    // PPS NAL header: nal_ref_idc=3, nal_unit_type=8 -> 0x68
+                    decoder_config.extend(to_annex_b(0x68, &pps.raw_rbsp));
                 }
                 // Pass decoder_config to your hardware decoder or codec library.
             }

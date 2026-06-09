@@ -1036,42 +1036,58 @@ impl PyMuxer {
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
-    /// Push one access unit with explicit composition (PTS) and decode
-    /// (DTS) timestamps. Required for codecs that emit reordered output
-    /// (B-frames in H.264 / H.265 / H.266 / AV1).
+    /// Push one access unit with an optional explicit decode (DTS)
+    /// timestamp alongside the composition (PTS) timestamp.
     ///
-    /// Emits PES with `PTS_DTS_flags = '11'` per ISO/IEC 13818-1
-    /// §2.4.3.6 — 10 bytes of PES header data carrying both PTS
-    /// (composition time) and DTS (decode time). When `pts == dts`,
-    /// prefer [`push_video_to`][PyMuxer::push_video_to] for the smaller
-    /// 5-byte PTS-only encoding.
+    /// When `dts` is `None` (the default), the PES carries only the PTS
+    /// (`PTS_DTS_flags = '10'`, 5-byte PES timing) — identical output to
+    /// [`push_video_to`][PyMuxer::push_video_to]. This is the right
+    /// choice when re-muxing a demux stream whose `DemuxEvent.Video.dts`
+    /// is `None` (a PTS-only source): the round-trip stays byte-faithful.
     ///
-    /// Caller invariant: `dts <= pts` per §2.4.3.6 (decode order
-    /// precedes composition order). The muxer does not enforce this —
-    /// receivers will reject inverted timestamps.
+    /// Pass an explicit `dts` only when you have a genuine decode
+    /// timestamp distinct from the composition time — codecs that emit
+    /// reordered output (B-frames in H.264 / H.265 / H.266 / AV1). The
+    /// PES then carries both timestamps (`PTS_DTS_flags = '11'`, 10-byte
+    /// PES timing) per ISO/IEC 13818-1 §2.4.3.6.
+    ///
+    /// Caller invariant when `dts` is supplied: `dts <= pts` per
+    /// §2.4.3.6 (decode order precedes composition order). The muxer
+    /// does not enforce this — receivers will reject inverted timestamps.
     ///
     /// Internal cadence (PCR pacing, PSI emission, buffer reservation)
     /// keys off `pts`. DTS does not influence wall-clock scheduling.
     ///
     /// Error mapping matches `push_video_to`.
-    #[pyo3(signature = (handle, nal, *, pts, dts, key_frame = false))]
+    #[pyo3(signature = (handle, nal, *, pts, dts = None, key_frame = false))]
     pub fn push_video_to_with_dts(
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
         nal: &[u8],
         pts: &Bound<'_, PyAny>,
-        dts: &Bound<'_, PyAny>,
+        dts: Option<&Bound<'_, PyAny>>,
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let rust_dts = py_pts90khz(dts)?;
+        // dts=None routes to the PTS-only path (the same inner call
+        // `push_video_to` uses), which emits the 5-byte PtsOnly PES.
+        // The inner PtsAndDts call always emits the 10-byte header (no
+        // pts==dts downgrade), so passing `dts=pts` there would NOT be
+        // PTS-only — hence the explicit dispatch.
+        let rust_dts = match dts {
+            Some(v) => Some(py_pts90khz(v)?),
+            None => None,
+        };
         // GIL-release rationale (audit #11): see `push_video`. `handle.0`
         // copied out before release; `nal` is GIL-safe.
         let handle_inner = handle.0;
-        let res = py.allow_threads(|| {
-            self.inner
-                .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)
+        let res = py.allow_threads(|| match rust_dts {
+            None => self.inner.push_video_to(handle_inner, nal, rust_pts, key_frame),
+            Some(rust_dts) => {
+                self.inner
+                    .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)
+            }
         });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }

@@ -124,3 +124,64 @@ def test_audio_event_exposes_raw():
             assert isinstance(ev.raw, (bytes, bytearray))
             assert isinstance(ev.parse(), list)
             break
+
+
+# ---------------------------------------------------------------------------
+# Task 4.3 — push_video_* accept dts=None (PTS-only PES, == push_video_to)
+# ---------------------------------------------------------------------------
+
+def _drain(mux) -> bytes:
+    """Drain all queued TS packets from a Muxer into a single bytes blob."""
+    out = bytearray()
+    while True:
+        buf = bytearray(1316)
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out += bytes(buf[:n])
+    return bytes(out)
+
+
+def _single_video_mux():
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .pcr_pid(0x101)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    return Muxer(cfg)
+
+
+def test_push_video_accepts_dts_none():
+    """Passing dts=None to push_video_to_with_dts produces a PTS-only PES.
+    The muxer must accept it without error and produce TS output."""
+    mux = _single_video_mux()
+    vh = mux.video_stream_handle(0)
+    # Valid H.264 Annex-B IDR NAL (IDR slice, nal_unit_type=5).
+    au = b"\x00\x00\x00\x01\x65\x88\x84\x00\x10"
+    pts = Pts90khz.from_raw(9000)
+    mux.push_video_to_with_dts(vh, au, pts=pts, dts=None, key_frame=True)
+    buf = bytearray(1316)
+    assert mux.pull(buf) > 0
+
+
+def test_push_video_dts_none_equals_push_video_to():
+    """dts=None routes to the PTS-only path: byte-identical to push_video_to
+    for the same AU + pts (pins the 5-byte PtsOnly PES, not a 10-byte PtsAndDts
+    header with dts==pts)."""
+    au = b"\x00\x00\x00\x01\x65\x88\x84\x00\x10"
+    pts = Pts90khz.from_raw(9000)
+
+    mux_a = _single_video_mux()
+    mux_a.push_video_to(mux_a.video_stream_handle(0), au, pts=pts, key_frame=True)
+    ref = _drain(mux_a)
+
+    mux_b = _single_video_mux()
+    mux_b.push_video_to_with_dts(
+        mux_b.video_stream_handle(0), au, pts=pts, dts=None, key_frame=True
+    )
+    got = _drain(mux_b)
+
+    assert len(ref) > 0
+    assert got == ref

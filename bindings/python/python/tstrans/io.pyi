@@ -1,7 +1,11 @@
-"""Type stubs for tstrans.io — see io.py for the runtime + full docstrings."""
+"""Type stubs for tstrans.io — see io.py for the runtime + full docstrings.
+
+mypy --strict clean."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, Optional, Tuple, Union
 
 from tstrans.mpegts import (
     AudioCodec,
@@ -15,11 +19,11 @@ from tstrans.mpegts import (
 @dataclass(frozen=True, slots=True)
 class ProbeResult:
     size_bytes: int
-    programs: tuple[ProgramMap, ...]
-    pids: tuple[int, ...]
-    video_codecs: tuple[VideoCodec, ...]
-    audio_codecs: tuple[AudioCodec, ...]
-    subtitle_codecs: tuple[SubtitleCodec, ...]
+    programs: Tuple[ProgramMap, ...]
+    pids: Tuple[int, ...]
+    video_codecs: Tuple[VideoCodec, ...]
+    audio_codecs: Tuple[AudioCodec, ...]
+    subtitle_codecs: Tuple[SubtitleCodec, ...]
     has_klv: bool
     packet_count: int
 

@@ -42,6 +42,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `DemuxEvent.Video` / `DemuxEvent.Audio` gain `.raw` + `.parse()`.
 - `push_video_to_with_dts(dts=None)` produces a PTS-only PES (equivalent to
   `push_video_to`).
+- Python: type stubs (`.pyi`) for the core `tstrans.io`, `tstrans.codec`,
+  `tstrans.klv`, and `tstrans.mpegts` modules, giving IDE autocomplete and
+  `mypy` checking for the demux/mux/KLV/codec surface (previously only the
+  transport submodules shipped stubs). The stubs reflect the raw-first sample
+  model: `DemuxEvent.Video`/`.Audio` expose `.raw` + `.parse()`, and
+  `codec.split_units`/`codec.parse_audio` are typed. A `mypy stubtest` CI
+  ratchet keeps the stubs in sync with the runtime.
 
 ---
 

@@ -28,6 +28,8 @@ What this module is *not*: a TS demuxer. Pulling KLV out of a captured
 (see Section 11). TS demux in the Rust core is on the deferred list — see
 [`mpegts::demux`](/docs/project/deferred-features.md) in `deferred-features.md`.
 
+> **Python:** `tstrans` ships `py.typed` type stubs for the core `io`/`codec`/`klv`/`mpegts` modules, so editors and `mypy` resolve these types directly.
+
 Pick the decode entry point that fits your situation: `decode` for
 general-purpose decoding (verifies checksum, accepts any UL); reach for
 `decode_strict_compliance` only when validating producer output against

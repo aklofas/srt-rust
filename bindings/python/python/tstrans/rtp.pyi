@@ -25,26 +25,19 @@ from typing import (
     Union,
 )
 
-# Cross-module types are re-declared here as opaque forward-decl classes
-# rather than imported from `tstrans.mpegts`. The mpegts module exports
-# its PyClass-backed types as raw `_native_mod.Foo` variable assignments,
-# which mypy treats as variables (not types) — so re-importing them here
-# would fail mypy --strict with "Variable X is not valid as a type".
-#
-# When tstrans.mpegts grows a sibling `.pyi` stub these placeholders can
-# be deleted and replaced with `from tstrans.mpegts import ...`. Until
-# then the types are stable opaque tokens (no methods declared) and
-# users get the runtime types from `tstrans.mpegts` regardless.
-
-class Pts90khz: ...
-class VideoStreamHandle: ...
-class KlvStreamHandle: ...
-class AudioStreamHandle: ...
-class SubtitleStreamHandle: ...
-class MuxerProgramConfig: ...
-class MuxerStats: ...
-class DemuxerConfig: ...
-class DemuxEvent: ...
+# Cross-module types are imported from the `tstrans.mpegts` stub, which
+# now ships a sibling `.pyi` declaring these as real classes.
+from tstrans.mpegts import (
+    AudioStreamHandle,
+    DemuxerConfig,
+    DemuxEvent,
+    KlvStreamHandle,
+    MuxerProgramConfig,
+    MuxerStats,
+    Pts90khz,
+    SubtitleStreamHandle,
+    VideoStreamHandle,
+)
 
 # A bytes-like input — `bytes`, `bytearray`, `memoryview`, NumPy uint8,
 # or any object implementing the buffer protocol. Concrete extraction

@@ -6,7 +6,7 @@
 
 use super::types::{KlvSample, PairerOutput, VideoSample};
 use std::collections::VecDeque;
-use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, SamplePayload, split_video};
 
 /// Internal mode shape. The public [`super::PairerMode`]'s `Buffered`
 /// variant carries a `Duration` (max arrival skew); we still pair
@@ -73,8 +73,12 @@ impl NearestState {
                 stream,
                 pts,
                 dts,
-                payload: SamplePayload::Video { codec, payload, .. },
+                payload: SamplePayload::Video { codec, raw, .. },
             } if stream.pid == self.video_pid => {
+                // Video parsing is now opt-in: the demuxer emits the raw access
+                // unit and the pairing projection splits it into NAL/OBU units
+                // here (issues are not surfaced separately by the pairer).
+                let (payload, _issues) = split_video(&raw, codec);
                 let v = VideoSample {
                     stream,
                     pts,
@@ -266,7 +270,8 @@ impl NearestState {
 mod tests {
     use super::*;
     use tst_core::mpegts::common::Pts90khz;
-    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload};
+    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec};
+    use tst_core::shared::SharedBytes;
 
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
@@ -282,7 +287,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                payload: VideoPayload::Nals(Vec::new()),
+                raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
             },
         }

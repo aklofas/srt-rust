@@ -30,7 +30,9 @@ use std::io::Read;
 use std::process::ExitCode;
 
 use tst_core::codec::{av1, h264, h265, h266};
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
+};
 
 fn main() -> ExitCode {
     let path = match env::args().nth(1) {
@@ -111,12 +113,18 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
         // skipped — run demux_to_events.rs for the full annotated event dump.
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec, payload, .. },
+            payload: SamplePayload::Video { codec, raw, .. },
             ..
         } = ev
         else {
             continue;
         };
+
+        // Raw-first: the demuxer hands you the encoded access unit. Parsing it
+        // into NAL/OBU units is now an OPT-IN call via `split_video` (mirrors
+        // how KLV surfaces raw bytes with an opt-in decode). We split here and
+        // drop any ES-conformance `_issues`.
+        let (payload, _issues) = split_video(&raw, codec);
 
         // Two payload shapes ride VideoPayload:
         //   * Nals(Vec<NalUnit>) for H.264 / H.265 / H.266 — NAL-framed codecs

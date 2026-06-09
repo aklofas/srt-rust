@@ -12,16 +12,19 @@
 //! real MPEG-TS captures so integration tests and downstream tools can
 //! replay against production-shaped inputs.
 //!
-//! The demuxer hands each video AU back as a `Vec<NalUnit>` with Annex-B
-//! start codes already stripped. This example re-emits the start codes
-//! so the resulting `.bin` files are directly playable by an Annex-B
-//! decoder (or `ffmpeg -f h264 -i au_0000_*.bin ...` / `-f hevc ...`).
+//! The demuxer hands each video AU back as raw encoded bytes; this
+//! example opt-in `split_video`s them into a `Vec<NalUnit>` (start codes
+//! stripped) and re-emits the start codes so the resulting `.bin` files
+//! are directly playable by an Annex-B decoder (or `ffmpeg -f h264 -i
+//! au_0000_*.bin ...` / `-f hevc ...`).
 
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload, split_video,
+};
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -59,22 +62,26 @@ fn main() -> std::io::Result<()> {
         // Match the video Sample shape. Audio / Subtitle / Unknown
         // payloads are valid `Sample` variants too — they're explicitly
         // unhandled here because this example is video-only.
+        // Raw-first: the demuxer hands you the encoded access unit. Parsing it
+        // into NAL units is now an OPT-IN call via `split_video` (mirrors how
+        // KLV surfaces raw bytes with an opt-in decode). We split here, ignore
+        // any ES-conformance `_issues`, and reconstruct Annex-B from the NALs.
         if let DemuxEvent::Sample {
             pts,
-            payload:
-                SamplePayload::Video {
-                    codec,
-                    payload: VideoPayload::Nals(nals),
-                    ..
-                },
+            payload: SamplePayload::Video { codec, raw, .. },
             ..
         } = event
         {
+            let (payload, _issues) = split_video(&raw, codec);
+            let VideoPayload::Nals(nals) = payload else {
+                // OBU-shaped video (AV1) — not handled by this Annex-B example.
+                continue;
+            };
             let pts = pts.as_ticks();
             // Reassemble Annex-B bytes from the typed NAL units. The
-            // demuxer stripped start codes during the H.264/H.265 NAL
-            // split; consumers writing back to disk for an Annex-B
-            // decoder need them re-emitted.
+            // opt-in `split_video` stripped start codes during the
+            // H.264/H.265 NAL split; consumers writing back to disk for an
+            // Annex-B decoder need them re-emitted.
             //
             // The H.264/H.265 specs allow either a 3-byte
             // (`00 00 01`) or 4-byte (`00 00 00 01`) start code. Both

@@ -14,9 +14,9 @@ use std::time::Duration;
 use tst_core::mpegts::au_cell::CellFragmentIndication;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind, VideoCodec,
-    VideoPayload,
+    DemuxEvent, MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec,
 };
+use tst_core::shared::SharedBytes;
 use tst_pipeline::ext::pairing::{Pairer, PairerConfig, PairerMode};
 
 const VIDEO_PID: u16 = 0x0100;
@@ -38,11 +38,16 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
         dts: Some(Pts90khz::new(pts)),
         payload: SamplePayload::Video {
             codec: VideoCodec::H264,
-            payload: VideoPayload::Nals(vec![NalUnit::H264 {
-                nal_type: if frame_index % 30 == 0 { 5 } else { 1 }, // IDR vs P
-                ref_idc: 1,
-                payload: vec![0xA5; 5_000].into(),
-            }]),
+            // Raw-first: the demuxer emits the encoded access unit; the pairer
+            // now opt-in `split_video`s it. Build a realistic 5 KiB Annex-B AU
+            // (start code + NAL header + body) so the benchmark exercises the
+            // per-event split cost the pairer incurs in the new pipeline.
+            raw: {
+                let mut au = vec![0x00, 0x00, 0x00, 0x01]; // Annex-B start code
+                au.push(if frame_index % 30 == 0 { 0x65 } else { 0x41 }); // IDR vs P NAL header
+                au.extend(std::iter::repeat_n(0xA5u8, 5_000)); // body
+                SharedBytes::from_vec(au)
+            },
             random_access_indicator: frame_index % 30 == 0,
         },
     }

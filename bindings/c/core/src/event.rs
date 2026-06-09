@@ -767,7 +767,7 @@ fn fill_sample(
     payload: &tst_core::mpegts::demux::SamplePayload,
     out: &mut TstEvent,
 ) {
-    use tst_core::mpegts::demux::{SamplePayload, VideoPayload};
+    use tst_core::mpegts::demux::{SamplePayload, VideoPayload, split_video};
     let (kind_tag, _codec_int) = stream_kind_to_c(&stream.kind);
     let mut codec = -1i32;
     let mut nals_ptr: *const TstNal = core::ptr::null();
@@ -781,12 +781,17 @@ fn fill_sample(
     match payload {
         SamplePayload::Video {
             codec: vc,
-            payload: vp,
+            raw,
             random_access_indicator: rai,
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             random_access_indicator = u8::from(*rai);
-            match vp {
+            // Raw-first: the demuxer emits the encoded access unit; split it
+            // into NAL/OBU units here (the opt-in parse) so the C
+            // TstNalUnit[]/TstObu[] surface is unchanged. ES-conformance
+            // issues are not surfaced over this C ABI.
+            let (vp, _issues) = split_video(raw, *vc);
+            match &vp {
                 VideoPayload::Nals(nals) => {
                     // Two-pass: collect (offset, len) per NAL, resolve to
                     // `payload_buf.as_ptr() + offset` after all extends
@@ -1426,8 +1431,8 @@ mod tests {
     use super::*;
     use tst_core::mpegts::common::{Pts90khz, StreamTypeCode};
     use tst_core::mpegts::demux::{
-        AudioCodec, DemuxEvent, MetadataKind, NalUnit, Obu, SamplePayload, StreamId, StreamKind,
-        SubtitleCodec, VideoCodec, VideoPayload,
+        AudioCodec, DemuxEvent, MetadataKind, SamplePayload, StreamId, StreamKind, SubtitleCodec,
+        VideoCodec,
     };
     use tst_core::shared::SharedBytes;
 
@@ -1539,19 +1544,19 @@ mod tests {
 
     #[test]
     fn h264_nal_payload_is_arena_owned() {
-        let nal_payload = vec![0x67u8, 0x42, 0x00, 0x1E];
-        let nal_ptr_before = nal_payload.as_ptr();
+        // Raw-first: the demuxer emits the encoded AU; `convert` `split_video`s
+        // it internally. Build a one-NAL Annex-B AU (start code + NAL body
+        // 0x67 0x42 0x00 0x1E). The split yields a zero-copy view into `raw`;
+        // the arena copy must NOT alias that backing allocation.
+        let raw = vec![0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E];
+        let raw_ptr_before = raw.as_ptr();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x500, StreamKind::Video(VideoCodec::H264)),
             pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                payload: VideoPayload::Nals(vec![NalUnit::H264 {
-                    nal_type: 7,
-                    ref_idc: 3,
-                    payload: SharedBytes::from_vec(nal_payload),
-                }]),
+                raw: SharedBytes::from_vec(raw),
                 random_access_indicator: true,
             },
         };
@@ -1561,26 +1566,26 @@ mod tests {
         assert_eq!(arena.nals.len(), 1);
         let nal_out_ptr = arena.nals[0].payload;
         assert_ne!(
-            nal_out_ptr, nal_ptr_before,
-            "H.264 NAL payload pointer must NOT alias the input Vec"
+            nal_out_ptr, raw_ptr_before,
+            "H.264 NAL payload pointer must NOT alias the input AU bytes"
         );
     }
 
     #[test]
     fn av1_obu_payload_is_arena_owned() {
-        let obu_payload = vec![0x0Au8, 0x0B, 0x0C];
-        let obu_ptr_before = obu_payload.as_ptr();
+        // Raw-first: build a single raw OBU (interop carriage, no binding
+        // framing). Header = (obu_type=1 << 3) | has_size(0x02) = 0x0A;
+        // LEB128 size = 0x03; body = 0x0A 0x0B 0x0C. `split_video(_, Av1)`
+        // falls back to raw-OBU parsing; the arena copy must not alias `raw`.
+        let raw = vec![0x0Au8, 0x03, 0x0A, 0x0B, 0x0C];
+        let raw_ptr_before = raw.as_ptr();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x600, StreamKind::Video(VideoCodec::Av1)),
             pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::Av1,
-                payload: VideoPayload::Obus(vec![Obu {
-                    obu_type: 1, // SequenceHeader
-                    extension: None,
-                    payload: obu_payload.into(),
-                }]),
+                raw: SharedBytes::from_vec(raw),
                 random_access_indicator: true,
             },
         };
@@ -1590,8 +1595,8 @@ mod tests {
         assert_eq!(arena.obus.len(), 1);
         let obu_out_ptr = arena.obus[0].payload;
         assert_ne!(
-            obu_out_ptr, obu_ptr_before,
-            "AV1 OBU payload pointer must NOT alias the input Vec"
+            obu_out_ptr, raw_ptr_before,
+            "AV1 OBU payload pointer must NOT alias the input AU bytes"
         );
     }
 

@@ -1071,7 +1071,7 @@ fn parse_h264_parameter_sets_py(
             Some(RustNalUnit::H264 {
                 nal_type: n.nal_type,
                 ref_idc: n.ref_idc.unwrap_or(3),
-                payload: n.payload.clone(),
+                payload: n.payload.clone().into(),
             })
         })
         .collect();
@@ -1807,7 +1807,7 @@ fn parse_h265_parameter_sets_py(
                 nal_type: n.nal_type,
                 layer_id: n.layer_id.unwrap_or(0),
                 temporal_id_plus1: n.temporal_id_plus1.unwrap_or(1),
-                payload: n.payload.clone(),
+                payload: n.payload.clone().into(),
             })
         })
         .collect();
@@ -2364,7 +2364,7 @@ fn parse_h266_parameter_sets_py(
                 nal_type: n.nal_type,
                 layer_id: n.layer_id.unwrap_or(0),
                 temporal_id_plus1: n.temporal_id_plus1.unwrap_or(1),
-                payload: n.payload.clone(),
+                payload: n.payload.clone().into(),
             })
         })
         .collect();
@@ -2683,7 +2683,7 @@ fn parse_av1_obu_stream_py(obus: Vec<ObuPy>) -> Av1ObuStreamPy {
                 temporal_id: ext.temporal_id,
                 spatial_id: ext.spatial_id,
             }),
-            payload: o.payload,
+            payload: o.payload.into(),
         })
         .collect();
     let inner = rust_parse_av1_obu_stream(&rust_obus);

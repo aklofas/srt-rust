@@ -216,7 +216,7 @@ fn read_obu(env: &mut JNIEnv, item: &JObject) -> jni::errors::Result<Obu> {
     Ok(Obu {
         obu_type,
         extension,
-        payload,
+        payload: payload.into(),
     })
 }
 

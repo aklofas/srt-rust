@@ -443,7 +443,7 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH266ParameterSets<'loc
                 nal_type,
                 layer_id,
                 temporal_id_plus1,
-                payload,
+                payload: payload.into(),
             }))
         });
         match parsed {

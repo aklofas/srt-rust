@@ -41,7 +41,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
             payload: VideoPayload::Nals(vec![NalUnit::H264 {
                 nal_type: if frame_index % 30 == 0 { 5 } else { 1 }, // IDR vs P
                 ref_idc: 1,
-                payload: vec![0xA5; 5_000],
+                payload: vec![0xA5; 5_000].into(),
             }]),
             random_access_indicator: frame_index % 30 == 0,
         },

@@ -49,7 +49,7 @@ fn round_trip(codec: MuxSub, payload: &[u8]) -> Vec<u8> {
             ..
         } = e
         {
-            out = Some(payload);
+            out = Some(payload.to_vec());
             break;
         }
     }

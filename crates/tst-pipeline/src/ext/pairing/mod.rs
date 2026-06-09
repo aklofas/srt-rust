@@ -337,6 +337,7 @@ mod tests {
         AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue, ProgramMap, SamplePayload,
         StreamId, StreamKind, VideoCodec, VideoPayload,
     };
+    use tst_core::shared::SharedBytes;
 
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
@@ -422,7 +423,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Audio {
                 codec: AudioCodec::Aac,
-                frames: vec![0xFF, 0xF1],
+                frames: SharedBytes::from_vec(vec![0xFF, 0xF1]),
             },
         };
         let out = p.feed(audio);
@@ -546,7 +547,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Audio {
                 codec: AudioCodec::Aac,
-                frames: Vec::new(),
+                frames: SharedBytes::from_vec(Vec::new()),
             },
         };
         let out = p.feed(a);

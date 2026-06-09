@@ -411,7 +411,7 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH264ParameterSets<'loc
             Ok(Some(NalUnit::H264 {
                 nal_type,
                 ref_idc,
-                payload,
+                payload: payload.into(),
             }))
         });
         match parsed {

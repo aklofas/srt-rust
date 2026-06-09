@@ -332,7 +332,7 @@ pub(crate) fn convert_event<'local>(
                 }
                 SamplePayload::Audio { codec, frames } => {
                     let (typed_list, raw_buf, parse_err) =
-                        build_audio_payload(env, *codec, frames)?;
+                        build_audio_payload(env, *codec, frames.as_slice())?;
                     let codec_obj = codec_enum(env, "AudioCodec", audio_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Audio",
@@ -350,7 +350,7 @@ pub(crate) fn convert_event<'local>(
                     .map_err(|_| ())?
                 }
                 SamplePayload::Subtitle { codec, payload } => {
-                    let buf = wrap_heap_byte_buffer(env, payload)?;
+                    let buf = wrap_heap_byte_buffer(env, payload.as_slice())?;
                     let codec_obj = codec_enum(env, "SubtitleCodec", subtitle_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Subtitle",
@@ -366,7 +366,7 @@ pub(crate) fn convert_event<'local>(
                     .map_err(|_| ())?
                 }
                 SamplePayload::Unknown { stream_type, raw } => {
-                    let buf = wrap_heap_byte_buffer(env, raw)?;
+                    let buf = wrap_heap_byte_buffer(env, raw.as_slice())?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$UnknownSample",
                         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;ILjava/nio/ByteBuffer;)V",

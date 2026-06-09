@@ -142,17 +142,17 @@ fn obu_stream_with_all_malformed_payloads_does_not_panic() {
         Obu {
             obu_type: 1, // Sequence Header
             extension: None,
-            payload: vec![], // empty — will fail to parse
+            payload: vec![].into(), // empty — will fail to parse
         },
         Obu {
             obu_type: 3, // Frame Header
             extension: None,
-            payload: vec![0xFF, 0xFF], // no preceding SH → engine error
+            payload: vec![0xFF, 0xFF].into(), // no preceding SH → engine error
         },
         Obu {
             obu_type: 1, // Another malformed SH
             extension: None,
-            payload: vec![0xAA, 0xBB],
+            payload: vec![0xAA, 0xBB].into(),
         },
     ];
 
@@ -176,12 +176,12 @@ fn obu_stream_truncated_frame_header_in_unparseable() {
         Obu {
             obu_type: 1,
             extension: None,
-            payload: seq_payload,
+            payload: seq_payload.into(),
         },
         Obu {
             obu_type: 3, // Frame Header with empty body — truncated
             extension: None,
-            payload: vec![],
+            payload: vec![].into(),
         },
     ];
 

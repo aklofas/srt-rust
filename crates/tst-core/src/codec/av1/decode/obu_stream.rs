@@ -84,17 +84,17 @@ mod tests {
             Obu {
                 obu_type: 2,
                 extension: None,
-                payload: vec![],
+                payload: vec![].into(),
             }, // TD
             Obu {
                 obu_type: 1,
                 extension: None,
-                payload: minimal_seq_header_body(),
+                payload: minimal_seq_header_body().into(),
             },
             Obu {
                 obu_type: 3,
                 extension: None,
-                payload: keyframe_body(),
+                payload: keyframe_body().into(),
             },
         ];
         let stream = parse_obu_stream(&obus);
@@ -109,7 +109,7 @@ mod tests {
             Obu {
                 obu_type: 1,
                 extension: None,
-                payload: vec![],
+                payload: vec![].into(),
             }, // truncated SH
         ];
         let stream = parse_obu_stream(&obus);
@@ -123,7 +123,7 @@ mod tests {
         let obus = vec![Obu {
             obu_type: 3,
             extension: None,
-            payload: keyframe_body(),
+            payload: keyframe_body().into(),
         }];
         let stream = parse_obu_stream(&obus);
         assert_eq!(stream.sequence_headers.len(), 0);
@@ -138,12 +138,12 @@ mod tests {
             Obu {
                 obu_type: 5,
                 extension: None,
-                payload: vec![0x00],
+                payload: vec![0x00].into(),
             }, // Metadata — pass through
             Obu {
                 obu_type: 4,
                 extension: None,
-                payload: vec![0x00],
+                payload: vec![0x00].into(),
             }, // TileGroup — pass through
         ];
         let stream = parse_obu_stream(&obus);

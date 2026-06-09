@@ -9,6 +9,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::time::Duration;
 
+use crate::shared::SharedBytes;
+
 use crate::mpegts::common::{Pts90khz, StreamTypeCode};
 pub use crate::mpegts::demux::ts::PcrMalformedKind;
 
@@ -208,7 +210,7 @@ pub struct Obu {
     /// OBU payload bytes — header + extension byte + LEB128 size field
     /// stripped. Pass-through; parsed by `codec::av1::parse_*` if the
     /// consumer wants typed fields.
-    pub payload: Vec<u8>,
+    pub payload: SharedBytes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -230,7 +232,7 @@ pub enum NalUnit {
         ref_idc: u8,
         /// RBSP bytes; Annex-B start codes stripped, emulation prevention
         /// bytes preserved (consumer's decoder removes them).
-        payload: Vec<u8>,
+        payload: SharedBytes,
     },
     H265 {
         /// 6-bit `nal_unit_type` (H.265 §7.3.1.2).
@@ -240,7 +242,7 @@ pub enum NalUnit {
         /// 3-bit `nuh_temporal_id_plus1` (H.265 §7.3.1.2).
         temporal_id_plus1: u8,
         /// RBSP bytes; same stripping/preservation rules as `H264`.
-        payload: Vec<u8>,
+        payload: SharedBytes,
     },
     /// One H.266 / VVC NAL unit. Header parsed per H.266 V4 §7.3.1.2.
     ///
@@ -257,7 +259,7 @@ pub enum NalUnit {
         temporal_id_plus1: u8,
         /// RBSP bytes; Annex-B start codes stripped, emulation
         /// prevention preserved (consumer's decoder removes 0x03 escapes).
-        payload: Vec<u8>,
+        payload: SharedBytes,
     },
 }
 
@@ -1139,13 +1141,13 @@ mod tests {
         let h264 = NalUnit::H264 {
             nal_type: 5,
             ref_idc: 3,
-            payload: vec![],
+            payload: SharedBytes::from_vec(vec![]),
         };
         let h265 = NalUnit::H265 {
             nal_type: 19,
             layer_id: 0,
             temporal_id_plus1: 1,
-            payload: vec![],
+            payload: SharedBytes::from_vec(vec![]),
         };
         assert_ne!(h264, h265);
     }

@@ -10,7 +10,7 @@ fn nal_h264(nal_type: u8, payload: Vec<u8>) -> NalUnit {
     NalUnit::H264 {
         nal_type,
         ref_idc: 3,
-        payload,
+        payload: payload.into(),
     }
 }
 
@@ -180,7 +180,7 @@ fn parse_parameter_sets_skips_h265_nals_silently() {
             nal_type: 32,
             layer_id: 0,
             temporal_id_plus1: 1,
-            payload: vec![0; 8],
+            payload: vec![0; 8].into(),
         },
         nal_h264(7, SPS_1080P_HIGH40.to_vec()),
     ];

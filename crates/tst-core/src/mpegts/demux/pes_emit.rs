@@ -25,6 +25,7 @@ use crate::mpegts::demux::payload::{
     split_obus, strip_dvb_sub_envelope, unwrap_av1_binding,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
+use crate::shared::SharedBytes;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
@@ -191,7 +192,10 @@ impl super::demuxer::Demuxer {
                 let rai = pes.random_access_indicator;
                 let (sample, payload_bytes, suppress_sample) = match codec {
                     VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
-                        let (nals, issues) = split_nals(&pes.payload, codec);
+                        // Bridge copy: removed in the raw-first demuxer task (the demuxer will hold
+                        // the AU as a SharedBytes and pass it directly to the opt-in split).
+                        let (nals, issues) =
+                            split_nals(&SharedBytes::from_vec(pes.payload.clone()), codec);
                         // NAL-header issues from B9 — forward to the
                         // non-conformance pipeline. If strict mode rejects
                         // any of them, suppress the Sample event so strict
@@ -280,7 +284,10 @@ impl super::demuxer::Demuxer {
                             &pes.payload
                         };
 
-                        let (obus, mut issues) = split_obus(obu_input);
+                        // Bridge copy: removed in the raw-first demuxer task (the demuxer will hold
+                        // the AU as a SharedBytes and pass it directly to the opt-in split).
+                        let (obus, mut issues) =
+                            split_obus(&SharedBytes::from_vec(obu_input.to_vec()));
                         // split_obus uses pid=0 as a sentinel on the issues it
                         // raises (it doesn't know its own PID context). Patch
                         // each issue with the real stream pid before forwarding

@@ -12,13 +12,13 @@ fn parse_parameter_sets_partial_success_one_bad_sps() {
         nal_type: 15, // SPS_NUT
         layer_id: 0,
         temporal_id_plus1: 1,
-        payload: vec![0x00], // truncated — fails on max_sublayers read
+        payload: vec![0x00].into(), // truncated — fails on max_sublayers read
     };
     let good_pps = NalUnit::H266 {
         nal_type: 16, // PPS_NUT
         layer_id: 0,
         temporal_id_plus1: 1,
-        payload: vec![0x00, 0x20], // minimal valid PPS
+        payload: vec![0x00, 0x20].into(), // minimal valid PPS
     };
     let result = parse_parameter_sets(&[bad_sps, good_pps]);
     let sets = result.expect("should not fail when at least one parses");
@@ -35,7 +35,7 @@ fn parse_parameter_sets_all_bad_returns_err() {
         nal_type: 14,
         layer_id: 0,
         temporal_id_plus1: 1,
-        payload: vec![],
+        payload: vec![].into(),
     };
     let result = parse_parameter_sets(&[bad_vps]);
     assert!(result.is_err());

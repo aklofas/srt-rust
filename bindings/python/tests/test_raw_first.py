@@ -1,6 +1,8 @@
 """Tests for codec.split_units and codec.parse_audio opt-in parsers (Task 4.1)
-plus the DemuxEvent.Video/.Audio raw-first surface (Task 4.2)."""
+plus the DemuxEvent.Video/.Audio raw-first surface (Task 4.2)
+plus Task 5.3 end-to-end transmux acceptance test."""
 
+import dataclasses
 import tempfile
 from pathlib import Path
 
@@ -185,3 +187,195 @@ def test_push_video_dts_none_equals_push_video_to():
 
     assert len(ref) > 0
     assert got == ref
+
+
+# ---------------------------------------------------------------------------
+# Task 5.3 — end-to-end transmux acceptance test
+#
+# Motivating workflow: demux SRC → for each KLV event, edit one metadata
+# field and re-emit; for each video event, forward the raw AU bytes
+# verbatim → re-mux to OUT.
+#
+# Assertions:
+#   1. Video byte-faithful: every OUT video AU equals the corresponding
+#      SRC video AU byte-for-byte.
+#   2. KLV edit present: the edited field has the new value in OUT.
+#   3. Unedited KLV field preserved: proves selective edit, not clobber.
+# ---------------------------------------------------------------------------
+
+def test_transmux_edit_klv_copy_video_byte_faithful():
+    """Demux a synthetic H.264+KLV TS, edit one ST 0601 field (frame_center_lat_deg),
+    forward all video AUs verbatim via the raw-first push API, re-mux to OUT,
+    then assert video is byte-faithful and the KLV edit is present."""
+    from tstrans.mpegts import (
+        KlvStreamType,
+        Muxer,
+        MuxerConfigBuilder,
+        MuxerProgramConfigBuilder,
+        Pts90khz,
+        VideoCodec,
+        DemuxEvent,
+        Demuxer,
+    )
+    from tstrans.klv import (
+        ST_0601_UL,
+        UasDatalinkLs,
+        decode_uas_datalink,
+        encode_uas_datalink,
+    )
+
+    # ------------------------------------------------------------------
+    # Step 1: build synthetic SRC TS with H.264 video + ST 0601 KLV.
+    # Each video AU is a distinct 4-byte-start-code NAL so we can tell
+    # them apart byte-for-byte after the round-trip.
+    # ------------------------------------------------------------------
+
+    # Three distinct H.264 Annex-B AUs: one IDR (key frame) + two P-frames.
+    # These are minimal but structurally valid NALs for the muxer.
+    ORIG_AUS = [
+        # IDR slice (nal_unit_type=5); key frame
+        b"\x00\x00\x00\x01\x65\x88\x84\x00\x10\xAA\xBB",
+        # Non-IDR slice (nal_unit_type=1)
+        b"\x00\x00\x00\x01\x41\x9A\x00\x34\xCC",
+        # Another non-IDR slice with different payload
+        b"\x00\x00\x00\x01\x41\x9A\x01\x35\xDD\xEE",
+    ]
+    KEY_FRAMES = [True, False, False]
+
+    # ST 0601 record to embed in SRC.  We use two populated fields so we
+    # can confirm one is edited (frame_center_lat_deg) and one is
+    # preserved (sensor_lat_deg) after the transmux.
+    ORIG_LAT = 47.6097          # Seattle-ish
+    ORIG_SENSOR_LAT = 47.6200   # sensor position, stays unchanged
+
+    def _make_klv_bytes(lat: float) -> bytes:
+        rec = UasDatalinkLs(
+            universal_label=ST_0601_UL,
+            declared_version=19,
+            timestamp_us=1_700_000_000_000_000,
+            frame_center_lat_deg=lat,
+            frame_center_lon_deg=-122.3321,
+            sensor_lat_deg=ORIG_SENSOR_LAT,
+            sensor_lon_deg=-122.3000,
+            sensor_alt_m=500.0,
+        )
+        return encode_uas_datalink(rec)
+
+    src_cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+            .build()
+        )
+        .build()
+    )
+
+    pts0 = 900_000  # ~10 s at 90 kHz
+    pts_step = 3_000  # ~33 ms per frame
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src_path = Path(tmp) / "src.ts"
+        out_path = Path(tmp) / "out.ts"
+
+        # Write SRC: interleave video + KLV at matching timestamps.
+        src_mux = Muxer(src_cfg)
+        with src_mux.write_file(src_path) as proxy:
+            for i, (au, key) in enumerate(zip(ORIG_AUS, KEY_FRAMES)):
+                pts = Pts90khz.from_raw(pts0 + i * pts_step)
+                proxy.push_video(au, pts=pts, key_frame=key)
+                # One KLV per video frame; same PTS.
+                proxy.push_klv(_make_klv_bytes(ORIG_LAT), pts=pts)
+
+        # ------------------------------------------------------------------
+        # Step 2: demux SRC → transmux to OUT.
+        # Video: forwarded raw via push_video_to_with_dts (dts=None → PTS-only).
+        # KLV: decode ST 0601, edit frame_center_lat_deg, re-encode, push.
+        # ------------------------------------------------------------------
+        EDITED_LAT = 37.7749  # San Francisco — clearly different from Seattle
+
+        out_cfg = (
+            MuxerConfigBuilder()
+            .add_program(
+                MuxerProgramConfigBuilder(1, 0x100)
+                .add_video(0x101, VideoCodec.H264)
+                .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+                .build()
+            )
+            .build()
+        )
+        out_mux = Muxer(out_cfg)
+        vh = out_mux.video_stream_handle(0)
+        kh = out_mux.klv_stream_handle(0)
+
+        with out_mux.write_file(out_path) as proxy:
+            for ev in tio.parse_file(src_path):
+                if isinstance(ev, DemuxEvent.Video):
+                    # Raw-first: forward the exact bytes received; no re-encode.
+                    proxy.push_video_to_with_dts(
+                        vh,
+                        ev.raw,
+                        pts=ev.pts,
+                        dts=ev.dts,
+                        key_frame=ev.random_access_indicator,
+                    )
+                elif isinstance(ev, DemuxEvent.Klv):
+                    # Decode, patch one field, re-encode.
+                    original = decode_uas_datalink(bytes(ev.payload))
+                    edited = dataclasses.replace(
+                        original, frame_center_lat_deg=EDITED_LAT
+                    )
+                    proxy.push_klv_to(kh, encode_uas_datalink(edited), pts=ev.pts)
+
+        # ------------------------------------------------------------------
+        # Step 3: demux OUT and assert correctness.
+        # ------------------------------------------------------------------
+        out_video_aus: list[bytes] = []
+        out_klv_recs: list[UasDatalinkLs] = []
+
+        for ev in tio.parse_file(out_path):
+            if isinstance(ev, DemuxEvent.Video):
+                out_video_aus.append(bytes(ev.raw))
+            elif isinstance(ev, DemuxEvent.Klv):
+                out_klv_recs.append(decode_uas_datalink(bytes(ev.payload)))
+
+        # Structural sanity: we must have recovered events for both streams.
+        assert len(out_video_aus) >= 1, (
+            f"no video events recovered from OUT TS; got {len(out_video_aus)}"
+        )
+        assert len(out_klv_recs) >= 1, (
+            f"no KLV events recovered from OUT TS; got {len(out_klv_recs)}"
+        )
+
+        # ---- Assertion 1: video AUs byte-faithful (per-AU) -----------
+        # The round-trip preserves AU boundaries 1:1, so compare each AU
+        # individually — stronger than a concatenation check, which would
+        # mask an AU split/merge that kept the total byte count the same.
+        assert len(out_video_aus) == len(ORIG_AUS), (
+            f"AU count mismatch: SRC={len(ORIG_AUS)}, OUT={len(out_video_aus)}"
+        )
+        for i, (out_au, src_au) in enumerate(zip(out_video_aus, ORIG_AUS)):
+            assert out_au == src_au, f"AU {i} mismatch: SRC={src_au!r}, OUT={out_au!r}"
+
+        # ---- Assertion 2: KLV edit present ---------------------------
+        # Every decoded KLV record in OUT must carry the edited latitude.
+        for rec in out_klv_recs:
+            assert rec.frame_center_lat_deg is not None, (
+                "frame_center_lat_deg is None in OUT KLV — field was dropped"
+            )
+            assert abs(rec.frame_center_lat_deg - EDITED_LAT) < 0.01, (
+                f"edited lat in OUT ({rec.frame_center_lat_deg}) != EDITED_LAT "
+                f"({EDITED_LAT}) — KLV edit was not written"
+            )
+
+        # ---- Assertion 3: unedited KLV field preserved ---------------
+        # sensor_lat_deg was NOT touched by the transmux; it must survive.
+        for rec in out_klv_recs:
+            assert rec.sensor_lat_deg is not None, (
+                "sensor_lat_deg is None in OUT KLV — unedited field was dropped"
+            )
+            assert abs(rec.sensor_lat_deg - ORIG_SENSOR_LAT) < 0.01, (
+                f"sensor_lat_deg in OUT ({rec.sensor_lat_deg}) != ORIG "
+                f"({ORIG_SENSOR_LAT}) — unedited field was corrupted"
+            )

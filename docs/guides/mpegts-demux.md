@@ -18,8 +18,8 @@ When you have an MPEG-TS byte stream — live off the wire or out of a `.ts`
 file — and need typed events back (program maps, video access units, KLV
 records, discontinuity markers, non-conformance diagnostics),
 `tst_core::mpegts::demux` is the engine. `Demuxer` recovers TS packet
-alignment, parses PSI (PAT / PMT), reassembles PES packets, splits H.264 /
-H.265 NAL units, peels H.222.0 § 2.12.4.2 `Metadata_AU_cell` headers off
+alignment, parses PSI (PAT / PMT), reassembles PES packets into raw video
+access units, peels H.222.0 § 2.12.4.2 `Metadata_AU_cell` headers off
 sync KLV, and emits a typed event stream — `DemuxEvent::ProgramMap`,
 `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. Bytes need not
 be 188-aligned; the demuxer handles sync recovery internally.
@@ -49,7 +49,7 @@ Opt into hard-fail behaviour per category via `StrictMode`.
 Read a `.ts` file, feed it to a `Demuxer`, drain events:
 
 ```rust,no_run
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload, split_video};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,8 +63,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("PMT: {} streams", m.streams.len());
             }
             DemuxEvent::Sample { stream, pts, payload, .. } => {
-                if let SamplePayload::Video { payload: VideoPayload::Nals(nals), .. } = payload {
-                    println!("video PID 0x{:04X} pts={pts} nals={}", stream.pid, nals.len());
+                if let SamplePayload::Video { codec, raw, .. } = payload {
+                    // Raw-first: `raw` is the exact encoded access unit.
+                    // Splitting it into NAL/OBU units is an opt-in call.
+                    let (payload, _issues) = split_video(&raw, codec);
+                    if let VideoPayload::Nals(nals) = payload {
+                        println!("video PID 0x{:04X} pts={pts} nals={}", stream.pid, nals.len());
+                    }
                 }
             }
             DemuxEvent::Metadata { stream, pts, payload, .. } => {
@@ -92,7 +97,8 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `VideoCodec` | `H264`, `H265`, `H266`, `Av1`. |
 | `AudioCodec` | `Mp2`, `Aac` (ADTS), `AacLatm`, `Ac3`. Codec tag for typed dispatch; bitstream bytes ride on `SamplePayload::Audio.frames`. |
 | `SubtitleCodec` | `DvbSubtitling`, `DvbTeletext`, `Cea708Standalone` (separate ES, "GA94"), `WebVttInTs` ("VTTC"). |
-| `SamplePayload` | `Video { codec, payload: VideoPayload }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. `VideoPayload` is `Nals(Vec<NalUnit>)` for H.264 / H.265 / H.266 or `Obus(Vec<Obu>)` for AV1. |
+| `SamplePayload` | `Video { codec, raw, random_access_indicator }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. **Raw-first:** `raw` is the exact encoded access unit (a `SharedBytes`); call `split_video(&raw, codec)` to split it into a `VideoPayload` — `Nals(Vec<NalUnit>)` for H.264 / H.265 / H.266 or `Obus(Vec<Obu>)` for AV1. |
+| `split_video` / `split_video_strict` | `split_video(raw: &SharedBytes, codec: VideoCodec) -> (VideoPayload, Vec<NonConformantIssue>)` — opt-in split of a raw video AU into NAL/OBU units (lenient; ES-conformance findings come back in the issue list). `split_video_strict` returns `Err(NonConformantIssue)` on the first issue. |
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }` / `H266 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `Obu` | AV1 OBU: `{ obu_type, extension: Option<ObuExtension>, payload }`. Header byte + optional extension byte + LEB128 `obu_size` consumed; `payload` is OBU body bytes. `obu_type` = 1 SequenceHeader / 2 TemporalDelimiter / 3 FrameHeader / 6 Frame / etc. (AV1 §5.3.2). |
 | `MetadataKind` | `KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156, AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
@@ -186,6 +192,12 @@ the event queue *before* the error returns from `feed`. This means a
 caller draining events alongside the error gets the full narrative —
 `feed` returns `Err(DemuxError::StrictRejection(_))` *and* a subsequent
 `next_event()` returns the structured `NonConformant { issue, .. }`.
+
+`StrictMode` is **TS-layer only**: it gates PSI / PES / timing
+conformance, not the contents of a video elementary stream. Malformed
+NAL/OBU bitstreams are not inspected during demux — that conformance
+check is the opt-in `split_video_strict(&raw, codec)` (or the issue list
+returned by `split_video`).
 
 ```rust,no_run
 use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
@@ -299,14 +311,19 @@ also flagged as `PcrAnomaly` (delta carries the negative diff).
 Some payloads the demuxer fully types; others it surfaces verbatim so
 consumers can apply their own decoders.
 
-**Video (H.264 / H.265).** The PES payload is split into NAL units. The
-demuxer strips Annex-B start codes (`0x000001` / `0x00000001`),
-preserves emulation-prevention bytes (the consumer's H.264 / H.265
-decoder removes them), and returns each NAL with codec-tagged headers
-on `NalUnit::H264` / `NalUnit::H265`. The full AU is one
-`SamplePayload::Video { codec, payload: VideoPayload::Nals(Vec<NalUnit>) }`. Callers re-emitting
-to a downstream Annex-B sink prepend `0x00 0x00 0x00 0x01` between
-NALs themselves — see [../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
+**Video (H.264 / H.265).** Raw-first: the demuxer reassembles the PES
+into the exact encoded access unit and hands it back as
+`SamplePayload::Video { codec, raw, .. }` — `raw` is the verbatim AU
+(Annex-B start codes intact). The demuxer does **not** split NAL units;
+that's an opt-in call. Pass the AU to `split_video(&raw, codec)` to get a
+`VideoPayload::Nals(Vec<NalUnit>)`: the splitter strips the Annex-B start
+codes (`0x000001` / `0x00000001`), preserves emulation-prevention bytes
+(the consumer's H.264 / H.265 decoder removes them), and returns each NAL
+with codec-tagged headers on `NalUnit::H264` / `NalUnit::H265`. Callers
+re-emitting to a downstream Annex-B sink that already have `raw` in hand
+can forward it verbatim; callers reconstituting from split NALs prepend
+`0x00 0x00 0x00 0x01` between them — see
+[../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
 
 **Sync KLV (`stream_type=0x15`).** The demuxer detects the H.222.0
 § 2.12.4.2 `Metadata_AU_cell` shape (5-byte header followed by an
@@ -332,9 +349,11 @@ pairing recipes (cookbook § 12) match BOTH `KlvSyncAuCell` AND
 `KlvAsync` for sync-style consumers — many real captures present as
 the latter after wrap-peeling.
 
-**Recognized video stream types.**
+**Recognized video stream types.** The demuxer emits each AU's raw bytes
+on `SamplePayload::Video.raw`. The "Split shape" column is what
+`split_video(&raw, codec)` returns for that codec:
 
-| PMT `stream_type` byte | `VideoCodec` | Payload shape |
+| PMT `stream_type` byte | `VideoCodec` | `split_video` shape |
 | --- | --- | --- |
 | `0x1B` | `H264` | `VideoPayload::Nals(Vec<NalUnit::H264>)` (Annex-B stripped). |
 | `0x24` | `H265` | `VideoPayload::Nals(Vec<NalUnit::H265>)` (Annex-B stripped). |
@@ -521,10 +540,13 @@ reassembler. Call `flush()` once you know no more bytes are coming
 auto-flushes on `TransportError::Closed`. You only call `flush()`
 yourself when feeding the demuxer directly.
 
-**Assuming `SamplePayload::Video`'s `VideoPayload::Nals(_)` is Annex-B framed.** It isn't.
-Each `NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only —
-Annex-B start codes have been stripped. Re-emit start codes between
-NALs yourself if writing back to an Annex-B sink. Pattern shown in
+**Assuming the NAL units from `split_video` are Annex-B framed.** They aren't.
+`SamplePayload::Video.raw` *is* the Annex-B access unit (start codes intact) —
+but once you split it with `split_video(&raw, codec)`, each
+`NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only: the Annex-B
+start codes have been stripped. Re-emit start codes between NALs yourself if
+writing split NALs back to an Annex-B sink (or just forward `raw`, which is
+already framed). Pattern shown in
 [../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
 
 **Treating `Closed` as an error.** It isn't. `pipeline::Receiver` turns

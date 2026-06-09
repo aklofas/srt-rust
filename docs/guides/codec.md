@@ -8,7 +8,7 @@
 > - How to extract SPS / PPS / VPS parameter sets for decoder warm-start
 > - The slice-header-light parsers added in tst-py Phase 5
 > - How audio frame parsers expose sample rate, channel layout, frame length
-> - How `Sample.payload` typing in Python varies by codec (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame / bytes)
+> - How Python's `ev.parse()` typing varies by codec (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame)
 > - The AV1 `Mpeg2TsBinding` vs `InteropRawObu` carriage modes
 
 ## What this module is
@@ -18,21 +18,27 @@ them — width, height, profile, level, color space, frame rate, slice type —
 `tst_core::codec` is the parser layer. It provides stateless functions that
 operate on raw NAL unit bytes (or AV1 OBUs, or audio frame bytes).
 
-When `mpegts::demux` surfaces a `DemuxEvent::Sample`, the NAL units within
-it are raw RBSP bytes with the TS framing and PES reassembly stripped. The
-demuxer does not parse the NAL content further. Consumers that need typed
-fields call into the `codec::h264` or `codec::h265` parsers explicitly.
+When `mpegts::demux` surfaces a `DemuxEvent::Sample`, the video payload is
+the exact encoded access unit — `SamplePayload::Video.raw`, with TS framing
+and PES reassembly stripped but the elementary-stream bytes intact. The
+demuxer does **not** split NAL units or parse content; both are opt-in. Split
+the AU into NAL/OBU units with `split_video(&raw, codec)`, then call into the
+`codec::h264` / `codec::h265` parsers explicitly for typed fields.
 
 This design keeps the demuxer surface minimal and dependency-free. You only
-pay for codec parsing when you need it, and the codec parsers have no
-coupling to the transport or container layers.
+pay for splitting + codec parsing when you need them, and the codec parsers
+have no coupling to the transport or container layers.
 
 ## Architecture overview
 
 ```
 mpegts::demux::Demuxer
-  ↓ DemuxEvent::Sample { payload: SamplePayload::Video { codec, payload: VideoPayload::Nals(nals) }, .. }
-  ↓ nals: Vec<NalUnit>   — raw RBSP bytes; NAL type in the header
+  ↓ DemuxEvent::Sample { payload: SamplePayload::Video { codec, raw, .. }, .. }
+  ↓ raw: SharedBytes   — the exact encoded access unit (Annex-B / OBU framed)
+
+tst_core::mpegts::demux
+  split_video(&raw, codec) → (VideoPayload, Vec<NonConformantIssue>)
+  ↓ VideoPayload::Nals(nals)   — raw RBSP bytes; NAL type in the header
 
 tst_core::codec::h264
   parse_sps(rbsp)         → Result<H264Sps, CodecParseError>
@@ -46,30 +52,36 @@ tst_core::codec::h265
   parse_parameter_sets(nals) → Result<H265ParameterSets, CodecParseError>
 ```
 
-The demuxer event surface is unchanged — `DemuxEvent` is the same regardless
-of whether you intend to parse parameter sets. Consumers call the parsers
-explicitly when they need typed fields.
+The demuxer event surface is raw-first: `DemuxEvent::Sample` carries the
+encoded AU on `SamplePayload::Video.raw` regardless of whether you intend to
+parse parameter sets. Consumers call `split_video` + the parsers explicitly
+when they need typed fields.
 
 ## H.264 quick start
 
 ```rust,no_run
 use tst_core::codec::h264;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
         ..
     } = ev
     {
+        // Raw-first: split the AU into NAL units (opt-in). The issue list
+        // carries any ES-conformance findings; dropped here.
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            continue;
+        };
         // parse_parameter_sets is partial-success-tolerant: bad NALs emit
         // tracing::warn! and are skipped. Returns Err only if every
         // parameter-set NAL failed. Non-SPS/PPS NALs are silently skipped,
         // so calling this on a P-frame returns Ok with empty maps.
-        if let Ok(ps) = h264::parse_parameter_sets(nals) {
+        if let Ok(ps) = h264::parse_parameter_sets(&nals) {
             if let Some(sps) = ps.sps_by_id.values().next() {
                 println!(
                     "H.264 {}x{} profile={} level={} {}-bit {:?}",
@@ -111,18 +123,21 @@ while let Some(ev) = dx.next_event() {
 
 ```rust,no_run
 use tst_core::codec::h265;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::H265, payload: VideoPayload::Nals(ref nals) },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H265, raw, .. },
         ..
     } = ev
     {
-        if let Ok(ps) = h265::parse_parameter_sets(nals) {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            continue;
+        };
+        if let Ok(ps) = h265::parse_parameter_sets(&nals) {
             if let Some(sps) = ps.sps_by_id.values().next() {
                 println!(
                     "H.265 {}x{} profile_idc={} level_idc={} {}-bit {:?}",
@@ -156,18 +171,21 @@ PPS — with a different bitstream syntax. PMT `stream_type = 0x33`.
 
 ```rust,no_run
 use tst_core::codec::h266;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::H266, payload: VideoPayload::Nals(ref nals) },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H266, raw, .. },
         ..
     } = ev
     {
-        if let Ok(ps) = h266::parse_parameter_sets(nals) {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            continue;
+        };
+        if let Ok(ps) = h266::parse_parameter_sets(&nals) {
             if let Some(sps) = ps.spses.first() {
                 println!(
                     "H.266 {}x{} profile_idc={} tier={} level_idc={} {}-bit {:?}",
@@ -212,23 +230,27 @@ fields (carried on the VPS for the operating point set).
 AV1 has different bitstream framing — OBU (Open Bitstream Unit)
 length-prefixed via LEB128, no Annex-B start codes. PMT `stream_type = 0x06`
 with auto-emitted AV01 `registration_descriptor` per the AV1-in-MPEG-2-TS
-binding §2.1. The demuxer surfaces AV1 access units as
-`VideoPayload::Obus(Vec<Obu>)` rather than `Nals(_)`.
+binding §2.1. For an AV1 AU, `split_video(&raw, codec)` returns
+`VideoPayload::Obus(Vec<Obu>)` rather than `Nals(_)` (and reverses the
+`ts_open_bitstream_unit()` binding framing along the way).
 
 ```rust,no_run
 use tst_core::codec::av1;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::Av1, payload: VideoPayload::Obus(ref obus) },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::Av1, raw, .. },
         ..
     } = ev
     {
-        let stream = av1::parse_obu_stream(obus);
+        let (VideoPayload::Obus(obus), _issues) = split_video(&raw, codec) else {
+            continue;
+        };
+        let stream = av1::parse_obu_stream(&obus);
         if let Some(seq) = &stream.sequence_header {
             println!(
                 "AV1 {}x{} profile={} level={} tier={} {}-bit {:?}",
@@ -303,7 +325,7 @@ configuration changes, maintain a per-PID snapshot and compare:
 ```rust,no_run
 use std::collections::HashMap;
 use tst_core::codec::h264;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 let mut last_summary: HashMap<u16, String> = HashMap::new();
 let mut dx = Demuxer::new();
@@ -314,13 +336,16 @@ fn drain_events(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
     while let Some(ev) = dx.next_event() {
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
+            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
             ..
         } = ev
         else {
             continue;
         };
-        if let Ok(ps) = h264::parse_parameter_sets(nals) {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            continue;
+        };
+        if let Ok(ps) = h264::parse_parameter_sets(&nals) {
             if let Some(sps) = ps.sps_by_id.values().next() {
                 let summary = format!(
                     "{}x{} profile={} level={}",
@@ -419,8 +444,9 @@ asks):
 
 ## Audio frame parsing
 
-The MPEG-TS demuxer surfaces `SamplePayload::Audio { codec, frames: Vec<u8> }`
-events carrying raw PES payload bytes. The `codec::mpegaudio` and `codec::aac`
+The MPEG-TS demuxer surfaces `SamplePayload::Audio { codec, frames }`
+events carrying the raw PES payload bytes (`frames` is a `SharedBytes`, which
+derefs to `&[u8]`). The `codec::mpegaudio` and `codec::aac`
 modules parse those bytes into typed per-frame metadata (sample rate, channel
 count, layer/profile, frame size) without decoding audio content.
 

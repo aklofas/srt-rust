@@ -4,30 +4,34 @@
 
 > **Related:**
 > - [guides/codec.md](/docs/guides/codec.md) — `parse_parameter_sets` API across H.264 / H.265 / H.266
-> - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — `Sample` events with `VideoPayload::Nals`
+> - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — raw-first `Sample` events + opt-in `split_video`
 > - [Example: `parse_video_parameters`](/examples/codec-parsing/parse_video_parameters.rs)
 
 Reach for this when you need typed codec information (width, height, profile,
 level, frame rate, color) and are already demuxing the stream. The demuxer
-surfaces raw NAL bytes; you call the matching `codec::*` parser explicitly
-on each `Sample` event. `parse_parameter_sets` is safe to call on every
+surfaces the raw encoded AU on `SamplePayload::Video.raw`; split it into NAL
+units with `split_video(&raw, codec)`, then call the matching `codec::*`
+parser explicitly. `parse_parameter_sets` is safe to call on every
 sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
 maps on P-frames.
 
 ```rust,no_run
 use tst_core::codec::h264;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dx = Demuxer::new();
     // ... feed bytes to dx ...
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
+            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
             ..
         } = ev
         {
-            if let Ok(ps) = h264::parse_parameter_sets(nals) {
+            let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+                continue;
+            };
+            if let Ok(ps) = h264::parse_parameter_sets(&nals) {
                 if let Some(sps) = ps.sps_by_id.values().next() {
                     println!(
                         "{}x{} profile={} level={}",

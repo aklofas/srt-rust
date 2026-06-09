@@ -45,5 +45,6 @@ pub use event::{
     PesHeaderMalformedKind, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind,
     SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
+pub use payload::{split_video, split_video_strict};
 pub use strict::StrictMode;
 pub use types::{DemuxerBuilder, DemuxerConfig, DemuxerStats};

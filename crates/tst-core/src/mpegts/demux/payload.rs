@@ -3,6 +3,7 @@
 use crate::codec::av1::leb128::read_leb128;
 use crate::mpegts::demux::event::{
     Av1ObuHeaderKind, NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec,
+    VideoPayload,
 };
 use crate::shared::SharedBytes;
 use alloc::vec::Vec;
@@ -352,6 +353,39 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
         });
     }
     (out, issues)
+}
+
+/// Opt-in video ES parse. Splits the encoded access unit `raw` into NAL units
+/// (H.26x) or OBUs (AV1), returning the parsed payload plus any ES-layer
+/// non-conformance issues observed (lenient — issues are reported, not fatal).
+///
+/// The returned NAL/OBU payloads are zero-copy `SharedBytes` views into `raw`.
+/// For AV1 `Mpeg2TsBinding` carriage, `raw` must be the on-wire PES payload; any
+/// `ts_open_bitstream_unit()` unwrap is the caller's concern (the demuxer's
+/// raw-first path passes the wire bytes). See the design spec for AV1 carriage.
+pub fn split_video(raw: &SharedBytes, codec: VideoCodec) -> (VideoPayload, Vec<NonConformantIssue>) {
+    match codec {
+        VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
+            let (nals, issues) = split_nals(raw, codec);
+            (VideoPayload::Nals(nals), issues)
+        }
+        VideoCodec::Av1 => {
+            let (obus, issues) = split_obus(raw);
+            (VideoPayload::Obus(obus), issues)
+        }
+    }
+}
+
+/// Strict variant: returns `Err(issue)` on the first ES-conformance issue,
+/// mirroring `klv::st0601::decode_strict`. Use when the caller wants
+/// malformed-ES rejection (the responsibility the demuxer's `StrictMode` no
+/// longer carries for ES content).
+pub fn split_video_strict(raw: &SharedBytes, codec: VideoCodec) -> Result<VideoPayload, NonConformantIssue> {
+    let (payload, mut issues) = split_video(raw, codec);
+    if !issues.is_empty() {
+        return Err(issues.swap_remove(0));
+    }
+    Ok(payload)
 }
 
 /// Outcome of the AV1-binding `ts_open_bitstream_unit()` unwrap step.
@@ -1191,6 +1225,29 @@ mod tests {
             )),
             "expected ReservedBit issue, got {issues:?}"
         );
+    }
+
+    #[test]
+    fn split_video_h264_returns_nal_views_and_no_issues_for_clean_au() {
+        // Two H.264 NALs: SPS (nal_ref_idc=3, type=7) then a slice (type=5), 4-byte start codes.
+        let au = SharedBytes::from_vec(vec![
+            0, 0, 0, 1, 0x67, 0xAA, 0xBB,
+            0, 0, 0, 1, 0x65, 0xCC,
+        ]);
+        let (payload, issues) = split_video(&au, VideoCodec::H264);
+        assert!(issues.is_empty());
+        match payload {
+            VideoPayload::Nals(nals) => assert_eq!(nals.len(), 2),
+            _ => panic!("expected NALs"),
+        }
+    }
+
+    #[test]
+    fn split_video_strict_errs_on_malformed_nal_header() {
+        // forbidden_zero_bit set (0x80) → a NAL-header issue.
+        let au = SharedBytes::from_vec(vec![0, 0, 0, 1, 0x80, 0x00]);
+        let res = split_video_strict(&au, VideoCodec::H264);
+        assert!(res.is_err());
     }
 
     #[test]

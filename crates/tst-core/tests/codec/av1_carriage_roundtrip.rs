@@ -188,8 +188,8 @@ fn av1_binding_mode_round_trip_no_issues_with_emulation_prevention() {
         assert_eq!(types, vec![2, 1, 3, 4]);
         // Body bytes recovered byte-for-byte after demux unwrap +
         // emulation-prevention strip.
-        assert_eq!(obus[1].payload, vec![0x00, 0x00, 0x01, 0xAA]);
-        assert_eq!(obus[3].payload, vec![0x00, 0x00, 0x02]);
+        assert_eq!(obus[1].payload.as_slice(), &[0x00, 0x00, 0x01, 0xAA]);
+        assert_eq!(obus[3].payload.as_slice(), &[0x00, 0x00, 0x02]);
     } else {
         panic!("expected AV1 OBUs sample, got {payload:?}");
     }

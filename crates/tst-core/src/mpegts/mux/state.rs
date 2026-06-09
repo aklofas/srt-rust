@@ -1051,11 +1051,11 @@ mod tests {
         assert_eq!(recovered, vec![0x12, 0x00, 0x0A, 0x03, 0x00, 0x00, 0xAA]);
 
         // And `split_obus` must yield two records with correct obu_types.
-        let (obus, issues) = split_obus(&recovered);
+        let (obus, issues) = split_obus(&crate::shared::SharedBytes::from_vec(recovered));
         assert_eq!(obus.len(), 2);
         assert_eq!(obus[0].obu_type, 2); // Temporal Delimiter
         assert_eq!(obus[1].obu_type, 1); // Sequence Header
-        assert_eq!(obus[1].payload, vec![0x00, 0x00, 0xAA]);
+        assert_eq!(obus[1].payload.as_slice(), &[0x00, 0x00, 0xAA]);
         // No non-conformance issues on a clean multi-OBU payload.
         assert!(issues.is_empty(), "unexpected issues: {issues:?}");
     }

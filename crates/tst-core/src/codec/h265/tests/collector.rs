@@ -8,7 +8,7 @@ fn nal(nt: u8, payload: Vec<u8>) -> NalUnit {
         nal_type: nt,
         layer_id: 0,
         temporal_id_plus1: 1,
-        payload,
+        payload: payload.into(),
     }
 }
 
@@ -39,7 +39,7 @@ fn parse_parameter_sets_skips_h264_nals_silently() {
         NalUnit::H264 {
             nal_type: 7,
             ref_idc: 3,
-            payload: vec![0; 8],
+            payload: vec![0; 8].into(),
         },
         nal(33, SPS.into()),
     ];

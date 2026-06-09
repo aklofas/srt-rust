@@ -4,6 +4,7 @@ use crate::codec::av1::leb128::read_leb128;
 use crate::mpegts::demux::event::{
     Av1ObuHeaderKind, NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec,
 };
+use crate::shared::SharedBytes;
 use alloc::vec::Vec;
 
 /// Split an Annex-B-framed elementary stream payload into typed NAL units.
@@ -18,10 +19,14 @@ use alloc::vec::Vec;
 /// sentinel `codec` carried verbatim; the caller annotates with PID at
 /// queue-time. NALs for which the spec mandates discard (H.266 reserved /
 /// layer>55) are dropped from the output but the issue is still emitted.
-pub fn split_nals(es_payload: &[u8], codec: VideoCodec) -> (Vec<NalUnit>, Vec<NonConformantIssue>) {
+pub fn split_nals(
+    es_payload: &SharedBytes,
+    codec: VideoCodec,
+) -> (Vec<NalUnit>, Vec<NonConformantIssue>) {
     let mut out = Vec::new();
     let mut issues = Vec::new();
-    let starts = find_start_codes(es_payload);
+    let bytes: &[u8] = es_payload;
+    let starts = find_start_codes(bytes);
     for win in starts.windows(2) {
         // `data_start` is the offset of the first NAL byte after this NAL's
         // start-code prefix; `prefix_start` of the next entry is where the
@@ -29,12 +34,16 @@ pub fn split_nals(es_payload: &[u8], codec: VideoCodec) -> (Vec<NalUnit>, Vec<No
         // yields exactly this NAL's bytes with no inter-NAL prefix bleed.
         let data_start = win[0].data_start;
         let nal_end = win[1].prefix_start;
-        if let Some(unit) = parse_one_nal(&es_payload[data_start..nal_end], codec, &mut issues) {
+        if let Some(unit) =
+            parse_one_nal(es_payload, data_start, nal_end, codec, &mut issues)
+        {
             out.push(unit);
         }
     }
     if let Some(&last) = starts.last() {
-        if let Some(unit) = parse_one_nal(&es_payload[last.data_start..], codec, &mut issues) {
+        if let Some(unit) =
+            parse_one_nal(es_payload, last.data_start, bytes.len(), codec, &mut issues)
+        {
             out.push(unit);
         }
     }
@@ -77,11 +86,20 @@ fn find_start_codes(buf: &[u8]) -> Vec<StartCode> {
     out
 }
 
+/// Parse a single NAL unit at `es_payload[nal_start..nal_end]`.
+///
+/// `nal_start` and `nal_end` are byte offsets into `es_payload` pointing at
+/// the first NAL header byte (start code already consumed) through the last
+/// body byte. The payload field of the returned unit is a zero-copy
+/// `SharedBytes` view sharing `es_payload`'s backing allocation.
 fn parse_one_nal(
-    nal: &[u8],
+    es_payload: &SharedBytes,
+    nal_start: usize,
+    nal_end: usize,
     codec: VideoCodec,
     issues: &mut Vec<NonConformantIssue>,
 ) -> Option<NalUnit> {
+    let nal: &[u8] = &es_payload[nal_start..nal_end];
     match codec {
         VideoCodec::H264 => {
             if nal.is_empty() {
@@ -99,10 +117,12 @@ fn parse_one_nal(
             }
             let ref_idc = (header >> 5) & 0x03;
             let nal_type = header & 0x1F;
+            // nal[0] is the 1-byte header; body starts at nal_start+1.
+            let payload = es_payload.slice((nal_start + 1)..nal_end);
             Some(NalUnit::H264 {
                 nal_type,
                 ref_idc,
-                payload: nal[1..].to_vec(),
+                payload,
             })
         }
         VideoCodec::H265 => {
@@ -130,11 +150,13 @@ fn parse_one_nal(
                     kind: NalHeaderKind::ZeroTemporalIdPlus1,
                 });
             }
+            // nal[0..2] are the 2-byte header; body starts at nal_start+2.
+            let payload = es_payload.slice((nal_start + 2)..nal_end);
             Some(NalUnit::H265 {
                 nal_type,
                 layer_id,
                 temporal_id_plus1,
-                payload: nal[2..].to_vec(),
+                payload,
             })
         }
         VideoCodec::H266 => {
@@ -192,11 +214,13 @@ fn parse_one_nal(
                     kind: NalHeaderKind::ZeroTemporalIdPlus1,
                 });
             }
+            // nal[0..2] are the 2-byte header; body starts at nal_start+2.
+            let payload = es_payload.slice((nal_start + 2)..nal_end);
             Some(NalUnit::H266 {
                 nal_type,
                 layer_id,
                 temporal_id_plus1,
-                payload: nal[2..].to_vec(),
+                payload,
             })
         }
         VideoCodec::Av1 => {
@@ -230,18 +254,19 @@ fn parse_one_nal(
 /// On a malformed buffer (truncated header, truncated LEB128, length
 /// runs past buffer end) the splitter stops and returns what it has
 /// accumulated, mirroring `split_nals`'s lenient stance.
-pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
+pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue>) {
     let mut out = Vec::new();
     let mut issues = Vec::new();
+    let bytes: &[u8] = es_payload;
     let mut i = 0usize;
-    while i < es_payload.len() {
+    while i < bytes.len() {
         // OBU header byte (AV1 §5.3.2):
         //   obu_forbidden_bit f(1)  — must be 0
         //   obu_type           f(4)
         //   obu_extension_flag f(1)
         //   obu_has_size_field f(1)
         //   obu_reserved_1bit  f(1)
-        let header = es_payload[i];
+        let header = bytes[i];
         // Validate the spec-mandated forbidden + reserved bits before
         // peeling off the field-level decode. `pid` is sentinel 0; the
         // demuxer patches it in pes_emit.rs (same pattern as the other
@@ -264,10 +289,10 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
         i += 1;
 
         let extension = if extension_flag {
-            if i >= es_payload.len() {
+            if i >= bytes.len() {
                 break; // truncated extension — stop
             }
-            let ext = es_payload[i];
+            let ext = bytes[i];
             i += 1;
             // temporal_id(3) | spatial_id(2) | reserved(3)
             // Per AV1 §5.3.3 the low 3 reserved bits MUST be 0.
@@ -290,7 +315,8 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
                 pid: 0, // caller patches with real pid; see Task 19
                 obu_type,
             });
-            let payload = es_payload[i..].to_vec();
+            // Zero-copy view: body runs from i to end of es_payload.
+            let payload = es_payload.slice(i..bytes.len());
             out.push(Obu {
                 obu_type,
                 extension,
@@ -299,18 +325,19 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
             break;
         }
 
-        let (obu_size, consumed) = match read_leb128(es_payload, i) {
+        let (obu_size, consumed) = match read_leb128(bytes, i) {
             Ok(t) => t,
             Err(_) => break, // truncated LEB128 — stop
         };
         i += consumed;
 
         let body_end = i + obu_size as usize;
-        if body_end > es_payload.len() {
+        if body_end > bytes.len() {
             // Length runs past buffer end. Stop walking.
             break;
         }
-        let payload = es_payload[i..body_end].to_vec();
+        // Zero-copy view: body runs from i to body_end.
+        let payload = es_payload.slice(i..body_end);
         i = body_end;
 
         // Tile List OBU non-conformance issue per binding §3.3.
@@ -577,9 +604,9 @@ mod tests {
     #[test]
     fn h264_two_nals() {
         // 0x09 access_unit_delimiter then 0x05 IDR.
-        let buf = vec![
+        let buf = SharedBytes::from_vec(vec![
             0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB,
-        ];
+        ]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert_eq!(nals.len(), 2);
         assert!(issues.is_empty(), "conformant input emits no issues");
@@ -588,7 +615,7 @@ mod tests {
                 nal_type, payload, ..
             } => {
                 assert_eq!(*nal_type, 9);
-                assert_eq!(payload, &vec![0x10]);
+                assert_eq!(payload.as_slice(), &[0x10]);
             }
             _ => panic!("wrong codec"),
         }
@@ -601,9 +628,9 @@ mod tests {
     #[test]
     fn h265_two_nals() {
         // VPS (32) + IDR_W_RADL (19) with layer_id=0, temporal_id_plus1=1.
-        let buf = vec![
+        let buf = SharedBytes::from_vec(vec![
             0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0xAA, 0x00, 0x00, 0x01, 0x26, 0x01, 0xBB,
-        ];
+        ]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H265);
         assert_eq!(nals.len(), 2);
         assert!(issues.is_empty(), "conformant input emits no issues");
@@ -676,7 +703,7 @@ mod tests {
         // doesn't fire. Locks in the fix for the find_start_codes
         // slice-boundary bug (NAL bytes must NOT include any next-NAL
         // prefix bytes — there's no next NAL here).
-        let buf = vec![0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert_eq!(nals.len(), 1);
         assert!(issues.is_empty());
@@ -685,7 +712,7 @@ mod tests {
                 nal_type, payload, ..
             } => {
                 assert_eq!(*nal_type, 7); // SPS
-                assert_eq!(payload, &vec![0xAA, 0xBB]);
+                assert_eq!(payload.as_slice(), &[0xAA, 0xBB]);
             }
             _ => panic!("wrong codec"),
         }
@@ -695,9 +722,10 @@ mod tests {
     fn split_nals_empty_input() {
         // Empty input produces no NALs. find_start_codes returns vec![],
         // both the inner-window loop and the trailing-NAL branch no-op.
-        let (nals_264, issues_264) = split_nals(&[], VideoCodec::H264);
+        let empty = SharedBytes::from_vec(vec![]);
+        let (nals_264, issues_264) = split_nals(&empty, VideoCodec::H264);
         assert!(nals_264.is_empty() && issues_264.is_empty());
-        let (nals_265, issues_265) = split_nals(&[], VideoCodec::H265);
+        let (nals_265, issues_265) = split_nals(&empty, VideoCodec::H265);
         assert!(nals_265.is_empty() && issues_265.is_empty());
     }
 
@@ -715,9 +743,9 @@ mod tests {
         // IDR_W_RADL: layer_id=0, nal_type=7(0b00111), temporal_id_plus1=1 →
         //   byte0 = 0x00
         //   byte1 = (7 << 3) | 1 = 0x39
-        let buf = vec![
+        let buf = SharedBytes::from_vec(vec![
             0x00, 0x00, 0x00, 0x01, 0x00, 0x71, 0xAA, 0x00, 0x00, 0x01, 0x00, 0x39, 0xBB,
-        ];
+        ]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H266);
         assert_eq!(nals.len(), 2);
         assert!(issues.is_empty(), "conformant H.266 emits no issues");
@@ -731,7 +759,7 @@ mod tests {
                 assert_eq!(*nal_type, 14);
                 assert_eq!(*layer_id, 0);
                 assert_eq!(*temporal_id_plus1, 1);
-                assert_eq!(payload, &vec![0xAA]);
+                assert_eq!(payload.as_slice(), &[0xAA]);
             }
             _ => panic!("wrong codec variant"),
         }
@@ -747,7 +775,7 @@ mod tests {
         // before/between expected boundaries is silently discarded —
         // sync recovery is the demuxer state machine's job (Task 7),
         // not the leaf NAL splitter's.
-        let buf = vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        let buf = SharedBytes::from_vec(vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert!(nals.is_empty() && issues.is_empty());
     }
@@ -767,14 +795,15 @@ mod tests {
 
     #[test]
     fn split_obus_two_obus() {
-        let mut buf = Vec::new();
-        buf.extend(build_obu_with_size(2, &[])); // Temporal Delimiter (empty)
-        buf.extend(build_obu_with_size(1, &[0xAA, 0xBB])); // Sequence Header (placeholder)
+        let mut raw = Vec::new();
+        raw.extend(build_obu_with_size(2, &[])); // Temporal Delimiter (empty)
+        raw.extend(build_obu_with_size(1, &[0xAA, 0xBB])); // Sequence Header (placeholder)
+        let buf = SharedBytes::from_vec(raw);
         let (obus, issues) = split_obus(&buf);
         assert_eq!(obus.len(), 2);
         assert_eq!(obus[0].obu_type, 2);
         assert_eq!(obus[1].obu_type, 1);
-        assert_eq!(obus[1].payload, vec![0xAA, 0xBB]);
+        assert_eq!(obus[1].payload.as_slice(), &[0xAA, 0xBB]);
         assert!(issues.is_empty());
     }
 
@@ -782,10 +811,10 @@ mod tests {
     fn split_obus_missing_size_field_reports_issue() {
         // obu_type=1 (Seq Header), ext_flag=0, has_size=0
         let header = 1 << 3;
-        let buf = vec![header, 0xAA, 0xBB, 0xCC];
+        let buf = SharedBytes::from_vec(vec![header, 0xAA, 0xBB, 0xCC]);
         let (obus, issues) = split_obus(&buf);
         assert_eq!(obus.len(), 1);
-        assert_eq!(obus[0].payload, vec![0xAA, 0xBB, 0xCC]);
+        assert_eq!(obus[0].payload.as_slice(), &[0xAA, 0xBB, 0xCC]);
         assert!(matches!(
             issues.first(),
             Some(NonConformantIssue::Av1ObuMissingSizeField { .. })
@@ -794,7 +823,7 @@ mod tests {
 
     #[test]
     fn split_obus_tile_list_reports_issue() {
-        let buf = build_obu_with_size(8, &[0x00]); // Tile List (forbidden in TS)
+        let buf = SharedBytes::from_vec(build_obu_with_size(8, &[0x00])); // Tile List (forbidden in TS)
         let (obus, issues) = split_obus(&buf);
         assert_eq!(obus.len(), 1);
         assert!(matches!(
@@ -807,14 +836,15 @@ mod tests {
     fn split_obus_truncated_leb128_stops_walking() {
         // Header byte then a continuation byte with no terminator, and one
         // more (header for a hypothetical second OBU we should never reach).
-        let buf = vec![0x12, 0x80]; // single OBU header + truncated LEB128
+        let buf = SharedBytes::from_vec(vec![0x12, 0x80]); // single OBU header + truncated LEB128
         let (obus, _) = split_obus(&buf);
         assert!(obus.is_empty(), "truncated LEB128 should abort the walk");
     }
 
     #[test]
     fn split_obus_empty_input_returns_empty() {
-        let (obus, issues) = split_obus(&[]);
+        let buf = SharedBytes::from_vec(vec![]);
+        let (obus, issues) = split_obus(&buf);
         assert!(obus.is_empty());
         assert!(issues.is_empty());
     }
@@ -967,7 +997,8 @@ mod tests {
         // Pre-fix: panicked with `unimplemented!("AV1 uses OBU framing...")`.
         // Post-fix in debug: panics with the debug_assert message instead,
         // which is the regression detector.
-        let _ = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0xAA, 0xBB]);
+        let _ = split_nals(&buf, VideoCodec::Av1);
     }
 
     #[cfg(not(debug_assertions))]
@@ -976,7 +1007,8 @@ mod tests {
         // Release builds (no debug_assertions): the defense-in-depth arm
         // returns None from parse_one_nal, so split_nals yields an empty
         // Vec without panicking.
-        let (nals, _issues) = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0xAA, 0xBB]);
+        let (nals, _issues) = split_nals(&buf, VideoCodec::Av1);
         assert!(nals.is_empty(), "AV1 must yield no NALs from NAL splitter");
     }
 
@@ -991,7 +1023,7 @@ mod tests {
         // forbidden=1, ref_idc=00, nal_type=0 (unspecified). The NAL is
         // still emitted (no spec-mandated discard for H.264) but the
         // issue is surfaced.
-        let buf = vec![0x00, 0x00, 0x01, 0x80, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x80, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert_eq!(nals.len(), 1, "H.264 forbidden-bit NAL still emitted");
         assert_eq!(issues.len(), 1, "exactly one NalHeader issue raised");
@@ -1010,7 +1042,7 @@ mod tests {
         // 0x80 sets forbidden=1, leaves nal_type=0, layer_id top=0.
         // Byte 1: layer_id_low(5) | temporal_id_plus1(3); use 0x01 →
         // temporal_id_plus1=1 (valid) so we isolate the forbidden-bit issue.
-        let buf = vec![0x00, 0x00, 0x01, 0x80, 0x01, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x80, 0x01, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H265);
         assert_eq!(nals.len(), 1, "H.265 forbidden-bit NAL still emitted");
         assert!(
@@ -1030,7 +1062,7 @@ mod tests {
         // H.265: temporal_id_plus1=0 (forbidden per §7.3.1.2). Header
         // bytes: byte0=0x40 (forbidden=0, nal_type=32 VPS, layer_id_top=0),
         // byte1=0x00 (layer_id_low=0, temporal_id_plus1=0).
-        let buf = vec![0x00, 0x00, 0x01, 0x40, 0x00, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x40, 0x00, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H265);
         assert_eq!(nals.len(), 1);
         assert!(
@@ -1052,7 +1084,7 @@ mod tests {
         // nal_type=14 (VPS), temporal_id_plus1=1. Per H.266 §7.3.1.2
         // receivers MUST discard NALs with nuh_reserved_zero_bit set;
         // the NAL is dropped from `nals` but the issue is still emitted.
-        let buf = vec![0x00, 0x00, 0x01, 0x40, 0x71, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x40, 0x71, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H266);
         assert!(
             nals.is_empty(),
@@ -1077,7 +1109,7 @@ mod tests {
         // forbidden=0, reserved=0, layer_id=56 (0x38 = 0b00111000;
         // low 6 bits = 0b111000 = 56). byte1=0x71 → nal_type=14, t+1=1.
         // Receivers MUST discard.
-        let buf = vec![0x00, 0x00, 0x01, 0x38, 0x71, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x38, 0x71, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H266);
         assert!(
             nals.is_empty(),
@@ -1101,7 +1133,7 @@ mod tests {
         // layer_id=0, t+1=1). byte0=0x80, byte1=0x71. forbidden-bit
         // violation alone is NOT spec-mandated discard for H.266 (only
         // reserved + layer>55 are); the NAL stays in the output.
-        let buf = vec![0x00, 0x00, 0x01, 0x80, 0x71, 0xAA];
+        let buf = SharedBytes::from_vec(vec![0x00, 0x00, 0x01, 0x80, 0x71, 0xAA]);
         let (nals, issues) = split_nals(&buf, VideoCodec::H266);
         assert_eq!(
             nals.len(),
@@ -1129,7 +1161,7 @@ mod tests {
     fn split_obus_forbidden_bit_set_emits_issue() {
         // obu_type=1 (Seq Header), ext_flag=0, has_size=1, reserved_1bit=0,
         // forbidden_bit=1. Header byte = 0x80 | (1<<3) | 0x02 = 0x8A.
-        let buf = vec![0x8A, 0x00];
+        let buf = SharedBytes::from_vec(vec![0x8A, 0x00]);
         let (_obus, issues) = split_obus(&buf);
         assert!(
             issues.iter().any(|i| matches!(
@@ -1147,7 +1179,7 @@ mod tests {
     fn split_obus_reserved_bit_set_emits_issue() {
         // obu_type=1, ext_flag=0, has_size=1, reserved_1bit=1 → low bit set.
         // Header = (1<<3) | 0b011 = 0x0B.
-        let buf = vec![0x0B, 0x00];
+        let buf = SharedBytes::from_vec(vec![0x0B, 0x00]);
         let (_obus, issues) = split_obus(&buf);
         assert!(
             issues.iter().any(|i| matches!(
@@ -1166,7 +1198,7 @@ mod tests {
         // obu_type=1, ext_flag=1, has_size=1 → header = (1<<3) | 0b110 = 0x0E.
         // Extension byte: temporal_id(3) | spatial_id(2) | reserved(3).
         // Set the low 3 reserved bits: ext = 0x07. Then size LEB128 = 0x00.
-        let buf = vec![0x0E, 0x07, 0x00];
+        let buf = SharedBytes::from_vec(vec![0x0E, 0x07, 0x00]);
         let (_obus, issues) = split_obus(&buf);
         assert!(
             issues.iter().any(|i| matches!(

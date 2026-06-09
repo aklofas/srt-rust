@@ -266,6 +266,13 @@ class ProgramMap:
     streams: Tuple[Any, ...]
     klv_links: Tuple[Any, ...]
 
+# Unambiguous alias for the PSI `ProgramMap` dataclass above, so the nested
+# `DemuxEvent.ProgramMap` event class can name it as an element type without the
+# bare `ProgramMap` reference *looking* like the nested class. (mypy already
+# resolves a nested-class-body name to module scope — verified via reveal_type —
+# but the alias makes the intent obvious to human readers and future refactors.)
+_ProgramMapData = ProgramMap
+
 # --- DemuxEvent hierarchy (raw-first; Video/Audio carry .raw + .parse()) ---
 #
 # At runtime the subclasses are module-level `_*Event` dataclasses surfaced as
@@ -277,7 +284,7 @@ class ProgramMap:
 class DemuxEvent:
     @dataclass(frozen=True, slots=True)
     class ProgramMap(DemuxEvent):
-        programs: Tuple[ProgramMap, ...]
+        programs: Tuple[_ProgramMapData, ...]
 
     @dataclass(frozen=True, slots=True)
     class Video(DemuxEvent):

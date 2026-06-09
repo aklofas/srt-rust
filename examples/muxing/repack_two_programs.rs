@@ -64,7 +64,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use tst_core::mpegts::demux::event::NalUnit;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload, split_video};
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -226,7 +226,13 @@ fn repack_event(
             payload:
                 SamplePayload::Video {
                     codec,
-                    payload: VideoPayload::Nals(nals),
+                    // Raw-first: the demuxer hands you the EXACT encoded access
+                    // unit — already Annex-B-framed with its start codes intact.
+                    // For a transparent repack this is exactly what we want: no
+                    // NAL split, no Annex-B reconstruction — forward `raw`
+                    // straight into the output muxer's `push_video_to` (which
+                    // validates the leading start code and wraps its own PES).
+                    raw,
                     // `random_access_indicator` is the TS adaptation-field RAI
                     // bit from the input PES_start packet (ISO/IEC 13818-1
                     // §2.4.3.4). Forwarding this directly to the output's
@@ -237,55 +243,29 @@ fn repack_event(
                 },
             ..
         } => {
-            // The demuxer strips Annex-B start codes when it extracts NAL
-            // units (ISO 14496-10 §B.1). Each `NalUnit::H264` carries RBSP
-            // bytes without the leading 0x00 0x00 0x00 0x01 start code.
-            // The muxer's `push_video_to` requires Annex-B framing (it
-            // validates that the input starts with 0x00 0x00 0x01 or
-            // 0x00 0x00 0x00 0x01 and then writes its own PES around the
-            // complete Annex-B buffer). We must reassemble the start codes
-            // before pushing.
-            //
-            // For a multi-NAL AU (e.g. SPS + PPS + IDR = 3 NALs) the
-            // convention is to concatenate all NALs with 4-byte start codes,
-            // giving a single Annex-B AU buffer. The muxer then carries the
-            // whole AU in one PES. This matches what real encoders emit.
-            //
             // Why only H.264: this example is scoped to H.264 fixtures. An
-            // H.265 source would arrive as `VideoCodec::H265` and its NALs
-            // would be `NalUnit::H265 { nal_type, layer_id, temporal_id_plus1,
-            // payload }`. The nal_byte encoding differs (no ref_idc field in
-            // H.265). Adding H.265 support is straightforward — the branch
-            // below would push with `VideoCodec::H265` on the output config —
-            // but omitted here to keep the example focused.
-            //
-            // Why `unwrap_or(0)` for PTS: the muxer's `pts_90khz` field is
-            // a signed i64 representing 90 kHz ticks. A value of 0 is valid
-            // (it means "timestamp at origin"). In practice real captures
-            // always have a PTS, but defensively defaulting to 0 avoids a
-            // crash on a malformed PES. The caller is responsible for
-            // monotonicity; non-monotonic PTS produces non-monotonic PCR in
-            // the output, which downstream demuxers tolerate in lenient mode
-            // but may log as PCR anomalies.
+            // H.265 source would arrive as `VideoCodec::H265`; the output
+            // MuxerConfig is H.264-only, so other codecs are skipped below.
+            // Adding H.265 support is straightforward — build the output
+            // config for H.265 and push with `VideoCodec::H265`.
             use tst_core::mpegts::demux::event::VideoCodec as DemuxCodec;
-            if matches!(codec, DemuxCodec::H264) {
-                let annex_b = nals_to_annex_b_h264(&nals);
-                if !annex_b.is_empty() {
-                    // Forward the input AU's adaptation-field RAI as the
-                    // output's key_frame signal. As a defensive cross-check
-                    // we also scan the NALs for IDR (nal_type==5) — if RAI
-                    // is set OR an IDR slice is present, mark as key_frame.
-                    // The OR fallback handles upstream muxers that fail to
-                    // set RAI on IDR boundaries (some software encoders).
-                    let key_frame = random_access_indicator
-                        || nals
-                            .iter()
-                            .any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. }));
-                    muxer.push_video_to(video_handle, &annex_b, pts, key_frame)?;
-                }
+            if matches!(codec, DemuxCodec::H264) && !raw.is_empty() {
+                // Forward the input AU's adaptation-field RAI as the output's
+                // key_frame signal. As a defensive cross-check we also scan
+                // for an IDR NAL (nal_type==5) via the opt-in `split_video` —
+                // if RAI is set OR an IDR slice is present, mark as key_frame.
+                // The OR fallback handles upstream muxers that fail to set RAI
+                // on IDR boundaries (some software encoders).
+                let (split, _issues) = split_video(&raw, codec);
+                let has_idr = matches!(&split, VideoPayload::Nals(nals)
+                    if nals.iter().any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. })));
+                let key_frame = random_access_indicator || has_idr;
+                // `raw` is the complete Annex-B AU; the muxer carries the whole
+                // AU in one PES, matching what real encoders emit.
+                muxer.push_video_to(video_handle, &raw, pts, key_frame)?;
             }
             // Non-H.264 codecs (H.265 etc.) are silently skipped here.
-            // The output MuxerConfig is H.264-only; pushing H.265 NALs onto an
+            // The output MuxerConfig is H.264-only; pushing H.265 onto an
             // H.264 stream would be a mux error. A production repacker
             // would detect the codec at ProgramMap time and build the
             // output MuxerConfig accordingly.
@@ -346,41 +326,4 @@ fn repack_event(
     }
 
     Ok(())
-}
-
-/// Reassemble a slice of H.264 `NalUnit`s into a single Annex-B buffer.
-///
-/// The demuxer strips start codes on extraction; this function puts them back
-/// so the muxer's Annex-B validator accepts the buffer.
-///
-/// Each NAL is written as:
-///   `[0x00, 0x00, 0x00, 0x01, nal_byte]` + RBSP payload bytes
-///
-/// where `nal_byte = (ref_idc << 5) | nal_type` reconstructs the first byte
-/// of the H.264 NAL unit header (H.264 §7.3.1). This is the canonical
-/// Annex-B 4-byte start code form accepted by decoders and our muxer alike.
-///
-/// Returns an empty `Vec` if `nals` is empty. The caller should skip
-/// `push_video_to` on an empty buffer.
-fn nals_to_annex_b_h264(nals: &[NalUnit]) -> Vec<u8> {
-    let mut buf = Vec::new();
-    for nal in nals {
-        if let NalUnit::H264 {
-            nal_type,
-            ref_idc,
-            payload,
-        } = nal
-        {
-            // 4-byte start code
-            buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-            // Reconstruct the NAL unit header byte.
-            // H.264 §7.3.1: nal_unit_header = forbidden_zero_bit(1) |
-            //   nal_ref_idc(2) | nal_unit_type(5).
-            // forbidden_zero_bit is always 0 (invalid otherwise).
-            let nal_byte = (ref_idc << 5) | nal_type;
-            buf.push(nal_byte);
-            buf.extend_from_slice(payload);
-        }
-    }
-    buf
 }

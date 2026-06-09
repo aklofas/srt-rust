@@ -17,10 +17,10 @@
 //! hiding the configuration knob from C callers entirely.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NonConformantIssue, SamplePayload, VideoCodec, VideoPayload,
 };
+use tst_core::mpegts::demux::{Demuxer, split_video};
 use tst_core::mpegts::mux::{
     Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -144,12 +144,19 @@ fn c_demux_config_av1_interop_round_trip_no_binding_issues() {
             payload:
                 SamplePayload::Video {
                     codec: VideoCodec::Av1,
-                    payload: VideoPayload::Obus(obus),
+                    raw,
                     ..
                 },
             ..
         } = ev
         {
+            // Raw-first: the demuxer emits the encoded AU; recover the OBUs via
+            // the opt-in `split_video`. Interop carriage round-trips cleanly, so
+            // the four OBUs come back with no split issues.
+            let (split, _issues) = split_video(raw, VideoCodec::Av1);
+            let VideoPayload::Obus(obus) = split else {
+                panic!("expected OBUs from split_video");
+            };
             assert_eq!(
                 obus.len(),
                 4,
@@ -192,12 +199,18 @@ fn c_demux_config_av1_binding_round_trip_no_binding_issues() {
             payload:
                 SamplePayload::Video {
                     codec: VideoCodec::Av1,
-                    payload: VideoPayload::Obus(obus),
+                    raw,
                     ..
                 },
             ..
         } = ev
         {
+            // Raw-first: recover the OBUs via the opt-in `split_video` (which
+            // reverses the binding framing in `Mpeg2TsBinding` mode).
+            let (split, _issues) = split_video(raw, VideoCodec::Av1);
+            let VideoPayload::Obus(obus) = split else {
+                panic!("expected OBUs from split_video");
+            };
             assert_eq!(obus.len(), 4);
             saw_sample = true;
         }
@@ -210,16 +223,18 @@ fn c_demux_config_av1_binding_round_trip_no_binding_issues() {
 
 #[test]
 fn c_demux_config_av1_mismatch_surfaces_both_binding_issues() {
-    // Interop sender vs C-configured binding demuxer: the demux must
-    // surface BOTH binding-nonconformance issues (wrong stream_id +
-    // missing ts_open_bitstream_unit framing). The Sample still
-    // arrives via the lenient raw-OBU fallback path.
+    // Interop sender vs C-configured binding demuxer: the diagnostic surface is
+    // now SPLIT across the raw-first boundary. The PES-layer `Av1WrongStreamId`
+    // (stream_id=0xE0 instead of 0xBD) is still a demux event; the ES-content
+    // `Av1MissingTsObuFraming` (no ts_open_bitstream_unit framing) moved to the
+    // opt-in `split_video` call. The Sample still arrives (raw AU) and split
+    // recovers the OBUs via the lenient raw-OBU fallback.
     //
     // Without the C-ABI knob, the bug shape would be invisible: the
     // demuxer would silently use `Mpeg2TsBinding` regardless of the
-    // sender's carriage and the issue surface would look identical
-    // even when the C caller asked for `InteropRawObu`. This test
-    // pins the diagnostic surface.
+    // sender's carriage and the `Av1WrongStreamId` surface would look
+    // identical even when the C caller asked for `InteropRawObu`. This
+    // test pins that diagnostic surface.
     let ts = build_av1_ts(Av1CarriageMode::InteropRawObu);
     let mut demux = demuxer_from_c_with_av1_mode(TstAv1CarriageMode::Mpeg2TsBinding);
     demux.feed(&ts).unwrap();
@@ -227,8 +242,8 @@ fn c_demux_config_av1_mismatch_surfaces_both_binding_issues() {
 
     let evts = drain_events(&mut demux);
     let mut saw_wrong_stream_id = false;
-    let mut saw_missing_framing = false;
     let mut saw_sample = false;
+    let mut raw_au = None;
     for ev in &evts {
         match ev {
             DemuxEvent::NonConformant { issue, .. } => match issue {
@@ -236,17 +251,34 @@ fn c_demux_config_av1_mismatch_surfaces_both_binding_issues() {
                     assert_eq!(*observed, 0xE0);
                     saw_wrong_stream_id = true;
                 }
+                // The demuxer no longer raises Av1MissingTsObuFraming — that
+                // ES-content issue moved to split_video (asserted below).
                 NonConformantIssue::Av1MissingTsObuFraming { .. } => {
-                    saw_missing_framing = true;
+                    panic!("demuxer must not raise the ES-content Av1MissingTsObuFraming");
                 }
                 _ => {}
             },
-            DemuxEvent::Sample { .. } => saw_sample = true,
+            DemuxEvent::Sample {
+                payload: SamplePayload::Video { raw, .. },
+                ..
+            } => {
+                saw_sample = true;
+                raw_au = Some(raw);
+            }
             _ => {}
         }
     }
     assert!(saw_wrong_stream_id, "expected Av1WrongStreamId");
-    assert!(saw_missing_framing, "expected Av1MissingTsObuFraming");
+    // The opt-in split now carries the missing-framing conformance signal and
+    // still recovers the OBUs via the raw-OBU fallback.
+    let raw = raw_au.expect("lenient mode still emits the raw AU Sample");
+    let (_split, split_issues) = split_video(raw, VideoCodec::Av1);
+    assert!(
+        split_issues
+            .iter()
+            .any(|i| matches!(i, NonConformantIssue::Av1MissingTsObuFraming { .. })),
+        "split_video should report Av1MissingTsObuFraming for raw-OBU carriage: {split_issues:?}"
+    );
     assert!(
         saw_sample,
         "lenient raw-OBU fallback should still emit the Sample"

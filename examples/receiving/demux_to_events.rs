@@ -37,7 +37,7 @@
 
 use std::env;
 use std::fs;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload, split_video};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -114,34 +114,37 @@ fn main() {
                 match payload {
                     SamplePayload::Video {
                         codec,
-                        payload: VideoPayload::Nals(nals),
+                        // Raw-first: the demuxer no longer parses the video
+                        // elementary stream — it hands you the exact encoded
+                        // access unit. Parsing NAL/OBU units is now an OPT-IN
+                        // call via `split_video` (mirrors how KLV surfaces raw
+                        // bytes with an opt-in decode). `_issues` carries any
+                        // ES-conformance findings; we drop them here.
+                        raw,
                         // `random_access_indicator` is sourced from the TS
                         // adaptation-field RAI bit on the PES_start packet
                         // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
                         // marked as decoder-resync points (IDR / CRA / etc.).
                         random_access_indicator,
                     } => {
-                        println!(
-                            "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={} rai={random_access_indicator}",
-                            stream.pid,
-                            nals.len()
-                        );
-                    }
-                    SamplePayload::Video {
-                        codec,
-                        payload: VideoPayload::Obus(obus),
-                        random_access_indicator,
-                    } => {
-                        // OBU-shaped video (AV1) carriage lands in a later
-                        // task; the demuxer does not emit this variant today,
-                        // so this arm exists only to keep the match
-                        // exhaustive — adding AV1 wiring later won't silently
-                        // change behavior here.
-                        println!(
-                            "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={} rai={random_access_indicator}",
-                            stream.pid,
-                            obus.len()
-                        );
+                        let (payload, _issues) = split_video(&raw, codec);
+                        match payload {
+                            VideoPayload::Nals(nals) => {
+                                println!(
+                                    "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={} rai={random_access_indicator}",
+                                    stream.pid,
+                                    nals.len()
+                                );
+                            }
+                            VideoPayload::Obus(obus) => {
+                                // OBU-shaped video (AV1).
+                                println!(
+                                    "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={} rai={random_access_indicator}",
+                                    stream.pid,
+                                    obus.len()
+                                );
+                            }
+                        }
                     }
                     // Audio + Subtitle are reserved variants today (no
                     // typed codec values are defined yet) but matching

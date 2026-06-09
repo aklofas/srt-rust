@@ -335,7 +335,7 @@ mod tests {
     use tst_core::mpegts::common::Pts90khz;
     use tst_core::mpegts::demux::{
         AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue, ProgramMap, SamplePayload,
-        StreamId, StreamKind, VideoCodec, VideoPayload,
+        StreamId, StreamKind, VideoCodec,
     };
     use tst_core::shared::SharedBytes;
 
@@ -443,7 +443,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                payload: VideoPayload::Nals(Vec::new()),
+                raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
             },
         };
@@ -481,7 +481,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H265,
-                payload: VideoPayload::Nals(Vec::new()),
+                raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
             },
         };
@@ -525,7 +525,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                payload: VideoPayload::Nals(Vec::new()),
+                raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
             },
         };
@@ -592,7 +592,7 @@ mod tests {
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                payload: VideoPayload::Nals(Vec::new()),
+                raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
             },
         }
@@ -660,9 +660,8 @@ mod proptests {
     use super::*;
     use proptest::prelude::*;
     use tst_core::mpegts::common::Pts90khz;
-    use tst_core::mpegts::demux::{
-        MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
-    };
+    use tst_core::mpegts::demux::{MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec};
+    use tst_core::shared::SharedBytes;
 
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
@@ -685,7 +684,7 @@ mod proptests {
                 dts: None,
                 payload: SamplePayload::Video {
                     codec: VideoCodec::H264,
-                    payload: VideoPayload::Nals(Vec::new()),
+                    raw: SharedBytes::from_vec(Vec::new()),
                     random_access_indicator: false,
                 },
             },

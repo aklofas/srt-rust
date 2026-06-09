@@ -27,7 +27,7 @@ use tst_core::mpegts::demux::event::{AudioCodec, MultiCellAuReason};
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerConfig, DiscontinuityKind, LinkSource, MetadataKind,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
-    SubtitleCodec, VideoCodec, VideoPayload,
+    SubtitleCodec, VideoCodec, VideoPayload, split_video,
 };
 
 use crate::errors::{codec_parse_error_to_pyerr, make_demux_error};
@@ -534,11 +534,16 @@ fn convert_sample_event(
     match payload {
         SamplePayload::Video {
             codec,
-            payload,
+            raw,
             random_access_indicator,
         } => {
+            // Raw-first: the demuxer emits the encoded access unit. Keep the
+            // current Python `.payload` (typed list[NalUnit] | list[Obu]) surface
+            // by splitting here via the opt-in `split_video`. (A later task
+            // reworks tst-py to a raw-first surface.)
+            let (payload, _issues) = split_video(raw, *codec);
             // Emit typed list[NalUnit] | list[Obu].
-            let payload_py: PyObject = convert_video_payload(py, payload)?;
+            let payload_py: PyObject = convert_video_payload(py, &payload)?;
             let cls = de.getattr(intern!(py, "Video"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;

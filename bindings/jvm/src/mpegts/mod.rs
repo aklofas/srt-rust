@@ -39,7 +39,7 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::MultiCellAuReason;
 use tst_core::mpegts::demux::{
     AudioCodec, DemuxEvent, Demuxer, DiscontinuityKind, MetadataKind, NonConformantIssue,
-    SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
+    SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload, split_video,
 };
 
 use crate::codec::aac::build_adts_frame;
@@ -307,10 +307,15 @@ pub(crate) fn convert_event<'local>(
             let obj = match payload {
                 SamplePayload::Video {
                     codec,
-                    payload,
+                    raw,
                     random_access_indicator,
                 } => {
-                    let units = build_video_units(env, payload)?;
+                    // Raw-first: the demuxer emits the encoded access unit; split
+                    // it into NAL/OBU units here via the opt-in `split_video` so
+                    // the Java VideoUnit list surface is unchanged. ES-conformance
+                    // issues are not surfaced over this binding.
+                    let (video_payload, _issues) = split_video(raw, *codec);
+                    let units = build_video_units(env, &video_payload)?;
                     let codec_obj = codec_enum(env, "VideoCodec", video_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Video",

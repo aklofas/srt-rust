@@ -547,7 +547,7 @@ fn synthetic_mp2_frame() -> Vec<u8> {
 pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
     use std::collections::HashMap;
     use tst_core::mpegts::demux::event::SamplePayload;
-    use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+    use tst_core::mpegts::demux::{DemuxEvent, Demuxer, split_video};
 
     let mut demuxer = Demuxer::new();
 
@@ -599,9 +599,14 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                 match payload {
                     SamplePayload::Video {
                         codec,
-                        payload: vp,
+                        raw: au,
                         random_access_indicator,
                     } => {
+                        // Raw-first: the demuxer emits the encoded access unit;
+                        // recover the parsed NAL/OBU bodies via the opt-in
+                        // `split_video` so the golden SHA matches the prior
+                        // (parsed) demuxer output exactly.
+                        let (vp, _issues) = split_video(&au, codec);
                         let raw = video_payload_bytes(&vp);
                         events.push(CoreEvent::Video {
                             program: stream.program_number,

@@ -62,7 +62,7 @@ def _event_to_row(event: Any) -> dict:
         kind = kind[1:]
     # Normalize to the design-doc kind labels. Video/Audio/Subtitle all
     # collapse to "Sample" because they share the same shape (stream,
-    # pts, dts, codec, payload, codec_parse_error). KlvEvent maps to
+    # pts, dts, codec, + raw/payload bytes). KlvEvent maps to
     # "Metadata" per the design contract.
     kind_map = {
         "VideoEvent": "Sample",
@@ -121,34 +121,32 @@ def _event_to_row(event: Any) -> dict:
     if raw_stream_type is not None and isinstance(raw_stream_type, int):
         row["stream_type"] = raw_stream_type
 
-    # Payload (typed list for Video/Audio when codec parsed; bytes for KLV,
-    # subtitle, and audio when codec_parse_error fell back).
-    payload = getattr(event, "payload", None)
-    if payload is not None:
-        if isinstance(payload, (bytes, bytearray)):
-            row["payload_len"] = len(payload)
-        elif hasattr(payload, "__len__"):
-            row["payload_len"] = len(payload)
-            # nal_count is video-only. Audio events (_AudioEvent) also carry
-            # typed lists (AdtsFrame / Mpeg2AudioFrame) that satisfy
-            # hasattr(__len__), but those are NOT NAL units — populating
-            # nal_count for them would give analysts filtering
-            # `df[df["nal_count"] > N]` false positives on audio rows.
-            if type(event).__name__ == "_VideoEvent":
-                row["nal_count"] = len(payload)
+    # Payload length. Raw-first Video/Audio events carry encoded bytes on
+    # `.raw`; KLV / subtitle / unknown events carry bytes on `.payload`.
+    # For video, `nal_count` runs the opt-in `.parse()` (analytics adapter
+    # — eager parse here is fine) so analysts keep the per-AU NAL count.
+    ev_kind = type(event).__name__
+    raw = getattr(event, "raw", None)
+    if raw is not None and isinstance(raw, (bytes, bytearray)):
+        row["payload_len"] = len(raw)
+        if ev_kind == "_VideoEvent":
+            row["nal_count"] = len(event.parse())
+    else:
+        payload = getattr(event, "payload", None)
+        if payload is not None:
+            if isinstance(payload, (bytes, bytearray)):
+                row["payload_len"] = len(payload)
+            elif hasattr(payload, "__len__"):
+                row["payload_len"] = len(payload)
 
     # Random access indicator (video samples only)
     rai = getattr(event, "random_access_indicator", None)
     if rai is not None:
         row["random_access"] = rai
 
-    # codec_parse_error (codec-parse fallback — present on Video and
-    # Audio events; truthy iff parsing failed and payload is raw bytes)
-    cpe = getattr(event, "codec_parse_error", None)
-    # Only set the column when the attribute exists on this event kind;
-    # leave None for events that never carry codec_parse_error.
-    if hasattr(event, "codec_parse_error"):
-        row["has_codec_parse_error"] = cpe is not None
+    # has_codec_parse_error — vestigial column kept for schema stability.
+    # The raw-first surface dropped the eager `codec_parse_error` field
+    # (parsing is now opt-in via `.parse()`), so this is always None.
 
     # NonConformantEvent fields (issue str + kind enum). DiscontinuityEvent
     # and KlvEvent also have `.kind` but no `.issue`; the issue check gates

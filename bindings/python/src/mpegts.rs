@@ -27,10 +27,10 @@ use tst_core::mpegts::demux::event::{AudioCodec, MultiCellAuReason};
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerConfig, DiscontinuityKind, LinkSource, MetadataKind,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
-    SubtitleCodec, VideoCodec, VideoPayload, split_video,
+    SubtitleCodec, VideoCodec, VideoPayload,
 };
 
-use crate::errors::{codec_parse_error_to_pyerr, make_demux_error};
+use crate::errors::make_demux_error;
 
 // ---------------------------------------------------------------------------
 // PyDemuxer — the main wrapper
@@ -537,120 +537,30 @@ fn convert_sample_event(
             raw,
             random_access_indicator,
         } => {
-            // Raw-first: the demuxer emits the encoded access unit. Keep the
-            // current Python `.payload` (typed list[NalUnit] | list[Obu]) surface
-            // by splitting here via the opt-in `split_video`. (A later task
-            // reworks tst-py to a raw-first surface.)
-            let (payload, _issues) = split_video(raw, *codec);
-            // Emit typed list[NalUnit] | list[Obu].
-            let payload_py: PyObject = convert_video_payload(py, &payload)?;
+            // Raw-first: the demuxer emits the encoded access unit; surface it
+            // verbatim as `.raw`. Typed NAL/OBU splitting is opt-in Python-side
+            // via `DemuxEvent.Video.parse()` (→ `tstrans.codec.split_units`).
             let cls = de.getattr(intern!(py, "Video"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", video_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("payload", payload_py)?;
+            kwargs.set_item("raw", PyBytes::new_bound(py, raw))?;
             kwargs.set_item("random_access_indicator", *random_access_indicator)?;
-            // codec_parse_error: None — video typed-parse cannot fail at this layer.
-            kwargs.set_item("codec_parse_error", py.None())?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Audio { codec, frames } => {
-            // Emit typed list[AdtsFrame] | list[Mpeg2AudioFrame], or
-            // bytes-fallback + codec_parse_error on mid-stream parse failure (option c).
-            use tst_core::codec::aac::frames_with_resync as aac_frames;
-            use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
-            let payload: &[u8] = frames.as_slice();
-            let (payload_py, parse_err): (PyObject, Option<PyErr>) = match codec {
-                AudioCodec::Aac => {
-                    // Audit-2 #3: parse to owned frames under allow_threads so
-                    // other Python threads can run during AAC frame scanning;
-                    // only construct Py<AdtsFramePy> after re-acquiring the GIL.
-                    // Mirror of Demuxer::feed's py.allow_threads pattern.
-                    let parse_result: Result<
-                        Vec<tst_core::codec::aac::AdtsFrameOwned>,
-                        tst_core::codec::CodecParseError,
-                    > = py.allow_threads(|| {
-                        let mut owned = Vec::new();
-                        for res in aac_frames(payload) {
-                            match res {
-                                Ok(f) => owned.push(f.to_owned()),
-                                Err(e) => return Err(e),
-                            }
-                        }
-                        Ok(owned)
-                    });
-                    match parse_result {
-                        Ok(frames) => {
-                            let list = pyo3::types::PyList::empty_bound(py);
-                            for f in frames {
-                                list.append(Py::new(py, crate::codec::AdtsFramePy { inner: f })?)?;
-                            }
-                            (list.into_py(py), None)
-                        }
-                        Err(e) => {
-                            let err = codec_parse_error_to_pyerr(py, &e, "aac");
-                            let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
-                            (bytes_py, Some(err))
-                        }
-                    }
-                }
-                AudioCodec::Mp2 => {
-                    // Audit-2 #3: same GIL-release pattern as the AAC arm above,
-                    // using mpegaudio_frames and FrameOwned.
-                    let parse_result: Result<
-                        Vec<tst_core::codec::mpegaudio::FrameOwned>,
-                        tst_core::codec::CodecParseError,
-                    > = py.allow_threads(|| {
-                        let mut owned = Vec::new();
-                        for res in mpegaudio_frames(payload) {
-                            match res {
-                                Ok(f) => owned.push(f.to_owned()),
-                                Err(e) => return Err(e),
-                            }
-                        }
-                        Ok(owned)
-                    });
-                    match parse_result {
-                        Ok(frames) => {
-                            let list = pyo3::types::PyList::empty_bound(py);
-                            for f in frames {
-                                list.append(Py::new(
-                                    py,
-                                    crate::codec::Mpeg2AudioFramePy { inner: f },
-                                )?)?;
-                            }
-                            (list.into_py(py), None)
-                        }
-                        Err(e) => {
-                            let err = codec_parse_error_to_pyerr(py, &e, "mp2");
-                            let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
-                            (bytes_py, Some(err))
-                        }
-                    }
-                }
-                // AAC-LATM typed parsing deferred — fall back to bytes silently.
-                // AC-3 is not yet parsed — fall back to bytes silently.
-                _ => {
-                    let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
-                    (bytes_py, None)
-                }
-            };
+            // Raw-first: surface the raw audio elementary-stream bytes verbatim
+            // as `.raw`. Typed frame parsing is opt-in Python-side via
+            // `DemuxEvent.Audio.parse()` (→ `tstrans.codec.parse_audio`).
             let cls = de.getattr(intern!(py, "Audio"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", audio_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("payload", payload_py)?;
-            match parse_err {
-                Some(err) => {
-                    let val = err.value_bound(py).clone().into_any();
-                    kwargs.set_item("codec_parse_error", val)?;
-                }
-                None => kwargs.set_item("codec_parse_error", py.None())?,
-            }
+            kwargs.set_item("raw", PyBytes::new_bound(py, frames))?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Subtitle { codec, payload } => {

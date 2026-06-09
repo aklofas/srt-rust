@@ -12,9 +12,9 @@ Normalisation rules mirror the Rust adapter at
 
 Video
   ``payload_sha256`` = sha256 of the concatenated RBSP bytes from every
-  ``NalUnit.payload`` (H.264/H.265/H.266) or ``Obu.payload`` (AV1) in
-  ``DemuxEvent.Video.payload``.  This is the same operation as the Rust
-  normaliser's ``video_payload_bytes()``.
+  ``NalUnit.payload`` (H.264/H.265/H.266) or ``Obu.payload`` (AV1) obtained
+  via the opt-in ``DemuxEvent.Video.parse()``.  This is the same operation
+  as the Rust normaliser's ``video_payload_bytes()``.
 
 stream_type
   The raw PMT stream_type byte from the first ``DemuxEvent.ProgramMap``
@@ -141,7 +141,7 @@ def _video_payload_bytes(ev: DemuxEvent.Video) -> bytes:  # type: ignore[name-de
     Mirrors ``video_payload_bytes()`` in the Rust normaliser.
     """
     out = bytearray()
-    for item in ev.payload:
+    for item in ev.parse():
         out.extend(bytes(item.payload))
     return bytes(out)
 
@@ -254,17 +254,10 @@ def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
             })
 
         elif isinstance(ev, DemuxEvent.Audio):
-            # Audio payload is list[AdtsFrame] (AAC), list[Mpeg2AudioFrame] (MP2),
-            # or bytes (LATM/AC-3/fallback).  The Rust normaliser hashes the
-            # raw ``frames`` bytes from SamplePayload::Audio.  For typed frames,
-            # concatenate their raw bytes via the buffer protocol; for bytes,
-            # hash directly.
-            if isinstance(ev.payload, (bytes, bytearray)):
-                raw = bytes(ev.payload)
-            else:
-                # list[AdtsFrame] or list[Mpeg2AudioFrame] — each has a
-                # `.payload` attribute returning the full frame bytes.
-                raw = b"".join(bytes(f.payload) for f in ev.payload)
+            # Raw-first: the Rust normaliser hashes the raw ``frames`` bytes
+            # from SamplePayload::Audio (sha256_hex(&frames)). ``ev.raw`` is
+            # exactly those bytes, so hash them directly.
+            raw = bytes(ev.raw)
             events.append({
                 "event": "audio",
                 "program": ev.stream.program_number,

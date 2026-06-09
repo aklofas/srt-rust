@@ -233,21 +233,63 @@ def test_av1_binding_round_trip_with_matching_demux_carriage() -> None:
 
 
 def test_av1_interop_sender_into_binding_demuxer_surfaces_both_issues() -> None:
-    """The mismatch case proves the carriage mode plumbing actually
-    affects the demuxer: an interop sender against a binding demuxer
-    (the Python default if `av1_carriage` is left at `None`) must
-    surface BOTH `AV1_WRONG_STREAM_ID` and `AV1_MISSING_TS_OBU_FRAMING`.
-    The Sample still arrives via the lenient raw-OBU fallback."""
+    """The mismatch case proves the carriage-mode plumbing affects the
+    demuxer — but in the raw-first model the diagnostic surface is SPLIT
+    across two layers (mirrors the Rust/tst-c rewrites, plan Tasks 3.1/3.2):
+
+    - `AV1_WRONG_STREAM_ID` is a PES-layer issue (stream_id=0xE0 vs 0xBD)
+      → still a demuxer `NonConformant` event.
+    - `Av1MissingTsObuFraming` is an ES-content issue (no
+      ts_open_bitstream_unit framing) → no longer a demux event; it now
+      surfaces from the opt-in `codec.split_units(raw, VideoCodec.AV1)`.
+
+    The Sample still arrives via the lenient raw-OBU fallback, carrying the
+    raw AU on `.raw`."""
+    import tstrans.codec as codec
+
     ts = _build_av1_ts(Av1CarriageMode.INTEROP_RAW_OBU)
-    # No `av1_carriage=` kwarg — exercises the `None` default path
-    # that defers to the Rust `Mpeg2TsBinding` default.
-    summary = _classify_demux_events(ts, DemuxerConfig())
-    assert summary["saw_sample"]
-    assert summary["saw_wrong_stream_id"], (
+    # No `av1_carriage=` kwarg — exercises the `None` default path that
+    # defers to the Rust `Mpeg2TsBinding` default (the binding demuxer).
+    demux = Demuxer(DemuxerConfig())
+    demux.feed(ts)
+    demux.flush()
+
+    saw_wrong_stream_id = False
+    raw_au = None
+    while True:
+        ev = demux.next_event()
+        if ev is None:
+            break
+        if isinstance(ev, _NonConformantEvent):
+            if ev.kind is NonConformantKind.AV1_WRONG_STREAM_ID:
+                saw_wrong_stream_id = True
+            # The demuxer no longer raises the ES-content missing-framing
+            # issue as an event — that moved to split_units (asserted below).
+            assert ev.kind is not NonConformantKind.AV1_MISSING_TS_OBU_FRAMING, (
+                "demuxer must not raise the ES-content AV1_MISSING_TS_OBU_FRAMING"
+            )
+        elif isinstance(ev, _VideoEvent):
+            raw_au = ev.raw
+
+    # PES-layer issue is still a demux event — proves the carriage knob is
+    # wired (a silently-ignored kwarg would not surface AV1_WRONG_STREAM_ID).
+    assert saw_wrong_stream_id, (
         "mismatched carriage must surface AV1_WRONG_STREAM_ID — if it doesn't, "
         "build_demuxer() is silently ignoring the av1_carriage field"
     )
-    assert summary["saw_missing_framing"]
+    # The lenient raw-OBU fallback still emits the raw AU Sample.
+    assert raw_au is not None, "lenient raw-OBU fallback should still emit the Sample"
+
+    # The opt-in ES split now carries the missing-framing conformance signal
+    # (and still recovers the OBUs via the raw-OBU fallback). The issues are
+    # the Rust `NonConformantIssue` Display strings; match the real substring
+    # from `Av1MissingTsObuFraming`'s message ("missing ts_open_bitstream_unit").
+    units, issues = codec.split_units(raw_au, VideoCodec.AV1)
+    assert len(units) >= 1, "split_units should recover the raw-OBU AU"
+    assert any("missing ts_open_bitstream_unit" in i for i in issues), (
+        f"split_units should report the AV1 missing-framing issue for raw-OBU "
+        f"carriage; got issues={issues!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

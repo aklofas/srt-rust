@@ -1,9 +1,15 @@
-"""Audit-2 #3 — Demuxer.next_event() must not pin the GIL during
-AAC/MP2 frame parsing. Regression test: a second thread must make
-progress while next_event() is parsing a multi-MB audio PES."""
+"""Raw-first audio smoke test.
 
-import threading
-import time
+In the raw-first model `Demuxer.next_event()` no longer parses audio frames
+during conversion — every Audio event carries raw bytes on `.raw`, and frame
+parsing is opt-in via `.parse()`. This file verifies that observable shape.
+
+(The former Audit-2 #3 GIL-progress regression test was removed when audio
+parsing moved out of the conversion path — there is no longer GIL-held frame
+parsing inside `next_event()` for that test to guard. GIL release now happens
+inside the opt-in `tstrans.codec.parse_audio` / `.parse()`.)
+"""
+
 from pathlib import Path
 
 import pytest
@@ -11,62 +17,12 @@ import pytest
 import tstrans
 from tstrans.mpegts import Demuxer, DemuxerConfig
 
-# ---------------------------------------------------------------------------
-# GIL-progress test — skipped until the audio-heavy synthetic fixture
-# is available (built in Wave 2 / Task 9).
-# ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skipif(
-    not Path("bindings/python/tests/fixtures/audio_aac_large.ts").exists(),
-    reason="needs an audio-heavy synthetic TS (~2 MB); built in task 9",
-)
-
-
-def test_next_event_releases_gil_during_aac_parse() -> None:
-    ts = Path("bindings/python/tests/fixtures/audio_aac_large.ts").read_bytes()
-    dx = Demuxer(DemuxerConfig())
-    dx.feed(ts)
-    dx.flush()
-
-    progress_counter = 0
-    stop_flag = threading.Event()
-
-    def background_progress():
-        nonlocal progress_counter
-        while not stop_flag.is_set():
-            progress_counter += 1
-            time.sleep(0.0)  # yield
-
-    t = threading.Thread(target=background_progress, daemon=True)
-    t.start()
-    try:
-        # Drain all events.
-        for _ in dx:
-            pass
-    finally:
-        stop_flag.set()
-        t.join(timeout=1.0)
-
-    # If next_event held the GIL the whole time, progress_counter would
-    # be ~0. With GIL release in audio parse, it should be >> 0.
-    assert progress_counter > 50, (
-        f"background thread saw only {progress_counter} iterations — "
-        "GIL appears held during audio parse"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Smoke test — no skip marker; verifies GIL refactor is behavior-neutral.
-# Uses the muxer to build a small in-process AAC TS instead of reading
-# a fixture file.
-# ---------------------------------------------------------------------------
-
-
-def test_next_event_audio_typed_payload_unchanged() -> None:
-    """Smoke — GIL release refactor must not change observable output.
+def test_next_event_audio_typed_parse_unchanged() -> None:
+    """Smoke — raw-first surface: every Audio event carries `.raw` bytes and
+    the opt-in `.parse()` returns a typed frame list.
 
     Uses an existing small AAC TS fixture if present; skips if absent.
-    The full GIL-progress assertion is gated on a larger fixture (task 9).
     """
     p = Path("bindings/python/tests/fixtures/aac_minimal.ts")
     if not p.exists():
@@ -77,6 +33,9 @@ def test_next_event_audio_typed_payload_unchanged() -> None:
     audio_events = [e for e in dx if isinstance(e, tstrans.mpegts.DemuxEvent.Audio)]
     assert audio_events, "expected at least one Audio event"
     for ev in audio_events:
-        assert isinstance(ev.payload, list), (
-            f"expected list payload after GIL refactor, got {type(ev.payload).__name__}"
+        assert isinstance(ev.raw, (bytes, bytearray)), (
+            f"expected bytes raw, got {type(ev.raw).__name__}"
+        )
+        assert isinstance(ev.parse(), list), (
+            f"expected list from parse(), got {type(ev.parse()).__name__}"
         )

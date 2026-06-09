@@ -42,6 +42,8 @@ mod mux_builder_errors;
 mod mux_demux_audio_roundtrip;
 #[path = "mpegts/mux_demux_subtitle_roundtrip.rs"]
 mod mux_demux_subtitle_roundtrip;
+#[path = "mpegts/mux_demux_video_raw_roundtrip.rs"]
+mod mux_demux_video_raw_roundtrip;
 #[path = "mpegts/mux_descriptor_invariant.rs"]
 mod mux_descriptor_invariant;
 #[path = "mpegts/mux_descriptors_roundtrip.rs"]

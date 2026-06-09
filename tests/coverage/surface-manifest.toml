@@ -4620,6 +4620,58 @@ item = "tst_core::publisher::PublisherStats::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::shared::SharedBytes"
+reason = "raw-first refactor 2026-06-08; zero-copy byte buffer used as field type in NalUnit/Obu/SamplePayload"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::as_slice"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::from_vec"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::slice"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::clone"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::eq"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::from"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::fmt"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::hash"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::Target"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::shared::SharedBytes::deref"
+reason = "raw-first refactor 2026-06-08; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::mpegts::demux::split_video"
+reason = "raw-first refactor 2026-06-08; opt-in ES splitter; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::mpegts::demux::split_video_strict"
+reason = "raw-first refactor 2026-06-08; opt-in strict ES splitter; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_core::transport::RecvTransport"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

@@ -376,7 +376,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
 | Subtitle classification on `stream_type 0x06` | ✅ Full | Cascade: subtitling/teletext/`VTTC`/`GA94` descriptors → `Subtitle` payload; KLV cases unchanged when no subtitle descriptor present. |
-| AV1 / H.266 codec variants on `VideoCodec` | ✅ Full | `H266` (`stream_type=0x33`) emits `VideoPayload::Nals(_)`; `Av1` (`stream_type=0x06` + AV01 registration) emits `VideoPayload::Obus(_)`. |
+| AV1 / H.266 codec variants on `VideoCodec` | ✅ Full | Recognized and tagged on `SamplePayload::Video.codec`. The opt-in `split_video(&raw, codec)` returns `VideoPayload::Nals(_)` for `H266` (`stream_type=0x33`) and `VideoPayload::Obus(_)` for `Av1` (`stream_type=0x06` + AV01 registration). |
 | Typed SPS/VPS/PPS payload parser | ✅ Full | `codec::h264` / `codec::h265` / `codec::h266` for NAL-shaped codecs; `codec::av1` for OBU-shaped. See `codec` block below. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |
 

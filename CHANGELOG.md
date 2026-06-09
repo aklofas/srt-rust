@@ -7,6 +7,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
+
+### Changed (breaking) — `DemuxEvent::Sample` video/audio payloads are now raw-first
+
+- The demuxer no longer eagerly parses video / audio elementary streams.
+  `SamplePayload::Video` drops its `payload: VideoPayload` field and now carries
+  **`raw: SharedBytes`** — the exact encoded access unit (Annex-B for H.26x;
+  on-wire PES payload for AV1). `SamplePayload::Audio` is structurally unchanged
+  — `frames` still carries the raw audio bytes; the opt-in parse path is new. In
+  Python, `DemuxEvent.Video` / `DemuxEvent.Audio` drop the eager `payload`
+  (NAL/OBU/frame lists) and `codec_parse_error` fields — use `.raw` + `.parse()`
+  (or `tstrans.codec.split_units` / `parse_audio`) instead.
+- **Parsing is opt-in.** Split a raw video AU with
+  `tst_core::mpegts::demux::split_video(&raw, codec)` (returns
+  `(VideoPayload, Vec<NonConformantIssue>)`) or `split_video_strict` (returns
+  `Err` on the first ES-conformance issue). In Python, call `ev.parse()` on a
+  `DemuxEvent.Video` / `DemuxEvent.Audio` event, or the free functions
+  `tstrans.codec.split_units(raw, codec)` / `tstrans.codec.parse_audio(raw, codec)`.
+- `NalUnit` / `Obu` payload bytes are now `tst_core::shared::SharedBytes`
+  (refcounted zero-copy views; they still deref to `&[u8]`).
+- The demuxer's `StrictMode` is now **TS-layer only** — it gates PSI / PES /
+  timing conformance and no longer inspects or rejects video/audio ES content.
+  Malformed-NAL/OBU rejection moved to the opt-in `split_video_strict`.
+- The JVM binding is unaffected (`v.payload()` still returns parsed
+  `List<VideoUnit>` — it splits internally). The C ABI is unchanged.
+
+### Added — opt-in elementary-stream parsing surface
+
+- `tst_core::shared::SharedBytes` — refcounted zero-copy byte buffer.
+- `tst_core::mpegts::demux::split_video` / `split_video_strict` — opt-in split
+  of a raw video AU into a `VideoPayload` (`Nals` / `Obus`).
+- Python: `tstrans.codec.split_units` / `tstrans.codec.parse_audio`;
+  `DemuxEvent.Video` / `DemuxEvent.Audio` gain `.raw` + `.parse()`.
+- `push_video_to_with_dts(dts=None)` produces a PTS-only PES (equivalent to
+  `push_video_to`).
+
+---
+
 ## [Unreleased]
 
 ### Changed — tst-c ABI minor 8 → 9: offline `tst_muxer_*` un-gated (2026-05-31)

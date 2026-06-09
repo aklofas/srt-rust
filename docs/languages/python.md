@@ -97,8 +97,10 @@ for event in parse_file("capture.ts"):
     match event:
         case DemuxEvent.ProgramMap(programs=pms):
             print(f"PSI: {len(pms)} programs")
-        case DemuxEvent.Video(pts=p, codec=c, payload=b):
-            print(f"Video {c.name} pts={p.ms}ms len={len(b)}")
+        case DemuxEvent.Video(pts=p, codec=c, raw=b) as ev:
+            # raw-first: `raw` is the exact encoded access unit. Splitting
+            # it into typed NAL/OBU units is opt-in via `ev.parse()`.
+            print(f"Video {c.name} pts={p.ms}ms len={len(b)} units={len(ev.parse())}")
         case DemuxEvent.Klv(pts=p, payload=b):
             print(f"KLV pts={p.ms}ms len={len(b)} (use tstrans.klv to decode)")
 ```
@@ -155,10 +157,15 @@ See the `tstrans.klv` module docstring for the full type listing.
   `with m.write_file("out.ts") as proxy: ...`. The `__exit__` flushes +
   finalizes the file. No explicit `close()` ceremony is needed (and a
   double-close on the underlying handle would panic).
-- **`Sample.payload` is typed.** For H.264 / H.265 / H.266 video it's
-  `list[NalUnit]`; for AV1 it's `list[Obu]`; for AAC ADTS it's
+- **Video / Audio events are raw-first; parsing is opt-in.** A
+  `DemuxEvent.Video` / `DemuxEvent.Audio` carries `.raw` (the exact encoded
+  bytes). Call `ev.parse()` to get typed units: for H.264 / H.265 / H.266
+  video it's `list[NalUnit]`; for AV1 it's `list[Obu]`; for AAC ADTS it's
   `list[AdtsFrame]`; for MPEG-2 Audio it's `list[Mpeg2AudioFrame]`. For
-  subtitles + AAC-LATM, it stays raw `bytes` (no parser).
+  subtitles + AAC-LATM there's no typed parser — use `.raw` directly. The
+  free functions `tstrans.codec.split_units(raw, codec)` and
+  `tstrans.codec.parse_audio(raw, codec)` do the same split and additionally
+  return the conformance-issue list.
 - **abi3 build limitation.** `bytes`-like extraction uses a two-path
   approach (one for true `bytes`, one for `memoryview` / `bytearray`)
   because PyO3's abi3 doesn't expose a unified buffer protocol. The
@@ -275,10 +282,10 @@ demuxer; it never appears as a separate kind.)
 | pid | u16 | Source PID (NaN for global events) |
 | stream_type | str | `StreamKind` variant name (`Video` / `Audio` / `Klv` / `Subtitle`) |
 | codec | str | Codec tag (`H264` / `H265` / `H266` / `Av1` / `Aac` / `Mpeg2Audio` / `WebVtt` / ...) |
-| payload_len | int | `len(payload)` — bytes for KLV / subtitle / audio-fallback rows; element count for typed lists |
-| nal_count | int | Video-only — `len(payload)` for `_VideoEvent` rows whose payload is a typed `list[NalUnit]` or `list[Obu]`. NaN on audio rows (whose typed `list[AdtsFrame]` would otherwise produce false positives in a filter like `df[df.nal_count > N]`) and on non-Sample rows |
+| payload_len | int | byte length of the event payload — `len(raw)` for video / audio rows, `len(payload)` for KLV / subtitle rows |
+| nal_count | int | Video-only — the per-AU unit count, obtained by running the opt-in `event.parse()` on each `_VideoEvent` row (NAL units, or OBUs for AV1). NaN on audio rows and on non-Sample rows |
 | random_access | bool | TS adaptation-field RAI bit (video samples) |
-| has_codec_parse_error | bool | True iff the Phase 5 codec parser fell back to raw bytes for this event |
+| has_codec_parse_error | bool | Vestigial column, always `None` under the raw-first surface — the eager `codec_parse_error` field was dropped; conformance issues now surface via `event.parse(strict=True)` / `tstrans.codec.split_units`. Kept for schema stability. |
 | issue | str | `NonConformant` event's issue text |
 | issue_kind | str | `NonConformant` event's `.kind` enum variant name |
 
@@ -288,9 +295,9 @@ materialised in the DataFrame.
 ##### NAL / OBU lists — `nals_to_dataframe` / `obus_to_dataframe`
 
 ```python
-# Extract NALs from a single video Sample
+# Extract NALs from a single video Sample (opt-in split via `.parse()`)
 sample = next(e for e in events if type(e).__name__ == "_VideoEvent")
-df = tstrans.pandas.nals_to_dataframe(sample.payload, pts=sample.pts.ms)
+df = tstrans.pandas.nals_to_dataframe(sample.parse(), pts=sample.pts.ms)
 df.nal_type_name.value_counts()
 ```
 
@@ -304,8 +311,8 @@ NaN elsewhere), `layer_id` (H.265/H.266 only; NaN on H.264),
 argument was supplied.
 
 ```python
-# AV1 sample
-df = tstrans.pandas.obus_to_dataframe(sample.payload, pts=sample.pts.ms)
+# AV1 sample (`.parse()` returns the OBU list)
+df = tstrans.pandas.obus_to_dataframe(sample.parse(), pts=sample.pts.ms)
 ```
 
 OBU schema: `obu_type`, `obu_type_name`, `temporal_id`, `spatial_id`
@@ -417,8 +424,8 @@ h264_samples = df[(df.kind == "Sample") & (df.codec == "H264")]
 ```python
 all_nals = []
 for ev in events:
-    if type(ev).__name__ == "_VideoEvent" and isinstance(ev.payload, list):
-        all_nals.extend(ev.payload)
+    if type(ev).__name__ == "_VideoEvent":
+        all_nals.extend(ev.parse())  # opt-in split of each AU into NAL units
 df = tstrans.pandas.nals_to_dataframe(all_nals)
 df.nal_type_name.value_counts().plot.bar()
 ```

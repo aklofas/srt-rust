@@ -3413,8 +3413,8 @@ fn parse_audio(
                         .map(|res| res.map(|f| f.to_owned()))
                         .collect::<Result<Vec<_>, _>>()
                 });
-                let frames = frames
-                    .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))?;
+                let frames =
+                    frames.map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))?;
                 for f in frames {
                     list.append(Py::new(py, AdtsFramePy { inner: f })?)?;
                 }

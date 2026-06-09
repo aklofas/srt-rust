@@ -411,11 +411,15 @@ fn loopback_mux_sender_to_demux_receiver_codec_stats_video_and_psi_not_found() {
         "expected VIDEO kind for video PID, got {}",
         video_out.kind
     );
+    // Under the raw-first model the demuxer emits raw AU bytes without splitting
+    // into NALs/OBUs, so nals_or_obus stays 0 at the receiver. The muxer side
+    // still counts NALs (it receives already-split units). Verify that video
+    // was received by checking random_access_aus instead — all 5 AUs were sent
+    // with key=true, which sets the TS adaptation-field random_access_indicator.
     unsafe {
         assert!(
-            video_out.u.video.nals_or_obus > 0,
-            "video nals_or_obus={}",
-            video_out.u.video.nals_or_obus
+            video_out.u.video.random_access_aus > 0,
+            "random_access_aus=0, expected > 0 (all 5 AUs sent with key=true)",
         );
     }
 

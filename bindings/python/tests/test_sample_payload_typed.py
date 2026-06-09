@@ -1,8 +1,8 @@
-"""Phase 5: end-to-end Sample.payload typed access.
+"""Raw-first: end-to-end DemuxEvent.Video/.Audio raw + opt-in parse access.
 
-Video events now carry `list[NalUnit]` (H.264/H.265/H.266) or `list[Obu]`
-(AV1) instead of raw bytes. Audio events carry `list[AdtsFrame]` (AAC) or
-`list[Mpeg2AudioFrame]` (MP2) or bytes (LATM / AC-3 / fallback-on-error).
+Video and Audio events carry raw encoded bytes on `.raw`; typed units come
+from the opt-in `.parse()` (→ `list[NalUnit]`/`list[Obu]` for video,
+`list[AdtsFrame]`/`list[Mpeg2AudioFrame]`/`[]` for audio).
 
 These tests use:
 - Muxer-generated synthetic TS for video (H.264 NAL AUD round-trip).
@@ -63,32 +63,34 @@ def _make_h264_ts(tmp: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Video: H.264 → list[NalUnit]
+# Video: raw Annex-B + opt-in parse → list[NalUnit]
 # ---------------------------------------------------------------------------
 
-def test_h264_video_payload_is_list():
+def test_h264_video_raw_is_bytes():
     """parse_file on a synthetic H.264 TS must yield Video events whose
-    payload is a list (not bytes)."""
+    `.raw` is the encoded access unit (bytes, Annex-B start code)."""
     with tempfile.TemporaryDirectory() as tmp:
         ts_path = _make_h264_ts(Path(tmp))
         events = list(parse_file(ts_path))
     video = [e for e in events if isinstance(e, DemuxEvent.Video)]
     assert video, "expected at least one DemuxEvent.Video from synthetic H.264 TS"
     s = video[0]
-    assert isinstance(s.payload, list), (
-        f"expected list, got {type(s.payload).__name__}"
+    assert isinstance(s.raw, (bytes, bytearray)), (
+        f"expected bytes, got {type(s.raw).__name__}"
     )
+    assert s.raw[:4] == b"\x00\x00\x00\x01"
 
 
-def test_h264_video_payload_elements_are_nal_units():
-    """Every element in Video.payload must be a NalUnit instance."""
+def test_h264_video_parse_returns_nal_units():
+    """`.parse()` must split `.raw` into a list of NalUnit instances."""
     with tempfile.TemporaryDirectory() as tmp:
         ts_path = _make_h264_ts(Path(tmp))
         events = list(parse_file(ts_path))
     video = [e for e in events if isinstance(e, DemuxEvent.Video)]
     assert video
-    s = video[0]
-    assert all(isinstance(n, NalUnit) for n in s.payload), (
+    units = video[0].parse()
+    assert isinstance(units, list)
+    assert all(isinstance(n, NalUnit) for n in units), (
         "expected all elements to be NalUnit"
     )
 
@@ -100,112 +102,83 @@ def test_h264_nal_unit_kind_is_h264():
         events = list(parse_file(ts_path))
     video = [e for e in events if isinstance(e, DemuxEvent.Video)]
     assert video
-    s = video[0]
-    assert len(s.payload) > 0
-    assert s.payload[0].kind == "H264", f"got kind={s.payload[0].kind!r}"
+    units = video[0].parse()
+    assert len(units) > 0
+    assert units[0].kind == "H264", f"got kind={units[0].kind!r}"
 
 
-def test_h264_video_codec_parse_error_is_none():
-    """codec_parse_error must be None for video (typed-parse can't fail here)."""
+def test_video_event_has_no_payload_attribute():
+    """The raw-first surface drops the eager `.payload` field."""
     with tempfile.TemporaryDirectory() as tmp:
         ts_path = _make_h264_ts(Path(tmp))
         events = list(parse_file(ts_path))
     video = [e for e in events if isinstance(e, DemuxEvent.Video)]
     assert video
-    assert video[0].codec_parse_error is None
+    assert not hasattr(video[0], "payload")
+    assert not hasattr(video[0], "codec_parse_error")
 
 
 # ---------------------------------------------------------------------------
-# Audio: AAC-ADTS → list[AdtsFrame]
+# Audio: AAC-ADTS → raw + parse() → list[AdtsFrame]
 # ---------------------------------------------------------------------------
 
-def test_aac_audio_payload_is_list():
-    """AAC ADTS events from a real fixture must carry list[AdtsFrame]."""
+def test_aac_audio_raw_is_bytes():
+    """AAC ADTS events from a real fixture must carry raw bytes."""
     aac_events = [
         e for e in parse_file(_AAC_ADTS_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
         and e.codec.value == "aac"
     ]
     assert aac_events, f"no AAC audio events found in {_AAC_ADTS_FIXTURE}"
-    s = aac_events[0]
-    assert isinstance(s.payload, list), (
-        f"expected list, got {type(s.payload).__name__}"
-    )
+    assert isinstance(aac_events[0].raw, (bytes, bytearray))
 
 
-def test_aac_audio_payload_elements_are_adts_frames():
-    """Every element in an AAC Audio.payload must be AdtsFrame."""
+def test_aac_audio_parse_returns_adts_frames():
+    """`.parse()` on an AAC Audio event returns list[AdtsFrame]."""
     aac_events = [
         e for e in parse_file(_AAC_ADTS_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
         and e.codec.value == "aac"
     ]
     assert aac_events
-    s = aac_events[0]
-    # payload may be empty list if AAC is parsed as zero frames, but
-    # elements must be typed correctly.
-    assert all(isinstance(f, AdtsFrame) for f in s.payload), (
+    frames = aac_events[0].parse()
+    assert isinstance(frames, list)
+    assert all(isinstance(f, AdtsFrame) for f in frames), (
         "expected all elements to be AdtsFrame"
     )
 
 
-def test_aac_codec_parse_error_is_none_on_clean_stream():
-    """codec_parse_error must be None for a clean ADTS stream."""
-    aac_events = [
-        e for e in parse_file(_AAC_ADTS_FIXTURE)
-        if isinstance(e, DemuxEvent.Audio)
-        and e.codec.value == "aac"
-    ]
-    assert aac_events
-    # At least the first event on a well-formed fixture must parse cleanly.
-    assert aac_events[0].codec_parse_error is None
-
-
 # ---------------------------------------------------------------------------
-# Audio: MP2 → list[Mpeg2AudioFrame]
+# Audio: MP2 → raw + parse() → list[Mpeg2AudioFrame]
 # ---------------------------------------------------------------------------
 
-def test_mp2_audio_payload_is_list():
-    """MP2 audio events from a real fixture must carry list[Mpeg2AudioFrame]."""
+def test_mp2_audio_raw_is_bytes():
+    """MP2 audio events from a real fixture must carry raw bytes."""
     mp2_events = [
         e for e in parse_file(_MP2_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
         and e.codec.value == "mp2"
     ]
     assert mp2_events, f"no MP2 audio events found in {_MP2_FIXTURE}"
-    s = mp2_events[0]
-    assert isinstance(s.payload, list), (
-        f"expected list, got {type(s.payload).__name__}"
-    )
+    assert isinstance(mp2_events[0].raw, (bytes, bytearray))
 
 
-def test_mp2_audio_payload_elements_are_mpeg2_audio_frames():
-    """Every element in an MP2 Audio.payload must be Mpeg2AudioFrame."""
+def test_mp2_audio_parse_returns_mpeg2_audio_frames():
+    """`.parse()` on an MP2 Audio event returns list[Mpeg2AudioFrame]."""
     mp2_events = [
         e for e in parse_file(_MP2_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
         and e.codec.value == "mp2"
     ]
     assert mp2_events
-    s = mp2_events[0]
-    assert all(isinstance(f, Mpeg2AudioFrame) for f in s.payload), (
+    frames = mp2_events[0].parse()
+    assert all(isinstance(f, Mpeg2AudioFrame) for f in frames), (
         "expected all elements to be Mpeg2AudioFrame"
     )
 
 
-def test_mp2_codec_parse_error_is_none_on_clean_stream():
-    """codec_parse_error must be None for a clean MP2 stream."""
-    mp2_events = [
-        e for e in parse_file(_MP2_FIXTURE)
-        if isinstance(e, DemuxEvent.Audio)
-        and e.codec.value == "mp2"
-    ]
-    assert mp2_events
-    assert mp2_events[0].codec_parse_error is None
-
-
 # ---------------------------------------------------------------------------
-# Bytes fallback: LATM / AC-3 → raw bytes (typed parsing deferred)
+# Bytes-only codecs: LATM / AC-3 → raw bytes, parse() → [] (no typed parser)
 # ---------------------------------------------------------------------------
 
 _AAC_LATM_FIXTURE = _FIXTURE_BASE / "audio" / "aac-latm.ts"
@@ -215,8 +188,8 @@ for _fx in (_AAC_LATM_FIXTURE, _AC3_FIXTURE):
     assert _fx.is_file(), f"checked-in audio fixture missing: {_fx}"
 
 
-def test_aac_latm_payload_is_bytes_fallback():
-    """AAC-LATM typed parsing is deferred — payload must be raw bytes."""
+def test_aac_latm_parse_is_empty_list():
+    """AAC-LATM has no typed parser — `.raw` is bytes, `.parse()` is []."""
     latm_events = [
         e for e in parse_file(_AAC_LATM_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
@@ -224,14 +197,12 @@ def test_aac_latm_payload_is_bytes_fallback():
     ]
     assert latm_events, f"no AAC-LATM events found in {_AAC_LATM_FIXTURE}"
     s = latm_events[0]
-    assert isinstance(s.payload, bytes), (
-        f"expected bytes for LATM fallback, got {type(s.payload).__name__}"
-    )
-    assert s.codec_parse_error is None, "no error expected for intentional bytes fallback"
+    assert isinstance(s.raw, (bytes, bytearray))
+    assert s.parse() == []
 
 
-def test_ac3_payload_is_bytes_fallback():
-    """AC-3 typed parsing is not yet implemented — payload must be raw bytes."""
+def test_ac3_parse_is_empty_list():
+    """AC-3 typed parsing is not implemented — `.raw` is bytes, `.parse()` is []."""
     ac3_events = [
         e for e in parse_file(_AC3_FIXTURE)
         if isinstance(e, DemuxEvent.Audio)
@@ -239,21 +210,21 @@ def test_ac3_payload_is_bytes_fallback():
     ]
     assert ac3_events, f"no AC-3 events found in {_AC3_FIXTURE}"
     s = ac3_events[0]
-    assert isinstance(s.payload, bytes), (
-        f"expected bytes for AC-3 fallback, got {type(s.payload).__name__}"
-    )
-    assert s.codec_parse_error is None
+    assert isinstance(s.raw, (bytes, bytearray))
+    assert s.parse() == []
 
 
 # ---------------------------------------------------------------------------
-# Regression: codec_parse_error attribute exists on all Sample event types
+# Regression: Audio events expose .raw on every codec type
 # ---------------------------------------------------------------------------
 
-def test_video_event_has_codec_parse_error_attribute():
-    """DemuxEvent.Video must have a codec_parse_error attribute (may be None)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        ts_path = _make_h264_ts(Path(tmp))
-        events = list(parse_file(ts_path))
-    video = [e for e in events if isinstance(e, DemuxEvent.Video)]
-    assert video
-    assert hasattr(video[0], "codec_parse_error")
+def test_audio_event_has_no_payload_attribute():
+    """DemuxEvent.Audio drops the eager `.payload`/`codec_parse_error` fields."""
+    aac_events = [
+        e for e in parse_file(_AAC_ADTS_FIXTURE)
+        if isinstance(e, DemuxEvent.Audio)
+        and e.codec.value == "aac"
+    ]
+    assert aac_events
+    assert not hasattr(aac_events[0], "payload")
+    assert not hasattr(aac_events[0], "codec_parse_error")

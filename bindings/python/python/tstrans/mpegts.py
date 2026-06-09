@@ -549,8 +549,8 @@ class DemuxEvent:
     ```
     for ev in parse_file(path):
         match ev:
-            case DemuxEvent.Video(stream=s, pts=p, payload=b):
-                ...
+            case DemuxEvent.Video(stream=s, pts=p, raw=b):
+                units = ev.parse()  # opt-in NAL/OBU split
             case DemuxEvent.Klv(payload=b):
                 ...
     ```
@@ -589,11 +589,17 @@ class _VideoEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: VideoCodec
-    # list[NalUnit] for H.264/H.265/H.266; list[Obu] for AV1.
-    payload: Any
+    raw: bytes  # the exact encoded access unit (Annex-B for H.26x; on-wire PES payload for AV1)
     random_access_indicator: bool
-    # None — video typed-parse cannot fail at this layer.
-    codec_parse_error: Optional[Any] = None
+
+    def parse(self, *, strict: bool = False):
+        """Opt-in: split `raw` into typed NAL/OBU units. Lenient drops the issue
+        list (use `tstrans.codec.split_units` if you want the issues)."""
+        from tstrans import codec as _codec
+        if strict:
+            return _codec.split_units(self.raw, self.codec, strict=True)
+        units, _issues = _codec.split_units(self.raw, self.codec)
+        return units
 
 
 @dataclass(frozen=True, slots=True)
@@ -602,13 +608,13 @@ class _AudioEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: AudioCodec
-    # list[AdtsFrame] (AAC) | list[Mpeg2AudioFrame] (MP2) | bytes
-    # (LATM/AC-3/fallback-on-error). Use `codec_parse_error` to distinguish
-    # bytes-due-to-error from bytes-by-design.
-    payload: Any
-    # Populated when mid-stream parse failure triggers bytes fallback (option c).
-    # None on clean parse or codec types whose typed parser is deferred.
-    codec_parse_error: Optional[Any] = None
+    raw: bytes  # raw audio elementary-stream bytes
+
+    def parse(self, *, strict: bool = False):
+        """Opt-in: parse `raw` into typed audio frames (empty list for codecs with
+        no typed parser — parse `raw` directly)."""
+        from tstrans import codec as _codec
+        return _codec.parse_audio(self.raw, self.codec, strict=strict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -846,7 +852,8 @@ class DemuxerConfig:
 
 # Re-export NalUnit / Obu / ObuExtension so callers can import them
 # from `tstrans.mpegts` without also importing from `tstrans.codec`.
-# These are the types that appear in `DemuxEvent.Video.payload` lists.
+# These are the types returned by `DemuxEvent.Video.parse()` (and by
+# `tstrans.codec.split_units`).
 from tstrans.codec import NalUnit, Obu, ObuExtension
 
 # Re-export the Rust-side PyDemuxer class. The Rust impl lives in
@@ -1209,8 +1216,8 @@ __all__: list[str] = [
     "MuxerFileSink",
     "MuxerDrainProxy",
     # NalUnit / Obu / ObuExtension re-exported from tstrans.codec for
-    # convenient import from tstrans.mpegts (they appear in
-    # DemuxEvent.Video.payload lists).
+    # convenient import from tstrans.mpegts (returned by
+    # DemuxEvent.Video.parse() / tstrans.codec.split_units).
     "NalUnit",
     "Obu",
     "ObuExtension",

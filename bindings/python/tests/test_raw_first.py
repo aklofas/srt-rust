@@ -1,9 +1,23 @@
-"""Tests for codec.split_units and codec.parse_audio opt-in parsers (Task 4.1)."""
+"""Tests for codec.split_units and codec.parse_audio opt-in parsers (Task 4.1)
+plus the DemuxEvent.Video/.Audio raw-first surface (Task 4.2)."""
+
+import tempfile
+from pathlib import Path
 
 import pytest
+
 import tstrans.codec as codec
+from tstrans import io as tio
 from tstrans.exceptions import CodecError
-from tstrans.mpegts import AudioCodec, VideoCodec
+from tstrans.mpegts import (
+    AudioCodec,
+    DemuxEvent,
+    Muxer,
+    MuxerConfigBuilder,
+    MuxerProgramConfigBuilder,
+    Pts90khz,
+    VideoCodec,
+)
 
 
 def test_split_units_h264_returns_nal_list():
@@ -55,3 +69,58 @@ def test_parse_audio_aac_strict_raises_on_malformed():
     # strict mode (CodecError, the codec-domain exception — not ValueError).
     with pytest.raises(CodecError):
         codec.parse_audio(b"\xff\xf1\xff", AudioCodec.AAC, strict=True)
+
+
+# ---------------------------------------------------------------------------
+# Task 4.2 — DemuxEvent.Video/.Audio raw-first surface
+# ---------------------------------------------------------------------------
+
+# Real audio fixtures live under the tst-core fixtures tree (same accessor
+# pattern as tests/test_sample_payload_typed.py).
+_FIXTURE_BASE = (
+    Path(__file__).parent.parent.parent.parent
+    / "crates" / "tst-core" / "tests" / "fixtures"
+)
+_MP2_FIXTURE = _FIXTURE_BASE / "audio" / "mp2.ts"
+
+
+def _sample_ts_path(tmp: Path) -> Path:
+    """Build a small H.264 TS via the Muxer (mirrors the synthetic-TS
+    accessor used by tests/test_sample_payload_typed.py::_make_h264_ts)."""
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    m = Muxer(cfg)
+    path = tmp / "h264.ts"
+    nal_aud = b"\x00\x00\x00\x01\x09\xF0"  # Annex-B AUD NAL
+    pts0 = 900_000
+    with m.write_file(path) as proxy:
+        for i in range(4):
+            proxy.push_video(nal_aud, pts=Pts90khz.from_raw(pts0 + i * 3000))
+    return path
+
+
+def test_video_event_exposes_raw_and_opt_in_parse():
+    saw = False
+    with tempfile.TemporaryDirectory() as tmp:
+        for ev in tio.parse_file(_sample_ts_path(Path(tmp))):
+            if isinstance(ev, DemuxEvent.Video):
+                assert isinstance(ev.raw, (bytes, bytearray))
+                assert ev.raw[:4] == b"\x00\x00\x00\x01"  # Annex-B start code
+                units = ev.parse()                          # opt-in
+                assert len(units) >= 1
+                assert not hasattr(ev, "payload")           # removed
+                saw = True
+                break
+    assert saw
+
+
+def test_audio_event_exposes_raw():
+    for ev in tio.parse_file(_MP2_FIXTURE):
+        if isinstance(ev, DemuxEvent.Audio):
+            assert isinstance(ev.raw, (bytes, bytearray))
+            assert isinstance(ev.parse(), list)
+            break

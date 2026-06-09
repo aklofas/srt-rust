@@ -35,7 +35,7 @@ def test_video_event():
         pts=Pts90khz.from_ms(100),
         dts=None,
         codec=VideoCodec.H264,
-        payload=b"\x00\x00\x00\x01fake nals",
+        raw=b"\x00\x00\x00\x01fake nals",
         random_access_indicator=True,
     )
     assert isinstance(ev, DemuxEvent)
@@ -44,14 +44,15 @@ def test_video_event():
 
 
 def test_audio_event():
-    # Phase 5: Audio event uses `payload=` (was `frames=` before typed rewire).
+    # Raw-first: Audio event carries `raw=` (was `payload=` before the
+    # raw-first rewire). Typed frames come from `ev.parse()`.
     ev = DemuxEvent.Audio(
         stream=StreamId(pid=258, kind=StreamKindTag.AUDIO,
                         codec=AudioCodec.AAC, program_number=1),
         pts=Pts90khz.from_ms(100),
         dts=None,
         codec=AudioCodec.AAC,
-        payload=b"adts frame bytes",
+        raw=b"adts frame bytes",
     )
     assert isinstance(ev, DemuxEvent)
     assert ev.codec is AudioCodec.AAC
@@ -118,7 +119,7 @@ def test_video_event_match_statement_310_plus():
         pts=Pts90khz.from_ms(100),
         dts=None,
         codec=VideoCodec.H264,
-        payload=b"x",
+        raw=b"x",
         random_access_indicator=False,
     )
     result = []

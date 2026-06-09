@@ -72,6 +72,7 @@ pub mod mpegts;
 #[cfg(feature = "std")]
 pub mod net;
 pub mod publisher;
+pub mod shared;
 pub mod transport;
 pub mod url;
 

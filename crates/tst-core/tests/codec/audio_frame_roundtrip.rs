@@ -12,6 +12,7 @@
 use std::path::Path;
 use tst_core::codec;
 use tst_core::mpegts::demux::{AudioCodec, DemuxEvent, Demuxer, SamplePayload};
+use tst_core::shared::SharedBytes;
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -23,7 +24,7 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 
 /// Feed a fixture file through the demuxer; return all (pid, codec, frames)
 /// tuples from Audio sample events.
-fn collect_audio_pes(name: &str) -> Vec<(u16, AudioCodec, Vec<u8>)> {
+fn collect_audio_pes(name: &str) -> Vec<(u16, AudioCodec, SharedBytes)> {
     let path = fixture_path(name);
     let bytes =
         std::fs::read(&path).unwrap_or_else(|e| panic!("fixture {:?} should exist: {e}", path));

@@ -160,15 +160,15 @@ pub enum SamplePayload {
     },
     Audio {
         codec: AudioCodec,
-        frames: Vec<u8>,
+        frames: crate::shared::SharedBytes,
     },
     Subtitle {
         codec: SubtitleCodec,
-        payload: Vec<u8>,
+        payload: crate::shared::SharedBytes,
     },
     Unknown {
         stream_type: StreamTypeCode,
-        raw: Vec<u8>,
+        raw: crate::shared::SharedBytes,
     },
 }
 

@@ -52,7 +52,7 @@ fn roundtrip_one_codec(codec: MuxAudioCodec) {
             ..
         } = event
         {
-            audio_recovered.push(frames);
+            audio_recovered.push(frames.to_vec());
         }
     }
 

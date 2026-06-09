@@ -1429,6 +1429,7 @@ mod tests {
         AudioCodec, DemuxEvent, MetadataKind, NalUnit, Obu, SamplePayload, StreamId, StreamKind,
         SubtitleCodec, VideoCodec, VideoPayload,
     };
+    use tst_core::shared::SharedBytes;
 
     fn stream_id(pid: u16, kind: StreamKind) -> StreamId {
         StreamId {
@@ -1440,8 +1441,8 @@ mod tests {
 
     #[test]
     fn audio_sample_payload_is_arena_owned() {
-        let frames = vec![0xAAu8, 0xBB, 0xCC, 0xDD];
-        let frames_ptr_before = frames.as_ptr();
+        let frames = SharedBytes::from_vec(vec![0xAAu8, 0xBB, 0xCC, 0xDD]);
+        let input_ptr = frames.as_ptr();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x100, StreamKind::Audio(AudioCodec::Aac)),
             pts: Pts90khz::new(0),
@@ -1456,8 +1457,8 @@ mod tests {
         convert(&mut arena, &ev, &mut out);
         let out_ptr = unsafe { out.u.sample.payload };
         assert_ne!(
-            out_ptr, frames_ptr_before,
-            "audio payload pointer must NOT alias the input Vec — arena should own a copy"
+            out_ptr, input_ptr,
+            "audio payload pointer must point into the arena, not alias the input buffer"
         );
         let payload_len = unsafe { out.u.sample.payload_len };
         let out_bytes = unsafe { core::slice::from_raw_parts(out_ptr, payload_len) };
@@ -1466,8 +1467,8 @@ mod tests {
 
     #[test]
     fn subtitle_sample_payload_is_arena_owned() {
-        let pl = vec![0x20u8, 0x00, 0xDE, 0xAD, 0xFF];
-        let pl_ptr_before = pl.as_ptr();
+        let pl = SharedBytes::from_vec(vec![0x20u8, 0x00, 0xDE, 0xAD, 0xFF]);
+        let input_ptr = pl.as_ptr();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x200, StreamKind::Subtitle(SubtitleCodec::DvbSubtitling)),
             pts: Pts90khz::new(0),
@@ -1482,15 +1483,18 @@ mod tests {
         convert(&mut arena, &ev, &mut out);
         let out_ptr = unsafe { out.u.sample.payload };
         assert_ne!(
-            out_ptr, pl_ptr_before,
-            "subtitle payload pointer must NOT alias the input Vec"
+            out_ptr, input_ptr,
+            "subtitle payload pointer must point into the arena, not alias the input buffer"
         );
+        let payload_len = unsafe { out.u.sample.payload_len };
+        let out_bytes = unsafe { core::slice::from_raw_parts(out_ptr, payload_len) };
+        assert_eq!(out_bytes, &[0x20u8, 0x00, 0xDE, 0xAD, 0xFF]);
     }
 
     #[test]
     fn unknown_sample_raw_is_arena_owned() {
-        let raw = vec![0x01u8, 0x02, 0x03];
-        let raw_ptr_before = raw.as_ptr();
+        let raw = SharedBytes::from_vec(vec![0x01u8, 0x02, 0x03]);
+        let input_ptr = raw.as_ptr();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x300, StreamKind::Unknown(0xFE)),
             pts: Pts90khz::new(0),
@@ -1505,9 +1509,12 @@ mod tests {
         convert(&mut arena, &ev, &mut out);
         let out_ptr = unsafe { out.u.sample.payload };
         assert_ne!(
-            out_ptr, raw_ptr_before,
-            "unknown sample raw pointer must NOT alias the input Vec"
+            out_ptr, input_ptr,
+            "unknown sample raw pointer must point into the arena, not alias the input buffer"
         );
+        let payload_len = unsafe { out.u.sample.payload_len };
+        let out_bytes = unsafe { core::slice::from_raw_parts(out_ptr, payload_len) };
+        assert_eq!(out_bytes, &[0x01u8, 0x02, 0x03]);
     }
 
     #[test]
@@ -1543,7 +1550,7 @@ mod tests {
                 payload: VideoPayload::Nals(vec![NalUnit::H264 {
                     nal_type: 7,
                     ref_idc: 3,
-                    payload: nal_payload,
+                    payload: SharedBytes::from_vec(nal_payload),
                 }]),
                 random_access_indicator: true,
             },
@@ -1572,7 +1579,7 @@ mod tests {
                 payload: VideoPayload::Obus(vec![Obu {
                     obu_type: 1, // SequenceHeader
                     extension: None,
-                    payload: obu_payload,
+                    payload: obu_payload.into(),
                 }]),
                 random_access_indicator: true,
             },

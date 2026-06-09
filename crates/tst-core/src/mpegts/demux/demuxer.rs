@@ -2068,7 +2068,7 @@ mod tests {
                 ..
             } = ev
             {
-                subtitle_payload = Some(payload);
+                subtitle_payload = Some(payload.to_vec());
                 break;
             }
         }

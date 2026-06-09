@@ -204,7 +204,7 @@ fn demux_dvb_sub_non_conformant_data_identifier_lenient_emits_sample_and_issue()
                     payload,
                 },
                 ..
-            } if payload == &segments
+            } if payload.as_slice() == segments.as_slice()
         )
     });
     assert!(

@@ -432,7 +432,7 @@ impl super::demuxer::Demuxer {
                         dts: pes.dts,
                         payload: SamplePayload::Unknown {
                             stream_type: StreamTypeCode::from_byte(0x15),
-                            raw,
+                            raw: SharedBytes::from_vec(raw),
                         },
                     });
                     return;
@@ -658,7 +658,7 @@ impl super::demuxer::Demuxer {
                     dts: pes.dts,
                     payload: SamplePayload::Unknown {
                         stream_type: StreamTypeCode::from_byte(stream_type),
-                        raw: pes.payload,
+                        raw: SharedBytes::from_vec(pes.payload),
                     },
                 });
             }
@@ -750,7 +750,7 @@ impl super::demuxer::Demuxer {
                         dts: None,
                         payload: SamplePayload::Audio {
                             codec,
-                            frames: pes.payload.to_vec(),
+                            frames: SharedBytes::from_vec(pes.payload),
                         },
                     });
                 }
@@ -836,7 +836,7 @@ impl super::demuxer::Demuxer {
                         dts: None,
                         payload: SamplePayload::Subtitle {
                             codec,
-                            payload: surfaced_payload,
+                            payload: SharedBytes::from_vec(surfaced_payload),
                         },
                     });
                 }

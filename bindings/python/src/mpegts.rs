@@ -466,7 +466,7 @@ pub(crate) fn convert_video_payload(
                         payload,
                     } => Py::new(
                         py,
-                        crate::codec::NalUnitPy::make_h264(*nal_type, *ref_idc, payload.clone()),
+                        crate::codec::NalUnitPy::make_h264(*nal_type, *ref_idc, payload.to_vec()),
                     )?,
                     tst_core::mpegts::demux::NalUnit::H265 {
                         nal_type,
@@ -479,7 +479,7 @@ pub(crate) fn convert_video_payload(
                             *nal_type,
                             *layer_id,
                             *temporal_id_plus1,
-                            payload.clone(),
+                            payload.to_vec(),
                         ),
                     )?,
                     tst_core::mpegts::demux::NalUnit::H266 {
@@ -493,7 +493,7 @@ pub(crate) fn convert_video_payload(
                             *nal_type,
                             *layer_id,
                             *temporal_id_plus1,
-                            payload.clone(),
+                            payload.to_vec(),
                         ),
                     )?,
                 };
@@ -510,7 +510,7 @@ pub(crate) fn convert_video_payload(
                 });
                 let obu_py = Py::new(
                     py,
-                    crate::codec::ObuPy::make(obu.obu_type, ext, obu.payload.clone()),
+                    crate::codec::ObuPy::make(obu.obu_type, ext, obu.payload.to_vec()),
                 )?;
                 list.append(obu_py)?;
             }
@@ -556,8 +556,7 @@ fn convert_sample_event(
             // bytes-fallback + codec_parse_error on mid-stream parse failure (option c).
             use tst_core::codec::aac::frames_with_resync as aac_frames;
             use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
-            // `frames` is a Vec<u8>; we need a &[u8] slice.
-            let payload: &[u8] = frames;
+            let payload: &[u8] = frames.as_slice();
             let (payload_py, parse_err): (PyObject, Option<PyErr>) = match codec {
                 AudioCodec::Aac => {
                     // Audit-2 #3: parse to owned frames under allow_threads so
@@ -656,7 +655,7 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", subtitle_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("payload", PyBytes::new_bound(py, payload))?;
+            kwargs.set_item("payload", PyBytes::new_bound(py, payload.as_slice()))?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Unknown { stream_type, raw } => {
@@ -668,7 +667,7 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("stream_type", stream_type.as_byte())?;
-            kwargs.set_item("payload", PyBytes::new_bound(py, raw))?;
+            kwargs.set_item("payload", PyBytes::new_bound(py, raw.as_slice()))?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
     }

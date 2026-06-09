@@ -9,6 +9,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, StreamKind, VideoCodec, VideoPayload,
 };
+use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -96,9 +97,15 @@ fn h266_mux_demux_roundtrip_emits_h266_nals() {
     match payload {
         SamplePayload::Video {
             codec: VideoCodec::H266,
-            payload: VideoPayload::Nals(nals),
+            raw,
             ..
         } => {
+            // Raw-first: split the encoded AU into NALs via the opt-in call.
+            let (split, issues) = split_video(raw, VideoCodec::H266);
+            assert!(issues.is_empty(), "conformant H.266 AU emits no issues");
+            let VideoPayload::Nals(nals) = split else {
+                panic!("expected NALs from split_video");
+            };
             assert_eq!(nals.len(), 5, "expected 5 NALs (AUD/VPS/SPS/PPS/IDR)");
             // Spot-check the VPS_NUT.
             match &nals[1] {

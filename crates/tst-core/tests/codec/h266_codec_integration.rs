@@ -19,6 +19,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, VideoCodec, VideoPayload,
 };
+use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -261,11 +262,14 @@ fn h266_end_to_end_parses_minimal_vps_sps_pps() {
                 payload:
                     SamplePayload::Video {
                         codec: VideoCodec::H266,
-                        payload: VideoPayload::Nals(nals),
+                        raw,
                         ..
                     },
                 ..
-            } => Some(nals.clone()),
+            } => match split_video(raw, VideoCodec::H266).0 {
+                VideoPayload::Nals(nals) => Some(nals),
+                _ => None,
+            },
             _ => None,
         })
         .flatten()

@@ -35,9 +35,7 @@ pub fn split_nals(
         // yields exactly this NAL's bytes with no inter-NAL prefix bleed.
         let data_start = win[0].data_start;
         let nal_end = win[1].prefix_start;
-        if let Some(unit) =
-            parse_one_nal(es_payload, data_start, nal_end, codec, &mut issues)
-        {
+        if let Some(unit) = parse_one_nal(es_payload, data_start, nal_end, codec, &mut issues) {
             out.push(unit);
         }
     }
@@ -225,18 +223,18 @@ fn parse_one_nal(
             })
         }
         VideoCodec::Av1 => {
-            // AV1 is OBU-shaped, not NAL-shaped. The demuxer dispatches AV1
+            // AV1 is OBU-shaped, not NAL-shaped. `split_video` dispatches AV1
             // to `split_obus` before this function is ever called; reaching
-            // this arm means demuxer state is inconsistent. Defense-in-depth:
+            // this arm means the splitter was mis-dispatched. Defense-in-depth:
             // don't panic — return None and emit a debug_assert so test runs
             // catch any regression that routes AV1 here.
             //
             // Typed-error promotion (`parse_one_nal -> Result<Option<_>, _>`)
             // is deferred to Phase 1's SemVer ratchet — would cascade through
-            // `split_nals`, the demuxer call site, and existing tests.
+            // `split_nals`, its call sites, and existing tests.
             debug_assert!(
                 false,
-                "internal: AV1 reached NAL splitter; demuxer state is inconsistent"
+                "internal: AV1 reached NAL splitter; split dispatch is inconsistent"
             );
             None
         }
@@ -248,9 +246,9 @@ fn parse_one_nal(
 ///
 /// Returns `(obus, issues)`. `issues` contains any non-conformance
 /// issues raised during the walk (missing obu_size field, forbidden
-/// Tile List OBU); the caller forwards these to the demuxer's
-/// non-conformance pipeline. `pid` on each issue is left as a
-/// sentinel `0` — caller patches it with the real value.
+/// Tile List OBU); the caller surfaces these to its consumer. `pid` on
+/// each issue is left as a sentinel `0` — the opt-in `split_video` parse
+/// path that calls this has no PID context.
 ///
 /// On a malformed buffer (truncated header, truncated LEB128, length
 /// runs past buffer end) the splitter stops and returns what it has
@@ -269,9 +267,9 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
         //   obu_reserved_1bit  f(1)
         let header = bytes[i];
         // Validate the spec-mandated forbidden + reserved bits before
-        // peeling off the field-level decode. `pid` is sentinel 0; the
-        // demuxer patches it in pes_emit.rs (same pattern as the other
-        // AV1 issues this splitter emits).
+        // peeling off the field-level decode. `pid` is sentinel 0 — the
+        // opt-in `split_video` parse path has no PID context (same pattern
+        // as the other AV1 issues this splitter emits).
         if (header & 0x80) != 0 {
             issues.push(NonConformantIssue::Av1ObuHeader {
                 pid: 0,
@@ -313,7 +311,7 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
 
         if !has_size_field {
             issues.push(NonConformantIssue::Av1ObuMissingSizeField {
-                pid: 0, // caller patches with real pid; see Task 19
+                pid: 0, // sentinel — opt-in split_video path has no PID context
                 obu_type,
             });
             // Zero-copy view: body runs from i to end of es_payload.
@@ -360,18 +358,45 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
 /// non-conformance issues observed (lenient — issues are reported, not fatal).
 ///
 /// The returned NAL/OBU payloads are zero-copy `SharedBytes` views into `raw`.
-/// For AV1 `Mpeg2TsBinding` carriage, `raw` must be the on-wire PES payload; any
-/// `ts_open_bitstream_unit()` unwrap is the caller's concern (the demuxer's
-/// raw-first path passes the wire bytes). See the design spec for AV1 carriage.
-pub fn split_video(raw: &SharedBytes, codec: VideoCodec) -> (VideoPayload, Vec<NonConformantIssue>) {
+/// For AV1, this call also reverses the `ts_open_bitstream_unit()` binding
+/// framing (§3.2) when present: if `raw` is binding-framed it is unwrapped
+/// first and the OBUs view into the unwrapped buffer (a non-zero-copy ~2× case);
+/// if `raw` carries no binding framing (interop / raw-OBU carriage) the OBUs are
+/// split directly and an [`NonConformantIssue::Av1MissingTsObuFraming`] issue is
+/// included. See the design spec for AV1 carriage.
+pub fn split_video(
+    raw: &SharedBytes,
+    codec: VideoCodec,
+) -> (VideoPayload, Vec<NonConformantIssue>) {
     match codec {
         VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
             let (nals, issues) = split_nals(raw, codec);
             (VideoPayload::Nals(nals), issues)
         }
         VideoCodec::Av1 => {
-            let (obus, issues) = split_obus(raw);
-            (VideoPayload::Obus(obus), issues)
+            // AV1 carriage: the demuxer no longer unwraps the
+            // `ts_open_bitstream_unit()` binding framing during demux, so the
+            // opt-in parse does it here. This keeps `split_video(raw, Av1)`
+            // producing the same OBUs the demuxer's Video arm produced for
+            // BOTH binding (§3.2) and interop (raw-OBU) carriage.
+            match unwrap_av1_binding(raw) {
+                Av1BindingUnwrap::Conformant(unwrapped) => {
+                    // Binding-framed: OBU views point into the unwrapped buffer
+                    // (the documented AV1 ~2× allocation case).
+                    let (obus, issues) = split_obus(&SharedBytes::from_vec(unwrapped));
+                    (VideoPayload::Obus(obus), issues)
+                }
+                Av1BindingUnwrap::MissingFraming => {
+                    // No binding framing — interop / raw-OBU carriage. Split
+                    // the raw bytes directly and surface the missing-framing
+                    // issue so it isn't lost (the demuxer used to raise it).
+                    // `pid: 0` sentinel — this opt-in path has no PID context
+                    // (matching how `split_obus` sentinel-pids its own issues).
+                    let (obus, mut issues) = split_obus(raw);
+                    issues.insert(0, NonConformantIssue::Av1MissingTsObuFraming { pid: 0 });
+                    (VideoPayload::Obus(obus), issues)
+                }
+            }
         }
     }
 }
@@ -380,7 +405,10 @@ pub fn split_video(raw: &SharedBytes, codec: VideoCodec) -> (VideoPayload, Vec<N
 /// mirroring `klv::st0601::decode_strict`. Use when the caller wants
 /// malformed-ES rejection (the responsibility the demuxer's `StrictMode` no
 /// longer carries for ES content).
-pub fn split_video_strict(raw: &SharedBytes, codec: VideoCodec) -> Result<VideoPayload, NonConformantIssue> {
+pub fn split_video_strict(
+    raw: &SharedBytes,
+    codec: VideoCodec,
+) -> Result<VideoPayload, NonConformantIssue> {
     let (payload, mut issues) = split_video(raw, codec);
     if !issues.is_empty() {
         return Err(issues.swap_remove(0));
@@ -390,10 +418,10 @@ pub fn split_video_strict(raw: &SharedBytes, codec: VideoCodec) -> Result<VideoP
 
 /// Outcome of the AV1-binding `ts_open_bitstream_unit()` unwrap step.
 ///
-/// Used by the demuxer when `DemuxerConfig::av1_carriage ==
-/// Av1CarriageMode::Mpeg2TsBinding` to detect binding-non-conformant input
-/// and fall back to raw-OBU parsing while surfacing a
-/// [`NonConformantIssue::Av1MissingTsObuFraming`] issue.
+/// Used by the opt-in [`split_video`] AV1 parse to detect binding-framed vs.
+/// raw-OBU (interop) carriage: binding-framed input is unwrapped before the
+/// OBU walk, while a missing start code falls back to raw-OBU parsing with a
+/// [`NonConformantIssue::Av1MissingTsObuFraming`] issue surfaced.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Av1BindingUnwrap {
     /// PES payload was binding-framed: 3-byte start code `0x00 0x00 0x01`
@@ -437,10 +465,10 @@ pub(crate) enum Av1BindingUnwrap {
 /// OBU bytes are appended back-to-back.
 ///
 /// On a malformed input (start code missing) the unwrap returns
-/// [`Av1BindingUnwrap::MissingFraming`]; the demuxer treats that as a
-/// non-conformance signal and falls back to raw-OBU parsing in lenient
-/// mode. A truncated escape near end-of-payload is tolerated by emitting
-/// the trailing bytes verbatim (lenient stance — matches `split_obus`).
+/// [`Av1BindingUnwrap::MissingFraming`]; [`split_video`] treats that as a
+/// non-conformance signal and falls back to raw-OBU parsing. A truncated
+/// escape near end-of-payload is tolerated by emitting the trailing bytes
+/// verbatim (lenient stance — matches `split_obus`).
 pub(crate) fn unwrap_av1_binding(payload: &[u8]) -> Av1BindingUnwrap {
     // Binding §3.2 start code is 3 bytes; anything shorter can't carry it.
     if payload.len() < 3 || payload[0..3] != [0x00, 0x00, 0x01] {
@@ -1230,10 +1258,7 @@ mod tests {
     #[test]
     fn split_video_h264_returns_nal_views_and_no_issues_for_clean_au() {
         // Two H.264 NALs: SPS (nal_ref_idc=3, type=7) then a slice (type=5), 4-byte start codes.
-        let au = SharedBytes::from_vec(vec![
-            0, 0, 0, 1, 0x67, 0xAA, 0xBB,
-            0, 0, 0, 1, 0x65, 0xCC,
-        ]);
+        let au = SharedBytes::from_vec(vec![0, 0, 0, 1, 0x67, 0xAA, 0xBB, 0, 0, 0, 1, 0x65, 0xCC]);
         let (payload, issues) = split_video(&au, VideoCodec::H264);
         assert!(issues.is_empty());
         match payload {

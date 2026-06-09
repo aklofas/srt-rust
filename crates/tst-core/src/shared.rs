@@ -22,7 +22,11 @@ impl SharedBytes {
     /// Wrap an owned `Vec<u8>` in a single shared allocation.
     pub fn from_vec(v: Vec<u8>) -> Self {
         let len = v.len();
-        Self { buf: Arc::from(v.into_boxed_slice()), off: 0, len }
+        Self {
+            buf: Arc::from(v.into_boxed_slice()),
+            off: 0,
+            len,
+        }
     }
 
     /// A zero-copy sub-window sharing the same allocation.
@@ -34,7 +38,11 @@ impl SharedBytes {
             "slice {range:?} out of range for window of length {}",
             self.len
         );
-        Self { buf: Arc::clone(&self.buf), off: self.off + range.start, len: range.end - range.start }
+        Self {
+            buf: Arc::clone(&self.buf),
+            off: self.off + range.start,
+            len: range.end - range.start,
+        }
     }
 
     /// The current window as a `&[u8]`. Prefer `Deref` (`&*buf` / `&buf[..]`) in
@@ -46,20 +54,28 @@ impl SharedBytes {
 
 impl Deref for SharedBytes {
     type Target = [u8];
-    fn deref(&self) -> &[u8] { self.as_slice() }
+    fn deref(&self) -> &[u8] {
+        self.as_slice()
+    }
 }
 
 impl From<Vec<u8>> for SharedBytes {
-    fn from(v: Vec<u8>) -> Self { Self::from_vec(v) }
+    fn from(v: Vec<u8>) -> Self {
+        Self::from_vec(v)
+    }
 }
 
 impl PartialEq for SharedBytes {
-    fn eq(&self, other: &Self) -> bool { self.as_slice() == other.as_slice() }
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
 }
 impl Eq for SharedBytes {}
 
 impl core::hash::Hash for SharedBytes {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) { self.as_slice().hash(state); }
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.as_slice().hash(state);
+    }
 }
 
 impl core::fmt::Debug for SharedBytes {

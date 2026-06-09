@@ -8,7 +8,9 @@
 use std::path::Path;
 use std::process::Command;
 use tst_core::codec::{h264, h265};
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
+};
 
 fn ffprobe_video_stream(path: &Path) -> Option<(u32, u32, String, String)> {
     let out = Command::new("ffprobe")
@@ -81,15 +83,14 @@ fn local_corpus_parameter_sets_match_ffprobe() {
         let mut got_level: Option<u8> = None;
         while let Some(ev) = dx.next_event() {
             if let DemuxEvent::Sample {
-                payload:
-                    SamplePayload::Video {
-                        codec,
-                        payload: VideoPayload::Nals(nals),
-                        ..
-                    },
+                payload: SamplePayload::Video { codec, raw, .. },
                 ..
             } = ev
             {
+                // Raw-first: split the encoded AU into NALs via the opt-in call.
+                let VideoPayload::Nals(nals) = split_video(&raw, codec).0 else {
+                    continue;
+                };
                 match codec {
                     VideoCodec::H264 => {
                         if let Ok(ps) = h264::parse_parameter_sets(&nals) {

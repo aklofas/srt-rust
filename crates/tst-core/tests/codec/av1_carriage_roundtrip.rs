@@ -13,9 +13,11 @@ use tst_core::mpegts::demux::event::{
     DemuxEvent, NonConformantIssue, Obu, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
+use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
     Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
+use tst_core::shared::SharedBytes;
 
 /// Build a minimal AV1 access unit: Temporal Delimiter + Sequence Header +
 /// Frame Header + Tile Group. Each OBU has `obu_has_size_field = 1`. Bodies
@@ -94,12 +96,19 @@ fn av1_mux_demux_roundtrip_emits_obus() {
     }
     let (stream, payload) = sample_evt.expect("expected Sample event");
     assert_eq!(stream.kind, StreamKind::Video(VideoCodec::Av1));
+    // Raw-first: the demuxer emits the encoded AU verbatim; OBU splitting is
+    // the opt-in `split_video` call (which reverses the binding framing).
     match payload {
         SamplePayload::Video {
             codec: VideoCodec::Av1,
-            payload: VideoPayload::Obus(obus),
+            raw,
             ..
         } => {
+            let (split, issues) = split_video(&raw, VideoCodec::Av1);
+            assert!(issues.is_empty(), "binding-conformant AU emits no issues");
+            let VideoPayload::Obus(obus) = split else {
+                panic!("expected OBUs from split_video");
+            };
             assert_eq!(
                 obus.len(),
                 4,
@@ -179,11 +188,18 @@ fn av1_binding_mode_round_trip_no_issues_with_emulation_prevention() {
         );
     }
     let payload = sample_evt.expect("expected Sample event");
-    if let SamplePayload::Video {
-        payload: VideoPayload::Obus(obus),
-        ..
-    } = payload
-    {
+    if let SamplePayload::Video { raw, .. } = payload {
+        // split_video reverses the binding framing + emulation-prevention,
+        // recovering the original OBU bytes byte-for-byte. A binding-conformant
+        // AU raises no split issues.
+        let (split, split_issues) = split_video(&raw, VideoCodec::Av1);
+        assert!(
+            split_issues.is_empty(),
+            "binding-conformant AU emits no split issues: {split_issues:?}"
+        );
+        let VideoPayload::Obus(obus) = split else {
+            panic!("expected OBUs from split_video");
+        };
         let types: Vec<u8> = obus.iter().map(|o| o.obu_type).collect();
         assert_eq!(types, vec![2, 1, 3, 4]);
         // Body bytes recovered byte-for-byte after demux unwrap +
@@ -191,14 +207,15 @@ fn av1_binding_mode_round_trip_no_issues_with_emulation_prevention() {
         assert_eq!(obus[1].payload.as_slice(), &[0x00, 0x00, 0x01, 0xAA]);
         assert_eq!(obus[3].payload.as_slice(), &[0x00, 0x00, 0x02]);
     } else {
-        panic!("expected AV1 OBUs sample, got {payload:?}");
+        panic!("expected AV1 video sample, got {payload:?}");
     }
 }
 
-/// Interop-mode sender + binding-mode demuxer: the demuxer should surface
-/// both `Av1WrongStreamId` (stream_id=0xE0 instead of 0xBD) AND
-/// `Av1MissingTsObuFraming` (no start-code prefix) on the PES, and still
-/// emit the Sample via raw-OBU fallback in lenient mode.
+/// Interop-mode sender + binding-mode demuxer. Raw-first split: the demuxer
+/// surfaces the PES-layer `Av1WrongStreamId` (stream_id=0xE0 instead of 0xBD)
+/// and emits the Sample verbatim. The ES-content `Av1MissingTsObuFraming` (no
+/// start-code prefix) is no longer a demux event — it moves to the opt-in
+/// `split_video` call, which still recovers the OBUs via the raw-OBU fallback.
 #[test]
 fn av1_interop_sender_into_binding_demuxer_surfaces_both_issues() {
     fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
@@ -232,30 +249,45 @@ fn av1_interop_sender_into_binding_demuxer_surfaces_both_issues() {
     demux.flush();
 
     let mut saw_wrong_stream_id = false;
-    let mut saw_missing_framing = false;
-    let mut saw_sample = false;
+    let mut raw_au: Option<SharedBytes> = None;
     while let Some(e) = demux.next_event() {
         match e {
-            DemuxEvent::NonConformant { issue, .. } => match issue {
-                NonConformantIssue::Av1WrongStreamId { observed, .. } => {
+            DemuxEvent::NonConformant { issue, .. } => {
+                if let NonConformantIssue::Av1WrongStreamId { observed, .. } = issue {
                     assert_eq!(observed, 0xE0);
                     saw_wrong_stream_id = true;
                 }
-                NonConformantIssue::Av1MissingTsObuFraming { .. } => {
-                    saw_missing_framing = true;
-                }
-                _ => {}
-            },
-            DemuxEvent::Sample { .. } => saw_sample = true,
+                // The demuxer no longer raises Av1MissingTsObuFraming — that
+                // ES-content issue moved to split_video (asserted below).
+                assert!(
+                    !matches!(issue, NonConformantIssue::Av1MissingTsObuFraming { .. }),
+                    "demuxer must not raise the ES-content Av1MissingTsObuFraming"
+                );
+            }
+            DemuxEvent::Sample {
+                payload: SamplePayload::Video { raw, .. },
+                ..
+            } => {
+                raw_au = Some(raw);
+            }
             _ => {}
         }
     }
     assert!(saw_wrong_stream_id, "expected Av1WrongStreamId issue");
-    assert!(saw_missing_framing, "expected Av1MissingTsObuFraming issue");
+    let raw = raw_au.expect("lenient mode still emits the Sample (raw AU)");
+    // The opt-in split now carries the missing-framing conformance signal and
+    // still recovers the OBUs via the raw-OBU fallback.
+    let (split, issues) = split_video(&raw, VideoCodec::Av1);
     assert!(
-        saw_sample,
-        "lenient mode should still emit the Sample via raw-OBU fallback"
+        issues
+            .iter()
+            .any(|i| matches!(i, NonConformantIssue::Av1MissingTsObuFraming { .. })),
+        "split_video should report Av1MissingTsObuFraming for raw-OBU carriage: {issues:?}"
     );
+    let VideoPayload::Obus(obus) = split else {
+        panic!("expected OBUs from split_video");
+    };
+    assert_eq!(obus.len(), 2, "raw-OBU fallback recovers both OBUs");
 }
 
 /// Interop-mode sender + interop-mode demuxer: no binding issues, classic

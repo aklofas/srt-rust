@@ -1,0 +1,5 @@
+# mypy stubtest allowlist for the tst-py core .pyi stubs (v0.2.0 item #11).
+# One regex per line; each entry must have a trailing "# why" justification.
+# Add ONLY for unavoidable runtime/stub mismatches (abi3 PyO3 ctor signatures,
+# dataclass-synthesized __init__, C-level dunders). Never allowlist a member
+# away to avoid stubbing it — stubtest completeness is the whole point.

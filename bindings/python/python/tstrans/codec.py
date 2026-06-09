@@ -91,6 +91,10 @@ iter_mpeg2_audio_frames_with_resync = _native_mod.iter_mpeg2_audio_frames_with_r
 parse_mpeg2_audio_frames = _native_mod.parse_mpeg2_audio_frames
 parse_mpeg2_audio_frames_with_resync = _native_mod.parse_mpeg2_audio_frames_with_resync
 
+# Opt-in ES parse functions (Task 4.1)
+split_units = _native_mod.split_units
+parse_audio = _native_mod.parse_audio
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -165,6 +169,9 @@ __all__ = [
     "iter_mpeg2_audio_frames_with_resync",
     "parse_mpeg2_audio_frames",
     "parse_mpeg2_audio_frames_with_resync",
+    # Opt-in ES parse functions
+    "split_units",
+    "parse_audio",
 ]
 
 

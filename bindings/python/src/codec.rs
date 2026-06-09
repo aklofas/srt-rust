@@ -3330,6 +3330,135 @@ fn parse_mpeg2_audio_frames_with_resync_py(
         .collect()
 }
 
+// === Opt-in ES parse functions ===
+
+/// Convert a Python `VideoCodec` enum value to the Rust `tst_core::mpegts::demux::VideoCodec`.
+///
+/// Reads the `.name` attribute of the Python enum (e.g. `"H264"`) and maps it to the
+/// corresponding Rust variant. Returns an error for unrecognised names.
+fn py_video_codec_to_rust(
+    py: Python<'_>,
+    codec: &Bound<'_, PyAny>,
+) -> PyResult<tst_core::mpegts::demux::VideoCodec> {
+    use tst_core::mpegts::demux::VideoCodec;
+    let name: String = codec.getattr(pyo3::intern!(py, "name"))?.extract()?;
+    match name.as_str() {
+        "H264" => Ok(VideoCodec::H264),
+        "H265" => Ok(VideoCodec::H265),
+        "H266" => Ok(VideoCodec::H266),
+        "AV1" => Ok(VideoCodec::Av1),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unrecognised VideoCodec name: {other:?}"
+        ))),
+    }
+}
+
+/// Opt-in video ES parse: split a raw encoded access unit into typed
+/// `NalUnit` / `Obu` objects.
+///
+/// `strict=True` raises `ValueError` on the first ES-conformance issue.
+/// `strict=False` (default) returns `(units, issues)` where `units` is a
+/// `list[NalUnit] | list[Obu]` and `issues` is a `list[str]` of
+/// human-readable descriptions of any conformance issues found.
+#[pyfunction]
+#[pyo3(signature = (raw, codec, *, strict = false))]
+fn split_units(
+    py: Python<'_>,
+    raw: &[u8],
+    codec: &Bound<'_, PyAny>,
+    strict: bool,
+) -> PyResult<PyObject> {
+    use tst_core::mpegts::demux::{split_video, split_video_strict};
+    use tst_core::shared::SharedBytes;
+    let rust_codec = py_video_codec_to_rust(py, codec)?;
+    let shared = SharedBytes::from_vec(raw.to_vec());
+    if strict {
+        match split_video_strict(&shared, rust_codec) {
+            Ok(vp) => crate::mpegts::convert_video_payload(py, &vp),
+            Err(issue) => Err(pyo3::exceptions::PyValueError::new_err(format!("{issue}"))),
+        }
+    } else {
+        let (vp, issues) = split_video(&shared, rust_codec);
+        let units = crate::mpegts::convert_video_payload(py, &vp)?;
+        let issue_strs: Vec<String> = issues.iter().map(|i| format!("{i}")).collect();
+        Ok((units, issue_strs).into_py(py))
+    }
+}
+
+/// Opt-in audio ES parse. Returns a typed frame list from raw audio ES bytes.
+///
+/// `strict=True` uses `frames()` and raises `CodecError` on the first
+/// malformed frame. `strict=False` (default) uses `frames_with_resync()`,
+/// which skips past corruption to the next valid frame.
+///
+/// Returns:
+/// - `list[AdtsFrame]` for `AudioCodec.AAC`
+/// - `list[Mpeg2AudioFrame]` for `AudioCodec.MP2`
+/// - `[]` for codecs with no typed parser (`AAC_LATM`, `AC3`)
+#[pyfunction]
+#[pyo3(signature = (raw, codec, *, strict = false))]
+fn parse_audio(
+    py: Python<'_>,
+    raw: &[u8],
+    codec: &Bound<'_, PyAny>,
+    strict: bool,
+) -> PyResult<PyObject> {
+    let name: String = codec.getattr(pyo3::intern!(py, "name"))?.extract()?;
+    let list = pyo3::types::PyList::empty_bound(py);
+    match name.as_str() {
+        "AAC" => {
+            if strict {
+                let frames = py.allow_threads(|| {
+                    rust_aac_frames(raw)
+                        .map(|res| res.map(|f| f.to_owned()))
+                        .collect::<Result<Vec<_>, _>>()
+                });
+                let frames = frames
+                    .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))?;
+                for f in frames {
+                    list.append(Py::new(py, AdtsFramePy { inner: f })?)?;
+                }
+            } else {
+                let frames: Vec<_> = py.allow_threads(|| {
+                    rust_aac_frames_with_resync(raw)
+                        .filter_map(|res| res.ok())
+                        .map(|f| f.to_owned())
+                        .collect()
+                });
+                for f in frames {
+                    list.append(Py::new(py, AdtsFramePy { inner: f })?)?;
+                }
+            }
+        }
+        "MP2" => {
+            if strict {
+                let frames = py.allow_threads(|| {
+                    rust_mpeg2audio_frames(raw)
+                        .map(|res| res.map(|f| f.to_owned()))
+                        .collect::<Result<Vec<_>, _>>()
+                });
+                let frames = frames
+                    .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))?;
+                for f in frames {
+                    list.append(Py::new(py, Mpeg2AudioFramePy { inner: f })?)?;
+                }
+            } else {
+                let frames: Vec<_> = py.allow_threads(|| {
+                    rust_mpeg2audio_frames_with_resync(raw)
+                        .filter_map(|res| res.ok())
+                        .map(|f| f.to_owned())
+                        .collect()
+                });
+                for f in frames {
+                    list.append(Py::new(py, Mpeg2AudioFramePy { inner: f })?)?;
+                }
+            }
+        }
+        _ => {} // AAC_LATM, AC3, unknown → empty list (no typed parser)
+    }
+    Ok(list.into_py(py))
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -3429,5 +3558,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         parse_mpeg2_audio_frames_with_resync_py,
         m
     )?)?;
+    // Opt-in ES parse functions (Task 4.1)
+    m.add_function(wrap_pyfunction!(split_units, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_audio, m)?)?;
     Ok(())
 }

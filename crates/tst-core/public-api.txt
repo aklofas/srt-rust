@@ -2921,17 +2921,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::event::NalUnit
 pub tst_core::mpegts::demux::event::NalUnit::H264
 pub tst_core::mpegts::demux::event::NalUnit::H264::nal_type: u8
-pub tst_core::mpegts::demux::event::NalUnit::H264::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::NalUnit::H264::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::NalUnit::H264::ref_idc: u8
 pub tst_core::mpegts::demux::event::NalUnit::H265
 pub tst_core::mpegts::demux::event::NalUnit::H265::layer_id: u8
 pub tst_core::mpegts::demux::event::NalUnit::H265::nal_type: u8
-pub tst_core::mpegts::demux::event::NalUnit::H265::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::NalUnit::H265::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::NalUnit::H265::temporal_id_plus1: u8
 pub tst_core::mpegts::demux::event::NalUnit::H266
 pub tst_core::mpegts::demux::event::NalUnit::H266::layer_id: u8
 pub tst_core::mpegts::demux::event::NalUnit::H266::nal_type: u8
-pub tst_core::mpegts::demux::event::NalUnit::H266::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::NalUnit::H266::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::NalUnit::H266::temporal_id_plus1: u8
 impl core::clone::Clone for tst_core::mpegts::demux::event::NalUnit
 pub fn tst_core::mpegts::demux::event::NalUnit::clone(&self) -> tst_core::mpegts::demux::event::NalUnit
@@ -3090,17 +3090,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Pe
 pub enum tst_core::mpegts::demux::event::SamplePayload
 pub tst_core::mpegts::demux::event::SamplePayload::Audio
 pub tst_core::mpegts::demux::event::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec
-pub tst_core::mpegts::demux::event::SamplePayload::Audio::frames: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::SamplePayload::Audio::frames: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::SamplePayload::Subtitle
 pub tst_core::mpegts::demux::event::SamplePayload::Subtitle::codec: tst_core::mpegts::demux::event::SubtitleCodec
-pub tst_core::mpegts::demux::event::SamplePayload::Subtitle::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::SamplePayload::Subtitle::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown
-pub tst_core::mpegts::demux::event::SamplePayload::Unknown::raw: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::SamplePayload::Unknown::raw: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::event::SamplePayload::Video
 pub tst_core::mpegts::demux::event::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
-pub tst_core::mpegts::demux::event::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
 pub tst_core::mpegts::demux::event::SamplePayload::Video::random_access_indicator: bool
+pub tst_core::mpegts::demux::event::SamplePayload::Video::raw: tst_core::shared::SharedBytes
 impl core::clone::Clone for tst_core::mpegts::demux::event::SamplePayload
 pub fn tst_core::mpegts::demux::event::SamplePayload::clone(&self) -> tst_core::mpegts::demux::event::SamplePayload
 impl core::cmp::Eq for tst_core::mpegts::demux::event::SamplePayload
@@ -3229,7 +3229,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Kl
 pub struct tst_core::mpegts::demux::event::Obu
 pub tst_core::mpegts::demux::event::Obu::extension: core::option::Option<tst_core::mpegts::demux::event::ObuExtension>
 pub tst_core::mpegts::demux::event::Obu::obu_type: u8
-pub tst_core::mpegts::demux::event::Obu::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::event::Obu::payload: tst_core::shared::SharedBytes
 impl core::clone::Clone for tst_core::mpegts::demux::event::Obu
 pub fn tst_core::mpegts::demux::event::Obu::clone(&self) -> tst_core::mpegts::demux::event::Obu
 impl core::cmp::Eq for tst_core::mpegts::demux::event::Obu
@@ -3758,17 +3758,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::NalUnit
 pub tst_core::mpegts::demux::NalUnit::H264
 pub tst_core::mpegts::demux::NalUnit::H264::nal_type: u8
-pub tst_core::mpegts::demux::NalUnit::H264::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::NalUnit::H264::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::NalUnit::H264::ref_idc: u8
 pub tst_core::mpegts::demux::NalUnit::H265
 pub tst_core::mpegts::demux::NalUnit::H265::layer_id: u8
 pub tst_core::mpegts::demux::NalUnit::H265::nal_type: u8
-pub tst_core::mpegts::demux::NalUnit::H265::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::NalUnit::H265::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::NalUnit::H265::temporal_id_plus1: u8
 pub tst_core::mpegts::demux::NalUnit::H266
 pub tst_core::mpegts::demux::NalUnit::H266::layer_id: u8
 pub tst_core::mpegts::demux::NalUnit::H266::nal_type: u8
-pub tst_core::mpegts::demux::NalUnit::H266::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::NalUnit::H266::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::NalUnit::H266::temporal_id_plus1: u8
 impl core::clone::Clone for tst_core::mpegts::demux::event::NalUnit
 pub fn tst_core::mpegts::demux::event::NalUnit::clone(&self) -> tst_core::mpegts::demux::event::NalUnit
@@ -3927,17 +3927,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Pe
 pub enum tst_core::mpegts::demux::SamplePayload
 pub tst_core::mpegts::demux::SamplePayload::Audio
 pub tst_core::mpegts::demux::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec
-pub tst_core::mpegts::demux::SamplePayload::Audio::frames: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::SamplePayload::Audio::frames: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::SamplePayload::Subtitle
 pub tst_core::mpegts::demux::SamplePayload::Subtitle::codec: tst_core::mpegts::demux::event::SubtitleCodec
-pub tst_core::mpegts::demux::SamplePayload::Subtitle::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::SamplePayload::Subtitle::payload: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::SamplePayload::Unknown
-pub tst_core::mpegts::demux::SamplePayload::Unknown::raw: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::SamplePayload::Unknown::raw: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::SamplePayload::Video
 pub tst_core::mpegts::demux::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
-pub tst_core::mpegts::demux::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
 pub tst_core::mpegts::demux::SamplePayload::Video::random_access_indicator: bool
+pub tst_core::mpegts::demux::SamplePayload::Video::raw: tst_core::shared::SharedBytes
 impl core::clone::Clone for tst_core::mpegts::demux::event::SamplePayload
 pub fn tst_core::mpegts::demux::event::SamplePayload::clone(&self) -> tst_core::mpegts::demux::event::SamplePayload
 impl core::cmp::Eq for tst_core::mpegts::demux::event::SamplePayload
@@ -4187,7 +4187,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Kl
 pub struct tst_core::mpegts::demux::Obu
 pub tst_core::mpegts::demux::Obu::extension: core::option::Option<tst_core::mpegts::demux::event::ObuExtension>
 pub tst_core::mpegts::demux::Obu::obu_type: u8
-pub tst_core::mpegts::demux::Obu::payload: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::Obu::payload: tst_core::shared::SharedBytes
 impl core::clone::Clone for tst_core::mpegts::demux::event::Obu
 pub fn tst_core::mpegts::demux::event::Obu::clone(&self) -> tst_core::mpegts::demux::event::Obu
 impl core::cmp::Eq for tst_core::mpegts::demux::event::Obu
@@ -4288,6 +4288,8 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamInfo
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamInfo
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamInfo
 pub fn tst_core::mpegts::demux::pts_to_duration(tst_core::mpegts::common::Pts90khz) -> core::time::Duration
+pub fn tst_core::mpegts::demux::split_video(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec) -> (tst_core::mpegts::demux::event::VideoPayload, alloc::vec::Vec<tst_core::mpegts::demux::event::NonConformantIssue>)
+pub fn tst_core::mpegts::demux::split_video_strict(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec) -> core::result::Result<tst_core::mpegts::demux::event::VideoPayload, tst_core::mpegts::demux::event::NonConformantIssue>
 pub mod tst_core::mpegts::descriptors
 pub mod tst_core::mpegts::descriptors::parse
 #[non_exhaustive] pub enum tst_core::mpegts::descriptors::parse::DescriptorParseError
@@ -5135,6 +5137,33 @@ pub fn tst_core::publisher::Publisher::cut_segment(&mut self) -> core::result::R
 pub fn tst_core::publisher::Publisher::finish(self) -> core::result::Result<(), Self::Error> where Self: core::marker::Sized
 pub fn tst_core::publisher::Publisher::push_ts(&mut self, &[u8]) -> core::result::Result<(), Self::Error>
 pub fn tst_core::publisher::Publisher::stats(&self) -> tst_core::publisher::PublisherStats
+pub mod tst_core::shared
+pub struct tst_core::shared::SharedBytes
+impl tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::as_slice(&self) -> &[u8]
+pub fn tst_core::shared::SharedBytes::from_vec(alloc::vec::Vec<u8>) -> Self
+pub fn tst_core::shared::SharedBytes::slice(&self, core::ops::range::Range<usize>) -> Self
+impl core::clone::Clone for tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::clone(&self) -> tst_core::shared::SharedBytes
+impl core::cmp::Eq for tst_core::shared::SharedBytes
+impl core::cmp::PartialEq for tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::eq(&self, &Self) -> bool
+impl core::convert::From<alloc::vec::Vec<u8>> for tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::from(alloc::vec::Vec<u8>) -> Self
+impl core::fmt::Debug for tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::shared::SharedBytes
+pub fn tst_core::shared::SharedBytes::hash<H: core::hash::Hasher>(&self, &mut H)
+impl core::ops::deref::Deref for tst_core::shared::SharedBytes
+pub type tst_core::shared::SharedBytes::Target = [u8]
+pub fn tst_core::shared::SharedBytes::deref(&self) -> &[u8]
+impl core::marker::Freeze for tst_core::shared::SharedBytes
+impl core::marker::Send for tst_core::shared::SharedBytes
+impl core::marker::Sync for tst_core::shared::SharedBytes
+impl core::marker::Unpin for tst_core::shared::SharedBytes
+impl core::marker::UnsafeUnpin for tst_core::shared::SharedBytes
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::shared::SharedBytes
+impl core::panic::unwind_safe::UnwindSafe for tst_core::shared::SharedBytes
 pub mod tst_core::transport
 #[non_exhaustive] pub enum tst_core::transport::TransportError
 pub tst_core::transport::TransportError::Backpressure

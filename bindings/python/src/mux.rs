@@ -1083,7 +1083,9 @@ impl PyMuxer {
         // copied out before release; `nal` is GIL-safe.
         let handle_inner = handle.0;
         let res = py.allow_threads(|| match rust_dts {
-            None => self.inner.push_video_to(handle_inner, nal, rust_pts, key_frame),
+            None => self
+                .inner
+                .push_video_to(handle_inner, nal, rust_pts, key_frame),
             Some(rust_dts) => {
                 self.inner
                     .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)

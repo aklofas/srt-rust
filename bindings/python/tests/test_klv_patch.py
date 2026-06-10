@@ -56,7 +56,7 @@ def test_patch_unknown_tlv_escape_hatch():
 
 def test_patch_truncated_input_raises_decode_error():
     with pytest.raises(KlvError):
-        klv.patch_uas_datalink(b"\x06\x0e+4", {})
+        klv.patch_uas_datalink(bytes.fromhex("060e2b34"), {})
 
 
 def test_patch_out_of_range_value_raises_encode_error():

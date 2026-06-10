@@ -669,7 +669,7 @@ encode_uas_datalink = _native_mod.encode_uas_datalink
 encode_uas_datalink_strict_compliance = _native_mod.encode_uas_datalink_strict_compliance
 
 
-def patch_uas_datalink(raw: bytes, edits) -> bytes:
+def patch_uas_datalink(raw: bytes, edits: UasDatalinkLs | dict[str, object]) -> bytes:
     """Patch named tags in a raw ST 0601 local set; every other TLV is
     copied byte-for-byte in original order and the Tag 1 checksum is
     recomputed (only if the input carries one).

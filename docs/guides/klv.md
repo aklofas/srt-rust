@@ -535,6 +535,11 @@ metadata stream class from private-data class:
 muxer selects the correct `stream_id` based on the configured
 `KlvStreamType` automatically — callers don't supply it.
 
+For the full demux ↔ mux stream-type mapping — including how demuxed
+`StreamKind::KlvSync` / `KlvAsync` map to muxer `add_klv` parameters
+in transmux workflows — see
+[guides/mpegts-mux.md](/docs/guides/mpegts-mux.md#rebuilding-a-muxer-config-from-a-demuxed-program).
+
 ## KLVA registration descriptor auto-emit
 
 The muxer emits a `registration_descriptor` (tag `0x05`,

@@ -348,7 +348,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | --- | --- | --- |
 | `Demuxer` | ✅ Full | Stateful TS demuxer; `feed` bytes in, `next_event` typed events out, `flush` drains trailing PES on stream end. Bytes need not be 188-aligned. |
 | `DemuxerBuilder` / `DemuxerConfig` | ✅ Full | Fluent builder + plain-struct config form. |
-| `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
+| `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `pmt_pid`, `streams`, `klv_links`. |
 | `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
 | `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator, was_reassembled, cell_count }` (7 fields per H.222.0 § 2.12.4.2 Table 2-156 + multi-cell reassembly state), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `DemuxEvent::Discontinuity` | ✅ Full | `ContinuityJump`, `PesOversize`, `PesTotalOversize`, `AdaptationFieldFlag`. |

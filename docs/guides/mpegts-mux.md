@@ -173,6 +173,167 @@ fn build() -> Result<MuxerConfig, tst_core::error::MuxError> {
 
 `MuxerConfig::builder()` is a convenience for `MuxerConfigBuilder::default()`.
 
+## Rebuilding a muxer config from a demuxed program
+
+In transmux workflows — receive a live stream, inspect or edit its metadata,
+then re-mux byte-faithfully — you need a `MuxerConfig` that matches the
+source stream's topology without hand-coding every PID. Since the demuxer
+now surfaces `pmt_pid` on every `DemuxEvent::ProgramMap`, you have everything
+you need in one event: program number, PMT PID, PCR PID, stream PIDs, codecs,
+and audio language descriptors. `MuxerConfig::from_program_map` turns that
+event directly into a muxer config, letting transmux callers skip the builder
+entirely.
+
+### Stream-type mapping table
+
+The function maps each demuxed `StreamKind` to the closest representable
+muxer stream. Kinds that have no lossless mux representation are strict
+offenders — the function fails unless you pass them in `drop` to exclude them.
+
+| Demuxed `StreamKind` (PMT `stream_type`) | Rebuilt as | Notes |
+|---|---|---|
+| `Video(H264)` — `0x1B` | `add_video(pid, VideoCodec::H264)` | Codec-for-codec; Annex-B framing preserved. |
+| `Video(H265)` — `0x24` | `add_video(pid, VideoCodec::H265)` | Codec-for-codec; Annex-B framing preserved. |
+| `Video(H266)` — `0x33` | `add_video(pid, VideoCodec::H266)` | Codec-for-codec; Annex-B framing preserved. |
+| `Video(Av1)` — `0x06` + `AV01` registration | `add_video(pid, VideoCodec::Av1)` | AV01 registration descriptor auto-re-emitted on the rebuilt PMT. |
+| `Audio(Mp2)` — `0x03` / `0x04` | `add_audio` / `add_audio_with_language` | Demuxer recognizes both `0x03` (ISO/IEC 11172-3, MPEG-1 audio) and `0x04` (ISO/IEC 13818-3, MPEG-2 audio) as `Mp2`; rebuilt PMT emits `0x03`. ISO 639 language descriptor (tag `0x0A`) recovered from `raw_descriptors` when present and plausible; never an error if absent. Same language-recovery rule applies to the three audio rows below. |
+| `Audio(Aac)` — `0x0F` | `add_audio` / `add_audio_with_language` | |
+| `Audio(AacLatm)` — `0x11` | `add_audio` / `add_audio_with_language` | |
+| `Audio(Ac3)` — `0x81` | `add_audio` / `add_audio_with_language` | AC-3 registration descriptor auto-re-emitted on the rebuilt PMT. |
+| `KlvSync { .. }` — `0x15` | `add_klv(pid, SynchronousMetadata, carries_pts=true)` | `carries_pts` is a PES-level property; the PMT cannot declare it. `true` is the STANAG 4609 norm. |
+| `KlvAsync` — `0x06` + `KLVA` registration | `add_klv(pid, PrivateData, carries_pts=true)` | Same `carries_pts` rule. Callers needing `false` build the config by hand. |
+| `Subtitle(Cea708Standalone)` — `0x06` + `GA94` registration | `add_subtitle(pid, SubtitleCodec::Cea708Standalone)` | Registration descriptor auto-re-emitted. |
+| `Subtitle(WebVttInTs)` — `0x06` + `VTTC` registration | `add_subtitle(pid, SubtitleCodec::WebVttInTs)` | Registration descriptor auto-re-emitted. |
+| `Subtitle(DvbSubtitling)` / `Subtitle(DvbTeletext)` | **error (`ConfigInvalid`)** | DVB descriptor params (language, page IDs) are not recoverable from the PMT entry alone. Pass `StreamKindTag::Subtitle` in `drop` to exclude all subtitle streams. |
+| `Unknown(stream_type)` | **error (`ConfigInvalid`)** | Unknown stream types have no mux representation. Pass `StreamKindTag::Unknown` in `drop` to exclude. |
+
+The `drop` filter is kind-coarse: `StreamKindTag::Subtitle` drops *all* subtitle
+streams including the representable CEA-708 / WebVTT kinds, not only the
+DVB offenders. If you need finer control, build the config manually using
+`MuxerProgramConfigBuilder`.
+
+### Rust
+
+The demuxer emits one `DemuxEvent::ProgramMap(pm)` per program per PMT
+discovery (or version bump). Each `ProgramMap` describes exactly one program,
+so `from_program_map` also returns exactly one program's worth of config.
+
+```rust,no_run
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+use tst_core::mpegts::mux::MuxerConfig;
+
+fn transmux_single_program(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    d.feed(bytes)?;
+    while let Some(ev) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = ev {
+            // Basic: fail on any unrepresentable stream (DVB sub/teletext, unknown types).
+            let cfg = MuxerConfig::from_program_map(&pm, &[])?;
+            return Ok(cfg);
+        }
+    }
+    Err("no ProgramMap in stream".into())
+}
+```
+
+To exclude unknown stream types rather than erroring, pass them in `drop`:
+
+```rust,no_run
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, StreamKindTag};
+use tst_core::mpegts::mux::MuxerConfig;
+
+fn transmux_lenient(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    d.feed(bytes)?;
+    while let Some(ev) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = ev {
+            let cfg = MuxerConfig::from_program_map(
+                &pm,
+                &[StreamKindTag::Unknown],
+            )?;
+            return Ok(cfg);
+        }
+    }
+    Err("no ProgramMap in stream".into())
+}
+```
+
+For a multi-program source the demuxer emits one `ProgramMap` event per
+program. Collect them and combine via `MuxerConfigBuilder::add_program`:
+
+```rust,no_run
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, StreamKindTag};
+use tst_core::mpegts::mux::{MuxerConfig, MuxerConfigBuilder};
+
+fn rebuild_multi_program(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    d.feed(bytes)?;
+    let mut b = MuxerConfigBuilder::default();
+    while let Some(ev) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = ev {
+            let prog_cfg = MuxerConfig::from_program_map(&pm, &[StreamKindTag::Unknown])?;
+            for p in prog_cfg.programs {
+                b.add_program(p);
+            }
+        }
+    }
+    Ok(b.build()?)
+}
+```
+
+### Python
+
+The Python binding mirrors the Rust event model: each `DemuxEvent.ProgramMap`
+event describes one program (its `programs` tuple always has exactly one
+entry); multi-program sources emit one event per program, collected across
+the iteration just as in Rust.
+
+```python
+from tstrans.mpegts import Demuxer, DemuxEvent, MuxerConfig, StreamKindTag
+
+demux = Demuxer()
+demux.feed(ts_bytes)
+
+for ev in demux:
+    if isinstance(ev, DemuxEvent.ProgramMap):
+        pm = ev.programs[0]  # the event's single program
+
+        # Basic: fail on any unrepresentable stream.
+        cfg = MuxerConfig.from_program_map(pm)
+
+        # Lenient: exclude unknown stream types rather than erroring.
+        cfg_lenient = MuxerConfig.from_program_map(pm, drop=[StreamKindTag.UNKNOWN])
+        break
+```
+
+`MuxerConfig.from_program_map` is a `@staticmethod`. `drop` defaults to `None`
+(empty — strict mode). Raises `MuxError` (kind `CONFIG_INVALID`) for
+unrepresentable streams not covered by `drop` (and for any other conversion
+failure, e.g. an empty `pm` whose program has no streams), and `ValueError`
+for malformed input — a kind/codec mismatch on a `StreamInfo`, or
+non-`StreamKindTag` entries in `drop`. Field values outside their wire range
+(e.g. a pid > 0xFFFF) surface the underlying extraction error
+(`OverflowError`).
+
+### Key notes
+
+- **Single-program scope.** Each call converts one `ProgramMap` (one program).
+  In both languages the demuxer emits one `ProgramMap` event per program;
+  for multi-program sources, collect them across events and combine via
+  `MuxerConfigBuilder::add_program`.
+- **PCR copy rule.** The demuxed `pcr_pid` is copied to the rebuilt config iff
+  it equals the PID of a kept, non-KLV stream. Otherwise `pcr_pid` is left
+  `None` and the builder default applies (first video → first KLV → first
+  audio). PCR on a KLV PID is rejected by `validate()`.
+- **`klv_links` are ignored.** The muxer re-derives KLV-to-video linkage from
+  its own configuration; the PMT-declared `metadata_descriptor` links in the
+  `ProgramMap` are not forwarded.
+- **Codec coverage.** For a complete picture of which PMT stream types the
+  demuxer recognizes — see
+  [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md#what-gets-parsed-vs-passed-through)
+  and the KLV-specific table in
+  [guides/klv.md](/docs/guides/klv.md#wire-format-details-pes-stream_id).
+
 ## Codec selection
 
 | `VideoCodec` variant | PMT `stream_type` byte | Notes |

@@ -39,6 +39,60 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tag-level patching of raw ST 0601 local sets — edited tags re-encoded in place,
   every other TLV copied verbatim, checksum recomputed (new `KlvPatchError`).
 
+### Added — `MuxerConfig::from_program_map` + `ProgramMap.pmt_pid` (roadmap #10)
+
+Transmux bridge: convert a demuxed `ProgramMap` directly into a `MuxerConfig`
+that reproduces the source program's topology — program number, PMT PID, stream
+PIDs, codecs, and audio language — without hand-coding the builder. Closes
+roadmap item #10 (demux-kind ↔ mux-stream-type mapping).
+
+- **`tst_core::mpegts::mux::MuxerConfig::from_program_map(&pm, drop)`** — new
+  constructor (Rust). Maps each demuxed `StreamKind` to its closest muxer
+  equivalent; `drop: &[StreamKindTag]` lets callers exclude unrepresentable
+  stream kinds (DVB sub/teletext; unknown stream types) rather than erroring.
+  `carries_pts` is always `true` (PMT cannot declare it; STANAG 4609 norm).
+  PCR PID is copied iff the demuxed `pcr_pid` matches a kept non-KLV stream.
+  Audio language recovered from ISO 639 descriptor (tag `0x0A`) on
+  `StreamInfo::raw_descriptors` when present and plausible.
+- **`tstrans.mpegts.MuxerConfig.from_program_map(pm, drop=None)`** — same
+  constructor exposed as a Python `@staticmethod`. `drop` takes a list of
+  `StreamKindTag` members. Raises `MuxError` (kind `CONFIG_INVALID`) for
+  unrepresentable streams not excluded via `drop`; raises `ValueError` for
+  malformed input.
+- **`tst_core::mpegts::demux::ProgramMap::pmt_pid`** — new field on the core
+  `ProgramMap` struct. The PAT-declared PID carrying this program's PMT;
+  previously not surfaced on the demux event.
+- **Python `tstrans.mpegts.ProgramMap.pmt_pid`** — same field surfaced on the
+  Python `ProgramMap` frozen dataclass.
+- **Python `tstrans.mpegts.StreamInfo.raw_descriptors`** — new field: tuple of
+  `RawDescriptor(tag: int, data: bytes)` carrying the raw PMT per-stream
+  descriptor TLVs in PMT loop order. New `RawDescriptor` type exposed.
+- **`tst_core::mpegts::demux::StreamKindTag`** — new payload-free enum
+  (`Video`, `Audio`, `Subtitle`, `KlvSync`, `KlvAsync`, `Unknown`);
+  `StreamKind::tag()` returns the matching tag. Drives the `drop` filter in
+  `from_program_map` without carrying the full `StreamKind` payload.
+- Docs: new "Rebuilding a muxer config from a demuxed program" section in
+  [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md#rebuilding-a-muxer-config-from-a-demuxed-program)
+  with the complete stream-type mapping table (Rust + Python snippets).
+
+### Changed (breaking, pre-1.0) — `ProgramMap` and `DemuxEvent.ProgramMap` gain new fields
+
+- **C ABI minor 10 → 11**: `tst_event_program_map_t` / `TstEventProgramMap`
+  gains `uint16_t pmt_pid` immediately after `pcr_pid` (offset +4), consuming
+  the first two bytes of the former `_pad[4]` (now `_pad[2]`) — the struct
+  layout is unchanged (size, member alignment, and all prior fields are
+  identical); existing binaries continue to work but a recompile picks up the
+  new field. No symbols added or removed; the `TST_ABI_VERSION_MINOR`
+  constant in `tstrans.h` bumped from `10` to `11`.
+- **JVM `DemuxEvent.ProgramMap` record** gains `pmtPid` as the third record
+  component (`int pmtPid` after `programNumber` and `pcrPid`). Callers
+  constructing the record by positional arguments or using the generated
+  `canonical constructor` must add the new argument. Pattern matches using
+  named record accessors are unaffected.
+- **Rust `ProgramMap` struct** gains `pmt_pid: u16`. Struct literal
+  construction (`ProgramMap { program_number, pcr_pid, streams, klv_links }`)
+  must add `pmt_pid`; field-update syntax (`..other`) is unaffected.
+
 ### Added — opt-in elementary-stream parsing surface
 
 - `tst_core::shared::SharedBytes` — refcounted zero-copy byte buffer.

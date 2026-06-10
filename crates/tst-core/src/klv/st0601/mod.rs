@@ -13,6 +13,9 @@
 //! - [`decode_strict_compliance`] — adds full ST 0107.5 conformance checks
 //!   on top of `decode_strict`.
 //!
+//! - [`patch`] — byte-faithful tag-level patching: re-encode only the
+//!   edited tags, copy every other TLV verbatim, recompute the checksum.
+//!
 //! ## Spec coverage
 //!
 //! **Standard:** MISB ST 0601.x UAS Datalink Local Set (versions
@@ -51,6 +54,7 @@ pub(crate) mod decode;
 pub(crate) mod encode;
 pub(crate) mod mapping;
 pub(crate) mod model;
+pub(crate) mod patch;
 pub(crate) mod tags;
 
 #[cfg(test)]
@@ -62,3 +66,4 @@ pub use encode::{
     encoded_len_with,
 };
 pub use model::{Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, UasDatalinkLs};
+pub use patch::patch;

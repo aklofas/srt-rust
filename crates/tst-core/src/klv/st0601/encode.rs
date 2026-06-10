@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
 use super::model::{EncodeConfig, UasDatalinkLs};
-use super::tags::{Encoding, TAGS};
+use super::tags::{Encoding, TAGS, TagSpec};
 
 /// Encode a UAS Datalink Local Set into the caller-provided buffer per
 /// MISB ST 0601. Returns the number of bytes written.
@@ -160,6 +160,12 @@ pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeConfig) -> usize {
 
 /// Visit each typed field that will be emitted, calling `visit(tag_id, value_len)`.
 /// Used by both `encoded_len_with` (for sizing) and `write_typed_fields` (for emission).
+///
+/// NOTE: the arm-65 auto-version below sizes Tag 65 even when
+/// `uas_ls_version` is `None`, matching the `encode*` entry points'
+/// fallback emission. Do NOT reuse this visitor for `patch()` sizing —
+/// `patch()` never auto-injects Tag 65 (it builds output `Vec`s
+/// directly and never calls this).
 fn each_typed_field<F: FnMut(u8, usize)>(
     record: &UasDatalinkLs,
     _opts: &EncodeConfig,
@@ -240,7 +246,7 @@ fn each_typed_field<F: FnMut(u8, usize)>(
 /// passes `None` so only explicitly-set fields are encoded.
 pub(super) fn encode_tag_value(
     record: &UasDatalinkLs,
-    spec: &super::tags::TagSpec,
+    spec: &TagSpec,
     version_fallback: Option<u8>,
 ) -> Result<Option<Vec<u8>>, KlvEncodeError> {
     let mut scratch = [0u8; 8];

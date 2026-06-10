@@ -367,6 +367,7 @@ mod tests {
         let pmt = DemuxEvent::ProgramMap(ProgramMap {
             program_number: 1,
             pcr_pid: VIDEO_PID,
+            pmt_pid: 0x20,
             streams: Vec::new(),
             klv_links: Vec::new(),
         });
@@ -637,6 +638,7 @@ mod tests {
         let pmt = DemuxEvent::ProgramMap(ProgramMap {
             program_number: 1,
             pcr_pid: VIDEO_PID,
+            pmt_pid: 0x20,
             streams: Vec::new(),
             klv_links: Vec::new(),
         });

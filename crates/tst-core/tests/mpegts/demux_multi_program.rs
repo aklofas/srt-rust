@@ -216,6 +216,53 @@ fn program_map_event_fires_per_program() {
     assert!(prog_maps.iter().any(|pm| pm.program_number == 2));
 }
 
+#[test]
+fn program_map_carries_pmt_pid_from_pat() {
+    // Verify that ProgramMap.pmt_pid is set from the PAT entry that declared
+    // the program, not from any stream PID or PCR PID inside the PMT.
+    use tst_core::mpegts::demux::DemuxEvent;
+    let mut demuxer = Demuxer::new();
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1000,
+            1,
+            0x1011,
+            &[(0x1B, 0x1011)],
+            0,
+        ))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1100,
+            2,
+            0x1111,
+            &[(0x24, 0x1111)],
+            0,
+        ))
+        .unwrap();
+
+    let prog_maps: Vec<_> = core::iter::from_fn(|| demuxer.next_event())
+        .filter_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(prog_maps.len(), 2);
+    let pm1 = prog_maps.iter().find(|pm| pm.program_number == 1).unwrap();
+    let pm2 = prog_maps.iter().find(|pm| pm.program_number == 2).unwrap();
+    assert_eq!(
+        pm1.pmt_pid, 0x1000,
+        "program 1 pmt_pid must match PAT entry"
+    );
+    assert_eq!(
+        pm2.pmt_pid, 0x1100,
+        "program 2 pmt_pid must match PAT entry"
+    );
+}
+
 // ── Stats tests ───────────────────────────────────────────────────────────────
 
 #[test]

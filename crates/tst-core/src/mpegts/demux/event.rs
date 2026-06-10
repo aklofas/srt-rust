@@ -93,6 +93,34 @@ pub enum StreamKind {
     Unknown(u8),
 }
 
+/// Payload-free discriminant for [`StreamKind`]. Used as the `drop`
+/// filter of `MuxerConfig::from_program_map`; mirrors the Python
+/// `tstrans.mpegts.StreamKindTag` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StreamKindTag {
+    Video,
+    Audio,
+    Subtitle,
+    KlvSync,
+    KlvAsync,
+    Unknown,
+}
+
+impl StreamKind {
+    /// The payload-free discriminant of this kind.
+    pub fn tag(&self) -> StreamKindTag {
+        match self {
+            StreamKind::Video(_) => StreamKindTag::Video,
+            StreamKind::Audio(_) => StreamKindTag::Audio,
+            StreamKind::Subtitle(_) => StreamKindTag::Subtitle,
+            StreamKind::KlvSync { .. } => StreamKindTag::KlvSync,
+            StreamKind::KlvAsync => StreamKindTag::KlvAsync,
+            StreamKind::Unknown(_) => StreamKindTag::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VideoCodec {
     H264,
@@ -323,6 +351,11 @@ pub enum MetadataKind {
 pub struct ProgramMap {
     pub program_number: u16,
     pub pcr_pid: u16,
+    /// PID carrying this program's PMT — from the PAT entry that declared
+    /// the program. Needed to reconstruct a muxer config
+    /// (`MuxerConfig::from_program_map`); not otherwise recoverable from
+    /// the emitted events.
+    pub pmt_pid: u16,
     pub streams: Vec<StreamInfo>,
     pub klv_links: Vec<KlvLink>,
 }
@@ -1229,5 +1262,34 @@ mod tests {
             s.contains("0b11"),
             "Display includes treated_as CFI bits: {s}"
         );
+    }
+
+    #[test]
+    fn stream_kind_tag_covers_every_variant() {
+        // One representative instance per variant; `expected` is re-derived
+        // through an exhaustive wildcard-free match, so a new StreamKind
+        // variant fails to compile here — extend both the match and this
+        // instance list when that happens.
+        let kinds = [
+            StreamKind::Video(VideoCodec::H264),
+            StreamKind::Audio(AudioCodec::Mp2),
+            StreamKind::Subtitle(SubtitleCodec::WebVttInTs),
+            StreamKind::KlvSync {
+                declared_link: None,
+            },
+            StreamKind::KlvAsync,
+            StreamKind::Unknown(0x06),
+        ];
+        for kind in kinds {
+            let expected = match kind {
+                StreamKind::Video(_) => StreamKindTag::Video,
+                StreamKind::Audio(_) => StreamKindTag::Audio,
+                StreamKind::Subtitle(_) => StreamKindTag::Subtitle,
+                StreamKind::KlvSync { .. } => StreamKindTag::KlvSync,
+                StreamKind::KlvAsync => StreamKindTag::KlvAsync,
+                StreamKind::Unknown(_) => StreamKindTag::Unknown,
+            };
+            assert_eq!(kind.tag(), expected, "tag() mismatch for {kind:?}");
+        }
     }
 }

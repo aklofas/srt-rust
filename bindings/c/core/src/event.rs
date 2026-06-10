@@ -1627,6 +1627,7 @@ mod tests {
         let pm = ProgramMap {
             program_number: 1,
             pcr_pid: 0x100,
+            pmt_pid: 0x30,
             streams: vec![StreamInfo {
                 pid: 0x100,
                 stream_type: StreamTypeCode::Unknown(0x06),

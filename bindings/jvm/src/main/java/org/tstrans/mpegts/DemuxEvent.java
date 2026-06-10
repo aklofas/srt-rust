@@ -23,8 +23,16 @@ public sealed interface DemuxEvent
                 DemuxEvent.NonConformant, DemuxEvent.Discontinuity,
                 DemuxEvent.ReconnectDiscontinuity {
 
-    /** PSI program map for one program (mirrors tst-py mpegts.ProgramMap). */
-    record ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids) implements DemuxEvent {}
+    /**
+     * PSI program map for one program (mirrors tst-py mpegts.ProgramMap).
+     *
+     * @param programNumber  the MPEG-TS program number, from the PAT entry
+     * @param pcrPid         PID carrying the program's PCR (the PMT's PCR_PID field)
+     * @param pmtPid         PID carrying this program's PMT, from the PAT entry
+     *                       that declared the program
+     * @param elementaryPids PIDs of the program's elementary streams, in PMT order
+     */
+    record ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids) implements DemuxEvent {}
 
     /**
      * A video access unit, carrying typed codec units. The {@code payload} is a

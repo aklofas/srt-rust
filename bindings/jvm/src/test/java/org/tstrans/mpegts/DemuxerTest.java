@@ -21,6 +21,7 @@ class DemuxerTest {
                 if (e instanceof DemuxEvent.ProgramMap pm) {
                     sawProgramMap = true;
                     assertFalse(pm.elementaryPids().isEmpty(), "expected >=1 elementary stream");
+                    assertEquals(0x1000, pm.pmtPid(), "mp2.ts PAT declares PMT at 0x1000");
                 }
                 if (e instanceof DemuxEvent.Audio a) {
                     assertTrue(a.stream().pid() > 0);

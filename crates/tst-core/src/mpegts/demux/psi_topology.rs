@@ -580,7 +580,7 @@ impl super::demuxer::Demuxer {
         }
 
         // Build klv_links from the accepted streams.
-        let prog_map = self.build_program_map(&pmt, program_number, &stream_infos);
+        let prog_map = self.build_program_map(pmt_pid, &pmt, program_number, &stream_infos);
 
         // Update tracker.
         let tracker = self.programs.get_mut(&pmt_pid).expect("checked above");
@@ -608,6 +608,7 @@ impl super::demuxer::Demuxer {
     /// stream list (after cross-program collision filtering).
     pub(super) fn build_program_map(
         &mut self,
+        pmt_pid: u16,
         pmt: &Pmt,
         program_number: u16,
         streams: &[StreamInfo],
@@ -674,6 +675,7 @@ impl super::demuxer::Demuxer {
         ProgramMap {
             program_number,
             pcr_pid: pmt.pcr_pid,
+            pmt_pid,
             streams: streams.to_vec(),
             klv_links,
         }

@@ -39,12 +39,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tag-level patching of raw ST 0601 local sets — edited tags re-encoded in place,
   every other TLV copied verbatim, checksum recomputed (new `KlvPatchError`).
 
-### Added — `MuxerConfig::from_program_map` + `ProgramMap.pmt_pid` (roadmap #10)
+### Added — `MuxerConfig::from_program_map` + `ProgramMap.pmt_pid`
 
 Transmux bridge: convert a demuxed `ProgramMap` directly into a `MuxerConfig`
 that reproduces the source program's topology — program number, PMT PID, stream
-PIDs, codecs, and audio language — without hand-coding the builder. Closes
-roadmap item #10 (demux-kind ↔ mux-stream-type mapping).
+PIDs, codecs, and audio language — without hand-coding the builder. The
+demux-kind ↔ mux-stream-type mapping that previously existed only as prose is
+now in code, and documented as a table in the mux guide.
 
 - **`tst_core::mpegts::mux::MuxerConfig::from_program_map(&pm, drop)`** — new
   constructor (Rust). Maps each demuxed `StreamKind` to its closest muxer
@@ -53,7 +54,8 @@ roadmap item #10 (demux-kind ↔ mux-stream-type mapping).
   `carries_pts` is always `true` (PMT cannot declare it; STANAG 4609 norm).
   PCR PID is copied iff the demuxed `pcr_pid` matches a kept non-KLV stream.
   Audio language recovered from ISO 639 descriptor (tag `0x0A`) on
-  `StreamInfo::raw_descriptors` when present and plausible.
+  `StreamInfo::raw_descriptors` when present and plausible (lowercase
+  ISO 639-2 code; anything else falls back to language-less audio).
 - **`tstrans.mpegts.MuxerConfig.from_program_map(pm, drop=None)`** — same
   constructor exposed as a Python `@staticmethod`. `drop` takes a list of
   `StreamKindTag` members. Raises `MuxError` (kind `CONFIG_INVALID`) for
@@ -77,7 +79,7 @@ roadmap item #10 (demux-kind ↔ mux-stream-type mapping).
 
 ### Changed (breaking, pre-1.0) — `ProgramMap` and `DemuxEvent.ProgramMap` gain new fields
 
-- **C ABI minor 10 → 11**: `tst_event_program_map_t` / `TstEventProgramMap`
+- **C ABI minor 10 → 11**: `TstEventProgramMap`
   gains `uint16_t pmt_pid` immediately after `pcr_pid` (offset +4), consuming
   the first two bytes of the former `_pad[4]` (now `_pad[2]`) — the struct
   layout is unchanged (size, member alignment, and all prior fields are

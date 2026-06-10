@@ -1198,6 +1198,8 @@ pub tst_core::error::KlvDecodeError::Truncated::offset: usize
 pub tst_core::error::KlvDecodeError::UnexpectedUniversalLabel
 pub tst_core::error::KlvDecodeError::UnexpectedUniversalLabel::expected: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::error::KlvDecodeError::UnexpectedUniversalLabel::found: tst_core::klv::universal_label::UniversalLabel
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvDecodeError) -> Self
 impl core::convert::From<tst_core::error::KlvFieldError> for tst_core::error::KlvDecodeError
 pub fn tst_core::error::KlvDecodeError::from(tst_core::error::KlvFieldError) -> Self
 impl core::error::Error for tst_core::error::KlvDecodeError
@@ -1237,6 +1239,8 @@ pub tst_core::error::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::error::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength::length: usize
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError
 impl core::fmt::Debug for tst_core::error::KlvEncodeError
 pub fn tst_core::error::KlvEncodeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1295,6 +1299,26 @@ impl core::marker::Unpin for tst_core::error::KlvFieldError
 impl core::marker::UnsafeUnpin for tst_core::error::KlvFieldError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::KlvFieldError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvFieldError
+#[non_exhaustive] pub enum tst_core::error::KlvPatchError
+pub tst_core::error::KlvPatchError::Decode(tst_core::error::KlvDecodeError)
+pub tst_core::error::KlvPatchError::Encode(tst_core::error::KlvEncodeError)
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvDecodeError) -> Self
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
+impl core::error::Error for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::error::KlvPatchError
+impl core::marker::Send for tst_core::error::KlvPatchError
+impl core::marker::Sync for tst_core::error::KlvPatchError
+impl core::marker::Unpin for tst_core::error::KlvPatchError
+impl core::marker::UnsafeUnpin for tst_core::error::KlvPatchError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::KlvPatchError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvPatchError
 #[non_exhaustive] pub enum tst_core::error::MuxError
 pub tst_core::error::MuxError::AbsIndexOutOfRange
 pub tst_core::error::MuxError::AbsIndexOutOfRange::abs_idx: u32
@@ -1918,6 +1942,7 @@ pub fn tst_core::klv::st0601::encode_to_vec(&tst_core::UasDatalinkLs) -> core::r
 pub fn tst_core::klv::st0601::encode_with(&tst_core::UasDatalinkLs, &tst_core::klv::st0601::EncodeConfig, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encoded_len(&tst_core::UasDatalinkLs) -> usize
 pub fn tst_core::klv::st0601::encoded_len_with(&tst_core::UasDatalinkLs, &tst_core::klv::st0601::EncodeConfig) -> usize
+pub fn tst_core::klv::st0601::patch(&[u8], &tst_core::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvPatchError>
 pub mod tst_core::klv::st0605
 pub struct tst_core::klv::st0605::PrecisionTimeStampPack
 pub tst_core::klv::st0605::PrecisionTimeStampPack::time_status: tst_core::klv::TimeStatus
@@ -5450,6 +5475,8 @@ pub tst_core::KlvDecodeError::Truncated::offset: usize
 pub tst_core::KlvDecodeError::UnexpectedUniversalLabel
 pub tst_core::KlvDecodeError::UnexpectedUniversalLabel::expected: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::KlvDecodeError::UnexpectedUniversalLabel::found: tst_core::klv::universal_label::UniversalLabel
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvDecodeError) -> Self
 impl core::convert::From<tst_core::error::KlvFieldError> for tst_core::error::KlvDecodeError
 pub fn tst_core::error::KlvDecodeError::from(tst_core::error::KlvFieldError) -> Self
 impl core::error::Error for tst_core::error::KlvDecodeError
@@ -5489,6 +5516,8 @@ pub tst_core::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::KlvEncodeError::UnsupportedImapbLength::length: usize
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError
 impl core::fmt::Debug for tst_core::error::KlvEncodeError
 pub fn tst_core::error::KlvEncodeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -5547,6 +5576,26 @@ impl core::marker::Unpin for tst_core::error::KlvFieldError
 impl core::marker::UnsafeUnpin for tst_core::error::KlvFieldError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::KlvFieldError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvFieldError
+#[non_exhaustive] pub enum tst_core::KlvPatchError
+pub tst_core::KlvPatchError::Decode(tst_core::error::KlvDecodeError)
+pub tst_core::KlvPatchError::Encode(tst_core::error::KlvEncodeError)
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvDecodeError) -> Self
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
+impl core::error::Error for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::error::KlvPatchError
+pub fn tst_core::error::KlvPatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::error::KlvPatchError
+impl core::marker::Send for tst_core::error::KlvPatchError
+impl core::marker::Sync for tst_core::error::KlvPatchError
+impl core::marker::Unpin for tst_core::error::KlvPatchError
+impl core::marker::UnsafeUnpin for tst_core::error::KlvPatchError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::KlvPatchError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvPatchError
 #[non_exhaustive] pub enum tst_core::MuxError
 pub tst_core::MuxError::AbsIndexOutOfRange
 pub tst_core::MuxError::AbsIndexOutOfRange::abs_idx: u32

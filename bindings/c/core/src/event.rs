@@ -1553,17 +1553,26 @@ mod tests {
     fn h264_nal_payload_is_arena_owned() {
         // Raw-first: the demuxer emits the encoded AU; `convert` `split_video`s
         // it internally. Build a one-NAL Annex-B AU (start code + NAL body
-        // 0x67 0x42 0x00 0x1E). The split yields a zero-copy view into `raw`;
-        // the arena copy must NOT alias that backing allocation.
-        let raw = vec![0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E];
-        let raw_ptr_before = raw.as_ptr();
+        // 0x67 0x42 0x00 0x1E). The split yields a zero-copy view into the
+        // SharedBytes backing; the arena copy must NOT alias that backing.
+        //
+        // The alias check compares against the LIVE SharedBytes backing (it
+        // stays alive inside `ev` across the assert) and rejects any overlap
+        // with the whole backing range. Capturing the pre-`from_vec` Vec
+        // pointer instead is a flake: `from_vec` copies into a fresh Arc
+        // allocation and frees the Vec buffer, so the allocator may later hand
+        // the arena that SAME freed address even though the deep-copy property
+        // holds (seen on windows-msvc under nextest, 2026-06-10).
+        let shared = SharedBytes::from_vec(vec![0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E]);
+        let backing = shared.as_ptr() as usize;
+        let backing_len = shared.len();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x500, StreamKind::Video(VideoCodec::H264)),
             pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
-                raw: SharedBytes::from_vec(raw),
+                raw: shared,
                 random_access_indicator: true,
             },
         };
@@ -1571,11 +1580,16 @@ mod tests {
         let mut out = TstEvent::default();
         convert(&mut arena, &ev, &mut out);
         assert_eq!(arena.nals.len(), 1);
-        let nal_out_ptr = arena.nals[0].payload;
-        assert_ne!(
-            nal_out_ptr, raw_ptr_before,
-            "H.264 NAL payload pointer must NOT alias the input AU bytes"
+        let nal_ptr = arena.nals[0].payload as usize;
+        let nal_len = arena.nals[0].payload_len;
+        assert!(
+            nal_ptr + nal_len <= backing || nal_ptr >= backing + backing_len,
+            "H.264 NAL payload range must NOT overlap the live input AU backing"
         );
+        // Deep-copy proof: the arena copy carries the NAL body bytes (the
+        // 1-byte NAL header 0x67 is stripped — it travels in nal_type/ref_idc).
+        let nal_bytes = unsafe { core::slice::from_raw_parts(arena.nals[0].payload, nal_len) };
+        assert_eq!(nal_bytes, &[0x42, 0x00, 0x1E]);
     }
 
     #[test]
@@ -1583,16 +1597,20 @@ mod tests {
         // Raw-first: build a single raw OBU (interop carriage, no binding
         // framing). Header = (obu_type=1 << 3) | has_size(0x02) = 0x0A;
         // LEB128 size = 0x03; body = 0x0A 0x0B 0x0C. `split_video(_, Av1)`
-        // falls back to raw-OBU parsing; the arena copy must not alias `raw`.
-        let raw = vec![0x0Au8, 0x03, 0x0A, 0x0B, 0x0C];
-        let raw_ptr_before = raw.as_ptr();
+        // falls back to raw-OBU parsing; the arena copy must not alias the
+        // SharedBytes backing. Same live-backing range check as the H.264
+        // test above (a pre-`from_vec` Vec pointer is freed by `from_vec`
+        // and can be reused by the arena — the windows-msvc flake).
+        let shared = SharedBytes::from_vec(vec![0x0Au8, 0x03, 0x0A, 0x0B, 0x0C]);
+        let backing = shared.as_ptr() as usize;
+        let backing_len = shared.len();
         let ev = DemuxEvent::Sample {
             stream: stream_id(0x600, StreamKind::Video(VideoCodec::Av1)),
             pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::Av1,
-                raw: SharedBytes::from_vec(raw),
+                raw: shared,
                 random_access_indicator: true,
             },
         };
@@ -1600,11 +1618,15 @@ mod tests {
         let mut out = TstEvent::default();
         convert(&mut arena, &ev, &mut out);
         assert_eq!(arena.obus.len(), 1);
-        let obu_out_ptr = arena.obus[0].payload;
-        assert_ne!(
-            obu_out_ptr, raw_ptr_before,
-            "AV1 OBU payload pointer must NOT alias the input AU bytes"
+        let obu_ptr = arena.obus[0].payload as usize;
+        let obu_len = arena.obus[0].payload_len;
+        assert!(
+            obu_ptr + obu_len <= backing || obu_ptr >= backing + backing_len,
+            "AV1 OBU payload range must NOT overlap the live input AU backing"
         );
+        // Deep-copy proof: the arena copy carries the OBU body bytes.
+        let obu_bytes = unsafe { core::slice::from_raw_parts(arena.obus[0].payload, obu_len) };
+        assert_eq!(obu_bytes, &[0x0A, 0x0B, 0x0C]);
     }
 
     #[test]

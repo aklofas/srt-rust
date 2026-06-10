@@ -196,7 +196,7 @@ offenders — the function fails unless you pass them in `drop` to exclude them.
 | `Video(H265)` — `0x24` | `add_video(pid, VideoCodec::H265)` | Codec-for-codec; Annex-B framing preserved. |
 | `Video(H266)` — `0x33` | `add_video(pid, VideoCodec::H266)` | Codec-for-codec; Annex-B framing preserved. |
 | `Video(Av1)` — `0x06` + `AV01` registration | `add_video(pid, VideoCodec::Av1)` | AV01 registration descriptor auto-re-emitted on the rebuilt PMT. |
-| `Audio(Mp2)` — `0x03` / `0x04` | `add_audio` / `add_audio_with_language` | Demuxer recognizes both `0x03` (ISO/IEC 11172-3, MPEG-1 audio) and `0x04` (ISO/IEC 13818-3, MPEG-2 audio) as `Mp2`; rebuilt PMT emits `0x03`. ISO 639 language descriptor (tag `0x0A`) recovered from `raw_descriptors` when present and plausible; never an error if absent. Same language-recovery rule applies to the three audio rows below. |
+| `Audio(Mp2)` — `0x03` / `0x04` | `add_audio` / `add_audio_with_language` | Demuxer recognizes both `0x03` (ISO/IEC 11172-3, MPEG-1 audio) and `0x04` (ISO/IEC 13818-3, MPEG-2 audio) as `Mp2`; rebuilt PMT emits `0x03`. ISO 639 language descriptor (tag `0x0A`) recovered from `raw_descriptors` when present and plausible — the first three bytes must be a lowercase ISO 639-2 code; anything else (including uppercase) falls back to language-less audio. Never an error if absent. Same language-recovery rule applies to the three audio rows below. |
 | `Audio(Aac)` — `0x0F` | `add_audio` / `add_audio_with_language` | |
 | `Audio(AacLatm)` — `0x11` | `add_audio` / `add_audio_with_language` | |
 | `Audio(Ac3)` — `0x81` | `add_audio` / `add_audio_with_language` | AC-3 registration descriptor auto-re-emitted on the rebuilt PMT. |
@@ -280,6 +280,10 @@ fn rebuild_multi_program(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error
     Ok(b.build()?)
 }
 ```
+
+Note: a PSI version bump re-emits a program's `ProgramMap` mid-stream. If your
+source may do that, dedupe by `pm.program_number` before `add_program` —
+duplicate program numbers fail `build()`.
 
 ### Python
 

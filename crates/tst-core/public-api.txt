@@ -3149,6 +3149,8 @@ pub tst_core::mpegts::demux::event::StreamKind::KlvSync::declared_link: core::op
 pub tst_core::mpegts::demux::event::StreamKind::Subtitle(tst_core::mpegts::demux::event::SubtitleCodec)
 pub tst_core::mpegts::demux::event::StreamKind::Unknown(u8)
 pub tst_core::mpegts::demux::event::StreamKind::Video(tst_core::mpegts::demux::event::VideoCodec)
+impl tst_core::mpegts::demux::event::StreamKind
+pub fn tst_core::mpegts::demux::event::StreamKind::tag(&self) -> tst_core::mpegts::demux::event::StreamKindTag
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamKind
 pub fn tst_core::mpegts::demux::event::StreamKind::clone(&self) -> tst_core::mpegts::demux::event::StreamKind
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamKind
@@ -3167,6 +3169,31 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::StreamKind
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::StreamKindTag
+pub tst_core::mpegts::demux::event::StreamKindTag::Audio
+pub tst_core::mpegts::demux::event::StreamKindTag::KlvAsync
+pub tst_core::mpegts::demux::event::StreamKindTag::KlvSync
+pub tst_core::mpegts::demux::event::StreamKindTag::Subtitle
+pub tst_core::mpegts::demux::event::StreamKindTag::Unknown
+pub tst_core::mpegts::demux::event::StreamKindTag::Video
+impl core::clone::Clone for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::clone(&self) -> tst_core::mpegts::demux::event::StreamKindTag
+impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamKindTag
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::eq(&self, &tst_core::mpegts::demux::event::StreamKindTag) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Freeze for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Send for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Sync for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Unpin for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamKindTag
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamKindTag
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamKindTag
 pub enum tst_core::mpegts::demux::event::SubtitleCodec
 pub tst_core::mpegts::demux::event::SubtitleCodec::Cea708Standalone
 pub tst_core::mpegts::demux::event::SubtitleCodec::DvbSubtitling
@@ -3294,6 +3321,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Ob
 pub struct tst_core::mpegts::demux::event::ProgramMap
 pub tst_core::mpegts::demux::event::ProgramMap::klv_links: alloc::vec::Vec<tst_core::mpegts::demux::event::KlvLink>
 pub tst_core::mpegts::demux::event::ProgramMap::pcr_pid: u16
+pub tst_core::mpegts::demux::event::ProgramMap::pmt_pid: u16
 pub tst_core::mpegts::demux::event::ProgramMap::program_number: u16
 pub tst_core::mpegts::demux::event::ProgramMap::streams: alloc::vec::Vec<tst_core::mpegts::demux::event::StreamInfo>
 impl core::clone::Clone for tst_core::mpegts::demux::event::ProgramMap
@@ -3986,6 +4014,8 @@ pub tst_core::mpegts::demux::StreamKind::KlvSync::declared_link: core::option::O
 pub tst_core::mpegts::demux::StreamKind::Subtitle(tst_core::mpegts::demux::event::SubtitleCodec)
 pub tst_core::mpegts::demux::StreamKind::Unknown(u8)
 pub tst_core::mpegts::demux::StreamKind::Video(tst_core::mpegts::demux::event::VideoCodec)
+impl tst_core::mpegts::demux::event::StreamKind
+pub fn tst_core::mpegts::demux::event::StreamKind::tag(&self) -> tst_core::mpegts::demux::event::StreamKindTag
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamKind
 pub fn tst_core::mpegts::demux::event::StreamKind::clone(&self) -> tst_core::mpegts::demux::event::StreamKind
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamKind
@@ -4004,6 +4034,31 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::StreamKind
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::StreamKindTag
+pub tst_core::mpegts::demux::StreamKindTag::Audio
+pub tst_core::mpegts::demux::StreamKindTag::KlvAsync
+pub tst_core::mpegts::demux::StreamKindTag::KlvSync
+pub tst_core::mpegts::demux::StreamKindTag::Subtitle
+pub tst_core::mpegts::demux::StreamKindTag::Unknown
+pub tst_core::mpegts::demux::StreamKindTag::Video
+impl core::clone::Clone for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::clone(&self) -> tst_core::mpegts::demux::event::StreamKindTag
+impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamKindTag
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::eq(&self, &tst_core::mpegts::demux::event::StreamKindTag) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::StreamKindTag
+pub fn tst_core::mpegts::demux::event::StreamKindTag::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Freeze for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Send for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Sync for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::Unpin for tst_core::mpegts::demux::event::StreamKindTag
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamKindTag
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamKindTag
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamKindTag
 pub enum tst_core::mpegts::demux::StrictMode
 pub tst_core::mpegts::demux::StrictMode::DescriptorsOnly
 pub tst_core::mpegts::demux::StrictMode::Full
@@ -4252,6 +4307,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Ob
 pub struct tst_core::mpegts::demux::ProgramMap
 pub tst_core::mpegts::demux::ProgramMap::klv_links: alloc::vec::Vec<tst_core::mpegts::demux::event::KlvLink>
 pub tst_core::mpegts::demux::ProgramMap::pcr_pid: u16
+pub tst_core::mpegts::demux::ProgramMap::pmt_pid: u16
 pub tst_core::mpegts::demux::ProgramMap::program_number: u16
 pub tst_core::mpegts::demux::ProgramMap::streams: alloc::vec::Vec<tst_core::mpegts::demux::event::StreamInfo>
 impl core::clone::Clone for tst_core::mpegts::demux::event::ProgramMap
@@ -4906,6 +4962,7 @@ pub tst_core::mpegts::mux::MuxerConfig::programs: alloc::vec::Vec<tst_core::mpeg
 pub tst_core::mpegts::mux::MuxerConfig::psi_interval_ms: u32
 impl tst_core::mpegts::mux::MuxerConfig
 pub fn tst_core::mpegts::mux::MuxerConfig::builder() -> tst_core::mpegts::mux::MuxerConfigBuilder
+pub fn tst_core::mpegts::mux::MuxerConfig::from_program_map(&tst_core::mpegts::demux::event::ProgramMap, &[tst_core::mpegts::demux::event::StreamKindTag]) -> core::result::Result<tst_core::mpegts::mux::MuxerConfig, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::MuxerConfig::validate(&self) -> core::result::Result<(), tst_core::error::MuxError>
 impl core::clone::Clone for tst_core::mpegts::mux::MuxerConfig
 pub fn tst_core::mpegts::mux::MuxerConfig::clone(&self) -> tst_core::mpegts::mux::MuxerConfig

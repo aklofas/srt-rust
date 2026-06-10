@@ -22,7 +22,7 @@ def _v_stream():
 
 
 def test_program_map_event():
-    pm = ProgramMap(program_number=1, pcr_pid=256, streams=(), klv_links=())
+    pm = ProgramMap(program_number=1, pcr_pid=256, pmt_pid=0x100, streams=(), klv_links=())
     ev = DemuxEvent.ProgramMap(programs=(pm,))
     assert isinstance(ev, DemuxEvent)
     assert isinstance(ev, DemuxEvent.ProgramMap)

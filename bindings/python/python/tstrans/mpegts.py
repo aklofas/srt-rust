@@ -4,7 +4,7 @@ Public types:
 
 - `Pts90khz` — 90 kHz timestamp wrapper.
 - `VideoCodec`, `AudioCodec`, `SubtitleCodec`, `StrictMode` enums.
-- `StreamId`, `StreamInfo`, `KlvLink`, `ProgramMap` dataclasses.
+- `StreamId`, `RawDescriptor`, `StreamInfo`, `KlvLink`, `ProgramMap` dataclasses.
 - `DemuxEvent` base + subclasses: `ProgramMap`, `Video`, `Audio`,
   `Subtitle`, `Klv`, `UnknownSample`, `Discontinuity`, `NonConformant`,
   `ReconnectDiscontinuity`.
@@ -500,16 +500,27 @@ class StreamId:
 
 
 @dataclass(frozen=True, slots=True)
+class RawDescriptor:
+    """One raw PMT per-stream descriptor TLV. `tag` is the
+    descriptor_tag byte; `data` the payload bytes (length stripped)."""
+
+    tag: int  # u8
+    data: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class StreamInfo:
     """PMT-derived per-stream metadata. `stream_type` is the raw PMT
     byte (kept for forward-compat with stream types not yet recognized
-    by the demuxer)."""
+    by the demuxer). `raw_descriptors` holds the per-stream PMT descriptor
+    loop verbatim, in loop order; empty tuple when the PMT carried none."""
 
     pid: int
     stream_type: int  # u8
     kind: StreamKindTag
     codec: Codec
     program_number: int
+    raw_descriptors: tuple = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -527,13 +538,16 @@ class ProgramMap:
     """One program's PSI summary, emitted on PAT/PMT discovery and on
     each PSI version-bump. `streams` is the elementary-stream list;
     `klv_links` is the demuxer's view of which KLV PIDs belong to
-    which video PIDs.
+    which video PIDs. `pmt_pid` is the PID carrying this program's PMT
+    (from the PAT entry) — needed to reconstruct a `MuxerConfig` via
+    `MuxerConfig.from_program_map`.
 
     `streams` and `klv_links` are tuples (not lists) so the dataclass
     remains hashable + value-equal."""
 
     program_number: int
     pcr_pid: int
+    pmt_pid: int
     streams: tuple
     klv_links: tuple
 
@@ -1191,6 +1205,7 @@ __all__: list[str] = [
     "LinkSource",
     "Codec",
     "StreamId",
+    "RawDescriptor",
     "StreamInfo",
     "KlvLink",
     "ProgramMap",

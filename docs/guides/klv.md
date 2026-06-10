@@ -255,6 +255,45 @@ this when you want a single round-trip invariant — "if it encodes,
 when the caller has set the conventional fields, but it does not gate
 on every ST 0601.8-mandated item.
 
+## Surgical tag patching
+
+`decode` → modify → `encode` round-trips are *lenient*: they re-emit
+only what the typed model carries, normalize TLV order, and re-encode
+every IMAPB value. For "change a few tags, keep the rest identical"
+edits — metadata correction, redaction, annotation — use the
+byte-faithful patcher instead.
+
+```rust,no_run
+use tst_core::error::KlvPatchError;
+use tst_core::klv::st0601::{patch, UasDatalinkLs};
+
+fn correct_corners(raw_ls: &[u8]) -> Result<Vec<u8>, KlvPatchError> {
+    let edits = UasDatalinkLs {
+        corner_lat_p1_deg: Some(33.99),
+        corner_lon_p1_deg: Some(-117.61),
+        ..UasDatalinkLs::default()
+    };
+    patch(raw_ls, &edits)
+}
+```
+
+```python
+patched = klv.patch_uas_datalink(raw_ls, {
+    "corner_lat_p1_deg": 33.99,
+    "corner_lon_p1_deg": -117.61,
+})
+```
+
+Only the named tags are re-encoded; every other TLV — vendor tags,
+unmodeled tags, non-canonical length encodings, bytes after the
+declared outer length — is copied byte-for-byte in original order,
+and the Tag 1 checksum is recomputed (only if the input carries one).
+Edited tags absent from the input are inserted before the trailing
+checksum. Tags outside the typed model can be replaced via the
+`unknown` field (`{"unknown": ((tag, value_bytes),)}`). Editing a tag
+canonicalizes that one TLV's encoding even when the value is
+unchanged. Deleting a tag is not supported.
+
 ## ST 0605 Precision Time Stamp Pack
 
 ST 0605 is a separate KLV record from ST 0601 Tag 2, and the two

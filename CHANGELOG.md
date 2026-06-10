@@ -33,6 +33,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The JVM binding is unaffected (`v.payload()` still returns parsed
   `List<VideoUnit>` — it splits internally). The C ABI is unchanged.
 
+### Added — ST 0601 byte-faithful tag patcher
+
+- `tst_core::klv::st0601::patch` + `tstrans.klv.patch_uas_datalink`: byte-faithful
+  tag-level patching of raw ST 0601 local sets — edited tags re-encoded in place,
+  every other TLV copied verbatim, checksum recomputed (new `KlvPatchError`).
+
 ### Added — opt-in elementary-stream parsing surface
 
 - `tst_core::shared::SharedBytes` — refcounted zero-copy byte buffer.

@@ -3,8 +3,10 @@ use super::decode::{
 };
 use super::encode::{encode, encode_strict_compliance, encode_to_vec, encode_with, encoded_len};
 use super::model::{EncodeConfig, UasDatalinkLs};
+use super::patch::patch;
 use super::tags::TAGS;
-use crate::error::{KlvDecodeError, KlvEncodeError};
+use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
+use crate::klv::checksum::checksum_running_sum_16;
 use crate::klv::pack::OwnedRawField;
 use crate::klv::universal_label::UniversalLabel;
 
@@ -1172,4 +1174,273 @@ fn encode_then_decode_strict_roundtrip() {
     // over the [-900, 19000] m range; quantization step is ~0.3 m, so a
     // tolerance of 1 m is generous-but-safe for round-trip pinning.
     assert!((back.sensor_alt_m.unwrap() - 1500.0).abs() < 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// patch() — byte-faithful tag-level editing
+// ---------------------------------------------------------------------------
+
+/// Hand-build a raw LS: ST 0601 UL + short-form outer length + `body`,
+/// optionally appending a valid trailing checksum TLV.
+fn build_raw_ls(body: &[u8], with_checksum: bool) -> Vec<u8> {
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    let body_len = body.len() + if with_checksum { 4 } else { 0 };
+    assert!(
+        body_len < 128,
+        "test helper supports short-form length only"
+    );
+    raw.push(body_len as u8);
+    raw.extend_from_slice(body);
+    if with_checksum {
+        raw.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]);
+        let off = raw.len() - 2;
+        let sum = checksum_running_sum_16(&raw[..off]);
+        raw[off] = (sum >> 8) as u8;
+        raw[off + 1] = sum as u8;
+    }
+    raw
+}
+
+#[test]
+fn patch_empty_edits_is_byte_identity() {
+    let rec = UasDatalinkLs {
+        timestamp_us: Some(1_700_000_000_000_000),
+        mission_id: Some("M1".into()),
+        frame_center_lat_deg: Some(33.4),
+        ..UasDatalinkLs::default()
+    };
+    let raw = encode_to_vec(&rec).unwrap();
+    let out = patch(&raw, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out, raw);
+}
+
+#[test]
+fn patch_in_place_edit_equals_full_reencode() {
+    // encode() emits tags in TAGS-table order with canonical encodings,
+    // so patching a PRESENT tag must be byte-equal to re-encoding the
+    // edited record from scratch.
+    let mut rec = UasDatalinkLs {
+        timestamp_us: Some(1_700_000_000_000_000),
+        mission_id: Some("M1".into()),
+        frame_center_lat_deg: Some(33.4),
+        corner_lat_p1_deg: Some(33.41),
+        uas_ls_version: Some(19),
+        ..UasDatalinkLs::default()
+    };
+    let raw = encode_to_vec(&rec).unwrap();
+    let edits = UasDatalinkLs {
+        corner_lat_p1_deg: Some(33.99),
+        ..UasDatalinkLs::default()
+    };
+    let patched = patch(&raw, &edits).unwrap();
+    rec.corner_lat_p1_deg = Some(33.99);
+    assert_eq!(patched, encode_to_vec(&rec).unwrap());
+}
+
+#[test]
+fn patch_inserts_absent_tag_before_trailing_checksum() {
+    let rec = UasDatalinkLs {
+        timestamp_us: Some(1),
+        uas_ls_version: Some(19),
+        ..UasDatalinkLs::default()
+    };
+    let raw = encode_to_vec(&rec).unwrap();
+    let edits = UasDatalinkLs {
+        frame_center_lat_deg: Some(10.0),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    // decode() verifies the running-sum checksum, so this also proves
+    // the recompute is correct.
+    let dec = decode(&out).expect("patched output decodes with a valid checksum");
+    assert!((dec.frame_center_lat_deg.unwrap() - 10.0).abs() < 1e-6);
+    // The checksum TLV (tag 1, len 2, 2 value bytes) is still the
+    // final element — the inserted tag landed before it.
+    assert_eq!(out[out.len() - 4], 0x01);
+    assert_eq!(out[out.len() - 3], 0x02);
+}
+
+#[test]
+fn patch_preserves_noncanonical_length_and_vendor_tlv_bytes() {
+    // tag 3 with a NON-CANONICAL long-form length (0x81 0x02) and a
+    // vendor TLV (tag 0x67 = 103, untyped). Patching an unrelated tag
+    // must leave both byte sequences intact.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x03, 0x81, 0x02, b'A', b'B']);
+    body.extend_from_slice(&[0x67, 0x02, 0xDE, 0xAD]);
+    let raw = build_raw_ls(&body, true);
+    let _ = decode(&raw).expect("fixture must decode");
+
+    let edits = UasDatalinkLs {
+        frame_center_lat_deg: Some(10.0),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    let find = |needle: &[u8]| out.windows(needle.len()).any(|w| w == needle);
+    assert!(
+        find(&[0x03, 0x81, 0x02, b'A', b'B']),
+        "non-canonical TLV must survive verbatim"
+    );
+    assert!(
+        find(&[0x67, 0x02, 0xDE, 0xAD]),
+        "vendor TLV must survive verbatim"
+    );
+    let _ = decode(&out).expect("patched output decodes with a valid checksum");
+}
+
+#[test]
+fn patch_reencodes_every_occurrence_of_a_duplicated_tag_and_mirrors_missing_checksum() {
+    // Two tag-4 TLVs, no checksum tag. Both occurrences re-encode; no
+    // checksum is added (mirror-input); outer length re-encodes
+    // canonically because the body size changed.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x04, 0x01, b'X']);
+    body.extend_from_slice(&[0x04, 0x01, b'Y']);
+    let raw = build_raw_ls(&body, false);
+    let edits = UasDatalinkLs {
+        platform_tail_number: Some("Z9".into()),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    let mut expected = Vec::new();
+    expected.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    expected.push(8);
+    expected.extend_from_slice(&[0x04, 0x02, b'Z', b'9', 0x04, 0x02, b'Z', b'9']);
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn patch_unknown_escape_hatch_replaces_vendor_tlv() {
+    let rec = UasDatalinkLs {
+        timestamp_us: Some(1),
+        unknown: vec![OwnedRawField {
+            tag: 103,
+            value: vec![0xDE, 0xAD],
+        }],
+        ..UasDatalinkLs::default()
+    };
+    let raw = encode_to_vec(&rec).unwrap();
+    let edits = UasDatalinkLs {
+        unknown: vec![OwnedRawField {
+            tag: 103,
+            value: vec![0x01, 0x02, 0x03],
+        }],
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    let dec = decode(&out).unwrap();
+    assert_eq!(
+        dec.unknown,
+        vec![OwnedRawField {
+            tag: 103,
+            value: vec![0x01, 0x02, 0x03],
+        }]
+    );
+}
+
+#[test]
+fn patch_rejects_typed_tag_in_unknown_edits() {
+    let raw = encode_to_vec(&UasDatalinkLs {
+        timestamp_us: Some(1),
+        ..UasDatalinkLs::default()
+    })
+    .unwrap();
+    let edits = UasDatalinkLs {
+        unknown: vec![OwnedRawField {
+            tag: 2,
+            value: vec![0],
+        }],
+        ..UasDatalinkLs::default()
+    };
+    match patch(&raw, &edits) {
+        Err(KlvPatchError::Encode(KlvEncodeError::ReservedTagInUnknown { tag: 2 })) => {}
+        other => panic!("expected ReservedTagInUnknown, got {other:?}"),
+    }
+}
+
+#[test]
+fn patch_out_of_range_edit_value_errors() {
+    let raw = encode_to_vec(&UasDatalinkLs {
+        timestamp_us: Some(1),
+        corner_lat_p1_deg: Some(10.0),
+        ..UasDatalinkLs::default()
+    })
+    .unwrap();
+    let edits = UasDatalinkLs {
+        corner_lat_p1_deg: Some(999.0),
+        ..UasDatalinkLs::default()
+    };
+    assert!(matches!(
+        patch(&raw, &edits),
+        Err(KlvPatchError::Encode(KlvEncodeError::OutOfRange { .. }))
+    ));
+}
+
+#[test]
+fn patch_truncated_input_errors() {
+    assert!(matches!(
+        patch(&[0x06, 0x0E], &UasDatalinkLs::default()),
+        Err(KlvPatchError::Decode(KlvDecodeError::Truncated { .. }))
+    ));
+}
+
+#[test]
+fn patch_recomputes_mid_body_checksum_in_place() {
+    // A NON-COMPLIANT mid-body tag-1 (followed by a vendor TLV, no
+    // trailing checksum) is tolerated: recomputed in place over its
+    // prefix, with every other byte preserved verbatim.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x01, 0x02, 0xAB, 0xCD]); // stale checksum value
+    body.extend_from_slice(&[0x67, 0x01, 0x55]);
+    let raw = build_raw_ls(&body, false);
+    let out = patch(&raw, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out.len(), raw.len());
+    // UL + outer length + tag-1 header preserved (bytes 0..19).
+    assert_eq!(&out[..19], &raw[..19]);
+    // The 2-byte value is recomputed over its prefix, in place.
+    let sum = checksum_running_sum_16(&out[..19]);
+    assert_eq!(out[19], (sum >> 8) as u8);
+    assert_eq!(out[20], sum as u8);
+    // Everything after the checksum value is verbatim.
+    assert_eq!(&out[21..], &raw[21..]);
+}
+
+#[test]
+fn patch_does_not_verify_input_checksum() {
+    // patch() is an editor, not a validator: a corrupt input checksum
+    // is not rejected — it is simply recomputed (here back to the
+    // correct value, making the output byte-equal to the clean input).
+    let clean = encode_to_vec(&UasDatalinkLs {
+        timestamp_us: Some(1),
+        ..UasDatalinkLs::default()
+    })
+    .unwrap();
+    let mut corrupt = clean.clone();
+    let last = corrupt.len() - 1;
+    corrupt[last] ^= 0xFF;
+    assert!(
+        matches!(
+            decode(&corrupt),
+            Err(KlvDecodeError::ChecksumMismatch { .. })
+        ),
+        "fixture sanity: the corruption must be decode-visible"
+    );
+    let out = patch(&corrupt, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out, clean);
+}
+
+#[test]
+fn patch_does_not_inject_uas_ls_version() {
+    // Input has no tag 65 and no checksum; patching another field must
+    // NOT auto-insert a version tag (unlike encode_with).
+    let raw = build_raw_ls(&[0x04, 0x01, b'X'], false);
+    let edits = UasDatalinkLs {
+        mission_id: Some("M".into()),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    let dec = decode_unchecked(&out).unwrap();
+    assert_eq!(dec.uas_ls_version, None);
+    assert_eq!(dec.mission_id.as_deref(), Some("M"));
 }

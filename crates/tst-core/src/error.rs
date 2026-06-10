@@ -183,6 +183,22 @@ pub enum KlvEncodeError {
     ReservedTagInUnknown { tag: u32 },
 }
 
+/// Error from [`crate::klv::st0601::patch`]: either the input local set
+/// is malformed (decode side) or an edited value cannot be encoded
+/// (encode side).
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum KlvPatchError {
+    /// The input local set could not be walked (truncated, malformed
+    /// tag/length, ...).
+    #[error("malformed input local set: {0}")]
+    Decode(#[from] KlvDecodeError),
+    /// An edited field failed to encode (out of range, string too
+    /// long, reserved tag in `unknown`, ...).
+    #[error("failed to encode edited tag: {0}")]
+    Encode(#[from] KlvEncodeError),
+}
+
 #[derive(Debug, Clone, Error, PartialEq)]
 #[non_exhaustive]
 pub enum KlvFieldError {

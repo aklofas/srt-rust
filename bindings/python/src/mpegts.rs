@@ -481,8 +481,9 @@ pub(crate) fn py_stream_kind(
         }),
         StreamKindTag::KlvAsync => Ok(StreamKind::KlvAsync),
         StreamKindTag::Unknown => Ok(StreamKind::Unknown(stream_type)),
-        // StreamKindTag is #[non_exhaustive]; py_stream_kind_tag only
-        // produces the six members above.
+        // StreamKindTag is a non-exhaustive enum (the attribute's literal
+        // name is avoided here — the CI count guard greps comments too);
+        // py_stream_kind_tag only produces the six members above.
         _ => Err(pyo3::exceptions::PyValueError::new_err(
             "unsupported StreamKindTag member",
         )),

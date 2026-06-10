@@ -1444,3 +1444,116 @@ fn patch_does_not_inject_uas_ls_version() {
     assert_eq!(dec.uas_ls_version, None);
     assert_eq!(dec.mission_id.as_deref(), Some("M"));
 }
+
+#[test]
+fn patch_duplicate_checksums_only_last_recomputed() {
+    // TWO non-compliant mid-body tag-1 TLVs with distinct known values,
+    // followed by a vendor TLV (so neither is the trailing checksum).
+    // The FIRST (non-last) checksum's original value bytes must survive
+    // verbatim; only the LAST is recomputed.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x01, 0x02, 0xAA, 0xBB]);
+    body.extend_from_slice(&[0x01, 0x02, 0xCC, 0xDD]);
+    body.extend_from_slice(&[0x67, 0x01, 0x55]);
+    let raw = build_raw_ls(&body, false);
+    let out = patch(&raw, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out.len(), raw.len());
+    // UL + outer length + first tag-1 TLV (header AND value) verbatim.
+    assert_eq!(&out[..21], &raw[..21]);
+    assert_eq!(
+        &out[19..21],
+        &[0xAA, 0xBB],
+        "first (non-last) checksum value bytes must survive verbatim"
+    );
+    // Second tag-1: header verbatim, value recomputed over its prefix.
+    assert_eq!(&out[21..23], &raw[21..23]);
+    let sum = checksum_running_sum_16(&out[..23]);
+    assert_eq!(out[23], (sum >> 8) as u8);
+    assert_eq!(out[24], sum as u8);
+    // Trailing vendor TLV verbatim.
+    assert_eq!(&out[25..], &raw[25..]);
+}
+
+#[test]
+fn patch_preserves_trailing_bytes_after_declared_length() {
+    // Trailing bytes after the declared outer length (capture padding)
+    // are preserved verbatim — full byte identity holds.
+    let mut raw = encode_to_vec(&UasDatalinkLs {
+        timestamp_us: Some(1),
+        ..UasDatalinkLs::default()
+    })
+    .unwrap();
+    raw.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+    let _ = decode(&raw).expect("lenient decode tolerates trailing bytes");
+    let out = patch(&raw, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out, raw);
+}
+
+#[test]
+fn patch_empty_body_identity_and_insertion() {
+    // UL + 0x00 outer length, no TLVs at all.
+    let raw = build_raw_ls(&[], false);
+    // Empty edits: byte identity.
+    let out = patch(&raw, &UasDatalinkLs::default()).unwrap();
+    assert_eq!(out, raw);
+    // An edit grows the empty body via the insertion path (no checksum
+    // to land before — appended at the end, canonical outer length).
+    let edits = UasDatalinkLs {
+        mission_id: Some("M".into()),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    let mut expected = Vec::new();
+    expected.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    expected.push(3);
+    expected.extend_from_slice(&[0x03, 0x01, b'M']);
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn patch_preserves_noncanonical_outer_length_when_size_unchanged() {
+    // Outer length 0x81 0x03 = NON-CANONICAL long form of 3. An
+    // in-place same-size edit must keep those length bytes verbatim.
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    raw.extend_from_slice(&[0x81, 0x03]);
+    raw.extend_from_slice(&[0x04, 0x01, b'X']);
+    let edits = UasDatalinkLs {
+        platform_tail_number: Some("Y".into()),
+        ..UasDatalinkLs::default()
+    };
+    let out = patch(&raw, &edits).unwrap();
+    assert_eq!(
+        &out[16..18],
+        &[0x81, 0x03],
+        "non-canonical outer length survives verbatim when body size is unchanged"
+    );
+    assert_eq!(&out[18..], &[0x04, 0x01, b'Y']);
+    assert_eq!(out.len(), raw.len());
+}
+
+#[test]
+fn patch_propagated_decode_error_offsets_are_absolute() {
+    // Indefinite-form outer length byte (0x80) at raw[16]: the
+    // propagated MalformedLength offset must be absolute, not 0.
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    raw.push(0x80);
+    match patch(&raw, &UasDatalinkLs::default()) {
+        Err(KlvPatchError::Decode(KlvDecodeError::MalformedLength { offset })) => {
+            assert_eq!(offset, 16);
+        }
+        other => panic!("expected MalformedLength at offset 16, got {other:?}"),
+    }
+
+    // Truncated BER-OID tag inside the body (continuation bit set, no
+    // following byte): offset must be raw-absolute too. The missing
+    // byte sits at 16 (UL) + 1 (length) + 1 (tag byte) = 18.
+    let raw = build_raw_ls(&[0x81], false);
+    match patch(&raw, &UasDatalinkLs::default()) {
+        Err(KlvPatchError::Decode(KlvDecodeError::Truncated { offset, .. })) => {
+            assert_eq!(offset, 18);
+        }
+        other => panic!("expected Truncated at offset 18, got {other:?}"),
+    }
+}

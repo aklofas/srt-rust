@@ -104,8 +104,8 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }` / `H266 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `Obu` | AV1 OBU: `{ obu_type, extension: Option<ObuExtension>, payload }`. Header byte + optional extension byte + LEB128 `obu_size` consumed; `payload` is OBU body bytes. `obu_type` = 1 SequenceHeader / 2 TemporalDelimiter / 3 FrameHeader / 6 Frame / etc. (AV1 §5.3.2). |
 | `MetadataKind` | `KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156, AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
-| `ProgramMap` | `{ program_number, pcr_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. |
-| `StreamInfo` | `{ pid, stream_type, kind }` — one row per declared stream in the PMT. |
+| `ProgramMap` | `{ program_number, pcr_pid, pmt_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. `pmt_pid` is the PAT-declared PID carrying this program's PMT; needed to reconstruct a muxer config via `MuxerConfig::from_program_map`. |
+| `StreamInfo` | `{ pid, stream_type, kind, program_number, raw_descriptors: Vec<RawDescriptor> }` — one row per declared stream in the PMT. `raw_descriptors` carries the raw PMT per-stream descriptor TLVs (tag + data bytes), in PMT loop order. |
 | `KlvLink` | `{ klv_pid, video_pid, source: LinkSource }`. |
 | `LinkSource` | `Declared` (PMT `metadata_descriptor`), `Inferred` (single video + single KLV topology), `Override` (`DemuxerBuilder::link_klv`). |
 | `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `PidReusedAcrossPrograms { pid, programs }`, `SubtitleMissingDescriptor { pid }`, `SubtitleDescriptorMalformed { pid, tag }` (reserved — not currently emitted), `Other(String)`. |
@@ -450,7 +450,10 @@ Every `DemuxEvent::ProgramMap`'s `streams: Vec<StreamInfo>` carries
 the parsed PMT descriptor list for each PID in
 `StreamInfo::raw_descriptors: Vec<RawDescriptor>`. Use this to
 decode vendor-specific or stack-shape descriptors that the standard
-label decoder can't generalize over.
+label decoder can't generalize over. The raw descriptors are also the
+source `MuxerConfig::from_program_map` uses to recover ISO 639 audio
+language codes — see the transmux guide in
+[guides/mpegts-mux.md](/docs/guides/mpegts-mux.md#rebuilding-a-muxer-config-from-a-demuxed-program).
 
 ```rust,no_run
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
@@ -741,6 +744,8 @@ fn main() {
     while let Some(event) = d.next_event() {
         match event {
             DemuxEvent::ProgramMap(pm) => {
+                // pm.pmt_pid is the PAT-declared PMT PID — use it with
+                // MuxerConfig::from_program_map for transmux workflows.
                 println!("program {} on PMT PID 0x{:04X} carries {} streams",
                     pm.program_number, pm.pmt_pid, pm.streams.len());
             }

@@ -669,6 +669,35 @@ encode_uas_datalink = _native_mod.encode_uas_datalink
 encode_uas_datalink_strict_compliance = _native_mod.encode_uas_datalink_strict_compliance
 
 
+def patch_uas_datalink(raw: bytes, edits) -> bytes:
+    """Patch named tags in a raw ST 0601 local set; every other TLV is
+    copied byte-for-byte in original order and the Tag 1 checksum is
+    recomputed (only if the input carries one).
+
+    ``edits`` is either a ``dict`` of ``UasDatalinkLs`` field names
+    (e.g. ``{"corner_lat_p1_deg": 33.99}``) or a partial
+    ``UasDatalinkLs`` itself — ``None`` fields leave the input
+    untouched. Tags outside the typed model can be replaced through the
+    ``unknown`` field: ``{"unknown": ((103, b"..."),)}``. Edited tags
+    absent from the input are inserted before the trailing checksum.
+    Bytes after the declared outer length are preserved verbatim.
+    Deleting a tag is not supported.
+
+    Unlike ``decode_uas_datalink`` → ``encode_uas_datalink`` round
+    trips, this never reorders TLVs and never re-encodes values you did
+    not name — vendor tags, unmodeled tags, and non-canonical length
+    encodings all survive verbatim. (Editing a tag canonicalizes that
+    one TLV's encoding, even if the new value equals the old.)
+
+    Raises ``KlvError`` for a malformed input local set and
+    ``KlvEncodeError`` for an edit value that cannot be encoded
+    (out-of-range, string too long, typed tag in ``unknown``).
+    """
+    if isinstance(edits, dict):
+        edits = UasDatalinkLs(**edits)
+    return _native_mod.patch_uas_datalink(raw, edits)
+
+
 # ---------------------------------------------------------------------------
 # Universal Label dispatcher
 # ---------------------------------------------------------------------------
@@ -817,5 +846,6 @@ __all__: list[str] = [
     "decode_uas_datalink",
     "encode_uas_datalink",
     "encode_uas_datalink_strict_compliance",
+    "patch_uas_datalink",
     "parse_klv_universal",
 ]

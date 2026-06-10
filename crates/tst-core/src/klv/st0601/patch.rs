@@ -18,6 +18,19 @@ use super::encode::encode_tag_value;
 use super::model::UasDatalinkLs;
 use super::tags::TAGS;
 
+/// Rebase a slice-relative decode-error offset to an absolute `raw`
+/// offset (house idiom — see `pack::Iter::next_local_set` and
+/// `decode::strict_body_walk`). Variants without an offset pass through.
+fn rebase_offset(mut e: KlvDecodeError, base: usize) -> KlvDecodeError {
+    match &mut e {
+        KlvDecodeError::Truncated { offset, .. }
+        | KlvDecodeError::MalformedLength { offset }
+        | KlvDecodeError::MalformedTag { offset } => *offset += base,
+        _ => {}
+    }
+    e
+}
+
 /// Append one canonical `[BER-OID tag][BER length][value]` TLV.
 fn emit_tlv(tag: u32, value: &[u8], body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     let mut tag_buf = [0u8; 8];
@@ -41,12 +54,21 @@ fn emit_tlv(tag: u32, value: &[u8], body: &mut Vec<u8>) -> Result<(), KlvEncodeE
 /// - An edited tag ABSENT from the input is inserted before the
 ///   trailing checksum (typed tags in table order, then
 ///   `edits.unknown` in given order) — at the end if there is none.
+/// - Re-encoding an edited tag emits a CANONICAL tag/length encoding
+///   for that TLV — editing a tag whose input encoding was
+///   non-canonical is not a byte-level no-op, even when the new value
+///   bytes match the old.
 /// - The tag-1 checksum is recomputed iff the input has one
-///   (mirror-input). The input checksum is NOT verified — `patch` is
+///   (mirror-input). Only the LAST tag-1 occurrence is recomputed;
+///   earlier (non-compliant duplicate) occurrences are copied
+///   verbatim. The input checksum is NOT verified — `patch` is
 ///   an editor, not a validator; run [`super::decode`] first if you
 ///   need validation.
 /// - The outer BER length bytes are preserved verbatim when the body
 ///   size is unchanged; re-encoded canonically otherwise.
+/// - Bytes after the declared outer length (e.g. capture padding) are
+///   copied to the output verbatim — patch accepts everything lenient
+///   decode accepts and copies what it does not understand.
 /// - The 16-byte UL is copied verbatim; `edits.universal_label` and
 ///   `edits.declared_version` are ignored.
 /// - `edits.unknown` re-encodes those tags with the given value bytes
@@ -81,7 +103,7 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
         }));
     }
     let ul = &raw[..16];
-    let (declared_len, after_len) = read_ber(&raw[16..])?;
+    let (declared_len, after_len) = read_ber(&raw[16..]).map_err(|e| rebase_offset(e, 16))?;
     let len_bytes = &raw[16..raw.len() - after_len.len()];
     let body_offset = raw.len() - after_len.len();
     if after_len.len() < declared_len {
@@ -97,6 +119,9 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
     // Manual walk (not `pack::Iter`): verbatim copy needs the original
     // byte spans, non-canonical length encodings included.
     let mut new_body: Vec<u8> = Vec::with_capacity(body.len() + 64);
+    // Linear-scan Vec: real local sets carry at most a few dozen
+    // distinct tags, so the O(n²) worst case only degrades on
+    // adversarial (fuzz) inputs — not a hot path.
     let mut seen: Vec<u32> = Vec::new();
     // (offset in new_body, header byte count) of the LAST tag-1 TLV;
     // its 2-byte value is recomputed after assembly.
@@ -108,8 +133,11 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
     let mut pos = 0usize;
     while pos < body.len() {
         let rest = &body[pos..];
-        let (tag, after_tag) = read_ber_oid(rest)?;
-        let (vlen, after_vlen) = read_ber(after_tag)?;
+        let (tag, after_tag) =
+            read_ber_oid(rest).map_err(|e| rebase_offset(e, body_offset + pos))?;
+        let consumed_tag = rest.len() - after_tag.len();
+        let (vlen, after_vlen) =
+            read_ber(after_tag).map_err(|e| rebase_offset(e, body_offset + pos + consumed_tag))?;
         let header_len = rest.len() - after_vlen.len();
         if after_vlen.len() < vlen {
             return Err(KlvPatchError::Decode(KlvDecodeError::Truncated {
@@ -136,10 +164,13 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
                 trailing_checksum = Some(&tlv[..header_len]);
             } else {
                 // Mid-body checksum: non-compliant but tolerated (like
-                // lenient decode) — recompute in place over its prefix.
+                // lenient decode) — copied verbatim for now; if this
+                // turns out to be the LAST tag-1, the recompute below
+                // overwrites its value in place. Net contract: every
+                // non-last tag-1 is verbatim, only the last recomputed.
                 checksum_slot = Some((new_body.len(), header_len));
                 new_body.extend_from_slice(&tlv[..header_len]);
-                new_body.extend_from_slice(&[0, 0]);
+                new_body.extend_from_slice(&tlv[header_len..]);
             }
         } else if let Some(spec) = TAGS.iter().find(|s| u32::from(s.id) == tag) {
             match encode_tag_value(edits, spec, None)? {
@@ -174,8 +205,10 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
         new_body.extend_from_slice(&[0, 0]);
     }
 
-    // ---- assemble: UL + outer length + body ----
-    let mut out: Vec<u8> = Vec::with_capacity(16 + len_bytes.len() + new_body.len() + 4);
+    // ---- assemble: UL + outer length + body + trailing bytes ----
+    let trailing = &after_len[declared_len..];
+    let mut out: Vec<u8> =
+        Vec::with_capacity(16 + len_bytes.len() + new_body.len() + trailing.len());
     out.extend_from_slice(ul);
     if new_body.len() == declared_len {
         // Body size unchanged: preserve the original outer length
@@ -183,11 +216,15 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
         out.extend_from_slice(len_bytes);
     } else {
         let mut len_buf = [0u8; 16];
-        let n = write_ber(new_body.len(), &mut len_buf).map_err(KlvPatchError::Encode)?;
+        let n = write_ber(new_body.len(), &mut len_buf)?;
         out.extend_from_slice(&len_buf[..n]);
     }
     let body_start = out.len();
     out.extend_from_slice(&new_body);
+    // Bytes after the declared outer length (capture padding etc.) are
+    // preserved verbatim — they sit after the body, outside checksum
+    // coverage (the sum only runs through the checksum value offset).
+    out.extend_from_slice(trailing);
 
     // ---- recompute the (last) checksum, if the input had one ----
     if let Some((slot, header_len)) = checksum_slot {

@@ -20,6 +20,7 @@ use pyo3::types::PyDict;
 
 use tst_core::error::KlvDecodeError;
 use tst_core::error::KlvFieldError as RustKlvFieldError;
+use tst_core::error::KlvPatchError;
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
@@ -31,6 +32,7 @@ use tst_core::klv::st0601::{
     UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
     encode_strict_compliance as encode_st0601_strict_compliance, encode_to_vec as encode_st0601,
+    patch as patch_st0601,
 };
 use tst_core::klv::st0605::{
     PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
@@ -1188,6 +1190,34 @@ fn encode_uas_datalink_strict_compliance_py(
     Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
 }
 
+/// Byte-faithful tag-level patch of a raw ST 0601 local set: edited
+/// tags re-encoded, every other TLV copied verbatim, checksum
+/// recomputed. See `tstrans.klv.patch_uas_datalink` for the
+/// dict-accepting user-facing wrapper.
+///
+/// No `allow_threads` for the same reason as `decode_uas_datalink`:
+/// the per-call Rust work is small; releasing the GIL produces
+/// ping-pong under hot batch loops.
+#[pyfunction]
+#[pyo3(name = "patch_uas_datalink")]
+fn patch_uas_datalink_py(
+    py: Python<'_>,
+    raw: &[u8],
+    edits: &Bound<'_, PyAny>,
+) -> PyResult<PyObject> {
+    let rust_edits = py_to_uas_datalink_ls(edits)?;
+    match patch_st0601(raw, &rust_edits) {
+        Ok(bytes) => Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into()),
+        Err(KlvPatchError::Decode(e)) => Err(klv_decode_error_to_pyerr(py, e)),
+        Err(KlvPatchError::Encode(e)) => Err(klv_encode_error_to_pyerr(py, e)),
+        // KlvPatchError is #[non_exhaustive] in tst-core, so a wildcard
+        // arm is required from this crate.
+        Err(other) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "unhandled KlvPatchError variant: {other}"
+        ))),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
@@ -1202,6 +1232,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         encode_uas_datalink_strict_compliance_py,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(patch_uas_datalink_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_precision_timestamp_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_vmti_py, m)?)?;

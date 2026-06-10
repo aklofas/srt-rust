@@ -32,6 +32,8 @@ mod demux_robustness;
 mod demux_strict;
 #[path = "mpegts/demux_subtitle.rs"]
 mod demux_subtitle;
+#[path = "mpegts/from_program_map.rs"]
+mod from_program_map;
 #[path = "mpegts/mux.rs"]
 mod mux;
 #[path = "mpegts/mux_audio.rs"]

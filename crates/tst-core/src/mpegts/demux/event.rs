@@ -94,8 +94,9 @@ pub enum StreamKind {
 }
 
 /// Payload-free discriminant for [`StreamKind`]. Used as the `drop`
-/// filter of `MuxerConfig::from_program_map`; mirrors the Python
-/// `tstrans.mpegts.StreamKindTag` enum.
+/// filter of
+/// [`MuxerConfig::from_program_map`](crate::mpegts::mux::MuxerConfig::from_program_map);
+/// mirrors the Python `tstrans.mpegts.StreamKindTag` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum StreamKindTag {
@@ -353,8 +354,8 @@ pub struct ProgramMap {
     pub pcr_pid: u16,
     /// PID carrying this program's PMT — from the PAT entry that declared
     /// the program. Needed to reconstruct a muxer config
-    /// (`MuxerConfig::from_program_map`); not otherwise recoverable from
-    /// the emitted events.
+    /// ([`MuxerConfig::from_program_map`](crate::mpegts::mux::MuxerConfig::from_program_map));
+    /// not otherwise recoverable from the emitted events.
     pub pmt_pid: u16,
     pub streams: Vec<StreamInfo>,
     pub klv_links: Vec<KlvLink>,

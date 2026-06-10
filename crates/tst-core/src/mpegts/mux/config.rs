@@ -11,6 +11,7 @@ use crate::mpegts::mux::types::{
     AudioCodec, Av1CarriageMode, KlvStreamType, MAX_PROGRAMS, MAX_SUBTITLE_STREAMS_PER_PROGRAM,
     StreamKind, StreamSpec, SubtitleCodec, TeletextField, VideoCodec,
 };
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// One program in a multi-program TS multiplex. Each program has its own
@@ -183,6 +184,156 @@ impl MuxerConfig {
     /// Start a new builder. Equivalent to `MuxerConfigBuilder::default()`.
     pub fn builder() -> MuxerConfigBuilder {
         MuxerConfigBuilder::default()
+    }
+
+    /// Build a single-program `MuxerConfig` from a demuxed
+    /// [`ProgramMap`](crate::mpegts::demux::ProgramMap).
+    ///
+    /// This is the transmux bridge: capture the
+    /// [`DemuxEvent::ProgramMap`](crate::mpegts::demux::DemuxEvent::ProgramMap)
+    /// emitted on PMT discovery and hand it here to obtain a muxer config
+    /// that reproduces the program's topology (program number, PMT PID,
+    /// stream PIDs, codecs). One `ProgramMap` describes one program, so
+    /// the result always contains exactly one [`MuxerProgramConfig`];
+    /// convert each program of a multi-program TS separately and combine
+    /// the results via [`MuxerConfigBuilder`] by hand.
+    ///
+    /// # Strictness and the `drop` filter
+    ///
+    /// Strict by default: any stream the muxer cannot represent —
+    /// [`StreamKind::Unknown`](crate::mpegts::demux::StreamKind::Unknown)
+    /// stream types, and DVB subtitling/teletext streams (whose
+    /// per-stream parameters such as language and page IDs are not
+    /// recoverable from the PMT entry alone) — fails the conversion with
+    /// [`MuxError::ConfigInvalid`](crate::error::MuxError::ConfigInvalid)
+    /// naming every offender. Pass the offenders' kinds in `drop` (e.g.
+    /// `&[StreamKindTag::Unknown]`) to exclude those streams instead; see
+    /// [`StreamKindTag`](crate::mpegts::demux::StreamKindTag). The filter
+    /// is kind-coarse: `StreamKindTag::Subtitle` drops every subtitle
+    /// stream, including representable CEA-708 / WebVTT ones, not just the
+    /// DVB offenders.
+    ///
+    /// # Mapping rules
+    ///
+    /// - Video and audio map codec-for-codec.
+    ///   [`StreamKind::KlvSync`](crate::mpegts::demux::StreamKind::KlvSync)
+    ///   maps to [`KlvStreamType::SynchronousMetadata`] and
+    ///   [`StreamKind::KlvAsync`](crate::mpegts::demux::StreamKind::KlvAsync)
+    ///   to [`KlvStreamType::PrivateData`]; CEA-708 / WebVTT subtitle
+    ///   streams map to their parameter-free mux variants.
+    /// - **`carries_pts` is always `true`**, including for async KLV:
+    ///   whether the KLV PES carries a PTS is a PES-level property the PMT
+    ///   cannot declare, and PTS-carrying KLV is the STANAG 4609 norm.
+    ///   Callers that need a PTS-less async stream build the config by
+    ///   hand.
+    /// - **PCR copy rule**: the demuxed `pcr_pid` is copied iff it equals
+    ///   the PID of a kept non-KLV stream. Otherwise (PCR on a dropped
+    ///   stream, on a PID outside the program, or on a KLV PID — which
+    ///   [`validate`](Self::validate) would reject) `pcr_pid` is left
+    ///   `None`, so the builder default applies: `validate()` resolves
+    ///   first video → first KLV → first audio, which can itself error
+    ///   for a video-less program whose fallback lands on a KLV PID
+    ///   ([`MuxError::KlvPidUsedAsPcrPid`](crate::error::MuxError::KlvPidUsedAsPcrPid)).
+    /// - **Audio language**: recovered from the first ISO 639 language
+    ///   descriptor (tag `0x0A`) on the stream's raw PMT descriptors when
+    ///   it carries a plausible lowercase ISO 639-2 code; otherwise the
+    ///   stream is added language-less (never an error).
+    /// - `klv_links` are ignored — the muxer re-derives metadata linkage
+    ///   from its own configuration.
+    ///
+    /// # Errors
+    ///
+    /// [`MuxError::ConfigInvalid`](crate::error::MuxError::ConfigInvalid)
+    /// listing the unrepresentable streams not excluded via `drop`, or any
+    /// [`MuxerConfigBuilder::build`] validation error on the converted
+    /// program (e.g. an empty program when every stream was dropped).
+    pub fn from_program_map(
+        pm: &crate::mpegts::demux::ProgramMap,
+        drop: &[crate::mpegts::demux::StreamKindTag],
+    ) -> Result<MuxerConfig, MuxError> {
+        use crate::mpegts::demux::{
+            AudioCodec as DemuxAudio, StreamKind as DemuxKind, SubtitleCodec as DemuxSub,
+            VideoCodec as DemuxVideo,
+        };
+        let mut prog = MuxerProgramConfigBuilder::new(pm.program_number, pm.pmt_pid);
+        let mut offenders: Vec<String> = Vec::new();
+        // (pid, is_klv) of every stream added to the builder — drives the PCR copy rule.
+        let mut kept: Vec<(u16, bool)> = Vec::new();
+        for s in &pm.streams {
+            if drop.contains(&s.kind.tag()) {
+                continue;
+            }
+            match &s.kind {
+                DemuxKind::Video(c) => {
+                    let codec = match c {
+                        DemuxVideo::H264 => VideoCodec::H264,
+                        DemuxVideo::H265 => VideoCodec::H265,
+                        DemuxVideo::H266 => VideoCodec::H266,
+                        DemuxVideo::Av1 => VideoCodec::Av1,
+                    };
+                    prog.add_video(s.pid, codec);
+                    kept.push((s.pid, false));
+                }
+                DemuxKind::Audio(c) => {
+                    let codec = match c {
+                        DemuxAudio::Mp2 => AudioCodec::Mp2,
+                        DemuxAudio::Aac => AudioCodec::Aac,
+                        DemuxAudio::AacLatm => AudioCodec::AacLatm,
+                        DemuxAudio::Ac3 => AudioCodec::Ac3,
+                    };
+                    match iso639_language(&s.raw_descriptors) {
+                        Some(lang) => prog.add_audio_with_language(s.pid, codec, lang),
+                        None => prog.add_audio(s.pid, codec),
+                    };
+                    kept.push((s.pid, false));
+                }
+                DemuxKind::KlvSync { .. } => {
+                    prog.add_klv(s.pid, KlvStreamType::SynchronousMetadata, true);
+                    kept.push((s.pid, true));
+                }
+                DemuxKind::KlvAsync => {
+                    // carries_pts is a PES-level property the PMT cannot declare;
+                    // true is the STANAG 4609 norm. Callers needing false build
+                    // the config by hand.
+                    prog.add_klv(s.pid, KlvStreamType::PrivateData, true);
+                    kept.push((s.pid, true));
+                }
+                DemuxKind::Subtitle(DemuxSub::Cea708Standalone) => {
+                    prog.add_subtitle(s.pid, SubtitleCodec::Cea708Standalone);
+                    kept.push((s.pid, false));
+                }
+                DemuxKind::Subtitle(DemuxSub::WebVttInTs) => {
+                    prog.add_subtitle(s.pid, SubtitleCodec::WebVttInTs);
+                    kept.push((s.pid, false));
+                }
+                DemuxKind::Subtitle(other) => offenders.push(format!(
+                    "pid 0x{:04X} ({other:?} subtitle: per-stream parameters are not \
+                     recoverable from the PMT)",
+                    s.pid
+                )),
+                DemuxKind::Unknown(st) => offenders.push(format!(
+                    "pid 0x{:04X} (unknown stream_type 0x{st:02X})",
+                    s.pid
+                )),
+            }
+        }
+        if !offenders.is_empty() {
+            return Err(MuxError::ConfigInvalid {
+                reason: format!(
+                    "from_program_map: streams the muxer cannot represent: {}; pass \
+                     their kinds in `drop` to exclude them",
+                    offenders.join(", ")
+                ),
+            });
+        }
+        if let Some(&(pid, is_klv)) = kept.iter().find(|(pid, _)| *pid == pm.pcr_pid) {
+            // Explicit PCR-on-KLV is rejected by validate(); fall back to the
+            // builder default (first video) instead.
+            if !is_klv {
+                prog.pcr_pid(pid);
+            }
+        }
+        MuxerConfig::builder().add_program(prog.build()).build()
     }
 
     /// Validate the configuration. Returns a `MuxError` describing the first
@@ -929,6 +1080,15 @@ impl MuxerProgramConfigBuilder {
     pub fn build(&self) -> MuxerProgramConfig {
         self.program.clone()
     }
+}
+
+/// First ISO 639 language descriptor (tag 0x0A) → 3-byte code, only when
+/// it looks like a valid lowercase ISO 639-2 code; None otherwise (the
+/// caller falls back to language-less audio rather than erroring).
+fn iso639_language(descs: &[crate::mpegts::descriptors::RawDescriptor]) -> Option<[u8; 3]> {
+    let d = descs.iter().find(|d| d.tag == 0x0A)?;
+    let code: [u8; 3] = d.data.get(..3)?.try_into().ok()?;
+    code.iter().all(|b| b.is_ascii_lowercase()).then_some(code)
 }
 
 /// ISO 639-2 language codes per ETSI EN 300 468 §6.2.41/§6.2.43 ride the

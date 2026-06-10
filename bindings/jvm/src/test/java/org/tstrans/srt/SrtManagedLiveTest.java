@@ -67,6 +67,16 @@ import org.tstrans.mpegts.VideoCodec;
  * drift assertions are captured <em>on that same thread</em> (into
  * {@link AtomicReference}/{@link AtomicLong} + a latch) so we never make racing
  * native calls on a single non-thread-safe handle from two threads.
+ *
+ * <h2>Delivery determinism (deflake)</h2>
+ * Wherever an assertion depends on data ARRIVING (a first demux event, a first
+ * {@code recvBytes()}), the sending side streams CONTINUOUSLY until the consuming
+ * side signals it has observed what it needs (latch/future), bounded by a round
+ * cap — never a fixed batch followed by a drain pause. A fixed-batch sender that
+ * closes after a pause races a starved receiver: SRT discards undelivered TSBPD
+ * data on close, the receiver sees a clean end-of-stream with zero deliveries,
+ * and the test flakes (the historical CI failure of the
+ * managed-demux-receiver stats test). Same shape as {@link SrtManagedReconnectTest}.
  */
 class SrtManagedLiveTest {
 
@@ -77,11 +87,12 @@ class SrtManagedLiveTest {
     private static final int LATENCY_MS = 120;
 
     /**
-     * Number of synthetic IDR access units to push per stream. Chosen to exceed
-     * the receiver's TS-sync window (≥ 4×188+1 bytes) AND flow at least one full
-     * SRT bundle (7×188 = 1316 bytes) before the post-push drain pause, so the
-     * first Video event reliably arrives. (Same value/rationale as
-     * {@link SrtMuxDemuxLoopbackTest}.)
+     * Number of synthetic IDR access units in the OFFLINE reference mux
+     * ({@link #muxToBytes()}: the offline-SHA path and the pre-muxed chunk the
+     * plain-sender tests send). Chosen to exceed the receiver's TS-sync window
+     * (≥ 4×188+1 bytes) AND fill at least one full SRT bundle (7×188 = 1316
+     * bytes). The live paths no longer push a fixed batch — they stream until
+     * observed (see "Delivery determinism" above).
      */
     private static final int PUSH_COUNT = 24;
 
@@ -97,6 +108,11 @@ class SrtManagedLiveTest {
 
         CompletableFuture<Integer> portFuture = new CompletableFuture<>();
         CompletableFuture<String> shaFuture = new CompletableFuture<>();
+        // Counted down by main once it has STOPPED pushing and closed the sender;
+        // the receiver holds its teardown on it so a final in-flight mini-batch can
+        // never land on a closing peer (which would surface spurious sender-side
+        // Broken errors on main).
+        CountDownLatch senderDone = new CountDownLatch(1);
 
         // Receiver peer is a PLAIN DemuxReceiver (the test subject is the
         // ManagedMuxSender send path). Plain listener on :0 → publish port.
@@ -136,6 +152,13 @@ class SrtManagedLiveTest {
                 portFuture.completeExceptionally(ex);
                 shaFuture.completeExceptionally(ex);
             } finally {
+                // Hold teardown until main has stopped pushing and closed its sender
+                // (bounded, so a failed main can never park this daemon forever).
+                try {
+                    senderDone.await(TIMEOUT_SEC, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
                 if (rx != null) rx.close();
                 if (sock != null) sock.close();
                 if (listener != null) listener.close();
@@ -158,17 +181,27 @@ class SrtManagedLiveTest {
         try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
                 "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
                 roundtripConfig())) {
-            for (int i = 0; i < PUSH_COUNT; i++) {
-                s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+            // Stream mini-batches until the receiver has captured its SHA (bounded).
+            // Continuous streaming (not a fixed batch + 1s drain pause) closes the
+            // starved-receiver window: the connection stays live and flowing until
+            // the receiver has deterministically seen its first Video event — the
+            // same deflake shape as the managed-demux-receiver stats test below.
+            // The SHA only covers the FIRST Video event (one access unit, identical
+            // bytes every push), so the live stream length does not affect it.
+            long pts = 0;
+            for (int round = 0; round < 400 && !shaFuture.isDone(); round++) {
+                for (int i = 0; i < 6; i++, pts += 3000L) {
+                    s.pushVideo(syntheticH264Idr(), pts, true);
+                }
+                Thread.sleep(50);
             }
             long attempts = s.reconnectAttempts();
             TransportStats st = s.stats();
             assertEquals(0L, attempts, "no reconnect should have occurred on the happy path");
             assertNotNull(st, "stats() must return a combined snapshot");
             assertNotNull(st.socketStats(), "combined stats must carry a SocketStats");
-            // SRT TSBPD buffers before delivery; pause before close so the
-            // receiver drains everything (mirrors SrtMuxDemuxLoopbackTest).
-            Thread.sleep(1_000);
+        } finally {
+            senderDone.countDown(); // sender closed — release the receiver's teardown
         }
 
         String liveSha;
@@ -265,15 +298,18 @@ class SrtManagedLiveTest {
         assumeTrue(isLinux(),
             "SRT live-socket loopback gated to Linux (same as #![cfg(target_os = \"linux\")] in Rust)");
 
-        // Topology mirrors the passing happy-path test (managed shell = the active
-        // connector on the MAIN thread; plain peer = listener on a daemon thread),
-        // but reversed direction: the managed shell here is the RECEIVER. A
-        // ManagedDemuxReceiver accepts caller mode (it dials the peer), so it lives
-        // on the main thread and reads its own stats with NO cross-thread handle
-        // race and NO discover-then-reuse port dance. The peer is a plain
-        // listener+MuxSender on a daemon thread that publishes its own ephemeral
-        // port and streams synthetic IDRs until closed.
+        // Topology mirrors SrtManagedReconnectTest (the proven deterministic shape):
+        // the managed shell is the active CALLER on the MAIN thread (it owns its
+        // handle, reads its own stats — no cross-thread handle race, no
+        // discover-then-reuse port dance); the peer is a plain listener+MuxSender on
+        // a daemon thread that streams CONTINUOUSLY until main signals `observed`.
+        // Continuous streaming (not a fixed batch + drain pause) is what makes the
+        // first demux event deterministic: the peer can never close before a starved
+        // receiver has derived an event, so there is no window in which a peer close
+        // discards undelivered TSBPD data — the exact window that flaked this test
+        // on loaded CI runners.
         CompletableFuture<Integer> portFuture = new CompletableFuture<>();
+        CountDownLatch observed = new CountDownLatch(1);
 
         Thread peerThread = new Thread(() -> {
             Listener listener = null;
@@ -287,13 +323,20 @@ class SrtManagedLiveTest {
 
                 sock = listener.accept(null);
                 ms = sock.intoMuxSender(roundtripConfig());
-                // Stream enough IDRs for the receiver to lock sync + emit a Video
-                // event, with brief pauses so the demuxer drains as data flows.
-                for (int i = 0; i < PUSH_COUNT; i++) {
-                    ms.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                // Stream until main has observed its first event (bounded so this
+                // daemon can never run away if main fails before observing).
+                long pts = 0;
+                for (int round = 0; round < 400 && observed.getCount() > 0; round++) {
+                    for (int i = 0; i < 6; i++, pts += 3000L) {
+                        ms.pushVideo(syntheticH264Idr(), pts, true);
+                    }
+                    Thread.sleep(50);
                 }
-                Thread.sleep(1_000); // let TSBPD deliver before close
             } catch (Exception ex) {
+                // A push racing main's teardown after `observed` fires is benign
+                // noise; completeExceptionally is a no-op once the port has been
+                // published, and main fails on its own asserts if the peer died
+                // before streaming anything.
                 portFuture.completeExceptionally(ex);
             } finally {
                 if (ms != null) ms.close();
@@ -316,6 +359,23 @@ class SrtManagedLiveTest {
         try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
                 "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS,
                 fastPolicy())) {
+            // Hard no-hang safety net (same as SrtManagedReconnectTest): a cancel
+            // handle obtained BEFORE iterating — the documented happy-path moment
+            // (the transport is live; mid-reconnect it can be momentarily absent).
+            // The watchdog converts any unforeseen stall into a prompt CLOSED
+            // end-of-iteration + a clean assertion failure, never a wedged worker.
+            CancelHandle cancel = rx.cancelHandle();
+            Thread watchdog = new Thread(() -> {
+                try {
+                    if (!observed.await(TIMEOUT_SEC - 3, TimeUnit.SECONDS)) {
+                        cancel.cancel();
+                    }
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            watchdog.setDaemon(true);
+            watchdog.start();
             try {
                 for (DemuxEvent e : rx) {
                     sawEvent = true;
@@ -335,6 +395,8 @@ class SrtManagedLiveTest {
                 }
             } catch (RuntimeException re) {
                 if (!isCleanEndOfStream(re)) throw re;
+            } finally {
+                observed.countDown(); // always release the peer + watchdog
             }
         }
 
@@ -392,10 +454,17 @@ class SrtManagedLiveTest {
         }
         assertNotNull(sender, "Sender caller failed to connect to the managed listener within budget");
         try {
-            sender.sendBytes(preMuxedTs);
-            sender.sendBytes(preMuxedTs);
-            sender.flush();
-            Thread.sleep(500);
+            // Keep the pre-muxed chunk flowing until the receiver's recvBytes() has
+            // returned and its drift asserts have run (doneLatch), bounded. The old
+            // fixed two-sends + 500ms pause left a window where a starved receiver
+            // missed TSBPD delivery before the sender's close discarded it, so
+            // recvBytes() threw BROKEN instead of returning data — the same flake
+            // class as the managed-demux-receiver stats test above.
+            for (int round = 0; round < 400 && doneLatch.getCount() > 0; round++) {
+                sender.sendBytes(preMuxedTs);
+                sender.flush();
+                Thread.sleep(50);
+            }
         } finally {
             sender.close();
         }

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -24,11 +25,32 @@ import org.tstrans.SrtException;
  * it reach {@code srt_accept}, then calls {@code close()} from the main thread. After the fix,
  * close cancels the parked accept (it returns {@code CLOSED}) and only frees the allocation once
  * the parked accept has released the internal lock — no thread ever touches freed memory.
+ *
+ * <p><b>Sanctioned outcomes.</b> This is a RACE stress test: the 20ms pre-close pause makes the
+ * parked interleaving overwhelmingly likely, but on a starved CI runner the accept thread can
+ * lose the CPU past the pause + {@code close()}, so each iteration legitimately lands in exactly
+ * one of the three clean interleavings the {@link Listener#close()} contract documents:
+ * <ol>
+ *   <li><b>Parked wake</b> — accept was parked in {@code srt_accept}; close's cancel hook wakes
+ *       it with libsrt {@code MJ_SETUP/MN_CLOSED} → {@code SrtException(CLOSED)}. The common
+ *       case, and the interleaving this test exists to drive (asserted ≥ 1 of 50 below).</li>
+ *   <li><b>Close-first entry</b> — accept() entered after {@code close()} claimed the registry
+ *       id → clean {@link IllegalStateException} (from {@code ensureOpen()} or the registry's
+ *       closed-handle arm). This was the historical CI flake: a sanctioned, memory-safe
+ *       interleaving the test used to report as "unexpected".</li>
+ *   <li><b>Cancelled entry</b> — accept won the registry lease but the cancel hook's
+ *       {@code srt_close} landed before the {@code srt_accept} syscall, which then sees a
+ *       closed/non-listening SRTSOCKET (libsrt {@code MN_SIDINVAL} / {@code MN_NOLISTEN},
+ *       neither of which maps to ListenerClosed) → {@code SrtException(ACCEPT_FAILED)}.</li>
+ * </ol>
+ * Anything else — a successful accept (no peer exists), any other exception, or a JVM crash —
+ * is a genuine failure. The memory-safety substance is unchanged: 50 close-vs-accept races with
+ * no UAF/SIGSEGV and every accept thread unblocking promptly.
  */
 final class ListenerCloseRaceTest {
 
     @Test
-    @Timeout(30)
+    @Timeout(120) // 50 races with widened per-race waits; only a genuine hang ever pays this
     @DisabledOnOs(
             value = OS.WINDOWS,
             disabledReason =
@@ -38,6 +60,13 @@ final class ListenerCloseRaceTest {
                         + " libsrt-on-Windows teardown family as the gated RIST runtime. Full"
                         + " close-while-parked coverage runs on Linux + macOS.")
     void closeWhileAcceptParkedIsMemorySafe() throws Exception {
+        // Interleaving tally across the 50 races. Written by the accept thread, read by main
+        // after join() (the join is the happens-before edge; AtomicInteger for the lambda
+        // capture). See the method javadoc for the three sanctioned interleavings.
+        AtomicInteger parkedWakes = new AtomicInteger();
+        AtomicInteger closeFirstEntries = new AtomicInteger();
+        AtomicInteger cancelledEntries = new AtomicInteger();
+
         for (int i = 0; i < 50; i++) {
             Listener listener =
                 new Builder("srt://127.0.0.1:0?mode=listener").listener().listen();
@@ -61,11 +90,28 @@ final class ListenerCloseRaceTest {
                             s.close();
                             unexpected.set(new AssertionError("accept returned a Socket"));
                         } catch (SrtException e) {
-                            // CLOSED is the sanctioned wake outcome; anything else is unexpected
-                            // but not, in itself, a memory-safety failure.
-                            if (e.kind() != SrtException.Kind.CLOSED) {
+                            if (e.kind() == SrtException.Kind.CLOSED) {
+                                // Sanctioned interleaving 1: parked in srt_accept, woken by
+                                // close's cancel hook (libsrt MJ_SETUP/MN_CLOSED).
+                                parkedWakes.incrementAndGet();
+                            } else if (e.kind() == SrtException.Kind.ACCEPT_FAILED) {
+                                // Sanctioned interleaving 3: lease won, syscall lost — the cancel
+                                // hook's srt_close landed before srt_accept entered, so libsrt
+                                // reports MN_SIDINVAL ("invalid socket ID") or MN_NOLISTEN ("not
+                                // in listening state"); neither maps to ListenerClosed. Clean and
+                                // memory-safe (the lease kept the allocation alive throughout).
+                                cancelledEntries.incrementAndGet();
+                            } else {
                                 unexpected.set(e);
                             }
+                        } catch (IllegalStateException e) {
+                            // Sanctioned interleaving 2: close() claimed the handle before this
+                            // thread entered accept() — the documented fresh-entry-after-close
+                            // outcome (same sanction as closeVsFreshEntryIsMemorySafe below).
+                            // This is the interleaving that used to flake CI runs as
+                            // "unexpected" when a starved runner descheduled this thread past
+                            // the main thread's 20ms pause + close().
+                            closeFirstEntries.incrementAndGet();
                         } catch (Throwable t) {
                             unexpected.set(t);
                         }
@@ -75,20 +121,32 @@ final class ListenerCloseRaceTest {
 
             // Wait until the accept thread is at the brink of srt_accept, then give it a brief
             // window to actually enter the blocking call. (Thread.sleep here is in the JVM, not
-            // the shell — the sandbox sleep restriction does not apply.)
-            assertTrue(aboutToAccept.await(2, TimeUnit.SECONDS), "accept thread never started");
+            // the shell — the sandbox sleep restriction does not apply.) The pause makes the
+            // parked interleaving overwhelmingly likely but deliberately does NOT guarantee it —
+            // there is no JVM-visible way to observe "parked inside srt_accept", which is why
+            // all three clean interleavings are sanctioned above.
+            assertTrue(aboutToAccept.await(5, TimeUnit.SECONDS), "accept thread never started");
             Thread.sleep(20);
 
-            // The race under test: free the listener while accept is parked. Under the pre-fix
-            // close() this freed the Box<Listener> the parked accept still dereferences (UAF);
-            // after the fix close() cancels first and frees only once the parked accept has
-            // released the internal lock.
+            // The race under test: free the listener while accept is (very likely) parked. Under
+            // the pre-fix close() this freed the Box<Listener> the parked accept still
+            // dereferences (UAF); after the fix close() cancels first and frees only once the
+            // parked accept has released the internal lock.
             listener.close();
 
-            acc.join(2000);
+            acc.join(5000);
             assertFalse(acc.isAlive(), "accept thread did not unblock after close (run " + i + ")");
             assertNull(unexpected.get(), "accept thread saw an unexpected failure (run " + i + ")");
         }
+
+        // Coverage guarantee: the parked-wake interleaving — the one this test exists to drive —
+        // must actually have been exercised. With a 20ms park window per race, missing all 50
+        // would take a scheduler that starves the accept thread for 20ms+ fifty times in a row
+        // while running the main thread normally; even at a pessimistic 50% per-race miss rate
+        // that is a ~1e-15 event, far below any realistic flake threshold.
+        assertTrue(parkedWakes.get() >= 1,
+            "no race iteration reached the parked-accept interleaving (parked=" + parkedWakes
+                + ", closeFirst=" + closeFirstEntries + ", cancelled=" + cancelledEntries + ")");
     }
 
     /**

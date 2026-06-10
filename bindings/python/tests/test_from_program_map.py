@@ -274,6 +274,32 @@ def test_kind_codec_mismatch_errors_name_the_stream():
     assert "expected a VideoCodec member; got 42" in str(ei.value)
 
 
+@pytest.mark.parametrize(
+    "kind,stream_type",
+    [
+        (StreamKindTag.KLV_SYNC, 0x15),
+        (StreamKindTag.KLV_ASYNC, 0x06),
+        (StreamKindTag.UNKNOWN, 0xC0),
+    ],
+    ids=lambda v: getattr(v, "name", v),
+)
+def test_codec_on_codecless_kind_is_rejected(kind, stream_type):
+    """KLV/UNKNOWN kinds carry no codec — a stray one is a kind/codec
+    mismatch, not silently ignored."""
+    si = StreamInfo(
+        pid=0x209,
+        stream_type=stream_type,
+        kind=kind,
+        codec=AudioCodec.AAC,
+        program_number=1,
+    )
+    with pytest.raises(ValueError) as ei:
+        MuxerConfig.from_program_map(_pm(si))
+    assert "stream pid 0x0209" in str(ei.value)
+    assert f"kind={kind.name} must have codec=None" in str(ei.value)
+    assert "AudioCodec.AAC" in str(ei.value)
+
+
 def test_field_extract_errors_name_field_and_stream():
     # pid out of u16 range — identified by index (pid isn't known yet).
     si = StreamInfo(

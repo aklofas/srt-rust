@@ -476,17 +476,42 @@ pub(crate) fn py_stream_kind(
         // declared_link isn't surfaced on the Python StreamInfo and
         // MuxerConfig::from_program_map doesn't read it (the muxer
         // re-derives metadata linkage), so None is lossless here.
-        StreamKindTag::KlvSync => Ok(StreamKind::KlvSync {
-            declared_link: None,
-        }),
-        StreamKindTag::KlvAsync => Ok(StreamKind::KlvAsync),
-        StreamKindTag::Unknown => Ok(StreamKind::Unknown(stream_type)),
+        StreamKindTag::KlvSync => {
+            reject_codec(codec, "KLV_SYNC")?;
+            Ok(StreamKind::KlvSync {
+                declared_link: None,
+            })
+        }
+        StreamKindTag::KlvAsync => {
+            reject_codec(codec, "KLV_ASYNC")?;
+            Ok(StreamKind::KlvAsync)
+        }
+        StreamKindTag::Unknown => {
+            reject_codec(codec, "UNKNOWN")?;
+            Ok(StreamKind::Unknown(stream_type))
+        }
         // StreamKindTag is a non-exhaustive enum (the attribute's literal
         // name is avoided here — the CI count guard greps comments too);
         // py_stream_kind_tag only produces the six members above.
         _ => Err(pyo3::exceptions::PyValueError::new_err(
             "unsupported StreamKindTag member",
         )),
+    }
+}
+
+/// The codec-less kinds (KLV_SYNC / KLV_ASYNC / UNKNOWN) must carry
+/// `codec=None` — a stray codec on a hand-built `StreamInfo` is a
+/// kind/codec mismatch, same as a wrong codec enum on
+/// VIDEO/AUDIO/SUBTITLE. The demuxer always emits `codec=None` for
+/// these kinds, so no demuxer-produced input trips this.
+fn reject_codec(codec: &Bound<'_, PyAny>, kind_name: &str) -> PyResult<()> {
+    if codec.is_none() {
+        Ok(())
+    } else {
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "StreamInfo with kind={kind_name} must have codec=None; got {}",
+            codec.repr()?.to_string_lossy()
+        )))
     }
 }
 

@@ -234,105 +234,109 @@ fn each_typed_field<F: FnMut(u8, usize)>(
     }
 }
 
+/// Encode the VALUE bytes for one typed tag from `record`, or `None`
+/// when the corresponding field is absent. `version_fallback` supplies
+/// the Tag 65 auto-version used by the `encode*` entry points; `patch`
+/// passes `None` so only explicitly-set fields are encoded.
+pub(super) fn encode_tag_value(
+    record: &UasDatalinkLs,
+    spec: &super::tags::TagSpec,
+    version_fallback: Option<u8>,
+) -> Result<Option<Vec<u8>>, KlvEncodeError> {
+    let mut scratch = [0u8; 8];
+    Ok(match spec.id {
+        2 => record.timestamp_us.map(|t| t.to_be_bytes().to_vec()),
+        3 => record
+            .mission_id
+            .as_ref()
+            .map(|s| check_string(3, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        4 => record
+            .platform_tail_number
+            .as_ref()
+            .map(|s| check_string(4, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        5 => encode_ranged(record.platform_heading_deg, spec, &mut scratch)?,
+        6 => encode_ranged(record.platform_pitch_deg, spec, &mut scratch)?,
+        7 => encode_ranged(record.platform_roll_deg, spec, &mut scratch)?,
+        8 => encode_ranged(record.platform_true_airspeed, spec, &mut scratch)?,
+        9 => encode_ranged(record.platform_indicated_airspeed, spec, &mut scratch)?,
+        10 => record
+            .platform_designation
+            .as_ref()
+            .map(|s| check_string(10, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        11 => record
+            .image_source_sensor
+            .as_ref()
+            .map(|s| check_string(11, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        12 => record
+            .image_coordinate_system
+            .as_ref()
+            .map(|s| check_string(12, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        13 => encode_ranged(record.sensor_lat_deg, spec, &mut scratch)?,
+        14 => encode_ranged(record.sensor_lon_deg, spec, &mut scratch)?,
+        15 => encode_ranged(record.sensor_alt_m, spec, &mut scratch)?,
+        16 => encode_ranged(record.sensor_hfov_deg, spec, &mut scratch)?,
+        17 => encode_ranged(record.sensor_vfov_deg, spec, &mut scratch)?,
+        18 => encode_ranged(record.sensor_rel_az_deg, spec, &mut scratch)?,
+        19 => encode_ranged(record.sensor_rel_el_deg, spec, &mut scratch)?,
+        20 => encode_ranged(record.sensor_rel_roll_deg, spec, &mut scratch)?,
+        21 => encode_ranged(record.slant_range_m, spec, &mut scratch)?,
+        22 => encode_ranged(record.target_width_m, spec, &mut scratch)?,
+        23 => encode_ranged(record.frame_center_lat_deg, spec, &mut scratch)?,
+        24 => encode_ranged(record.frame_center_lon_deg, spec, &mut scratch)?,
+        25 => encode_ranged(record.frame_center_elev_m, spec, &mut scratch)?,
+        26 => encode_ranged(record.corner_lat_offset_p1_deg, spec, &mut scratch)?,
+        27 => encode_ranged(record.corner_lon_offset_p1_deg, spec, &mut scratch)?,
+        28 => encode_ranged(record.corner_lat_offset_p2_deg, spec, &mut scratch)?,
+        29 => encode_ranged(record.corner_lon_offset_p2_deg, spec, &mut scratch)?,
+        30 => encode_ranged(record.corner_lat_offset_p3_deg, spec, &mut scratch)?,
+        31 => encode_ranged(record.corner_lon_offset_p3_deg, spec, &mut scratch)?,
+        32 => encode_ranged(record.corner_lat_offset_p4_deg, spec, &mut scratch)?,
+        33 => encode_ranged(record.corner_lon_offset_p4_deg, spec, &mut scratch)?,
+        47 => record.generic_flag_data.map(|b| vec![b]),
+        48 => record.security_local_set.clone(),
+        50 => encode_ranged(record.platform_angle_of_attack_deg, spec, &mut scratch)?,
+        59 => record
+            .platform_call_sign
+            .as_ref()
+            .map(|s| check_string(59, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .transpose()?,
+        65 => match (record.uas_ls_version, version_fallback) {
+            (Some(v), _) => Some(vec![v]),
+            (None, Some(fallback)) => Some(vec![fallback]),
+            (None, None) => None,
+        },
+        74 => record.vmti.clone(),
+        82 => encode_ranged(record.corner_lat_p1_deg, spec, &mut scratch)?,
+        83 => encode_ranged(record.corner_lon_p1_deg, spec, &mut scratch)?,
+        84 => encode_ranged(record.corner_lat_p2_deg, spec, &mut scratch)?,
+        85 => encode_ranged(record.corner_lon_p2_deg, spec, &mut scratch)?,
+        86 => encode_ranged(record.corner_lat_p3_deg, spec, &mut scratch)?,
+        87 => encode_ranged(record.corner_lon_p3_deg, spec, &mut scratch)?,
+        88 => encode_ranged(record.corner_lat_p4_deg, spec, &mut scratch)?,
+        89 => encode_ranged(record.corner_lon_p4_deg, spec, &mut scratch)?,
+        75 => encode_ranged(record.sensor_ellipsoid_height_m, spec, &mut scratch)?,
+        78 => encode_ranged(record.frame_center_ellipsoid_height_m, spec, &mut scratch)?,
+        90 => encode_ranged(record.platform_pitch_full_deg, spec, &mut scratch)?,
+        91 => encode_ranged(record.platform_roll_full_deg, spec, &mut scratch)?,
+        _ => None,
+    })
+}
+
 fn write_typed_fields(
     record: &UasDatalinkLs,
     opts: &EncodeConfig,
     body: &mut Vec<u8>,
 ) -> Result<(), KlvEncodeError> {
-    let auto_version = record.uas_ls_version.is_none();
-
     for spec in TAGS {
         if spec.id == 1 {
             continue;
         }
-        let mut scratch = [0u8; 8];
-        // Encode this tag's value into a small buffer so we know its length.
-        let value: Option<Vec<u8>> = match spec.id {
-            2 => record.timestamp_us.map(|t| t.to_be_bytes().to_vec()),
-            3 => record
-                .mission_id
-                .as_ref()
-                .map(|s| check_string(3, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            4 => record
-                .platform_tail_number
-                .as_ref()
-                .map(|s| check_string(4, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            5 => encode_ranged(record.platform_heading_deg, spec, &mut scratch)?,
-            6 => encode_ranged(record.platform_pitch_deg, spec, &mut scratch)?,
-            7 => encode_ranged(record.platform_roll_deg, spec, &mut scratch)?,
-            8 => encode_ranged(record.platform_true_airspeed, spec, &mut scratch)?,
-            9 => encode_ranged(record.platform_indicated_airspeed, spec, &mut scratch)?,
-            10 => record
-                .platform_designation
-                .as_ref()
-                .map(|s| check_string(10, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            11 => record
-                .image_source_sensor
-                .as_ref()
-                .map(|s| check_string(11, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            12 => record
-                .image_coordinate_system
-                .as_ref()
-                .map(|s| check_string(12, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            13 => encode_ranged(record.sensor_lat_deg, spec, &mut scratch)?,
-            14 => encode_ranged(record.sensor_lon_deg, spec, &mut scratch)?,
-            15 => encode_ranged(record.sensor_alt_m, spec, &mut scratch)?,
-            16 => encode_ranged(record.sensor_hfov_deg, spec, &mut scratch)?,
-            17 => encode_ranged(record.sensor_vfov_deg, spec, &mut scratch)?,
-            18 => encode_ranged(record.sensor_rel_az_deg, spec, &mut scratch)?,
-            19 => encode_ranged(record.sensor_rel_el_deg, spec, &mut scratch)?,
-            20 => encode_ranged(record.sensor_rel_roll_deg, spec, &mut scratch)?,
-            21 => encode_ranged(record.slant_range_m, spec, &mut scratch)?,
-            22 => encode_ranged(record.target_width_m, spec, &mut scratch)?,
-            23 => encode_ranged(record.frame_center_lat_deg, spec, &mut scratch)?,
-            24 => encode_ranged(record.frame_center_lon_deg, spec, &mut scratch)?,
-            25 => encode_ranged(record.frame_center_elev_m, spec, &mut scratch)?,
-            26 => encode_ranged(record.corner_lat_offset_p1_deg, spec, &mut scratch)?,
-            27 => encode_ranged(record.corner_lon_offset_p1_deg, spec, &mut scratch)?,
-            28 => encode_ranged(record.corner_lat_offset_p2_deg, spec, &mut scratch)?,
-            29 => encode_ranged(record.corner_lon_offset_p2_deg, spec, &mut scratch)?,
-            30 => encode_ranged(record.corner_lat_offset_p3_deg, spec, &mut scratch)?,
-            31 => encode_ranged(record.corner_lon_offset_p3_deg, spec, &mut scratch)?,
-            32 => encode_ranged(record.corner_lat_offset_p4_deg, spec, &mut scratch)?,
-            33 => encode_ranged(record.corner_lon_offset_p4_deg, spec, &mut scratch)?,
-            47 => record.generic_flag_data.map(|b| vec![b]),
-            48 => record.security_local_set.clone(),
-            50 => encode_ranged(record.platform_angle_of_attack_deg, spec, &mut scratch)?,
-            59 => record
-                .platform_call_sign
-                .as_ref()
-                .map(|s| check_string(59, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
-                .transpose()?,
-            65 => {
-                if let Some(v) = record.uas_ls_version {
-                    Some(vec![v])
-                } else if auto_version {
-                    Some(vec![opts.version])
-                } else {
-                    None
-                }
-            }
-            74 => record.vmti.clone(),
-            82 => encode_ranged(record.corner_lat_p1_deg, spec, &mut scratch)?,
-            83 => encode_ranged(record.corner_lon_p1_deg, spec, &mut scratch)?,
-            84 => encode_ranged(record.corner_lat_p2_deg, spec, &mut scratch)?,
-            85 => encode_ranged(record.corner_lon_p2_deg, spec, &mut scratch)?,
-            86 => encode_ranged(record.corner_lat_p3_deg, spec, &mut scratch)?,
-            87 => encode_ranged(record.corner_lon_p3_deg, spec, &mut scratch)?,
-            88 => encode_ranged(record.corner_lat_p4_deg, spec, &mut scratch)?,
-            89 => encode_ranged(record.corner_lon_p4_deg, spec, &mut scratch)?,
-            75 => encode_ranged(record.sensor_ellipsoid_height_m, spec, &mut scratch)?,
-            78 => encode_ranged(record.frame_center_ellipsoid_height_m, spec, &mut scratch)?,
-            90 => encode_ranged(record.platform_pitch_full_deg, spec, &mut scratch)?,
-            91 => encode_ranged(record.platform_roll_full_deg, spec, &mut scratch)?,
-            _ => None,
-        };
-        if let Some(value) = value {
+        if let Some(value) = encode_tag_value(record, spec, Some(opts.version))? {
             let mut tag_buf = [0u8; 8];
             let n = write_ber_oid(spec.id as u32, &mut tag_buf)?;
             body.extend_from_slice(&tag_buf[..n]);

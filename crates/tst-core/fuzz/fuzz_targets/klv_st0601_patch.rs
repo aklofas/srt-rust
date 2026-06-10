@@ -22,7 +22,44 @@ fuzz_target!(|data: &[u8]| {
     };
     if let Ok(out) = patch(data, &edits) {
         let re = decode_unchecked(&out).expect("patched output must decode");
+
+        // Diagnostic: tag 23 was re-encoded by our own encoder from a
+        // valid value, so the patched decode must carry no field error
+        // for it. Checked before the presence assert below so a failure
+        // prints the underlying field errors instead of a bare "must be
+        // present". The filter relies on the `KlvFieldError` "tag {tag}:"
+        // message prefix (the enum exposes no tag() accessor); other
+        // tags' field errors are allowed — patch preserves malformed
+        // non-edited TLVs verbatim.
+        let tag23_errors: Vec<String> = re
+            .field_errors
+            .iter()
+            .map(|e| e.to_string())
+            .filter(|m| m.starts_with("tag 23:"))
+            .collect();
+        assert!(
+            tag23_errors.is_empty(),
+            "patched tag 23 must decode cleanly: {tag23_errors:?}"
+        );
+
         let lat = re.frame_center_lat_deg.expect("edited tag must be present");
         assert!((lat - 12.5).abs() < 1e-4);
+
+        // Other-fields-survive property: every typed field except the
+        // edited one must match between the original and patched
+        // decodes. Two exclusions are required for soundness:
+        //  - `frame_center_lat_deg` is the edit itself;
+        //  - `field_errors` may legitimately differ: patch re-encoding
+        //    a MALFORMED original tag 23 heals its field error, so
+        //    comparing the sets would fire on CORRECT behavior.
+        // Whole-record PartialEq is NaN-safe here: st0601 typed floats
+        // come from integer scaling / IMAPB Value decode (always
+        // finite), never raw IEEE wire bits.
+        if let Ok(orig) = decode_unchecked(data) {
+            let mut masked = re.clone();
+            masked.frame_center_lat_deg = orig.frame_center_lat_deg;
+            masked.field_errors = orig.field_errors.clone();
+            assert_eq!(masked, orig, "non-edited fields must survive patch");
+        }
     }
 });

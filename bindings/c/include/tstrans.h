@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 10` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 11` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -105,8 +105,14 @@
  *   discriminants 0..=3 are unchanged, no symbol/signature change; a
  *   consumer now observes the distinct value instead of a misleading
  *   `Orphan` for these two memory-limit rejections.
+ * - `11` — `pmt_pid` field added to `TstEventProgramMap` (immediately after
+ *   `pcr_pid`; `_pad` shrunk from 4 to 2 bytes to preserve total size).
+ *   Exposes the PID carrying the PMT (from the PAT) so C callers can
+ *   reconstruct a muxer config from a ProgramMap event. Additive — no
+ *   symbol/signature changed; struct total size and pointer-field offsets
+ *   are unchanged.
  */
-#define TST_ABI_VERSION_MINOR 10
+#define TST_ABI_VERSION_MINOR 11
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -1477,7 +1483,15 @@ typedef struct tst_klv_link_t {
 typedef struct TstEventProgramMap {
   uint16_t program_number;
   uint16_t pcr_pid;
-  uint8_t _pad[4];
+  /**
+   * PID carrying this program's PMT — the raw 13-bit PID from the PAT
+   * entry that declared the program (never 0 for a demuxed program;
+   * program 0 is the NIT and is not emitted as a ProgramMap event).
+   * Pass it as the `pmt_pid` argument to `tst_mux_config_add_program`
+   * when re-muxing the same program.
+   */
+  uint16_t pmt_pid;
+  uint8_t _pad[2];
   const struct tst_stream_info_t *streams;
   size_t stream_count;
   const struct tst_klv_link_t *klv_links;

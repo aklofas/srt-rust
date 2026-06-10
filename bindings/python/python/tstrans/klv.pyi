@@ -337,6 +337,9 @@ def decode_uas_datalink(
 ) -> UasDatalinkLs: ...
 def encode_uas_datalink(record: UasDatalinkLs) -> bytes: ...
 def encode_uas_datalink_strict_compliance(record: UasDatalinkLs) -> bytes: ...
+def patch_uas_datalink(
+    raw: bytes, edits: Union[UasDatalinkLs, dict[str, object]]
+) -> bytes: ...
 
 # ---------------------------------------------------------------------------
 # Universal Label dispatcher
@@ -381,5 +384,6 @@ __all__ = [
     "decode_uas_datalink",
     "encode_uas_datalink",
     "encode_uas_datalink_strict_compliance",
+    "patch_uas_datalink",
     "parse_klv_universal",
 ]

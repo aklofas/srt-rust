@@ -280,10 +280,11 @@ pub(crate) fn convert_event<'local>(
             let obj = env
                 .new_object(
                     "org/tstrans/mpegts/DemuxEvent$ProgramMap",
-                    "(IILjava/util/List;)V",
+                    "(IIILjava/util/List;)V",
                     &[
                         JValue::Int(pm.program_number as i32),
                         JValue::Int(pm.pcr_pid as i32),
+                        JValue::Int(pm.pmt_pid as i32),
                         JValue::Object(&pids),
                     ],
                 )

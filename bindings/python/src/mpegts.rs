@@ -300,6 +300,7 @@ fn build_program_map(
     let kwargs = PyDict::new_bound(py);
     kwargs.set_item("program_number", pm.program_number)?;
     kwargs.set_item("pcr_pid", pm.pcr_pid)?;
+    kwargs.set_item("pmt_pid", pm.pmt_pid)?;
     let streams_vec: Vec<_> = streams.iter().collect();
     let links_vec: Vec<_> = links.iter().collect();
     kwargs.set_item("streams", PyTuple::new_bound(py, &streams_vec))?;
@@ -313,6 +314,14 @@ fn build_stream_info(
     s: &StreamInfo,
 ) -> PyResult<PyObject> {
     let (kind_tag, codec_py) = stream_kind_to_py(py, mpegts, &s.kind)?;
+    let desc_cls = mpegts.getattr(intern!(py, "RawDescriptor"))?;
+    let mut descs: Vec<PyObject> = Vec::with_capacity(s.raw_descriptors.len());
+    for d in &s.raw_descriptors {
+        let dkwargs = PyDict::new_bound(py);
+        dkwargs.set_item("tag", d.tag)?;
+        dkwargs.set_item("data", PyBytes::new_bound(py, &d.data))?;
+        descs.push(desc_cls.call((), Some(&dkwargs))?.into());
+    }
     let cls = mpegts.getattr(intern!(py, "StreamInfo"))?;
     let kwargs = PyDict::new_bound(py);
     kwargs.set_item("pid", s.pid)?;
@@ -320,6 +329,7 @@ fn build_stream_info(
     kwargs.set_item("kind", kind_tag)?;
     kwargs.set_item("codec", codec_py)?;
     kwargs.set_item("program_number", s.program_number)?;
+    kwargs.set_item("raw_descriptors", PyTuple::new_bound(py, &descs))?;
     Ok(cls.call((), Some(&kwargs))?.into())
 }
 

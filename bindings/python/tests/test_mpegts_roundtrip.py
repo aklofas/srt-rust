@@ -164,3 +164,21 @@ def test_full_synthetic_round_trip_event_by_event():
     # PTS timestamps are non-negative.
     for ev in video_evs + klv_evs:
         assert ev.pts.raw >= 0, f"negative PTS: {ev.pts.raw}"
+
+    # ProgramMap events carry pmt_pid and StreamInfo.raw_descriptors.
+    pm = pmap_evs[0].programs[0]
+    assert pm.pmt_pid == 0x100, f"expected pmt_pid=0x100, got {pm.pmt_pid!r}"
+    # All streams expose raw_descriptors as a tuple.
+    for s in pm.streams:
+        assert isinstance(s.raw_descriptors, tuple)
+    # Video stream carries no descriptors; KLV sync stream carries a
+    # registration descriptor (tag 0x05, payload b"KLVA").
+    video_stream = next(s for s in pm.streams if s.pid == 0x101)
+    klv_stream = next(s for s in pm.streams if s.pid == 0x102)
+    assert video_stream.raw_descriptors == ()
+    assert len(klv_stream.raw_descriptors) >= 1
+    # registration_descriptor (tag 0x05); don't pin its position in the loop.
+    reg_desc = next(d for d in klv_stream.raw_descriptors if d.tag == 0x05)
+    assert isinstance(reg_desc.tag, int)
+    assert isinstance(reg_desc.data, bytes)
+    assert reg_desc.data == b"KLVA"

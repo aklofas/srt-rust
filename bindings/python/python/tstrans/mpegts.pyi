@@ -3,7 +3,7 @@ docstrings.
 
 Covers the 90 kHz timestamp wrapper (Pts90khz), the demux/mux enums, the
 stream-spec + subtitle-codec-config dataclasses, the PSI value types
-(StreamId / StreamInfo / KlvLink / ProgramMap), the raw-first DemuxEvent
+(StreamId / RawDescriptor / StreamInfo / KlvLink / ProgramMap), the raw-first DemuxEvent
 subclass hierarchy (Video/Audio carry .raw + .parse(), NOT .payload — v0.2.0
 item #1), the DemuxerConfig + Demuxer, and the full mux surface (the four
 config/builder pairs, the four stream handles, the Muxer, the stats types,
@@ -246,12 +246,18 @@ class StreamId:
     program_number: int
 
 @dataclass(frozen=True, slots=True)
+class RawDescriptor:
+    tag: int
+    data: bytes
+
+@dataclass(frozen=True, slots=True)
 class StreamInfo:
     pid: int
     stream_type: int
     kind: StreamKindTag
     codec: Codec
     program_number: int
+    raw_descriptors: Tuple[RawDescriptor, ...] = ...
 
 @dataclass(frozen=True, slots=True)
 class KlvLink:
@@ -263,6 +269,7 @@ class KlvLink:
 class ProgramMap:
     program_number: int
     pcr_pid: int
+    pmt_pid: int
     streams: Tuple[Any, ...]
     klv_links: Tuple[Any, ...]
 
@@ -650,6 +657,7 @@ __all__ = [
     "LinkSource",
     "Codec",
     "StreamId",
+    "RawDescriptor",
     "StreamInfo",
     "KlvLink",
     "ProgramMap",

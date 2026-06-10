@@ -1153,17 +1153,28 @@ the trigger that would unblock it.
 ## macOS x86_64 (Intel)
 
 - **Status:** Deferred. macOS arm64 (Apple Silicon) is Tier 1.
+  The Python wheel for macOS Intel was built best-effort for
+  v0.1.0 but removed 2026-06-10 — Intel-Mac users
+  `pip install tstrans` from the sdist (it builds from source).
 - **Why deferred:** Intel Macs are a declining install base;
   Apple Silicon covers the contributor and laptop case for
   modern macOS. Maintaining Intel-mac support would double the
   macOS CI surface (one runner per arch) for diminishing
-  return.
+  return. The wheel leg was dropped because GitHub's `macos-13`
+  Intel runners are scarce — the job routinely sat queued for
+  hours and, since the PyPI `publish` job's `needs:` waits for
+  every matrix leg (even best-effort ones), it held up the
+  whole release train.
 - **Trigger to revisit:** A consumer running an Intel Mac
-  reports a build failure they want fixed.
+  reports a build failure they want fixed, or asks for a
+  prebuilt wheel.
 - **Scope when added:** A `macos-13` matrix entry (last Intel-
   only macOS runner; `macos-14`+ are arm64) in
   `.github/workflows/ci.yml` with `continue-on-error: true`
-  initially, mirroring the Tier 1 phase-in pattern.
+  initially, mirroring the Tier 1 phase-in pattern. For the
+  wheel, a standalone job in `python-wheels.yml` that the
+  `publish` job does **not** `needs:`-depend on, so a queued
+  Intel runner can never gate the publish again.
 
 ## Windows MinGW (gcc toolchain)
 

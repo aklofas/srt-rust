@@ -50,6 +50,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `codec.split_units`/`codec.parse_audio` are typed. A `mypy stubtest` CI
   ratchet keeps the stubs in sync with the runtime.
 
+### Removed — macOS Intel (x86_64) Python wheel
+
+- The best-effort `x86_64-apple-darwin` wheel build is gone: GitHub's
+  `macos-13` Intel runners are scarce, and the queued leg held up the PyPI
+  publish job (whose `needs:` waits for every matrix leg). Intel-Mac users
+  install from the sdist, which builds from source. See
+  `docs/project/deferred-features.md` ("macOS x86_64 (Intel)") for the
+  revisit trigger.
+
 ---
 
 ## [Unreleased]

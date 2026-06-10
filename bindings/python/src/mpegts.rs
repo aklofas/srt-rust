@@ -26,8 +26,8 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::{AudioCodec, MultiCellAuReason};
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerConfig, DiscontinuityKind, LinkSource, MetadataKind,
-    NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
-    SubtitleCodec, VideoCodec, VideoPayload,
+    NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StreamKindTag,
+    StrictMode, SubtitleCodec, VideoCodec, VideoPayload,
 };
 
 use crate::errors::make_demux_error;
@@ -419,6 +419,130 @@ fn subtitle_codec_to_py(
         SubtitleCodec::WebVttInTs => "WEBVTT_IN_TS",
     };
     Ok(e.getattr(name)?.into())
+}
+
+/// Reverse of the tag half of [`stream_kind_to_py`]: map a Python
+/// `StreamKindTag` enum member back to the Rust discriminant via its
+/// `.name`. Anything without a `.name`, or with a name outside the
+/// six members, raises `ValueError` naming the offender.
+pub(crate) fn py_stream_kind_tag(v: &Bound<'_, PyAny>) -> PyResult<StreamKindTag> {
+    match py_enum_member_name(v, "StreamKindTag")?.as_str() {
+        "VIDEO" => Ok(StreamKindTag::Video),
+        "AUDIO" => Ok(StreamKindTag::Audio),
+        "SUBTITLE" => Ok(StreamKindTag::Subtitle),
+        "KLV_SYNC" => Ok(StreamKindTag::KlvSync),
+        "KLV_ASYNC" => Ok(StreamKindTag::KlvAsync),
+        "UNKNOWN" => Ok(StreamKindTag::Unknown),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "expected a StreamKindTag member; got {other}"
+        ))),
+    }
+}
+
+/// Reverse of [`stream_kind_to_py`]: rebuild a Rust `StreamKind` from a
+/// Python `StreamInfo`'s `kind` (`StreamKindTag` member) + `codec`
+/// (codec-enum member or `None`) + raw `stream_type` byte. Kind/codec
+/// mismatches raise `ValueError`.
+pub(crate) fn py_stream_kind(
+    kind: &Bound<'_, PyAny>,
+    codec: &Bound<'_, PyAny>,
+    stream_type: u8,
+) -> PyResult<StreamKind> {
+    match py_stream_kind_tag(kind)? {
+        StreamKindTag::Video => {
+            if codec.is_none() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "StreamInfo with kind=VIDEO requires a VideoCodec codec; got None",
+                ));
+            }
+            Ok(StreamKind::Video(py_demux_video_codec(codec)?))
+        }
+        StreamKindTag::Audio => {
+            if codec.is_none() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "StreamInfo with kind=AUDIO requires an AudioCodec codec; got None",
+                ));
+            }
+            Ok(StreamKind::Audio(py_demux_audio_codec(codec)?))
+        }
+        StreamKindTag::Subtitle => {
+            if codec.is_none() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "StreamInfo with kind=SUBTITLE requires a SubtitleCodec codec; got None",
+                ));
+            }
+            Ok(StreamKind::Subtitle(py_demux_subtitle_codec(codec)?))
+        }
+        // declared_link isn't surfaced on the Python StreamInfo and
+        // MuxerConfig::from_program_map doesn't read it (the muxer
+        // re-derives metadata linkage), so None is lossless here.
+        StreamKindTag::KlvSync => Ok(StreamKind::KlvSync {
+            declared_link: None,
+        }),
+        StreamKindTag::KlvAsync => Ok(StreamKind::KlvAsync),
+        StreamKindTag::Unknown => Ok(StreamKind::Unknown(stream_type)),
+        // StreamKindTag is #[non_exhaustive]; py_stream_kind_tag only
+        // produces the six members above.
+        _ => Err(pyo3::exceptions::PyValueError::new_err(
+            "unsupported StreamKindTag member",
+        )),
+    }
+}
+
+/// Extract the `.name` of a Python enum member, or raise `ValueError`
+/// naming the expected enum when the object has no string `.name`
+/// (i.e. isn't an enum member at all). Shared by the reverse maps
+/// below so non-enum inputs fail with one consistent message style.
+fn py_enum_member_name(v: &Bound<'_, PyAny>, expected: &str) -> PyResult<String> {
+    match v
+        .getattr(intern!(v.py(), "name"))
+        .and_then(|n| n.extract::<String>())
+    {
+        Ok(n) => Ok(n),
+        Err(_) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "expected a {expected} member; got {}",
+            v.repr()?.to_string_lossy()
+        ))),
+    }
+}
+
+/// Reverse of [`video_codec_to_py`]: Python `VideoCodec` member → Rust.
+pub(crate) fn py_demux_video_codec(v: &Bound<'_, PyAny>) -> PyResult<VideoCodec> {
+    match py_enum_member_name(v, "VideoCodec")?.as_str() {
+        "H264" => Ok(VideoCodec::H264),
+        "H265" => Ok(VideoCodec::H265),
+        "H266" => Ok(VideoCodec::H266),
+        "AV1" => Ok(VideoCodec::Av1),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown VideoCodec: {other}"
+        ))),
+    }
+}
+
+/// Reverse of [`audio_codec_to_py`]: Python `AudioCodec` member → Rust.
+pub(crate) fn py_demux_audio_codec(v: &Bound<'_, PyAny>) -> PyResult<AudioCodec> {
+    match py_enum_member_name(v, "AudioCodec")?.as_str() {
+        "MP2" => Ok(AudioCodec::Mp2),
+        "AAC" => Ok(AudioCodec::Aac),
+        "AAC_LATM" => Ok(AudioCodec::AacLatm),
+        "AC3" => Ok(AudioCodec::Ac3),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown AudioCodec: {other}"
+        ))),
+    }
+}
+
+/// Reverse of [`subtitle_codec_to_py`]: Python `SubtitleCodec` member → Rust.
+pub(crate) fn py_demux_subtitle_codec(v: &Bound<'_, PyAny>) -> PyResult<SubtitleCodec> {
+    match py_enum_member_name(v, "SubtitleCodec")?.as_str() {
+        "DVB_SUBTITLING" => Ok(SubtitleCodec::DvbSubtitling),
+        "DVB_TELETEXT" => Ok(SubtitleCodec::DvbTeletext),
+        "CEA708_STANDALONE" => Ok(SubtitleCodec::Cea708Standalone),
+        "WEBVTT_IN_TS" => Ok(SubtitleCodec::WebVttInTs),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown SubtitleCodec: {other}"
+        ))),
+    }
 }
 
 fn link_source_to_py(

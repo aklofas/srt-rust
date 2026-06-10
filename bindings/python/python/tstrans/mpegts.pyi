@@ -29,6 +29,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Sequence,
     Tuple,
     Type,
     Union,
@@ -492,6 +493,10 @@ class MuxerProgramConfigBuilder:
 class MuxerConfig:
     @staticmethod
     def builder() -> MuxerConfigBuilder: ...
+    @staticmethod
+    def from_program_map(
+        pm: ProgramMap, drop: Optional[Sequence[StreamKindTag]] = ...
+    ) -> MuxerConfig: ...
     @property
     def programs(self) -> Tuple[MuxerProgramConfig, ...]: ...
     @property

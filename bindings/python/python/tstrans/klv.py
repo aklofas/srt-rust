@@ -681,6 +681,8 @@ def patch_uas_datalink(raw: bytes, edits: UasDatalinkLs | dict[str, object]) -> 
     ``unknown`` field: ``{"unknown": ((103, b"..."),)}``. Edited tags
     absent from the input are inserted before the trailing checksum.
     Bytes after the declared outer length are preserved verbatim.
+    ``universal_label`` and ``declared_version`` are accepted but
+    ignored — the input's 16-byte UL is always copied verbatim.
     Deleting a tag is not supported.
 
     Unlike ``decode_uas_datalink`` → ``encode_uas_datalink`` round

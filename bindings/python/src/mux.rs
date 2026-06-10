@@ -14,7 +14,9 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyByteArray, PyBytes, PyDict, PyTuple};
 
-use tst_core::mpegts::common::Pts90khz as RustPts90khz;
+use tst_core::mpegts::common::{Pts90khz as RustPts90khz, StreamTypeCode};
+use tst_core::mpegts::demux::{ProgramMap as DemuxProgramMap, StreamInfo as DemuxStreamInfo};
+use tst_core::mpegts::descriptors::RawDescriptor as RustRawDescriptor;
 use tst_core::mpegts::mux::{
     AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
     Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
@@ -740,6 +742,90 @@ impl PyMuxerProgramConfigBuilder {
 // `MuxSenderErrorKind` classifier into a Python `MuxError` carrying
 // the right `MuxErrorKind`.
 
+/// Prepend stream-identifying context to a per-stream conversion
+/// error, preserving the original exception type — so an
+/// `OverflowError` on `pid=70000` stays an `OverflowError` but names
+/// the offending field and stream.
+fn err_context(py: Python<'_>, ctx: &str, e: PyErr) -> PyErr {
+    let msg = format!("{ctx}: {}", e.value_bound(py));
+    PyErr::from_type_bound(e.get_type_bound(py), msg)
+}
+
+/// Reconstruct a Rust demux `ProgramMap` from the Python `ProgramMap`
+/// dataclass (`tstrans/mpegts.py`), for
+/// [`PyMuxerConfig::from_program_map`]. The kind/codec reverse maps
+/// live in `crate::mpegts` next to their forward counterparts
+/// (`stream_kind_to_py` etc.) so the pairing stays in one file.
+fn py_program_map(pm: &Bound<'_, PyAny>) -> PyResult<DemuxProgramMap> {
+    let py = pm.py();
+    let program_number: u16 = pm.getattr(intern!(py, "program_number"))?.extract()?;
+    let pcr_pid: u16 = pm.getattr(intern!(py, "pcr_pid"))?.extract()?;
+    let pmt_pid: u16 = pm.getattr(intern!(py, "pmt_pid"))?.extract()?;
+    let mut streams = Vec::new();
+    for (i, s) in pm.getattr(intern!(py, "streams"))?.iter()?.enumerate() {
+        let s = s?;
+        // The stream has no pid to be identified by until this very
+        // extract succeeds, so it reports the stream by index instead.
+        let pid: u16 = s
+            .getattr(intern!(py, "pid"))?
+            .extract()
+            .map_err(|e| err_context(py, &format!("streams[{i}].pid"), e))?;
+        let stream_type: u8 = s
+            .getattr(intern!(py, "stream_type"))?
+            .extract()
+            .map_err(|e| err_context(py, &format!("stream pid 0x{pid:04X}: stream_type"), e))?;
+        let stream_program: u16 = s
+            .getattr(intern!(py, "program_number"))?
+            .extract()
+            .map_err(|e| err_context(py, &format!("stream pid 0x{pid:04X}: program_number"), e))?;
+        let kind = crate::mpegts::py_stream_kind(
+            &s.getattr(intern!(py, "kind"))?,
+            &s.getattr(intern!(py, "codec"))?,
+            stream_type,
+        )
+        .map_err(|e| err_context(py, &format!("stream pid 0x{pid:04X}"), e))?;
+        let mut raw_descriptors = Vec::new();
+        for d in s.getattr(intern!(py, "raw_descriptors"))?.iter()? {
+            let d = d?;
+            raw_descriptors.push(RustRawDescriptor {
+                tag: d.getattr(intern!(py, "tag"))?.extract().map_err(|e| {
+                    err_context(
+                        py,
+                        &format!("stream pid 0x{pid:04X}: raw_descriptors tag"),
+                        e,
+                    )
+                })?,
+                data: d
+                    .getattr(intern!(py, "data"))?
+                    .extract::<Vec<u8>>()
+                    .map_err(|e| {
+                        err_context(
+                            py,
+                            &format!("stream pid 0x{pid:04X}: raw_descriptors data"),
+                            e,
+                        )
+                    })?,
+            });
+        }
+        streams.push(DemuxStreamInfo {
+            pid,
+            stream_type: StreamTypeCode::from_byte(stream_type),
+            kind,
+            program_number: stream_program,
+            raw_descriptors,
+        });
+    }
+    Ok(DemuxProgramMap {
+        program_number,
+        pcr_pid,
+        pmt_pid,
+        streams,
+        // from_program_map ignores klv_links (the muxer re-derives
+        // metadata linkage), so skip translating them.
+        klv_links: Vec::new(),
+    })
+}
+
 /// Frozen view of a built [`MuxerConfig`] — top-level muxer
 /// configuration. Holds the program list plus PCR / PSI cadence,
 /// the buffered-packet ceiling, and the AV1 PES carriage mode.
@@ -760,6 +846,54 @@ impl PyMuxerConfig {
         PyMuxerConfigBuilder {
             inner: Some(RustMuxerConfig::builder()),
         }
+    }
+
+    /// Build a single-program `MuxerConfig` from a demuxed `ProgramMap`
+    /// dataclass — the transmux bridge. Capture the
+    /// `DemuxEvent.ProgramMap` event and hand one of its `programs`
+    /// entries here to obtain a config reproducing the program's
+    /// topology (program number, PMT PID, stream PIDs, codecs).
+    ///
+    /// Strict by default: streams the muxer cannot represent (UNKNOWN
+    /// stream types, DVB subtitling/teletext) raise
+    /// `tstrans.exceptions.MuxError` (CONFIG_INVALID) naming every
+    /// offender. Pass their `StreamKindTag` members in `drop` to
+    /// exclude them instead — the filter is kind-coarse
+    /// (`StreamKindTag.SUBTITLE` drops *every* subtitle stream).
+    ///
+    /// `carries_pts` is always True for reconstructed KLV streams,
+    /// including async ones (whether the KLV PES carries a PTS is a
+    /// PES-level property the PMT cannot declare; PTS-carrying KLV is
+    /// the STANAG 4609 norm). Audio language is recovered from the
+    /// first ISO 639 language descriptor (tag 0x0A) on the stream's
+    /// `raw_descriptors` when it carries a plausible lowercase
+    /// ISO 639-2 code. The demuxed `pcr_pid` is copied iff it equals
+    /// a kept non-KLV stream's PID; otherwise it is left unset and the
+    /// builder default applies (first video → first KLV → first
+    /// audio). `klv_links` are ignored — the muxer re-derives
+    /// metadata linkage from its own configuration. Mirrors Rust's
+    /// `MuxerConfig::from_program_map`.
+    #[staticmethod]
+    #[pyo3(signature = (pm, drop = None))]
+    fn from_program_map(
+        py: Python<'_>,
+        pm: &Bound<'_, PyAny>,
+        drop: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let core_pm = py_program_map(pm)?;
+        let core_drop = match drop {
+            None => Vec::new(),
+            Some(seq) => {
+                let mut tags = Vec::new();
+                for item in seq.iter()? {
+                    tags.push(crate::mpegts::py_stream_kind_tag(&item?)?);
+                }
+                tags
+            }
+        };
+        RustMuxerConfig::from_program_map(&core_pm, &core_drop)
+            .map(|inner| Self { inner })
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Tuple of [`MuxerProgramConfig`] entries — one per program in

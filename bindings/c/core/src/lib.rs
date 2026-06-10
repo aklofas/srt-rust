@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.10` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.11` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 10` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 11` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -235,7 +235,13 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   discriminants 0..=3 are unchanged, no symbol/signature change; a
 ///   consumer now observes the distinct value instead of a misleading
 ///   `Orphan` for these two memory-limit rejections.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 10;
+/// - `11` — `pmt_pid` field added to `TstEventProgramMap` (immediately after
+///   `pcr_pid`; `_pad` shrunk from 4 to 2 bytes to preserve total size).
+///   Exposes the PID carrying the PMT (from the PAT) so C callers can
+///   reconstruct a muxer config from a ProgramMap event. Additive — no
+///   symbol/signature changed; struct total size and pointer-field offsets
+///   are unchanged.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 11;
 
 // =========================================================================
 // Runtime version accessors

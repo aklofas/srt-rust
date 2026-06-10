@@ -406,7 +406,13 @@ pub union TstEventBody {
 pub struct TstEventProgramMap {
     pub program_number: u16,
     pub pcr_pid: u16,
-    pub _pad: [u8; 4],
+    /// PID carrying this program's PMT — the raw 13-bit PID from the PAT
+    /// entry that declared the program (never 0 for a demuxed program;
+    /// program 0 is the NIT and is not emitted as a ProgramMap event).
+    /// Pass it as the `pmt_pid` argument to `tst_mux_config_add_program`
+    /// when re-muxing the same program.
+    pub pmt_pid: u16,
+    pub _pad: [u8; 2],
     pub streams: *const TstStreamInfo,
     pub stream_count: usize,
     pub klv_links: *const TstKlvLink,
@@ -751,7 +757,8 @@ fn fill_program_map(
     out.u.program_map = TstEventProgramMap {
         program_number: pm.program_number,
         pcr_pid: pm.pcr_pid,
-        _pad: [0; 4],
+        pmt_pid: pm.pmt_pid,
+        _pad: [0; 2],
         streams: arena.stream_infos.as_ptr(),
         stream_count: arena.stream_infos.len(),
         klv_links: arena.klv_links.as_ptr(),
@@ -1649,6 +1656,37 @@ mod tests {
         assert_ne!(
             desc_out_ptr, desc_data_ptr_before,
             "ProgramMap descriptor data pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn program_map_pmt_pid_is_forwarded() {
+        use tst_core::mpegts::demux::{ProgramMap, StreamInfo};
+
+        // pmt_pid distinct from pcr_pid and the stream pid so a crossed
+        // wire in fill_program_map can't pass by coincidence.
+        let pm = ProgramMap {
+            program_number: 1,
+            pcr_pid: 0x100,
+            pmt_pid: 0x30,
+            streams: vec![StreamInfo {
+                pid: 0x100,
+                stream_type: StreamTypeCode::Unknown(0x06),
+                kind: StreamKind::KlvAsync,
+                program_number: 1,
+                raw_descriptors: vec![],
+            }],
+            klv_links: vec![],
+        };
+        let ev = DemuxEvent::ProgramMap(pm);
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        assert_eq!(out.kind, TstEventKind::ProgramMap as c_int);
+        assert_eq!(
+            unsafe { out.u.program_map.pmt_pid },
+            0x30,
+            "pmt_pid must be forwarded from the core ProgramMap to the C event"
         );
     }
 }

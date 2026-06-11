@@ -17,6 +17,7 @@ mod state;
 mod scheduling;
 mod stats_accounting;
 mod push_audio;
+mod push_data;
 mod push_klv;
 mod push_subtitle;
 mod push_video;
@@ -139,9 +140,6 @@ pub struct Muxer {
 
     /// Per-program data stream state. Same indexing as `video_streams`.
     /// `DataStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
-    // Read by the push_data family (next wave task); the keystone commit
-    // only threads the state. Remove the allow when push_data_to lands.
-    #[allow(dead_code)]
     data_streams: Vec<Vec<DataStreamState>>,
 
     /// Per-program resolved PCR PID. Indexed parallel to `config.programs`.

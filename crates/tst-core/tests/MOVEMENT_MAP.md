@@ -79,6 +79,7 @@ so these corpus checks skip in CI exactly as they did under `tst-srt`.)
 | `mpegts_mux.rs` | `mpegts/mux.rs` |
 | `mpegts_mux_audio.rs` | `mpegts/mux_audio.rs` |
 | `mpegts_mux_builder_errors.rs` | `mpegts/mux_builder_errors.rs` |
+| — (new, Data-stream push round-trip) | `mpegts/mux_data.rs` |
 | `mpegts_mux_demux_audio_roundtrip.rs` | `mpegts/mux_demux_audio_roundtrip.rs` |
 | `mpegts_mux_demux_subtitle_roundtrip.rs` | `mpegts/mux_demux_subtitle_roundtrip.rs` |
 | `mpegts_mux_descriptor_invariant.rs` | `mpegts/mux_descriptor_invariant.rs` |

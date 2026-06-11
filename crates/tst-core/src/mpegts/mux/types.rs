@@ -735,8 +735,8 @@ impl SubtitleStreamHandle {
 
 /// Opaque handle to a configured data stream on a `Muxer`.
 ///
-/// Obtained from `Muxer::data_handles` / `Muxer::data_handles_for_program`
-/// (shipped with the `push_data` family).
+/// Obtained from [`Muxer::data_handles`](crate::mpegts::mux::Muxer::data_handles) /
+/// [`Muxer::data_handles_for_program`](crate::mpegts::mux::Muxer::data_handles_for_program).
 /// Handles are valid only on the muxer that produced them; passing a handle
 /// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
 ///

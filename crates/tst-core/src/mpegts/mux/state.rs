@@ -51,9 +51,6 @@ pub(super) struct DataStreamState {
     pub(super) pid: u16,
     /// Raw caller-chosen PMT stream_type byte (e.g. 0xF0/0xF1, bare 0x06).
     pub(super) stream_type: u8,
-    // Read by the push_data family (next wave task); the keystone commit
-    // only threads the state. Remove the allow when push_data_to lands.
-    #[allow(dead_code)]
     pub(super) carries_pts: bool,
 }
 

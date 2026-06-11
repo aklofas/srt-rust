@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tst_core::klv::st0601::{decode, decode_unchecked, patch, UasDatalinkLs};
+use tst_core::klv::st0601::{UasDatalinkLs, decode, decode_unchecked, patch};
 
 fuzz_target!(|data: &[u8]| {
     // Identity property: an input that decodes cleanly patched with NO

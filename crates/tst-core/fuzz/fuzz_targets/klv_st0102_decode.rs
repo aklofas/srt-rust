@@ -15,7 +15,9 @@ fuzz_target!(|data: &[u8]| {
     // Lenient + strict decoders: panic-freedom probe (preserves
     // pre-Phase-6 coverage on decode_strict).
     let _ = decode_strict(data);
-    let Ok(ls1) = decode(data) else { return; };
+    let Ok(ls1) = decode(data) else {
+        return;
+    };
 
     // Round-trip is only well-defined when no `unknown` field has a
     // BER-OID multi-byte tag (> 127). The ST 0102 encoder intentionally
@@ -29,8 +31,8 @@ fuzz_target!(|data: &[u8]| {
     // decode → encode → decode must yield an equal SecurityLs.
     let bytes = match encode_to_vec(&ls1) {
         Ok(b) => b,
-        Err(_) => return,  // encode-after-decode failure is a different
-                           // bug class; out of scope for this round-trip.
+        Err(_) => return, // encode-after-decode failure is a different
+                          // bug class; out of scope for this round-trip.
     };
     let ls2 = decode(&bytes).expect("decode-after-encode must succeed");
     assert_eq!(ls1, ls2, "ST 0102 round-trip mismatch");

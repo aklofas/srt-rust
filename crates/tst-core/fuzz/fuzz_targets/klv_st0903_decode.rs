@@ -15,7 +15,9 @@ fuzz_target!(|data: &[u8]| {
     // Lenient + strict decoders: panic-freedom probe (preserves
     // pre-Phase-6 coverage on decode_strict).
     let _ = decode_strict(data);
-    let Ok(mut ls1) = decode(data) else { return; };
+    let Ok(mut ls1) = decode(data) else {
+        return;
+    };
 
     // Round-trip: decode → encode → decode must yield an equal VmtiLs.
     // `field_errors` is excluded from PartialEq (manual impl) since

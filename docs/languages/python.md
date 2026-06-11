@@ -137,6 +137,24 @@ record = parse_klv_universal(raw_klv_bytes)
 # record is UasDatalinkLs | SecurityLs | PrecisionTimeStampPack | VmtiLs | None
 ```
 
+For the common ST-0601-only case there is a dedicated iterator that
+also carries each record's file-order KLV index (it counts every KLV
+event, so indices line up with a later re-mux pass over the same
+file), and the typed sets support copy-update via `with_()` — they
+are frozen dataclasses, so attribute assignment raises
+`FrozenInstanceError`:
+
+```python
+from tstrans.io import iter_uas_datalink
+
+for pts, klv_index, record in iter_uas_datalink("capture.ts"):
+    corrected = record.with_(sensor_lat_deg=33.5)  # frozen → copy-update
+```
+
+KLV demux events decode in place too: `ev.parse()` on a
+`DemuxEvent.Klv` dispatches by universal label — the KLV counterpart
+of the raw-first `Video.parse()` / `Audio.parse()`.
+
 All 4 MISB typed sets (ST 0601 UAS Datalink, ST 0102 Security,
 ST 0605 Precision Time Stamp, ST 0903 VMTI) decode with the same
 semantics as the Rust crate: lenient mode tolerates broken input and

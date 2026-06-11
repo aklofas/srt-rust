@@ -184,6 +184,15 @@ fields into a more meaningful shape:
 Each composite returns `None` if any constituent field is missing — so a
 caller doesn't have to spell out the partial-presence cases.
 
+> **Python:** the typed sets are frozen dataclasses — attribute
+> assignment raises `FrozenInstanceError`. Use
+> `record.with_(sensor_lat_deg=33.5)` to get an updated copy (a thin
+> `dataclasses.replace` wrapper on all four sets; unknown names raise
+> `TypeError` and construction-time validation re-runs on the copy).
+> To stream typed ST 0601 records straight from a file with their PTS,
+> use `tstrans.io.iter_uas_datalink(path)`; on a `DemuxEvent.Klv`
+> demux event, `ev.parse()` dispatches by universal label.
+
 Unknown-tag pass-through. Any tag not in the typed table lives in
 `record.unknown: Vec<OwnedRawField>` per the ST 0107.5 future-proof skip
 rule. This is what lets a record produced by a newer ST 0601 revision

@@ -8,6 +8,7 @@ Note: smoke files are static-checked only, never executed — the byte literals
 just need to be valid `bytes`, they are never muxed/demuxed at runtime."""
 from typing import Any, List, Literal, Optional, Tuple, Union, assert_type
 
+import tstrans.klv as klv_mod
 from tstrans.mpegts import (
     DemuxEvent,
     Demuxer,
@@ -31,6 +32,22 @@ assert_type(parsed, Union[List[Any], Tuple[List[Any], List[str]]])
 a: DemuxEvent.Audio
 assert_type(a.raw, bytes)
 a.parse(strict=False)
+
+# Klv.parse() decode-on-event sugar — UL-dispatched Optional[union], the KLV
+# counterpart of the raw-first Video/Audio parse(). strict= is keyword-only.
+k: DemuxEvent.Klv
+assert_type(k.payload, bytes)
+assert_type(
+    k.parse(strict=True),
+    Optional[
+        Union[
+            klv_mod.UasDatalinkLs,
+            klv_mod.SecurityLs,
+            klv_mod.PrecisionTimeStampPack,
+            klv_mod.VmtiLs,
+        ]
+    ],
+)
 
 # Pts90khz surface — a constructor and both derived props.
 p = Pts90khz.from_raw(9000)

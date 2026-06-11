@@ -202,3 +202,129 @@ def test_transmux_acceptance_patch_corner_tags_video_byte_faithful(tmp_path):
         assert rec.frame_center_lon_deg == pytest.approx(EDITED_LON, abs=1e-4)
         # Untouched field survives bit-exact (byte-faithful patcher).
         assert rec.sensor_lat_deg == pytest.approx(47.6200, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# v1 scope + error semantics.
+# ---------------------------------------------------------------------------
+
+def _write_two_program_src(path: Path) -> None:
+    cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .build()
+        )
+        .add_program(
+            MuxerProgramConfigBuilder(2, 0x200)
+            .add_video(0x201, VideoCodec.H264)
+            .build()
+        )
+        .build()
+    )
+    mux = Muxer(cfg)
+    handles = mux.video_handles()
+    with mux.write_file(path) as proxy:
+        for i, au in enumerate(ORIG_AUS):
+            pts = Pts90khz.from_raw(PTS0 + i * PTS_STEP)
+            for h in handles:
+                proxy.push_video_to(h, au, pts=pts, key_frame=KEY_FRAMES[i])
+
+
+def test_transmux_rejects_second_program(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_two_program_src(src)
+    with pytest.raises(ValueError, match="single-program"):
+        with tio.transmux(src, dst) as tx:
+            for ev in tx:
+                tx.write(ev)
+
+
+def test_transmux_tolerates_identical_pm_reemission(tmp_path):
+    # A mid-file PMT version bump with unchanged content re-emits an
+    # identical ProgramMap. The public Muxer emits a fixed PSI version,
+    # so that sequence cannot be built from a file — drive the private
+    # handler directly with a hand-built duplicate event.
+    import dataclasses
+
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+            if isinstance(ev, DemuxEvent.ProgramMap):
+                first_pm = ev.programs[0]
+                tx._on_program_map(DemuxEvent.ProgramMap(programs=(first_pm,)))
+                changed = dataclasses.replace(first_pm, program_number=7)
+                with pytest.raises(ValueError, match="different"):
+                    tx._on_program_map(DemuxEvent.ProgramMap(programs=(changed,)))
+    out_videos, _ = _collect(dst)
+    assert out_videos == ORIG_AUS
+
+
+def test_transmux_strict_on_unknown_stream_and_no_partial_dst(tmp_path):
+    from _builders.unknown_stream import build_unknown_stream_ts
+    from tstrans.exceptions import MuxError
+
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    src.write_bytes(
+        build_unknown_stream_ts(stream_type=0x7F, payload=b"private-bytes")
+    )
+    with pytest.raises(MuxError, match="cannot represent"):
+        with tio.transmux(src, dst) as tx:
+            for ev in tx:
+                tx.write(ev)
+    # from_program_map raised before the sink opened → no output file.
+    assert not dst.exists()
+
+
+def test_transmux_drop_klv_skips_dropped_stream_events(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with tio.transmux(src, dst, drop=(StreamKindTag.KLV_SYNC,)) as tx:
+        for ev in tx:
+            tx.write(ev)  # KLV events hit the no-handle path → skipped
+            if isinstance(ev, DemuxEvent.Klv):
+                # Substituted writes for dropped streams are no-ops too.
+                tx.write_klv(ev, bytes(ev.payload))
+    out_videos, out_klvs = _collect(dst)
+    assert out_videos == ORIG_AUS
+    assert out_klvs == []
+    assert not tio.probe(dst).has_klv
+
+
+def test_transmux_write_before_program_map_raises(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    src_video = next(
+        ev for ev in tio.parse_file(src) if isinstance(ev, DemuxEvent.Video)
+    )
+    with tio.transmux(src, dst) as tx:
+        with pytest.raises(RuntimeError, match="no ProgramMap"):
+            tx.write(src_video)
+
+
+def test_transmux_write_after_close_raises(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    events = []
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+            events.append(ev)
+    video = next(ev for ev in events if isinstance(ev, DemuxEvent.Video))
+    with pytest.raises(RuntimeError, match="closed"):
+        tx.write(video)
+
+
+def test_transmux_write_rejects_non_events(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+        with pytest.raises(TypeError, match="unsupported event type"):
+            tx.write(b"not an event")
+        with pytest.raises(TypeError, match="expected a DemuxEvent.Klv"):
+            tx.write_klv(b"not an event", b"payload")

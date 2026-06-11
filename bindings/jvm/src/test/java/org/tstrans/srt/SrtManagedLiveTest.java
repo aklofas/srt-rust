@@ -188,8 +188,13 @@ class SrtManagedLiveTest {
             // same deflake shape as the managed-demux-receiver stats test below.
             // The SHA only covers the FIRST Video event (one access unit, identical
             // bytes every push), so the live stream length does not affect it.
+            // 200 rounds × 50ms ≈ 10s — a MAIN-thread loop is deliberately bounded
+            // INSIDE TIMEOUT_SEC so every coordination wait (the receiver's
+            // senderDone await included) resolves within the test's 15s budget even
+            // on the failure path. (Daemon-side runaway caps may use 400; main-side
+            // loops must fit the budget.)
             long pts = 0;
-            for (int round = 0; round < 400 && !shaFuture.isDone(); round++) {
+            for (int round = 0; round < 200 && !shaFuture.isDone(); round++) {
                 for (int i = 0; i < 6; i++, pts += 3000L) {
                     s.pushVideo(syntheticH264Idr(), pts, true);
                 }
@@ -459,8 +464,11 @@ class SrtManagedLiveTest {
             // fixed two-sends + 500ms pause left a window where a starved receiver
             // missed TSBPD delivery before the sender's close discarded it, so
             // recvBytes() threw BROKEN instead of returning data — the same flake
-            // class as the managed-demux-receiver stats test above.
-            for (int round = 0; round < 400 && doneLatch.getCount() > 0; round++) {
+            // class as the managed-demux-receiver stats test above. 200 rounds ×
+            // 50ms ≈ 10s: a MAIN-thread loop bounded INSIDE TIMEOUT_SEC, so the
+            // failure path surfaces within the doneLatch ceiling instead of adding
+            // a full extra loop budget on top of it.
+            for (int round = 0; round < 200 && doneLatch.getCount() > 0; round++) {
                 sender.sendBytes(preMuxedTs);
                 sender.flush();
                 Thread.sleep(50);

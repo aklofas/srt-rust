@@ -506,7 +506,20 @@ pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr
         MuxSenderErrorKind::Internal => "INTERNAL",
         _ => "INTERNAL",
     };
-    let msg = e.to_string();
+    // BufferFull gets a Python-only breadcrumb: the most common way to
+    // hit it is pushing on the original Muxer inside an active
+    // `Muxer.write_file(...)` block — those pushes bypass the drain
+    // proxy the `with` statement yields, so nothing ever drains. The
+    // hint lives here (not in tst-core's Display) because `write_file`
+    // exists only in the Python binding.
+    let msg = match &e {
+        tst_core::MuxError::BufferFull { .. } => format!(
+            "{e}; if pushing inside `Muxer.write_file(...)`, push on the \
+             proxy object the `with` statement yields — pushes on the \
+             original Muxer bypass the per-push drain"
+        ),
+        _ => e.to_string(),
+    };
     make_mux_error(py, kind_str, &msg)
 }
 

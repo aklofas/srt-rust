@@ -233,3 +233,60 @@ def test_atomic_sink_user_exception_still_cleans_partial(tmp_path: Path) -> None
         with m.write_file(tmp_path / "out.ts", atomic=True):
             raise ValueError("user error")
     assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
+# v0.2.0 Wave 3 (#6) — write_file overflow investigation outcome.
+#
+# The drain proxy is correct: pushes routed through the object yielded
+# by `with m.write_file(...) as proxy:` drain after every push and never
+# overflow. The footgun is pushing on the ORIGINAL Muxer while the sink
+# is active — those pushes bypass the proxy (and therefore the per-push
+# drain) and overflow once `buffer_packets` accumulate. These tests pin
+# both sides of that contract.
+
+
+def test_write_file_long_push_loop_never_overflows(tmp_path):
+    # Regression for the corrector-notebook failure mode: push well past
+    # the default 10_000-packet buffer capacity THROUGH THE PROXY. Each
+    # push drains, so pending never accumulates and no MuxError is
+    # raised. (Prior to this test the sink suite pushed at most 5 AUs —
+    # far below capacity, so a drain regression would go unnoticed.)
+    m = Muxer(_cfg())
+    n_pushes = 12_000  # > capacity_packets() == 10_000
+    path = tmp_path / "out.ts"
+    with m.write_file(path) as proxy:
+        for i in range(n_pushes):
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000 + i * 3000))
+        assert m.pending_packets() == 0  # drained after every push
+    size = path.stat().st_size
+    assert size > n_pushes * 188  # at least one TS packet per AU made it out
+    assert size % 188 == 0
+
+
+def test_raw_muxer_push_bypasses_sink_drain_and_hints_at_proxy(tmp_path):
+    # The footgun itself: pushing on the original Muxer object inside an
+    # active `write_file` block never drains, so the buffer fills and the
+    # push raises MuxError(BACKPRESSURE). The error message must steer
+    # the user to the proxy — this is the discoverable breadcrumb for
+    # anyone who hits the trap in a long-running push loop.
+    from tstrans.exceptions import MuxError, MuxErrorKind
+
+    cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .build()
+        )
+        .buffer_packets(50)  # small capacity so the overflow hits fast
+        .build()
+    )
+    m = Muxer(cfg)
+    with pytest.raises(MuxError) as ei:
+        with m.write_file(tmp_path / "out.ts"):
+            for i in range(200):  # 50-packet capacity fills within ~50 pushes
+                m.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000 + i * 3000))
+    assert ei.value.kind is MuxErrorKind.BACKPRESSURE
+    # The enriched message names both write_file and the proxy contract.
+    assert "write_file" in str(ei.value)
+    assert "proxy" in str(ei.value)

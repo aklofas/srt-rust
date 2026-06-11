@@ -9,6 +9,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — `tstrans.io.transmux` demux→edit→remux bridge (Python)
+
+- New pure-Python context manager `tio.transmux(src, dst, *, drop=(),
+  atomic=False)`: iterate a source file's demux events and write back the
+  ones to keep — video/audio copied byte-for-byte via raw encoded AUs,
+  KLV substitutable via `tx.write_klv(ev, new_bytes)` (pairs with
+  `klv.patch_uas_datalink` for byte-faithful tag edits). The output muxer
+  is constructed lazily from the first `ProgramMap` via
+  `MuxerConfig.from_program_map`, reproducing the source program topology;
+  `atomic=True` routes through the `write_file` temp-file + `os.replace`
+  machinery. v1 scope: single-program sources; strict on unrepresentable
+  streams with `drop=` opt-out. Completes the v0.2.0 transmux arc.
+
 ### Added — cross-binding video raw AU (C + JVM)
 
 - **tst-c**: `TstEventSample.payload` / `payload_len` are now populated for

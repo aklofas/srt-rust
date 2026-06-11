@@ -1,54 +1,105 @@
-diff --git a/srtcore/core.cpp b/srtcore/core.cpp
-index 7b110d43..35d0bdfd 100644
---- a/srtcore/core.cpp
-+++ b/srtcore/core.cpp
-@@ -5995,8 +5995,11 @@ void srt::CUDT::acceptAndRespond(const sockaddr_any& agent, const sockaddr_any&
+diff --git a/srtcore/common.h b/srtcore/common.h
+index 5a53c05e..9d597d12 100644
+--- a/srtcore/common.h
++++ b/srtcore/common.h
+@@ -357,6 +357,13 @@ struct EventVariant
+     // Note: UNDEFINED and ARRAY don't have assignment operator.
+     // For ARRAY you'll use 'set' function. For UNDEFINED there's nothing.
  
-     m_tsRcvPeerStartTime = steady_clock::time_point(); // will be set correctly at SRT HS
- 
--    // Uses the smaller MSS between the peers
--    m_config.iMSS = std::min(m_config.iMSS, w_hs.m_iMSS);
-+    // Uses the smaller MSS between the peers.
-+    // iMSS is int but m_iMSS is int32_t; on platforms where int32_t is a
-+    // distinct type from int (e.g. where int32_t is long), std::min cannot
-+    // deduce its template argument. Pin it to int.
-+    m_config.iMSS = std::min<int>(m_config.iMSS, w_hs.m_iMSS);
- 
-     const size_t full_hdr_size = CPacket::UDP_HDR_SIZE + CPacket::HDR_SIZE;
-     m_iMaxSRTPayloadSize = m_config.iMSS - full_hdr_size;
++    // For events that pass no argument (e.g. TEV_SYNC).
++    EventVariant()
++    {
++        type = UNDEFINED;
++        u.packet = NULL;
++    }
++
+     explicit EventVariant(const srt::CPacket* arg)
+     {
+         type = PACKET;
 diff --git a/srtcore/core.h b/srtcore/core.h
-index e5fea5d9..74e3353f 100644
+index e5fea5d9..b6c3581f 100644
 --- a/srtcore/core.h
 +++ b/srtcore/core.h
-@@ -928,7 +928,10 @@ private:
+@@ -928,7 +928,7 @@ private:
              return;
  
          m_pSndBuffer->setRateEstimator(rate);
 -        updateCC(TEV_SYNC, EventVariant(0));
-+        // Where int32_t is a distinct type from int, the literal 0 is ambiguous
-+        // between EventVariant(int32_t) and EventVariant(const CPacket*).
-+        // Select the int32_t overload explicitly.
-+        updateCC(TEV_SYNC, EventVariant(int32_t(0)));
++        updateCC(TEV_SYNC, EventVariant());
      }
  
  
+diff --git a/srtcore/socketconfig.cpp b/srtcore/socketconfig.cpp
+index e3ad5cde..fe2bc9b1 100644
+--- a/srtcore/socketconfig.cpp
++++ b/srtcore/socketconfig.cpp
+@@ -161,7 +161,7 @@ struct CSrtConfigSetter<SRTO_UDP_SNDBUF>
+ {
+     static void set(CSrtConfig& co, const void* optval, int optlen)
+     {
+-        co.iUDPSndBufSize = std::max(co.iMSS, cast_optval<int>(optval, optlen));
++        co.iUDPSndBufSize = std::max(co.iMSS, cast_optval<int32_t>(optval, optlen));
+     }
+ };
+ 
+@@ -170,7 +170,7 @@ struct CSrtConfigSetter<SRTO_UDP_RCVBUF>
+ {
+     static void set(CSrtConfig& co, const void* optval, int optlen)
+     {
+-        co.iUDPRcvBufSize = std::max(co.iMSS, cast_optval<int>(optval, optlen));
++        co.iUDPRcvBufSize = std::max(co.iMSS, cast_optval<int32_t>(optval, optlen));
+     }
+ };
+ template<>
+diff --git a/srtcore/socketconfig.h b/srtcore/socketconfig.h
+index f44e3c24..9abbc0e5 100644
+--- a/srtcore/socketconfig.h
++++ b/srtcore/socketconfig.h
+@@ -218,7 +218,7 @@ struct CSrtConfig: CSrtMuxerConfig
+     static const size_t MAX_PFILTER_LENGTH = 64;
+     static const size_t MAX_CONG_LENGTH    = 16;
+ 
+-    int    iMSS;            // Maximum Segment Size, in bytes
++    int32_t iMSS;           // Maximum Segment Size, in bytes (int32_t: matches CHandShake::m_iMSS)
+     size_t zExpPayloadSize; // Expected average payload size (user option)
+ 
+     // Options
 diff --git a/srtcore/sync_posix.cpp b/srtcore/sync_posix.cpp
-index cfbd2ab6..6310bc52 100644
+index cfbd2ab6..8c9328ed 100644
 --- a/srtcore/sync_posix.cpp
 +++ b/srtcore/sync_posix.cpp
-@@ -400,13 +400,13 @@ srt::sync::CThread& srt::sync::CThread::operator=(CThread& other)
-         LOGC(inlog.Error, log << "IPE: Assigning to a thread that is not terminated!");
+@@ -9,6 +9,7 @@
+  */
+ #include "platform_sys.h"
  
- #ifndef DEBUG
++#include <exception>
+ #include <iomanip>
+ #include <math.h>
+ #include <stdexcept>
+@@ -394,22 +395,11 @@ srt::sync::CThread& srt::sync::CThread::operator=(CThread& other)
+ {
+     if (joinable())
+     {
+-        // If the thread has already terminated, then
+-        // pthread_join() returns immediately.
+-        // But we have to check it has terminated before replacing it.
++        // Match std::thread semantics: assigning to a joinable thread
++        // terminates the program ([thread.thread.assign]). This error should
++        // not normally happen; the log line makes the abort diagnosable.
+         LOGC(inlog.Error, log << "IPE: Assigning to a thread that is not terminated!");
+-
+-#ifndef DEBUG
 -#if !defined(__ANDROID__) && !defined(__OHOS__)
-+#if !defined(__ANDROID__) && !defined(__OHOS__) && !defined(SRT_NO_PTHREAD_CANCEL)
-         // In case of production build the hanging thread should be terminated
-         // to avoid hang ups and align with C++11 implementation.
-         // There is no pthread_cancel on Android. See #1476. This error should not normally
-         // happen, but if it happen, then detaching the thread.
-         pthread_cancel(m_thread);
+-        // In case of production build the hanging thread should be terminated
+-        // to avoid hang ups and align with C++11 implementation.
+-        // There is no pthread_cancel on Android. See #1476. This error should not normally
+-        // happen, but if it happen, then detaching the thread.
+-        pthread_cancel(m_thread);
 -#endif // __ANDROID__ __OHOS__
-+#endif // __ANDROID__ __OHOS__ SRT_NO_PTHREAD_CANCEL
- #else
-         join();
- #endif
+-#else
+-        join();
+-#endif
++        std::terminate();
+     }
+     // Move thread handler from other
+     m_thread = other.m_thread;

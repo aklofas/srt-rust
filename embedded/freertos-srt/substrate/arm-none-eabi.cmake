@@ -23,9 +23,10 @@ set(_ARCH "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 # (__linux__||__CYGWIN__||__GNU__||__GLIBC__) — the only non-Linux option that
 # doesn't also pull epoll — so it #includes our posix-shims/endian.h instead of
 # hitting its unconditional `#error Endian: platform not supported`.
-# -DSRT_NO_PTHREAD_CANCEL: FreeRTOS-Plus-POSIX has no pthread_cancel; a one-line
-# vendor/srt patch guards its single use (an IPE error path) on this define.
-set(_DEFS "-D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL -include ${CMAKE_CURRENT_LIST_DIR}/posix-shims/shim_prefix.h")
+# (libsrt's single pthread_cancel call — absent from FreeRTOS-Plus-POSIX — is
+# removed by the vendor/srt patch, which makes CThread assign-to-joinable
+# std::terminate() like std::thread; no opt-out define needed.)
+set(_DEFS "-D__GNU__=1 -include ${CMAKE_CURRENT_LIST_DIR}/posix-shims/shim_prefix.h")
 # Include order matters: posix-shims FIRST (so <pthread.h>/<netinet/in.h> route
 # to FreeRTOS-Plus-POSIX/lwIP), then the substrate config dirs (substrate/lwip
 # has lwipopts.h + arch/cc.h; substrate/freertos has FreeRTOSConfig.h), then

@@ -180,13 +180,13 @@ for f in $C_SRC; do
 done
 
 # App + the C++ glue. cxa_override is always linked (per-task eh globals); the
-# libsrt shim env (posix-shims force-include + __GNU__ + SRT_NO_PTHREAD_CANCEL +
-# pthread_key_shim) is added only for LIBSRT targets (they include <srt/srt.h>).
+# libsrt shim env (posix-shims force-include + __GNU__ + pthread_key_shim) is
+# added only for LIBSRT targets (they include <srt/srt.h>).
 SHIM_DEFS="${DEFS:-}"
 CXX_SRC="$APP $SUB/cxa_override.cpp"
 if [ "${LIBSRT:-0}" = "1" ]; then
   INC="-I$SUB/posix-shims $INC"
-  SHIM_DEFS="$SHIM_DEFS -include $SUB/posix-shims/shim_prefix.h -D__GNU__=1 -DSRT_NO_PTHREAD_CANCEL"
+  SHIM_DEFS="$SHIM_DEFS -include $SUB/posix-shims/shim_prefix.h -D__GNU__=1"
   [ "${ENCRYPT:-0}" = "1" ] && SHIM_DEFS="$SHIM_DEFS -DSRT_PASSPHRASE=\"freertos-srt-secret-1\""
   $CC $ARCH $OPT $INC $SHIM_DEFS -std=gnu11 -c "$SUB/pthread_key_shim.c" -o "$OBJ/pthread_key_shim.o"
 fi

@@ -247,12 +247,14 @@ def test_atomic_sink_user_exception_still_cleans_partial(tmp_path: Path) -> None
 
 def test_write_file_long_push_loop_never_overflows(tmp_path):
     # Regression for the corrector-notebook failure mode: push well past
-    # the default 10_000-packet buffer capacity THROUGH THE PROXY. Each
-    # push drains, so pending never accumulates and no MuxError is
-    # raised. (Prior to this test the sink suite pushed at most 5 AUs —
-    # far below capacity, so a drain regression would go unnoticed.)
+    # the buffer capacity THROUGH THE PROXY. Each push drains, so pending
+    # never accumulates and no MuxError is raised. (Prior to this test
+    # the sink suite pushed at most 5 AUs — far below capacity, so a
+    # drain regression would go unnoticed.)
     m = Muxer(_cfg())
-    n_pushes = 12_000  # > capacity_packets() == 10_000
+    # Derived from the live capacity (Copilot, PR #29) so the loop keeps
+    # its overflows-without-drain property if the default ever changes.
+    n_pushes = m.capacity_packets() + 2_000
     path = tmp_path / "out.ts"
     with m.write_file(path) as proxy:
         for i in range(n_pushes):

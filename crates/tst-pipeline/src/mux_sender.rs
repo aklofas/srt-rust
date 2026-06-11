@@ -19,7 +19,8 @@ use tracing::{Span, info_span};
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle,
+    VideoStreamHandle,
 };
 use tst_core::transport::{Transport, TransportError};
 
@@ -587,6 +588,84 @@ impl<T: Transport> MuxSender<T> {
         inner.send_subtitle_to(handle, payload, pts.as_ticks())
     }
 
+    /// Send one data payload on the muxer's single data stream. `pts` is
+    /// in 90 kHz units (the TS clock); written into the PES header only
+    /// when the stream was configured with `carries_pts: true`, and
+    /// always used for PSI/PCR pacing decisions.
+    ///
+    /// Data streams are a PES **pass-through** — no AU-cell wrap, no
+    /// framing, no payload inspection.
+    /// [`tst_core::mpegts::mux::Muxer::push_data_to`] is the contract
+    /// holder; see its docs for the full pass-through guarantees and the
+    /// no-PTS-stream behavior.
+    ///
+    /// # C ABI
+    ///
+    /// Not yet exposed via the C ABI.
+    ///
+    /// # Errors
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::NoDataStreamsConfigured`] if no data streams exist;
+    ///   [`MuxError::AmbiguousTarget`] when more than one is configured
+    ///   (use [`Self::send_data_to`]); [`MuxError::DataTooLarge`] if the
+    ///   payload would overflow `PES_packet_length`;
+    ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
+    ///   `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken {
+                msg: "mux_sender: inner lock poisoned during send_data".into(),
+                errno_code: None,
+            })
+        })?;
+        inner.send_data(data, pts.as_ticks())
+    }
+
+    /// Send one data payload to a specific configured data stream.
+    /// `handle` is obtained from [`Self::data_handles`]; passing a handle
+    /// from a different sender / muxer surfaces as
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderErrorSource::Mux`].
+    ///
+    /// Data streams are a PES **pass-through** — no AU-cell wrap, no
+    /// framing, no payload inspection.
+    /// [`tst_core::mpegts::mux::Muxer::push_data_to`] is the contract
+    /// holder; see its docs for the full pass-through guarantees and the
+    /// no-PTS-stream behavior.
+    ///
+    /// # C ABI
+    ///
+    /// Not yet exposed via the C ABI.
+    ///
+    /// # Errors
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's data streams; [`MuxError::DataTooLarge`]
+    ///   if the payload would overflow `PES_packet_length`;
+    ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
+    ///   `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    pub fn send_data_to(
+        &self,
+        handle: DataStreamHandle,
+        data: &[u8],
+        pts: Pts90khz,
+    ) -> Result<(), MuxSenderError> {
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken {
+                msg: "mux_sender: inner lock poisoned during send_data_to".into(),
+                errno_code: None,
+            })
+        })?;
+        inner.send_data_to(handle, data, pts.as_ticks())
+    }
+
     /// Snapshot all video stream handles for this sender's muxer, in
     /// declaration order. Allocates an owned Vec so callers don't need
     /// to hold the lock.
@@ -668,6 +747,16 @@ impl<T: Transport> MuxSender<T> {
             .map_err(|_| MuxError::ProgramNotFound { program_number })?
             .muxer
             .subtitle_handles_for_program(program_number)
+    }
+
+    /// Snapshot all data stream handles for this sender's muxer.
+    pub fn data_handles(&self) -> Vec<DataStreamHandle> {
+        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        if let Ok(inner) = self.inner.lock() {
+            inner.muxer.data_handles()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Return a point-in-time stats snapshot. `per_stream` is delegated from
@@ -1017,6 +1106,35 @@ impl<T: Transport> Inner<T> {
         let push_result = self
             .muxer
             .push_subtitle_to(handle, Pts90khz::new(pts_90khz), payload);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
+        self.drain_muxer()
+    }
+
+    fn send_data(&mut self, data: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
+        if self.closed {
+            return Err(TransportError::Closed.into());
+        }
+        self.drain_pending()?;
+        let push_result = self.muxer.push_data(data, Pts90khz::new(pts_90khz));
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
+        self.drain_muxer()
+    }
+
+    fn send_data_to(
+        &mut self,
+        handle: DataStreamHandle,
+        data: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), MuxSenderError> {
+        if self.closed {
+            return Err(TransportError::Closed.into());
+        }
+        self.drain_pending()?;
+        let push_result = self
+            .muxer
+            .push_data_to(handle, data, Pts90khz::new(pts_90khz));
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -1414,6 +1532,77 @@ mod multi_stream_tests {
     }
 
     #[test]
+    fn send_data_pushes_through_pipeline() {
+        // Single program, video + one data stream. The bare send_data
+        // shorthand resolves because total_data == 1 across the muxer.
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_data(0x1100, 0xF0, /*carries_pts=*/ true);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
+        // Synthetic payload bytes — data streams are a pass-through, so
+        // any non-empty buffer suffices.
+        let payload = vec![0x42u8; 64];
+        s.send_data(&payload, Pts90khz::new(90_000)).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x1100].items, 1);
+        assert_eq!(st.per_stream[&0x1100].bytes, payload.len() as u64);
+        assert!(st.bytes_sent > 0);
+        assert!(st.packets_sent > 0);
+    }
+
+    #[test]
+    fn send_data_to_routes_by_handle() {
+        // Two data streams — bare send_data would reject with
+        // AmbiguousTarget; send_data_to disambiguates via handle.
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_data(0x1100, 0xF0, /*carries_pts=*/ true);
+            prog.add_data(0x1101, 0xF1, /*carries_pts=*/ true);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
+        let handles = s.data_handles();
+        assert_eq!(handles.len(), 2);
+        let payload = vec![0x42u8; 32];
+        s.send_data_to(handles[1], &payload, Pts90khz::new(90_000))
+            .unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x1101].items, 1);
+        assert_eq!(st.per_stream[&0x1100].items, 0);
+        assert!(s.is_alive());
+    }
+
+    #[test]
+    fn send_data_rejects_oversized_payload() {
+        // 70_000 bytes overflows PES_packet_length (ceiling 65527 with
+        // PTS); the muxer's DataTooLarge must pass through the shell's
+        // error wrapping intact.
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_data(0x1100, 0xF0, /*carries_pts=*/ true);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
+        let payload = vec![0x42u8; 70_000];
+        let err = s.send_data(&payload, Pts90khz::new(0)).unwrap_err();
+        match err.source {
+            MuxSenderErrorSource::Mux(MuxError::DataTooLarge { size: 70_000, .. }) => {}
+            other => panic!("expected DataTooLarge, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn sender_send_video_rejects_when_multiple_video_streams_configured() {
         let cfg = {
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
@@ -1649,6 +1838,7 @@ mod cancel_tests {
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
         prog.add_audio(0x102, AudioCodec::Aac);
         prog.add_subtitle(0x103, SubtitleCodec::WebVttInTs);
+        prog.add_data(0x104, 0xF0, /*carries_pts=*/ true);
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());
         b.build().unwrap()
@@ -1686,7 +1876,7 @@ mod cancel_tests {
 
     /// Wave 6.F Task 2 regression: every fallible-return method on
     /// `MuxSender` converts a poisoned inner lock to a typed error instead
-    /// of panicking. The 8 `send_*` methods must return a `MuxSenderError`
+    /// of panicking. The 10 `send_*` methods must return a `MuxSenderError`
     /// whose kind is `ShellErrorKind::TransportBroken`; the 2
     /// `*_handles_for_program` methods must return `MuxError::ProgramNotFound`.
     #[test]
@@ -1700,11 +1890,12 @@ mod cancel_tests {
         let klv_h = fresh.klv_handles()[0];
         let audio_h = fresh.audio_handles()[0];
         let subtitle_h = fresh.subtitle_handles()[0];
+        let data_h = fresh.data_handles()[0];
         drop(fresh);
 
         let sender = poison_sender();
 
-        // --- 8 send_* methods: must return TransportBroken, not panic ---
+        // --- 10 send_* methods: must return TransportBroken, not panic ---
 
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         let pts = Pts90khz::new(0);
@@ -1778,6 +1969,20 @@ mod cancel_tests {
             "send_subtitle_to: message should contain 'send_subtitle_to', got: {err:?}"
         );
 
+        let err = sender.send_data(&[0x42; 32], pts).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_data");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken { msg, .. }) if msg.contains("send_data")),
+            "send_data: message should contain 'send_data', got: {err:?}"
+        );
+
+        let err = sender.send_data_to(data_h, &[0x42; 32], pts).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_data_to");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken { msg, .. }) if msg.contains("send_data_to")),
+            "send_data_to: message should contain 'send_data_to', got: {err:?}"
+        );
+
         // --- 2 *_handles_for_program methods: must return ProgramNotFound ---
 
         let err = sender.audio_handles_for_program(1).unwrap_err();
@@ -1820,6 +2025,10 @@ mod cancel_tests {
         assert!(
             sender.subtitle_handles().is_empty(),
             "subtitle_handles: expected empty vec on poisoned lock"
+        );
+        assert!(
+            sender.data_handles().is_empty(),
+            "data_handles: expected empty vec on poisoned lock"
         );
 
         // stats → MuxSenderStats::default() (zeroed)

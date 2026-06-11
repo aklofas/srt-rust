@@ -1334,6 +1334,11 @@ pub tst_core::error::MuxError::BufferFull
 pub tst_core::error::MuxError::BufferFull::capacity_packets: u64
 pub tst_core::error::MuxError::ConfigInvalid
 pub tst_core::error::MuxError::ConfigInvalid::reason: alloc::string::String
+pub tst_core::error::MuxError::DataPidUsedAsPcrPid
+pub tst_core::error::MuxError::DataPidUsedAsPcrPid::pid: u16
+pub tst_core::error::MuxError::DataTooLarge
+pub tst_core::error::MuxError::DataTooLarge::max: usize
+pub tst_core::error::MuxError::DataTooLarge::size: usize
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -1369,6 +1374,7 @@ pub tst_core::error::MuxError::MalformedDescriptor::descriptor_index: usize
 pub tst_core::error::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::error::MuxError::MalformedDescriptor::stream_index: usize
 pub tst_core::error::MuxError::NoAudioStreamsConfigured
+pub tst_core::error::MuxError::NoDataStreamsConfigured
 pub tst_core::error::MuxError::NoKlvStreamsConfigured
 pub tst_core::error::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::error::MuxError::PmtPidConflictsWithStream
@@ -1389,6 +1395,9 @@ pub tst_core::error::MuxError::SubtitleTooLarge::size: usize
 pub tst_core::error::MuxError::TooManyAudioStreams
 pub tst_core::error::MuxError::TooManyAudioStreams::cap: usize
 pub tst_core::error::MuxError::TooManyAudioStreams::count: usize
+pub tst_core::error::MuxError::TooManyDataStreams
+pub tst_core::error::MuxError::TooManyDataStreams::cap: usize
+pub tst_core::error::MuxError::TooManyDataStreams::count: usize
 pub tst_core::error::MuxError::TooManyKlvStreams
 pub tst_core::error::MuxError::TooManyKlvStreams::cap: usize
 pub tst_core::error::MuxError::TooManyKlvStreams::count: usize
@@ -4599,6 +4608,11 @@ pub tst_core::mpegts::mux::_detail::MuxError::BufferFull
 pub tst_core::mpegts::mux::_detail::MuxError::BufferFull::capacity_packets: u64
 pub tst_core::mpegts::mux::_detail::MuxError::ConfigInvalid
 pub tst_core::mpegts::mux::_detail::MuxError::ConfigInvalid::reason: alloc::string::String
+pub tst_core::mpegts::mux::_detail::MuxError::DataPidUsedAsPcrPid
+pub tst_core::mpegts::mux::_detail::MuxError::DataPidUsedAsPcrPid::pid: u16
+pub tst_core::mpegts::mux::_detail::MuxError::DataTooLarge
+pub tst_core::mpegts::mux::_detail::MuxError::DataTooLarge::max: usize
+pub tst_core::mpegts::mux::_detail::MuxError::DataTooLarge::size: usize
 pub tst_core::mpegts::mux::_detail::MuxError::DescriptorIndexOutOfRange
 pub tst_core::mpegts::mux::_detail::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::mpegts::mux::_detail::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -4634,6 +4648,7 @@ pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::descriptor_in
 pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::stream_index: usize
 pub tst_core::mpegts::mux::_detail::MuxError::NoAudioStreamsConfigured
+pub tst_core::mpegts::mux::_detail::MuxError::NoDataStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoKlvStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::PmtPidConflictsWithStream
@@ -4654,6 +4669,9 @@ pub tst_core::mpegts::mux::_detail::MuxError::SubtitleTooLarge::size: usize
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyAudioStreams
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyAudioStreams::cap: usize
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyAudioStreams::count: usize
+pub tst_core::mpegts::mux::_detail::MuxError::TooManyDataStreams
+pub tst_core::mpegts::mux::_detail::MuxError::TooManyDataStreams::cap: usize
+pub tst_core::mpegts::mux::_detail::MuxError::TooManyDataStreams::count: usize
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyKlvStreams
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyKlvStreams::cap: usize
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyKlvStreams::count: usize
@@ -4751,6 +4769,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::KlvStrea
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::KlvStreamType
 #[non_exhaustive] pub enum tst_core::mpegts::mux::StreamKind
 pub tst_core::mpegts::mux::StreamKind::Audio
+pub tst_core::mpegts::mux::StreamKind::Data
 pub tst_core::mpegts::mux::StreamKind::Klv
 pub tst_core::mpegts::mux::StreamKind::Subtitle
 pub tst_core::mpegts::mux::StreamKind::Video
@@ -4779,6 +4798,10 @@ pub tst_core::mpegts::mux::StreamSpec::Audio
 pub tst_core::mpegts::mux::StreamSpec::Audio::codec: tst_core::mpegts::mux::AudioCodec
 pub tst_core::mpegts::mux::StreamSpec::Audio::language: core::option::Option<[u8; 3]>
 pub tst_core::mpegts::mux::StreamSpec::Audio::pid: u16
+pub tst_core::mpegts::mux::StreamSpec::Data
+pub tst_core::mpegts::mux::StreamSpec::Data::carries_pts: bool
+pub tst_core::mpegts::mux::StreamSpec::Data::pid: u16
+pub tst_core::mpegts::mux::StreamSpec::Data::stream_type: u8
 pub tst_core::mpegts::mux::StreamSpec::Klv
 pub tst_core::mpegts::mux::StreamSpec::Klv::carries_pts: bool
 pub tst_core::mpegts::mux::StreamSpec::Klv::pid: u16
@@ -4895,6 +4918,25 @@ impl core::marker::Unpin for tst_core::mpegts::mux::AudioStreamHandle
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::AudioStreamHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::AudioStreamHandle
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::AudioStreamHandle
+pub struct tst_core::mpegts::mux::DataStreamHandle(_)
+impl core::clone::Clone for tst_core::mpegts::mux::DataStreamHandle
+pub fn tst_core::mpegts::mux::DataStreamHandle::clone(&self) -> tst_core::mpegts::mux::DataStreamHandle
+impl core::cmp::Eq for tst_core::mpegts::mux::DataStreamHandle
+impl core::cmp::PartialEq for tst_core::mpegts::mux::DataStreamHandle
+pub fn tst_core::mpegts::mux::DataStreamHandle::eq(&self, &tst_core::mpegts::mux::DataStreamHandle) -> bool
+impl core::fmt::Debug for tst_core::mpegts::mux::DataStreamHandle
+pub fn tst_core::mpegts::mux::DataStreamHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::mux::DataStreamHandle
+pub fn tst_core::mpegts::mux::DataStreamHandle::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::StructuralPartialEq for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::Freeze for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::Send for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::Sync for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::Unpin for tst_core::mpegts::mux::DataStreamHandle
+impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::DataStreamHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::DataStreamHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::DataStreamHandle
 pub struct tst_core::mpegts::mux::KlvStreamHandle(_)
 impl core::clone::Clone for tst_core::mpegts::mux::KlvStreamHandle
 pub fn tst_core::mpegts::mux::KlvStreamHandle::clone(&self) -> tst_core::mpegts::mux::KlvStreamHandle
@@ -4925,6 +4967,12 @@ pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::new(tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, &mut [u8]) -> usize
+impl tst_core::mpegts::mux::Muxer
+pub fn tst_core::mpegts::mux::Muxer::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::DataStreamHandle>
+pub fn tst_core::mpegts::mux::Muxer::data_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::DataStreamHandle>, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::data_stream_handle(&self, usize) -> core::option::Option<tst_core::mpegts::mux::DataStreamHandle>
+pub fn tst_core::mpegts::mux::Muxer::push_data(&mut self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_data_to(&mut self, tst_core::mpegts::mux::DataStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_core::error::MuxError>
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::klv_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>, tst_core::error::MuxError>
@@ -5020,6 +5068,7 @@ pub struct tst_core::mpegts::mux::MuxerProgramConfigBuilder
 impl tst_core::mpegts::mux::MuxerProgramConfigBuilder
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_audio(&mut self, u16, tst_core::mpegts::mux::AudioCodec) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_audio_with_language(&mut self, u16, tst_core::mpegts::mux::AudioCodec, [u8; 3]) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_data(&mut self, u16, u8, bool) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_klv(&mut self, u16, tst_core::mpegts::mux::KlvStreamType, bool) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_subtitle(&mut self, u16, tst_core::mpegts::mux::SubtitleCodec) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_video(&mut self, u16, tst_core::mpegts::mux::VideoCodec) -> &mut Self
@@ -5028,6 +5077,7 @@ pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::new(u16, u16) -> Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::pcr_pid(&mut self, u16) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::program_descriptors(&mut self, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_audio(&mut self, usize, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_data(&mut self, usize, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_klv(&mut self, usize, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_stream(&mut self, usize, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_subtitle(&mut self, usize, alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
@@ -5668,6 +5718,11 @@ pub tst_core::MuxError::BufferFull
 pub tst_core::MuxError::BufferFull::capacity_packets: u64
 pub tst_core::MuxError::ConfigInvalid
 pub tst_core::MuxError::ConfigInvalid::reason: alloc::string::String
+pub tst_core::MuxError::DataPidUsedAsPcrPid
+pub tst_core::MuxError::DataPidUsedAsPcrPid::pid: u16
+pub tst_core::MuxError::DataTooLarge
+pub tst_core::MuxError::DataTooLarge::max: usize
+pub tst_core::MuxError::DataTooLarge::size: usize
 pub tst_core::MuxError::DescriptorIndexOutOfRange
 pub tst_core::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -5703,6 +5758,7 @@ pub tst_core::MuxError::MalformedDescriptor::descriptor_index: usize
 pub tst_core::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::MuxError::MalformedDescriptor::stream_index: usize
 pub tst_core::MuxError::NoAudioStreamsConfigured
+pub tst_core::MuxError::NoDataStreamsConfigured
 pub tst_core::MuxError::NoKlvStreamsConfigured
 pub tst_core::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::MuxError::PmtPidConflictsWithStream
@@ -5723,6 +5779,9 @@ pub tst_core::MuxError::SubtitleTooLarge::size: usize
 pub tst_core::MuxError::TooManyAudioStreams
 pub tst_core::MuxError::TooManyAudioStreams::cap: usize
 pub tst_core::MuxError::TooManyAudioStreams::count: usize
+pub tst_core::MuxError::TooManyDataStreams
+pub tst_core::MuxError::TooManyDataStreams::cap: usize
+pub tst_core::MuxError::TooManyDataStreams::count: usize
 pub tst_core::MuxError::TooManyKlvStreams
 pub tst_core::MuxError::TooManyKlvStreams::cap: usize
 pub tst_core::MuxError::TooManyKlvStreams::count: usize

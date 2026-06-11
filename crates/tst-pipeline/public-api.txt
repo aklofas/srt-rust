@@ -373,6 +373,7 @@ pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::cut_segment(&self) -> core:
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::finish(self) -> core::result::Result<P, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::publisher_stats(&self) -> tst_core::publisher::PublisherStats
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_data(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
@@ -432,12 +433,15 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::ve
 pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
+pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_data(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_data_to(&self, tst_core::mpegts::mux::types::DataStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
@@ -1551,6 +1555,7 @@ pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::cut_segment(&self) -> core:
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::finish(self) -> core::result::Result<P, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::publisher_stats(&self) -> tst_core::publisher::PublisherStats
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_data(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
 pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
@@ -1589,12 +1594,15 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::ve
 pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
+pub fn tst_pipeline::mux_sender::MuxSender<T>::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::DataStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_data(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_data_to(&self, tst_core::mpegts::mux::types::DataStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>

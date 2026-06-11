@@ -350,7 +350,7 @@ def patch_uas_datalink(
 # ---------------------------------------------------------------------------
 
 def parse_klv_universal(
-    buf: bytes,
+    buf: bytes, *, strict: bool = ...
 ) -> Optional[Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]]: ...
 
 __all__ = [

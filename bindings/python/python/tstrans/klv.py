@@ -758,7 +758,7 @@ def _read_ber_length(buf: bytes, offset: int) -> tuple[int, int]:
     return (value, 1 + nbytes)
 
 
-def parse_klv_universal(buf: bytes):
+def parse_klv_universal(buf: bytes, *, strict: bool = False):
     """Inspect the first 16 bytes of `buf` (the SMPTE Universal Label)
     and route to the matching typed decoder. Returns one of:
 
@@ -767,6 +767,12 @@ def parse_klv_universal(buf: bytes):
     - `PrecisionTimeStampPack` (alias `Klv0605`) for `PRECISION_TIMESTAMP_PACK_UL`
     - `VmtiLs` (alias `Klv0903`) for `VMTI_LS_UL`
     - `None` when the UL doesn't match any known set
+
+    With `strict=True`, the per-set decoder's strict mode is used:
+    ST 0601 additionally requires the canonical family UL; ST 0102 /
+    ST 0903 reject missing required tags. ST 0605 has a single
+    always-validating decode (no strict knob). Default is lenient —
+    per-field issues land on the typed set's `.field_errors`.
 
     Raises `tstrans.exceptions.KlvError(BAD_UNIVERSAL_LABEL)` when
     `buf` is too short to contain a 16-byte UL.
@@ -788,7 +794,7 @@ def parse_klv_universal(buf: bytes):
     ul = buf[:16]
 
     if is_st0601_family(ul):
-        return decode_uas_datalink(buf)
+        return decode_uas_datalink(buf, strict=strict)
     if ul == PRECISION_TIMESTAMP_PACK_UL:
         return decode_precision_timestamp(buf)
     if ul == SECURITY_LS_UL:
@@ -817,7 +823,7 @@ def parse_klv_universal(buf: bytes):
                     f"trailing bytes after declared body length {value_len}"
                 ),
             )
-        return decode_security(buf[body_start:body_end])
+        return decode_security(buf[body_start:body_end], strict=strict)
     if ul == VMTI_LS_UL:
         try:
             value_len, ber_bytes = _read_ber_length(buf, 16)
@@ -844,7 +850,7 @@ def parse_klv_universal(buf: bytes):
                     f"trailing bytes after declared body length {value_len}"
                 ),
             )
-        return decode_vmti(buf[body_start:body_end])
+        return decode_vmti(buf[body_start:body_end], strict=strict)
 
     return None
 

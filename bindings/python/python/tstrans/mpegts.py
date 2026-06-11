@@ -654,6 +654,17 @@ class _KlvEvent(DemuxEvent):
     was_reassembled: bool = False
     cell_count: int = 1
 
+    def parse(self, *, strict: bool = False):
+        """Opt-in: decode `payload` into a typed KLV set, dispatched by
+        universal label via `tstrans.klv.parse_klv_universal`. Returns
+        `UasDatalinkLs | SecurityLs | PrecisionTimeStampPack | VmtiLs`,
+        or `None` when the UL matches no known set. Raises
+        `tstrans.exceptions.KlvError` on a malformed record. Mirrors
+        the raw-first `Video.parse()` / `Audio.parse()` naming."""
+        from tstrans import klv as _klv
+
+        return _klv.parse_klv_universal(self.payload, strict=strict)
+
 
 @dataclass(frozen=True, slots=True)
 class _UnknownSampleEvent(DemuxEvent):

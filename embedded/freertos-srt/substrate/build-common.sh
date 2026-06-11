@@ -111,11 +111,15 @@ if [ "${LIBSRT:-0}" = "1" ]; then
   if [ "${ENCRYPT:-0}" = "1" ]; then
     if [ ! -f "$MBED_INSTALL/lib/libmbedcrypto.a" ] || [ "$EFF_REBUILD" = "1" ]; then
       rm -rf "$BUILD/mbedtls-build" "$MBED_INSTALL"
+      # CMAKE_WARN_DEPRECATED=OFF: the pinned submodule declares
+      # cmake_minimum_required 3.5.1 — newer CMakes print a deprecation
+      # banner about it that we can't act on without a submodule bump.
       cmake -S "$MBED" -B "$BUILD/mbedtls-build" \
         -DCMAKE_TOOLCHAIN_FILE="$SUB/mbedtls/mbedtls-toolchain.cmake" \
         -DCMAKE_INSTALL_PREFIX="$MBED_INSTALL" -DCMAKE_BUILD_TYPE=MinSizeRel \
         -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON \
         -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF -DMBEDTLS_FATAL_WARNINGS=OFF \
+        -DCMAKE_WARN_DEPRECATED=OFF \
         -DMBEDTLS_USER_CONFIG_FILE="$SUB/mbedtls/mbedtls-user-config.h"
       cmake --build "$BUILD/mbedtls-build" --target install -j"$(nproc)"
     fi
@@ -149,11 +153,14 @@ if [ "${LIBSRT:-0}" = "1" ]; then
 
   if [ ! -f "$SRT_INSTALL/lib/libsrt.a" ] || [ "$EFF_REBUILD" = "1" ]; then
     rm -rf "$SRT_BUILD" "$SRT_INSTALL"
+    # CMAKE_WARN_DEPRECATED=OFF: pinned libsrt declares cmake_minimum_required
+    # 3.5 — same unactionable deprecation banner as the mbedTLS build above.
     cmake -S "$SRT_SRC" -B "$SRT_BUILD" -DCMAKE_TOOLCHAIN_FILE="$SUB/arm-none-eabi.cmake" \
       -DCMAKE_INSTALL_PREFIX="$SRT_INSTALL" -DGNU=ON -DCMAKE_BUILD_TYPE=MinSizeRel \
       -DENABLE_APPS=OFF -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
       -DENABLE_UNITTESTS=OFF -DENABLE_TESTING=OFF -DENABLE_BONDING=OFF \
       -DENABLE_HEAVY_LOGGING=OFF -DENABLE_LOGGING=OFF $SRT_ENC_FLAGS \
+      -DCMAKE_WARN_DEPRECATED=OFF \
       -DENABLE_STDCXX_SYNC=OFF -DENABLE_MONOTONIC_CLOCK=OFF -DENABLE_SOCK_CLOEXEC=OFF
     cmake --build "$SRT_BUILD" --target install -j"$(nproc)"
   fi

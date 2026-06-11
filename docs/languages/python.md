@@ -163,6 +163,40 @@ accumulates per-field errors on `.field_errors`; strict mode raises
 / `encode_*_strict`) round-trip parsed records back to wire bytes.
 See the `tstrans.klv` module docstring for the full type listing.
 
+## Transmux: edit metadata, copy everything else
+
+`tstrans.io.transmux` bridges a demuxer and a muxer: iterate the source's
+events and write back the ones to keep. Video/audio are copied
+byte-for-byte via their raw encoded AUs; KLV can be substituted — pair
+with `tstrans.klv.patch_uas_datalink` for byte-faithful tag edits. The
+output muxer is built lazily from the first `ProgramMap`, so the
+source's program topology (PIDs, codecs, program number) is reproduced.
+
+```python
+import tstrans.io as tio
+from tstrans import klv
+from tstrans.mpegts import DemuxEvent
+
+with tio.transmux("in.ts", "out.ts", atomic=True) as tx:
+    for ev in tx:
+        if isinstance(ev, DemuxEvent.Klv):
+            patched = klv.patch_uas_datalink(
+                ev.payload, {"frame_center_lat_deg": 37.7749}
+            )
+            tx.write_klv(ev, patched)
+        else:
+            tx.write(ev)  # video/audio copied byte-for-byte
+```
+
+Strict by default: streams the muxer cannot represent (unknown stream
+types, DVB subtitling) raise `MuxError` naming the offenders — pass
+their kinds in `drop=` (e.g. `drop=(StreamKindTag.UNKNOWN,)`) to exclude
+them instead; their events are then skipped by `write`. v1 supports
+single-program sources (a second program raises `ValueError`).
+`atomic=True` writes through a same-directory `*.partial` temp file and
+`os.replace`s it into place only on clean exit, so no partial output can
+appear at the destination.
+
 ## Language-specific gotchas
 
 - **GIL released in `push_*` methods.** Long-running CPU work (large NAL

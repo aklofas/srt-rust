@@ -1050,6 +1050,87 @@ across any program, or `MuxError::AmbiguousTarget` when ≥2 subtitle
 streams exist (caller must pick one via the `_to` form). Mirrors the
 shape used for video / KLV / audio.
 
+## Private/application data streams
+
+`StreamSpec::Data` carries arbitrary private PES payloads — serial
+telemetry lines, command/control JSON, vendor binary blobs — on a
+caller-chosen PMT `stream_type`. The muxer is a pure **pass-through**:
+no AU-cell wrap, no payload inspection, no auto-emitted descriptors.
+One push becomes exactly one PES packet (`stream_id = 0xBD`,
+private_stream_1), and the demuxer round-trips the stream as
+`StreamKind::Unknown(stream_type)` with byte-identical payloads.
+
+**Data vs KLV:** use `add_klv` for MISB KLV metadata — the KLV stream
+kinds own the sync-AU-cell machinery and demux as typed KLV streams
+with their own event family. Use `add_data` for everything else that
+should surface from the demuxer as `Unknown`.
+
+```rust
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::descriptors::user_private;
+use tst_core::mpegts::mux::{
+    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
+
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+prog.add_video(0x101, VideoCodec::H264);
+prog.add_data(0x200, 0xF0, /*carries_pts=*/ true);
+// Optional: a user-private (tag 0xFF) name descriptor so receivers can
+// identify the PID. The index is data-relative (zero-indexed among
+// `add_data` calls, mirroring the other stream_descriptors_for_* forms).
+prog.stream_descriptors_for_data(0, vec![user_private(b"SERIAL01")?])?;
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let mut mux = Muxer::new(b.build()?)?;
+
+let h = mux.data_handles()[0];
+mux.push_data_to(h, b"USR01,line-record-1\r\n", Pts90khz::new(90_000))?;
+```
+
+### The classify-Unknown rule
+
+`MuxerConfig::validate()` rejects a data stream whose `stream_type` +
+descriptor set the demuxer would classify as anything other than
+`Unknown` — both directions of the contract: a Data stream re-demuxes
+as `Unknown`, and typed payloads cannot ride a Data spec to lie to
+downstream demuxers. Concretely:
+
+- Typed stream_types (`0x1B` H.264, `0x0F` AAC, `0x15` async KLV, …)
+  are rejected — use the corresponding `add_video` / `add_audio` /
+  `add_klv` / `add_subtitle` form instead.
+- `stream_type 0x06` (PES private data) is allowed, but only without a
+  classifying descriptor (KLVA registration, DVB subtitling/teletext,
+  …) — attaching one flips the demux classification and fails
+  validation with a `ConfigInvalid` naming the typed kind it would
+  become.
+
+### PCR and PTS
+
+Data PIDs cannot serve as the PCR PID — pushes are caller-paced with
+no cadence guarantee, so a data PID cannot promise ETSI TR 101 290
+§5.6.1's 100 ms PCR ceiling. Pinning one rejects with
+`MuxError::DataPidUsedAsPcrPid`, and a program needs at least one
+PCR-eligible stream (video / KLV / audio) to validate.
+
+`carries_pts = false` omits the PES PTS field entirely (the `pts`
+argument to `push_data_to` is ignored); the demuxer surfaces such
+samples with `pts = 0`. The PES_packet_length budget bounds a single
+push to 65527 payload bytes with PTS, 65532 without
+(`MuxError::DataTooLarge`).
+
+### Limits and multi-stream
+
+- ≤16 data streams per program (`MuxError::TooManyDataStreams`).
+- `push_data_to(handle, bytes, pts)` dispatches by handle, from
+  `Muxer::data_handles()` / `data_stream_handle(index)` /
+  `data_handles_for_program(program_number)`. Bare `push_data` follows
+  the family shape: `MuxError::NoDataStreamsConfigured` with zero data
+  streams, `MuxError::AmbiguousTarget` with ≥2.
+- Pipeline shells delegate one-for-one:
+  `MuxSender::{send_data, send_data_to, data_handles}` and
+  `MuxPublisher::send_data` — see [guides/pipeline.md](/docs/guides/pipeline.md).
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:
@@ -1077,4 +1158,8 @@ Each item below maps to an entry in
 
 - Audio carriage in `mpegts::mux` — gimbaled-platform streams are
   video + KLV today; no shipping consumer asks for audio. See
+  [project/deferred-features.md](/docs/project/deferred-features.md).
+- `private_stream_2` (0xBF) data carriage — `StreamSpec::Data` always
+  emits private_stream_1 (0xBD); 0xBF has no PES header (no PTS
+  possible) and no observed carriage. See
   [project/deferred-features.md](/docs/project/deferred-features.md).

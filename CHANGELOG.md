@@ -9,6 +9,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — private/application data streams (muxer + pipeline)
+
+Arbitrary private PES carriage: declare a data elementary stream with an
+explicit PMT stream_type, push raw payload bytes through, and the demuxer
+round-trips the stream as `StreamKind::Unknown(stream_type)` with
+byte-identical payloads.
+
+- **`tst_core::mpegts::mux::StreamSpec::Data { pid, stream_type, carries_pts }`**
+  — new stream-spec variant: a pass-through PES `private_stream_1` (0xBD)
+  stream with a caller-chosen PMT `stream_type`; the write-side dual of demux
+  `StreamKind::Unknown(stream_type)`. Declared via
+  `MuxerProgramConfigBuilder::add_data(pid, stream_type, carries_pts)`; raw
+  PMT descriptor TLVs attach via `stream_descriptors_for_data` (the muxer
+  never auto-emits a descriptor on a data stream). Mux-side `StreamKind`
+  gains a `Data` variant for handle/error reporting.
+- Validation: the classify-Unknown anti-masquerade rule — a Data stream's
+  `stream_type` + descriptor set must classify as `Unknown` under the demux
+  PMT cascade, so a Data spec cannot masquerade as a typed video / audio /
+  KLV / subtitle stream (`0x06` is allowed only without classifying
+  descriptors). Data streams are capped at 16 per program
+  (`MuxError::TooManyDataStreams`) and are PCR-ineligible
+  (`MuxError::DataPidUsedAsPcrPid`; the no-PCR-eligible-stream guard now
+  covers data-only programs too).
+- **`Muxer::push_data` / `push_data_to`** — pure pass-through emission: one
+  push = one PES packet, no AU-cell framing, no payload inspection. New
+  `DataStreamHandle` plus accessors `data_handles` / `data_stream_handle` /
+  `data_handles_for_program`. New `MuxError::{NoDataStreamsConfigured,
+  DataTooLarge}`; payloads are bounded by the PES_packet_length ceiling
+  (65 527 bytes with PTS, 65 532 without). `carries_pts = false` omits the
+  PES PTS field entirely; the demuxer surfaces such samples with `pts = 0`.
+- **`tst_pipeline::MuxSender::{send_data, send_data_to, data_handles}`** and
+  **`MuxPublisher::send_data`** — pipeline delegates to the muxer push
+  family.
+
 ### Added — `tstrans.io.transmux` demux→edit→remux bridge (Python)
 
 - New pure-Python context manager `tio.transmux(src, dst, *, drop=(),

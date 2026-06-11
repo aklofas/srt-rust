@@ -1,11 +1,13 @@
 //! `MuxerConfig::from_program_map` — rebuilding a single-program muxer
 //! config from a demuxed `ProgramMap`.
 //!
-//! Covers the strict-by-default offender contract (Unknown / DVB-subtitle
-//! streams error unless their kinds are passed in `drop`), the PCR copy
-//! rule (the demuxed `pcr_pid` is copied only when it lands on a kept
-//! non-KLV stream), ISO 639 language recovery from raw PMT descriptors,
-//! and a real mux→demux→`from_program_map` round-trip.
+//! Covers the strict-by-default offender contract (DVB-subtitle streams
+//! error unless their kinds are passed in `drop`), the Unknown→Data
+//! pass-through mapping (PMT descriptors preserved verbatim, `carries_pts`
+//! always true), the PCR copy rule (the demuxed `pcr_pid` is copied only
+//! when it lands on a kept PCR-eligible stream — neither KLV nor data),
+//! ISO 639 language recovery from raw PMT descriptors, and real
+//! mux→demux→`from_program_map` round-trips.
 
 use tst_core::MuxError;
 use tst_core::mpegts::common::{Pts90khz, StreamTypeCode};
@@ -128,7 +130,7 @@ fn async_klv_maps_to_private_data_with_pts() {
 }
 
 #[test]
-fn unknown_stream_errors_unless_dropped() {
+fn unknown_stream_maps_to_data_spec_unless_dropped() {
     let p = pm(
         0x100,
         0x101,
@@ -138,28 +140,79 @@ fn unknown_stream_errors_unless_dropped() {
         ],
     );
 
-    // Strict by default: the unrepresentable stream is an error naming the
-    // offender's PID and stream_type.
-    match MuxerConfig::from_program_map(&p, &[]) {
-        Err(MuxError::ConfigInvalid { reason }) => {
-            assert!(reason.contains("0x0104"), "reason names the pid: {reason}");
-            assert!(
-                reason.contains("stream_type 0xC0"),
-                "reason names the stream_type: {reason}"
-            );
-        }
-        other => panic!("expected ConfigInvalid, got {other:?}"),
-    }
+    // Deliberate pre-1.0 behavior change (private-data W2): unknown stream
+    // types are no longer offenders — they map to `StreamSpec::Data` PES
+    // pass-through streams keeping the raw stream_type byte.
+    let cfg =
+        MuxerConfig::from_program_map(&p, &[]).expect("unknown streams now map to Data specs");
+    let prog = &cfg.programs[0];
+    assert!(prog.streams.contains(&StreamSpec::Data {
+        pid: 0x104,
+        stream_type: 0xC0,
+        carries_pts: true,
+    }));
+    // The source stream declared no descriptors; none may be invented.
+    let i = prog
+        .streams
+        .iter()
+        .position(|s| spec_pid(s) == 0x104)
+        .unwrap();
+    assert!(prog.stream_descriptors[i].is_empty());
 
-    // Opt-out via `drop`: succeeds with the unknown stream absent.
+    // Opt-out via `drop` still excludes the stream entirely.
     let cfg = MuxerConfig::from_program_map(&p, &[StreamKindTag::Unknown])
-        .expect("dropping Unknown makes the map representable");
+        .expect("dropping Unknown excludes the stream");
     let prog = &cfg.programs[0];
     assert!(
         prog.streams.iter().all(|s| spec_pid(s) != 0x104),
         "dropped stream must be absent"
     );
     assert_eq!(prog.streams.len(), 1, "only the video stream remains");
+}
+
+#[test]
+fn pcr_on_unknown_pid_falls_back() {
+    // pcr_pid lands on the data PID. Data streams are PCR-ineligible
+    // (caller-paced pushes have no cadence guarantee, and validate rejects
+    // explicit PCR-on-data), so the conversion leaves pcr_pid None — the
+    // builder default (first video) applies at validate time.
+    let p = pm(
+        0x100,
+        0x104,
+        vec![
+            stream(0x101, 0x1B, DemuxKind::Video(DemuxVideo::H264)),
+            stream(0x104, 0xF0, DemuxKind::Unknown(0xF0)),
+        ],
+    );
+    let cfg = MuxerConfig::from_program_map(&p, &[]).expect("PCR-on-data falls back, not errors");
+    assert_eq!(cfg.programs[0].pcr_pid, None);
+}
+
+#[test]
+fn oversized_descriptor_on_unknown_stream_errors() {
+    // Only a hand-built ProgramMap can carry a >255-byte descriptor body
+    // (PMT parsing is bounded by the one-byte length field). Re-encoding
+    // it would truncate the TLV length byte, so the conversion errors
+    // naming the pid instead.
+    let mut unknown = stream(0x104, 0xF0, DemuxKind::Unknown(0xF0));
+    unknown.raw_descriptors = vec![RawDescriptor {
+        tag: 0xFF,
+        data: vec![0u8; 256],
+    }];
+    let p = pm(
+        0x100,
+        0x101,
+        vec![
+            stream(0x101, 0x1B, DemuxKind::Video(DemuxVideo::H264)),
+            unknown,
+        ],
+    );
+    match MuxerConfig::from_program_map(&p, &[]) {
+        Err(MuxError::ConfigInvalid { reason }) => {
+            assert!(reason.contains("0x0104"), "reason names the pid: {reason}");
+        }
+        other => panic!("expected ConfigInvalid, got {other:?}"),
+    }
 }
 
 #[test]
@@ -451,4 +504,151 @@ fn mux_demux_program_map_rebuilds_the_config() {
     assert_eq!(a.pcr_pid, None);
     assert_eq!(demuxed.pcr_pid, 0x101);
     assert_eq!(b.pcr_pid, Some(0x101));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unknown→Data mapping on a real demuxed map (private-data W2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Mux the corpus-shaped private-stream mix (video + sync KLV + data
+/// 0xF0-with-descriptor + 0xF1 + bare 0x06) and demux it back to its
+/// `ProgramMap` — the input shape for the Unknown→Data conversion tests.
+fn demuxed_private_mix_pm() -> ProgramMap {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
+        prog.add_video(0x1011, VideoCodec::H264);
+        prog.add_klv(0x1021, KlvStreamType::SynchronousMetadata, true);
+        prog.add_data(0x1100, 0xF0, /*carries_pts=*/ true);
+        prog.stream_descriptors_for_data(0, vec![b"\xFF\x0ASERIAL_ADF".to_vec()])
+            .unwrap();
+        prog.add_data(0x1101, 0xF1, /*carries_pts=*/ true);
+        // carries_pts=false on the wire — the conversion must still come
+        // back carries_pts=true (PMT can't declare the PES-level property).
+        prog.add_data(0x1102, 0x06, /*carries_pts=*/ false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let mut mux = Muxer::new(cfg).unwrap();
+    // One video AU + one KLV LS so PSI/PCR pacing starts and the PMT flows.
+    mux.push_video(&synthetic_h264_au(), Pts90khz::new(900_000), true)
+        .expect("push_video");
+    mux.push_klv(&synthetic_klv_ls(), Pts90khz::new(900_000), 0x00)
+        .expect("push_klv");
+    let ts = drain(&mut mux);
+
+    let mut dem = Demuxer::new();
+    dem.feed(&ts).unwrap();
+    let mut last_pm = None;
+    while let Some(evt) = dem.next_event() {
+        if let DemuxEvent::ProgramMap(m) = evt {
+            last_pm = Some(m);
+        }
+    }
+    last_pm.expect("PMT discovery must emit a ProgramMap")
+}
+
+#[test]
+fn unknown_streams_map_to_data_specs_with_descriptors() {
+    let pm = demuxed_private_mix_pm();
+    let cfg =
+        MuxerConfig::from_program_map(&pm, &[]).expect("unknown streams now map to Data specs");
+    let prog = &cfg.programs[0];
+    assert_eq!(prog.streams.len(), 5, "video + KLV + three data streams");
+
+    // carries_pts is ALWAYS true — a PES-level property the PMT cannot
+    // declare; even the carries_pts=false source stream (0x1102) comes
+    // back true (KLV-rule parity).
+    assert!(prog.streams.contains(&StreamSpec::Data {
+        pid: 0x1100,
+        stream_type: 0xF0,
+        carries_pts: true,
+    }));
+    assert!(prog.streams.contains(&StreamSpec::Data {
+        pid: 0x1101,
+        stream_type: 0xF1,
+        carries_pts: true,
+    }));
+    assert!(prog.streams.contains(&StreamSpec::Data {
+        pid: 0x1102,
+        stream_type: 0x06,
+        carries_pts: true,
+    }));
+
+    // Descriptors preserved byte-identical (TLV form), nothing invented.
+    let idx = |pid: u16| {
+        prog.streams
+            .iter()
+            .position(|s| spec_pid(s) == pid)
+            .unwrap_or_else(|| panic!("stream for pid 0x{pid:04X}"))
+    };
+    assert_eq!(
+        prog.stream_descriptors[idx(0x1100)],
+        vec![b"\xFF\x0ASERIAL_ADF".to_vec()]
+    );
+    assert!(prog.stream_descriptors[idx(0x1101)].is_empty());
+    assert!(prog.stream_descriptors[idx(0x1102)].is_empty());
+}
+
+#[test]
+fn full_round_trip_preserves_unknown_streams() {
+    // PMT-level fidelity proof: convert the demuxed map, mux through the
+    // converted config, demux again — the second ProgramMap classifies the
+    // same PIDs Unknown with the same descriptors. (Sample-payload
+    // fidelity is pinned by the W1 golden in mux_data.rs.)
+    let first = demuxed_private_mix_pm();
+    let cfg = MuxerConfig::from_program_map(&first, &[]).expect("convert the demuxed map");
+
+    let mut mux = Muxer::new(cfg).unwrap();
+    mux.push_video(&synthetic_h264_au(), Pts90khz::new(900_000), true)
+        .expect("push_video");
+    let handles = mux.data_handles();
+    assert_eq!(handles.len(), 3, "all three data streams survived");
+    for (i, h) in handles.iter().enumerate() {
+        // carries_pts=true on every converted stream → a PTS is required.
+        mux.push_data_to(*h, &[0xA5; 16], Pts90khz::new(900_000 + i as i64 * 3_000))
+            .expect("push_data_to");
+    }
+    let ts = drain(&mut mux);
+
+    let mut dem = Demuxer::new();
+    dem.feed(&ts).unwrap();
+    let mut last_pm = None;
+    while let Some(evt) = dem.next_event() {
+        if let DemuxEvent::ProgramMap(m) = evt {
+            last_pm = Some(m);
+        }
+    }
+    let second = last_pm.expect("PMT discovery must emit a ProgramMap");
+
+    for (pid, st) in [(0x1100u16, 0xF0u8), (0x1101, 0xF1), (0x1102, 0x06)] {
+        let a = first.streams.iter().find(|s| s.pid == pid).unwrap();
+        let b = second
+            .streams
+            .iter()
+            .find(|s| s.pid == pid)
+            .unwrap_or_else(|| panic!("second PMT entry for pid 0x{pid:04X}"));
+        assert_eq!(b.kind, DemuxKind::Unknown(st));
+        assert_eq!(
+            b.raw_descriptors, a.raw_descriptors,
+            "descriptors survive the second trip verbatim (pid 0x{pid:04X})"
+        );
+    }
+}
+
+#[test]
+fn drop_unknown_still_excludes() {
+    // Regression pin: `drop=[Unknown]` semantics are untouched by the
+    // Unknown→Data mapping — the filter check precedes the kind match.
+    let pm = demuxed_private_mix_pm();
+    let cfg = MuxerConfig::from_program_map(&pm, &[StreamKindTag::Unknown])
+        .expect("dropping Unknown excludes the data streams");
+    let prog = &cfg.programs[0];
+    assert!(
+        prog.streams
+            .iter()
+            .all(|s| !matches!(s, StreamSpec::Data { .. })),
+        "no Data streams when Unknown is dropped"
+    );
+    assert_eq!(prog.streams.len(), 2, "video + KLV remain");
 }

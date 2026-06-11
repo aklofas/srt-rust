@@ -200,18 +200,18 @@ impl MuxerConfig {
     ///
     /// # Strictness and the `drop` filter
     ///
-    /// Strict by default: any stream the muxer cannot represent —
-    /// [`StreamKind::Unknown`](crate::mpegts::demux::StreamKind::Unknown)
-    /// stream types, and DVB subtitling/teletext streams (whose
-    /// per-stream parameters such as language and page IDs are not
-    /// recoverable from the PMT entry alone) — fails the conversion with
+    /// Strict by default: any stream the muxer cannot represent — DVB
+    /// subtitling/teletext streams (whose per-stream parameters such as
+    /// language and page IDs are not recoverable from the PMT entry
+    /// alone) — fails the conversion with
     /// [`MuxError::ConfigInvalid`](crate::error::MuxError::ConfigInvalid)
     /// naming every offender. Pass the offenders' kinds in `drop` (e.g.
-    /// `&[StreamKindTag::Unknown]`) to exclude those streams instead; see
+    /// `&[StreamKindTag::Subtitle]`) to exclude those streams instead; see
     /// [`StreamKindTag`](crate::mpegts::demux::StreamKindTag). The filter
     /// is kind-coarse: `StreamKindTag::Subtitle` drops every subtitle
     /// stream, including representable CEA-708 / WebVTT ones, not just the
-    /// DVB offenders.
+    /// DVB offenders. Likewise `StreamKindTag::Unknown` excludes every
+    /// unknown-stream-type stream instead of mapping it to a Data spec.
     ///
     /// # Mapping rules
     ///
@@ -221,18 +221,31 @@ impl MuxerConfig {
     ///   [`StreamKind::KlvAsync`](crate::mpegts::demux::StreamKind::KlvAsync)
     ///   to [`KlvStreamType::PrivateData`]; CEA-708 / WebVTT subtitle
     ///   streams map to their parameter-free mux variants.
-    /// - **`carries_pts` is always `true`**, including for async KLV:
-    ///   whether the KLV PES carries a PTS is a PES-level property the PMT
-    ///   cannot declare, and PTS-carrying KLV is the STANAG 4609 norm.
-    ///   Callers that need a PTS-less async stream build the config by
-    ///   hand.
+    /// - [`StreamKind::Unknown`](crate::mpegts::demux::StreamKind::Unknown)
+    ///   stream types map to [`StreamSpec::Data`] PES pass-through
+    ///   streams: the raw PMT `stream_type` byte is kept and the stream's
+    ///   PMT descriptors are preserved verbatim (re-encoded TLV-for-TLV;
+    ///   the muxer never auto-emits descriptors on a data stream). The
+    ///   PCR is never copied onto a data PID (see the PCR copy rule
+    ///   below). Caveat: a
+    ///   [`DemuxerBuilder::treat_as`](crate::mpegts::demux::DemuxerBuilder::treat_as)
+    ///   override can force `Unknown` onto a stream whose PMT entry
+    ///   classifies as a typed kind; the conversion then produces a Data
+    ///   spec that [`validate`](Self::validate) rejects with a
+    ///   `ConfigInvalid` naming the masquerading descriptors.
+    /// - **`carries_pts` is always `true`**, including for async KLV and
+    ///   Data streams: whether the PES carries a PTS is a PES-level
+    ///   property the PMT cannot declare, and PTS-carrying KLV is the
+    ///   STANAG 4609 norm. Callers that need a PTS-less stream build the
+    ///   config by hand.
     /// - **PCR copy rule**: the demuxed `pcr_pid` is copied iff it equals
-    ///   the PID of a kept non-KLV stream. Otherwise (PCR on a dropped
-    ///   stream, on a PID outside the program, or on a KLV PID — which
-    ///   [`validate`](Self::validate) would reject) `pcr_pid` is left
-    ///   `None`, so the builder default applies: `validate()` resolves
-    ///   first video → first KLV → first audio, which can itself error
-    ///   for a video-less program whose fallback lands on a KLV PID
+    ///   the PID of a kept stream that is neither KLV nor data. Otherwise
+    ///   (PCR on a dropped stream, on a PID outside the program, or on a
+    ///   KLV or data PID — which [`validate`](Self::validate) would
+    ///   reject) `pcr_pid` is left `None`, so the builder default
+    ///   applies: `validate()` resolves first video → first KLV → first
+    ///   audio, which can itself error for a video-less program whose
+    ///   fallback lands on a KLV PID
     ///   ([`MuxError::KlvPidUsedAsPcrPid`](crate::error::MuxError::KlvPidUsedAsPcrPid)).
     /// - **Audio language**: recovered from the first ISO 639 language
     ///   descriptor (tag `0x0A`) on the stream's raw PMT descriptors when
@@ -246,7 +259,9 @@ impl MuxerConfig {
     /// [`MuxError::ConfigInvalid`](crate::error::MuxError::ConfigInvalid)
     /// listing the unrepresentable streams not excluded via `drop`, or any
     /// [`MuxerConfigBuilder::build`] validation error on the converted
-    /// program (e.g. an empty program when every stream was dropped).
+    /// program (e.g. an empty program when every stream was dropped, or a
+    /// `treat_as`-forced Data spec whose descriptors classify as a typed
+    /// kind).
     pub fn from_program_map(
         pm: &crate::mpegts::demux::ProgramMap,
         drop: &[crate::mpegts::demux::StreamKindTag],
@@ -257,8 +272,14 @@ impl MuxerConfig {
         };
         let mut prog = MuxerProgramConfigBuilder::new(pm.program_number, pm.pmt_pid);
         let mut offenders: Vec<String> = Vec::new();
-        // (pid, is_klv) of every stream added to the builder — drives the PCR copy rule.
+        // (pid, pcr_ineligible) of every stream added to the builder — drives
+        // the PCR copy rule. KLV and data streams are PCR-ineligible: their
+        // caller-paced cadence can't promise the 100 ms PCR ceiling, and
+        // validate() rejects an explicit PCR pin on either.
         let mut kept: Vec<(u16, bool)> = Vec::new();
+        // Count of Data streams added so far — the kind-scoped index that
+        // stream_descriptors_for_data expects.
+        let mut data_idx = 0usize;
         for s in &pm.streams {
             if drop.contains(&s.kind.tag()) {
                 continue;
@@ -311,10 +332,24 @@ impl MuxerConfig {
                      recoverable from the PMT)",
                     s.pid
                 )),
-                DemuxKind::Unknown(st) => offenders.push(format!(
-                    "pid 0x{:04X} (unknown stream_type 0x{st:02X})",
-                    s.pid
-                )),
+                DemuxKind::Unknown(st) => {
+                    // carries_pts: a PES-level property the PMT cannot
+                    // declare; true is the observed norm for private data
+                    // (mirrors the KLV arms). Callers needing false build
+                    // the config by hand.
+                    prog.add_data(s.pid, *st, true);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_data(data_idx, tlvs)?;
+                    }
+                    data_idx += 1;
+                    // Data joins KLV in the PCR-ineligible class.
+                    kept.push((s.pid, true));
+                }
             }
         }
         if !offenders.is_empty() {
@@ -326,10 +361,10 @@ impl MuxerConfig {
                 ),
             });
         }
-        if let Some(&(pid, is_klv)) = kept.iter().find(|(pid, _)| *pid == pm.pcr_pid) {
-            // Explicit PCR-on-KLV is rejected by validate(); fall back to the
-            // builder default (first video) instead.
-            if !is_klv {
+        if let Some(&(pid, pcr_ineligible)) = kept.iter().find(|(pid, _)| *pid == pm.pcr_pid) {
+            // Explicit PCR-on-KLV / PCR-on-data is rejected by validate();
+            // fall back to the builder default (first video) instead.
+            if !pcr_ineligible {
                 prog.pcr_pid(pid);
             }
         }
@@ -1207,6 +1242,34 @@ impl MuxerProgramConfigBuilder {
     pub fn build(&self) -> MuxerProgramConfig {
         self.program.clone()
     }
+}
+
+/// Re-encode a parsed PMT descriptor back to its TLV wire form
+/// (`[tag, len, data…]`). PMT parsing bounds `data` to ≤255 bytes (one
+/// length byte), so descriptors from a real `ProgramMap` always fit; a
+/// hand-built `ProgramMap` can exceed that (`RawDescriptor` fields are
+/// public), which errors rather than truncating the length byte.
+fn raw_descriptor_to_tlv(
+    pid: u16,
+    d: &crate::mpegts::descriptors::RawDescriptor,
+) -> Result<Vec<u8>, MuxError> {
+    let len: u8 = d
+        .data
+        .len()
+        .try_into()
+        .map_err(|_| MuxError::ConfigInvalid {
+            reason: format!(
+                "from_program_map: pid 0x{pid:04X}: descriptor tag 0x{:02X} body is {} bytes; \
+                 a PMT descriptor body cannot exceed 255 bytes",
+                d.tag,
+                d.data.len()
+            ),
+        })?;
+    let mut tlv = Vec::with_capacity(2 + d.data.len());
+    tlv.push(d.tag);
+    tlv.push(len);
+    tlv.extend_from_slice(&d.data);
+    Ok(tlv)
 }
 
 /// First ISO 639 language descriptor (tag 0x0A) → 3-byte code, only when

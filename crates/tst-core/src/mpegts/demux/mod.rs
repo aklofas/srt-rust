@@ -25,7 +25,7 @@ pub mod strict;
 pub(super) mod ts;
 mod types;
 mod sync_ingress;
-mod pmt_classify;
+pub(crate) mod pmt_classify;
 mod psi_topology;
 mod pes_emit;
 mod stats_recorder;

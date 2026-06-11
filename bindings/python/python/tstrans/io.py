@@ -368,19 +368,24 @@ class Transmuxer:
     contract — pushes routed anywhere else would overflow the muxer's
     packet buffer).
 
-    Per-event dispatch (see `transmux` for the construction story):
+    Per-event dispatch — `handle` is the muxer stream handle resolved
+    internally from the event's source PID (see `transmux` for the
+    construction story):
 
-    - Video → `push_video_to_with_dts(raw, pts, dts, key_frame)`;
-      `dts=None` is preserved as a PTS-only PES, not coerced to dts=pts.
-    - Audio → `push_audio_to(raw, pts)` (the mux push API carries no
-      audio dts; dts≠pts audio does not occur for MP2/AAC/AC-3).
-    - Klv → `push_klv_to(payload, pts)`. Payloads are raw KLV LS bytes
-      in BOTH directions: the demuxer strips the sync-metadata AU-cell
-      header and the muxer re-wraps it — never pre-wrap. The AU cell's
-      `metadata_service_id` is not recoverable from the demux event, so
-      the muxer default applies on the way out.
-    - Subtitle → `push_subtitle_to(payload, pts)` (kept CEA-708/WebVTT
-      streams; DVB offenders must be dropped or fail config).
+    - Video → `push_video_to_with_dts(handle, raw, pts, dts,
+      key_frame)`; `dts=None` is preserved as a PTS-only PES, not
+      coerced to dts=pts.
+    - Audio → `push_audio_to(handle, raw, pts)` (the mux push API
+      carries no audio dts; dts≠pts audio does not occur for
+      MP2/AAC/AC-3).
+    - Klv → `push_klv_to(handle, payload, pts)`. Payloads are raw KLV
+      LS bytes in BOTH directions: the demuxer strips the sync-metadata
+      AU-cell header and the muxer re-wraps it — never pre-wrap. The AU
+      cell's `metadata_service_id` is not recoverable from the demux
+      event, so the muxer default applies on the way out.
+    - Subtitle → `push_subtitle_to(handle, payload, pts)` (kept
+      CEA-708/WebVTT streams; DVB offenders must be dropped or fail
+      config).
     - `ProgramMap` / `Discontinuity` / `NonConformant` /
       `ReconnectDiscontinuity` (no mux representation) and
       `UnknownSample` (only reachable for dropped streams) are accepted
@@ -502,8 +507,10 @@ class Transmuxer:
         muxer = Muxer(config)
         sink = MuxerFileSink(muxer, self._dst, atomic=self._atomic)
         proxy = sink.__enter__()
-        self._pm = pm
+        # Record the sink FIRST: from here on, __exit__ owns its
+        # cleanup even if a later step (or future insertion) raises.
         self._sink = sink
+        self._pm = pm
         self._proxy = proxy
         self._handles = self._build_handles(pm, muxer)
 

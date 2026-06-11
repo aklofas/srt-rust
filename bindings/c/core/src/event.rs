@@ -278,8 +278,9 @@ pub enum TstMultiCellAuReason {
 ///   `ref_idc_or_layer_id` is `nuh_layer_id`; `temporal_id_plus1`
 ///   is the temporal-id field +1 (per spec).
 ///
-/// `payload` borrows from the demuxer's NAL-unit Vec; valid until
-/// the next `_recv_event` / `_close` call on this handle.
+/// `payload` is arena-owned — for H.26x it points into the raw-AU copy
+/// exposed by the parent sample's `payload` field; valid until the next
+/// `_recv_event` / `_close` call on this handle.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TstNal {
@@ -302,6 +303,8 @@ const _TST_NAL_SIZE: () = assert!(
 /// `has_extension` is 0 or 1; `temporal_id` and `spatial_id` are
 /// valid only when `has_extension == 1`. `payload` is the OBU body
 /// (header byte + extension byte + LEB128 size already stripped).
+/// `payload` is arena-owned; valid until the next `_recv_event` / `_close`
+/// call on this handle.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TstObu {
@@ -439,10 +442,23 @@ pub struct TstEventSample {
     /// for known stream types (use `codec` field instead).
     pub stream_type: u8,
     pub _pad: [u8; 2],
+    /// (Video, NAL-shaped codecs) Parsed NAL-unit views of the access unit
+    /// in `payload`. Null for non-video samples and AV1 (see `obus`).
+    /// (`nal_count` may be 0.)
     pub nals: *const TstNal,
     pub nal_count: usize,
+    /// (Video, AV1) Parsed OBU views. Null for non-video samples and
+    /// NAL-shaped codecs (see `nals`).
     pub obus: *const TstObu,
     pub obu_count: usize,
+    /// Raw payload bytes, arena-owned; valid until the next `_recv_event`
+    /// / `_close` call on this handle.
+    /// * Video (since v0.2.0; null before): the exact encoded access unit
+    ///   — Annex-B byte stream for H.264/H.265/H.266, on-wire PES payload
+    ///   for AV1. Feed it back to `tst_muxer_push_video` for byte-faithful
+    ///   transmux. The parsed view of the same AU is in `nals` / `obus`.
+    /// * Audio: the raw frame bytes (e.g. ADTS for AAC).
+    /// * Subtitle / Unknown: the raw PES payload bytes.
     pub payload: *const u8,
     pub payload_len: usize,
 }
@@ -781,8 +797,8 @@ fn fill_sample(
     let mut nal_count: usize = 0;
     let mut obus_ptr: *const TstObu = core::ptr::null();
     let mut obu_count: usize = 0;
-    let mut payload_ptr: *const u8 = core::ptr::null();
-    let mut payload_len: usize = 0;
+    let payload_ptr: *const u8;
+    let payload_len: usize;
     let mut random_access_indicator: u8 = 0;
     let mut stream_type: u8 = 0;
     match payload {
@@ -793,49 +809,63 @@ fn fill_sample(
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             random_access_indicator = u8::from(*rai);
-            // Raw-first: the demuxer emits the encoded access unit; split it
-            // into NAL/OBU units here (the opt-in parse) so the C
-            // TstNalUnit[]/TstObu[] surface is unchanged. ES-conformance
-            // issues are not surfaced over this C ABI.
+            // Raw-first: copy the encoded access unit once; `payload`/
+            // `payload_len` expose it (parity with tst-py's `.raw` and the
+            // JVM's `DemuxEvent.Video.raw`). Then split into NAL/OBU units
+            // (the opt-in parse) so the TstNal[]/TstObu[] surface keeps
+            // working; ES-conformance issues are not surfaced over this C
+            // ABI. Unit slots point INTO the AU copy when the split units
+            // are subslices of the AU (H.26x always; AV1 binding-mode
+            // unwraps into a fresh buffer → per-unit-copy fallback in
+            // `unit_arena_offset`).
+            let raw_off = arena.payload_buf.len();
+            arena.payload_buf.extend_from_slice(raw);
+            let raw_base = raw.as_ptr() as usize;
+            let raw_len = raw.len();
             let (vp, _issues) = split_video(raw, *vc);
             match &vp {
                 VideoPayload::Nals(nals) => {
-                    // Two-pass: collect (offset, len) per NAL, resolve to
+                    // Two-pass: collect each NAL's offset, resolve to
                     // `payload_buf.as_ptr() + offset` after all extends
                     // are done so the base pointer is stable.
-                    let mut records: Vec<(usize, usize)> = Vec::with_capacity(nals.len());
+                    let mut records: Vec<usize> = Vec::with_capacity(nals.len());
                     for n in nals {
                         let bytes = nal_payload_bytes(n);
-                        let offset = arena.payload_buf.len();
-                        arena.payload_buf.extend_from_slice(bytes);
-                        records.push((offset, bytes.len()));
+                        records.push(unit_arena_offset(arena, raw_off, raw_base, raw_len, bytes));
                         arena.nals.push(nal_to_c(n));
                     }
                     let base = arena.payload_buf.as_ptr();
-                    for (slot, (offset, _len)) in arena.nals.iter_mut().zip(records.iter()) {
-                        // SAFETY: offset returned by len() before the
-                        // contributing extend; base+offset is in-bounds.
+                    for (slot, offset) in arena.nals.iter_mut().zip(records.iter()) {
+                        // SAFETY: offset is either inside the AU copy
+                        // (subslice case) or was returned by len() before
+                        // the contributing extend; base+offset is in-bounds.
                         slot.payload = unsafe { base.add(*offset) };
                     }
                     nals_ptr = arena.nals.as_ptr();
                     nal_count = arena.nals.len();
                 }
                 VideoPayload::Obus(obus) => {
-                    let mut records: Vec<(usize, usize)> = Vec::with_capacity(obus.len());
+                    let mut records: Vec<usize> = Vec::with_capacity(obus.len());
                     for o in obus {
-                        let offset = arena.payload_buf.len();
-                        arena.payload_buf.extend_from_slice(&o.payload);
-                        records.push((offset, o.payload.len()));
+                        records.push(unit_arena_offset(
+                            arena, raw_off, raw_base, raw_len, &o.payload,
+                        ));
                         arena.obus.push(obu_to_c(o));
                     }
                     let base = arena.payload_buf.as_ptr();
-                    for (slot, (offset, _len)) in arena.obus.iter_mut().zip(records.iter()) {
+                    for (slot, offset) in arena.obus.iter_mut().zip(records.iter()) {
+                        // SAFETY: as above.
                         slot.payload = unsafe { base.add(*offset) };
                     }
                     obus_ptr = arena.obus.as_ptr();
                     obu_count = arena.obus.len();
                 }
             }
+            // Resolve the AU pointer only after every extend is done (the
+            // Vec base pointer is stable from here until the next convert()).
+            // SAFETY: raw_len bytes were appended at raw_off above.
+            payload_ptr = unsafe { arena.payload_buf.as_ptr().add(raw_off) };
+            payload_len = raw_len;
         }
         SamplePayload::Audio { codec: ac, frames } => {
             codec = crate::config::TstAudioCodec::from_core(*ac) as i32;
@@ -1352,6 +1382,32 @@ fn nal_payload_bytes(n: &tst_core::mpegts::demux::NalUnit) -> &[u8] {
     }
 }
 
+/// Arena offset for one split-unit's bytes during `fill_sample`'s Video
+/// arm. `split_video` yields zero-copy subslices of the raw AU for H.26x
+/// (and AV1 raw-OBU carriage) — reuse the single AU copy already in
+/// `payload_buf` at the matching offset. AV1 *binding-mode* unwraps into a
+/// fresh buffer (units are NOT subslices of the AU) — append a per-unit
+/// copy instead. `raw_off` is the AU copy's offset in `payload_buf`;
+/// `raw_base`/`raw_len` describe the live input AU backing.
+fn unit_arena_offset(
+    arena: &mut EventArena,
+    raw_off: usize,
+    raw_base: usize,
+    raw_len: usize,
+    bytes: &[u8],
+) -> usize {
+    let p = bytes.as_ptr() as usize;
+    // Empty slices are excluded — an empty slice's dangling as_ptr() must
+    // not be offset-mapped into the AU copy.
+    if !bytes.is_empty() && p >= raw_base && p + bytes.len() <= raw_base + raw_len {
+        raw_off + (p - raw_base)
+    } else {
+        let off = arena.payload_buf.len();
+        arena.payload_buf.extend_from_slice(bytes);
+        off
+    }
+}
+
 /// Build a `TstNal` with metadata fields populated and `payload` set to
 /// null + `payload_len` carrying the actual size. The caller (`fill_sample`)
 /// resolves `payload` to an arena-owned pointer after `payload_buf` stops
@@ -1625,6 +1681,159 @@ mod tests {
             "AV1 OBU payload range must NOT overlap the live input AU backing"
         );
         // Deep-copy proof: the arena copy carries the OBU body bytes.
+        let obu_bytes = unsafe { core::slice::from_raw_parts(arena.obus[0].payload, obu_len) };
+        assert_eq!(obu_bytes, &[0x0A, 0x0B, 0x0C]);
+    }
+
+    #[test]
+    fn h264_video_sample_payload_is_raw_au() {
+        // v0.2.0 Wave 5: video samples expose the raw encoded AU via
+        // `payload`/`payload_len` (NULL for video before). Two-NAL Annex-B
+        // AU (SPS + PPS, 4-byte start codes) so the subslice optimization
+        // is exercised across multiple units.
+        let au = vec![
+            0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, // SPS
+            0x00, 0x00, 0x00, 0x01, 0x68, 0xCE, 0x38, 0x80, // PPS
+        ];
+        let shared = SharedBytes::from_vec(au.clone());
+        let backing = shared.as_ptr() as usize;
+        let backing_len = shared.len();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x500, StreamKind::Video(VideoCodec::H264)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                raw: shared,
+                random_access_indicator: true,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let payload_ptr = unsafe { out.u.sample.payload };
+        let payload_len = unsafe { out.u.sample.payload_len };
+        assert!(
+            !payload_ptr.is_null(),
+            "video payload must carry the raw encoded AU since v0.2.0"
+        );
+        let raw_bytes = unsafe { core::slice::from_raw_parts(payload_ptr, payload_len) };
+        assert_eq!(raw_bytes, &au[..], "payload must be the exact encoded AU");
+        // Arena-owned: range must not overlap the LIVE input backing (held
+        // alive by `ev`) — content + range, never raw-address equality
+        // (allocator address reuse made that a windows-msvc flake).
+        let p = payload_ptr as usize;
+        assert!(
+            p + payload_len <= backing || p >= backing + backing_len,
+            "raw AU copy must not overlap the live input backing"
+        );
+        // Subslice optimization: each NAL slot points INTO the single
+        // raw-AU arena copy (H.26x split units are views into the AU).
+        assert_eq!(arena.nals.len(), 2);
+        for slot in &arena.nals {
+            let sp = slot.payload as usize;
+            assert!(
+                sp >= p && sp + slot.payload_len <= p + payload_len,
+                "NAL slot must point into the raw-AU arena copy"
+            );
+        }
+        let nal0 = unsafe {
+            core::slice::from_raw_parts(arena.nals[0].payload, arena.nals[0].payload_len)
+        };
+        assert_eq!(nal0, &[0x42, 0x00, 0x1E], "SPS body (header 0x67 stripped)");
+        let nal1 = unsafe {
+            core::slice::from_raw_parts(arena.nals[1].payload, arena.nals[1].payload_len)
+        };
+        assert_eq!(nal1, &[0xCE, 0x38, 0x80], "PPS body (header 0x68 stripped)");
+    }
+
+    #[test]
+    fn av1_video_sample_payload_is_raw_wire_bytes() {
+        // AV1 `payload` = the on-wire PES payload exactly (raw-OBU
+        // carriage here). OBU views into the AU → slots reuse the AU copy.
+        let au = vec![0x0Au8, 0x03, 0x0A, 0x0B, 0x0C];
+        let shared = SharedBytes::from_vec(au.clone());
+        let backing = shared.as_ptr() as usize;
+        let backing_len = shared.len();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x600, StreamKind::Video(VideoCodec::Av1)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::Av1,
+                raw: shared,
+                random_access_indicator: true,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let payload_ptr = unsafe { out.u.sample.payload };
+        let payload_len = unsafe { out.u.sample.payload_len };
+        assert!(!payload_ptr.is_null());
+        let raw_bytes = unsafe { core::slice::from_raw_parts(payload_ptr, payload_len) };
+        assert_eq!(raw_bytes, &au[..], "AV1 payload must mirror the wire bytes");
+        let p = payload_ptr as usize;
+        assert!(
+            p + payload_len <= backing || p >= backing + backing_len,
+            "raw AU copy must not overlap the live input backing"
+        );
+        assert_eq!(arena.obus.len(), 1);
+        let obu_bytes = unsafe {
+            core::slice::from_raw_parts(arena.obus[0].payload, arena.obus[0].payload_len)
+        };
+        assert_eq!(obu_bytes, &[0x0A, 0x0B, 0x0C]);
+    }
+
+    #[test]
+    fn av1_binding_mode_payload_is_wire_bytes_with_per_unit_fallback() {
+        // AV1 *binding-mode* AU (§3.2 start-code framing): `payload` still
+        // mirrors the wire bytes (transmux reproduces input — the
+        // documented AV1 exception), while `split_video` unwraps into a
+        // FRESH buffer, so OBU slots take the per-unit-copy fallback. The
+        // contract assertions are content-based + live-range-based only
+        // (which copy strategy was used is an internal detail).
+        let au = vec![0x00u8, 0x00, 0x01, 0x0A, 0x03, 0x0A, 0x0B, 0x0C];
+        let shared = SharedBytes::from_vec(au.clone());
+        let backing = shared.as_ptr() as usize;
+        let backing_len = shared.len();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x601, StreamKind::Video(VideoCodec::Av1)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::Av1,
+                raw: shared,
+                random_access_indicator: false,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let payload_ptr = unsafe { out.u.sample.payload };
+        let payload_len = unsafe { out.u.sample.payload_len };
+        let raw_bytes = unsafe { core::slice::from_raw_parts(payload_ptr, payload_len) };
+        assert_eq!(
+            raw_bytes,
+            &au[..],
+            "binding-mode AV1 payload must mirror the wire bytes (framing intact)"
+        );
+        let p = payload_ptr as usize;
+        assert!(
+            p + payload_len <= backing || p >= backing + backing_len,
+            "raw AU copy must not overlap the live input backing"
+        );
+        assert_eq!(
+            arena.obus.len(),
+            1,
+            "binding unwrap must still split the OBU"
+        );
+        let obu_ptr = arena.obus[0].payload as usize;
+        let obu_len = arena.obus[0].payload_len;
+        assert!(
+            obu_ptr + obu_len <= backing || obu_ptr >= backing + backing_len,
+            "fallback OBU copy must not overlap the live input backing"
+        );
         let obu_bytes = unsafe { core::slice::from_raw_parts(arena.obus[0].payload, obu_len) };
         assert_eq!(obu_bytes, &[0x0A, 0x0B, 0x0C]);
     }

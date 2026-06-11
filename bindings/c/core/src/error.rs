@@ -402,9 +402,10 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             MuxSenderErrorKind::ConfigInvalid => TstError::InvalidConfig,
             MuxSenderErrorKind::InvalidUsage => TstError::InvalidUsage,
             MuxSenderErrorKind::Backpressure => TstError::BufferFull,
-            // AudioTooLarge + SubtitleTooLarge fall through here (the
-            // 2 InputMalformed variants not covered by overrides above).
-            // Both project to InvalidUsage per the pre-Wave-6.D behavior.
+            // AudioTooLarge + SubtitleTooLarge + DataTooLarge fall through
+            // here (the 3 InputMalformed variants not covered by overrides
+            // above). All three project to InvalidUsage per the
+            // pre-Wave-6.D behavior.
             MuxSenderErrorKind::InputMalformed => TstError::InvalidUsage,
             MuxSenderErrorKind::Internal => TstError::Internal,
             // Required by #[non_exhaustive]. CI ratchet

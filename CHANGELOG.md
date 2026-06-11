@@ -33,6 +33,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The JVM binding is unaffected (`v.payload()` still returns parsed
   `List<VideoUnit>` — it splits internally). The C ABI is unchanged.
 
+### Fixed — `Muxer.write_file` drain contract documented + overflow hint (Python)
+
+- Investigated the corrector-notebook `MuxError: muxer packet buffer is full`
+  failure inside `Muxer.write_file(...)`: the drain proxy is correct — only
+  pushes made on the proxy object the `with` statement yields drain per push;
+  pushes on the original `Muxer` bypass the sink entirely and overflow once
+  `buffer_packets` accumulate. Docstrings (`write_file`, `MuxerFileSink`,
+  `MuxerDrainProxy`) and the Python language guide now state the
+  push-on-the-proxy contract explicitly.
+- The Python `MuxError(BACKPRESSURE)` raised on a full packet buffer now
+  appends a hint pointing at the `write_file` proxy contract — the message a
+  user actually sees when they hit the footgun mid-loop.
+- New regression tests: a >10 000-AU push loop through the proxy (drains per
+  push, never overflows) and the raw-muxer footgun itself (overflows, carries
+  the hint).
+
 ### Added — ST 0601 byte-faithful tag patcher
 
 - `tst_core::klv::st0601::patch` + `tstrans.klv.patch_uas_datalink`: byte-faithful

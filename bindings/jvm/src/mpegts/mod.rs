@@ -318,18 +318,23 @@ pub(crate) fn convert_event<'local>(
                     let (video_payload, _issues) = split_video(raw, *codec);
                     let units = build_video_units(env, &video_payload)?;
                     let codec_obj = codec_enum(env, "VideoCodec", video_codec_name(*codec))?;
+                    // `raw` parity with tst-py: the exact encoded AU as a heap
+                    // (JVM-owned) copy — JDK < 22 forbids direct buffers over
+                    // Rust memory.
+                    let raw_buf = wrap_heap_byte_buffer(env, raw.as_slice())?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Video",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;ZLorg/tstrans/CodecParseException;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;Ljava/nio/ByteBuffer;ZLorg/tstrans/CodecParseException;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
                             JValue::Object(&codec_obj),
                             JValue::Object(&units),
+                            JValue::Object(&raw_buf),
                             JValue::Bool(*random_access_indicator as u8),
                             // codec_parse_error: always null for video — the
-                            // demuxer already split the NALs/OBUs, so typed
+                            // binding split the NALs/OBUs itself, so typed
                             // payload construction cannot fail at this layer.
                             JValue::Object(&JObject::null()),
                         ],

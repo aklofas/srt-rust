@@ -28,8 +28,13 @@ class ParseFileTest {
         assertFalse(events.isEmpty(), "parseFile must yield events from the fixture");
         assertTrue(events.stream().anyMatch(e -> e instanceof DemuxEvent.ProgramMap),
             "expected a ProgramMap event");
-        assertTrue(events.stream().anyMatch(e -> e instanceof DemuxEvent.Video),
-            "expected a Video event");
+        DemuxEvent.Video video = events.stream()
+            .filter(e -> e instanceof DemuxEvent.Video)
+            .map(e -> (DemuxEvent.Video) e)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("expected a Video event"));
+        assertNotNull(video.raw(), "Video events carry the raw encoded AU");
+        assertTrue(video.raw().remaining() > 0, "raw AU must be non-empty");
     }
 
     @Test

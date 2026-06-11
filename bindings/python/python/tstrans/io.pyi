@@ -7,11 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Optional, Tuple, Union
 
+from tstrans.klv import UasDatalinkLs
 from tstrans.mpegts import (
     AudioCodec,
     DemuxEvent,
     DemuxerConfig,
     ProgramMap,
+    Pts90khz,
     SubtitleCodec,
     VideoCodec,
 )
@@ -45,5 +47,11 @@ def extract_klv(
     skip_malformed: bool = ...,
     config: Optional[DemuxerConfig] = ...,
 ) -> Iterator[Any]: ...
+def iter_uas_datalink(
+    path: Union[str, Path],
+    *,
+    strict: bool = ...,
+    config: Optional[DemuxerConfig] = ...,
+) -> Iterator[Tuple[Pts90khz, int, UasDatalinkLs]]: ...
 
-__all__ = ["parse_file", "probe", "extract_klv", "ProbeResult"]
+__all__ = ["parse_file", "probe", "extract_klv", "iter_uas_datalink", "ProbeResult"]

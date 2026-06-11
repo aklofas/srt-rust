@@ -5,6 +5,7 @@ Read-side helpers:
 - `parse_file(path, config=None)` → `Iterator[DemuxEvent]`
 - `probe(path)` → `ProbeResult` summary
 - `extract_klv(path, with_pts=False)` → iterator of KLV payloads
+- `iter_uas_datalink(path)` → iterator of `(pts, klv_index, UasDatalinkLs)`
 
 The write-side `Muxer.write_file(path)` context manager lives on the
 `Muxer` class in `tstrans.mpegts`.
@@ -248,9 +249,55 @@ def extract_klv(
             yield (ev.pts, ev.payload) if with_pts else ev.payload
 
 
+def iter_uas_datalink(
+    path: Union[str, Path],
+    *,
+    strict: bool = False,
+    config: Optional[DemuxerConfig] = None,
+) -> "Iterator[tuple[Pts90khz, int, UasDatalinkLs]]":
+    """Iterate typed MISB ST 0601 records in a file. Yields
+    `(pts, klv_index, record)` tuples where `record` is a decoded
+    `tstrans.klv.UasDatalinkLs`.
+
+    `klv_index` is the 0-based ordinal of the KLV event within the
+    file's full KLV event sequence — it counts EVERY `DemuxEvent.Klv`
+    (including the non-ST-0601 records this iterator skips), so
+    indices line up with `extract_klv(path)` output and with the KLV
+    events seen during a re-mux pass over the same file.
+
+    Records whose universal label is outside the ST 0601 family are
+    skipped (use `extract_klv(parsed=True)` for the multi-set
+    variant). `strict` is forwarded to
+    `tstrans.klv.decode_uas_datalink`; today its only extra check
+    (canonical family UL) is subsumed by this iterator's own family
+    filter, so it is forward-compat surface for stricter core decode
+    modes. A structurally malformed record raises
+    `tstrans.exceptions.KlvError` in BOTH modes; per-field decode
+    issues land on `record.field_errors` (lenient) instead of
+    raising.
+
+    Pass `config` to use a non-default demuxer configuration (e.g.
+    `DemuxerConfig(cfi_tolerance=False)` for spec-strict conformance
+    testing).
+    """
+
+    # Local import dodges import-cycle with tstrans.klv at module load.
+    from tstrans.klv import decode_uas_datalink, is_st0601_family
+
+    klv_index = -1
+    for ev in parse_file(path, config=config):
+        if not isinstance(ev, DemuxEvent.Klv):
+            continue
+        klv_index += 1
+        if not is_st0601_family(ev.payload):
+            continue
+        yield (ev.pts, klv_index, decode_uas_datalink(ev.payload, strict=strict))
+
+
 __all__: list[str] = [
     "parse_file",
     "probe",
     "extract_klv",
+    "iter_uas_datalink",
     "ProbeResult",
 ]

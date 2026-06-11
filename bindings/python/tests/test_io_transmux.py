@@ -328,3 +328,33 @@ def test_transmux_write_rejects_non_events(tmp_path):
             tx.write(b"not an event")
         with pytest.raises(TypeError, match="expected a DemuxEvent.Klv"):
             tx.write_klv(b"not an event", b"payload")
+
+
+# ---------------------------------------------------------------------------
+# atomic= passes through the MuxerFileSink temp-file + os.replace machinery.
+# ---------------------------------------------------------------------------
+
+def test_transmux_atomic_success_promotes_dst(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with tio.transmux(src, dst, atomic=True) as tx:
+        for ev in tx:
+            tx.write(ev)
+            # While inside the block, output lives in a *.partial temp.
+            assert not dst.exists()
+    out_videos, _ = _collect(dst)
+    assert out_videos == ORIG_AUS
+    assert not list(tmp_path.glob("*.partial"))
+
+
+def test_transmux_atomic_failure_leaves_nothing(tmp_path):
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with pytest.raises(RuntimeError, match="boom"):
+        with tio.transmux(src, dst, atomic=True) as tx:
+            for ev in tx:
+                tx.write(ev)
+                if isinstance(ev, DemuxEvent.Video):
+                    raise RuntimeError("boom")
+    assert not dst.exists()
+    assert not list(tmp_path.glob("*.partial"))

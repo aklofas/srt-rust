@@ -1398,7 +1398,11 @@ fn unit_arena_offset(
 ) -> usize {
     let p = bytes.as_ptr() as usize;
     // Empty slices are excluded — an empty slice's dangling as_ptr() must
-    // not be offset-mapped into the AU copy.
+    // not be offset-mapped into the AU copy. The end-address sums below
+    // cannot overflow: `bytes` and the AU backing are live slices, and Rust
+    // guarantees a live allocation is <= isize::MAX bytes and does not wrap
+    // the address space, so `ptr + len` is a representable one-past-end
+    // address for both.
     if !bytes.is_empty() && p >= raw_base && p + bytes.len() <= raw_base + raw_len {
         raw_off + (p - raw_base)
     } else {

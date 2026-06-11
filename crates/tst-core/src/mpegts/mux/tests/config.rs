@@ -472,7 +472,7 @@ fn data_typed_stream_types_rejected() {
 fn data_0x06_masquerade_descriptors_rejected() {
     // 0x06 + a classifying descriptor re-demuxes as a typed kind (KLV /
     // AV1 video / subtitle) — a Data stream must not masquerade as one.
-    let masquerades: [Vec<u8>; 6] = [
+    let masquerades: [Vec<u8>; 7] = [
         b"\x05\x04KLVA".to_vec(),
         b"\x05\x04AV01".to_vec(),
         b"\x05\x04VTTC".to_vec(),
@@ -481,6 +481,8 @@ fn data_0x06_masquerade_descriptors_rejected() {
         vec![0x59, 0x08, b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x02],
         // teletext_descriptor (tag 0x56)
         vec![0x56, 0x05, b'e', b'n', b'g', 0x08, 0x88],
+        // VBI_teletext_descriptor (tag 0x46) — same body shape as 0x56
+        vec![0x46, 0x05, b'e', b'n', b'g', 0x08, 0x88],
     ];
     for tlv in masquerades {
         let err = build_cfg(data_prog(0x06, vec![tlv.clone()])).unwrap_err();

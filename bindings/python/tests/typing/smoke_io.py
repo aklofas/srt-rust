@@ -3,9 +3,17 @@ io signatures against the .pyi stub. Not collected by pytest (no test_*);
 checked statically by tests/typing/mypy.ini."""
 from typing import Iterator, assert_type
 
-from tstrans.io import ProbeResult, extract_klv, iter_uas_datalink, parse_file, probe
+from tstrans.io import (
+    ProbeResult,
+    Transmuxer,
+    extract_klv,
+    iter_uas_datalink,
+    parse_file,
+    probe,
+    transmux,
+)
 from tstrans.klv import UasDatalinkLs
-from tstrans.mpegts import DemuxEvent, Pts90khz
+from tstrans.mpegts import DemuxEvent, Pts90khz, StreamKindTag
 
 assert_type(parse_file("a.ts"), Iterator[DemuxEvent])
 r = probe("a.ts")
@@ -22,3 +30,12 @@ for pts, klv_index, record in iter_uas_datalink("a.ts", strict=True):
     assert_type(pts, Pts90khz)
     assert_type(klv_index, int)
     assert_type(record, UasDatalinkLs)
+
+# transmux: context manager + iterator + write surface, precise types.
+with transmux("a.ts", "b.ts", drop=(StreamKindTag.KLV_SYNC,), atomic=True) as tx:
+    assert_type(tx, Transmuxer)
+    for ev in tx:
+        assert_type(ev, DemuxEvent)
+        tx.write(ev)
+        if isinstance(ev, DemuxEvent.Klv):
+            tx.write_klv(ev, b"replacement")

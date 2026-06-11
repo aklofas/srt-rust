@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Optional, Tuple, Union
+from types import TracebackType
+from typing import Any, Iterator, Optional, Sequence, Tuple, Type, Union
 
 from tstrans.klv import UasDatalinkLs
 from tstrans.mpegts import (
@@ -14,6 +15,7 @@ from tstrans.mpegts import (
     DemuxerConfig,
     ProgramMap,
     Pts90khz,
+    StreamKindTag,
     SubtitleCodec,
     VideoCodec,
 )
@@ -54,4 +56,42 @@ def iter_uas_datalink(
     config: Optional[DemuxerConfig] = ...,
 ) -> Iterator[Tuple[Pts90khz, int, UasDatalinkLs]]: ...
 
-__all__ = ["parse_file", "probe", "extract_klv", "iter_uas_datalink", "ProbeResult"]
+class Transmuxer:
+    def __init__(
+        self,
+        src: Union[str, Path],
+        dst: Union[str, Path],
+        *,
+        drop: Sequence[StreamKindTag] = ...,
+        atomic: bool = ...,
+    ) -> None: ...
+    def __enter__(self) -> Transmuxer: ...
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None: ...
+    def __iter__(self) -> Iterator[DemuxEvent]: ...
+    def write(self, ev: DemuxEvent) -> None: ...
+    def write_klv(
+        self, ev: DemuxEvent.Klv, new_bytes: Union[bytes, bytearray, memoryview]
+    ) -> None: ...
+
+def transmux(
+    src: Union[str, Path],
+    dst: Union[str, Path],
+    *,
+    drop: Sequence[StreamKindTag] = ...,
+    atomic: bool = ...,
+) -> Transmuxer: ...
+
+__all__ = [
+    "parse_file",
+    "probe",
+    "extract_klv",
+    "iter_uas_datalink",
+    "transmux",
+    "ProbeResult",
+    "Transmuxer",
+]

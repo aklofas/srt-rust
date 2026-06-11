@@ -10,7 +10,7 @@
 //! packets) tells receivers where the section starts.
 
 use super::ts::{AdaptationField, ContinuityCounters, write_packet};
-use crate::mpegts::common::{StreamType, crc32::crc32_mpeg2, descriptor, pid};
+use crate::mpegts::common::{crc32::crc32_mpeg2, descriptor, pid};
 
 /// Build the full 188-byte PAT packet for a single- or multi-program TS.
 ///
@@ -91,7 +91,11 @@ pub(crate) fn write_pat_packet(
 
 /// PMT entry for one elementary stream.
 pub(crate) struct PmtStreamEntry<'a> {
-    pub stream_type: StreamType,
+    /// Raw PMT stream_type byte. Typed streams reduce their
+    /// `StreamType` enum via `.as_u8()` at entry-build time
+    /// (`scheduling.rs`); `StreamSpec::Data` carries the caller-chosen
+    /// byte through verbatim.
+    pub stream_type: u8,
     pub elementary_pid: u16,
     /// Pre-composed descriptor-loop bytes for this ES (already concatenated
     /// across auto-emitted + caller-supplied descriptors). Empty slice
@@ -130,7 +134,8 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 ///   `language: Some(_)` without a caller tag-0x0A; subtitling_descriptor
 ///   (10 B), teletext_descriptor (7 B), VTTC Registration (6 B), or GA94
 ///   Registration (6 B) on subtitle streams (always — the auto-emit IS the
-///   codec marker).
+///   codec marker); nothing (0 B) on data streams (the muxer never
+///   auto-emits a descriptor on a `StreamSpec::Data` stream).
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramConfig) -> usize {
     use crate::mpegts::mux::{AudioCodec, KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
 
@@ -206,6 +211,8 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramC
                 codec: SubtitleCodec::WebVttInTs,
                 ..
             } => 6, // VTTC Registration
+            // Data streams never auto-emit — caller descriptors only.
+            StreamSpec::Data { .. } => 0,
             _ => 0,
         };
         // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptor bytes.
@@ -307,7 +314,7 @@ pub(crate) fn write_pmt_packet(
 
     // ES loop
     for s in streams {
-        payload[idx] = s.stream_type.as_u8();
+        payload[idx] = s.stream_type;
         idx += 1;
         payload[idx] = 0xE0 | ((s.elementary_pid >> 8) as u8 & 0x1F);
         payload[idx + 1] = (s.elementary_pid & 0xFF) as u8;
@@ -343,7 +350,7 @@ pub(crate) fn write_pmt_packet(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mpegts::common::pid;
+    use crate::mpegts::common::{StreamType, pid};
     use crate::mpegts::mux::{
         KlvStreamType, MuxerConfig, MuxerProgramConfig, MuxerProgramConfigBuilder, StreamSpec,
         VideoCodec,
@@ -488,12 +495,12 @@ mod tests {
 
         let streams = [
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x1011,
                 descriptors: &[],
             },
             PmtStreamEntry {
-                stream_type: StreamType::KlvPrivate,
+                stream_type: StreamType::KlvPrivate.as_u8(),
                 elementary_pid: 0x1031,
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
@@ -544,12 +551,12 @@ mod tests {
         let prog = prog_config_h264_klv();
         let streams = [
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x1011,
                 descriptors: &[],
             },
             PmtStreamEntry {
-                stream_type: StreamType::KlvPrivate,
+                stream_type: StreamType::KlvPrivate.as_u8(),
                 elementary_pid: 0x1031,
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
@@ -613,12 +620,12 @@ mod tests {
         };
         let streams = [
             PmtStreamEntry {
-                stream_type: StreamType::H265,
+                stream_type: StreamType::H265.as_u8(),
                 elementary_pid: 0x1011,
                 descriptors: &[],
             },
             PmtStreamEntry {
-                stream_type: StreamType::KlvSyncMetadata,
+                stream_type: StreamType::KlvSyncMetadata.as_u8(),
                 elementary_pid: 0x1031,
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
@@ -646,7 +653,7 @@ mod tests {
             stream_descriptors: vec![Vec::new()],
         };
         let streams = [PmtStreamEntry {
-            stream_type: StreamType::H266,
+            stream_type: StreamType::H266.as_u8(),
             elementary_pid: 0x1011,
             descriptors: &[],
         }];
@@ -672,22 +679,22 @@ mod tests {
         let big_desc = vec![0xFFu8; 255];
         let entries = [
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x100,
                 descriptors: &big_desc,
             },
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x101,
                 descriptors: &big_desc,
             },
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x102,
                 descriptors: &big_desc,
             },
             PmtStreamEntry {
-                stream_type: StreamType::H264,
+                stream_type: StreamType::H264.as_u8(),
                 elementary_pid: 0x103,
                 descriptors: &big_desc,
             },
@@ -712,7 +719,7 @@ mod tests {
         let mut cc = ContinuityCounters::new();
         let prog = prog_config_h264_klv();
         let streams = [PmtStreamEntry {
-            stream_type: StreamType::H264,
+            stream_type: StreamType::H264.as_u8(),
             elementary_pid: 0x1011,
             descriptors: &[],
         }];

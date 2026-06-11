@@ -51,7 +51,8 @@ fn spec_pid(s: &StreamSpec) -> u16 {
         StreamSpec::Video { pid, .. }
         | StreamSpec::Klv { pid, .. }
         | StreamSpec::Audio { pid, .. }
-        | StreamSpec::Subtitle { pid, .. } => *pid,
+        | StreamSpec::Subtitle { pid, .. }
+        | StreamSpec::Data { pid, .. } => *pid,
     }
 }
 

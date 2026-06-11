@@ -167,7 +167,7 @@ pub enum SubtitleCodec {
     WebVttInTs,
 }
 
-/// Classifier for the four supported stream classes carried in an MPEG-TS
+/// Classifier for the five supported stream classes carried in an MPEG-TS
 /// program. Used by [`MuxError`](crate::error::MuxError) variants whose semantics are
 /// stream-kind-specific (e.g., [`MuxError::AmbiguousTarget`](crate::error::MuxError::AmbiguousTarget),
 /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle), [`MuxError::DescriptorIndexOutOfRange`](crate::error::MuxError::DescriptorIndexOutOfRange)).
@@ -178,6 +178,7 @@ pub enum StreamKind {
     Audio,
     Klv,
     Subtitle,
+    Data,
 }
 
 impl core::fmt::Display for StreamKind {
@@ -187,6 +188,7 @@ impl core::fmt::Display for StreamKind {
             StreamKind::Audio => "audio",
             StreamKind::Klv => "klv",
             StreamKind::Subtitle => "subtitle",
+            StreamKind::Data => "data",
         })
     }
 }
@@ -260,6 +262,31 @@ pub enum StreamSpec {
         /// the auto-emitted PMT descriptor disambiguates.
         codec: SubtitleCodec,
     },
+    /// One arbitrary private/application data elementary stream — PES
+    /// pass-through with a caller-chosen PMT stream_type byte. The
+    /// write-side dual of demux `StreamKind::Unknown(stream_type)`.
+    ///
+    /// Caller PMT descriptors (e.g. private tag-0xFF name descriptors)
+    /// ride the program's `stream_descriptors` array via
+    /// [`MuxerProgramConfigBuilder::stream_descriptors_for_data`](crate::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_data);
+    /// the muxer never auto-emits a descriptor on a Data stream.
+    ///
+    /// `validate()` rejects `(stream_type, descriptors)` pairs the demux
+    /// classifier would map to a typed kind ("must classify Unknown"):
+    /// typed bytes (0x1B/0x24/0x33/0x15/0x03/0x04/0x0F/0x11/0x81) and
+    /// 0x06 with classifying markers (subtitling/teletext tags or
+    /// AV01/VTTC/GA94/KLVA registrations). Use the typed `StreamSpec`
+    /// variants for those.
+    Data {
+        /// PID. Must be in `0x0010..=0x1FFE`, distinct from other stream PIDs.
+        pid: u16,
+        /// Raw PMT stream_type byte (e.g. 0xF0/0xF1 user-private, bare 0x06).
+        stream_type: u8,
+        /// Whether the PES header carries a PTS (PES-level property the
+        /// PMT cannot declare). The PES stream_id is always 0xBD
+        /// (private_stream_1); DTS is not representable.
+        carries_pts: bool,
+    },
 }
 
 impl StreamSpec {
@@ -269,6 +296,7 @@ impl StreamSpec {
             StreamSpec::Klv { pid, .. } => *pid,
             StreamSpec::Audio { pid, .. } => *pid,
             StreamSpec::Subtitle { pid, .. } => *pid,
+            StreamSpec::Data { pid, .. } => *pid,
         }
     }
 }
@@ -600,7 +628,8 @@ impl AudioStreamHandle {
 
 /// Per-program upper bound on subtitle streams. Total program-stream
 /// cap with all kinds saturated: ≤16 video + ≤16 KLV + ≤16 audio +
-/// ≤16 subtitle = ≤64; well within the PMT single-section limit.
+/// ≤16 subtitle + ≤16 data = ≤80; the PMT single-section size budget
+/// (`MAX_PMT_SECTION_BYTES`) binds long before the kind caps do.
 pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 
 /// Opaque handle to a configured subtitle stream on a `Muxer`.
@@ -704,6 +733,102 @@ impl SubtitleStreamHandle {
     }
 }
 
+/// Opaque handle to a configured data stream on a `Muxer`.
+///
+/// Obtained from `Muxer::data_handles` / `Muxer::data_handles_for_program`
+/// (shipped with the `push_data` family).
+/// Handles are valid only on the muxer that produced them; passing a handle
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
+///
+/// The internal representation encodes `(program_index, within_program_index)`
+/// in a packed `u32`. Callers treat this as an opaque token.
+///
+/// # Lifecycle
+///
+/// Same rules as [`VideoStreamHandle`]: handles are bound to the producing
+/// `Muxer` / `MuxSender`; parent close invalidates the handle's usefulness
+/// (the handle remains `Copy + 'static` but cannot be rebound); cloning
+/// produces an identical handle referring to the same stream within the
+/// same parent.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DataStreamHandle(pub(super) u32);
+
+impl core::fmt::Debug for DataStreamHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (prog, within) = self.unpack();
+        write!(f, "DataStreamHandle(prog={prog}, stream={within})")
+    }
+}
+
+impl DataStreamHandle {
+    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
+    // See the comment on that impl block for the full explanation.
+
+    /// Pack `(program_index, within_program_index)` into the opaque u32.
+    ///
+    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `tst-c`
+    /// can construct handles at the FFI boundary.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
+    /// if `within_index >= 16` (the per-program data cap). Release builds
+    /// silently mask the inputs into the 4-bit fields, which produces a
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
+    /// at `push_data_to` time. Use [`Self::from_raw`] for already-packed
+    /// handles round-tripped through C ABI.
+    #[doc(hidden)]
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
+        Self(crate::mpegts::common::handle_pack::pack(
+            program_index,
+            within_index,
+        ))
+    }
+
+    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+    #[doc(hidden)]
+    pub fn unpack(self) -> (usize, usize) {
+        crate::mpegts::common::handle_pack::unpack(self.0)
+    }
+
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `tst-c` needs to return a handle to a C caller as a bare integer.
+    #[doc(hidden)]
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) **within the same process**. Same in-process
+    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
+    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
+    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
+    #[doc(hidden)]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Validating sibling of [`Self::from_raw`]. Same shape as
+    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
+    /// [`StreamKind::Data`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Data,
+    /// index: raw as usize }` if any high bit outside the 8-bit packed
+    /// layout is set.
+    #[doc(hidden)]
+    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+            return Err(crate::error::MuxError::InvalidStreamHandle {
+                kind: StreamKind::Data,
+                index: raw as usize,
+            });
+        }
+        Ok(Self(raw))
+    }
+}
+
 /// Maximum number of programs in one transport stream multiplex.
 /// Mirrors the per-program 16-video + 16-KLV stream caps; far above any
 /// realistic gimbaled-platform aggregation use case.
@@ -783,6 +908,19 @@ mod try_from_raw_tests {
     }
 
     #[test]
+    fn data_try_from_raw_rejects_forged_high_bit() {
+        let valid = DataStreamHandle::pack(0, 0);
+        let forged = valid.raw() | 0x100;
+        match DataStreamHandle::try_from_raw(forged) {
+            Err(MuxError::InvalidStreamHandle { kind, index }) => {
+                assert_eq!(kind, StreamKind::Data);
+                assert_eq!(index, forged as usize);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn try_from_raw_rejects_far_upper_bit() {
         // A 1-bit set in the upper word also rejects — defends against any
         // future encoding shift that pushes the canonical region wider.
@@ -800,5 +938,6 @@ mod try_from_raw_tests {
         assert!(KlvStreamHandle::try_from_raw(0xFF).is_ok());
         assert!(AudioStreamHandle::try_from_raw(0xFF).is_ok());
         assert!(SubtitleStreamHandle::try_from_raw(0xFF).is_ok());
+        assert!(DataStreamHandle::try_from_raw(0xFF).is_ok());
     }
 }

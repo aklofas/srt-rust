@@ -33,7 +33,7 @@ pub use stats_accounting::MuxerStats;
 
 /// Spec-domain tier of muxer errors.
 ///
-/// The 32-variant [`crate::error::MuxError`] enum (canonical home at
+/// The 36-variant [`crate::error::MuxError`] enum (canonical home at
 /// [`crate::error::MuxError`]) is re-exported here under the `_detail`
 /// convention to signal "spec-knowledge tier; production binding code
 /// should prefer [`crate::error::MuxError::kind()`] for
@@ -69,7 +69,7 @@ pub use stats_accounting::MuxerStats;
 /// coarse-tier [`crate::error::MuxSenderErrorKind`] enum via
 /// [`crate::error::MuxError::kind()`].
 pub mod _detail {
-    /// The canonical 32-variant [`crate::error::MuxError`].
+    /// The canonical 36-variant [`crate::error::MuxError`].
     pub use crate::error::MuxError;
 }
 
@@ -82,7 +82,9 @@ use crate::mpegts::common::{StreamType, StreamTypeCode};
 use alloc::collections::{BTreeMap, VecDeque};
 
 use self::pes::MAX_PES_HEADER_SIZE;
-use self::state::{AudioStreamState, KlvStreamState, SubtitleStreamState, VideoStreamState};
+use self::state::{
+    AudioStreamState, DataStreamState, KlvStreamState, SubtitleStreamState, VideoStreamState,
+};
 use self::ts::ContinuityCounters;
 
 /// MuxSender-side MPEG-TS muxer.
@@ -134,6 +136,13 @@ pub struct Muxer {
     /// Per-program subtitle stream state. Same indexing as `video_streams`.
     /// `SubtitleStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
     subtitle_streams: Vec<Vec<SubtitleStreamState>>,
+
+    /// Per-program data stream state. Same indexing as `video_streams`.
+    /// `DataStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
+    // Read by the push_data family (next wave task); the keystone commit
+    // only threads the state. Remove the allow when push_data_to lands.
+    #[allow(dead_code)]
+    data_streams: Vec<Vec<DataStreamState>>,
 
     /// Per-program resolved PCR PID. Indexed parallel to `config.programs`.
     pcr_pids: Vec<u16>,
@@ -191,20 +200,30 @@ impl Muxer {
         let mut klv_streams: Vec<Vec<KlvStreamState>> = Vec::with_capacity(n_programs);
         let mut audio_streams: Vec<Vec<AudioStreamState>> = Vec::with_capacity(n_programs);
         let mut subtitle_streams: Vec<Vec<SubtitleStreamState>> = Vec::with_capacity(n_programs);
+        let mut data_streams: Vec<Vec<DataStreamState>> = Vec::with_capacity(n_programs);
         let mut pcr_pids: Vec<u16> = Vec::with_capacity(n_programs);
         let mut pmt_descriptor_caches: Vec<Vec<Vec<u8>>> = Vec::with_capacity(n_programs);
         let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
 
         for prog in &config.programs {
-            let (video, klv, audio, subtitle) = state::collect_stream_states(prog);
+            let (video, klv, audio, subtitle, data) = state::collect_stream_states(prog);
             let pcr_pid = state::resolve_pcr_pid(prog);
             let cache = state::build_pmt_descriptor_cache(prog);
-            state::initialize_stats(prog, &video, &klv, &audio, &subtitle, &mut per_stream);
+            state::initialize_stats(
+                prog,
+                &video,
+                &klv,
+                &audio,
+                &subtitle,
+                &data,
+                &mut per_stream,
+            );
 
             video_streams.push(video);
             klv_streams.push(klv);
             audio_streams.push(audio);
             subtitle_streams.push(subtitle);
+            data_streams.push(data);
             pcr_pids.push(pcr_pid);
             pmt_descriptor_caches.push(cache);
         }
@@ -216,6 +235,7 @@ impl Muxer {
             klv_streams,
             audio_streams,
             subtitle_streams,
+            data_streams,
             pcr_pids,
             pcr_interval_27mhz,
             psi_interval_90khz,

@@ -40,6 +40,8 @@ mod mux;
 mod mux_audio;
 #[path = "mpegts/mux_builder_errors.rs"]
 mod mux_builder_errors;
+#[path = "mpegts/mux_data.rs"]
+mod mux_data;
 #[path = "mpegts/mux_demux_audio_roundtrip.rs"]
 mod mux_demux_audio_roundtrip;
 #[path = "mpegts/mux_demux_subtitle_roundtrip.rs"]

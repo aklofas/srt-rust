@@ -460,7 +460,7 @@ fn data_typed_stream_types_rejected() {
         let err = build_cfg(data_prog(st, vec![])).unwrap_err();
         match err {
             MuxError::ConfigInvalid { ref reason } => assert!(
-                reason.contains(&format!("0x{st:02X}")),
+                reason.contains(&format!("stream_type 0x{st:02X}")),
                 "reason for stream_type 0x{st:02X} should name it, got: {reason}"
             ),
             other => panic!("expected ConfigInvalid for stream_type 0x{st:02X}, got {other:?}"),

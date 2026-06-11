@@ -3,9 +3,10 @@
 //! and descriptor recognition.
 //!
 //! Hosts 2 helper methods on `Demuxer` (`derive_stream_kind`,
-//! `get_stream_kind`) and 7 module-level free functions consumed across
+//! `get_stream_kind`) and module-level free functions consumed across
 //! the demux module tree. All items are `pub(super)` — invisible outside
-//! `mpegts::demux`.
+//! `mpegts::demux` — except `classify_pmt_stream`, which is `pub(crate)`
+//! so the mux-side `StreamSpec::Data` acceptance rule can call it.
 //!
 //! Per Wave 6.B Decision DB6, free functions stay as free functions (not
 //! wrapped in a struct). The audit's recommended `stream_classifier.rs`
@@ -24,20 +25,7 @@ impl super::demuxer::Demuxer {
         s: &crate::mpegts::demux::psi::PmtStream,
     ) -> (StreamKind, Option<u16>) {
         let declared_link = extract_metadata_link(&s.descriptors);
-        let kind = match s.stream_type {
-            0x1B => StreamKind::Video(VideoCodec::H264),
-            0x24 => StreamKind::Video(VideoCodec::H265),
-            0x33 => StreamKind::Video(VideoCodec::H266),
-            0x06 => classify_0x06(&s.descriptors),
-            0x15 => StreamKind::KlvSync { declared_link },
-            other => {
-                if let Some(codec) = classify_audio_stream_type(other) {
-                    StreamKind::Audio(codec)
-                } else {
-                    StreamKind::Unknown(other)
-                }
-            }
-        };
+        let kind = classify_pmt_stream(s.stream_type, &s.descriptors);
         (kind, declared_link)
     }
 
@@ -57,6 +45,32 @@ impl super::demuxer::Demuxer {
 }
 
 // ─── Free functions ────────────────────────────────────────────────────────
+
+/// Classify a PMT entry's `(stream_type, descriptors)` pair under the
+/// standard cascade — the shared core of `derive_stream_kind` (demux) and
+/// the mux-side `StreamSpec::Data` acceptance rule, which requires the
+/// result to be `StreamKind::Unknown` so a Data stream re-demuxes as
+/// Unknown (rejects typed stream_type bytes and 0x06 descriptor
+/// masquerades). `treat_as` overrides are a demux-session concern and do
+/// not participate.
+pub(crate) fn classify_pmt_stream(stream_type: u8, descriptors: &[RawDescriptor]) -> StreamKind {
+    match stream_type {
+        0x1B => StreamKind::Video(VideoCodec::H264),
+        0x24 => StreamKind::Video(VideoCodec::H265),
+        0x33 => StreamKind::Video(VideoCodec::H266),
+        0x06 => classify_0x06(descriptors),
+        0x15 => StreamKind::KlvSync {
+            declared_link: extract_metadata_link(descriptors),
+        },
+        other => {
+            if let Some(codec) = classify_audio_stream_type(other) {
+                StreamKind::Audio(codec)
+            } else {
+                StreamKind::Unknown(other)
+            }
+        }
+    }
+}
 
 /// Extract the `metadata_descriptor` declared link for a specific PID from
 /// a parsed PMT. Used by `build_program_map` to rebuild klv_links after
@@ -209,4 +223,116 @@ pub(super) fn is_malformed_av1_registration(descriptors: &[RawDescriptor]) -> bo
     descriptors
         .iter()
         .any(|d| d.tag == 0x05 && d.data.len() < 4 && d.data.starts_with(b"AV"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+
+    #[test]
+    fn classify_pmt_stream_matches_derive_cascade() {
+        use crate::mpegts::descriptors::RawDescriptor;
+        // Typed bytes
+        assert!(matches!(
+            classify_pmt_stream(0x1B, &[]),
+            StreamKind::Video(VideoCodec::H264)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x24, &[]),
+            StreamKind::Video(VideoCodec::H265)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x33, &[]),
+            StreamKind::Video(VideoCodec::H266)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x15, &[]),
+            StreamKind::KlvSync { .. }
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x03, &[]),
+            StreamKind::Audio(AudioCodec::Mp2)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x04, &[]),
+            StreamKind::Audio(AudioCodec::Mp2)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x0F, &[]),
+            StreamKind::Audio(AudioCodec::Aac)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x11, &[]),
+            StreamKind::Audio(AudioCodec::AacLatm)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x81, &[]),
+            StreamKind::Audio(AudioCodec::Ac3)
+        ));
+        // 0x06 cascade
+        let klva = RawDescriptor {
+            tag: 0x05,
+            data: b"KLVA".to_vec(),
+        };
+        assert!(matches!(
+            classify_pmt_stream(0x06, &[klva]),
+            StreamKind::KlvAsync
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x06, &[]),
+            StreamKind::Unknown(0x06)
+        ));
+        // User-private + unrecognized
+        assert!(matches!(
+            classify_pmt_stream(0xF0, &[]),
+            StreamKind::Unknown(0xF0)
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x87, &[]),
+            StreamKind::Unknown(0x87)
+        ));
+        // 0x06 + unrecognized registration stays Unknown
+        let abcd = RawDescriptor {
+            tag: 0x05,
+            data: b"ABCD".to_vec(),
+        };
+        assert!(matches!(
+            classify_pmt_stream(0x06, &[abcd]),
+            StreamKind::Unknown(0x06)
+        ));
+        // 0x06 + name-tag-only private descriptor (tag 0xFF) stays Unknown
+        let name = RawDescriptor {
+            tag: 0xFF,
+            data: b"SERIAL_ADF".to_vec(),
+        };
+        assert!(matches!(
+            classify_pmt_stream(0x06, &[name]),
+            StreamKind::Unknown(0x06)
+        ));
+    }
+
+    #[test]
+    fn classify_pmt_stream_0x15_declared_link() {
+        use crate::mpegts::descriptors::RawDescriptor;
+        // metadata_descriptor (tag 0x26): extract_metadata_link's lenient
+        // shape accepts a >=5-byte body whose trailing 2 bytes fall in the
+        // valid PID range (0x0010..=0x1FFE).
+        let md = RawDescriptor {
+            tag: 0x26,
+            data: vec![0x01, 0x00, 0x00, 0x01, 0x00],
+        };
+        assert!(matches!(
+            classify_pmt_stream(0x15, &[md]),
+            StreamKind::KlvSync {
+                declared_link: Some(0x0100)
+            }
+        ));
+        assert!(matches!(
+            classify_pmt_stream(0x15, &[]),
+            StreamKind::KlvSync {
+                declared_link: None
+            }
+        ));
+    }
 }

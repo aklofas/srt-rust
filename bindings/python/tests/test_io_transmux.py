@@ -108,3 +108,97 @@ def test_transmux_dst_not_created_for_psi_less_source(tmp_path):
         for ev in tx:
             tx.write(ev)
     assert not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# Acceptance (umbrella spec Wave 6): the corrector workflow end-to-end.
+# Patch frame-center tags on a synthetic fixture via klv.patch_uas_datalink
+# (Wave 1), byte-compare every video AU out vs in, and verify the patched
+# KLV differs ONLY at the edited TLVs + checksum.
+# ---------------------------------------------------------------------------
+
+def _walk_tlvs(ls: bytes) -> list[tuple[int, bytes]]:
+    """Top-level (tag, full-TLV-bytes) pairs of a KLV local set:
+    16-byte UL + BER outer length, then BER-OID tag / BER length / value
+    triplets. Mirrors the wire layout patch_uas_datalink preserves."""
+
+    def read_ber(buf: bytes, i: int) -> tuple[int, int]:
+        b = buf[i]
+        if b < 0x80:
+            return b, i + 1
+        n = b & 0x7F
+        return int.from_bytes(buf[i + 1 : i + 1 + n], "big"), i + 1 + n
+
+    def read_oid(buf: bytes, i: int) -> tuple[int, int]:
+        val = 0
+        while True:
+            b = buf[i]
+            i += 1
+            val = (val << 7) | (b & 0x7F)
+            if not (b & 0x80):
+                return val, i
+
+    body_len, i = read_ber(ls, 16)
+    end = i + body_len
+    out: list[tuple[int, bytes]] = []
+    while i < end:
+        start = i
+        tag, i = read_oid(ls, i)
+        vlen, i = read_ber(ls, i)
+        i += vlen
+        out.append((tag, ls[start:i]))
+    return out
+
+
+def test_transmux_acceptance_patch_corner_tags_video_byte_faithful(tmp_path):
+    from tstrans.klv import decode_uas_datalink, patch_uas_datalink
+
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src, lat=47.6097)
+
+    EDITED_LAT, EDITED_LON = 37.7749, -122.4194
+    # Tag numbers per MISB ST 0601: 23 = frame center lat, 24 = frame
+    # center lon, 1 = checksum.
+    EDITED_TAGS = {23, 24}
+
+    src_klvs: list[bytes] = []
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            if isinstance(ev, DemuxEvent.Klv):
+                src_klvs.append(bytes(ev.payload))
+                patched = patch_uas_datalink(
+                    bytes(ev.payload),
+                    {
+                        "frame_center_lat_deg": EDITED_LAT,
+                        "frame_center_lon_deg": EDITED_LON,
+                    },
+                )
+                tx.write_klv(ev, patched)
+            else:
+                tx.write(ev)
+
+    out_videos, out_klvs = _collect(dst)
+
+    # 1) Every video AU byte-identical, count preserved.
+    assert out_videos == ORIG_AUS
+
+    # 2) Patched KLV differs ONLY at the edited TLVs + checksum.
+    assert len(out_klvs) == len(src_klvs) == len(ORIG_AUS)
+    for src_ls, out_ls in zip(src_klvs, out_klvs):
+        assert out_ls[:16] == src_ls[:16]  # UL verbatim
+        src_tlvs, out_tlvs = _walk_tlvs(src_ls), _walk_tlvs(out_ls)
+        assert [t for t, _ in out_tlvs] == [t for t, _ in src_tlvs]
+        differing = {
+            t_out
+            for (t_out, tlv_out), (_, tlv_src) in zip(out_tlvs, src_tlvs)
+            if tlv_out != tlv_src
+        }
+        # Edited TLVs MUST differ; checksum may legitimately differ;
+        # nothing else may.
+        assert EDITED_TAGS <= differing <= EDITED_TAGS | {1}
+
+        rec = decode_uas_datalink(out_ls)
+        assert rec.frame_center_lat_deg == pytest.approx(EDITED_LAT, abs=1e-4)
+        assert rec.frame_center_lon_deg == pytest.approx(EDITED_LON, abs=1e-4)
+        # Untouched field survives bit-exact (byte-faithful patcher).
+        assert rec.sensor_lat_deg == pytest.approx(47.6200, abs=1e-4)

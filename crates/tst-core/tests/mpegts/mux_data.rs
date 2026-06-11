@@ -187,6 +187,38 @@ fn data_round_trip_preserves_type_descriptors_payload_pts() {
 }
 
 #[test]
+fn data_zero_length_payload_round_trips() {
+    // A zero-length push is legal pass-through — one PES whose payload is
+    // empty — and surfaces as an empty Unknown sample, with pts semantics
+    // per carries_pts (preserved with PTS, substituted 0 without).
+    let mut mux = Muxer::new(three_data_cfg()).unwrap();
+    let handles = mux.data_handles();
+
+    // One video AU so PSI/PCR pacing starts (as in the round-trip test).
+    mux.push_video(&synthetic_h264_au(), Pts90khz::new(900_000), true)
+        .unwrap();
+    mux.push_data_to(handles[0], b"", Pts90khz::new(903_000))
+        .unwrap();
+    mux.push_data_to(handles[2], b"", Pts90khz::new(906_000))
+        .unwrap();
+
+    let ts = drain_mux(&mut mux);
+    let events = drain_events(&ts);
+
+    let with_pts = unknown_samples_on_pid(&events, 0x1100);
+    assert_eq!(with_pts.len(), 1);
+    assert_eq!(with_pts[0].0, Pts90khz::new(903_000));
+    assert!(with_pts[0].1.is_empty(), "payload must round-trip empty");
+
+    // carries_pts=false: the PES omits the PTS field; the demuxer
+    // substitutes pts=0 (same pin as the main round-trip test).
+    let no_pts = unknown_samples_on_pid(&events, 0x1102);
+    assert_eq!(no_pts.len(), 1);
+    assert_eq!(no_pts[0].0, Pts90khz::new(0));
+    assert!(no_pts[0].1.is_empty(), "payload must round-trip empty");
+}
+
+#[test]
 fn data_push_errors() {
     // >1 data stream: the no-handle shorthand is ambiguous.
     let mut mux = Muxer::new(three_data_cfg()).unwrap();
@@ -228,6 +260,14 @@ fn data_push_errors() {
         }
         other => panic!("expected DataTooLarge, got {other:?}"),
     }
+
+    // At-ceiling payloads succeed — the documented maxima are exact, not
+    // off-by-one. (Default buffer_packets = 10_000 comfortably holds the
+    // ~720 TS packets these two pushes produce.)
+    mux.push_data_to(handles[0], &vec![0u8; 65_527], Pts90khz::new(0))
+        .expect("65527 bytes is exactly the with-PTS ceiling");
+    mux.push_data_to(handles[2], &vec![0u8; 65_532], Pts90khz::new(0))
+        .expect("65532 bytes is exactly the no-PTS ceiling");
 
     // Exactly one data stream: the shorthand routes without a handle.
     let single_cfg = {

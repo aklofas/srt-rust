@@ -24,7 +24,7 @@ Symmetric `encode_*` entry points live alongside the decoders.
 """
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 class KlvFieldErrorKind(enum.Enum):
@@ -146,6 +146,15 @@ class PrecisionTimeStampPack:
 
     time_status: TimeStatus
     timestamp_us: int
+
+    def with_(self, **changes: object) -> "PrecisionTimeStampPack":
+        """Return a copy with the named fields replaced. The typed sets
+        are frozen dataclasses (attribute assignment raises
+        `FrozenInstanceError`) — this is the ergonomic update path.
+        Thin wrapper over `dataclasses.replace`: unknown field names
+        raise `TypeError`, and construction-time validation re-runs on
+        the copy."""
+        return replace(self, **changes)
 
 
 # Spec-compat alias per design spec §API shape table.
@@ -276,6 +285,15 @@ class SecurityLs:
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
 
+    def with_(self, **changes: object) -> "SecurityLs":
+        """Return a copy with the named fields replaced. The typed sets
+        are frozen dataclasses (attribute assignment raises
+        `FrozenInstanceError`) — this is the ergonomic update path.
+        Thin wrapper over `dataclasses.replace`: unknown field names
+        raise `TypeError`, and construction-time validation re-runs on
+        the copy."""
+        return replace(self, **changes)
+
 
 # Spec-compat alias.
 Klv0102 = SecurityLs
@@ -397,6 +415,15 @@ class VmtiLs:
     ontology_series: bytes | None = None
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
+
+    def with_(self, **changes: object) -> "VmtiLs":
+        """Return a copy with the named fields replaced. The typed sets
+        are frozen dataclasses (attribute assignment raises
+        `FrozenInstanceError`) — this is the ergonomic update path.
+        Thin wrapper over `dataclasses.replace`: unknown field names
+        raise `TypeError`, and construction-time validation re-runs on
+        the copy."""
+        return replace(self, **changes)
 
 
 # Spec-compat alias.
@@ -555,6 +582,15 @@ class UasDatalinkLs:
     # Pass-through
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
+
+    def with_(self, **changes: object) -> "UasDatalinkLs":
+        """Return a copy with the named fields replaced. The typed sets
+        are frozen dataclasses (attribute assignment raises
+        `FrozenInstanceError`) — this is the ergonomic update path.
+        Thin wrapper over `dataclasses.replace`: unknown field names
+        raise `TypeError`, and construction-time validation re-runs on
+        the copy."""
+        return replace(self, **changes)
 
     def sensor_position(self) -> GeoPoint | None:
         if (

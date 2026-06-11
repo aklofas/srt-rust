@@ -140,7 +140,7 @@ try (Demuxer d = new Demuxer()) {
         if (e instanceof DemuxEvent.ProgramMap pm) {
             System.out.println("PSI: program " + pm.programNumber() + ", " + pm.elementaryPids().size() + " streams");
         } else if (e instanceof DemuxEvent.Video v) {
-            System.out.println("Video pid=" + v.stream().pid() + " pts=" + v.pts() + " len=" + v.payload().remaining());
+            System.out.println("Video pid=" + v.stream().pid() + " pts=" + v.pts() + " len=" + v.raw().remaining());
         } else if (e instanceof DemuxEvent.Metadata m) {
             System.out.println("KLV pid=" + m.stream().pid() + " kind=" + m.kind() + " len=" + m.payload().remaining());
         } else if (e instanceof DemuxEvent.NonConformant nc) {
@@ -204,10 +204,10 @@ A `long` knob of `0` means "use the Rust core's default cap."
 
 `DemuxEvent` is a JDK-17 `sealed interface` whose variants are `record`s:
 
-- `ProgramMap(int programNumber, int pcrPid, List<Integer> elementaryPids)` — PSI / PMT.
-- `Video(StreamId stream, long pts, Long dts, VideoCodec codec, List<VideoUnit> payload, boolean randomAccessIndicator, CodecParseException codecParseError)` — typed elementary units (see [Typed sample payloads](#typed-sample-payloads)).
+- `ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids)` — PSI / PMT.
+- `Video(StreamId stream, long pts, Long dts, VideoCodec codec, List<VideoUnit> payload, ByteBuffer raw, boolean randomAccessIndicator, CodecParseException codecParseError)` — the raw encoded access unit plus typed elementary units (see [Typed sample payloads](#typed-sample-payloads)).
 - `Audio(StreamId stream, long pts, Long dts, AudioCodec codec, List<AudioFrame> payload, ByteBuffer rawPayload, CodecParseException codecParseError)` — typed audio frames with a raw fallback (see [Typed sample payloads](#typed-sample-payloads)).
-- `Subtitle(StreamId stream, long pts, Long dts, ByteBuffer payload)`
+- `Subtitle(StreamId stream, long pts, Long dts, SubtitleCodec codec, ByteBuffer payload)`
 - `UnknownSample(StreamId stream, long pts, Long dts, int streamType, ByteBuffer payload)`
 - `Metadata(StreamId stream, long pts, MetadataKind kind, ByteBuffer payload, boolean wasReassembled, int cellCount)` — KLV.
 - `NonConformant(StreamId stream, String issue, NonConformantKind kind, MultiCellAuReason multiCellAuReason, CellFragmentIndication observedCfi, CellFragmentIndication treatedAs)`
@@ -471,8 +471,8 @@ garbage by scanning for the next sync word instead of throwing.
 
 ## Typed sample payloads
 
-Since the codec wave, the demuxer hands back **typed** elementary units rather
-than raw bytes. `DemuxEvent.Video.payload()` is a `List<VideoUnit>` —
+Since the codec wave, the demuxer hands back **typed** elementary units
+(video additionally carries the raw encoded access unit — see below). `DemuxEvent.Video.payload()` is a `List<VideoUnit>` —
 `NalUnit`s for H.264 / H.265 / H.266, `Obu`s for AV1 — and
 `DemuxEvent.Audio.payload()` is a `List<AudioFrame>` — `AdtsFrame`s for AAC,
 `Mpeg2AudioFrame`s for MPEG-2 audio. The `codec()` accessor on each event tags
@@ -490,10 +490,15 @@ for (DemuxEvent e : demuxer) {
 }
 ```
 
-**Raw fallback (audio only).** Video always carries typed NAL/OBU units:
-`payload()` is the `List<VideoUnit>`, there is no `rawPayload`, and
-`codecParseError()` is **always** null. The raw-fallback model applies to
-audio only, in two distinct cases:
+**Video raw bytes (always populated).** `Video.raw()` carries the exact
+encoded access unit — Annex-B byte stream for H.264/H.265/H.266, on-wire PES
+payload for AV1 — as a heap `ByteBuffer` alongside (not instead of) the typed
+`payload()` list; `codecParseError()` is **always** null for video. Feed
+`raw()` back to `Muxer.pushVideo` for byte-faithful transmux; it mirrors
+tst-py's `.raw`.
+
+**Raw fallback (audio only).** The raw-*fallback* model — bytes appear only
+when typed parsing didn't — applies to audio, in two distinct cases:
 
 - **Mid-stream malformation** — a parser hits a bad frame partway through the
   stream. `payload()` is empty, `rawPayload()` carries the original bytes as a

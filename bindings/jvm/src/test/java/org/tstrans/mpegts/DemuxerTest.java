@@ -1,6 +1,8 @@
 package org.tstrans.mpegts;
 
 import static org.junit.jupiter.api.Assertions.*;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.nio.file.*;
 import org.junit.jupiter.api.Test;
 
@@ -81,5 +83,53 @@ class DemuxerTest {
         Demuxer d = new Demuxer();
         d.close();
         assertThrows(IllegalStateException.class, () -> d.feed(new byte[] {0x47}));
+    }
+
+    @Test
+    void videoRawIsExactEncodedAccessUnit() throws Exception {
+        // Wave 5 transmux property: DemuxEvent.Video.raw is the exact
+        // encoded AU that was muxed — byte-for-byte — as a JVM-owned heap
+        // copy (JDK < 22 forbids direct buffers over Rust memory).
+        byte[] au = new byte[20];
+        au[0] = 0x00; au[1] = 0x00; au[2] = 0x00; au[3] = 0x01;
+        au[4] = 0x65; // IDR
+        for (int i = 0; i < 15; i++) {
+            au[5 + i] = (byte) (0xA5 ^ i);
+        }
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(cfg)) {
+            m.pushVideo(au, /*pts=*/ 0L, /*keyFrame=*/ true);
+            int n;
+            while ((n = m.pull(out)) > 0) {
+                acc.write(out, 0, n);
+            }
+        }
+        DemuxEvent.Video video = null;
+        try (Demuxer d = new Demuxer()) {
+            d.feed(acc.toByteArray());
+            d.flush();
+            for (DemuxEvent e : d) {
+                if (e instanceof DemuxEvent.Video v) {
+                    video = v;
+                    break;
+                }
+            }
+        }
+        assertNotNull(video, "expected a Video event");
+        ByteBuffer raw = video.raw();
+        assertNotNull(raw, "Video events carry the raw encoded AU");
+        assertFalse(raw.isDirect(), "raw is a JVM-owned heap copy");
+        byte[] got = new byte[raw.remaining()];
+        raw.duplicate().get(got);
+        // Demuxer is closed; the heap copy must still be intact (and equal
+        // to the pushed AU — the byte-faithful transmux property).
+        assertArrayEquals(au, got, "raw must be the exact pushed encoded AU");
+        // The typed unit list is still populated alongside raw.
+        assertFalse(video.payload().isEmpty(), "typed units coexist with raw");
     }
 }

@@ -35,9 +35,11 @@ public sealed interface DemuxEvent
     record ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids) implements DemuxEvent {}
 
     /**
-     * A video access unit, carrying typed codec units. The {@code payload} is a
-     * {@link List} of {@link VideoUnit} — {@code NalUnit}s for H.264/H.265/H.266,
-     * {@code Obu}s for AV1. The {@code codec} field disambiguates which.
+     * A video access unit, carrying the raw encoded bytes and typed codec
+     * units. {@code raw} is the exact encoded access unit; {@code payload}
+     * is its parsed {@link List} of {@link VideoUnit} — {@code NalUnit}s for
+     * H.264/H.265/H.266, {@code Obu}s for AV1. The {@code codec} field
+     * disambiguates which.
      *
      * @param stream                 the elementary stream this sample belongs to
      * @param pts                    presentation timestamp in 90&nbsp;kHz ticks
@@ -51,14 +53,24 @@ public sealed interface DemuxEvent
      *                               {@link ByteBuffer}, safe to retain past the
      *                               next {@link Demuxer#nextEvent()} or
      *                               {@link Demuxer#close()}.
+     * @param raw                    the exact encoded access unit — Annex-B byte
+     *                               stream for H.264/H.265/H.266, on-wire PES
+     *                               payload for AV1 — as a heap (JVM-owned)
+     *                               {@link ByteBuffer} copy, safe to retain (true
+     *                               zero-copy is deferred to a JDK&nbsp;22+ FFM
+     *                               path). Feed it back to
+     *                               {@link Muxer#pushVideo(byte[], long, boolean)}
+     *                               for byte-faithful transmux. Mirrors tst-py's
+     *                               {@code .raw}.
      * @param randomAccessIndicator  whether this access unit is a random-access
      *                               point (keyframe)
-     * @param codecParseError        always {@code null} for video — the demuxer
-     *                               already split the NALs/OBUs, so typed
-     *                               payload construction cannot fail at this layer
+     * @param codecParseError        always {@code null} for video — the units in
+     *                               {@code payload} were split by the binding, so
+     *                               typed payload construction cannot fail at
+     *                               this layer
      */
     record Video(StreamId stream, long pts, Long dts, VideoCodec codec,
-                 List<VideoUnit> payload, boolean randomAccessIndicator,
+                 List<VideoUnit> payload, ByteBuffer raw, boolean randomAccessIndicator,
                  CodecParseException codecParseError) implements DemuxEvent {}
 
     /**

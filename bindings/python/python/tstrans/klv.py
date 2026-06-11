@@ -769,10 +769,12 @@ def parse_klv_universal(buf: bytes, *, strict: bool = False):
     - `None` when the UL doesn't match any known set
 
     With `strict=True`, the per-set decoder's strict mode is used:
-    ST 0601 additionally requires the canonical family UL; ST 0102 /
-    ST 0903 reject missing required tags. ST 0605 has a single
-    always-validating decode (no strict knob). Default is lenient —
-    per-field issues land on the typed set's `.field_errors`.
+    ST 0601 additionally requires the ST 0601 family UL pattern
+    (bytes 13/14 are tolerated for legacy interop — see
+    `is_st0601_family`); ST 0102 / ST 0903 reject missing required
+    tags. ST 0605 has a single always-validating decode (no strict
+    knob). Default is lenient — per-field issues land on the typed
+    set's `.field_errors`.
 
     Raises `tstrans.exceptions.KlvError(BAD_UNIVERSAL_LABEL)` when
     `buf` is too short to contain a 16-byte UL.

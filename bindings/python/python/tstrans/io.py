@@ -267,21 +267,25 @@ def iter_uas_datalink(
 
     Records whose universal label is outside the ST 0601 family are
     skipped (use `extract_klv(parsed=True)` for the multi-set
-    variant). `strict` is forwarded to
+    variant). A payload too short to carry a 16-byte universal label
+    cannot be identified as ANY set and raises
+    `tstrans.exceptions.KlvError` — corruption is not silently
+    dropped. `strict` is forwarded to
     `tstrans.klv.decode_uas_datalink`; today its only extra check
-    (canonical family UL) is subsumed by this iterator's own family
-    filter, so it is forward-compat surface for stricter core decode
-    modes. A structurally malformed record raises
-    `tstrans.exceptions.KlvError` in BOTH modes; per-field decode
-    issues land on `record.field_errors` (lenient) instead of
-    raising.
+    (the ST 0601 family UL pattern — bytes 13/14 are tolerated for
+    legacy interop) is subsumed by this iterator's own family filter,
+    so it is forward-compat surface for stricter core decode modes. A
+    structurally malformed ST 0601 record likewise raises `KlvError`
+    in BOTH modes; per-field decode issues land on
+    `record.field_errors` (lenient) instead of raising.
 
     Pass `config` to use a non-default demuxer configuration (e.g.
     `DemuxerConfig(cfi_tolerance=False)` for spec-strict conformance
     testing).
     """
 
-    # Local import dodges import-cycle with tstrans.klv at module load.
+    # Local imports dodge import-cycle with tstrans.klv at module load.
+    from tstrans.exceptions import KlvError, KlvErrorKind
     from tstrans.klv import decode_uas_datalink, is_st0601_family
 
     klv_index = -1
@@ -289,6 +293,17 @@ def iter_uas_datalink(
         if not isinstance(ev, DemuxEvent.Klv):
             continue
         klv_index += 1
+        if len(ev.payload) < 16:
+            # Too short to carry a UL: not identifiable as any set, so
+            # the "skip non-0601" rule cannot apply — this is corruption
+            # and must not vanish (mirrors parse_klv_universal).
+            raise KlvError(
+                kind=KlvErrorKind.BAD_UNIVERSAL_LABEL,
+                message=(
+                    f"KLV event {klv_index}: payload too short for a "
+                    f"16-byte UL: have {len(ev.payload)} bytes"
+                ),
+            )
         if not is_st0601_family(ev.payload):
             continue
         yield (ev.pts, klv_index, decode_uas_datalink(ev.payload, strict=strict))

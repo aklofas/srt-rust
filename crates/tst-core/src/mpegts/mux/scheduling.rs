@@ -131,15 +131,15 @@ impl Muxer {
                     StreamSpec::Video {
                         codec: VideoCodec::H264,
                         ..
-                    } => StreamType::H264,
+                    } => StreamType::H264.as_u8(),
                     StreamSpec::Video {
                         codec: VideoCodec::H265,
                         ..
-                    } => StreamType::H265,
+                    } => StreamType::H265.as_u8(),
                     StreamSpec::Video {
                         codec: VideoCodec::H266,
                         ..
-                    } => StreamType::H266,
+                    } => StreamType::H266.as_u8(),
                     // AV1 rides PMT stream_type 0x06; the AV01
                     // registration_descriptor (auto-emitted at the top of the
                     // PMT descriptor loop, suppressed when caller supplies
@@ -147,36 +147,39 @@ impl Muxer {
                     StreamSpec::Video {
                         codec: VideoCodec::Av1,
                         ..
-                    } => StreamType::KlvPrivate,
+                    } => StreamType::KlvPrivate.as_u8(),
                     StreamSpec::Klv {
                         stream_type: KlvStreamType::PrivateData,
                         ..
-                    } => StreamType::KlvPrivate,
+                    } => StreamType::KlvPrivate.as_u8(),
                     StreamSpec::Klv {
                         stream_type: KlvStreamType::SynchronousMetadata,
                         ..
-                    } => StreamType::KlvSyncMetadata,
+                    } => StreamType::KlvSyncMetadata.as_u8(),
                     StreamSpec::Audio {
                         codec: AudioCodec::Mp2,
                         ..
-                    } => StreamType::AudioMp2,
+                    } => StreamType::AudioMp2.as_u8(),
                     StreamSpec::Audio {
                         codec: AudioCodec::Aac,
                         ..
-                    } => StreamType::AudioAac,
+                    } => StreamType::AudioAac.as_u8(),
                     StreamSpec::Audio {
                         codec: AudioCodec::AacLatm,
                         ..
-                    } => StreamType::AudioAacLatm,
+                    } => StreamType::AudioAacLatm.as_u8(),
                     StreamSpec::Audio {
                         codec: AudioCodec::Ac3,
                         ..
-                    } => StreamType::AudioAc3,
+                    } => StreamType::AudioAc3.as_u8(),
+                    // Caller-chosen byte; validate() guarantees the demux
+                    // classifier maps it (with its descriptors) to Unknown.
+                    StreamSpec::Data { stream_type, .. } => *stream_type,
                     // All four subtitle codecs share PMT stream_type 0x06
                     // (PrivateData); the per-stream descriptor cache carries
                     // the codec-specific disambiguator (subtitling_descriptor /
                     // teletext_descriptor / Registration "GA94" / "VTTC").
-                    StreamSpec::Subtitle { .. } => StreamType::KlvPrivate,
+                    StreamSpec::Subtitle { .. } => StreamType::KlvPrivate.as_u8(),
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,

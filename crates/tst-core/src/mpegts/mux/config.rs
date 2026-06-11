@@ -372,16 +372,19 @@ impl MuxerConfig {
             const KLV_CAP: usize = 16;
             const AUDIO_CAP: usize = 16;
             const SUBTITLE_CAP: usize = MAX_SUBTITLE_STREAMS_PER_PROGRAM;
+            const DATA_CAP: usize = 16;
             let mut video_count = 0;
             let mut klv_count = 0;
             let mut audio_count = 0;
             let mut subtitle_count = 0;
+            let mut data_count = 0;
             for s in &prog.streams {
                 match s {
                     StreamSpec::Video { .. } => video_count += 1,
                     StreamSpec::Klv { .. } => klv_count += 1,
                     StreamSpec::Audio { .. } => audio_count += 1,
                     StreamSpec::Subtitle { .. } => subtitle_count += 1,
+                    StreamSpec::Data { .. } => data_count += 1,
                 }
             }
             if video_count > VIDEO_CAP {
@@ -406,6 +409,12 @@ impl MuxerConfig {
                 return Err(MuxError::TooManySubtitleStreams {
                     count: subtitle_count,
                     cap: SUBTITLE_CAP,
+                });
+            }
+            if data_count > DATA_CAP {
+                return Err(MuxError::TooManyDataStreams {
+                    count: data_count,
+                    cap: DATA_CAP,
                 });
             }
 
@@ -457,6 +466,13 @@ impl MuxerConfig {
                         if !pid::is_user_pid(*pid) {
                             return Err(MuxError::InvalidConfig(
                                 "subtitle pid must be in 0x0010..=0x1FFE",
+                            ));
+                        }
+                    }
+                    StreamSpec::Data { pid, .. } => {
+                        if !pid::is_user_pid(*pid) {
+                            return Err(MuxError::InvalidConfig(
+                                "data pid must be in 0x0010..=0x1FFE",
                             ));
                         }
                     }
@@ -557,7 +573,7 @@ impl MuxerConfig {
                     reason: format!(
                         "program {} has {} streams but {} stream_descriptors \
                          (lengths must match — call the corresponding \
-                         stream_descriptors_for_{{video,klv,audio,subtitle}} \
+                         stream_descriptors_for_{{video,klv,audio,subtitle,data}} \
                          builder methods or hand-build with parallel Vecs)",
                         prog.program_number,
                         prog.streams.len(),
@@ -895,6 +911,30 @@ impl MuxerProgramConfigBuilder {
         self
     }
 
+    /// Add an arbitrary private/application data elementary stream to this
+    /// program (PES pass-through, the write-side dual of demux
+    /// `StreamKind::Unknown`).
+    ///
+    /// `pid` must be in `0x0010..=0x1FFE` and distinct from all other PIDs
+    /// in this program. `stream_type` is the raw PMT stream_type byte
+    /// (e.g. 0xF0/0xF1 user-private, bare 0x06); `carries_pts` controls
+    /// whether the PES header carries a PTS. The muxer never auto-emits a
+    /// descriptor on a data stream — supply caller descriptors via
+    /// [`stream_descriptors_for_data`][Self::stream_descriptors_for_data].
+    ///
+    /// The `(stream_type, descriptors)` pair must classify as Unknown on
+    /// the demux side (no typed stream_type bytes, no classifying 0x06
+    /// markers); the rule is enforced at validate/build time.
+    pub fn add_data(&mut self, pid: u16, stream_type: u8, carries_pts: bool) -> &mut Self {
+        self.program.streams.push(StreamSpec::Data {
+            pid,
+            stream_type,
+            carries_pts,
+        });
+        self.program.stream_descriptors.push(Vec::new());
+        self
+    }
+
     /// Pin this program's PCR to a specific PID. Default: first video stream's
     /// PID (or first KLV PID for KLV-only programs).
     pub fn pcr_pid(&mut self, pid: u16) -> &mut Self {
@@ -1042,6 +1082,42 @@ impl MuxerProgramConfigBuilder {
             None => Err(MuxError::DescriptorIndexOutOfRange {
                 kind: StreamKind::Subtitle,
                 index: subtitle_idx as u32,
+                program_number: self.program.program_number,
+            }),
+        }
+    }
+
+    /// Set the descriptor list for the `data_idx`-th data stream in this
+    /// program (zero-indexed among `StreamSpec::Data` entries in add-order).
+    ///
+    /// Data streams have no auto-emit — these caller descriptors are the
+    /// entire PMT descriptor loop for the stream.
+    ///
+    /// # Errors
+    /// [`MuxError::DescriptorIndexOutOfRange`](crate::error::MuxError::DescriptorIndexOutOfRange) when `data_idx` is past the
+    /// number of `add_data` calls so far. Call after the corresponding
+    /// [`add_data`][Self::add_data].
+    pub fn stream_descriptors_for_data(
+        &mut self,
+        data_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> Result<&mut Self, MuxError> {
+        let abs_idx = self
+            .program
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
+            .nth(data_idx)
+            .map(|(i, _)| i);
+        match abs_idx {
+            Some(i) => {
+                self.program.stream_descriptors[i] = descs;
+                Ok(self)
+            }
+            None => Err(MuxError::DescriptorIndexOutOfRange {
+                kind: StreamKind::Data,
+                index: data_idx as u32,
                 program_number: self.program.program_number,
             }),
         }

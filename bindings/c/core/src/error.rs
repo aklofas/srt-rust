@@ -343,7 +343,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 ///    variant must be mentioned in the per-variant routing table
 ///    inside this function before the wildcard arm.
 /// 2. The in-file unit test `every_known_mux_error_variant_maps_to_expected_code`
-///    verifies all 32 variants produce the expected `TstError` code.
+///    verifies all 36 variants produce the expected `TstError` code.
 #[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_mux_error(e: &MuxError) {
     use tst_core::error::MuxSenderErrorKind;
@@ -357,6 +357,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //   MuxError::KlvTooLarge             -> TstError::KlvTooLarge    [override]
     //   MuxError::AudioTooLarge           -> TstError::InvalidUsage   (InputMalformed kind default)
     //   MuxError::SubtitleTooLarge        -> TstError::InvalidUsage   (InputMalformed kind default)
+    //   MuxError::DataTooLarge            -> TstError::InvalidUsage   (InputMalformed kind default)
     //   MuxError::BufferFull              -> TstError::BufferFull     (Backpressure kind default)
     //   MuxError::InvalidConfig           -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::ConfigInvalid           -> TstError::InvalidConfig  (ConfigInvalid kind default)
@@ -366,6 +367,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //   MuxError::TooManyKlvStreams       -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::TooManyAudioStreams     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::TooManySubtitleStreams  -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManyDataStreams      -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::TooManyPrograms         -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::EmptyProgram            -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::DuplicateProgramNumber  -> TstError::InvalidConfig  (ConfigInvalid kind default)
@@ -374,6 +376,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //   MuxError::PmtPidConflictsWithStream  -> TstError::InvalidConfig (ConfigInvalid kind default)
     //   MuxError::SubtitlePidUsedAsPcrPid -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::KlvPidUsedAsPcrPid      -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::DataPidUsedAsPcrPid     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::SubtitleOnlyProgram     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::MalformedDescriptor     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::PmtTooLarge             -> TstError::InvalidConfig  (ConfigInvalid kind default)
@@ -382,6 +385,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //   MuxError::NoKlvStreamsConfigured  -> TstError::InvalidUsage   (InvalidUsage kind default)
     //   MuxError::NoAudioStreamsConfigured -> TstError::InvalidUsage  (InvalidUsage kind default)
     //   MuxError::NoSubtitleStreamsConfigured -> TstError::InvalidUsage (InvalidUsage kind default)
+    //   MuxError::NoDataStreamsConfigured -> TstError::InvalidUsage   (InvalidUsage kind default)
     //   MuxError::ProgramNotFound         -> TstError::InvalidUsage   (InvalidUsage kind default)
     //   MuxError::DescriptorIndexOutOfRange -> TstError::InvalidUsage (InvalidUsage kind default)
     //   MuxError::AbsIndexOutOfRange      -> TstError::InvalidUsage   (InvalidUsage kind default)
@@ -1083,6 +1087,19 @@ mod tests {
                     program_number: 1,
                 },
                 TstError::InvalidUsage,
+            ),
+            (MuxError::NoDataStreamsConfigured, TstError::InvalidUsage),
+            (
+                MuxError::TooManyDataStreams { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::DataTooLarge { size: 100, max: 50 },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::DataPidUsedAsPcrPid { pid: 0x100 },
+                TstError::InvalidConfig,
             ),
         ];
 

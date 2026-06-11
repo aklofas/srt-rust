@@ -46,6 +46,17 @@ pub(super) struct SubtitleStreamState {
     pub(super) codec: SubtitleCodec,
 }
 
+/// Per-data-stream cached state.
+pub(super) struct DataStreamState {
+    pub(super) pid: u16,
+    /// Raw caller-chosen PMT stream_type byte (e.g. 0xF0/0xF1, bare 0x06).
+    pub(super) stream_type: u8,
+    // Read by the push_data family (next wave task); the keystone commit
+    // only threads the state. Remove the allow when push_data_to lands.
+    #[allow(dead_code)]
+    pub(super) carries_pts: bool,
+}
+
 /// Structural Annex-B access-unit validator per H.264 / H.265 / H.266
 /// byte-stream syntax (ISO/IEC 14496-10 Annex B; ITU-T H.265 Annex B;
 /// ITU-T H.266 Annex B).
@@ -343,6 +354,9 @@ pub(super) fn ts_packets_for(payload_size: usize) -> usize {
 /// Collect per-stream-class state vectors for one program. Single-pass over
 /// `prog.streams`. Matches the `filter_map` collections that previously lived
 /// in `Muxer::new`.
+// One Vec per stream class, consumed positionally by `Muxer::new` —
+// a named struct would only be destructured straight back into fields.
+#[allow(clippy::type_complexity)]
 pub(super) fn collect_stream_states(
     prog: &MuxerProgramConfig,
 ) -> (
@@ -350,6 +364,7 @@ pub(super) fn collect_stream_states(
     Vec<KlvStreamState>,
     Vec<AudioStreamState>,
     Vec<SubtitleStreamState>,
+    Vec<DataStreamState>,
 ) {
     let video: Vec<VideoStreamState> = prog
         .streams
@@ -401,18 +416,37 @@ pub(super) fn collect_stream_states(
             _ => None,
         })
         .collect();
-    (video, klv, audio, subtitle)
+    let data: Vec<DataStreamState> = prog
+        .streams
+        .iter()
+        .filter_map(|s| match s {
+            StreamSpec::Data {
+                pid,
+                stream_type,
+                carries_pts,
+            } => Some(DataStreamState {
+                pid: *pid,
+                stream_type: *stream_type,
+                carries_pts: *carries_pts,
+            }),
+            _ => None,
+        })
+        .collect();
+    (video, klv, audio, subtitle, data)
 }
 
 /// Resolve the PCR-carrying PID for a program. Priority order: caller-pinned >
-/// first video > first KLV > first audio. `validate()` guarantees ≥1 stream per
-/// program, so the unwrap below cannot panic in well-formed configs.
+/// first video > first KLV > first audio. Subtitle and data streams are
+/// deliberately excluded from the fallback chain — neither has a cadence
+/// guarantee, so neither can promise the ETSI TR 101 290 §5.6.1 100 ms PCR
+/// ceiling. `validate()` rejects programs with no PCR-eligible (video / KLV /
+/// audio) stream, so the `expect()` below cannot panic in well-formed configs.
 pub(super) fn resolve_pcr_pid(prog: &MuxerProgramConfig) -> u16 {
     prog.pcr_pid.unwrap_or_else(|| {
         prog.first_video_pid()
             .or_else(|| prog.first_klv_pid())
             .or_else(|| prog.first_audio_pid())
-            .expect("validate() guarantees ≥1 stream per program")
+            .expect("validate() guarantees ≥1 PCR-eligible stream per program")
     })
 }
 
@@ -684,6 +718,7 @@ pub(super) fn initialize_stats(
     klv: &[KlvStreamState],
     audio: &[AudioStreamState],
     subtitle: &[SubtitleStreamState],
+    data: &[DataStreamState],
     into: &mut BTreeMap<u16, StreamStats>,
 ) {
     for v in video {
@@ -751,6 +786,17 @@ pub(super) fn initialize_stats(
                 stream_type: StreamTypeCode::from_byte(StreamType::KlvPrivate.as_u8()),
                 program_number: prog.program_number,
                 label: Some(crate::mpegts::stats::subtitle_codec_label(&s.codec).to_string()),
+                ..Default::default()
+            },
+        );
+    }
+    for d in data {
+        into.insert(
+            d.pid,
+            StreamStats {
+                pid: d.pid,
+                stream_type: StreamTypeCode::from_byte(d.stream_type),
+                program_number: prog.program_number,
                 ..Default::default()
             },
         );

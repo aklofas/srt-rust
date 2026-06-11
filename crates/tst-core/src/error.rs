@@ -462,14 +462,42 @@ pub enum MuxError {
     #[error("pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID")]
     PmtPidConflictsWithStream { pmt_pid: u16, program_number: u16 },
 
-    /// `MuxerConfig::validate` rejected a program that contains only subtitle
-    /// streams. Subtitles must NOT carry PCR per ETSI EN 300 472 §4.0 +
-    /// EN 300 743 §6.1; programs need ≥1 video / KLV / audio stream for
+    /// `MuxerConfig::validate` rejected a program that contains no
+    /// PCR-eligible stream (video / KLV / audio). Subtitle streams must
+    /// NOT carry PCR per ETSI EN 300 472 §4.0 + EN 300 743 §6.1, and
+    /// data streams have no cadence guarantee, so neither can anchor
     /// PCR fallback resolution.
     #[error(
-        "program {program_number} contains only subtitle streams; PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
+        "program {program_number} contains no PCR-eligible stream (video/KLV/audio); subtitle and data streams cannot carry PCR"
     )]
     SubtitleOnlyProgram { program_number: u16 },
+
+    /// `Muxer::push_data` shorthand called when no data streams configured.
+    /// Use `push_data_to(handle, ...)` with a data handle from `data_handles()`,
+    /// or add a data stream to the config.
+    #[error("no data streams configured; use push_data_to with a handle from data_handles()")]
+    NoDataStreamsConfigured,
+
+    /// `MuxerConfig::validate` rejects more than 16 data streams in any program.
+    #[error("too many data streams: {count} configured, cap is {cap}")]
+    TooManyDataStreams { count: usize, cap: usize },
+
+    /// `push_data` payload exceeds the PES packet length budget. PES
+    /// packet length is at most 65535 and must cover flags + the PTS
+    /// field (when `carries_pts` is set) + payload, bounding data
+    /// payloads to 65532 bytes (no PTS) or 65527 bytes (with PTS).
+    #[error("data payload is {size} bytes, exceeds PES_packet_length ceiling of {max} bytes")]
+    DataTooLarge { size: usize, max: usize },
+
+    /// Caller pinned a data-stream PID as the PCR PID. Data pushes are
+    /// caller-paced with no cadence guarantee, so a data PID cannot
+    /// promise ETSI TR 101 290 §5.6.1's 100 ms PCR ceiling.
+    #[error(
+        "pcr_pid 0x{pid:04X} is a data stream; data cadence is not \
+         guaranteed to meet the 100 ms PCR ceiling — pin PCR to a video \
+         or audio PID"
+    )]
+    DataPidUsedAsPcrPid { pid: u16 },
 
     /// A kind-relative descriptor index (as passed to
     /// `stream_descriptors_for_video` / `_for_klv` / `_for_audio` /
@@ -503,7 +531,7 @@ pub enum MuxError {
 /// The 5-variant set is the **inner-tier** coarse classification of muxer
 /// failures: a JNI/UniFFI/pure-C binding author pattern-matches on this enum
 /// to map muxer failures into a language-native exception hierarchy without
-/// enumerating the 32 underlying [`MuxError`] variants. For spec-aware
+/// enumerating the 36 underlying [`MuxError`] variants. For spec-aware
 /// diagnostic code (KLV-handling, DVB-subtitling, descriptor validation),
 /// match on the full [`MuxError`] variant set directly via the
 /// [`crate::mpegts::mux::_detail::MuxError`] re-export.
@@ -555,8 +583,9 @@ pub enum MuxSenderErrorKind {
     /// shape. Includes non-Annex-B NAL units
     /// ([`MuxError::InvalidNal`]), KLV blobs over the
     /// `PES_packet_length` ceiling ([`MuxError::KlvTooLarge`]), and
-    /// audio / subtitle PES payloads over the PES cap
-    /// ([`MuxError::AudioTooLarge`], [`MuxError::SubtitleTooLarge`]).
+    /// audio / subtitle / data PES payloads over the PES cap
+    /// ([`MuxError::AudioTooLarge`], [`MuxError::SubtitleTooLarge`],
+    /// [`MuxError::DataTooLarge`]).
     ///
     /// **Action:** the push input was invalid; the muxer state is
     /// unchanged. Surface a "bad input" diagnostic to the caller and
@@ -569,7 +598,7 @@ pub enum MuxSenderErrorKind {
     /// PMT over-budget, etc.). The muxer was not constructed; no
     /// pushes have happened.
     ///
-    /// **Action:** fix the config and retry construction. The 19
+    /// **Action:** fix the config and retry construction. The 21
     /// `MuxError` variants in this category collectively cover every
     /// `MuxerConfig::validate()` rejection path.
     ConfigInvalid,
@@ -618,7 +647,7 @@ impl MuxError {
     /// categories) corresponding to this variant. Use this when
     /// writing a generic binding that maps muxer failures to a
     /// language-native exception hierarchy without enumerating the
-    /// 32-variant inner set.
+    /// 36-variant inner set.
     ///
     /// For spec-aware diagnostic code (KLV-handling, DVB-subtitling,
     /// descriptor validation), match on the full [`MuxError`] variant
@@ -626,7 +655,7 @@ impl MuxError {
     /// re-export (the same enum; the re-export signals intent at the
     /// import site).
     ///
-    /// The 32-variant routing is enforced by the CI ratchet
+    /// The 36-variant routing is enforced by the CI ratchet
     /// `scripts/check/rust/mux-error-kind-coverage.sh` — every variant of
     /// the upstream [`MuxError`] enum must be matched explicitly in
     /// this function's body before the `#[non_exhaustive]` wildcard.
@@ -654,18 +683,19 @@ impl MuxError {
         // variants are explicitly classified".
         #[allow(unreachable_patterns)]
         match self {
-            // === InputMalformed (4 variants) ===
+            // === InputMalformed (5 variants) ===
             // Caller pushed bytes that don't conform to the expected shape.
             MuxError::InvalidNal => InputMalformed,
             MuxError::KlvTooLarge { .. } => InputMalformed,
             MuxError::AudioTooLarge { .. } => InputMalformed,
             MuxError::SubtitleTooLarge { .. } => InputMalformed,
+            MuxError::DataTooLarge { .. } => InputMalformed,
 
             // === Backpressure (1 variant) ===
             // Muxer queue at capacity; retry after drain.
             MuxError::BufferFull { .. } => Backpressure,
 
-            // === ConfigInvalid (19 variants) ===
+            // === ConfigInvalid (21 variants) ===
             // MuxerConfig::validate() rejected the construction-time config.
             MuxError::InvalidConfig(_) => ConfigInvalid,
             MuxError::ConfigInvalid { .. } => ConfigInvalid,
@@ -675,6 +705,7 @@ impl MuxError {
             MuxError::TooManyKlvStreams { .. } => ConfigInvalid,
             MuxError::TooManyAudioStreams { .. } => ConfigInvalid,
             MuxError::TooManySubtitleStreams { .. } => ConfigInvalid,
+            MuxError::TooManyDataStreams { .. } => ConfigInvalid,
             MuxError::TooManyPrograms { .. } => ConfigInvalid,
             MuxError::EmptyProgram { .. } => ConfigInvalid,
             MuxError::DuplicateProgramNumber { .. } => ConfigInvalid,
@@ -683,17 +714,19 @@ impl MuxError {
             MuxError::PmtPidConflictsWithStream { .. } => ConfigInvalid,
             MuxError::SubtitlePidUsedAsPcrPid { .. } => ConfigInvalid,
             MuxError::KlvPidUsedAsPcrPid { .. } => ConfigInvalid,
+            MuxError::DataPidUsedAsPcrPid { .. } => ConfigInvalid,
             MuxError::SubtitleOnlyProgram { .. } => ConfigInvalid,
             MuxError::MalformedDescriptor { .. } => ConfigInvalid,
             MuxError::PmtTooLarge { .. } => ConfigInvalid,
 
-            // === InvalidUsage (8 variants) ===
+            // === InvalidUsage (9 variants) ===
             // Caller is using the muxer API incorrectly on a working muxer.
             MuxError::InvalidStreamHandle { .. } => InvalidUsage,
             MuxError::AmbiguousTarget { .. } => InvalidUsage,
             MuxError::NoKlvStreamsConfigured => InvalidUsage,
             MuxError::NoAudioStreamsConfigured => InvalidUsage,
             MuxError::NoSubtitleStreamsConfigured => InvalidUsage,
+            MuxError::NoDataStreamsConfigured => InvalidUsage,
             MuxError::ProgramNotFound { .. } => InvalidUsage,
             MuxError::DescriptorIndexOutOfRange { .. } => InvalidUsage,
             MuxError::AbsIndexOutOfRange { .. } => InvalidUsage,

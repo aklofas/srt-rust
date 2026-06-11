@@ -503,6 +503,13 @@ impl PyMuxerProgramConfig {
                     let codec_obj = subtitle_codec_to_py(py, codec)?;
                     cls.call1((*pid, codec_obj))?.unbind()
                 }
+                // Unreachable in this wave: Python has no add_data binding
+                // and from_program_map does not map Unknown streams yet.
+                RustStreamSpec::Data { .. } => {
+                    return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                        "Data stream specs are exposed to Python in the private-data arc (W2/W3)",
+                    ));
+                }
             };
             items.push(obj);
         }

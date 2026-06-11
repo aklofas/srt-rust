@@ -975,10 +975,17 @@ class AudioStreamCodecStats(StreamCodecStats):
 
 # MuxerFileSink + MuxerDrainProxy + `Muxer.write_file`.
 # Pure-Python sink: opens a file in `wb` mode and drains pending TS
-# packets after every `push_*` call inside the `with` block. The proxy
-# uses `__getattr__` to forward every other attribute to the wrapped
-# Muxer untouched, so callers see a near-transparent Muxer surface plus
-# the implicit drain-to-disk behavior.
+# packets after every `push_*` call made on the proxy object the `with`
+# statement yields. The proxy uses `__getattr__` to forward every other
+# attribute to the wrapped Muxer untouched, so callers see a
+# near-transparent Muxer surface plus the implicit drain-to-disk
+# behavior.
+#
+# THE drain contract (v0.2.0 #6): only pushes routed through the proxy
+# drain. The original Muxer object is not modified — pushing on it while
+# a sink is active bypasses the drain entirely and overflows once
+# `buffer_packets` (default 10_000) accumulate. The proxy cannot
+# intercept those calls; they go straight to the native muxer.
 
 # Drain chunk size: 7 packets × 188 = 1316 bytes — matches the common SRT
 # payload (and UDP-like MPEG-TS bundle) size of 7×188, so callers that
@@ -1022,6 +1029,11 @@ class MuxerDrainProxy:
     proxy near-transparent — code inside the `with` block can treat
     `proxy` as a Muxer for read-only inspection while the implicit
     drain happens behind the scenes on every push.
+
+    The wrapping is one-way: the original Muxer is untouched, so a
+    `push_*` call made directly on it (instead of on this proxy) does
+    NOT drain and will overflow the packet buffer in a long push loop.
+    Always push on the proxy while a sink is active.
     """
 
     __slots__ = ("_muxer", "_fh")
@@ -1065,6 +1077,12 @@ class MuxerFileSink:
     exceptions inside the `with` body are re-raised unchanged (the
     sink does NOT suppress them, but it DOES still drain whatever's
     pending and close the file so partial output is preserved).
+
+    `__enter__` returns a `MuxerDrainProxy`, and the per-push drain
+    applies ONLY to pushes made on that proxy. Pushing on the original
+    Muxer while the sink is active bypasses the drain and overflows
+    `buffer_packets` in a long push loop — bind the `with` target and
+    push on it.
 
     **Non-atomic exit behavior (default, `atomic=False`):** on
     exception inside the `with` block, the destination file may exist
@@ -1154,10 +1172,21 @@ class MuxerFileSink:
 
 def _muxer_write_file(self, path, *, atomic: bool = False) -> MuxerFileSink:
     """Open `path` for writing (mode `wb`) and return a context manager
-    that drains pending TS packets after each `push_*` call inside the
-    `with` block and on exit. The Muxer is borrowed, not owned —
-    callers can reuse it for further `write_file(...)` calls after the
-    `with` block exits.
+    whose `with` statement yields a draining proxy: each `push_*` call
+    made ON THE PROXY drains pending TS packets to the file, and exit
+    drains whatever remains. The Muxer is borrowed, not owned — callers
+    can reuse it for further `write_file(...)` calls after the `with`
+    block exits.
+
+        with mux.write_file("out.ts") as proxy:
+            for au in access_units:
+                proxy.push_video(au.nal, pts=au.pts)   # drains per push
+
+    Push on the proxy, NOT on the original Muxer. The original object
+    is not modified by the sink, so `mux.push_video(...)` inside the
+    block bypasses the per-push drain and raises
+    `MuxError(BACKPRESSURE)` once `buffer_packets` (default 10_000)
+    accumulate — the classic long-push-loop footgun.
 
     Pass `atomic=True` to write via a `*.partial` tempfile in the same
     directory and `os.replace` to `path` only on successful exit. On

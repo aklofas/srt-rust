@@ -83,7 +83,9 @@ with m.write_file("out.ts") as proxy:
 
 `MuxerFileSink` (the object returned by `write_file`) is a context
 manager — `__exit__` flushes and finalizes the file; no explicit
-`close()` ceremony is needed.
+`close()` ceremony is needed. Note the pushes go through `proxy` (the
+object the `with` statement yields), not through `m` — only proxy
+pushes drain to the file as they go.
 
 ## First receive
 
@@ -153,10 +155,15 @@ See the `tstrans.klv` module docstring for the full type listing.
   means `True` is not silently coerced to integer `1` for fields that
   expect an integer codec selector. Same with `bytearray` vs `bytes`.
   (Came from plan #96 validation pass.)
-- **`MuxerFileSink` is a context manager.** Use
-  `with m.write_file("out.ts") as proxy: ...`. The `__exit__` flushes +
-  finalizes the file. No explicit `close()` ceremony is needed (and a
-  double-close on the underlying handle would panic).
+- **`MuxerFileSink` is a context manager — push on the proxy it
+  yields.** Use `with m.write_file("out.ts") as proxy: ...` and route
+  every `push_*` through `proxy`. Only proxy pushes drain to the file;
+  pushing on the original Muxer (`m.push_video(...)`) inside the block
+  bypasses the per-push drain and raises `MuxError(BACKPRESSURE)` once
+  `buffer_packets` (default 10 000) accumulate — a footgun that only
+  fires in long push loops. The `__exit__` flushes + finalizes the
+  file. No explicit `close()` ceremony is needed (and a double-close on
+  the underlying handle would panic).
 - **Video / Audio events are raw-first; parsing is opt-in.** A
   `DemuxEvent.Video` / `DemuxEvent.Audio` carries `.raw` (the exact encoded
   bytes). Call `ev.parse()` to get typed units: for H.264 / H.265 / H.266

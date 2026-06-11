@@ -7,19 +7,26 @@ Read-side helpers:
 - `extract_klv(path, with_pts=False)` → iterator of KLV payloads
 - `iter_uas_datalink(path)` → iterator of `(pts, klv_index, UasDatalinkLs)`
 
+Read+write bridge:
+
+- `transmux(src, dst)` → demux→edit→remux context manager (`Transmuxer`)
+
 The write-side `Muxer.write_file(path)` context manager lives on the
 `Muxer` class in `tstrans.mpegts`.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional, Union
+from typing import Iterator, Optional, Sequence, Union
 
 from tstrans.mpegts import (
     AudioCodec,
     DemuxEvent,
     Demuxer,
     DemuxerConfig,
+    Muxer,
+    MuxerConfig,
+    MuxerFileSink,
     Pts90khz,
     ProgramMap,
     StreamKindTag,
@@ -309,10 +316,285 @@ def iter_uas_datalink(
         yield (ev.pts, klv_index, decode_uas_datalink(ev.payload, strict=strict))
 
 
+def transmux(
+    src: Union[str, Path],
+    dst: Union[str, Path],
+    *,
+    drop: Sequence[StreamKindTag] = (),
+    atomic: bool = False,
+) -> "Transmuxer":
+    """Open a demux→remux bridge from `src` to `dst`: iterate demux
+    events and write back the ones to keep — byte-faithful for
+    everything you don't edit.
+
+        with tio.transmux("in.ts", "out.ts") as tx:
+            for ev in tx:
+                if isinstance(ev, DemuxEvent.Klv):
+                    tx.write_klv(ev, klv.patch_uas_datalink(ev.payload, {...}))
+                else:
+                    tx.write(ev)
+
+    The output muxer is constructed lazily from the FIRST `ProgramMap`
+    event via `MuxerConfig.from_program_map(pm, drop=drop)`, so `dst`
+    reproduces the source program topology (program number, PMT PID,
+    stream PIDs, codecs). `dst` is created at that moment — a source
+    with no PSI yields no events and produces NO output file.
+
+    Strict by default: streams the muxer cannot represent (unknown
+    stream types, DVB subtitling/teletext) fail the conversion with
+    `MuxError` naming the offenders; pass their kinds in `drop` to
+    exclude them instead. Events for dropped streams are skipped by
+    `write`. v1 supports single-program sources with a stable program
+    map — a second program (or a mid-stream layout change) raises
+    `ValueError`.
+
+    `atomic=True` routes the output through the `MuxerFileSink`
+    temp-file machinery: `dst` appears only on clean exit (`os.replace`
+    from a same-directory `*.partial`); on an exception nothing is left
+    at the destination.
+    """
+
+    return Transmuxer(src, dst, drop=drop, atomic=atomic)
+
+
+class Transmuxer:
+    """Iterable + writable transmux bridge — construct via `transmux()`.
+
+    Iteration yields every `DemuxEvent` from the source, single-pass
+    (file-object semantics: `iter()` always returns the same generator).
+    `write(ev)` copies an event to the output; `write_klv(ev, bytes)`
+    substitutes a KLV payload. Both push through the sink's drain proxy,
+    so TS packets stream to disk per write (the `write_file` drain
+    contract — pushes routed anywhere else would overflow the muxer's
+    packet buffer).
+
+    Per-event dispatch (see `transmux` for the construction story):
+
+    - Video → `push_video_to_with_dts(raw, pts, dts, key_frame)`;
+      `dts=None` is preserved as a PTS-only PES, not coerced to dts=pts.
+    - Audio → `push_audio_to(raw, pts)` (the mux push API carries no
+      audio dts; dts≠pts audio does not occur for MP2/AAC/AC-3).
+    - Klv → `push_klv_to(payload, pts)`. Payloads are raw KLV LS bytes
+      in BOTH directions: the demuxer strips the sync-metadata AU-cell
+      header and the muxer re-wraps it — never pre-wrap. The AU cell's
+      `metadata_service_id` is not recoverable from the demux event, so
+      the muxer default applies on the way out.
+    - Subtitle → `push_subtitle_to(payload, pts)` (kept CEA-708/WebVTT
+      streams; DVB offenders must be dropped or fail config).
+    - `ProgramMap` / `Discontinuity` / `NonConformant` /
+      `ReconnectDiscontinuity` (no mux representation) and
+      `UnknownSample` (only reachable for dropped streams) are accepted
+      and skipped, as are sample events for dropped streams.
+
+    Writing a sample event before the first `ProgramMap` has been
+    iterated, or after the `with` block exits, raises `RuntimeError`.
+    """
+
+    __slots__ = (
+        "_src",
+        "_dst",
+        "_drop",
+        "_atomic",
+        "_events",
+        "_pm",
+        "_sink",
+        "_proxy",
+        "_handles",
+        "_closed",
+    )
+
+    # Events with no mux representation: accepted + skipped by write().
+    # UnknownSample is stream-bound but can only occur for streams that
+    # from_program_map dropped (kept unknowns fail the conversion), so
+    # it is skipped on the same path.
+    _SKIP_EVENTS = (
+        DemuxEvent.ProgramMap,
+        DemuxEvent.Discontinuity,
+        DemuxEvent.NonConformant,
+        DemuxEvent.ReconnectDiscontinuity,
+        DemuxEvent.UnknownSample,
+    )
+
+    def __init__(
+        self,
+        src: Union[str, Path],
+        dst: Union[str, Path],
+        *,
+        drop: Sequence[StreamKindTag] = (),
+        atomic: bool = False,
+    ) -> None:
+        self._src = Path(src)
+        self._dst = Path(dst)
+        self._drop = tuple(drop)
+        self._atomic = atomic
+        self._events = None  # shared single-pass generator
+        self._pm = None  # first program's ProgramMap (identity anchor)
+        self._sink = None  # MuxerFileSink, entered on first ProgramMap
+        self._proxy = None  # MuxerDrainProxy — ALL pushes go through it
+        self._handles = {}  # source pid -> muxer stream handle
+        self._closed = False
+
+    def __enter__(self) -> "Transmuxer":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._closed = True
+        try:
+            if self._events is not None:
+                # Close the parse_file generator so the source file
+                # handle is released deterministically, not at GC.
+                self._events.close()
+        finally:
+            if self._sink is not None:
+                # Final drain + close + atomic promote/unlink. The sink
+                # never suppresses the in-flight exception.
+                self._sink.__exit__(exc_type, exc, tb)
+
+    def __iter__(self) -> Iterator[DemuxEvent]:
+        if self._events is None:
+            self._events = self._event_gen()
+        return self._events
+
+    def _event_gen(self) -> Iterator[DemuxEvent]:
+        for ev in parse_file(self._src):
+            if isinstance(ev, DemuxEvent.ProgramMap):
+                self._on_program_map(ev)
+            yield ev
+
+    def _on_program_map(self, ev) -> None:
+        if len(ev.programs) != 1:
+            raise ValueError(
+                f"transmux v1 supports single-program sources only; got a "
+                f"ProgramMap event carrying {len(ev.programs)} programs"
+            )
+        pm = ev.programs[0]
+        if self._pm is not None:
+            # The demuxer emits ProgramMap once per fresh PMT version. A
+            # content-identical re-emission (version bump, no layout
+            # change) is harmless; anything else is a second program or
+            # a mid-stream layout change — both out of v1 scope.
+            if pm != self._pm:
+                raise ValueError(
+                    "transmux v1 supports single-program sources with a "
+                    "stable program map; saw a second, different "
+                    "ProgramMap (new program or mid-stream layout change)"
+                )
+            return
+        # Build the output side. Order matters: nothing is recorded
+        # until every fallible step succeeded, so a from_program_map
+        # strictness error (or an unopenable dst) leaves no half-state.
+        config = MuxerConfig.from_program_map(pm, drop=list(self._drop))
+        muxer = Muxer(config)
+        sink = MuxerFileSink(muxer, self._dst, atomic=self._atomic)
+        proxy = sink.__enter__()
+        self._pm = pm
+        self._sink = sink
+        self._proxy = proxy
+        self._handles = self._build_handles(pm, muxer)
+
+    def _build_handles(self, pm, muxer) -> dict:
+        """Map source PIDs to muxer stream handles, positionally per
+        kind: `from_program_map` adds streams in PMT order within each
+        kind (skipping dropped kinds), and the muxer's per-kind handle
+        lists are in add order — so zip() pairs them faithfully."""
+
+        dropped = set(self._drop)
+        kept = [s for s in pm.streams if s.kind not in dropped]
+        video = [s.pid for s in kept if s.kind is StreamKindTag.VIDEO]
+        audio = [s.pid for s in kept if s.kind is StreamKindTag.AUDIO]
+        klv = [
+            s.pid
+            for s in kept
+            if s.kind in (StreamKindTag.KLV_SYNC, StreamKindTag.KLV_ASYNC)
+        ]
+        subtitle = [s.pid for s in kept if s.kind is StreamKindTag.SUBTITLE]
+        handles: dict = {}
+        handles.update(zip(video, muxer.video_handles()))
+        handles.update(zip(audio, muxer.audio_handles()))
+        handles.update(zip(klv, muxer.klv_handles()))
+        handles.update(zip(subtitle, muxer.subtitle_handles()))
+        return handles
+
+    def _handle_for(self, ev):
+        """Resolve a sample event's muxer handle; None = dropped stream
+        (caller skips). Raises on lifecycle misuse."""
+
+        if self._closed:
+            raise RuntimeError(
+                "transmux: closed — write only inside the `with` block"
+            )
+        if self._proxy is None:
+            raise RuntimeError(
+                "transmux: no ProgramMap seen yet — iterate the "
+                "transmuxer at least to the first ProgramMap event "
+                "before writing sample events"
+            )
+        return self._handles.get(ev.stream.pid)
+
+    def write(self, ev) -> None:
+        """Copy one demux event to the output (see class docstring for
+        the per-type dispatch). Accepts every `DemuxEvent` subclass;
+        skips the ones with no mux representation and any event from a
+        dropped stream."""
+
+        if isinstance(ev, Transmuxer._SKIP_EVENTS):
+            return
+        if isinstance(ev, DemuxEvent.Klv):
+            self._push_klv(ev, ev.payload)
+        elif isinstance(ev, DemuxEvent.Video):
+            handle = self._handle_for(ev)
+            if handle is None:
+                return
+            self._proxy.push_video_to_with_dts(
+                handle,
+                ev.raw,
+                pts=ev.pts,
+                dts=ev.dts,
+                key_frame=ev.random_access_indicator,
+            )
+        elif isinstance(ev, DemuxEvent.Audio):
+            handle = self._handle_for(ev)
+            if handle is None:
+                return
+            self._proxy.push_audio_to(handle, ev.raw, pts=ev.pts)
+        elif isinstance(ev, DemuxEvent.Subtitle):
+            handle = self._handle_for(ev)
+            if handle is None:
+                return
+            self._proxy.push_subtitle_to(handle, ev.payload, pts=ev.pts)
+        else:
+            raise TypeError(
+                f"transmux.write: unsupported event type "
+                f"{type(ev).__name__!r} (expected a DemuxEvent)"
+            )
+
+    def write_klv(self, ev, new_bytes) -> None:
+        """Write a KLV event with `new_bytes` substituted for its
+        payload — the metadata-editing half of the transmux workflow
+        (pair with `tstrans.klv.patch_uas_datalink` for byte-faithful
+        tag edits). `new_bytes` is raw KLV LS bytes; sync-metadata
+        AU-cell wrapping is the muxer's job — never pre-wrap."""
+
+        if not isinstance(ev, DemuxEvent.Klv):
+            raise TypeError(
+                f"transmux.write_klv: expected a DemuxEvent.Klv, got "
+                f"{type(ev).__name__!r}"
+            )
+        self._push_klv(ev, new_bytes)
+
+    def _push_klv(self, ev, payload) -> None:
+        handle = self._handle_for(ev)
+        if handle is None:
+            return
+        self._proxy.push_klv_to(handle, payload, pts=ev.pts)
+
+
 __all__: list[str] = [
     "parse_file",
     "probe",
     "extract_klv",
     "iter_uas_datalink",
+    "transmux",
     "ProbeResult",
+    "Transmuxer",
 ]

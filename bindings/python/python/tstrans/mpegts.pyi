@@ -37,6 +37,12 @@ from typing import (
 )
 
 from tstrans.codec import NalUnit, Obu, ObuExtension
+from tstrans.klv import (
+    PrecisionTimeStampPack,
+    SecurityLs,
+    UasDatalinkLs,
+    VmtiLs,
+)
 
 # Bytes-like input accepted by the PyO3 `&[u8]` / `bytes()`-coercion extractors.
 # Private (leading underscore) so stubtest doesn't treat it as a runtime member.
@@ -333,6 +339,11 @@ class DemuxEvent:
         payload: bytes
         was_reassembled: bool = ...
         cell_count: int = ...
+        def parse(
+            self, *, strict: bool = ...
+        ) -> Optional[
+            Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]
+        ]: ...
 
     @dataclass(frozen=True, slots=True)
     class UnknownSample(DemuxEvent):

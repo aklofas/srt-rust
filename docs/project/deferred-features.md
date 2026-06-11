@@ -32,10 +32,11 @@ the trigger that would unblock it.
 
 ## Other PMT entries / auxiliary services
 
-- **Status:** The muxer emits PAT + PMT with video PID + KLV PID(s)
-  only. SCTE-35 splice info, EMM/ECM (conditional access), data
-  carousels (DSM-CC), and private-data PIDs beyond KLV are not
-  emitted.
+- **Status:** SCTE-35 splice info, EMM/ECM (conditional access), and
+  data carousels (DSM-CC) are not emitted as typed services. Arbitrary
+  private-data PES streams (PMT entry with a caller-chosen
+  `stream_type` + descriptors, pass-through payload) are now supported
+  via `StreamSpec::Data` / `add_data`.
 - **Why deferred:** No shipping consumer asks for any of them. Adding
   them speculatively risks the same wrong-abstraction trap as
   subtitles — each is its own descriptor + stream_type + PES shape.
@@ -1383,3 +1384,21 @@ the trigger that would unblock it.
   staging download, and add `macos-x86_64` to the `NativeLoader` /
   `build.gradle.kts` triple set. Until then, Intel-Mac users build the
   cdylib from source (`cargo build --release -p tst-jni`).
+
+## `private_stream_2` (0xBF) data carriage
+
+- **Status:** Not implemented. `StreamSpec::Data` emits every data
+  payload as PES `private_stream_1` (stream_id `0xBD`), which carries a
+  full PES header (and optionally a PTS). There is no way to emit
+  `private_stream_2` (stream_id `0xBF`) PES packets.
+- **Why deferred:** `private_stream_2` packets carry no PES header
+  fields at all — per ISO/IEC 13818-1 §2.4.3.7 the packet goes straight
+  from `PES_packet_length` to payload bytes — so no PTS is possible,
+  ever. We have not seen `0xBF` carriage in any capture; the `0xBD`
+  form already covers both timed and untimed (`carries_pts = false`)
+  payloads.
+- **Trigger to revisit:** A consumer with real `0xBF` streams — either
+  needing to mux them or to round-trip them through the demuxer.
+- **Scope when added:** A stream_id selector on `StreamSpec::Data`
+  (default `0xBD`), validation forcing `carries_pts = false` for
+  `0xBF`, and the slimmer header-less PES emission path.

@@ -44,8 +44,17 @@ assert_type(vmti, VmtiLs)
 assert_type(is_st0601_family(b"\x06\x0e"), bool)
 
 # Pin the universal dispatcher's Optional[union] return — guards against the
-# union being accidentally widened/narrowed.
+# union being accidentally widened/narrowed. strict= is keyword-only.
 assert_type(
     parse_klv_universal(b"\x06\x0e"),
     Optional[Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]],
 )
+assert_type(
+    parse_klv_universal(b"\x06\x0e", strict=True),
+    Optional[Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]],
+)
+
+# with_() copy-update returns the same set type on all four typed sets.
+assert_type(ls.with_(sensor_lat_deg=33.5), UasDatalinkLs)
+assert_type(sec.with_(version=12), SecurityLs)
+assert_type(vmti.with_(frame_width=640), VmtiLs)

@@ -49,6 +49,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   push, never overflows) and the raw-muxer footgun itself (overflows, carries
   the hint).
 
+### Added — Python ergonomics for the metadata-edit workflow
+
+- `with_(**changes)` on the four frozen typed KLV sets (`UasDatalinkLs`,
+  `SecurityLs`, `PrecisionTimeStampPack`, `VmtiLs`) — copy-update without
+  `dataclasses.replace` boilerplate; construction-time validation re-runs.
+- `tstrans.io.iter_uas_datalink(path, *, strict=False, config=None)` — typed
+  ST 0601 iterator yielding `(pts, klv_index, UasDatalinkLs)`; `klv_index`
+  counts every KLV event in file order so indices line up with a re-mux pass.
+- `DemuxEvent.Klv.parse(*, strict=False)` — decode-on-event sugar mirroring
+  `Video.parse()` / `Audio.parse()`; dispatches by universal label.
+  `tstrans.klv.parse_klv_universal` now accepts `strict=`.
+- Runtime `inspect.signature` on the `Muxer` / `Demuxer` / builder
+  constructors is regression-locked (PyO3 already auto-generates
+  `__text_signature__` from `#[new]` — no Rust changes were needed).
+
 ### Added — ST 0601 byte-faithful tag patcher
 
 - `tst_core::klv::st0601::patch` + `tstrans.klv.patch_uas_datalink`: byte-faithful

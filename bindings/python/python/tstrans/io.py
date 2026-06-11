@@ -435,6 +435,13 @@ class Transmuxer:
         self._closed = False
 
     def __enter__(self) -> "Transmuxer":
+        if self._closed:
+            # Re-entering would bypass the already-run teardown: the
+            # next ProgramMap would open a fresh sink whose __exit__
+            # never runs (stray *.partial / clobbered dst).
+            raise RuntimeError(
+                "transmux: closed — create a new transmuxer for another pass"
+            )
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -452,6 +459,14 @@ class Transmuxer:
 
     def __iter__(self) -> Iterator[DemuxEvent]:
         if self._events is None:
+            if self._closed:
+                # A never-iterated-but-closed transmuxer must not start
+                # demuxing now: the first ProgramMap would open a sink
+                # that no __exit__ will ever clean up. (An exhausted
+                # generator from inside the block is fine to hand back.)
+                raise RuntimeError(
+                    "transmux: closed — iterate inside the `with` block"
+                )
             self._events = self._event_gen()
         return self._events
 

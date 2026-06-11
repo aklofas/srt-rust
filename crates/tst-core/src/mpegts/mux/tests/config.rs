@@ -419,6 +419,148 @@ fn validate_language_code_accepts_uppercase_per_en_300_468() {
     assert!(validate_language_code([0x00, 0x01, 0x02]).is_err());
 }
 
+// ─── StreamSpec::Data validation ────────────────────────────────────────────
+
+/// One video + one data stream; `descs` (if any) go on the data stream.
+fn data_prog(stream_type: u8, descs: Vec<Vec<u8>>) -> MuxerProgramConfig {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
+    prog.add_video(0x1011, VideoCodec::H264);
+    prog.add_data(0x1100, stream_type, true);
+    if !descs.is_empty() {
+        prog.stream_descriptors_for_data(0, descs).unwrap();
+    }
+    prog.build()
+}
+
+fn build_cfg(prog: MuxerProgramConfig) -> Result<MuxerConfig, MuxError> {
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog);
+    b.build()
+}
+
+#[test]
+fn data_user_private_stream_types_accepted() {
+    // User-private bytes, bare 0x06, and unclassified 0x87 (E-AC-3) all
+    // re-demux as Unknown — the write-side dual holds, so validate accepts.
+    for st in [0xF0u8, 0xF1, 0x06, 0x87] {
+        let cfg = build_cfg(data_prog(st, vec![]));
+        assert!(
+            cfg.is_ok(),
+            "stream_type 0x{st:02X} should be accepted, got {:?}",
+            cfg.err()
+        );
+    }
+}
+
+#[test]
+fn data_typed_stream_types_rejected() {
+    // Every stream_type the demux cascade classifies as a typed kind must
+    // be rejected — use the typed StreamSpec variant instead.
+    for st in [0x1Bu8, 0x24, 0x33, 0x15, 0x03, 0x04, 0x0F, 0x11, 0x81] {
+        let err = build_cfg(data_prog(st, vec![])).unwrap_err();
+        match err {
+            MuxError::ConfigInvalid { ref reason } => assert!(
+                reason.contains(&format!("0x{st:02X}")),
+                "reason for stream_type 0x{st:02X} should name it, got: {reason}"
+            ),
+            other => panic!("expected ConfigInvalid for stream_type 0x{st:02X}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn data_0x06_masquerade_descriptors_rejected() {
+    // 0x06 + a classifying descriptor re-demuxes as a typed kind (KLV /
+    // AV1 video / subtitle) — a Data stream must not masquerade as one.
+    let masquerades: [Vec<u8>; 6] = [
+        b"\x05\x04KLVA".to_vec(),
+        b"\x05\x04AV01".to_vec(),
+        b"\x05\x04VTTC".to_vec(),
+        b"\x05\x04GA94".to_vec(),
+        // subtitling_descriptor (tag 0x59)
+        vec![0x59, 0x08, b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x02],
+        // teletext_descriptor (tag 0x56)
+        vec![0x56, 0x05, b'e', b'n', b'g', 0x08, 0x88],
+    ];
+    for tlv in masquerades {
+        let err = build_cfg(data_prog(0x06, vec![tlv.clone()])).unwrap_err();
+        assert!(
+            matches!(err, MuxError::ConfigInvalid { .. }),
+            "descriptor {tlv:02X?} on 0x06 should be rejected, got {err:?}"
+        );
+    }
+}
+
+#[test]
+fn data_0x06_benign_descriptors_accepted() {
+    // Unrecognized registration identifier on 0x06 stays Unknown.
+    let _ = build_cfg(data_prog(0x06, vec![b"\x05\x04ABCD".to_vec()]))
+        .expect("unrecognized registration ABCD is benign");
+    // Private name tag (0xFF) on a user-private stream_type stays Unknown.
+    let _ = build_cfg(data_prog(0xF0, vec![b"\xFF\x0ASERIAL_ADF".to_vec()]))
+        .expect("private name tag on 0xF0 is benign");
+}
+
+#[test]
+fn data_pid_rejected_as_pcr_pid() {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
+    prog.add_video(0x1011, VideoCodec::H264);
+    prog.add_data(0x1100, 0xF0, true);
+    prog.pcr_pid(0x1100);
+    let err = build_cfg(prog.build()).unwrap_err();
+    assert!(
+        matches!(err, MuxError::DataPidUsedAsPcrPid { pid: 0x1100 }),
+        "expected DataPidUsedAsPcrPid {{ pid: 0x1100 }}, got {err:?}"
+    );
+}
+
+#[test]
+fn data_only_program_rejected_no_pcr_eligible_stream() {
+    // Data streams are excluded from the PCR fallback chain, so a
+    // data-only program trips the no-PCR-eligible-stream guard (the
+    // variant name predates data streams).
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
+    prog.add_data(0x1100, 0xF0, true);
+    let err = build_cfg(prog.build()).unwrap_err();
+    assert!(
+        matches!(err, MuxError::SubtitleOnlyProgram { program_number: 1 }),
+        "expected SubtitleOnlyProgram {{ program_number: 1 }}, got {err:?}"
+    );
+}
+
+#[test]
+fn data_malformed_descriptor_rejected_by_existing_walk() {
+    // Bad length byte (declares 9, body is 1): must surface as
+    // MalformedDescriptor from the well-formedness walk, NOT panic in the
+    // classify rule — pins the ordering (walk BEFORE classify parse).
+    let err = build_cfg(data_prog(0xF0, vec![vec![0xFF, 0x09, b'X']])).unwrap_err();
+    assert!(
+        matches!(err, MuxError::MalformedDescriptor { .. }),
+        "expected MalformedDescriptor, got {err:?}"
+    );
+    // 1-byte TLV: would panic on tlv[2..] if the classify rule parsed it
+    // first — the true ordering pin.
+    let err = build_cfg(data_prog(0xF0, vec![vec![0xFF]])).unwrap_err();
+    assert!(
+        matches!(err, MuxError::MalformedDescriptor { .. }),
+        "expected MalformedDescriptor for 1-byte TLV, got {err:?}"
+    );
+}
+
+#[test]
+fn data_cap_enforced() {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
+    prog.add_video(0x1011, VideoCodec::H264);
+    for i in 0..17 {
+        prog.add_data(0x1100 + i as u16, 0xF0, true);
+    }
+    let err = build_cfg(prog.build()).unwrap_err();
+    assert!(
+        matches!(err, MuxError::TooManyDataStreams { count: 17, cap: 16 }),
+        "expected TooManyDataStreams {{ 17, 16 }}, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_kind_display() {
     assert_eq!(StreamKind::Video.to_string(), "video");

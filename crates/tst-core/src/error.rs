@@ -466,7 +466,9 @@ pub enum MuxError {
     /// PCR-eligible stream (video / KLV / audio). Subtitle streams must
     /// NOT carry PCR per ETSI EN 300 472 §4.0 + EN 300 743 §6.1, and
     /// data streams have no cadence guarantee, so neither can anchor
-    /// PCR fallback resolution.
+    /// PCR fallback resolution. The variant name predates data streams;
+    /// the condition is "no PCR-eligible stream", not literally
+    /// subtitle-only.
     #[error(
         "program {program_number} contains no PCR-eligible stream (video/KLV/audio); subtitle and data streams cannot carry PCR"
     )]
@@ -482,10 +484,12 @@ pub enum MuxError {
     #[error("too many data streams: {count} configured, cap is {cap}")]
     TooManyDataStreams { count: usize, cap: usize },
 
-    /// `push_data` payload exceeds the PES packet length budget. PES
-    /// packet length is at most 65535 and must cover flags + the PTS
-    /// field (when `carries_pts` is set) + payload, bounding data
-    /// payloads to 65532 bytes (no PTS) or 65527 bytes (with PTS).
+    /// `push_data` payload exceeds the PES packet length budget.
+    ///
+    /// PES_packet_length is at most 65535 and must cover flags1, flags2,
+    /// header_data_length, the PTS field (present when `carries_pts` is
+    /// set), and the ES payload — so the data payload itself is bounded
+    /// to 65532 bytes (no PTS) or 65527 bytes (with PTS).
     #[error("data payload is {size} bytes, exceeds PES_packet_length ceiling of {max} bytes")]
     DataTooLarge { size: usize, max: usize },
 

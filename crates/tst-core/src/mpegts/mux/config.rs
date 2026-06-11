@@ -339,6 +339,10 @@ impl MuxerConfig {
     /// Validate the configuration. Returns a `MuxError` describing the first
     /// failed rule.
     pub fn validate(&self) -> Result<(), MuxError> {
+        use crate::mpegts::demux::StreamKind as DemuxKind;
+        use crate::mpegts::demux::pmt_classify::classify_pmt_stream;
+        use crate::mpegts::descriptors::RawDescriptor;
+
         if self.programs.is_empty() {
             return Err(MuxError::InvalidConfig("at least one program is required"));
         }
@@ -418,11 +422,13 @@ impl MuxerConfig {
                 });
             }
 
-            // Subtitle-only programs cannot resolve a PCR PID. Subtitles
-            // must NOT carry PCR per ETSI EN 300 472 §4.0 + EN 300 743 §6.1,
-            // and the PCR fallback chain in `Muxer::new` (caller-pinned >
-            // video > KLV > audio) excludes subtitles deliberately. Reject
-            // at validate-time rather than panicking at runtime.
+            // Programs with no PCR-eligible stream (video/KLV/audio) cannot
+            // resolve a PCR PID. Subtitles must NOT carry PCR per ETSI
+            // EN 300 472 §4.0 + EN 300 743 §6.1, and data streams have no
+            // cadence guarantee; the PCR fallback chain in `Muxer::new`
+            // (caller-pinned > video > KLV > audio) excludes both
+            // deliberately. Reject at validate-time rather than panicking
+            // at runtime.
             if video_count == 0 && klv_count == 0 && audio_count == 0 {
                 return Err(MuxError::SubtitleOnlyProgram {
                     program_number: prog.program_number,
@@ -567,6 +573,19 @@ impl MuxerConfig {
                 }
             }
 
+            // Reject explicit PCR-PID pinning to a data PID: data pushes
+            // are caller-paced with no cadence guarantee, so a data PID
+            // cannot promise ETSI TR 101 290 §5.6.1's 100 ms PCR ceiling.
+            // Only the explicit pin needs checking — the effective-PCR
+            // fallback chain (video > KLV > audio) never lands on data.
+            for s in &prog.streams {
+                if let StreamSpec::Data { pid, .. } = s {
+                    if prog.pcr_pid == Some(*pid) {
+                        return Err(MuxError::DataPidUsedAsPcrPid { pid: *pid });
+                    }
+                }
+            }
+
             // stream_descriptors length match + per-TLV well-formedness.
             if prog.stream_descriptors.len() != prog.streams.len() {
                 return Err(MuxError::ConfigInvalid {
@@ -603,6 +622,38 @@ impl MuxerConfig {
                             stream_index: si,
                             descriptor_index: di,
                             reason: "descriptor body length must fit in u8 (max 253 useful bytes)",
+                        });
+                    }
+                }
+            }
+
+            // Data streams must classify as Unknown under the demux
+            // cascade — both directions of the contract: a Data stream
+            // re-demuxes as Unknown, and typed payloads can't ride a
+            // Data spec to lie to downstream demuxers.
+            for (i, spec) in prog.streams.iter().enumerate() {
+                if let StreamSpec::Data {
+                    pid, stream_type, ..
+                } = spec
+                {
+                    // tlv[0] / tlv[2..] are safe: the well-formedness walk
+                    // above already rejected any TLV shorter than 2 bytes.
+                    let descs: Vec<RawDescriptor> = prog.stream_descriptors[i]
+                        .iter()
+                        .map(|tlv| RawDescriptor {
+                            tag: tlv[0],
+                            data: tlv[2..].to_vec(),
+                        })
+                        .collect();
+                    let kind = classify_pmt_stream(*stream_type, &descs);
+                    if !matches!(kind, DemuxKind::Unknown(_)) {
+                        return Err(MuxError::ConfigInvalid {
+                            reason: format!(
+                                "data stream pid 0x{pid:04X}: stream_type 0x{stream_type:02X} \
+                                 with its descriptors classifies as {kind:?} — use the typed \
+                                 StreamSpec variant for that kind, or remove the classifying \
+                                 descriptor",
+                            ),
                         });
                     }
                 }

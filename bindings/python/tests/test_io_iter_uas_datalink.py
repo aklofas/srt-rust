@@ -80,9 +80,10 @@ def test_accepts_config_kwarg(tmp_path):
 
 
 def test_strict_kwarg_forwarded_to_decoder(tmp_path, monkeypatch):
-    # strict's only core-side effect today (canonical family UL) is
-    # subsumed by this iterator's own family filter, so prove the
-    # thread-through with a spy rather than a behavioral fixture.
+    # strict's only core-side effect today (the ST 0601 family UL
+    # pattern) is subsumed by this iterator's own family filter, so
+    # prove the thread-through with a spy rather than a behavioral
+    # fixture.
     import tstrans.klv as klv_mod
 
     a = encode_uas_datalink(UasDatalinkLs(mission_id="A"))
@@ -104,3 +105,12 @@ def test_malformed_record_raises(tmp_path):
     bad = encode_uas_datalink(UasDatalinkLs(mission_id="A"))[:-4]
     with pytest.raises(KlvError):
         list(iter_uas_datalink(_build_ts([bad], tmp_path)))
+
+
+def test_short_payload_raises_instead_of_silent_skip(tmp_path):
+    # A payload too short to carry a 16-byte UL is corruption, not an
+    # identifiable "different set" — it must raise, not vanish
+    # (Copilot review: the family filter alone would silently skip it).
+    path = _build_ts([b"\x06\x0e\x2b\x34"], tmp_path)
+    with pytest.raises(KlvError):
+        list(iter_uas_datalink(path))

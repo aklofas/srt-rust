@@ -36,8 +36,16 @@ set(_INC "-I${_SUB}/posix-shims -I${_SUB} -I${_SUB}/freertos -I${_SUB}/lwip \
  -I${_P}/FreeRTOS-Plus-POSIX/include -I${_P}/FreeRTOS-Plus-POSIX/include/portable \
  -I${_L}/src/include -I${_L}/src/include/compat/posix")
 
+# Vendored-libsrt warning suppressions, scoped to this cross-build (the pinned
+# v1.5.5 source is not ours to fix):
+# -Wno-type-limits: core.cpp:541 `int(optName) < 0` is always-false on this
+#   target's enum representation — upstream-portable code, noise here.
+# -Wno-cpp: epoll.cpp's `#warning` that epoll is unsupported — expected and
+#   intentional; CMAKE_SYSTEM_NAME=Generic selects the portable ::select()
+#   path by design (see header comment above).
+set(_WNO "-Wno-type-limits -Wno-cpp")
 set(CMAKE_C_FLAGS   "${_ARCH} ${_DEFS} ${_INC}" CACHE STRING "")
-set(CMAKE_CXX_FLAGS "${_ARCH} ${_DEFS} ${_INC}" CACHE STRING "")
+set(CMAKE_CXX_FLAGS "${_ARCH} ${_DEFS} ${_INC} ${_WNO}" CACHE STRING "")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

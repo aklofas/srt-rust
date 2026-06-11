@@ -4050,6 +4050,31 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::Av1CarriageMode::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::DataStreamHandle"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_core::mpegts::mux::DataStreamHandle::clone"
+reason = "derive impl; handle identity covered by mux_data.rs accessor-parity asserts"
+
+[[exempt]]
+item = "tst_core::mpegts::mux::DataStreamHandle::eq"
+reason = "derive impl; handle identity covered by mux_data.rs accessor-parity asserts"
+
+[[exempt]]
+item = "tst_core::mpegts::mux::DataStreamHandle::fmt"
+reason = "derive impl; handle identity covered by mux_data.rs accessor-parity asserts"
+
+[[exempt]]
+item = "tst_core::mpegts::mux::DataStreamHandle::hash"
+reason = "derive impl; handle identity covered by mux_data.rs accessor-parity asserts"
+
 [[exempt]]
 item = "tst_core::mpegts::mux::KlvStreamHandle"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -4115,6 +4140,33 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::Muxer::capacity_packets"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::data_handles"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::data_handles_for_program"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::data_stream_handle"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::klv_handles"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -4156,6 +4208,24 @@ tier = "A"
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::push_audio_to"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::push_data"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::Muxer::push_data_to"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
 
 [[surface]]
 kind = "rust"
@@ -4370,6 +4440,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_audio_with_language"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_data"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs", "crates/tst-core/src/mpegts/mux/tests/config.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_klv"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -4405,6 +4484,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 [[exempt]]
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_audio"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_data"
+owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs", "crates/tst-core/src/mpegts/mux/tests/config.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
 
 [[exempt]]
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_klv"

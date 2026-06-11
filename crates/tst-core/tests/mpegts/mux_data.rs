@@ -218,6 +218,17 @@ fn data_push_errors() {
         other => panic!("expected DataTooLarge, got {other:?}"),
     }
 
+    // carries_pts=false drops the 5-byte PTS field → 3 bytes of PES
+    // overhead after the length field → max 65532. Pin the boundary one
+    // past the ceiling.
+    match mux.push_data_to(handles[2], &vec![0u8; 65_533], Pts90khz::new(0)) {
+        Err(MuxError::DataTooLarge { size, max }) => {
+            assert_eq!(size, 65_533);
+            assert_eq!(max, 65_532);
+        }
+        other => panic!("expected DataTooLarge, got {other:?}"),
+    }
+
     // Exactly one data stream: the shorthand routes without a handle.
     let single_cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);

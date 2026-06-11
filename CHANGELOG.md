@@ -9,6 +9,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — cross-binding video raw AU (C + JVM)
+
+- **tst-c**: `TstEventSample.payload` / `payload_len` are now populated for
+  Video samples with the exact encoded access unit (Annex-B for H.26x;
+  on-wire PES payload for AV1) — they were null for video before. No
+  struct or ABI change (the fields existed; ABI minor stays 11). The
+  per-NAL/OBU `payload` pointers now point into the single raw-AU arena
+  copy when the split units are subslices of the AU (always for H.26x;
+  AV1 binding-mode falls back to per-unit copies). Pointer validity is
+  unchanged: arena-owned, valid until the next `_recv_event` / `_close`.
+- **JVM**: `DemuxEvent.Video` gains a `ByteBuffer raw` component — a heap
+  (JVM-owned) copy of the exact encoded access unit, mirroring tst-py's
+  `.raw`; feed it to `Muxer.pushVideo` for byte-faithful transmux. The
+  record's canonical constructor changed (component order:
+  `stream, pts, dts, codec, payload, raw, randomAccessIndicator,
+  codecParseError`) — pre-1.0 breakage policy. `payload`
+  (typed `List<VideoUnit>`) is unchanged.
+
 ### Changed (breaking) — `DemuxEvent::Sample` video/audio payloads are now raw-first
 
 - The demuxer no longer eagerly parses video / audio elementary streams.
@@ -30,8 +48,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The demuxer's `StrictMode` is now **TS-layer only** — it gates PSI / PES /
   timing conformance and no longer inspects or rejects video/audio ES content.
   Malformed-NAL/OBU rejection moved to the opt-in `split_video_strict`.
-- The JVM binding is unaffected (`v.payload()` still returns parsed
-  `List<VideoUnit>` — it splits internally). The C ABI is unchanged.
+- The JVM binding still returns parsed `List<VideoUnit>` via `v.payload()`
+  (it splits internally); the C `TstNal[]`/`TstObu[]` surface is likewise
+  unchanged. Both additionally expose the raw AU since Wave 5 — see
+  "cross-binding video raw AU" above.
 
 ### Fixed — `Muxer.write_file` drain contract documented + overflow hint (Python)
 

@@ -1509,8 +1509,9 @@ typedef struct TstEventProgramMap {
  *   `ref_idc_or_layer_id` is `nuh_layer_id`; `temporal_id_plus1`
  *   is the temporal-id field +1 (per spec).
  *
- * `payload` borrows from the demuxer's NAL-unit Vec; valid until
- * the next `_recv_event` / `_close` call on this handle.
+ * `payload` is arena-owned — for H.26x it points into the raw-AU copy
+ * exposed by the parent sample's `payload` field; valid until the next
+ * `_recv_event` / `_close` call on this handle.
  */
 typedef struct tst_nal_t {
   uint8_t nal_type;
@@ -1527,6 +1528,8 @@ typedef struct tst_nal_t {
  * `has_extension` is 0 or 1; `temporal_id` and `spatial_id` are
  * valid only when `has_extension == 1`. `payload` is the OBU body
  * (header byte + extension byte + LEB128 size already stripped).
+ * `payload` is arena-owned; valid until the next `_recv_event` / `_close`
+ * call on this handle.
  */
 typedef struct tst_obu_t {
   uint8_t obu_type;
@@ -1559,10 +1562,29 @@ typedef struct TstEventSample {
    */
   uint8_t stream_type;
   uint8_t _pad[2];
+  /**
+   * (Video, NAL-shaped codecs) Parsed NAL-unit views of the access unit
+   * in `payload`. Null for non-video samples and AV1 (see `obus`).
+   * (`nal_count` may be 0.)
+   */
   const struct tst_nal_t *nals;
   size_t nal_count;
+  /**
+   * (Video, AV1) Parsed OBU views. Null for non-video samples and
+   * NAL-shaped codecs (see `nals`).
+   */
   const struct tst_obu_t *obus;
   size_t obu_count;
+  /**
+   * Raw payload bytes, arena-owned; valid until the next `_recv_event`
+   * / `_close` call on this handle.
+   * * Video (since v0.2.0; null before): the exact encoded access unit
+   *   — Annex-B byte stream for H.264/H.265/H.266, on-wire PES payload
+   *   for AV1. Feed it back to `tst_muxer_push_video` for byte-faithful
+   *   transmux. The parsed view of the same AU is in `nals` / `obus`.
+   * * Audio: the raw frame bytes (e.g. ADTS for AAC).
+   * * Subtitle / Unknown: the raw PES payload bytes.
+   */
   const uint8_t *payload;
   size_t payload_len;
 } TstEventSample;

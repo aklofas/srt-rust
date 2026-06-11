@@ -165,6 +165,23 @@ impl<P: Publisher> MuxPublisher<P> {
         Self::drain_locked(&mut inner)
     }
 
+    /// Send one data payload on the muxer's single data stream.
+    ///
+    /// Data streams are a PES pass-through — no AU-cell wrap, no framing;
+    /// [`Muxer::push_data_to`] holds the contract (`pts` is written into
+    /// the PES header only for `carries_pts: true` streams).
+    pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxPublisherError<P::Error>> {
+        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        if inner.closed {
+            return Err(MuxPublisherError::Closed);
+        }
+        inner
+            .muxer
+            .push_data(data, pts)
+            .map_err(MuxPublisherError::Mux)?;
+        Self::drain_locked(&mut inner)
+    }
+
     /// Explicit segment-cut hint.
     pub fn cut_segment(&self) -> Result<(), MuxPublisherError<P::Error>> {
         let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
@@ -312,6 +329,21 @@ mod tests {
         pub_.cut_segment().unwrap();
         pub_.cut_segment().unwrap();
         assert_eq!(pub_.stats().cut_calls, 2);
+    }
+
+    #[test]
+    fn send_data_pushes_ts_bytes() {
+        use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_data(0x101, 0xF0, /*carries_pts=*/ true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        let cfg = b.build().unwrap();
+        let p = MemoryPublisher { buffers: vec![] };
+        let pub_ = MuxPublisher::with_config(p, cfg).unwrap();
+        pub_.send_data(&[0x42; 64], Pts90khz::new(0)).unwrap();
+        assert!(pub_.stats().bytes_pushed > 0);
     }
 
     #[test]

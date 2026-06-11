@@ -507,7 +507,7 @@ impl PyMuxerProgramConfig {
                 // and from_program_map does not map Unknown streams yet.
                 RustStreamSpec::Data { .. } => {
                     return Err(pyo3::exceptions::PyNotImplementedError::new_err(
-                        "Data stream specs are exposed to Python in the private-data arc (W2/W3)",
+                        "Data stream specs are not yet exposed to Python",
                     ));
                 }
             };

@@ -255,7 +255,12 @@ def test_transmux_tolerates_identical_pm_reemission(tmp_path):
             tx.write(ev)
             if isinstance(ev, DemuxEvent.ProgramMap):
                 first_pm = ev.programs[0]
-                tx._on_program_map(DemuxEvent.ProgramMap(programs=(first_pm,)))
+                # Distinct-but-equal clone: a broken identity-based
+                # comparison (`is not`) would reject it, value equality
+                # tolerates it — real re-emissions are always fresh
+                # objects from the demuxer.
+                duplicate = dataclasses.replace(first_pm)
+                tx._on_program_map(DemuxEvent.ProgramMap(programs=(duplicate,)))
                 changed = dataclasses.replace(first_pm, program_number=7)
                 with pytest.raises(ValueError, match="different"):
                     tx._on_program_map(DemuxEvent.ProgramMap(programs=(changed,)))
@@ -358,3 +363,62 @@ def test_transmux_atomic_failure_leaves_nothing(tmp_path):
                     raise RuntimeError("boom")
     assert not dst.exists()
     assert not list(tmp_path.glob("*.partial"))
+
+
+def test_transmux_iter_and_reenter_after_close_raise(tmp_path):
+    # A never-iterated-but-closed transmuxer must NOT start demuxing on
+    # a later iter() — the first ProgramMap would open a sink that no
+    # __exit__ will ever clean up (stray *.partial / clobbered dst).
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_klv_src(src)
+    with tio.transmux(src, dst) as tx:
+        pass  # never iterated
+    with pytest.raises(RuntimeError, match="closed"):
+        iter(tx)
+    with pytest.raises(RuntimeError, match="closed"):
+        with tx:
+            pass
+    assert not dst.exists()
+    assert not list(tmp_path.glob("*.partial"))
+
+
+def test_transmux_audio_copied_byte_faithfully(tmp_path):
+    from tstrans.mpegts import AudioCodec
+
+    # Smallest valid parseable MPEG-2 AAC-LC 44100 Hz stereo ADTS frame
+    # (header only) — same literal as test_codec_aac.py /
+    # _builders/build_audio_aac_large.py.
+    adts = bytes.fromhex("fff95080021ffc000000000000000000")
+    audio_pes = [adts, adts * 2, adts * 3]  # distinct per-PES frame runs
+
+    cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .add_audio(0x103, AudioCodec.AAC)
+            .build()
+        )
+        .build()
+    )
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    mux = Muxer(cfg)
+    with mux.write_file(src) as proxy:
+        for i, (au, frames) in enumerate(zip(ORIG_AUS, audio_pes)):
+            pts = Pts90khz.from_raw(PTS0 + i * PTS_STEP)
+            proxy.push_video(au, pts=pts, key_frame=KEY_FRAMES[i])
+            proxy.push_audio(frames, pts=pts)
+
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+
+    out_videos: list[bytes] = []
+    out_audio: list[bytes] = []
+    for ev in tio.parse_file(dst):
+        if isinstance(ev, DemuxEvent.Video):
+            out_videos.append(bytes(ev.raw))
+        elif isinstance(ev, DemuxEvent.Audio):
+            out_audio.append(bytes(ev.raw))
+    assert out_videos == ORIG_AUS
+    assert out_audio == audio_pes

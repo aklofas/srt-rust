@@ -77,8 +77,8 @@ cfg = MuxerConfigBuilder().add_program(prog).build()
 m = Muxer(cfg)
 
 with m.write_file("out.ts") as proxy:
-    proxy.push_video(nal_bytes, Pts90khz.from_raw(900_000))
-    proxy.push_klv(klv_bytes, Pts90khz.from_raw(900_000))
+    proxy.push_video(nal_bytes, pts=Pts90khz.from_raw(900_000))
+    proxy.push_klv(klv_bytes, pts=Pts90khz.from_raw(900_000))
 ```
 
 `MuxerFileSink` (the object returned by `write_file`) is a context

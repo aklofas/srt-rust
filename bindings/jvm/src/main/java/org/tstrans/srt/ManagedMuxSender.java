@@ -98,8 +98,9 @@ public final class ManagedMuxSender implements AutoCloseable {
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
             programConfig.streamPids(), programConfig.streamKinds(),
-            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
-            programConfig.klvCarriesPts(),
+            programConfig.streamCodecs(), programConfig.streamTypeCodes(),
+            programConfig.streamCarriesPts(),
+            programConfig.dataDescBytes(), programConfig.dataDescLens(),
             p.maxAttemptsPresent(), p.maxAttempts(),
             p.backoffKind(), p.backoffBaseMs(), p.backoffMaxMs(),
             p.gapBufferCapacity(), p.overflowPolicy());
@@ -352,8 +353,9 @@ public final class ManagedMuxSender implements AutoCloseable {
 
     private static native long nFromUrl(String url, int programNumber, int pmtPid, int pcrPid,
         int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
-        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts,
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] streamTypeCodes,
+        boolean[] streamCarriesPts,
+        byte[] dataDescBytes, int[] dataDescLens,
         boolean maxAttemptsPresent, int maxAttempts,
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
         int gapBufferCapacity, int overflowPolicy) throws SrtException, MuxException;

@@ -47,8 +47,9 @@ static REGISTRY: LazyLock<HandleRegistry<Muxer>> = LazyLock::new(HandleRegistry:
 /// marshalling failure.
 ///
 /// The per-stream arrays (`stream_pids` / `stream_kinds` / `stream_codecs` /
-/// `klv_stream_types` / `klv_carries_pts`) are decoded by Java enum ORDINAL —
-/// see the `*_codec` / `klv_type` / `av1_mode` mappers below for the exact
+/// `stream_type_codes` / `stream_carries_pts`) are decoded by Java enum
+/// ORDINAL (`stream_type_codes` is the raw PMT stream_type byte for kind=data)
+/// — see the `*_codec` / `klv_type` / `av1_mode` mappers below for the exact
 /// ordinal → Rust-enum contract.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
@@ -65,8 +66,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
     stream_pids: JIntArray<'local>,
     stream_kinds: JIntArray<'local>,
     stream_codecs: JIntArray<'local>,
-    klv_stream_types: JIntArray<'local>,
-    klv_carries_pts: JBooleanArray<'local>,
+    stream_type_codes: JIntArray<'local>,
+    stream_carries_pts: JBooleanArray<'local>,
+    data_desc_bytes: JByteArray<'local>,
+    data_desc_lens: JIntArray<'local>,
 ) -> jlong {
     // Build the MuxerConfig from the parallel arrays via the shared helper (a
     // pending MuxException is already thrown on `Err(())`).
@@ -82,8 +85,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
         &stream_pids,
         &stream_kinds,
         &stream_codecs,
-        &klv_stream_types,
-        &klv_carries_pts,
+        &stream_type_codes,
+        &stream_carries_pts,
+        &data_desc_bytes,
+        &data_desc_lens,
     ) {
         Ok(c) => c,
         Err(()) => return 0,
@@ -101,9 +106,14 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nOpen<'local>(
 /// Build a [`MuxerConfig`] from the parallel-array config description that both
 /// `Muxer::nOpen` and the srt `MuxSender` / `Socket::intoMuxSender` JNI paths
 /// marshal in a single call. The per-stream arrays (`stream_pids` /
-/// `stream_kinds` / `stream_codecs` / `klv_stream_types` / `klv_carries_pts`)
-/// are decoded by Java enum ORDINAL — see the `*_codec` / `klv_type` /
-/// `av1_mode` mappers for the exact ordinal → Rust-enum contract.
+/// `stream_kinds` / `stream_codecs` / `stream_type_codes` /
+/// `stream_carries_pts`) are decoded by Java enum ORDINAL
+/// (`stream_type_codes` doubles as the raw PMT stream_type byte for kind=data)
+/// — see the `*_codec` / `klv_type` / `av1_mode` mappers for the exact
+/// ordinal → Rust-enum contract. `data_desc_bytes` / `data_desc_lens` carry the
+/// per-data-stream PMT descriptor loops: the blob is every descriptor TLV
+/// concatenated in stream order, the lens array (one entry per stream) is each
+/// stream's byte count within it (0 for non-data / descriptor-less).
 ///
 /// On ANY config or marshalling failure this throws the matching
 /// `MuxException` (or `RuntimeException` for a raw JNI array-read error) and
@@ -124,8 +134,10 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
     stream_pids: &JIntArray<'local>,
     stream_kinds: &JIntArray<'local>,
     stream_codecs: &JIntArray<'local>,
-    klv_stream_types: &JIntArray<'local>,
-    klv_carries_pts: &JBooleanArray<'local>,
+    stream_type_codes: &JIntArray<'local>,
+    stream_carries_pts: &JBooleanArray<'local>,
+    data_desc_bytes: &JByteArray<'local>,
+    data_desc_lens: &JIntArray<'local>,
 ) -> Result<MuxerConfig, ()> {
     // Read the parallel arrays. On ANY JNI read error, fail closed (throw
     // INTERNAL, return Err) rather than panic across the FFI boundary. `n` is the
@@ -134,19 +146,33 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
     let n = pids.len();
     let kinds = read_int_array(env, stream_kinds).ok_or(())?;
     let codecs = read_int_array(env, stream_codecs).ok_or(())?;
-    let klv_types = read_int_array(env, klv_stream_types).ok_or(())?;
-    let carries = read_boolean_array(env, klv_carries_pts).ok_or(())?;
+    let type_codes = read_int_array(env, stream_type_codes).ok_or(())?;
+    let carries = read_boolean_array(env, stream_carries_pts).ok_or(())?;
+    let desc_blob = match env.convert_byte_array(data_desc_bytes) {
+        Ok(b) => b,
+        Err(_) => {
+            throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+            return Err(());
+        }
+    };
+    let desc_lens = read_int_array(env, data_desc_lens).ok_or(())?;
+    if desc_lens.len() != n {
+        throw_mux(env, "INTERNAL", "dataDescLens length mismatch");
+        return Err(());
+    }
 
     let mut prog = MuxerProgramConfigBuilder::new(program_number as u16, pmt_pid as u16);
+    let mut desc_off = 0usize;
+    let mut data_idx = 0usize;
     for i in 0..n {
         let pid = pids[i] as u16;
-        // stream kind code: 0=video, 1=klv, 2=audio, 3=subtitle.
+        // stream kind code: 0=video, 1=klv, 2=audio, 3=subtitle, 4=data.
         match kinds[i] {
             0 => {
                 prog.add_video(pid, video_codec(codecs[i]));
             }
             1 => {
-                prog.add_klv(pid, klv_type(klv_types[i]), carries[i] != 0);
+                prog.add_klv(pid, klv_type(type_codes[i]), carries[i] != 0);
             }
             2 => {
                 prog.add_audio(pid, audio_codec(codecs[i]));
@@ -172,6 +198,37 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
                         return Err(());
                     }
                 }
+            }
+            4 => {
+                prog.add_data(pid, type_codes[i] as u8, carries[i] != 0);
+                // Fail closed on a negative length (a sign-cast would turn it
+                // into a huge usize) and on offset overflow — never panic
+                // across the FFI boundary, in any build profile.
+                let Ok(dl) = usize::try_from(desc_lens[i]) else {
+                    throw_mux(env, "INTERNAL", "negative data-stream descriptor length");
+                    return Err(());
+                };
+                if dl > 0 {
+                    let Some(end) = desc_off.checked_add(dl) else {
+                        throw_mux(env, "INTERNAL", "negative data-stream descriptor length");
+                        return Err(());
+                    };
+                    let Some(descs) = desc_blob.get(desc_off..end).and_then(split_descriptor_tlvs)
+                    else {
+                        throw_mux(
+                            env,
+                            "CONFIG_INVALID",
+                            "malformed data-stream descriptor TLV",
+                        );
+                        return Err(());
+                    };
+                    if let Err(e) = prog.stream_descriptors_for_data(data_idx, descs) {
+                        throw_mux_error(env, &e);
+                        return Err(());
+                    }
+                    desc_off = end;
+                }
+                data_idx += 1;
             }
             _ => {
                 throw_mux(env, "INTERNAL", "unknown stream kind ordinal");
@@ -477,7 +534,21 @@ fn audio_codec(ordinal: i32) -> AudioCodec {
     }
 }
 
-/// KLV stream-type ordinal (`klv_stream_types[i]` when kind=klv) →
+/// Split a concatenated PMT descriptor loop into individual TLV descriptors
+/// (tag, length, payload). `None` on a truncated/overrunning length field.
+fn split_descriptor_tlvs(blob: &[u8]) -> Option<Vec<Vec<u8>>> {
+    let mut out = Vec::new();
+    let mut off = 0usize;
+    while off < blob.len() {
+        let len = *blob.get(off + 1)? as usize;
+        let end = off + 2 + len;
+        out.push(blob.get(off..end)?.to_vec());
+        off = end;
+    }
+    Some(out)
+}
+
+/// KLV stream-type ordinal (`stream_type_codes[i]` when kind=klv) →
 /// [`KlvStreamType`]. Matches the Java `KlvStreamType` enum declaration order.
 fn klv_type(ordinal: i32) -> KlvStreamType {
     match ordinal {

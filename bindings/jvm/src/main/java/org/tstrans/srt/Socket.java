@@ -101,7 +101,8 @@ public final class Socket implements AutoCloseable {
             programConfig.pcrPid(), programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
             programConfig.streamPids(), programConfig.streamKinds(), programConfig.streamCodecs(),
-            programConfig.klvStreamTypes(), programConfig.klvCarriesPts());
+            programConfig.streamTypeCodes(), programConfig.streamCarriesPts(),
+            programConfig.dataDescBytes(), programConfig.dataDescLens());
         return new MuxSender(h);
     }
 
@@ -220,8 +221,9 @@ public final class Socket implements AutoCloseable {
      */
     private static native long nIntoMuxSender(long handle, int programNumber, int pmtPid,
         int pcrPid, int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
-        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws SrtException, MuxException;
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] streamTypeCodes,
+        boolean[] streamCarriesPts,
+        byte[] dataDescBytes, int[] dataDescLens) throws SrtException, MuxException;
 
     /**
      * Consume the Box&lt;Socket&gt; and build a Box&lt;DemuxReceiver&gt; (default demux

@@ -393,8 +393,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddUnicastMount<'local>(
     stream_pids: JIntArray<'local>,
     stream_kinds: JIntArray<'local>,
     stream_codecs: JIntArray<'local>,
-    klv_stream_types: JIntArray<'local>,
-    klv_carries_pts: JBooleanArray<'local>,
+    stream_type_codes: JIntArray<'local>,
+    stream_carries_pts: JBooleanArray<'local>,
+    data_desc_bytes: JByteArray<'local>,
+    data_desc_lens: JIntArray<'local>,
 ) -> jlong {
     // Validate the server handle up front (throws if closed); the cfg/path build
     // touches `env`, so the actual `add_mount` is leased separately below.
@@ -413,8 +415,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddUnicastMount<'local>(
         &stream_pids,
         &stream_kinds,
         &stream_codecs,
-        &klv_stream_types,
-        &klv_carries_pts,
+        &stream_type_codes,
+        &stream_carries_pts,
+        &data_desc_bytes,
+        &data_desc_lens,
     ) {
         Ok(c) => c,
         Err(()) => return 0, // pending MuxException
@@ -467,8 +471,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddMulticastMount<'local
     stream_pids: JIntArray<'local>,
     stream_kinds: JIntArray<'local>,
     stream_codecs: JIntArray<'local>,
-    klv_stream_types: JIntArray<'local>,
-    klv_carries_pts: JBooleanArray<'local>,
+    stream_type_codes: JIntArray<'local>,
+    stream_carries_pts: JBooleanArray<'local>,
+    data_desc_bytes: JByteArray<'local>,
+    data_desc_lens: JIntArray<'local>,
 ) -> jlong {
     // Validate the server handle up front (throws if closed); the URL/cfg build
     // touches `env`, so the actual `add_multicast_mount` is leased separately.
@@ -487,8 +493,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddMulticastMount<'local
         &stream_pids,
         &stream_kinds,
         &stream_codecs,
-        &klv_stream_types,
-        &klv_carries_pts,
+        &stream_type_codes,
+        &stream_carries_pts,
+        &data_desc_bytes,
+        &data_desc_lens,
     ) {
         Ok(c) => c,
         Err(()) => return 0, // pending MuxException

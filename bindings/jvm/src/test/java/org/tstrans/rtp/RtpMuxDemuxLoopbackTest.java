@@ -66,10 +66,15 @@ class RtpMuxDemuxLoopbackTest {
         return buf;
     }
 
+    /** Distinctive private-data record pushed once alongside the video stream. */
+    private static final byte[] DATA_PAYLOAD =
+        {(byte) 0xD1, 'D', 'A', 'T', 'A', (byte) 0xCA, (byte) 0xFE, 0x02};
+
     private static MuxerConfig roundtripConfig() {
         return MuxerConfig.builder()
             .programNumber(1).pmtPid(0x1000)
             .addVideo(0x1011, VideoCodec.H264)
+            .addData(0x0100, 0xF0, true)
             .build();
     }
 
@@ -99,15 +104,20 @@ class RtpMuxDemuxLoopbackTest {
         });
 
         CompletableFuture<String> shaFuture = new CompletableFuture<>();
+        CompletableFuture<DemuxEvent.UnknownSample> dataFuture = new CompletableFuture<>();
         Thread receiverThread = new Thread(() -> {
             try {
                 String sha = null;
+                DemuxEvent.UnknownSample data = null;
                 try {
                     for (DemuxEvent e : rx) {
-                        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                        if (sha == null && e instanceof DemuxEvent.Video v
+                                && !v.payload().isEmpty()) {
                             sha = sha256Units(v.payload());
-                            break;
+                        } else if (data == null && e instanceof DemuxEvent.UnknownSample u) {
+                            data = u;
                         }
+                        if (sha != null && data != null) break;
                     }
                 } catch (RuntimeException re) {
                     // The iterator wraps checked RtpException/DemuxException. A
@@ -126,8 +136,15 @@ class RtpMuxDemuxLoopbackTest {
                 } else {
                     shaFuture.complete(sha);
                 }
+                if (data == null) {
+                    dataFuture.completeExceptionally(new AssertionError(
+                        "no UnknownSample (private-data) event arrived before end-of-stream"));
+                } else {
+                    dataFuture.complete(data);
+                }
             } catch (Exception ex) {
                 shaFuture.completeExceptionally(ex);
+                dataFuture.completeExceptionally(ex);
             }
         });
         receiverThread.setDaemon(true);
@@ -154,6 +171,11 @@ class RtpMuxDemuxLoopbackTest {
         try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:" + port, roundtripConfig())) {
             for (int i = 0; i < PUSH_COUNT; i++) {
                 s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                // One distinctive private-data record early in the stream (the
+                // lone-data-stream pushData shorthand) so the remaining video
+                // pushes flush it through the 1316-byte RTP bundling; explicit
+                // PES length means the demuxer emits it without a flush.
+                if (i == 0) s.pushData(DATA_PAYLOAD, 0L);
             }
             Thread.sleep(1_000);
         }
@@ -197,6 +219,22 @@ class RtpMuxDemuxLoopbackTest {
                 + "payload SHA as the offline Muxer→Demuxer path (cross-binding parity, "
                 + "self-validating)");
 
+        // The pushData record must round-trip byte-faithfully as an UnknownSample
+        // on the configured 0xF0 data stream.
+        DemuxEvent.UnknownSample dataSample;
+        try {
+            dataSample = dataFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("receiver thread did not surface the private-data sample", e);
+        }
+        assertEquals(0xF0, dataSample.streamType(),
+            "private-data sample must carry the configured raw stream_type");
+        ByteBuffer dataView = dataSample.payload().duplicate();
+        byte[] dataBytes = new byte[dataView.remaining()];
+        dataView.get(dataBytes);
+        assertArrayEquals(DATA_PAYLOAD, dataBytes,
+            "private-data payload must arrive verbatim (pass-through, no framing)");
+
         assertTrue(sinkCount.get() >= 1,
             "byte sink must have observed at least one TS packet before demux");
         assertTrue(sinkLens.stream().anyMatch(len -> len == 188),
@@ -211,6 +249,9 @@ class RtpMuxDemuxLoopbackTest {
         try (Muxer m = new Muxer(roundtripConfig())) {
             for (int i = 0; i < PUSH_COUNT; i++) {
                 m.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                // Mirror the live sender's push sequence exactly (incl. the
+                // single private-data record) so live ≡ offline holds.
+                if (i == 0) m.pushData(DATA_PAYLOAD, 0L);
             }
             int n;
             while ((n = m.pull(out)) > 0) acc.write(out, 0, n);

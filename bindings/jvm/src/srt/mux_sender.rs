@@ -29,7 +29,7 @@ use jni::sys::{jboolean, jint, jlong};
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSource};
 use tst_srt::{Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
@@ -299,6 +299,26 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitle<'local>(
     });
 }
 
+/// `nPushData(handle, data, pts)` — pass-through push onto the lone configured
+/// data stream. No AU-cell wrap, no framing; one push = one PES on stream_id
+/// `0xBD` (`private_stream_1`). `pts` is written into the PES header only for
+/// `carries_pts` streams but always drives PSI/PCR pacing.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushData<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    let Some(buf) = read_bytes(&mut env, &data) else {
+        return;
+    };
+    with_push(&mut env, handle, |inner| {
+        inner.send_data(&buf, Pts90khz::new(pts))
+    });
+}
+
 // ── Push family — handle-targeted variants ─────────────────────────────────
 
 /// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
@@ -410,6 +430,34 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
     });
 }
 
+/// `nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
+/// validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
+/// chain (rejecting negative / out-of-u32 values up front rather than
+/// truncating, mirroring `Muxer::nPushDataTo`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushDataTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    let Some(h) = u32::try_from(stream_handle_raw)
+        .ok()
+        .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+    else {
+        throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+        return;
+    };
+    let Some(buf) = read_bytes(&mut env, &data) else {
+        return;
+    };
+    with_push(&mut env, handle, |inner| {
+        inner.send_data_to(h, &buf, Pts90khz::new(pts))
+    });
+}
+
 // ── Handle getters ─────────────────────────────────────────────────────────
 //
 // Return the first configured handle of each kind across all programs (which
@@ -461,6 +509,18 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nSubtitleHandle(
 ) -> jlong {
     first_handle(&mut env, handle, |inner| {
         inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+    })
+}
+
+/// `nDataHandle(handle)` — first configured data stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_MuxSender_nDataHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    first_handle(&mut env, handle, |inner| {
+        inner.data_handles().into_iter().next().map(|h| h.raw())
     })
 }
 

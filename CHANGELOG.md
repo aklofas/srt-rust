@@ -9,6 +9,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — C data-stream surface (ABI minor 12)
+
+- **tst-c** gains the data-stream mux surface, binding the Rust
+  muxer/pipeline family below: `tst_data_stream_handle_t` plus seven new
+  entry points — `tst_mux_config_add_data_stream`,
+  `tst_mux_config_set_stream_descriptors_for_data`,
+  `tst_mux_config_add_data_descriptor`, the offline
+  `tst_muxer_push_data` / `tst_muxer_push_data_to` pair (unconditional),
+  and the `tst_mux_sender_send_data` / `tst_mux_sender_send_data_to` pair
+  (behind `TST_HAS_SRT`). Pass-through / PTS / size-ceiling semantics are
+  those of the Rust `push_data` family (see the muxer + pipeline entry
+  below). ABI minor 11 → 12; additive — no symbol removed, no signature or
+  struct layout changed.
+
 ### Added — Python data-stream surface (`tstrans.mpegts` + srt/rtp `MuxSender`)
 
 - **`tstrans.mpegts`** gains the data-stream mux surface, mirroring the Rust

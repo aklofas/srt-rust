@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.11` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.12` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 11` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 12` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -241,7 +241,19 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   reconstruct a muxer config from a ProgramMap event. Additive — no
 ///   symbol/signature changed; struct total size and pointer-field offsets
 ///   are unchanged.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 11;
+/// - `12` — opaque private-data (`StreamSpec::Data`) stream surface:
+///   `tst_data_stream_handle_t` typedef plus seven new entry points —
+///   `tst_mux_config_add_data_stream`,
+///   `tst_mux_config_set_stream_descriptors_for_data`,
+///   `tst_mux_config_add_data_descriptor`, the offline muxer pair
+///   `tst_muxer_push_data` / `tst_muxer_push_data_to`, and the
+///   srt-gated sender pair `tst_mux_sender_send_data` /
+///   `tst_mux_sender_send_data_to`. Lets C callers carry opaque
+///   private payloads (PES `stream_id 0xBD`, arbitrary `stream_type`)
+///   alongside video/KLV, mirroring the Rust `push_data` family.
+///   Additive — no symbol removed, no signature or struct layout
+///   changed.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 12;
 
 // =========================================================================
 // Runtime version accessors

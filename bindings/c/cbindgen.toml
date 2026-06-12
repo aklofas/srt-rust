@@ -105,6 +105,7 @@ include = [
     "TstKlvStreamHandle",
     "TstAudioStreamHandle",
     "TstSubtitleStreamHandle",
+    "TstDataStreamHandle",
     "TstProgramHandle",
     "TST_INVALID_PROGRAM_HANDLE",
     "TstStreamStats",
@@ -196,6 +197,7 @@ include = [
 "TstKlvStreamHandle"      = "tst_klv_stream_handle_t"
 "TstAudioStreamHandle"    = "tst_audio_stream_handle_t"
 "TstSubtitleStreamHandle" = "tst_subtitle_stream_handle_t"
+"TstDataStreamHandle"     = "tst_data_stream_handle_t"
 # Program handle typedef
 "TstProgramHandle"     = "tst_program_handle_t"
 # Stats structs

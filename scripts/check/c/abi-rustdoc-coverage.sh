@@ -53,6 +53,7 @@ ALLOWLIST=(
     "tst_mux_config_add_program"
     "tst_mux_config_add_video_stream"
     "tst_mux_config_add_klv_stream"
+    "tst_mux_config_add_data_stream"
     "tst_mux_config_set_buffer_packets"
     "tst_mux_config_set_pcr_interval_ms"
     "tst_mux_config_set_pcr_pid"
@@ -60,6 +61,7 @@ ALLOWLIST=(
     "tst_mux_config_set_program_descriptors"
     "tst_mux_config_set_stream_descriptors_for_video"
     "tst_mux_config_set_stream_descriptors_for_klv"
+    "tst_mux_config_set_stream_descriptors_for_data"
     "tst_mux_config_add_audio_stream"
     "tst_mux_config_add_audio_stream_with_language"
     "tst_mux_config_add_subtitle_stream_dvb_subtitling"
@@ -178,6 +180,7 @@ ALLOWLIST=(
     #     pattern: C-side TLV assembly + opaque-ptr forwarding) ---
     "tst_mux_config_add_video_descriptor"
     "tst_mux_config_add_klv_descriptor"
+    "tst_mux_config_add_data_descriptor"
     "tst_mux_config_add_audio_descriptor"
     "tst_mux_config_add_subtitle_descriptor"
 

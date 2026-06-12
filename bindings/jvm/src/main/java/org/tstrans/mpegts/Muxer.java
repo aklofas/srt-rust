@@ -117,6 +117,70 @@ public final class Muxer implements AutoCloseable {
     }
 
     /**
+     * Push one private-data payload onto the lone configured data stream.
+     * Pass-through: the muxer applies no AU-cell wrap and no framing (UNLIKE
+     * {@link #pushKlv}) — {@code data} lands verbatim as the PES payload, and
+     * one push produces exactly one PES packet on stream_id {@code 0xBD}
+     * ({@code private_stream_1}).
+     *
+     * <p>{@code pts} is written into the PES header only when the stream was
+     * configured with {@code carriesPts = true}, but it ALWAYS drives PSI/PCR
+     * pacing. A {@code carriesPts = false} stream re-demuxes with
+     * {@code pts == 0} (this library's no-PTS substitute).
+     *
+     * <p>Data is the first stream kind with a handle-targeted push on the
+     * offline {@code Muxer} (see {@link #pushDataTo}); the other kinds'
+     * {@code *To} variants remain sender-only/deferred.
+     *
+     * @param data raw payload bytes (caller's framing convention; at most
+     *             65527 bytes with PTS, 65532 without)
+     * @param pts  90&nbsp;kHz presentation timestamp
+     * @throws MuxException {@code INPUT_MALFORMED} (payload over the PES
+     *     ceiling), {@code INVALID_USAGE} (zero data streams, or &gt;1 —
+     *     ambiguous, use {@link #pushDataTo}), or {@code BACKPRESSURE}.
+     */
+    public void pushData(byte[] data, long pts) throws MuxException {
+        ensureOpen();
+        nPushData(handle.get(), data, pts);
+    }
+
+    /**
+     * Push one private-data payload onto a specific data stream. Same
+     * pass-through and PTS semantics as {@link #pushData}; obtain {@code h}
+     * from {@link #dataHandles()} / {@link #dataStreamHandle(int)}.
+     *
+     * @param h    handle of the target data stream (from this muxer)
+     * @param data raw payload bytes (caller's framing convention; at most
+     *             65527 bytes with PTS, 65532 without)
+     * @param pts  90&nbsp;kHz presentation timestamp
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer
+     *     handle), {@code INPUT_MALFORMED} (payload over the PES ceiling), or
+     *     {@code BACKPRESSURE}.
+     */
+    public void pushDataTo(DataStreamHandle h, byte[] data, long pts) throws MuxException {
+        ensureOpen();
+        nPushDataTo(handle.get(), h.raw(), data, pts);
+    }
+
+    /** All configured data-stream handles, in {@code addData} order.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.List<DataStreamHandle> dataHandles() {
+        ensureOpen();
+        long[] raws = nDataHandles(handle.get());
+        java.util.List<DataStreamHandle> out = new java.util.ArrayList<>(raws.length);
+        for (long r : raws) out.add(DataStreamHandle.fromRaw(r));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The {@code index}-th data-stream handle, or empty if out of range.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.Optional<DataStreamHandle> dataStreamHandle(int index) {
+        java.util.List<DataStreamHandle> hs = dataHandles();
+        return (index >= 0 && index < hs.size())
+            ? java.util.Optional.of(hs.get(index)) : java.util.Optional.empty();
+    }
+
+    /**
      * Drain ready TS packets into {@code out}. Returns the number of bytes
      * written — always a multiple of 188 — or 0 when the queue is empty or
      * {@code out.length < 188}. Call in a loop until it returns 0.
@@ -185,6 +249,10 @@ public final class Muxer implements AutoCloseable {
     private static native void nPushAudio(long handle, byte[] frames, long pts) throws MuxException;
     private static native void nPushSubtitle(long handle, long pts, byte[] payload)
             throws MuxException;
+    private static native void nPushData(long handle, byte[] data, long pts) throws MuxException;
+    private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data, long pts)
+            throws MuxException;
+    private static native long[] nDataHandles(long handle);
     private static native int nPull(long handle, byte[] out);
     private static native long nPending(long handle);
     private static native long nCapacity(long handle);

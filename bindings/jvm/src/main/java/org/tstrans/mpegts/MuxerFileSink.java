@@ -103,6 +103,27 @@ public final class MuxerFileSink implements AutoCloseable {
     }
 
     /**
+     * Push one private-data payload onto the lone configured data stream
+     * (pass-through; see {@link Muxer#pushData}). Drains pending TS packets to
+     * the file after pushing.
+     */
+    public void pushData(byte[] data, long pts) throws MuxException, IOException {
+        muxer.pushData(data, pts);
+        drain();
+    }
+
+    /**
+     * Push one private-data payload onto a specific data stream (pass-through;
+     * see {@link Muxer#pushDataTo}). Drains pending TS packets to the file after
+     * pushing.
+     */
+    public void pushDataTo(DataStreamHandle h, byte[] data, long pts)
+            throws MuxException, IOException {
+        muxer.pushDataTo(h, data, pts);
+        drain();
+    }
+
+    /**
      * Mark the write successful. In atomic mode, only a committed sink promotes the
      * {@code *.partial} temp to the destination on {@link #close()}; without it,
      * close discards the temp. A no-op in non-atomic mode. Calling this after

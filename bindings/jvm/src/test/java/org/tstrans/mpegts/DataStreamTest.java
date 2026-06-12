@@ -82,6 +82,60 @@ class DataStreamTest {
     }
 
     @Test
+    void pushDataShorthandErrorMatrix() throws Exception {
+        // zero data streams -> INVALID_USAGE
+        try (Muxer m = new Muxer(MuxerConfig.builder().addVideo(0x1011, VideoCodec.H264).build())) {
+            MuxException e = assertThrows(MuxException.class, () -> m.pushData(new byte[] {1}, 0L));
+            assertEquals(MuxException.Kind.INVALID_USAGE, e.kind());
+        }
+        // two data streams -> ambiguous INVALID_USAGE; pushDataTo resolves it
+        MuxerConfig two = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264)
+            .addData(0x0100, 0xF0, true).addData(0x0101, 0xF1, true).build();
+        try (Muxer m = new Muxer(two)) {
+            MuxException e = assertThrows(MuxException.class, () -> m.pushData(new byte[] {1}, 0L));
+            assertEquals(MuxException.Kind.INVALID_USAGE, e.kind());
+            assertEquals(2, m.dataHandles().size());
+            m.pushDataTo(m.dataHandles().get(1), new byte[] {1, 2, 3}, 90_000L); // no throw
+        }
+    }
+
+    @Test
+    void oversizedPayloadIsInputMalformed() throws Exception {
+        MuxerConfig cfg = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264).addData(0x0100, 0xF0, true).build();
+        try (Muxer m = new Muxer(cfg)) {
+            MuxException e = assertThrows(MuxException.class,
+                () -> m.pushData(new byte[70_000], 0L));
+            assertEquals(MuxException.Kind.INPUT_MALFORMED, e.kind());
+        }
+    }
+
+    @Test
+    void forgedHandleIsInvalidUsage() throws Exception {
+        MuxerConfig cfg = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264).addData(0x0100, 0xF0, true).build();
+        try (Muxer m = new Muxer(cfg)) {
+            MuxException e = assertThrows(MuxException.class,
+                () -> m.pushDataTo(DataStreamHandle.fromRaw(0x7FFF_FFFFL), new byte[] {1}, 0L));
+            assertEquals(MuxException.Kind.INVALID_USAGE, e.kind());
+        }
+    }
+
+    @Test
+    void handleAccessorsAndClosedContract() throws Exception {
+        MuxerConfig cfg = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264).addData(0x0100, 0xF0, true).build();
+        Muxer m = new Muxer(cfg);
+        assertEquals(1, m.dataHandles().size());
+        assertTrue(m.dataStreamHandle(0).isPresent());
+        assertTrue(m.dataStreamHandle(1).isEmpty());
+        m.close();
+        assertThrows(IllegalStateException.class, m::dataHandles);
+        assertThrows(IllegalStateException.class, () -> m.pushData(new byte[] {1}, 0L));
+    }
+
+    @Test
     void malformedDescriptorTlvRejectedAtOpen() {
         // length byte claims 10, only 2 payload bytes follow -> blob walk fails
         byte[] bad = {(byte) 0x05, 10, 'A', 'B'};

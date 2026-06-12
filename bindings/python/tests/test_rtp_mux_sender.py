@@ -58,6 +58,16 @@ def _video_klv_program() -> object:
     )
 
 
+def _video_data_program() -> object:
+    """Video + one private data stream (bare PES-private 0x06, W3)."""
+    return (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0x06, carries_pts=True)
+        .build()
+    )
+
+
 # Minimal Annex-B IDR NAL (start code + nal_unit_type=5).
 NAL_IDR = b"\x00\x00\x00\x01\x65\xBB"
 # Minimal AU delimiter NAL.
@@ -67,6 +77,9 @@ KLV_UL_ZERO = (
     b"\x06\x0E\x2B\x34\x02\x0B\x01\x01"
     b"\x0E\x01\x03\x01\x01\x00\x00\x00\x00"
 )
+# Opaque private-data record — the muxer applies no framing or
+# inspection, so any byte string works.
+DATA_RECORD = b"\x01\x02\x03\x04private-record"
 
 
 # --------------------------------------------------------------------------- #
@@ -97,6 +110,7 @@ def test_mux_sender_constructs_with_video_program() -> None:
         assert s.klv_handle() is None
         assert s.audio_handle() is None
         assert s.subtitle_handle() is None
+        assert s.data_handle() is None
 
 
 def test_mux_sender_constructs_with_pkt_size() -> None:
@@ -162,6 +176,29 @@ def test_push_klv_to_handle() -> None:
             assert klv_h is not None
             # Use the _to variant against the explicit handle.
             s.push_klv_to(klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(0))
+            socket_stats, _ = s.stats()
+            assert socket_stats.packets_sent >= 1
+    finally:
+        listener.close()
+
+
+def test_push_data_and_push_data_to_handle() -> None:
+    """W3: `push_data` (single-stream shorthand) + `push_data_to`
+    (explicit handle from `data_handle()`) both land bytes on the
+    transport. Pass-through contract — no framing, no inspection."""
+    port = _free_udp_port()
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.bind(("127.0.0.1", port))
+    listener.settimeout(2.0)
+    try:
+        program = _video_data_program()
+        with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as s:
+            data_h = s.data_handle()
+            assert data_h is not None
+            # Single-stream shorthand.
+            s.push_data(DATA_RECORD, pts=Pts90khz.from_raw(0))
+            # Explicit-handle variant.
+            s.push_data_to(data_h, DATA_RECORD, pts=Pts90khz.from_raw(3000))
             socket_stats, _ = s.stats()
             assert socket_stats.packets_sent >= 1
     finally:

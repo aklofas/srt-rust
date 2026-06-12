@@ -68,6 +68,16 @@ def _video_klv_program() -> object:
     )
 
 
+def _video_data_program() -> object:
+    """Video + one private data stream (bare PES-private 0x06, W3)."""
+    return (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0x06, carries_pts=True)
+        .build()
+    )
+
+
 def _make_mux_demux_pair(
     port: int, *, program: Optional[object] = None
 ) -> Tuple[tstrans.srt.MuxSender, tstrans.srt.DemuxReceiver]:
@@ -114,6 +124,9 @@ KLV_UL_ZERO = (
     b"\x06\x0E\x2B\x34\x02\x0B\x01\x01"
     b"\x0E\x01\x03\x01\x01\x00\x00\x00\x00"
 )
+# Opaque private-data record — the muxer applies no framing or
+# inspection, so any byte string works.
+DATA_RECORD = b"\x01\x02\x03\x04private-record"
 
 
 # --------------------------------------------------------------------------- #
@@ -274,6 +287,62 @@ def test_push_klv_via_loopback() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Test 2b: push_data via loopback + data handle accessor (W3)                 #
+# --------------------------------------------------------------------------- #
+
+
+def test_push_data_via_loopback() -> None:
+    """Push opaque private-data records through a video+data program;
+    assert the data handle accessor returns something + the demux side
+    sees an event (UnknownSample or Video before stopping). Exercises
+    both `push_data` (single-stream shorthand) and `push_data_to`."""
+    port = _free_tcp_port()
+    sender, receiver = _make_mux_demux_pair(port, program=_video_data_program())
+
+    events: list[object] = []
+    consumer_err: list[BaseException] = []
+
+    def consumer() -> None:
+        try:
+            for ev in receiver:
+                events.append(ev)
+                if isinstance(ev, (DemuxEvent.UnknownSample, DemuxEvent.Video)):
+                    break
+        except BaseException as exc:  # noqa: BLE001
+            consumer_err.append(exc)
+
+    t = threading.Thread(target=consumer, daemon=True)
+    t.start()
+    time.sleep(0.2)
+    try:
+        # Data handle accessor must resolve since a data stream is configured.
+        data_h = sender.data_handle()
+        assert data_h is not None
+        # Drive enough PSI+video+data triplets that libsrt has streamed
+        # several full bundles before close() can race.
+        for i in range(32):
+            sender.push_video(
+                NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
+            )
+            # Alternate the single-stream shorthand and the explicit
+            # handle variant so both code paths see traffic.
+            if i % 2 == 0:
+                sender.push_data(DATA_RECORD, pts=Pts90khz.from_raw(i * 3000))
+            else:
+                sender.push_data_to(
+                    data_h, DATA_RECORD, pts=Pts90khz.from_raw(i * 3000)
+                )
+        time.sleep(0.3)
+    finally:
+        sender.close()
+    t.join(timeout=5.0)
+    receiver.close()
+    if not events and consumer_err:
+        pytest.fail(f"consumer raised before any event: {consumer_err}")
+    assert len(events) >= 1, "consumer did not observe any DemuxEvent"
+
+
+# --------------------------------------------------------------------------- #
 # Test 3: handle getters + push_video_to + bytes-like extraction              #
 # --------------------------------------------------------------------------- #
 
@@ -292,6 +361,7 @@ def test_handle_getters_and_push_to() -> None:
         assert sender.klv_handle() is None
         assert sender.audio_handle() is None
         assert sender.subtitle_handle() is None
+        assert sender.data_handle() is None
         # _to variant works.
         sender.push_video_to(vh, NAL_AUD, pts=Pts90khz.from_raw(0))
         # bytes-like coercion: bytearray + memoryview both round-trip

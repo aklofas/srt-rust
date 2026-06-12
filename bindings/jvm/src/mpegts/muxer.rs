@@ -433,7 +433,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
 /// `nDataHandles(handle)` → `long[]` of all data stream handles (packed `u32`
 /// raws widened to `jlong`), in `addData` declaration order. On a closed/absent
 /// handle throws `IllegalStateException` and returns a null array; on a JNI
-/// alloc/write failure throws INTERNAL and returns a null array.
+/// alloc/write failure throws an unchecked `RuntimeException` (the Java decl
+/// has no `throws`, so the checked `MuxException` can't be used here) and
+/// returns a null array.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nDataHandles<'local>(
     mut env: JNIEnv<'local>,
@@ -452,12 +454,18 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nDataHandles<'local>(
     let arr = match env.new_long_array(raws.len() as i32) {
         Ok(a) => a,
         Err(_) => {
-            throw_mux(&mut env, "INTERNAL", "failed to allocate long[] result");
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to allocate long[] result",
+            );
             return JObject::null().into();
         }
     };
     if env.set_long_array_region(&arr, 0, &raws).is_err() {
-        throw_mux(&mut env, "INTERNAL", "failed to write long[] result");
+        let _ = env.throw_new(
+            "java/lang/RuntimeException",
+            "failed to write long[] result",
+        );
         return JObject::null().into();
     }
     arr

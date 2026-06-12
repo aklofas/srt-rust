@@ -97,8 +97,9 @@ public final class RtspServer implements AutoCloseable {
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
             programConfig.streamPids(), programConfig.streamKinds(),
-            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
-            programConfig.klvCarriesPts());
+            programConfig.streamCodecs(), programConfig.streamTypeCodes(),
+            programConfig.streamCarriesPts(),
+            programConfig.dataDescBytes(), programConfig.dataDescLens());
         if (h == 0) {
             throw new RtspException(RtspException.Kind.MOUNT,
                 "nAddUnicastMount returned 0 without throwing");
@@ -130,8 +131,9 @@ public final class RtspServer implements AutoCloseable {
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
             programConfig.streamPids(), programConfig.streamKinds(),
-            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
-            programConfig.klvCarriesPts());
+            programConfig.streamCodecs(), programConfig.streamTypeCodes(),
+            programConfig.streamCarriesPts(),
+            programConfig.dataDescBytes(), programConfig.dataDescLens());
         if (h == 0) {
             throw new RtspException(RtspException.Kind.MOUNT,
                 "nAddMulticastMount returned 0 without throwing");
@@ -170,11 +172,13 @@ public final class RtspServer implements AutoCloseable {
     private static native long nAddUnicastMount(long serverHandle, String path,
         int programNumber, int pmtPid, int pcrPid, int pcrIntervalMs, int psiIntervalMs,
         int bufferPackets, int av1Carriage, int[] streamPids, int[] streamKinds,
-        int[] streamCodecs, int[] klvStreamTypes, boolean[] klvCarriesPts)
+        int[] streamCodecs, int[] streamTypeCodes, boolean[] streamCarriesPts,
+        byte[] dataDescBytes, int[] dataDescLens)
         throws RtspException, MuxException;
     private static native long nAddMulticastMount(long serverHandle, String path, String group,
         int port, int ttl, String iface, int programNumber, int pmtPid, int pcrPid,
         int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
-        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws RtspException, MuxException;
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] streamTypeCodes,
+        boolean[] streamCarriesPts,
+        byte[] dataDescBytes, int[] dataDescLens) throws RtspException, MuxException;
 }

@@ -72,8 +72,9 @@ public final class MuxSender implements AutoCloseable {
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
             programConfig.streamPids(), programConfig.streamKinds(),
-            programConfig.streamCodecs(), programConfig.klvStreamTypes(),
-            programConfig.klvCarriesPts());
+            programConfig.streamCodecs(), programConfig.streamTypeCodes(),
+            programConfig.streamCarriesPts(),
+            programConfig.dataDescBytes(), programConfig.dataDescLens());
         if (h == 0) {
             // nFromUrl throws a pending SrtException/MuxException; JNI re-raises.
             // Unreachable in practice, but satisfies the compiler.
@@ -313,8 +314,9 @@ public final class MuxSender implements AutoCloseable {
 
     private static native long nFromUrl(String url, int programNumber, int pmtPid, int pcrPid,
         int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
-        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] klvStreamTypes,
-        boolean[] klvCarriesPts) throws SrtException, MuxException;
+        int[] streamPids, int[] streamKinds, int[] streamCodecs, int[] streamTypeCodes,
+        boolean[] streamCarriesPts,
+        byte[] dataDescBytes, int[] dataDescLens) throws SrtException, MuxException;
 
     private static native void nPushVideo(long handle, byte[] nal, long pts, boolean keyFrame)
         throws MuxException, SrtException;

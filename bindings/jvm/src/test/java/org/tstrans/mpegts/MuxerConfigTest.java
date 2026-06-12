@@ -33,4 +33,32 @@ class MuxerConfigTest {
         assertThrows(IllegalArgumentException.class,
             () -> MuxerConfig.builder().addVideo(0x0000, VideoCodec.H264));
     }
+
+    @Test
+    void addDataRejectsStreamTypeOutOfU8Range() {
+        assertThrows(IllegalArgumentException.class, () ->
+            MuxerConfig.builder().addData(0x0100, 256, false));
+        assertThrows(IllegalArgumentException.class, () ->
+            MuxerConfig.builder().addData(0x0100, -1, false));
+    }
+
+    @Test
+    void streamDescriptorsForDataRejectsOutOfRangeIdxAtBuild() {
+        MuxerConfig.Builder b = MuxerConfig.builder()
+            .addData(0x0100, 0xF0, true)
+            .streamDescriptorsForData(1, new byte[][] {{(byte) 0x05, 4, 'A', 'R', 'S', 'X'}});
+        assertThrows(IllegalArgumentException.class, b::build);
+    }
+
+    @Test
+    void addDataBuildsAlongsideOtherKinds() {
+        // bare builder acceptance; deep validation happens at new Muxer(...)
+        MuxerConfig cfg = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264)
+            .addKlv(0x1012, KlvStreamType.SYNCHRONOUS_METADATA, true)
+            .addData(0x0100, 0xF0, true)
+            .streamDescriptorsForData(0, new byte[][] {{(byte) 0x05, 4, 'A', 'R', 'S', 'X'}})
+            .build();
+        assertEquals(3, cfg.streamCount());
+    }
 }

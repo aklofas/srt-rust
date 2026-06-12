@@ -18,18 +18,20 @@ import java.util.Objects;
  * {@link org.tstrans.MuxException} ({@code CONFIG_INVALID}).
  *
  * <p><b>Deferred (documented):</b> multi-program configs; per-stream/program
- * descriptors; the {@code *_to(handle, ...)} multi-stream variants; stats /
- * file-sink. DVB subtitle codecs (which need language + page-ID config) are also
- * deferred — {@link Builder#addSubtitle} accepts only the no-config codecs
- * (CEA-708 / WebVTT).
+ * descriptors for the typed kinds (data streams get theirs via
+ * {@link Builder#streamDescriptorsForData}); the {@code *_to(handle, ...)}
+ * multi-stream variants; stats / file-sink. DVB subtitle codecs (which need
+ * language + page-ID config) are also deferred — {@link Builder#addSubtitle}
+ * accepts only the no-config codecs (CEA-708 / WebVTT).
  */
 public final class MuxerConfig {
     // Internal stream-kind codes — the parallel-array contract the Muxer JNI
-    // nOpen relies on (same 0..3 mapping is hardcoded Rust-side).
+    // nOpen relies on (same 0..4 mapping is hardcoded Rust-side).
     static final int KIND_VIDEO = 0;
     static final int KIND_KLV = 1;
     static final int KIND_AUDIO = 2;
     static final int KIND_SUBTITLE = 3;
+    static final int KIND_DATA = 4;
 
     private final int programNumber;
     private final int pmtPid;
@@ -40,9 +42,15 @@ public final class MuxerConfig {
     private final Av1CarriageMode av1Carriage;
     private final int[] streamPids;
     private final int[] streamKinds;     // KIND_* per stream
-    private final int[] streamCodecs;    // codec ordinal per kind; -1 for KLV
-    private final int[] klvStreamTypes;  // KlvStreamType ordinal for KLV; -1 otherwise
-    private final boolean[] klvCarriesPts;
+    private final int[] streamCodecs;    // codec ordinal per kind; -1 for KLV/DATA
+    // KlvStreamType ordinal for KLV; raw PMT stream_type byte for DATA; -1 otherwise.
+    private final int[] streamTypeCodes;
+    private final boolean[] streamCarriesPts; // KLV + DATA; false otherwise
+    // Per-stream PMT descriptor loops for DATA streams, flattened: dataDescBytes
+    // is every descriptor TLV concatenated in stream order; dataDescLens[i] is
+    // that stream's byte count within the blob (0 for non-data/descriptor-less).
+    private final byte[] dataDescBytes;
+    private final int[] dataDescLens;
 
     private MuxerConfig(Builder b) {
         this.programNumber = b.programNumber;
@@ -56,15 +64,30 @@ public final class MuxerConfig {
         this.streamPids = new int[n];
         this.streamKinds = new int[n];
         this.streamCodecs = new int[n];
-        this.klvStreamTypes = new int[n];
-        this.klvCarriesPts = new boolean[n];
+        this.streamTypeCodes = new int[n];
+        this.streamCarriesPts = new boolean[n];
         for (int i = 0; i < n; i++) {
             this.streamPids[i] = b.pids.get(i);
             this.streamKinds[i] = b.kinds.get(i);
             this.streamCodecs[i] = b.codecs.get(i);
-            this.klvStreamTypes[i] = b.klvTypes.get(i);
-            this.klvCarriesPts[i] = b.klvPts.get(i);
+            this.streamTypeCodes[i] = b.typeCodes.get(i);
+            this.streamCarriesPts[i] = b.carriesPts.get(i);
         }
+        this.dataDescLens = new int[n];
+        java.io.ByteArrayOutputStream blob = new java.io.ByteArrayOutputStream();
+        int dataIdx = 0;
+        for (int i = 0; i < n; i++) {
+            if (b.kinds.get(i) == KIND_DATA) {
+                byte[][] descs = b.dataDescs.get(dataIdx);
+                if (descs != null) {
+                    int total = 0;
+                    for (byte[] d : descs) { blob.write(d, 0, d.length); total += d.length; }
+                    this.dataDescLens[i] = total;
+                }
+                dataIdx++;
+            }
+        }
+        this.dataDescBytes = blob.toByteArray();
     }
 
     /** Start a new builder. Single program for now (multi-program deferred). */
@@ -102,10 +125,22 @@ public final class MuxerConfig {
     public int[] streamKinds() { return streamKinds; }
     /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int[] streamCodecs() { return streamCodecs; }
+    /**
+     * KlvStreamType ordinal for KLV streams; raw PMT stream_type byte for DATA
+     * streams; -1 otherwise. Exposed for the srt MuxSender/Socket marshalling;
+     * the parallel-array shape is not a stable user API.
+     */
+    public int[] streamTypeCodes() { return streamTypeCodes; }
+    /**
+     * carriesPts flag for KLV + DATA streams; false otherwise. Exposed for the
+     * srt MuxSender/Socket marshalling; the parallel-array shape is not a
+     * stable user API.
+     */
+    public boolean[] streamCarriesPts() { return streamCarriesPts; }
     /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
-    public int[] klvStreamTypes() { return klvStreamTypes; }
+    public byte[] dataDescBytes() { return dataDescBytes; }
     /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
-    public boolean[] klvCarriesPts() { return klvCarriesPts; }
+    public int[] dataDescLens() { return dataDescLens; }
 
     /**
      * Fluent builder for {@link MuxerConfig}. Defaults mirror
@@ -125,8 +160,9 @@ public final class MuxerConfig {
         private final List<Integer> pids = new ArrayList<>();
         private final List<Integer> kinds = new ArrayList<>();
         private final List<Integer> codecs = new ArrayList<>();
-        private final List<Integer> klvTypes = new ArrayList<>();
-        private final List<Boolean> klvPts = new ArrayList<>();
+        private final List<Integer> typeCodes = new ArrayList<>();
+        private final List<Boolean> carriesPts = new ArrayList<>();
+        private final java.util.Map<Integer, byte[][]> dataDescs = new java.util.LinkedHashMap<>();
 
         public Builder programNumber(int v) { this.programNumber = v; return this; }
         public Builder pmtPid(int v) { this.pmtPid = v; return this; }
@@ -182,7 +218,46 @@ public final class MuxerConfig {
             return this;
         }
 
-        private void addStream(int pid, int kind, int codec, int klvType, boolean klvPtsFlag) {
+        /**
+         * Add a private/data elementary stream (PES on stream_id 0xBD,
+         * private_stream_1). {@code streamType} is the raw PMT stream_type byte
+         * (0..=255). It must not classify as a typed kind (e.g. 0x1B H.264), and a
+         * 0x06 stream must not carry a classifying descriptor (e.g. KLVA
+         * registration) — both are rejected at {@code new Muxer(...)} with
+         * {@code CONFIG_INVALID}. Push-time payloads pass through verbatim — no
+         * AU-cell wrap, no framing (unlike {@link #addKlv KLV}).
+         *
+         * @param carriesPts whether pushed PTS values are written to PES headers
+         *     (false: payloads re-demux with {@code pts == 0}; the push-time pts
+         *     still drives PSI/PCR pacing)
+         */
+        public Builder addData(int pid, int streamType, boolean carriesPts) {
+            if (streamType < 0 || streamType > 255) {
+                throw new IllegalArgumentException(
+                    "streamType must be in 0..=255, got " + streamType);
+            }
+            addStream(pid, KIND_DATA, -1, streamType, carriesPts);
+            return this;
+        }
+
+        /**
+         * Set the PMT descriptor loop for the {@code dataIdx}-th data stream
+         * (zero-indexed among {@link #addData} calls, in call order). Each element
+         * is one complete descriptor TLV (tag, length, payload), emitted verbatim.
+         * {@code dataIdx} is range-checked at {@link #build()}; TLV well-formedness
+         * and classification rules are validated at {@code new Muxer(...)}.
+         */
+        public Builder streamDescriptorsForData(int dataIdx, byte[][] descs) {
+            Objects.requireNonNull(descs, "descs");
+            for (byte[] d : descs) Objects.requireNonNull(d, "descs element");
+            if (dataIdx < 0) {
+                throw new IllegalArgumentException("dataIdx must be >= 0, got " + dataIdx);
+            }
+            dataDescs.put(dataIdx, descs.clone());
+            return this;
+        }
+
+        private void addStream(int pid, int kind, int codec, int typeCode, boolean carriesPtsFlag) {
             if (pid < 0x0010 || pid > 0x1FFE) {
                 throw new IllegalArgumentException(
                     "pid must be in 0x0010..=0x1FFE, got 0x" + Integer.toHexString(pid));
@@ -190,14 +265,24 @@ public final class MuxerConfig {
             pids.add(pid);
             kinds.add(kind);
             codecs.add(codec);
-            klvTypes.add(klvType);
-            klvPts.add(klvPtsFlag);
+            typeCodes.add(typeCode);
+            carriesPts.add(carriesPtsFlag);
         }
 
         /** Finalize. Requires ≥1 stream. Deep validation happens in {@code Muxer::new}. */
         public MuxerConfig build() {
             if (pids.isEmpty()) {
                 throw new IllegalArgumentException("at least one stream is required");
+            }
+            int dataCount = 0;
+            for (int k : kinds) {
+                if (k == KIND_DATA) dataCount++;
+            }
+            for (int idx : dataDescs.keySet()) {
+                if (idx >= dataCount) {
+                    throw new IllegalArgumentException("streamDescriptorsForData dataIdx " + idx
+                        + " out of range (" + dataCount + " data streams)");
+                }
             }
             return new MuxerConfig(this);
         }

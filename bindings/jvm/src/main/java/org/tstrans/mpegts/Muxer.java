@@ -50,7 +50,8 @@ public final class Muxer implements AutoCloseable {
             cfg.pcrIntervalMs(), cfg.psiIntervalMs(), cfg.bufferPackets(),
             cfg.av1Carriage().ordinal(),
             cfg.streamPids(), cfg.streamKinds(), cfg.streamCodecs(),
-            cfg.klvStreamTypes(), cfg.klvCarriesPts()));
+            cfg.streamTypeCodes(), cfg.streamCarriesPts(),
+            cfg.dataDescBytes(), cfg.dataDescLens()));
     }
 
     /**
@@ -175,7 +176,8 @@ public final class Muxer implements AutoCloseable {
     private static native long nOpen(int programNumber, int pmtPid, int pcrPid,
             int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,
             int[] streamPids, int[] streamKinds, int[] streamCodecs,
-            int[] klvStreamTypes, boolean[] klvCarriesPts) throws MuxException;
+            int[] streamTypeCodes, boolean[] streamCarriesPts,
+            byte[] dataDescBytes, int[] dataDescLens) throws MuxException;
     private static native void nPushVideo(long handle, byte[] nal, long pts, boolean keyFrame)
             throws MuxException;
     private static native void nPushKlv(long handle, byte[] klv, long pts, int metadataServiceId)

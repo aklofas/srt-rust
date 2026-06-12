@@ -1,0 +1,32 @@
+package org.tstrans.mpegts;
+
+/**
+ * Opaque handle for a private/data elementary stream within a configured muxer.
+ *
+ * <p>Obtain one from {@code Muxer.dataHandles()} (or a sender's
+ * {@code dataHandle()}) and pass it to the {@code pushDataTo(...)} /
+ * {@code sendDataTo(...)} handle-targeted push family. The {@code raw} value is
+ * the muxer's packed {@code u32} stream identifier widened to {@code long}; it
+ * is meaningful only to the muxer that minted it.
+ *
+ * <p>Mirrors {@code tstrans.mpegts.DataStreamHandle}. Being a record, equality
+ * and hashing are by {@code raw}.
+ *
+ * @param raw the packed {@code u32} stream identifier, widened to {@code long}
+ */
+public record DataStreamHandle(long raw) {
+    /**
+     * Reconstruct a handle from a raw value previously returned by
+     * {@link #raw()} (e.g. across a config channel). No validation occurs here
+     * (matching the other stream-handle records; unlike tst-py's
+     * {@code DataStreamHandle.from_raw}, which validates) — a forged or
+     * cross-muxer value surfaces as {@code MuxException(INVALID_USAGE)} at
+     * push time.
+     *
+     * @param raw the packed {@code u32} value, widened to {@code long}
+     * @return a {@code DataStreamHandle} wrapping {@code raw}
+     */
+    public static DataStreamHandle fromRaw(long raw) {
+        return new DataStreamHandle(raw);
+    }
+}

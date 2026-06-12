@@ -251,6 +251,10 @@ class SrtMuxDemuxLoopbackTest {
                 // length means the demuxer emits it without waiting for a flush.
                 if (i == 0) s.pushData(DATA_PAYLOAD, 0L);
             }
+            // Sender handle smoke pin: the config declares one data stream, so
+            // the convenience accessor must surface it (exercises the native +
+            // sentinel path on a live sender).
+            assertTrue(s.dataHandle().isPresent());
             // SRT TSBPD buffers before delivery; pause before close so the
             // receiver drains everything (mirrors the Rust live test's 1s pause).
             Thread.sleep(1_000);

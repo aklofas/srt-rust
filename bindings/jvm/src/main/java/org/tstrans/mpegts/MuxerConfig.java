@@ -21,7 +21,7 @@ import java.util.Objects;
  * descriptors for the typed kinds (data streams get theirs via
  * {@link Builder#streamDescriptorsForData}); the typed kinds'
  * {@code *_to(handle, ...)} multi-stream variants (data streams have them:
- * {@link Muxer#pushDataTo} + {@link Muxer#dataHandles()}); stats / file-sink.
+ * {@link Muxer#pushDataTo} + {@link Muxer#dataHandles()}); stats.
  * DVB subtitle codecs (which need language + page-ID config) are also
  * deferred — {@link Builder#addSubtitle} accepts only the no-config codecs
  * (CEA-708 / WebVTT).

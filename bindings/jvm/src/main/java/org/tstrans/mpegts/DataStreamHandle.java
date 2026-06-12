@@ -3,11 +3,13 @@ package org.tstrans.mpegts;
 /**
  * Opaque handle for a private/data elementary stream within a configured muxer.
  *
- * <p>Obtain one from {@code Muxer.dataHandles()} (or a sender's
- * {@code dataHandle()}) and pass it to the {@code pushDataTo(...)} /
- * {@code sendDataTo(...)} handle-targeted push family. The {@code raw} value is
- * the muxer's packed {@code u32} stream identifier widened to {@code long}; it
- * is meaningful only to the muxer that minted it.
+ * <p>Obtain one from {@link Muxer#dataHandles()} /
+ * {@link Muxer#dataStreamHandle(int)} (or a sender's {@code dataHandle()}) and
+ * pass it to the handle-targeted push family
+ * ({@link Muxer#pushDataTo(DataStreamHandle, byte[], long)} and the senders'
+ * {@code pushDataTo}). The
+ * {@code raw} value is the muxer's packed {@code u32} stream identifier widened
+ * to {@code long}; it is meaningful only to the muxer that minted it.
  *
  * <p>Mirrors {@code tstrans.mpegts.DataStreamHandle}. Being a record, equality
  * and hashing are by {@code raw}.

@@ -116,9 +116,25 @@ class DataStreamTest {
         MuxerConfig cfg = MuxerConfig.builder()
             .addVideo(0x1011, VideoCodec.H264).addData(0x0100, 0xF0, true).build();
         try (Muxer m = new Muxer(cfg)) {
+            // High bits outside the packed 4-bit program + 4-bit within layout
+            // -> rejected by DataStreamHandle::try_from_raw in the JNI shim.
             MuxException e = assertThrows(MuxException.class,
                 () -> m.pushDataTo(DataStreamHandle.fromRaw(0x7FFF_FFFFL), new byte[] {1}, 0L));
             assertEquals(MuxException.Kind.INVALID_USAGE, e.kind());
+
+            // Negative jlong -> rejected by the u32::try_from leg in the shim
+            // (never truncated into a plausible handle).
+            MuxException neg = assertThrows(MuxException.class,
+                () -> m.pushDataTo(DataStreamHandle.fromRaw(-1L), new byte[] {1}, 0L));
+            assertEquals(MuxException.Kind.INVALID_USAGE, neg.kind());
+
+            // Raw 1 IS in canonical packed layout (program 0, within-index 1 —
+            // bits 0..=3 = within, bits 4..=7 = program) but targets a second
+            // data stream this 1-stream muxer never configured -> pins the
+            // core MuxError::InvalidStreamHandle leg (past try_from_raw).
+            MuxException oob = assertThrows(MuxException.class,
+                () -> m.pushDataTo(DataStreamHandle.fromRaw(1L), new byte[] {1}, 0L));
+            assertEquals(MuxException.Kind.INVALID_USAGE, oob.kind());
         }
     }
 
@@ -130,9 +146,88 @@ class DataStreamTest {
         assertEquals(1, m.dataHandles().size());
         assertTrue(m.dataStreamHandle(0).isPresent());
         assertTrue(m.dataStreamHandle(1).isEmpty());
+        assertTrue(m.dataStreamHandle(-1).isEmpty());
         m.close();
         assertThrows(IllegalStateException.class, m::dataHandles);
         assertThrows(IllegalStateException.class, () -> m.pushData(new byte[] {1}, 0L));
+    }
+
+    @Test
+    void dataRoundTripPreservesPayloadPtsAndStreamType() throws Exception {
+        byte[] desc = {(byte) 0x05, 4, 'A', 'R', 'S', 'X'};
+        MuxerConfig cfg = MuxerConfig.builder()
+            .addVideo(0x1011, VideoCodec.H264)
+            .addData(0x0100, 0xF0, true)
+            .addData(0x0101, 0x06, false)   // bare 0x06, no PTS
+            .streamDescriptorsForData(0, new byte[][] {desc})
+            .build();
+        byte[] payloadA = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 7};
+        byte[] payloadB = "JSONCMD{}".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
+        java.io.ByteArrayOutputStream acc = new java.io.ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(cfg)) {
+            java.util.List<DataStreamHandle> hs = m.dataHandles();
+            m.pushVideo(syntheticH264Idr(), 0L, true);
+            m.pushDataTo(hs.get(0), payloadA, 90_000L);
+            m.pushDataTo(hs.get(1), payloadB, 90_000L);
+            int n;
+            while ((n = m.pull(out)) > 0) acc.write(out, 0, n);
+        }
+        byte[] ts = acc.toByteArray();
+
+        // (a) descriptor TLV embedded verbatim in the muxed PMT (JVM ProgramMap
+        // doesn't surface descriptors; the byte-scan is the emission proof —
+        // the PMT fits one 188-byte packet at this size, so no split TLV)
+        assertTrue(containsSubsequence(ts, desc), "descriptor TLV must appear in the muxed PMT");
+
+        // (b) demux: per-sample fidelity
+        java.util.List<DemuxEvent.UnknownSample> samples = new java.util.ArrayList<>();
+        try (Demuxer d = new Demuxer()) {
+            d.feed(ts);
+            d.flush();
+            for (DemuxEvent ev : d) {
+                if (ev instanceof DemuxEvent.UnknownSample u) samples.add(u);
+            }
+        }
+        assertEquals(2, samples.size());
+        DemuxEvent.UnknownSample a = samples.stream()
+            .filter(s -> s.streamType() == 0xF0).findFirst().orElseThrow();
+        DemuxEvent.UnknownSample b = samples.stream()
+            .filter(s -> s.streamType() == 0x06).findFirst().orElseThrow();
+        assertEquals(90_000L, a.pts());
+        assertArrayEquals(payloadA, toBytes(a.payload()));
+        assertEquals(0L, b.pts(), "carriesPts=false re-demuxes as pts == 0 (no-PTS pin)");
+        assertArrayEquals(payloadB, toBytes(b.payload()));
+    }
+
+    /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
+    private static byte[] syntheticH264Idr() {
+        byte[] buf = new byte[20];
+        buf[0] = 0x00; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x01;
+        buf[4] = 0x65;
+        for (int i = 0; i < 15; i++) {
+            buf[5 + i] = (byte) (0xA5 ^ i);
+        }
+        return buf;
+    }
+
+    /** Naive subsequence scan — fine at TS-fixture sizes. */
+    private static boolean containsSubsequence(byte[] hay, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= hay.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (hay[i + j] != needle[j]) continue outer;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static byte[] toBytes(java.nio.ByteBuffer buf) {
+        byte[] out = new byte[buf.remaining()];
+        buf.duplicate().get(out);
+        return out;
     }
 
     @Test

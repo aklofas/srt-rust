@@ -918,12 +918,13 @@ MultiCellAuReason = _native_mod.MultiCellAuReason
 CellFragmentIndication = _native_mod.CellFragmentIndication
 
 # Stream handle newtypes. Rust impls live in
-# bindings/python/src/mux.rs as `Py{Video,Audio,Klv,Subtitle}StreamHandle`,
+# bindings/python/src/mux.rs as `Py{Video,Audio,Klv,Subtitle,Data}StreamHandle`,
 # exposed on `_native` under the names below via `#[pyclass(name=...)]`.
 VideoStreamHandle = _native_mod.VideoStreamHandle
 AudioStreamHandle = _native_mod.AudioStreamHandle
 KlvStreamHandle = _native_mod.KlvStreamHandle
 SubtitleStreamHandle = _native_mod.SubtitleStreamHandle
+DataStreamHandle = _native_mod.DataStreamHandle
 
 # Program-level config + builder. Rust impls in
 # bindings/python/src/mux.rs as `PyMuxerProgramConfig` /
@@ -1273,6 +1274,7 @@ __all__: list[str] = [
     "AudioStreamHandle",
     "KlvStreamHandle",
     "SubtitleStreamHandle",
+    "DataStreamHandle",
     "MuxerProgramConfig",
     "MuxerProgramConfigBuilder",
     "MuxerConfig",

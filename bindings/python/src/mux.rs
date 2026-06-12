@@ -881,8 +881,9 @@ impl PyMuxerConfig {
     /// first ISO 639 language descriptor (tag 0x0A) on the stream's
     /// `raw_descriptors` when it carries a plausible lowercase
     /// ISO 639-2 code. The demuxed `pcr_pid` is copied iff it equals
-    /// the PID of a kept stream that is neither KLV nor data;
-    /// otherwise it is left unset and the builder default applies
+    /// the PID of a kept video or audio stream; KLV, data, and
+    /// subtitle PIDs are PCR-ineligible — the pin is not copied, the
+    /// field is left unset, and the builder default applies
     /// (first video → first KLV → first audio). `klv_links` are
     /// ignored — the muxer re-derives metadata linkage from its own
     /// configuration. Mirrors Rust's `MuxerConfig::from_program_map`.

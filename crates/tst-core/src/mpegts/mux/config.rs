@@ -240,13 +240,14 @@ impl MuxerConfig {
     ///   STANAG 4609 norm. Callers that need a PTS-less stream build the
     ///   config by hand.
     /// - **PCR copy rule**: the demuxed `pcr_pid` is copied iff it equals
-    ///   the PID of a kept stream that is neither KLV nor data. Otherwise
-    ///   (PCR on a dropped stream, on a PID outside the program, or on a
-    ///   KLV or data PID — which [`validate`](Self::validate) would
-    ///   reject) `pcr_pid` is left `None`, so the builder default
-    ///   applies: `validate()` resolves first video → first KLV → first
-    ///   audio, which can itself error for a video-less program whose
-    ///   fallback lands on a KLV PID
+    ///   the PID of a kept video or audio stream. KLV, data, and subtitle
+    ///   PIDs are PCR-ineligible — the PCR pin is not copied (an explicit
+    ///   pin on any of them is rejected by [`validate`](Self::validate)).
+    ///   In every other case (PCR ineligible, on a dropped stream, or on
+    ///   a PID outside the program) `pcr_pid` is left `None`, so the
+    ///   builder default applies: `validate()` resolves first video →
+    ///   first KLV → first audio, which can itself error for a video-less
+    ///   program whose fallback lands on a KLV PID
     ///   ([`MuxError::KlvPidUsedAsPcrPid`](crate::error::MuxError::KlvPidUsedAsPcrPid)).
     /// - **Audio language**: recovered from the first ISO 639 language
     ///   descriptor (tag `0x0A`) on the stream's raw PMT descriptors when
@@ -279,9 +280,11 @@ impl MuxerConfig {
         let mut prog = MuxerProgramConfigBuilder::new(pm.program_number, pm.pmt_pid);
         let mut offenders: Vec<String> = Vec::new();
         // (pid, pcr_ineligible) of every stream added to the builder — drives
-        // the PCR copy rule. KLV and data streams are PCR-ineligible: their
-        // caller-paced cadence can't promise the 100 ms PCR ceiling, and
-        // validate() rejects an explicit PCR pin on either.
+        // the PCR copy rule. KLV, data, and subtitle streams are
+        // PCR-ineligible: KLV/data caller-paced cadence can't promise the
+        // 100 ms PCR ceiling, subtitles must not carry PCR (ETSI EN 300 472
+        // §4.0 / EN 300 743 §6.1), and validate() rejects an explicit PCR
+        // pin on any of them.
         let mut kept: Vec<(u16, bool)> = Vec::new();
         // Count of Data streams added so far — the kind-scoped index that
         // stream_descriptors_for_data expects.
@@ -327,11 +330,14 @@ impl MuxerConfig {
                 }
                 DemuxKind::Subtitle(DemuxSub::Cea708Standalone) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::Cea708Standalone);
-                    kept.push((s.pid, false));
+                    // PCR-ineligible: subtitles must not carry PCR (ETSI
+                    // EN 300 472 §4.0 / EN 300 743 §6.1).
+                    kept.push((s.pid, true));
                 }
                 DemuxKind::Subtitle(DemuxSub::WebVttInTs) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::WebVttInTs);
-                    kept.push((s.pid, false));
+                    // PCR-ineligible, as for CEA-708 above.
+                    kept.push((s.pid, true));
                 }
                 DemuxKind::Subtitle(other) => offenders.push(format!(
                     "pid 0x{:04X} ({other:?} subtitle: per-stream parameters are not \
@@ -368,8 +374,9 @@ impl MuxerConfig {
             });
         }
         if let Some(&(pid, pcr_ineligible)) = kept.iter().find(|(pid, _)| *pid == pm.pcr_pid) {
-            // Explicit PCR-on-KLV / PCR-on-data is rejected by validate();
-            // fall back to the builder default (first video) instead.
+            // An explicit PCR pin on a KLV, data, or subtitle PID is
+            // rejected by validate(); fall back to the builder default
+            // (first video) instead.
             if !pcr_ineligible {
                 prog.pcr_pid(pid);
             }

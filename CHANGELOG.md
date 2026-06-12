@@ -63,6 +63,10 @@ byte-identical payloads.
   temporary guard until the data pass-through surface lands (transmux cannot
   yet route their samples, so passing them through would silently emit
   declared-but-empty data PIDs).
+- `from_program_map`'s PCR copy rule: subtitle PIDs join KLV and data in the
+  PCR-ineligible class — a source whose PCR rides a kept CEA-708/WebVTT
+  subtitle PID now converts with the builder-default PCR (first video)
+  instead of failing `validate()` with `SubtitlePidUsedAsPcrPid`.
 
 ### Added — `tstrans.mpegts.DataStreamSpec` (Python)
 

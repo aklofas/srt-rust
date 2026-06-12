@@ -10,6 +10,7 @@ from tstrans.mpegts import (
     KlvStreamType,
     Muxer,
     MuxerConfigBuilder,
+    MuxerDrainProxy,
     MuxerProgramConfigBuilder,
     Pts90khz,
     VideoCodec,
@@ -316,3 +317,17 @@ def test_raw_muxer_push_bypasses_sink_drain_and_hints_at_proxy(tmp_path):
     # The enriched message names both write_file and the proxy contract.
     assert "write_file" in str(ei.value)
     assert "proxy" in str(ei.value)
+
+
+def test_drain_proxy_push_methods_match_muxer_surface():
+    # Structural guard for the silent-BufferFull gap class: a `push_*`
+    # method added to `Muxer` but missing from the drain proxy's
+    # `_PUSH_METHODS` set would delegate through `__getattr__` WITHOUT
+    # the post-push drain — long push loops via that method would
+    # overflow the packet buffer inside an active `write_file` block.
+    # (Exactly what happened to push_data/push_data_to in private-data
+    # W3 review.) Compare the live `Muxer` push surface to the set, both
+    # directions, so the set can neither lag nor carry phantom entries.
+    assert {
+        n for n in dir(Muxer) if n.startswith("push_")
+    } == MuxerDrainProxy._PUSH_METHODS

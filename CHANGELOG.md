@@ -9,6 +9,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — Python data-stream surface (`tstrans.mpegts` + srt/rtp `MuxSender`)
+
+- **`tstrans.mpegts`** gains the data-stream mux surface, mirroring the Rust
+  muxer below: `MuxerProgramConfigBuilder.add_data(pid, stream_type,
+  carries_pts)` + `stream_descriptors_for_data(index, descriptors)`,
+  `Muxer.push_data` / `push_data_to`, the `DataStreamHandle` type, and the
+  handle accessors `data_handles()` / `data_stream_handle(index)` /
+  `data_handles_for_program(program_number)`.
+- **`tstrans.srt.MuxSender` / `tstrans.rtp.MuxSender`** gain `push_data` /
+  `push_data_to` / `data_handle()` — push raw private-PES payloads through a
+  live sender, following the `push_klv` family shape.
+
+### Changed — `tio.transmux` passes private/application data streams through
+
+- **`tio.transmux`** now routes data samples (demux
+  `DemuxEvent.UnknownSample`) through `push_data_to`, so
+  private/application data streams pass through byte-faithfully alongside
+  video / audio / KLV (was: skipped/errored). DVB subtitling/teletext remain
+  the strict-fail offenders; `drop=(StreamKindTag.UNKNOWN,)` remains the
+  opt-out for excluding data streams. PTS nuance: re-muxed data streams
+  always carry PTS and the demuxer substitutes 0 for a PTS-less source PES,
+  so a source sample with no PTS re-emerges with a literal PTS of 0.
+
 ### Added — private/application data streams (muxer + pipeline)
 
 Arbitrary private PES carriage: declare a data elementary stream with an
@@ -58,11 +81,10 @@ byte-identical payloads.
   stream whose stream_type/descriptors classify as a typed kind converts to
   a Data spec that `validate()` rejects (the anti-masquerade rule), naming
   the stream and the classified kind.
-- `tio.transmux` keeps its fail-or-drop contract: a source carrying unknown
-  stream types still raises — now `ValueError` at the transmux level, a
-  temporary guard until the data pass-through surface lands (transmux cannot
-  yet route their samples, so passing them through would silently emit
-  declared-but-empty data PIDs).
+- `tio.transmux` consumes the conversion: private/application data streams
+  in a source pass through byte-faithfully — see the dedicated transmux
+  entry above. DVB subtitling/teletext remain the only strict-fail
+  offenders.
 - `from_program_map`'s PCR copy rule: subtitle PIDs join KLV and data in the
   PCR-ineligible class — a source whose PCR rides a kept CEA-708/WebVTT
   subtitle PID now converts with the builder-default PCR (first video)

@@ -342,7 +342,7 @@ def test_transmux_passes_unknown_streams_through_byte_faithfully(tmp_path):
     ]
     # The 0x06 stream was carries_pts=False at the source: its PES
     # carried no PTS, so the demuxer substituted pts=0 on the way in
-    # and transmux re-pushed that 0 (converted data streams always
+    # and transmux re-pushed that 0 (re-muxed data streams always
     # carry PTS). The pts values pushed at the source are therefore
     # NOT recoverable — the samples re-emerge with a literal PTS of 0.
     assert out_data[0x1F1] == [(0, p) for p in DATA_PAYLOADS_B]

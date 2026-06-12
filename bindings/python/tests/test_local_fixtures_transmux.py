@@ -13,7 +13,7 @@ Design notes:
   muxer-scheduled, so a globally-ordered event sequence is not stable;
   within a single PID order IS preserved, so ordered per-PID lists are.
 - EVENT-level comparison, not TS-byte-level: a source stream without
-  PTS gains one on the output (converted data streams always carry
+  PTS gains one on the output (re-muxed data streams always carry
   PTS), so TS bytes legitimately differ. Both sides' demuxers
   substitute pts=0 for PTS-less samples, so `(pts, payload)` tuples
   still match.

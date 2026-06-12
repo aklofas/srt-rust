@@ -1138,6 +1138,11 @@ push to 65527 payload bytes with PTS, 65532 without
 - Pipeline shells delegate one-for-one:
   `MuxSender::{send_data, send_data_to, data_handles}` and
   `MuxPublisher::send_data` — see [guides/pipeline.md](/docs/guides/pipeline.md).
+- The Python binding mirrors the whole surface: `add_data` /
+  `stream_descriptors_for_data` / `push_data(_to)` / the handle accessors
+  on `tstrans.mpegts`, plus `push_data` / `push_data_to` / `data_handle()`
+  on the srt/rtp `MuxSender`s. The C and JVM bindings do not expose data
+  streams yet.
 
 ## Examples
 

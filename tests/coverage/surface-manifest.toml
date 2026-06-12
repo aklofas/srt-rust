@@ -4055,7 +4055,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::DataStreamHandle"
 owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
-bindings = []
+bindings = ["c:tst_data_stream_handle_t", "python:DataStreamHandle"]
 scenario_ids = []
 tier = "A"
 
@@ -4214,7 +4214,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_data"
 owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
-bindings = []
+bindings = ["c:tst_muxer_push_data", "python:push_data"]
 scenario_ids = []
 tier = "A"
 
@@ -4223,7 +4223,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::Muxer::push_data_to"
 owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs"]
-bindings = []
+bindings = ["c:tst_muxer_push_data_to", "python:push_data_to"]
 scenario_ids = []
 tier = "A"
 
@@ -4445,7 +4445,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_data"
 owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs", "crates/tst-core/src/mpegts/mux/tests/config.rs"]
-bindings = []
+bindings = ["c:tst_mux_config_add_data_stream", "python:add_data"]
 scenario_ids = []
 tier = "A"
 
@@ -4490,7 +4490,7 @@ kind = "rust"
 crate = "tst-core"
 item = "tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_data"
 owning_tests = ["crates/tst-core/tests/mpegts/mux_data.rs", "crates/tst-core/src/mpegts/mux/tests/config.rs"]
-bindings = []
+bindings = ["c:tst_mux_config_set_stream_descriptors_for_data", "c:tst_mux_config_add_data_descriptor", "python:stream_descriptors_for_data"]
 scenario_ids = []
 tier = "A"
 

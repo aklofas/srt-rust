@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 11` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 12` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -111,8 +111,20 @@
  *   reconstruct a muxer config from a ProgramMap event. Additive — no
  *   symbol/signature changed; struct total size and pointer-field offsets
  *   are unchanged.
+ * - `12` — opaque private-data (`StreamSpec::Data`) stream surface:
+ *   `tst_data_stream_handle_t` typedef plus seven new entry points —
+ *   `tst_mux_config_add_data_stream`,
+ *   `tst_mux_config_set_stream_descriptors_for_data`,
+ *   `tst_mux_config_add_data_descriptor`, the offline muxer pair
+ *   `tst_muxer_push_data` / `tst_muxer_push_data_to`, and the
+ *   srt-gated sender pair `tst_mux_sender_send_data` /
+ *   `tst_mux_sender_send_data_to`. Lets C callers carry opaque
+ *   private payloads (PES `stream_id 0xBD`, arbitrary `stream_type`)
+ *   alongside video/KLV, mirroring the Rust `push_data` family.
+ *   Additive — no symbol removed, no signature or struct layout
+ *   changed.
  */
-#define TST_ABI_VERSION_MINOR 11
+#define TST_ABI_VERSION_MINOR 12
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -1829,6 +1841,12 @@ typedef struct tst_sender_stats_t {
 typedef uint32_t tst_program_handle_t;
 
 /**
+ * Opaque per-program ordinal for a private/application data elementary
+ * stream. Same packed encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_data_stream_handle_t;
+
+/**
  * `repr(C)` mirror of `tst_core::publisher::PublisherStats` — the
  * universal cross-publisher stats subset. Returned by
  * `tst_publisher_get_stats` and `tst_mux_publisher_get_publisher_stats`.
@@ -2441,6 +2459,47 @@ tst_audio_stream_handle_t tst_mux_config_add_audio_stream_with_language(struct t
                                                                         const uint8_t *language);
 
 /**
+ * Append one PMT descriptor to a data stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_data_stream`.
+ * Note the muxer never auto-emits a descriptor on a data stream, and the
+ * accumulated `(stream_type, descriptors)` pair must still classify as
+ * Unknown under the demux cascade — enforced at `_open` time.
+ */
+
+int tst_mux_config_add_data_descriptor(struct tst_mux_config_t *cfg,
+                                       tst_data_stream_handle_t stream,
+                                       const struct tst_descriptor_t *desc);
+
+/**
+ * Add an arbitrary private/application data elementary stream (PES
+ * pass-through, the write-side dual of demux `TST_STREAM_KIND_UNKNOWN`)
+ * to the specified program and return its handle.
+ *
+ * `stream_type` is the raw PMT `stream_type` byte (e.g. 0xF0/0xF1
+ * user-private, bare 0x06) — there is no enum; the byte is emitted in the
+ * PMT verbatim. The `(stream_type, descriptors)` pair must classify as
+ * Unknown under the demux cascade (no typed stream_type codepoints, no
+ * classifying descriptors) — that anti-masquerade rule is enforced at
+ * `_open` time (config validation), not here.
+ *
+ * `carries_pts`: when `true` the PES header carries the PTS passed to
+ * each `push_data_to`; when `false` the PES omits the PTS field entirely.
+ * The push-time PTS is **always** used for PSI/PCR pacing decisions
+ * regardless.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+ * `tst_mux_config_add_video_stream`).
+ */
+
+tst_data_stream_handle_t tst_mux_config_add_data_stream(struct tst_mux_config_t *cfg,
+                                                        tst_program_handle_t program,
+                                                        uint16_t pid,
+                                                        uint8_t stream_type,
+                                                        bool carries_pts);
+
+/**
  * Append one PMT descriptor to a KLV stream's per-PID descriptor list.
  * Same contract as `tst_mux_config_add_video_descriptor`.
  *
@@ -2684,6 +2743,22 @@ int tst_mux_config_set_program_descriptors(struct tst_mux_config_t *cfg,
 int tst_mux_config_set_psi_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
 
 /**
+ * Set per-stream PMT descriptors for the specified data stream.
+ *
+ * `data` is a handle previously returned by `tst_mux_config_add_data_stream`.
+ * The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
+ *
+ * Returns 0 on success or a negative `TST_E_*` code on the same conditions
+ * as `tst_mux_config_set_stream_descriptors_for_video`.
+ */
+
+int tst_mux_config_set_stream_descriptors_for_data(struct tst_mux_config_t *cfg,
+                                                   tst_data_stream_handle_t data,
+                                                   const uint8_t *tlv_bytes,
+                                                   size_t tlv_total_len,
+                                                   size_t tlv_count);
+
+/**
  * Set per-stream PMT descriptors for the specified KLV stream.
  *
  * `klv` is a handle previously returned by `tst_mux_config_add_klv_stream`.
@@ -2867,6 +2942,72 @@ int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
                                  const uint8_t *frames,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Send one data payload through the mux sender's single data stream and
+ * out the transport.
+ *
+ * **Pass-through contract:** the muxer applies no AU-cell wrap, no
+ * framing, and no payload inspection — `data` lands verbatim as the
+ * payload of exactly one PES packet on the configured PID, using
+ * `stream_id` `0xBD` (`private_stream_1`). Record boundaries within
+ * `data` (if any) are entirely the caller's convention.
+ *
+ * `pts_90khz` is written into the PES header only when the stream was
+ * configured with `carries_pts = true` in
+ * `tst_mux_config_add_data_stream`; it is **always** used for PSI/PCR
+ * pacing decisions regardless. For `carries_pts = false` streams the
+ * PES omits the PTS field entirely; this library's demuxer surfaces
+ * such samples with `pts == 0` (its no-PTS substitute).
+ *
+ * Single-stream form: the mux sender must have exactly one data stream
+ * configured. Multi-stream callers use `tst_mux_sender_send_data_to`
+ * with an explicit `tst_data_stream_handle_t`.
+ *
+ * # Errors
+ *
+ * Routed through `tst_get_last_error()` via the inner `MuxSender`
+ * shell's `record_shell_error`. Common codes:
+ *
+ * - `TST_E_INVALID_USAGE` — no data stream configured, ambiguous target,
+ *   or payload exceeds the `PES_packet_length` ceiling (`DataTooLarge`:
+ *   65532 bytes without PTS, 65527 with).
+ * - `TST_E_TRANSPORT` — transport-layer failure (closed, timeout, broken pipe).
+ * - `TST_E_INVALID_CONFIG` — `data` is null with non-zero `len`.
+ *
+ * # C ABI
+ *
+ * `tst_mux_sender_send_data` — see `bindings/c/include/tstrans.h`.
+ */
+
+int tst_mux_sender_send_data(struct tst_mux_sender_t *p,
+                             const uint8_t *data,
+                             size_t len,
+                             int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Send one data payload targeting a specific data elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_data_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`). Payload, PTS, and size-ceiling
+ * contracts are those of `tst_mux_sender_send_data` (the single-stream
+ * form).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_data` — same
+ * effect, no handle required.
+ */
+
+int tst_mux_sender_send_data_to(struct tst_mux_sender_t *p,
+                                tst_data_stream_handle_t stream_handle,
+                                const uint8_t *data,
+                                size_t len,
+                                int64_t pts_90khz);
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -3095,6 +3236,56 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
                             const uint8_t *frames,
                             size_t len,
                             int64_t pts_90khz);
+
+/**
+ * Push one data payload onto the muxer's single data stream.
+ *
+ * **Pass-through contract:** the muxer applies no AU-cell wrap, no
+ * framing, and no payload inspection — `data` lands verbatim as the
+ * payload of exactly one PES packet on the configured PID, using
+ * `stream_id` `0xBD` (`private_stream_1`). Record boundaries within
+ * `data` (if any) are entirely the caller's convention.
+ *
+ * `pts_90khz` is written into the PES header only when the stream was
+ * configured with `carries_pts = true` in
+ * `tst_mux_config_add_data_stream`; it is **always** used for PSI/PCR
+ * pacing decisions regardless. For `carries_pts = false` streams the
+ * PES omits the PTS field entirely; this library's demuxer surfaces
+ * such samples with `pts == 0` (its no-PTS substitute).
+ *
+ * Single-stream form: the muxer must have exactly one data stream
+ * configured. Multi-stream callers use `tst_muxer_push_data_to` with an
+ * explicit `tst_data_stream_handle_t`.
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — no data stream configured
+ *   (`NoDataStreamsConfigured`).
+ * - `TST_E_INVALID_USAGE` — more than one data stream configured
+ *   (`AmbiguousTarget` — caller must use the `_to` variant).
+ * - `TST_E_INVALID_USAGE` — payload exceeds the `PES_packet_length`
+ *   ceiling (`DataTooLarge`: 65532 bytes without PTS, 65527 with).
+ * - `TST_E_INVALID_CONFIG` — `data` is null with non-zero `len`.
+ *
+ * # C ABI
+ *
+ * `tst_muxer_push_data` — see `bindings/c/include/tstrans.h`.
+ */
+int tst_muxer_push_data(struct tst_muxer_t *p, const uint8_t *data, size_t len, int64_t pts_90khz);
+
+/**
+ * Push one data payload targeting a specific data elementary stream.
+ *
+ * `handle` is obtained from `tst_mux_config_add_data_stream`. Same
+ * semantics as `tst_muxer_push_video_to`; payload, PTS, and size-ceiling
+ * contracts are those of `tst_muxer_push_data` (the single-stream form).
+ */
+
+int tst_muxer_push_data_to(struct tst_muxer_t *p,
+                           tst_data_stream_handle_t handle,
+                           const uint8_t *data,
+                           size_t len,
+                           int64_t pts_90khz);
 
 /**
  * Push one KLV blob onto the muxer's single KLV stream.

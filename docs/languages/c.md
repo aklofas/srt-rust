@@ -60,7 +60,7 @@ Every release exposes two pairs of macros in `tstrans.h` plus matching runtime a
 #define TST_VERSION_MINOR        1
 #define TST_VERSION_PATCH        0
 #define TST_ABI_VERSION_MAJOR    0   // C ABI contract version
-#define TST_ABI_VERSION_MINOR    5
+#define TST_ABI_VERSION_MINOR    12
 ```
 
 The **ABI** pair is what binding consumers should pin against. Minor bumps are additive (new entry points / new enum variants); a future major bump will be breaking (none yet — sitting at `0` pre-1.0). Check at process startup:
@@ -168,6 +168,24 @@ int main(int argc, char **argv) {
 For KLV: **pass raw MISB Local Set bytes** — the muxer auto-wraps the H.222.0 § 2.12.4.2 AU cell header for `SYNCHRONOUS_METADATA` streams. Don't pre-wrap.
 
 Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/muxing/mux_dual_camera.c`](../../bindings/c/examples/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
+
+### Private/application data streams
+
+For opaque payloads the demuxer would surface as `TST_STREAM_KIND_UNKNOWN` (vendor telemetry, application sidecar data), declare a data stream and push raw bytes:
+
+```c
+tst_data_stream_handle_t ds = tst_mux_config_add_data_stream(
+    cfg, prog, 0x102, /*stream_type=*/0xF0, /*carries_pts=*/true);
+/* ... after tst_mux_sender_open: */
+tst_mux_sender_send_data(snd, payload, payload_len, pts_90khz);
+```
+
+- **Pass-through semantics.** No AU-cell wrap, no framing, no payload inspection — the bytes land verbatim as the payload of exactly one PES packet (`stream_id` `0xBD`, `private_stream_1`) on the configured PID. Record boundaries within a payload are your convention. Payloads are capped by the `PES_packet_length` ceiling: 65532 bytes without PTS, 65527 with.
+- **PTS contract.** `pts_90khz` is written into the PES header only when the stream was configured with `carries_pts = true`; it is **always** used for PSI/PCR pacing decisions regardless. With `carries_pts = false` the PES omits the PTS field entirely (this library's demuxer surfaces such samples with `pts == 0`).
+- **`stream_type` is the raw PMT byte** (e.g. `0xF0`/`0xF1` user-private, bare `0x06`) — no enum. The `(stream_type, descriptors)` pair must still classify as Unknown under the demux cascade (you can't masquerade as a typed video/KLV/audio stream); that's validated at `_open` time. Per-PID PMT descriptors go through `tst_mux_config_add_data_descriptor` / `tst_mux_config_set_stream_descriptors_for_data`, same contract as the video/KLV descriptor setters.
+- **`_to` routing.** With more than one data stream configured, `tst_mux_sender_send_data_to(snd, ds, ...)` targets a specific one, mirroring `tst_mux_sender_send_klv_to`.
+
+The config entry points and the offline `tst_muxer_push_data` / `tst_muxer_push_data_to` pair are unconditional; the `tst_mux_sender_send_data` / `tst_mux_sender_send_data_to` pair lives behind `TST_HAS_SRT` like the rest of the SRT mux-sender surface (build with `--features srt`).
 
 ## First receive
 

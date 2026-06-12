@@ -12,9 +12,10 @@
 //!   `MuxSender<Box<dyn Transport>>`. Future SRT support lands as a
 //!   separate `tstrans.srt.MuxSender` PyClass with its own concrete
 //!   `MuxSender<SrtTransport>`.
-//! - The 8 push methods mirror the
+//! - The push methods mirror the
 //!   `bindings/python/src/rtp/server.rs::PyMountHandle` shape (single +
-//!   `_to` variants × video/klv/audio/subtitle).
+//!   `_to` variants × video/klv/audio/subtitle; data added by the W3
+//!   private-data arc — not present on `PyMountHandle`).
 //! - Bytes-like extraction follows the audit-backlog #10 two-path
 //!   pattern (fast `bytes` downcast, fallback through Python's
 //!   `bytes()` builtin coercion) — same shape as `PyMountHandle`.
@@ -42,7 +43,7 @@ use tst_rtp::{RtpSocketBuilder, RtpTransport};
 
 use crate::errors::{make_rtp_error, mux_error_to_pyerr};
 use crate::mux::{
-    PyAudioStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
+    PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
 };
 use crate::rtp::transport::PySocketStats;
@@ -274,6 +275,32 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
+    /// Push one data payload onto the lone configured data stream.
+    ///
+    /// Pass-through contract: no AU-cell wrap, no framing, no payload
+    /// inspection — `data` lands verbatim as one PES packet on PES
+    /// `stream_id` 0xBD (private_stream_1). `pts` is written into the
+    /// PES header only when the stream was configured with
+    /// `carries_pts=True`; it is always used for PSI/PCR pacing
+    /// decisions regardless.
+    #[pyo3(signature = (data, *, pts))]
+    fn push_data(
+        &self,
+        py: Python<'_>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
+        let rust_pts = py_pts90khz(pts)?;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| inner.send_data(slice, rust_pts));
+        res.map_err(|e| mux_sender_error_to_pyerr(py, e))
+    }
+
     // ── Push family — handle-targeted variants ────────────────────────────
 
     /// Push to a specific video stream handle.
@@ -365,6 +392,28 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
+    /// Push to a specific data stream handle. Same pass-through
+    /// contract as `push_data`.
+    #[pyo3(signature = (handle, data, *, pts))]
+    fn push_data_to(
+        &self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyDataStreamHandle>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
+        let rust_pts = py_pts90khz(pts)?;
+        let handle_inner = handle.0;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| inner.send_data_to(handle_inner, slice, rust_pts));
+        res.map_err(|e| mux_sender_error_to_pyerr(py, e))
+    }
+
     // ── Handle getters ────────────────────────────────────────────────────
     //
     // Single-program convenience — return the first configured handle
@@ -409,6 +458,16 @@ impl PyMuxSender {
             .into_iter()
             .next()
             .map(PySubtitleStreamHandle)
+    }
+
+    /// First configured data stream handle, or `None`.
+    fn data_handle(&self) -> Option<PyDataStreamHandle> {
+        let inner = self.inner.as_ref()?;
+        inner
+            .data_handles()
+            .into_iter()
+            .next()
+            .map(PyDataStreamHandle)
     }
 
     // ── Stats ──────────────────────────────────────────────────────────────

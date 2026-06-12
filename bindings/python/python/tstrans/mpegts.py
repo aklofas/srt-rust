@@ -1071,6 +1071,7 @@ class MuxerDrainProxy:
         "push_audio", "push_audio_to",
         "push_klv", "push_klv_to",
         "push_subtitle", "push_subtitle_to",
+        "push_data", "push_data_to",
     })
 
     def __init__(self, muxer, fh) -> None:

@@ -189,17 +189,18 @@ with tio.transmux("in.ts", "out.ts", atomic=True) as tx:
 ```
 
 Strict by default: streams the muxer cannot represent (DVB
-subtitling/teletext) raise `MuxError` naming the offenders, and a source
-carrying unknown stream types raises `ValueError` — a temporary
-transmux-level guard: `MuxerConfig.from_program_map` represents them as
-`DataStreamSpec` pass-through entries, but transmux cannot yet route
-their samples, so passing them through would silently emit
-declared-but-empty data PIDs (byte-faithful pass-through arrives with
-the data-stream push surface).
-Pass the offending kinds in `drop=` (e.g.
-`drop=(StreamKindTag.UNKNOWN,)`) to exclude them instead; their events
-are then skipped by `write`. v1 supports single-program sources (a
-second program raises `ValueError`).
+subtitling/teletext) raise `MuxError` naming the offenders.
+Private/application data streams (unknown stream types) pass through
+byte-faithfully: `MuxerConfig.from_program_map` reproduces their PMT
+entry (raw stream_type byte + descriptor loop verbatim) and each
+`DemuxEvent.UnknownSample` payload is re-emitted as-is via
+`push_data_to`. Converted data streams always carry PTS and the
+demuxer substitutes 0 for a PTS-less source PES, so a source sample
+with no PTS re-emerges with a literal PTS of 0.
+Pass kinds in `drop=` (e.g. `drop=(StreamKindTag.UNKNOWN,)`) to
+exclude streams instead; their events are then skipped by `write`. v1
+supports single-program sources (a second program raises
+`ValueError`).
 `atomic=True` writes through a same-directory `*.partial` temp file and
 `os.replace`s it into place only on clean exit, so no partial output can
 appear at the destination.

@@ -265,6 +265,30 @@ def test_write_file_long_push_loop_never_overflows(tmp_path):
     assert size % 188 == 0
 
 
+def test_write_file_long_data_push_loop_never_overflows(tmp_path):
+    # push_data / push_data_to joined the proxy's _PUSH_METHODS set in
+    # private-data W3 (transmux routes UnknownSample through the drain
+    # proxy). Without the drain wrap a long data push loop overflows
+    # exactly like the video regression above — `__getattr__` would
+    # delegate to the raw muxer push with no post-push drain.
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .build()
+    )
+    m = Muxer(MuxerConfigBuilder().add_program(prog).build())
+    n_pushes = m.capacity_packets() + 2_000
+    path = tmp_path / "out.ts"
+    with m.write_file(path) as proxy:
+        for i in range(n_pushes):
+            proxy.push_data(b"\x42\x43", pts=Pts90khz.from_raw(900_000 + i * 3000))
+        assert m.pending_packets() == 0  # drained after every push
+    size = path.stat().st_size
+    assert size > n_pushes * 188  # at least one TS packet per PES made it out
+    assert size % 188 == 0
+
+
 def test_raw_muxer_push_bypasses_sink_drain_and_hints_at_proxy(tmp_path):
     # The footgun itself: pushing on the original Muxer object inside an
     # active `write_file` block never drains, so the buffer fills and the

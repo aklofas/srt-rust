@@ -348,6 +348,54 @@ def test_transmux_passes_unknown_streams_through_byte_faithfully(tmp_path):
     assert out_data[0x1F1] == [(0, p) for p in DATA_PAYLOADS_B]
 
 
+def test_transmux_mixed_klv_and_data_streams_survive(tmp_path):
+    # Mixed-kind pass-through: a single program carrying video +
+    # sync-KLV + a private data stream exercises the mixed-kind
+    # _build_handles zip (KLV and data handles built from the same
+    # ProgramMap must not cross-wire). Both kinds must survive a
+    # no-drop transmux with payload AND pts intact.
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+            .add_data(0x1F0, 0xF0, carries_pts=True)
+            .build()
+        )
+        .build()
+    )
+    mux = Muxer(cfg)
+    (handle,) = mux.data_handles()
+    klv_bytes = _make_klv_bytes(47.6097)
+    with mux.write_file(src) as proxy:
+        for i, (au, key) in enumerate(zip(ORIG_AUS, KEY_FRAMES)):
+            pts = Pts90khz.from_raw(PTS0 + i * PTS_STEP)
+            proxy.push_video(au, pts=pts, key_frame=key)
+            proxy.push_klv(klv_bytes, pts=pts)
+            proxy.push_data_to(handle, DATA_PAYLOADS_A[i], pts=pts)
+
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+
+    out_videos: list[bytes] = []
+    out_klvs: list[tuple[int, bytes]] = []
+    out_data: list[tuple[int, bytes]] = []
+    for ev in tio.parse_file(dst):
+        if isinstance(ev, DemuxEvent.Video):
+            out_videos.append(bytes(ev.raw))
+        elif isinstance(ev, DemuxEvent.Klv):
+            out_klvs.append((ev.pts.raw, bytes(ev.payload)))
+        elif isinstance(ev, DemuxEvent.UnknownSample):
+            out_data.append((ev.pts.raw, bytes(ev.payload)))
+    assert out_videos == ORIG_AUS
+    expected_pts = [PTS0 + i * PTS_STEP for i in range(len(ORIG_AUS))]
+    assert out_klvs == [(p, klv_bytes) for p in expected_pts]
+    assert out_data == list(zip(expected_pts, DATA_PAYLOADS_A))
+
+
 def test_transmux_drop_unknown_still_sheds(tmp_path):
     # drop=[UNKNOWN] remains the escape hatch now that pass-through is
     # the default: the output PMT declares no unknown streams and the

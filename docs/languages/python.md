@@ -194,7 +194,7 @@ Private/application data streams (unknown stream types) pass through
 byte-faithfully: `MuxerConfig.from_program_map` reproduces their PMT
 entry (raw stream_type byte + descriptor loop verbatim) and each
 `DemuxEvent.UnknownSample` payload is re-emitted as-is via
-`push_data_to`. Converted data streams always carry PTS and the
+`push_data_to`. Re-muxed data streams always carry PTS and the
 demuxer substitutes 0 for a PTS-less source PES, so a source sample
 with no PTS re-emerges with a literal PTS of 0.
 Pass kinds in `drop=` (e.g. `drop=(StreamKindTag.UNKNOWN,)`) to

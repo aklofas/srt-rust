@@ -346,7 +346,7 @@ def transmux(
     pass through byte-faithfully: `from_program_map` reproduces their
     PMT entry (raw stream_type byte + descriptor loop verbatim) and
     each `UnknownSample` payload is re-emitted as-is via
-    `push_data_to`. One nuance: converted data streams always carry
+    `push_data_to`. One nuance: re-muxed data streams always carry
     PTS, and the demuxer substitutes 0 for a PTS-less source PES — so
     a source sample with no PTS re-emerges with a literal PTS of 0.
     Pass `drop=[StreamKindTag.UNKNOWN]` to exclude data streams
@@ -395,7 +395,7 @@ class Transmuxer:
       config).
     - UnknownSample → `push_data_to(handle, payload, pts)`. The payload
       is the raw PES payload, passed through verbatim (no framing, no
-      AU-cell wrap). Converted data streams always carry PTS and the
+      AU-cell wrap). Re-muxed data streams always carry PTS and the
       demuxer substitutes 0 for a PTS-less source PES, so a source
       sample with no PTS re-emerges with a literal PTS of 0.
     - `ProgramMap` / `Discontinuity` / `NonConformant` /

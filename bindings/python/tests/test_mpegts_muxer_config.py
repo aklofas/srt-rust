@@ -7,6 +7,7 @@ from tstrans.mpegts import (
     AudioStreamHandle,
     AudioStreamSpec,
     Av1CarriageMode,
+    DataStreamSpec,
     KlvStreamHandle,
     KlvStreamSpec,
     KlvStreamType,
@@ -249,8 +250,6 @@ def test_muxer_config_static_builder_constructor():
 
 
 # --- W3: data streams (add_data + stream_descriptors_for_data) ---
-
-from tstrans.mpegts import DataStreamSpec
 
 
 def test_add_data_accepts_user_private_stream_type():

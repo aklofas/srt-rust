@@ -1065,7 +1065,11 @@ class MuxerDrainProxy:
     __slots__ = ("_muxer", "_fh")
 
     # The set of methods to wrap with a post-push drain. Kept in sync
-    # with `PyMuxer`'s push_* surface (Tasks 7 + 8).
+    # with `PyMuxer`'s push_* surface — structurally locked by
+    # tests/test_mpegts_muxer_sink.py::
+    # test_drain_proxy_push_methods_match_muxer_surface, which fails
+    # if a `push_*` method exists on `Muxer` but is missing here (the
+    # silent-BufferFull gap class) or vice versa.
     _PUSH_METHODS = frozenset({
         "push_video", "push_video_to", "push_video_to_with_dts",
         "push_audio", "push_audio_to",

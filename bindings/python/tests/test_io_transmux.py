@@ -268,20 +268,44 @@ def test_transmux_tolerates_identical_pm_reemission(tmp_path):
     assert out_videos == ORIG_AUS
 
 
-def test_transmux_strict_on_unknown_stream_and_no_partial_dst(tmp_path):
+def test_transmux_unknown_guard_raises_without_drop_and_no_partial_dst(tmp_path):
+    # TEMPORARY guard contract (private-data W2): from_program_map now
+    # maps unknown streams to Data specs, but transmux has no
+    # UnknownSample routing yet — without the guard the output would
+    # declare data PIDs that never receive payload (silent data loss).
+    # W3 replaces this ValueError with byte-faithful pass-through.
     from _builders.unknown_stream import build_unknown_stream_ts
-    from tstrans.exceptions import MuxError
 
     src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
     src.write_bytes(
         build_unknown_stream_ts(stream_type=0x7F, payload=b"private-bytes")
     )
-    with pytest.raises(MuxError, match="cannot represent"):
+    with pytest.raises(ValueError, match="drop"):
         with tio.transmux(src, dst) as tx:
             for ev in tx:
                 tx.write(ev)
-    # from_program_map raised before the sink opened → no output file.
+    # The guard raised before the sink opened → no output file.
     assert not dst.exists()
+
+
+def test_transmux_drop_unknown_succeeds_and_sheds_stream(tmp_path):
+    from _builders.unknown_stream import build_unknown_stream_ts
+
+    idr_au = ORIG_AUS[0]
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    src.write_bytes(
+        build_unknown_stream_ts(
+            stream_type=0x7F, payload=b"private-bytes", video_au=idr_au
+        )
+    )
+    with tio.transmux(src, dst, drop=(StreamKindTag.UNKNOWN,)) as tx:
+        for ev in tx:
+            tx.write(ev)  # UnknownSample events hit _SKIP_EVENTS → skipped
+    out_videos, _ = _collect(dst)
+    assert out_videos == [idr_au]
+    # The unknown stream is shed: the output PMT declares no UNKNOWN kind.
+    out_pm = tio.probe(dst).programs[0]
+    assert all(s.kind is not StreamKindTag.UNKNOWN for s in out_pm.streams)
 
 
 def test_transmux_drop_klv_skips_dropped_stream_events(tmp_path):

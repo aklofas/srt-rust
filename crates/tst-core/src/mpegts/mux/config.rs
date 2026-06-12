@@ -229,10 +229,11 @@ impl MuxerConfig {
     ///   PCR is never copied onto a data PID (see the PCR copy rule
     ///   below). Caveat: a
     ///   [`DemuxerBuilder::treat_as`](crate::mpegts::demux::DemuxerBuilder::treat_as)
-    ///   override can force `Unknown` onto a stream whose PMT entry
-    ///   classifies as a typed kind; the conversion then produces a Data
-    ///   spec that [`validate`](Self::validate) rejects with a
-    ///   `ConfigInvalid` naming the masquerading descriptors.
+    ///   override can force `Unknown` onto a stream whose
+    ///   stream_type/descriptors classify as a typed kind; the conversion
+    ///   then produces a Data spec that [`validate`](Self::validate)
+    ///   rejects with a `ConfigInvalid` naming the stream and the
+    ///   classified kind.
     /// - **`carries_pts` is always `true`**, including for async KLV and
     ///   Data streams: whether the PES carries a PTS is a PES-level
     ///   property the PMT cannot declare, and PTS-carrying KLV is the
@@ -260,8 +261,13 @@ impl MuxerConfig {
     /// listing the unrepresentable streams not excluded via `drop`, or any
     /// [`MuxerConfigBuilder::build`] validation error on the converted
     /// program (e.g. an empty program when every stream was dropped, or a
-    /// `treat_as`-forced Data spec whose descriptors classify as a typed
-    /// kind).
+    /// `treat_as`-forced Data spec whose stream_type/descriptors classify
+    /// as a typed kind — the error names the stream and the classified
+    /// kind). A `ProgramMap` whose kept streams are all `Unknown` converts
+    /// but fails validation with the no-PCR-eligible-stream error
+    /// ([`MuxError::SubtitleOnlyProgram`](crate::error::MuxError::SubtitleOnlyProgram)
+    /// — a historical name; the condition is "no PCR-eligible stream",
+    /// not literally subtitle-only).
     pub fn from_program_map(
         pm: &crate::mpegts::demux::ProgramMap,
         drop: &[crate::mpegts::demux::StreamKindTag],
@@ -1249,6 +1255,12 @@ impl MuxerProgramConfigBuilder {
 /// length byte), so descriptors from a real `ProgramMap` always fit; a
 /// hand-built `ProgramMap` can exceed that (`RawDescriptor` fields are
 /// public), which errors rather than truncating the length byte.
+///
+/// The bound enforced here is only the length-byte cast — downstream
+/// validation is tighter still: `validate()` caps a TLV body at 253
+/// bytes (`MuxError::MalformedDescriptor`) and the whole PMT section at
+/// one TS packet (`MuxError::PmtTooLarge`), so a near-255-byte body
+/// that passes here can still fail at build time.
 fn raw_descriptor_to_tlv(
     pid: u16,
     d: &crate::mpegts::descriptors::RawDescriptor,

@@ -208,6 +208,12 @@ class SubtitleStreamSpec(StreamSpec):
     __slots__ = ("codec",)
     codec: SubtitleCodec
 
+@dataclass(frozen=True)
+class DataStreamSpec(StreamSpec):
+    __slots__ = ("stream_type", "carries_pts")
+    stream_type: int
+    carries_pts: bool
+
 # --- mux-side subtitle codec config dataclasses ---
 
 @dataclass(frozen=True, slots=True)
@@ -660,6 +666,7 @@ __all__ = [
     "KlvStreamSpec",
     "AudioStreamSpec",
     "SubtitleStreamSpec",
+    "DataStreamSpec",
     "DvbSubtitlingConfig",
     "DvbTeletextConfig",
     "Cea708StandaloneConfig",

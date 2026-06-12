@@ -188,7 +188,8 @@ entirely.
 
 The function maps each demuxed `StreamKind` to the closest representable
 muxer stream. Kinds that have no lossless mux representation are strict
-offenders — the function fails unless you pass them in `drop` to exclude them.
+offenders — the function fails unless you pass them in `drop` to exclude
+them; DVB subtitling/teletext are the only such kinds.
 
 | Demuxed `StreamKind` (PMT `stream_type`) | Rebuilt as | Notes |
 |---|---|---|
@@ -205,7 +206,7 @@ offenders — the function fails unless you pass them in `drop` to exclude them.
 | `Subtitle(Cea708Standalone)` — `0x06` + `GA94` registration | `add_subtitle(pid, SubtitleCodec::Cea708Standalone)` | Registration descriptor auto-re-emitted. |
 | `Subtitle(WebVttInTs)` — `0x06` + `VTTC` registration | `add_subtitle(pid, SubtitleCodec::WebVttInTs)` | Registration descriptor auto-re-emitted. |
 | `Subtitle(DvbSubtitling)` / `Subtitle(DvbTeletext)` | **error (`ConfigInvalid`)** | DVB descriptor params (language, page IDs) are not recoverable from the PMT entry alone. Pass `StreamKindTag::Subtitle` in `drop` to exclude all subtitle streams. |
-| `Unknown(stream_type)` | **error (`ConfigInvalid`)** | Unknown stream types have no mux representation. Pass `StreamKindTag::Unknown` in `drop` to exclude. |
+| `Unknown(stream_type)` | `add_data(pid, stream_type, carries_pts=true)` | PES pass-through keeping the raw PMT `stream_type` byte; the stream's PMT descriptors are preserved verbatim on the rebuilt PMT. Same `carries_pts` rule as KLV. Pass `StreamKindTag::Unknown` in `drop` to exclude private data streams you don't want to carry. |
 
 The `drop` filter is kind-coarse: `StreamKindTag::Subtitle` drops *all* subtitle
 streams including the representable CEA-708 / WebVTT kinds, not only the
@@ -227,7 +228,8 @@ fn transmux_single_program(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::err
     d.feed(bytes)?;
     while let Some(ev) = d.next_event() {
         if let DemuxEvent::ProgramMap(pm) = ev {
-            // Basic: fail on any unrepresentable stream (DVB sub/teletext, unknown types).
+            // Basic: fail on any unrepresentable stream (DVB sub/teletext);
+            // unknown stream types convert to Data pass-through specs.
             let cfg = MuxerConfig::from_program_map(&pm, &[])?;
             return Ok(cfg);
         }
@@ -236,13 +238,15 @@ fn transmux_single_program(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::err
 }
 ```
 
-To exclude unknown stream types rather than erroring, pass them in `drop`:
+The `drop` filter is optional — unknown stream types convert by default.
+To exclude streams of a kind you don't want to carry (here, the private
+data streams), pass that kind in `drop`:
 
 ```rust,no_run
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, StreamKindTag};
 use tst_core::mpegts::mux::MuxerConfig;
 
-fn transmux_lenient(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error::Error>> {
+fn transmux_drop_private_data(bytes: &[u8]) -> Result<MuxerConfig, Box<dyn std::error::Error>> {
     let mut d = Demuxer::new();
     d.feed(bytes)?;
     while let Some(ev) = d.next_event() {
@@ -302,11 +306,13 @@ for ev in demux:
     if isinstance(ev, DemuxEvent.ProgramMap):
         pm = ev.programs[0]  # the event's single program
 
-        # Basic: fail on any unrepresentable stream.
+        # Basic: fail on any unrepresentable stream (DVB sub/teletext);
+        # unknown stream types convert to DataStreamSpec entries.
         cfg = MuxerConfig.from_program_map(pm)
 
-        # Lenient: exclude unknown stream types rather than erroring.
-        cfg_lenient = MuxerConfig.from_program_map(pm, drop=[StreamKindTag.UNKNOWN])
+        # Optional filter: exclude private data streams you don't
+        # want to carry.
+        cfg_filtered = MuxerConfig.from_program_map(pm, drop=[StreamKindTag.UNKNOWN])
         break
 ```
 
@@ -326,9 +332,10 @@ non-`StreamKindTag` entries in `drop`. Field values outside their wire range
   for multi-program sources, collect them across events and combine via
   `MuxerConfigBuilder::add_program`.
 - **PCR copy rule.** The demuxed `pcr_pid` is copied to the rebuilt config iff
-  it equals the PID of a kept, non-KLV stream. Otherwise `pcr_pid` is left
-  `None` and the builder default applies (first video → first KLV → first
-  audio). PCR on a KLV PID is rejected by `validate()`.
+  it equals the PID of a kept stream that is neither KLV nor data. Otherwise
+  `pcr_pid` is left `None` and the builder default applies (first video →
+  first KLV → first audio). PCR on a KLV or data PID is rejected by
+  `validate()`.
 - **`klv_links` are ignored.** The muxer re-derives KLV-to-video linkage from
   its own configuration; the PMT-declared `metadata_descriptor` links in the
   `ProgramMap` are not forwarded.

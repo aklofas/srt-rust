@@ -286,6 +286,8 @@ impl PyManagedMuxSender {
     }
 
     // ── Push family — single-stream variants ──────────────────────────────
+    // No `push_data` here deliberately (W3 private-data arc) — same gap as
+    // rtp's `PyMountHandle`; recorded internal-consistency follow-up, W5.
 
     /// Push one video access unit onto the lone configured video stream.
     /// Annex-B framing for H.264/H.265/H.266; raw OBU stream for AV1.

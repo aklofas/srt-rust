@@ -12,7 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added — Python data-stream surface (`tstrans.mpegts` + srt/rtp `MuxSender`)
 
 - **`tstrans.mpegts`** gains the data-stream mux surface, mirroring the Rust
-  muxer below: `MuxerProgramConfigBuilder.add_data(pid, stream_type,
+  muxer below: `MuxerProgramConfigBuilder.add_data(pid, stream_type, *,
   carries_pts)` + `stream_descriptors_for_data(index, descriptors)`,
   `Muxer.push_data` / `push_data_to`, the `DataStreamHandle` type, and the
   handle accessors `data_handles()` / `data_stream_handle(index)` /

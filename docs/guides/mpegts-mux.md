@@ -332,9 +332,10 @@ non-`StreamKindTag` entries in `drop`. Field values outside their wire range
   for multi-program sources, collect them across events and combine via
   `MuxerConfigBuilder::add_program`.
 - **PCR copy rule.** The demuxed `pcr_pid` is copied to the rebuilt config iff
-  it equals the PID of a kept stream that is neither KLV nor data. Otherwise
-  `pcr_pid` is left `None` and the builder default applies (first video →
-  first KLV → first audio). PCR on a KLV or data PID is rejected by
+  it equals the PID of a kept video or audio stream. KLV, data, and subtitle
+  PIDs are PCR-ineligible — the PCR pin is not copied; `pcr_pid` is left
+  `None` and the builder default applies (first video → first KLV → first
+  audio). An explicit PCR pin on any ineligible PID is rejected by
   `validate()`.
 - **`klv_links` are ignored.** The muxer re-derives KLV-to-video linkage from
   its own configuration; the PMT-declared `metadata_descriptor` links in the

@@ -5,7 +5,8 @@
 //! error unless their kinds are passed in `drop`), the Unknown→Data
 //! pass-through mapping (PMT descriptors preserved verbatim, `carries_pts`
 //! always true), the PCR copy rule (the demuxed `pcr_pid` is copied only
-//! when it lands on a kept PCR-eligible stream — neither KLV nor data),
+//! when it lands on a kept video or audio stream — KLV, data, and
+//! subtitle PIDs are PCR-ineligible),
 //! ISO 639 language recovery from raw PMT descriptors, and real
 //! mux→demux→`from_program_map` round-trips.
 
@@ -185,6 +186,26 @@ fn pcr_on_unknown_pid_falls_back() {
         ],
     );
     let cfg = MuxerConfig::from_program_map(&p, &[]).expect("PCR-on-data falls back, not errors");
+    assert_eq!(cfg.programs[0].pcr_pid, None);
+}
+
+#[test]
+fn pcr_on_subtitle_pid_falls_back() {
+    // pcr_pid lands on the kept CEA-708 subtitle PID. Subtitles must not
+    // carry PCR (ETSI EN 300 472 §4.0 / EN 300 743 §6.1 — same rationale
+    // as KLV/data; validate rejects explicit PCR-on-subtitle), so the
+    // conversion leaves pcr_pid None — the builder default (first video)
+    // applies at validate time.
+    let p = pm(
+        0x100,
+        0x105,
+        vec![
+            stream(0x101, 0x1B, DemuxKind::Video(DemuxVideo::H264)),
+            stream(0x105, 0x06, DemuxKind::Subtitle(DemuxSub::Cea708Standalone)),
+        ],
+    );
+    let cfg =
+        MuxerConfig::from_program_map(&p, &[]).expect("PCR-on-subtitle falls back, not errors");
     assert_eq!(cfg.programs[0].pcr_pid, None);
 }
 

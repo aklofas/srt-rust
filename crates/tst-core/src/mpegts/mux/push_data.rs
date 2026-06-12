@@ -31,6 +31,10 @@ impl Muxer {
     /// holder — see its docs for the pass-through guarantees and the
     /// no-PTS-stream behavior).
     ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_data` — see `bindings/c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxError::NoDataStreamsConfigured`] if no data streams are
     ///   configured on this muxer.
@@ -135,6 +139,10 @@ impl Muxer {
     /// such samples with `pts == Pts90khz::new(0)` (its no-PTS
     /// substitute) and emits no `NonConformant` — H.222.0 §2.7.4 makes
     /// PTS mandatory only for video and audio streams.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_data_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

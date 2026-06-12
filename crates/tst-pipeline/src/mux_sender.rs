@@ -601,7 +601,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// Not yet exposed via the C ABI.
+    /// `tst_mux_sender_send_data` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -638,7 +638,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// Not yet exposed via the C ABI.
+    /// `tst_mux_sender_send_data_to` — see `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:

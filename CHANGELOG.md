@@ -43,6 +43,36 @@ byte-identical payloads.
   **`MuxPublisher::send_data`** — pipeline delegates to the muxer push
   family.
 
+### Changed — `MuxerConfig::from_program_map` converts unknown stream types to Data specs
+
+- **`MuxerConfig::from_program_map`** (Rust + Python) now maps
+  `StreamKind::Unknown(stream_type)` streams to `StreamSpec::Data`
+  pass-through entries instead of strict-failing the conversion naming them
+  as offenders unless dropped: the raw PMT `stream_type` byte is kept and
+  the stream's PMT descriptors are preserved verbatim (re-encoded
+  TLV-for-TLV; the muxer never auto-emits descriptors on a data stream);
+  `carries_pts` is always `true` (a PES-level property the PMT cannot
+  declare); the PCR is never copied onto a data PID — data joins KLV in the
+  PCR-ineligible class. `drop=[StreamKindTag::Unknown]` still excludes
+  unknown streams entirely. Caveat: a `treat_as`-forced `Unknown` on a
+  stream whose stream_type/descriptors classify as a typed kind converts to
+  a Data spec that `validate()` rejects (the anti-masquerade rule), naming
+  the stream and the classified kind.
+- `tio.transmux` keeps its fail-or-drop contract: a source carrying unknown
+  stream types still raises — now `ValueError` at the transmux level, a
+  temporary guard until the data pass-through surface lands (transmux cannot
+  yet route their samples, so passing them through would silently emit
+  declared-but-empty data PIDs).
+
+### Added — `tstrans.mpegts.DataStreamSpec` (Python)
+
+- New frozen dataclass in the `StreamSpec` hierarchy (`pid`, `stream_type`,
+  `carries_pts`) — Python introspection of Data specs:
+  `MuxerProgramConfig.streams` returns one per data stream, and
+  `MuxerConfig.from_program_map` reconstructs one per unknown-type stream.
+  PMT descriptors are not carried on the spec — they live on
+  `MuxerProgramConfig.stream_descriptors`.
+
 ### Added — `tstrans.io.transmux` demux→edit→remux bridge (Python)
 
 - New pure-Python context manager `tio.transmux(src, dst, *, drop=(),

@@ -280,7 +280,7 @@ def test_transmux_unknown_guard_raises_without_drop_and_no_partial_dst(tmp_path)
     src.write_bytes(
         build_unknown_stream_ts(stream_type=0x7F, payload=b"private-bytes")
     )
-    with pytest.raises(ValueError, match="drop"):
+    with pytest.raises(ValueError, match="private/application data"):
         with tio.transmux(src, dst) as tx:
             for ev in tx:
                 tx.write(ev)

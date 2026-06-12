@@ -5,8 +5,8 @@
 //!
 //! This module is split across sibling files grouped by concern:
 //! - `programs` — `tst_mux_config_add_program`
-//! - `streams` — per-stream constructors (video / klv / audio / subtitle)
-//!   plus global-mux setters (PCR / PSI interval, buffer packets) and the
+//! - `streams` — per-stream constructors (video / klv / audio / subtitle /
+//!   data) plus global-mux setters (PCR / PSI interval, buffer packets) and the
 //!   codec / stream-type enums
 //! - `descriptors` — program- and per-stream PMT descriptor entries
 //! - `builders` — `TstSenderConfig` / `TstRawSenderConfig` /
@@ -35,17 +35,18 @@ pub use builders::{
     tst_sender_config_set_max_unsynced_bytes,
 };
 pub use descriptors::{
-    tst_mux_config_add_audio_descriptor, tst_mux_config_add_klv_descriptor,
-    tst_mux_config_add_subtitle_descriptor, tst_mux_config_add_video_descriptor,
-    tst_mux_config_set_program_descriptors, tst_mux_config_set_stream_descriptors_for_klv,
+    tst_mux_config_add_audio_descriptor, tst_mux_config_add_data_descriptor,
+    tst_mux_config_add_klv_descriptor, tst_mux_config_add_subtitle_descriptor,
+    tst_mux_config_add_video_descriptor, tst_mux_config_set_program_descriptors,
+    tst_mux_config_set_stream_descriptors_for_data, tst_mux_config_set_stream_descriptors_for_klv,
     tst_mux_config_set_stream_descriptors_for_video,
 };
 pub use programs::tst_mux_config_add_program;
 pub use streams::{
     TstAudioCodec, TstKlvStreamType, TstSubtitleCodec, TstVideoCodec,
     tst_mux_config_add_audio_stream, tst_mux_config_add_audio_stream_with_language,
-    tst_mux_config_add_klv_stream, tst_mux_config_add_subtitle_stream_cea708,
-    tst_mux_config_add_subtitle_stream_dvb_subtitling,
+    tst_mux_config_add_data_stream, tst_mux_config_add_klv_stream,
+    tst_mux_config_add_subtitle_stream_cea708, tst_mux_config_add_subtitle_stream_dvb_subtitling,
     tst_mux_config_add_subtitle_stream_dvb_teletext, tst_mux_config_add_subtitle_stream_webvtt,
     tst_mux_config_add_video_stream, tst_mux_config_set_buffer_packets,
     tst_mux_config_set_pcr_interval_ms, tst_mux_config_set_pcr_pid,

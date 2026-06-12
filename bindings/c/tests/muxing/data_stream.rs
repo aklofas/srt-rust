@@ -11,8 +11,9 @@
 use std::ffi::CStr;
 
 use tstrans::config::{
-    TstMuxConfig, TstProgramHandle, TstVideoCodec, tst_mux_config_add_data_descriptor,
-    tst_mux_config_add_data_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
+    TstKlvStreamType, TstMuxConfig, TstProgramHandle, TstVideoCodec,
+    tst_mux_config_add_data_descriptor, tst_mux_config_add_data_stream,
+    tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
     tst_mux_config_free, tst_mux_config_new, tst_mux_config_set_stream_descriptors_for_data,
 };
 use tstrans::demuxer::{
@@ -20,11 +21,11 @@ use tstrans::demuxer::{
     tst_demuxer_open,
 };
 use tstrans::error::{TstError, tst_get_last_error, tst_get_last_error_str};
-use tstrans::event::{TstDescriptor, TstEvent, TstEventKind, TstStreamKindTag};
+use tstrans::event::{TstDescriptor, TstEvent, TstEventKind, TstMetadataKindTag, TstStreamKindTag};
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
 use tstrans::muxer::{
     TstMuxer, tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_data,
-    tst_muxer_push_data_to, tst_muxer_push_video_to,
+    tst_muxer_push_data_to, tst_muxer_push_klv_to, tst_muxer_push_video_to,
 };
 
 const NAL_SPS: &[u8] = &[
@@ -290,9 +291,18 @@ struct SampleRec {
     payload: Vec<u8>,
 }
 
+/// Metadata-event snapshot (KLV streams surface as `TstEventKind::Metadata`,
+/// not Sample; payload copied out of the event arena like `SampleRec`).
+struct MetadataRec {
+    pid: u16,
+    metadata_kind: i32,
+    pts: i64,
+    payload: Vec<u8>,
+}
+
 /// Feed `ts` through the offline C demuxer and snapshot every ProgramMap
-/// stream entry + every Sample event.
-unsafe fn demux_collect(ts: &[u8]) -> (Vec<StreamEntry>, Vec<SampleRec>) {
+/// stream entry + every Sample event + every Metadata event.
+unsafe fn demux_collect(ts: &[u8]) -> (Vec<StreamEntry>, Vec<SampleRec>, Vec<MetadataRec>) {
     unsafe {
         let d = tst_demuxer_open();
         assert!(!d.is_null(), "tst_demuxer_open returned null");
@@ -303,6 +313,7 @@ unsafe fn demux_collect(ts: &[u8]) -> (Vec<StreamEntry>, Vec<SampleRec>) {
 
         let mut streams = Vec::new();
         let mut samples = Vec::new();
+        let mut metadata = Vec::new();
         loop {
             let mut ev = TstEvent::default();
             let rc = tst_demuxer_next_event(d, &mut ev);
@@ -336,10 +347,18 @@ unsafe fn demux_collect(ts: &[u8]) -> (Vec<StreamEntry>, Vec<SampleRec>) {
                     pts: s.pts,
                     payload: core::slice::from_raw_parts(s.payload, s.payload_len).to_vec(),
                 });
+            } else if ev.kind == TstEventKind::Metadata as i32 {
+                let m = ev.u.metadata;
+                metadata.push(MetadataRec {
+                    pid: m.pid,
+                    metadata_kind: m.metadata_kind,
+                    pts: m.pts,
+                    payload: core::slice::from_raw_parts(m.payload, m.payload_len).to_vec(),
+                });
             }
         }
         tst_demuxer_close(d);
-        (streams, samples)
+        (streams, samples, metadata)
     }
 }
 
@@ -404,7 +423,7 @@ fn offline_round_trip_two_data_streams() {
         let ts = pull_all(mux);
         tst_muxer_close(mux);
 
-        let (streams, samples) = demux_collect(&ts);
+        let (streams, samples, _metadata) = demux_collect(&ts);
 
         // ProgramMap: both data streams surface as Unknown with exact
         // stream_type bytes and descriptor TLVs.
@@ -480,7 +499,7 @@ fn push_data_single_stream_routes_without_handle() {
         let ts = pull_all(mux);
         tst_muxer_close(mux);
 
-        let (_streams, samples) = demux_collect(&ts);
+        let (_streams, samples, _metadata) = demux_collect(&ts);
         let data_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1041).collect();
         assert_eq!(data_samples.len(), 1, "expected exactly one data sample");
         assert_eq!(
@@ -624,5 +643,197 @@ fn push_data_to_forged_high_bit_handle_rejected() {
         );
 
         tst_muxer_close(mux);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Final-review folds
+// ----------------------------------------------------------------------------
+
+// Minimal 17-byte ST 0601 KLV blob: 16-byte UL + 1-byte BER length (0).
+// Same fixture as multi_program.rs. Callers pass RAW KLV LS bytes — on a
+// SynchronousMetadata stream the muxer auto-wraps them in a 5-byte
+// Metadata_AU_cell header (H.222.0 §2.12.4.2), and the demuxer strips it
+// again, so the round trip compares against these raw bytes.
+const KLV_BLOB: &[u8] = &[
+    0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
+    0x00,
+];
+
+/// KLV + data coexistence: one config carrying video + sync-KLV + a data
+/// stream, pushed interleaved, must round-trip with each stream surfacing
+/// through its own event channel — KLV as typed `Metadata` events (AU cell
+/// stripped, payload == the raw pushed KLV), data as `Unknown` samples
+/// byte-identical, and the PMT typing the KLV stream while leaving the
+/// data stream Unknown.
+#[test]
+fn offline_round_trip_klv_and_data_coexist() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let h_klv = tst_mux_config_add_klv_stream(
+            cfg,
+            prog,
+            0x1031,
+            TstKlvStreamType::SynchronousMetadata,
+            true,
+        );
+        let h_data = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        assert_ne!(h_klv, TST_INVALID_STREAM_HANDLE);
+        assert_ne!(h_data, TST_INVALID_STREAM_HANDLE);
+
+        let mux = tst_muxer_open(cfg);
+        assert!(
+            !mux.is_null(),
+            "tst_muxer_open failed: {}",
+            last_error_msg()
+        );
+        tst_mux_config_free(cfg);
+
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(rc, 0, "push_video_to failed: {}", last_error_msg());
+
+        // Interleave klv + data pushes in PTS order.
+        let data_pushes: &[(&[u8], i64)] = &[(b"data-1", 4500), (b"data-second", 7500)];
+        let klv_pts: &[i64] = &[3000, 6000];
+        let rc = tst_muxer_push_klv_to(mux, h_klv, KLV_BLOB.as_ptr(), KLV_BLOB.len(), klv_pts[0]);
+        assert_eq!(rc, 0, "push_klv_to failed: {}", last_error_msg());
+        let rc = tst_muxer_push_data_to(
+            mux,
+            h_data,
+            data_pushes[0].0.as_ptr(),
+            data_pushes[0].0.len(),
+            data_pushes[0].1,
+        );
+        assert_eq!(rc, 0, "push_data_to failed: {}", last_error_msg());
+        let rc = tst_muxer_push_klv_to(mux, h_klv, KLV_BLOB.as_ptr(), KLV_BLOB.len(), klv_pts[1]);
+        assert_eq!(rc, 0, "push_klv_to failed: {}", last_error_msg());
+        let rc = tst_muxer_push_data_to(
+            mux,
+            h_data,
+            data_pushes[1].0.as_ptr(),
+            data_pushes[1].0.len(),
+            data_pushes[1].1,
+        );
+        assert_eq!(rc, 0, "push_data_to failed: {}", last_error_msg());
+
+        let ts = pull_all(mux);
+        tst_muxer_close(mux);
+
+        let (streams, samples, metadata) = demux_collect(&ts);
+
+        // PMT: KLV typed, data Unknown.
+        let k = streams
+            .iter()
+            .find(|s| s.pid == 0x1031)
+            .expect("PMT must list the KLV stream (pid 0x1031)");
+        assert_eq!(k.stream_kind, TstStreamKindTag::KlvSync as i32);
+        let d = streams
+            .iter()
+            .find(|s| s.pid == 0x1041)
+            .expect("PMT must list the data stream (pid 0x1041)");
+        assert_eq!(d.stream_kind, TstStreamKindTag::Unknown as i32);
+        assert_eq!(d.stream_type, 0xF0);
+
+        // Data samples: byte-identical on the right PID with the pushed PTS.
+        let data_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1041).collect();
+        assert_eq!(data_samples.len(), data_pushes.len(), "data sample count");
+        for (got, &(payload, pts)) in data_samples.iter().zip(data_pushes) {
+            assert_eq!(got.stream_kind, TstStreamKindTag::Unknown as i32);
+            assert_eq!(got.payload, payload, "data payload must round-trip");
+            assert_eq!(got.pts, pts, "data pts must round-trip");
+        }
+
+        // KLV: surfaces as Metadata events on its PID with the AU cell
+        // stripped — payload == the raw KLV LS bytes we pushed.
+        let klv_events: Vec<&MetadataRec> = metadata.iter().filter(|m| m.pid == 0x1031).collect();
+        assert_eq!(klv_events.len(), klv_pts.len(), "KLV metadata event count");
+        for (got, &pts) in klv_events.iter().zip(klv_pts) {
+            assert_eq!(got.metadata_kind, TstMetadataKindTag::KlvSyncAuCell as i32);
+            assert_eq!(
+                got.payload, KLV_BLOB,
+                "inner KLV must round-trip byte-for-byte (AU cell stripped)"
+            );
+            assert_eq!(got.pts, pts, "KLV pts must surface from the PES header");
+        }
+    }
+}
+
+/// `carries_pts = false` round trip: the pushed pts paces PSI/PCR emission
+/// but is NOT written to the PES header, so the demuxed samples surface
+/// the documented no-PTS substitute `pts == 0` with payloads intact.
+#[test]
+fn offline_round_trip_no_pts_data_stream_surfaces_pts_zero() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let h_data = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, false);
+        assert_ne!(h_data, TST_INVALID_STREAM_HANDLE);
+
+        let mux = tst_muxer_open(cfg);
+        assert!(
+            !mux.is_null(),
+            "tst_muxer_open failed: {}",
+            last_error_msg()
+        );
+        tst_mux_config_free(cfg);
+
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(rc, 0, "push_video_to failed: {}", last_error_msg());
+
+        let payloads: &[&[u8]] = &[b"no-pts-1", b"no-pts-second"];
+        for (i, payload) in payloads.iter().enumerate() {
+            // Nonzero pts on purpose — must NOT surface on demux.
+            let pts = 3000 * (i as i64 + 1);
+            let rc = tst_muxer_push_data_to(mux, h_data, payload.as_ptr(), payload.len(), pts);
+            assert_eq!(rc, 0, "push_data_to failed: {}", last_error_msg());
+        }
+
+        let ts = pull_all(mux);
+        tst_muxer_close(mux);
+
+        let (_streams, samples, _metadata) = demux_collect(&ts);
+        let data_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1041).collect();
+        assert_eq!(data_samples.len(), payloads.len(), "data sample count");
+        for (got, payload) in data_samples.iter().zip(payloads) {
+            assert_eq!(got.payload, *payload, "payload must round-trip");
+            assert_eq!(
+                got.pts, 0,
+                "carries_pts=false samples must surface the no-PTS substitute 0"
+            );
+        }
+    }
+}
+
+/// Anti-masquerade: a data stream declared with a TYPED stream_type byte
+/// (0x1B = H.264) is accepted at add time but rejected at `tst_muxer_open`
+/// — validation classifies it and demands the typed StreamSpec variant.
+#[test]
+fn open_rejects_data_stream_with_typed_stream_type() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        // 0x1B is the H.264 stream_type byte — add succeeds (validation is
+        // deferred to open).
+        let h = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0x1B, true);
+        assert_ne!(h, TST_INVALID_STREAM_HANDLE, "add itself must succeed");
+
+        let mux = tst_muxer_open(cfg);
+        assert!(
+            mux.is_null(),
+            "open must reject the masquerading data stream"
+        );
+        // MuxError::ConfigInvalid → TST_E_INVALID_CONFIG.
+        assert_eq!(tst_get_last_error(), TstError::InvalidConfig as i32);
+        let msg = last_error_msg();
+        assert!(
+            msg.contains("classifies as") && msg.contains("Video"),
+            "error must name the offending classification, got: {msg}"
+        );
+
+        tst_mux_config_free(cfg);
     }
 }

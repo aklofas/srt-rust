@@ -74,6 +74,7 @@ class RtpConvenienceTest {
 
                 assertTrue(s.videoHandle().isPresent());
                 assertTrue(s.klvHandle().isEmpty());
+                assertTrue(s.dataHandle().isEmpty());
             }
         }
     }

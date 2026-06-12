@@ -19,10 +19,12 @@ import java.util.Objects;
  *
  * <p><b>Deferred (documented):</b> multi-program configs; per-stream/program
  * descriptors for the typed kinds (data streams get theirs via
- * {@link Builder#streamDescriptorsForData}); the {@code *_to(handle, ...)}
- * multi-stream variants; stats / file-sink. DVB subtitle codecs (which need
- * language + page-ID config) are also deferred — {@link Builder#addSubtitle}
- * accepts only the no-config codecs (CEA-708 / WebVTT).
+ * {@link Builder#streamDescriptorsForData}); the typed kinds'
+ * {@code *_to(handle, ...)} multi-stream variants (data streams have them:
+ * {@link Muxer#pushDataTo} + {@link Muxer#dataHandles()}); stats / file-sink.
+ * DVB subtitle codecs (which need language + page-ID config) are also
+ * deferred — {@link Builder#addSubtitle} accepts only the no-config codecs
+ * (CEA-708 / WebVTT).
  */
 public final class MuxerConfig {
     // Internal stream-kind codes — the parallel-array contract the Muxer JNI

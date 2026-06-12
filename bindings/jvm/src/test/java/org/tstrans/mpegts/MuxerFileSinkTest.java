@@ -88,4 +88,20 @@ class MuxerFileSinkTest {
             assertDoesNotThrow(() -> m.pendingPackets());
         }
     }
+
+    @Test
+    void fileSinkMirrorsMuxerPushFamily() {
+        // W3 gap-class guard: a drain-proxy missing a push method causes silent
+        // BufferFull on the bare muxer — pin the sink's push* surface to the
+        // muxer's structurally so a new Muxer.push* can't ship without its
+        // MuxerFileSink twin.
+        java.util.function.Function<Class<?>, java.util.Set<String>> pushNames = c ->
+            java.util.Arrays.stream(c.getDeclaredMethods())
+                .filter(m -> java.lang.reflect.Modifier.isPublic(m.getModifiers())
+                    && m.getName().startsWith("push"))
+                .map(java.lang.reflect.Method::getName)
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(pushNames.apply(Muxer.class), pushNames.apply(MuxerFileSink.class),
+            "MuxerFileSink must mirror every Muxer push* method (W3 gap-class guard)");
+    }
 }

@@ -4,9 +4,11 @@
 //! config description (one entry per elementary stream, decoded by Java enum
 //! ORDINAL) into a [`MuxerConfig`] via the `tst_core` builders, boxes the
 //! [`Muxer`], and returns the raw pointer as a `jlong` handle. The push family
-//! (`nPushVideo` / `nPushKlv` / `nPushAudio` / `nPushSubtitle`) reads the Java
-//! `byte[]`, calls the matching `Muxer::push_*`, and maps any [`MuxError`] to a
-//! thrown `org.tstrans.MuxException` via [`throw_mux_error`]. `nPull` drains TS
+//! (`nPushVideo` / `nPushKlv` / `nPushAudio` / `nPushSubtitle` / `nPushData` /
+//! `nPushDataTo`) reads the Java `byte[]`, calls the matching `Muxer::push_*`,
+//! and maps any [`MuxError`] to a thrown `org.tstrans.MuxException` via
+//! [`throw_mux_error`]. `nDataHandles` returns the configured data-stream
+//! handles as a `long[]` of packed raws. `nPull` drains TS
 //! packets into the caller's `byte[]`; `nPending` / `nCapacity` report queue
 //! depth; `nClose` reconstitutes + drops the box.
 //!
@@ -25,14 +27,14 @@
 use std::sync::LazyLock;
 
 use jni::JNIEnv;
-use jni::objects::{JBooleanArray, JByteArray, JClass, JIntArray};
+use jni::objects::{JBooleanArray, JByteArray, JClass, JIntArray, JLongArray, JObject};
 use jni::sys::{jboolean, jint, jlong};
 
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioCodec, Av1CarriageMode, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder,
-    SubtitleCodec, VideoCodec,
+    AudioCodec, Av1CarriageMode, DataStreamHandle, KlvStreamType, Muxer, MuxerConfig,
+    MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
 };
 
 use crate::error::throw_mux;
@@ -210,7 +212,7 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
                 };
                 if dl > 0 {
                     let Some(end) = desc_off.checked_add(dl) else {
-                        throw_mux(env, "INTERNAL", "negative data-stream descriptor length");
+                        throw_mux(env, "INTERNAL", "data-stream descriptor offset overflow");
                         return Err(());
                     };
                     let Some(descs) = desc_blob.get(desc_off..end).and_then(split_descriptor_tlvs)
@@ -362,6 +364,103 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitle<'local>(
         Some(Err(e)) => throw_mux_error(&mut env, &e),
         None => closed(&mut env),
     }
+}
+
+/// `nPushData(handle, data, pts)` — pass-through push onto the lone configured
+/// data stream. No AU-cell wrap, no framing; one push = one PES on stream_id
+/// `0xBD` (`private_stream_1`). `pts` is written into the PES header only for
+/// `carries_pts` streams but always drives PSI/PCR pacing.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushData<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    let buf = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            throw_mux(&mut env, "INTERNAL", "failed to read byte[] argument");
+            return;
+        }
+    };
+    match REGISTRY.with(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts))) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
+    }
+}
+
+/// `nPushDataTo(handle, streamHandleRaw, data, pts)` — pass-through push onto a
+/// specific data stream. The raw handle is validated via
+/// `DataStreamHandle::try_from_raw` (Java's `fromRaw` does no validation), so a
+/// forged/cross-muxer value surfaces as `MuxException(INVALID_USAGE)` here.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    // Reject any jlong outside the packed-u32 handle layout (negative, > u32,
+    // or high bits set within u32) up front, rather than truncating.
+    let Some(h) = u32::try_from(stream_handle_raw)
+        .ok()
+        .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+    else {
+        throw_mux(&mut env, "INVALID_USAGE", "invalid data stream handle");
+        return;
+    };
+    let buf = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            throw_mux(&mut env, "INTERNAL", "failed to read byte[] argument");
+            return;
+        }
+    };
+    match REGISTRY.with(handle as u64, |mux| {
+        mux.push_data_to(h, &buf, Pts90khz::new(pts))
+    }) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(&mut env, &e),
+        None => closed(&mut env),
+    }
+}
+
+/// `nDataHandles(handle)` → `long[]` of all data stream handles (packed `u32`
+/// raws widened to `jlong`), in `addData` declaration order. On a closed/absent
+/// handle throws `IllegalStateException` and returns a null array; on a JNI
+/// alloc/write failure throws INTERNAL and returns a null array.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nDataHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    let Some(raws) = REGISTRY.with(handle as u64, |mux| {
+        mux.data_handles()
+            .into_iter()
+            .map(|h| i64::from(h.raw()))
+            .collect::<Vec<i64>>()
+    }) else {
+        closed(&mut env);
+        return JObject::null().into();
+    };
+    let arr = match env.new_long_array(raws.len() as i32) {
+        Ok(a) => a,
+        Err(_) => {
+            throw_mux(&mut env, "INTERNAL", "failed to allocate long[] result");
+            return JObject::null().into();
+        }
+    };
+    if env.set_long_array_region(&arr, 0, &raws).is_err() {
+        throw_mux(&mut env, "INTERNAL", "failed to write long[] result");
+        return JObject::null().into();
+    }
+    arr
 }
 
 /// `nPull(handle, out)` — drain whole TS packets into the caller's `byte[]`,

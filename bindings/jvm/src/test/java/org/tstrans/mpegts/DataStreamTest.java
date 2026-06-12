@@ -178,8 +178,10 @@ class DataStreamTest {
 
         // (a) descriptor TLV embedded verbatim in the muxed PMT (JVM ProgramMap
         // doesn't surface descriptors; the byte-scan is the emission proof —
-        // the PMT fits one 188-byte packet at this size, so no split TLV)
-        assertTrue(containsSubsequence(ts, desc), "descriptor TLV must appear in the muxed PMT");
+        // the PMT fits one 188-byte packet at this size, so no split TLV; the
+        // pushed payloads are chosen to NOT contain the descriptor TLV bytes,
+        // so the whole-TS scan can't false-positive on PES payload data)
+        assertTrue(containsBytes(ts, desc), "descriptor TLV must appear in the muxed PMT");
 
         // (b) demux: per-sample fidelity
         java.util.List<DemuxEvent.UnknownSample> samples = new java.util.ArrayList<>();
@@ -199,6 +201,9 @@ class DataStreamTest {
         assertArrayEquals(payloadA, toBytes(a.payload()));
         assertEquals(0L, b.pts(), "carriesPts=false re-demuxes as pts == 0 (no-PTS pin)");
         assertArrayEquals(payloadB, toBytes(b.payload()));
+        // push_data writes a PTS-only PES header (never a DTS) → dts is null.
+        assertNull(a.dts());
+        assertNull(b.dts());
     }
 
     /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
@@ -212,8 +217,8 @@ class DataStreamTest {
         return buf;
     }
 
-    /** Naive subsequence scan — fine at TS-fixture sizes. */
-    private static boolean containsSubsequence(byte[] hay, byte[] needle) {
+    /** Naive contiguous-subarray scan — fine at TS-fixture sizes. */
+    private static boolean containsBytes(byte[] hay, byte[] needle) {
         outer:
         for (int i = 0; i + needle.length <= hay.length; i++) {
             for (int j = 0; j < needle.length; j++) {

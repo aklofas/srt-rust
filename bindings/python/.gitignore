@@ -16,3 +16,6 @@ dist/
 
 # Local development venv
 .venv/
+
+# Machine-local capture files scanned by tests/test_local_fixtures_transmux.py
+tests/local_fixtures/

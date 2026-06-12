@@ -5,18 +5,18 @@
 > them back into a transport stream — on JDK 17+.
 
 > **You will learn:**
-> - How to build the JVM binding from source today (Maven Central is the planned distribution)
+> - How to install the binding from Maven Central (or build it from source)
 > - How to read a `.ts` file and dispatch typed `DemuxEvent` items
-> - How to mux a single-program `.ts` offline with the `Muxer` + config builder
+> - How to mux a single-program `.ts` offline with the `Muxer` + config builder (video / KLV / audio / subtitle / private-data streams)
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
 > - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
 > - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
-> - How to send and receive pre-muxed MPEG-TS over SRT (`org.tstrans.srt`)
+> - How to send and receive MPEG-TS over SRT and RTP (`org.tstrans.srt` / `org.tstrans.rtp`) — pre-muxed bytes or the `MuxSender`/`DemuxReceiver` shells — and how to drive RTSP (client + server)
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
 > - How this binding differs from the Rust core
 
 > **Status (mpegts demux + offline mux + typed KLV + codec parsers + file I/O +
-> SRT transport shipped):** the JVM binding ships the bootstrap
+> SRT + RTP transports shipped):** the JVM binding ships the bootstrap
 > `org.tstrans.Version` hello-world; the complete `org.tstrans.mpegts` **demux**
 > surface (`Demuxer`, `DemuxerConfig`, the sealed `DemuxEvent` hierarchy,
 > `StreamId`, codec / kind enums); the offline **mux** surface (`Muxer`,
@@ -25,16 +25,30 @@
 > 0605 / 0903, the `parseUniversal` dispatcher, and the field-error model); the
 > **codec parsers** (`org.tstrans.codec` — H.264 / H.265 / H.266 / AV1 / AAC /
 > MPEG-2 audio, typed NAL / OBU / ADTS payloads on demux events); the **file I/O
-> helpers** (`org.tstrans.io` — `parseFile`, `probe`, `extractKlv`); and the
-> **SRT transport** (`org.tstrans.srt` — `Sender`/`Receiver` pipeline shells and
-> the `Builder`/`Socket`/`Listener`/`CancelHandle` low-level surface). RTP
-> transport and the multi-platform fat JAR are on the roadmap.
+> helpers** (`org.tstrans.io` — `parseFile`, `probe`, `extractKlv`); the
+> **SRT transport** (`org.tstrans.srt` — `Sender`/`Receiver` pipeline shells,
+> the `Builder`/`Socket`/`Listener`/`CancelHandle` low-level surface, the
+> `MuxSender`/`DemuxReceiver` convenience shells, and the `Managed*`
+> auto-reconnect family); the **RTP transport** (`org.tstrans.rtp` —
+> `Sender`/`Receiver` transports, `MuxSender`/`DemuxReceiver` convenience
+> shells, and the RTSP client + server); and the **pipeline shells**
+> (`org.tstrans.pipeline` — the `Pairer` pairing shell).
 > This page documents only what exists today.
 
 ## Install
 
-The JVM binding is **pre-release and not yet published to Maven Central.**
-Build it from source via Gradle.
+The JVM binding is published to Maven Central as
+`org.tstrans:tstrans-jvm` (JDK 17+):
+
+```xml
+<dependency>
+  <groupId>org.tstrans</groupId>
+  <artifactId>tstrans-jvm</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+To build from source instead:
 
 ```bash
 # From the workspace, build the binding and run its JUnit5 tests:
@@ -49,21 +63,9 @@ The Gradle build (JDK 17 toolchain, wrapper 9.5.1) drives
 `NativeLoader` extracts the right native library for the running platform
 at runtime.
 
-When it is published, the **planned** Maven coordinate is
-`org.tstrans:tstrans-jvm` (JDK 17+):
-
-```xml
-<!-- PLANNED — not yet on Maven Central -->
-<dependency>
-  <groupId>org.tstrans</groupId>
-  <artifactId>tstrans-jvm</artifactId>
-  <version>0.1.0</version>
-</dependency>
-```
-
 **Minimum JDK is 17.** The native code is delivered as a single fat JAR
-(planned) bundling the per-platform native library; the consumer picks no
-classifier.
+bundling the per-platform native libraries (linux-x86_64 / linux-aarch64 /
+macos-arm64 / windows-x86_64); the consumer picks no classifier.
 
 ## Hello world
 
@@ -110,18 +112,36 @@ try (Muxer m = new Muxer(cfg);
 - `pushKlv(byte[] klv, long pts, int metadataServiceId)` — raw KLV LS bytes; for a `SYNCHRONOUS_METADATA` stream the muxer auto-prepends the 5-byte AU-cell header (do **not** pre-wrap).
 - `pushAudio(byte[] frames, long pts)` — codec-native audio frames (ADTS for AAC, raw for MP2 / AC-3 / LATM).
 - `pushSubtitle(long pts, byte[] payload)` — note the `(pts, payload)` argument order.
+- `pushData(byte[] data, long pts)` — raw private/application data bytes,
+  passed through verbatim (no AU-cell wrap, unlike KLV); one push = one PES
+  packet on `private_stream_1` (0xBD). The PTS is written into the PES only
+  when the stream was configured with `carriesPts=true` (a sample pushed to a
+  `carriesPts=false` stream re-demuxes with `pts == 0`); either way the `pts`
+  argument drives PSI/PCR pacing. Payload ceiling: 65 527 bytes with a PTS,
+  65 532 without — larger throws `MuxException(INPUT_MALFORMED)`.
+- `pushDataTo(DataStreamHandle h, byte[] data, long pts)` — handle-targeted
+  variant for multi-data-stream configs; obtain handles from
+  `Muxer.dataHandles()` / `dataStreamHandle(int)`.
 
 Each `push*` targets the lone stream of that kind; a muxer configured with
 zero or more than one stream of the kind throws `MuxException(INVALID_USAGE)`.
 Build the `MuxerConfig` with `addVideo` / `addKlv` / `addAudio` / `addSubtitle`
-on `MuxerConfig.builder()`; the builder is single-program. Deep config
-validation (PID collisions, PMT-size budget, sync-KLV-without-PTS, …) runs in
-the native `Muxer` constructor and surfaces as `MuxException(CONFIG_INVALID)`.
+/ `addData(pid, streamType, carriesPts)` on `MuxerConfig.builder()`; the
+builder is single-program. Data streams may also carry raw PMT descriptor TLVs
+via `streamDescriptorsForData(dataIndex, byte[][])` (the muxer never auto-emits
+a descriptor on a data stream). Deep config validation (PID collisions,
+PMT-size budget, sync-KLV-without-PTS, a data `streamType` that would classify
+as a typed kind, …) runs in the native `Muxer` constructor and surfaces as
+`MuxException(CONFIG_INVALID)`.
 
 > **Scope.** This binding's `MuxerConfig` is single-program; multi-program
-> configs, per-stream/program descriptors, the `*_to(handle, …)` multi-stream
-> variants, and DVB-subtitle codec configuration are deferred. `addSubtitle`
-> accepts the no-config codecs (`CEA708_STANDALONE` / `WEBVTT_IN_TS`) today.
+> configs are deferred. For the typed kinds (video / KLV / audio / subtitle),
+> per-stream descriptors, the `*To(handle, …)` multi-stream variants, and
+> handle accessors are also deferred on the offline `Muxer` — **data streams
+> are the exception**: they get `streamDescriptorsForData`, `pushDataTo`, and
+> the `dataHandles()` / `dataStreamHandle(int)` accessors today. DVB-subtitle
+> codec configuration is deferred; `addSubtitle` accepts the no-config codecs
+> (`CEA708_STANDALONE` / `WEBVTT_IN_TS`).
 
 ## First receive
 
@@ -716,10 +736,10 @@ without `commit()` — whether because of an exception or a missing call —
 discards the temp and leaves the destination untouched.
 
 The `MuxerFileSink` push family (`pushVideo`, `pushKlv`, `pushAudio`,
-`pushSubtitle`) mirrors the `Muxer` push family and also declares
-`IOException` (each call drains packets to disk). Argument shapes and PTS
-units (90 kHz) are identical; the `(pts, payload)` argument order on
-`pushSubtitle` matches `Muxer.pushSubtitle`.
+`pushSubtitle`, `pushData`, `pushDataTo`) mirrors the `Muxer` push family and
+also declares `IOException` (each call drains packets to disk). Argument
+shapes and PTS units (90 kHz) are identical; the `(pts, payload)` argument
+order on `pushSubtitle` matches `Muxer.pushSubtitle`.
 
 ## SRT transport (`org.tstrans.srt`)
 
@@ -900,9 +920,11 @@ try (MuxSender s = MuxSender.fromUrl(
 // MuxSender has NO flush(): bytes flush per-push and again on close().
 ```
 
-`pushKlv`, `pushAudio`, and `pushSubtitle` cover the other elementary-stream
-kinds; the handle-targeted `push*To` variants address a specific stream in a
-multi-stream program.
+`pushKlv`, `pushAudio`, `pushSubtitle`, and `pushData` (raw private-data
+bytes, passed through verbatim — same PTS / ceiling semantics as
+`Muxer.pushData`) cover the other elementary-stream kinds; the handle-targeted
+`push*To` variants (including `pushDataTo` with the handle from `dataHandle()`)
+address a specific stream in a multi-stream program.
 
 ### Receive: `DemuxReceiver`
 
@@ -983,8 +1005,9 @@ policy argument.
 
 ### Send with auto-reconnect: `ManagedMuxSender`
 
-Same push API as the plain `MuxSender`, but the transport silently rebuilds on a
-peer drop:
+Same push API as the plain `MuxSender` (minus the data push family —
+`pushData` / `pushDataTo` / `dataHandle()` are not yet on `ManagedMuxSender`,
+a recorded follow-up), but the transport silently rebuilds on a peer drop:
 
 ```java
 import org.tstrans.srt.ManagedMuxSender;
@@ -1149,9 +1172,12 @@ See [`/docs/languages/python.md`](/docs/languages/python.md) for the canonical
 ### RTP convenience: MuxSender / DemuxReceiver
 
 `org.tstrans.rtp.MuxSender` bundles a `Muxer` + an RTP transport — push encoded
-video/KLV/audio/subtitle and it muxes to MPEG-TS and sends over RTP/UDP in one
-call. `org.tstrans.rtp.DemuxReceiver` bundles a `Demuxer` + an RTP recv transport
-and iterates `DemuxEvent`s.
+video/KLV/audio/subtitle/private-data and it muxes to MPEG-TS and sends over
+RTP/UDP in one call. The push surface matches the srt `MuxSender`: the per-kind
+`push*` shorthands (including `pushData`), the handle-targeted `push*To`
+variants (including `pushDataTo`), and the per-kind handle accessors
+(including `dataHandle()`). `org.tstrans.rtp.DemuxReceiver` bundles a `Demuxer`
++ an RTP recv transport and iterates `DemuxEvent`s.
 
 ```java
 MuxerConfig program = MuxerConfig.builder()
@@ -1268,6 +1294,10 @@ try (RtspServer server = RtspServer.start(cfg);
   `pushAudio`/`pushSubtitle` calls on `MountHandle` throw `RtspException` of kind
   `MOUNT` on failure (e.g. invalid config, server already stopped). This differs
   from `MuxSender`, which throws `MuxException`.
+- **No data push family yet.** `MountHandle` does not expose `pushData` /
+  `pushDataTo` (and neither does the srt `ManagedMuxSender`) — a recorded
+  follow-up. Private-data streams currently push through the offline `Muxer` /
+  `MuxerFileSink` or the plain srt / rtp `MuxSender`s only.
 - **`MountHandle` is `Arc`-backed and thread-safe** on the push path (`&self`
   internally). Multiple producer threads may call `push*` concurrently. Do not
   race `close()` against a concurrent push — coordinate closes at the producer
@@ -1318,8 +1348,8 @@ try (RtspServer server = RtspServer.start(cfg);
 
 ## Where this binding differs from the Rust core
 
-- **Demux + offline mux + typed KLV + codec parsers + file I/O + SRT
-  transport shipped.**
+- **Demux + offline mux + typed KLV + codec parsers + file I/O + SRT +
+  RTP transports shipped.**
   The JVM binding surfaces the `org.tstrans.mpegts.Demuxer` receive path
   (feed bytes → typed `DemuxEvent`s with typed NAL / OBU / ADTS payloads),
   the offline `org.tstrans.mpegts.Muxer` send path (config builder → push
@@ -1329,16 +1359,19 @@ try (RtspServer server = RtspServer.start(cfg);
   H.265 / H.266 / AV1 / AAC / MPEG-2 audio), the `org.tstrans.io` file
   helpers (`parseFile`, `probe`, `extractKlv`), the `org.tstrans.srt` SRT
   transport surface (`Sender`/`Receiver` pipeline shells + the low-level
-  `Builder`/`Socket`/`Listener`/`CancelHandle`), and the `org.tstrans.Version`
-  bootstrap. RTP transport is on the roadmap. The Rust core has it; only
-  the JNI wrap is the remaining work.
+  `Builder`/`Socket`/`Listener`/`CancelHandle` + the `MuxSender`/
+  `DemuxReceiver` convenience shells + the `Managed*` reconnect family),
+  the `org.tstrans.rtp` RTP transport surface (`Sender`/`Receiver` +
+  `MuxSender`/`DemuxReceiver` + RTSP client/server), the
+  `org.tstrans.pipeline` pairing shell (`Pairer`), and the
+  `org.tstrans.Version` bootstrap.
 - **JDK 17 baseline.** The examples use `instanceof` pattern matching, not
   `switch`-on-sealed (which needs JDK 21+). `switch` patterns work on
   21+, but `instanceof` is the portable form on the 17 baseline.
 - **`payload` is a heap-copied `ByteBuffer`**, not a direct buffer over
   native memory. Safe-zero-copy is deferred to a JDK-22+ Foreign Function &
   Memory API (`Arena`) path — see the gotcha above.
-- **Single fat JAR** (planned) bundles the per-platform native library
+- **Single fat JAR** bundles the per-platform native library
   (`.so` / `.dylib` / `.dll`); the `NativeLoader` extracts the correct one
   at runtime. No per-platform classifier.
 
@@ -1357,9 +1390,9 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
 
 - **Bootstrap (`org.tstrans.Version`) — SHIPPED.** Proves the
   cargo → cdylib → Gradle → Java → JNI build pipeline and native loader.
-- **mpegts demux (`org.tstrans.mpegts.Demuxer` + `DemuxEvent` + `DemuxerConfig`) — SHIPPED (this wave).**
-- **mpegts mux (`org.tstrans.mpegts.Muxer` + `MuxerConfig` + push family + `pull`) — SHIPPED (this wave).**
-- **klv** — typed KLV decode/encode (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv` — **SHIPPED (this wave).**
+- **mpegts demux (`org.tstrans.mpegts.Demuxer` + `DemuxEvent` + `DemuxerConfig`) — SHIPPED.**
+- **mpegts mux (`org.tstrans.mpegts.Muxer` + `MuxerConfig` + push family + `pull`) — SHIPPED.**
+- **klv** — typed KLV decode/encode (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv` — **SHIPPED.**
 - **codec** — H.264 / H.265 / H.266 / AV1 + audio parsers under
   `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS) — **SHIPPED.**
 - **io** — file inspection helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`) — **SHIPPED.**
@@ -1367,13 +1400,18 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
   `Socket` / `Listener` / `CancelHandle` / `SocketStats` / `SrtStats` — **SHIPPED.**
 - **srt (sub-wave B)** — `MuxSender` / `DemuxReceiver` high-level shells +
   `DemuxReceiver.addByteSink` fan-out + the `ReconnectPolicy` /
-  `BackoffStrategy` / `OverflowPolicy` types — **SHIPPED (this wave).**
-- **srt (sub-wave C)** — `Managed*` reconnect wrappers.
-- **rtp** — MPEG-TS-over-RTP transport.
-- **pipeline** — reconnect wrappers + pairing shells.
+  `BackoffStrategy` / `OverflowPolicy` types — **SHIPPED.**
+- **srt (sub-wave C)** — `Managed*` reconnect wrappers — **SHIPPED.**
+- **rtp** — MPEG-TS-over-RTP transport + `MuxSender` / `DemuxReceiver` +
+  RTSP client / server — **SHIPPED.**
+- **pipeline** — `org.tstrans.pipeline.Pairer` pairing shell — **SHIPPED.**
 - **multi-platform fat JAR + Maven Central publish** — single JAR bundling
-  linux-x86_64 / linux-aarch64 / macos-arm64 / macos-x86_64 / windows-x86_64
-  native libraries, published as `org.tstrans:tstrans-jvm`.
+  linux-x86_64 / linux-aarch64 / macos-arm64 / windows-x86_64
+  native libraries, published as `org.tstrans:tstrans-jvm` — **SHIPPED
+  (v0.1.0).**
+- **data push-family parity follow-ups** — `pushData` / `pushDataTo` on the
+  rtp `MountHandle` and the srt `ManagedMuxSender` (recorded follow-up), and
+  a documented `org.tstrans.pipeline.Pairer` section on this page.
 
 ## Where to go next
 

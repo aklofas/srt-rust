@@ -403,7 +403,9 @@ pub extern "system" fn Java_org_tstrans_rtp_MuxSender_nPushSubtitleTo<'local>(
 /// `nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
 /// validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
 /// chain (rejecting negative / out-of-u32 values up front rather than
-/// truncating, mirroring `Muxer::nPushDataTo`).
+/// truncating, mirroring `Muxer::nPushDataTo`). The older `*To` siblings in
+/// this file still decode their handles with the truncating `as u32` cast;
+/// hardening them is deliberately deferred.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_MuxSender_nPushDataTo<'local>(
     mut env: JNIEnv<'local>,

@@ -9,6 +9,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Added — JVM data-stream surface (`org.tstrans`)
+
+- **tst-jni** gains the data-stream mux surface, mirroring the Python
+  binding below: `MuxerConfig.Builder.addData(pid, streamType, carriesPts)`
+  + `streamDescriptorsForData(dataIndex, descriptors)`, the
+  `DataStreamHandle` record, the offline `Muxer.pushData` / `pushDataTo`
+  pair plus the `dataHandles()` / `dataStreamHandle(index)` accessors,
+  `MuxerFileSink.pushData` / `pushDataTo`, and `pushData` / `pushDataTo` /
+  `dataHandle()` on the srt and rtp `MuxSender`s. Pass-through / PTS /
+  size-ceiling semantics are those of the Rust `push_data` family (see the
+  muxer + pipeline entry below). Not yet exposed (recorded follow-ups): the
+  rtp `MountHandle` and srt `ManagedMuxSender` data push families, and
+  `data_handles_for_program` (the JVM `MuxerConfig` is single-program).
+
 ### Added — C data-stream surface (ABI minor 12)
 
 - **tst-c** gains the data-stream mux surface, binding the Rust

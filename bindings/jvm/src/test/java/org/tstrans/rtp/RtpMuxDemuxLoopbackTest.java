@@ -28,7 +28,7 @@ import org.tstrans.mpegts.VideoCodec;
  * {@link MuxSender} and {@link DemuxReceiver}.
  *
  * <p>Drives a complete {@code MuxSender → RTP/UDP → DemuxReceiver} round trip over
- * a real UDP socket pair (loopback on an ephemeral port) and proves three things:
+ * a real UDP socket pair (loopback on an ephemeral port) and proves four things:
  * <ol>
  *   <li>RTP is byte-faithful end-to-end through the high-level shells.</li>
  *   <li>Cross-binding SHA parity — self-validating, no committed golden: the
@@ -36,12 +36,18 @@ import org.tstrans.mpegts.VideoCodec;
  *       OFFLINE {@link Muxer}→{@link Demuxer} run of the identical config + pushes;
  *       the live SHA must equal it.</li>
  *   <li>The byte-sink fan-out delivers raw 188-byte TS packets before demux.</li>
+ *   <li>Private-data streams round-trip byte-faithfully: a raw-{@code stream_type}
+ *       0xF0 data stream's records (pushed via the lone-data-stream
+ *       {@code pushData} shorthand) must surface as
+ *       {@code DemuxEvent.UnknownSample}s carrying the configured stream_type
+ *       and the verbatim payload (pass-through — no AU-cell framing).</li>
  * </ol>
  *
  * <h2>RTP-specific topology</h2>
  * UDP is connectionless: a sender close does NOT end the receiver's iteration (it
- * parks on the next datagram). So the receiver thread breaks on the first typed
- * Video event, and the {@link DemuxReceiver} is constructed on the MAIN thread so
+ * parks on the next datagram). So the receiver thread breaks once the first typed
+ * Video event and the first private-data {@code UnknownSample} have both
+ * arrived, and the {@link DemuxReceiver} is constructed on the MAIN thread so
  * a watchdog can {@link DemuxReceiver#close()} it cross-thread on the failure path
  * (the rtp convenience wrapper exposes no {@code cancelHandle}; {@code close()}
  * cancels the parked recv first, then frees — safe via the inner mutex). The
@@ -66,7 +72,10 @@ class RtpMuxDemuxLoopbackTest {
         return buf;
     }
 
-    /** Distinctive private-data record pushed once alongside the video stream. */
+    /**
+     * Distinctive private-data record pushed every iteration alongside the video
+     * stream (identical records — the UDP loss margin; see the sender loop).
+     */
     private static final byte[] DATA_PAYLOAD =
         {(byte) 0xD1, 'D', 'A', 'T', 'A', (byte) 0xCA, (byte) 0xFE, 0x02};
 
@@ -171,11 +180,14 @@ class RtpMuxDemuxLoopbackTest {
         try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:" + port, roundtripConfig())) {
             for (int i = 0; i < PUSH_COUNT; i++) {
                 s.pushVideo(syntheticH264Idr(), i * 3000L, true);
-                // One distinctive private-data record early in the stream (the
-                // lone-data-stream pushData shorthand) so the remaining video
-                // pushes flush it through the 1316-byte RTP bundling; explicit
-                // PES length means the demuxer emits it without a flush.
-                if (i == 0) s.pushData(DATA_PAYLOAD, 0L);
+                // A private-data record EVERY iteration (the lone-data-stream
+                // pushData shorthand): RTP/UDP may drop datagrams, so a single
+                // record would make the UnknownSample assertion flaky on loss.
+                // Repeating an identical record gives the data stream the same
+                // loss margin as the video pushes — the first captured sample
+                // still equals DATA_PAYLOAD. Explicit PES length means the
+                // demuxer emits each record without waiting for a flush.
+                s.pushData(DATA_PAYLOAD, i * 3000L);
             }
             Thread.sleep(1_000);
         }
@@ -250,8 +262,8 @@ class RtpMuxDemuxLoopbackTest {
             for (int i = 0; i < PUSH_COUNT; i++) {
                 m.pushVideo(syntheticH264Idr(), i * 3000L, true);
                 // Mirror the live sender's push sequence exactly (incl. the
-                // single private-data record) so live ≡ offline holds.
-                if (i == 0) m.pushData(DATA_PAYLOAD, 0L);
+                // per-iteration private-data record) so live ≡ offline holds.
+                m.pushData(DATA_PAYLOAD, i * 3000L);
             }
             int n;
             while ((n = m.pull(out)) > 0) acc.write(out, 0, n);

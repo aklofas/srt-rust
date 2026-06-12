@@ -27,7 +27,7 @@ import org.tstrans.mpegts.VideoCodec;
  *
  * <p>This test drives a complete {@code MuxSender → SRT → DemuxReceiver} round
  * trip over a real SRT socket pair (loopback on an ephemeral port) and proves
- * three things at once:
+ * four things at once:
  *
  * <ol>
  *   <li><b>SRT is byte-faithful end-to-end through the high-level shells.</b>
@@ -49,6 +49,12 @@ import org.tstrans.mpegts.VideoCodec;
  *       one packet was fanned out and at least one was exactly 188 bytes (the
  *       SRT live-mode TS quantum), proving the tee fires on the raw transport
  *       stream ahead of the demuxer.</li>
+ *   <li><b>Private-data streams round-trip byte-faithfully.</b> The config
+ *       declares a raw-{@code stream_type} 0xF0 data stream; the sender pushes
+ *       one distinctive record via the lone-data-stream {@code pushData}
+ *       shorthand and the receiver must surface it as a
+ *       {@code DemuxEvent.UnknownSample} carrying the configured stream_type
+ *       and the verbatim payload (pass-through — no AU-cell framing).</li>
  * </ol>
  *
  * <h2>Why self-validating instead of a committed golden</h2>
@@ -72,7 +78,8 @@ import org.tstrans.mpegts.VideoCodec;
  * The receiver runs on a daemon thread; both the port hand-off and the result
  * are exchanged via {@link CompletableFuture}s with a 15-second ceiling so a
  * hung socket can never wedge the suite. The receiver's drain loop is bounded —
- * it stops at the first typed Video event or at clean/transport end-of-stream —
+ * it stops once the first typed Video event AND the first private-data
+ * {@code UnknownSample} have both arrived, or at clean/transport end-of-stream —
  * and the iterator's checked exceptions (wrapped in {@code RuntimeException} per
  * the {@code Iterator} contract) are unwrapped to treat a CLOSED/BROKEN
  * {@link SrtException} as end-of-stream.

@@ -1,22 +1,31 @@
-//! Data-stream (`StreamSpec::Data` PES pass-through) config surface via the
-//! C ABI: `tst_mux_config_add_data_stream` +
+//! Data-stream (`StreamSpec::Data` PES pass-through) surface via the
+//! C ABI: the config side (`tst_mux_config_add_data_stream` +
 //! `tst_mux_config_set_stream_descriptors_for_data` +
-//! `tst_mux_config_add_data_descriptor`.
-//!
-//! Config level only — the `tst_muxer_push_data[_to]` push surface is
-//! exercised separately. The offline `tst_mux_config_*` / `tst_muxer_*`
+//! `tst_mux_config_add_data_descriptor`) and the push side
+//! (`tst_muxer_push_data` / `tst_muxer_push_data_to`), including the
+//! offline mux→demux round trip through the `tst_demuxer_*` surface.
+//! The offline `tst_mux_config_*` / `tst_muxer_*` / `tst_demuxer_*`
 //! surface is unconditional, so this module carries no feature gate
 //! (matching `demuxer_offline.rs`).
+
+use std::ffi::CStr;
 
 use tstrans::config::{
     TstMuxConfig, TstProgramHandle, TstVideoCodec, tst_mux_config_add_data_descriptor,
     tst_mux_config_add_data_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
     tst_mux_config_free, tst_mux_config_new, tst_mux_config_set_stream_descriptors_for_data,
 };
-use tstrans::error::{TstError, tst_get_last_error};
-use tstrans::event::TstDescriptor;
+use tstrans::demuxer::{
+    tst_demuxer_close, tst_demuxer_feed, tst_demuxer_flush, tst_demuxer_next_event,
+    tst_demuxer_open,
+};
+use tstrans::error::{TstError, tst_get_last_error, tst_get_last_error_str};
+use tstrans::event::{TstDescriptor, TstEvent, TstEventKind, TstStreamKindTag};
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
-use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_video_to};
+use tstrans::muxer::{
+    TstMuxer, tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_data,
+    tst_muxer_push_data_to, tst_muxer_push_video_to,
+};
 
 const NAL_SPS: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xc0, 0x1e, 0xda, 0x02, 0x80, 0xf6, 0xc0,
@@ -229,5 +238,391 @@ fn descriptor_functions_reject_forged_high_bit_handle() {
         assert_eq!(rc, TstError::InvalidUsage as i32);
 
         tst_mux_config_free(cfg);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Push surface — tst_muxer_push_data / tst_muxer_push_data_to
+// ----------------------------------------------------------------------------
+
+/// Snapshot of the last-error string (arena-independent copy).
+unsafe fn last_error_msg() -> String {
+    unsafe {
+        let p = tst_get_last_error_str();
+        if p.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(p).to_string_lossy().into_owned()
+        }
+    }
+}
+
+/// Drain all queued TS bytes from the muxer (loops until `pull` returns 0).
+unsafe fn pull_all(mux: *mut TstMuxer) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 256 * 188];
+    loop {
+        let n = unsafe { tst_muxer_pull(mux, buf.as_mut_ptr(), buf.len()) };
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    assert_eq!(out.len() % 188, 0, "TS output not a multiple of 188");
+    out
+}
+
+/// PMT stream entry snapshot (descriptors copied out of the event arena).
+struct StreamEntry {
+    pid: u16,
+    stream_type: u8,
+    stream_kind: i32,
+    descriptors: Vec<(u8, Vec<u8>)>,
+}
+
+/// Sample snapshot (payload copied out of the event arena — event pointer
+/// fields are only valid until the next `tst_demuxer_next_event` call).
+struct SampleRec {
+    pid: u16,
+    stream_kind: i32,
+    stream_type: u8,
+    pts: i64,
+    payload: Vec<u8>,
+}
+
+/// Feed `ts` through the offline C demuxer and snapshot every ProgramMap
+/// stream entry + every Sample event.
+unsafe fn demux_collect(ts: &[u8]) -> (Vec<StreamEntry>, Vec<SampleRec>) {
+    unsafe {
+        let d = tst_demuxer_open();
+        assert!(!d.is_null(), "tst_demuxer_open returned null");
+        let rc = tst_demuxer_feed(d, ts.as_ptr(), ts.len());
+        assert_eq!(rc, 0, "tst_demuxer_feed failed: {rc}");
+        let rc = tst_demuxer_flush(d);
+        assert_eq!(rc, 0, "tst_demuxer_flush failed: {rc}");
+
+        let mut streams = Vec::new();
+        let mut samples = Vec::new();
+        loop {
+            let mut ev = TstEvent::default();
+            let rc = tst_demuxer_next_event(d, &mut ev);
+            if rc == TstError::NotAvailable as i32 {
+                break;
+            }
+            assert_eq!(rc, 0, "tst_demuxer_next_event failed: {rc}");
+            if ev.kind == TstEventKind::ProgramMap as i32 {
+                let pm = ev.u.program_map;
+                for i in 0..pm.stream_count {
+                    let s = *pm.streams.add(i);
+                    let mut descriptors = Vec::new();
+                    for j in 0..s.descriptor_count {
+                        let desc = *s.raw_descriptors.add(j);
+                        let body = core::slice::from_raw_parts(desc.data, desc.data_len).to_vec();
+                        descriptors.push((desc.tag, body));
+                    }
+                    streams.push(StreamEntry {
+                        pid: s.pid,
+                        stream_type: s.stream_type,
+                        stream_kind: s.stream_kind,
+                        descriptors,
+                    });
+                }
+            } else if ev.kind == TstEventKind::Sample as i32 {
+                let s = ev.u.sample;
+                samples.push(SampleRec {
+                    pid: s.pid,
+                    stream_kind: s.stream_kind,
+                    stream_type: s.stream_type,
+                    pts: s.pts,
+                    payload: core::slice::from_raw_parts(s.payload, s.payload_len).to_vec(),
+                });
+            }
+        }
+        tst_demuxer_close(d);
+        (streams, samples)
+    }
+}
+
+/// The wave's flagship test: video + two data streams (0xF0 with one
+/// user-private descriptor; bare 0x06 with none) muxed offline, then fed
+/// back through the offline C demuxer. Both streams must surface as
+/// Unknown in the ProgramMap with exact stream_type + descriptor TLV
+/// bytes, and every pushed payload must arrive on its PID byte-identical
+/// with the pushed PTS.
+#[test]
+fn offline_round_trip_two_data_streams() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let h_a = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        let h_b = tst_mux_config_add_data_stream(cfg, prog, 0x1042, 0x06, true);
+        assert_ne!(h_a, TST_INVALID_STREAM_HANDLE);
+        assert_ne!(h_b, TST_INVALID_STREAM_HANDLE);
+
+        // Stream A gets one user-private descriptor (tag 0xFF, 2-byte body).
+        let desc_body: &[u8] = &[0x10, 0x20];
+        let desc = TstDescriptor {
+            tag: 0xFF,
+            _reserved: [0; 7],
+            data: desc_body.as_ptr(),
+            data_len: desc_body.len(),
+        };
+        assert_eq!(tst_mux_config_add_data_descriptor(cfg, h_a, &desc), 0);
+
+        let mux = tst_muxer_open(cfg);
+        assert!(
+            !mux.is_null(),
+            "tst_muxer_open failed: {}",
+            last_error_msg()
+        );
+        tst_mux_config_free(cfg);
+
+        // Video first — forces PSI emission alongside the data payloads.
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(rc, 0, "push_video_to failed: {}", last_error_msg());
+
+        // Distinct payloads + PTS per stream, interleaved in PTS order.
+        let a_pushes: &[(&[u8], i64)] = &[
+            (b"alpha-1", 3000),
+            (b"alpha-two", 6000),
+            (b"alpha-payload-3", 9000),
+        ];
+        let b_pushes: &[(&[u8], i64)] = &[(b"bravo-1", 4500), (b"bravo-second", 7500)];
+        let pushes: &[(u32, &[u8], i64)] = &[
+            (h_a, a_pushes[0].0, a_pushes[0].1),
+            (h_b, b_pushes[0].0, b_pushes[0].1),
+            (h_a, a_pushes[1].0, a_pushes[1].1),
+            (h_b, b_pushes[1].0, b_pushes[1].1),
+            (h_a, a_pushes[2].0, a_pushes[2].1),
+        ];
+        for &(h, payload, pts) in pushes {
+            let rc = tst_muxer_push_data_to(mux, h, payload.as_ptr(), payload.len(), pts);
+            assert_eq!(rc, 0, "push_data_to failed: {}", last_error_msg());
+        }
+
+        let ts = pull_all(mux);
+        tst_muxer_close(mux);
+
+        let (streams, samples) = demux_collect(&ts);
+
+        // ProgramMap: both data streams surface as Unknown with exact
+        // stream_type bytes and descriptor TLVs.
+        let a = streams
+            .iter()
+            .find(|s| s.pid == 0x1041)
+            .expect("PMT must list data stream A (pid 0x1041)");
+        assert_eq!(a.stream_kind, TstStreamKindTag::Unknown as i32);
+        assert_eq!(a.stream_type, 0xF0);
+        assert_eq!(
+            a.descriptors,
+            vec![(0xFF, vec![0x10, 0x20])],
+            "stream A must carry exactly the one 0xFF descriptor"
+        );
+        let b = streams
+            .iter()
+            .find(|s| s.pid == 0x1042)
+            .expect("PMT must list data stream B (pid 0x1042)");
+        assert_eq!(b.stream_kind, TstStreamKindTag::Unknown as i32);
+        assert_eq!(b.stream_type, 0x06);
+        assert!(
+            b.descriptors.is_empty(),
+            "stream B was configured with no descriptors"
+        );
+
+        // Samples: every push arrives on the right PID, byte-identical,
+        // with the pushed PTS, in push order.
+        let a_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1041).collect();
+        let b_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1042).collect();
+        assert_eq!(a_samples.len(), a_pushes.len(), "stream A sample count");
+        assert_eq!(b_samples.len(), b_pushes.len(), "stream B sample count");
+        for (got, &(payload, pts)) in a_samples.iter().zip(a_pushes) {
+            assert_eq!(got.stream_kind, TstStreamKindTag::Unknown as i32);
+            assert_eq!(got.stream_type, 0xF0);
+            assert_eq!(got.payload, payload, "stream A payload must round-trip");
+            assert_eq!(got.pts, pts, "stream A pts must round-trip");
+        }
+        for (got, &(payload, pts)) in b_samples.iter().zip(b_pushes) {
+            assert_eq!(got.stream_kind, TstStreamKindTag::Unknown as i32);
+            assert_eq!(got.stream_type, 0x06);
+            assert_eq!(got.payload, payload, "stream B payload must round-trip");
+            assert_eq!(got.pts, pts, "stream B pts must round-trip");
+        }
+    }
+}
+
+/// Single-stream happy path: exactly one data stream → the no-handle
+/// `tst_muxer_push_data` resolves it and the payload round-trips on the
+/// configured PID.
+#[test]
+fn push_data_single_stream_routes_without_handle() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let h_data = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        assert_ne!(h_data, TST_INVALID_STREAM_HANDLE);
+        let mux = tst_muxer_open(cfg);
+        assert!(
+            !mux.is_null(),
+            "tst_muxer_open failed: {}",
+            last_error_msg()
+        );
+        tst_mux_config_free(cfg);
+
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(rc, 0);
+
+        let payload: &[u8] = b"solo-data-payload";
+        let rc = tst_muxer_push_data(mux, payload.as_ptr(), payload.len(), 1234);
+        assert_eq!(rc, 0, "push_data failed: {}", last_error_msg());
+
+        let ts = pull_all(mux);
+        tst_muxer_close(mux);
+
+        let (_streams, samples) = demux_collect(&ts);
+        let data_samples: Vec<&SampleRec> = samples.iter().filter(|s| s.pid == 0x1041).collect();
+        assert_eq!(data_samples.len(), 1, "expected exactly one data sample");
+        assert_eq!(
+            data_samples[0].stream_kind,
+            TstStreamKindTag::Unknown as i32
+        );
+        assert_eq!(data_samples[0].payload, payload);
+        assert_eq!(data_samples[0].pts, 1234);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Push surface — error matrix
+// ----------------------------------------------------------------------------
+
+#[test]
+fn push_data_zero_data_streams_returns_invalid_usage() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let mux = tst_muxer_open(cfg);
+        assert!(!mux.is_null());
+        tst_mux_config_free(cfg);
+
+        let payload: &[u8] = b"nowhere-to-go";
+        let rc = tst_muxer_push_data(mux, payload.as_ptr(), payload.len(), 0);
+        // MuxError::NoDataStreamsConfigured → TST_E_INVALID_USAGE.
+        assert_eq!(rc, TstError::InvalidUsage as i32);
+        assert!(
+            last_error_msg().contains("no data streams configured"),
+            "expected NoDataStreamsConfigured detail, got: {}",
+            last_error_msg()
+        );
+
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
+fn push_data_two_data_streams_returns_ambiguous_target() {
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        tst_mux_config_add_data_stream(cfg, prog, 0x1042, 0xF1, true);
+        let mux = tst_muxer_open(cfg);
+        assert!(!mux.is_null());
+        tst_mux_config_free(cfg);
+
+        let payload: &[u8] = b"which-one";
+        let rc = tst_muxer_push_data(mux, payload.as_ptr(), payload.len(), 0);
+        // MuxError::AmbiguousTarget → TST_E_INVALID_USAGE.
+        assert_eq!(rc, TstError::InvalidUsage as i32);
+        assert!(
+            last_error_msg().contains("ambiguous push"),
+            "expected AmbiguousTarget detail, got: {}",
+            last_error_msg()
+        );
+
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
+fn push_data_oversized_payload_returns_data_too_large() {
+    unsafe {
+        // carries_pts = true → PES overhead 8 bytes → ceiling 65527.
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        let mux = tst_muxer_open(cfg);
+        assert!(!mux.is_null());
+        tst_mux_config_free(cfg);
+
+        let at_ceiling = vec![0xABu8; 65527];
+        let rc = tst_muxer_push_data(mux, at_ceiling.as_ptr(), at_ceiling.len(), 3000);
+        assert_eq!(rc, 0, "65527 bytes (with PTS) must be accepted");
+
+        let over = vec![0xABu8; 65528];
+        let rc = tst_muxer_push_data(mux, over.as_ptr(), over.len(), 6000);
+        // MuxError::DataTooLarge → TST_E_INVALID_USAGE.
+        assert_eq!(rc, TstError::InvalidUsage as i32);
+        assert!(
+            last_error_msg().contains("exceeds PES_packet_length"),
+            "expected DataTooLarge detail, got: {}",
+            last_error_msg()
+        );
+        tst_muxer_close(mux);
+
+        // carries_pts = false → PES overhead 3 bytes → ceiling 65532.
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, false);
+        let mux = tst_muxer_open(cfg);
+        assert!(!mux.is_null());
+        tst_mux_config_free(cfg);
+
+        let at_ceiling = vec![0xCDu8; 65532];
+        let rc = tst_muxer_push_data(mux, at_ceiling.as_ptr(), at_ceiling.len(), 3000);
+        assert_eq!(rc, 0, "65532 bytes (no PTS) must be accepted");
+
+        let over = vec![0xCDu8; 65533];
+        let rc = tst_muxer_push_data(mux, over.as_ptr(), over.len(), 6000);
+        assert_eq!(rc, TstError::InvalidUsage as i32);
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
+fn push_data_to_forged_high_bit_handle_rejected() {
+    // Same trust-boundary threat model as the descriptor-function test
+    // above: bits set above the canonical 8-bit packed layout must be
+    // rejected — not silently masked onto the genuine stream.
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        let h_data = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+        assert_ne!(h_data, TST_INVALID_STREAM_HANDLE);
+        let mux = tst_muxer_open(cfg);
+        assert!(!mux.is_null());
+        tst_mux_config_free(cfg);
+
+        let payload: &[u8] = b"forged";
+        let forged = h_data | 0x100;
+        let rc = tst_muxer_push_data_to(mux, forged, payload.as_ptr(), payload.len(), 0);
+        // MuxError::InvalidStreamHandle → TST_E_INVALID_USAGE.
+        assert_eq!(rc, TstError::InvalidUsage as i32);
+
+        // The genuine handle still works on the same muxer.
+        let rc = tst_muxer_push_data_to(mux, h_data, payload.as_ptr(), payload.len(), 0);
+        assert_eq!(
+            rc,
+            0,
+            "genuine handle must still push: {}",
+            last_error_msg()
+        );
+
+        tst_muxer_close(mux);
     }
 }

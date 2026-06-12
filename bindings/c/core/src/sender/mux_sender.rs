@@ -11,13 +11,14 @@ use crate::error::{
     set_last_error, tst_get_last_error,
 };
 use crate::handle::{
-    Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+    Handle, TstAudioStreamHandle, TstDataStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
+    TstVideoStreamHandle,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_pipeline::{ManagedTransport, MuxSender, TransportCancel};
 use tst_srt::SrtTransport;
@@ -290,6 +291,115 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv_to(
             }
         }
     })
+}
+
+/// Send one data payload through the mux sender's single data stream and
+/// out the transport.
+///
+/// **Pass-through contract:** the muxer applies no AU-cell wrap, no
+/// framing, and no payload inspection — `data` lands verbatim as the
+/// payload of exactly one PES packet on the configured PID, using
+/// `stream_id` `0xBD` (`private_stream_1`). Record boundaries within
+/// `data` (if any) are entirely the caller's convention.
+///
+/// `pts_90khz` is written into the PES header only when the stream was
+/// configured with `carries_pts = true` in
+/// `tst_mux_config_add_data_stream`; it is **always** used for PSI/PCR
+/// pacing decisions regardless. For `carries_pts = false` streams the
+/// PES omits the PTS field entirely; this library's demuxer surfaces
+/// such samples with `pts == 0` (its no-PTS substitute).
+///
+/// Single-stream form: the mux sender must have exactly one data stream
+/// configured. Multi-stream callers use `tst_mux_sender_send_data_to`
+/// with an explicit `tst_data_stream_handle_t`.
+///
+/// # Errors
+///
+/// Routed through `tst_get_last_error()` via the inner `MuxSender`
+/// shell's `record_shell_error`. Common codes:
+///
+/// - `TST_E_INVALID_USAGE` — no data stream configured, ambiguous target,
+///   or payload exceeds the `PES_packet_length` ceiling (`DataTooLarge`:
+///   65532 bytes without PTS, 65527 with).
+/// - `TST_E_TRANSPORT` — transport-layer failure (closed, timeout, broken pipe).
+/// - `TST_E_INVALID_CONFIG` — `data` is null with non-zero `len`.
+///
+/// # C ABI
+///
+/// `tst_mux_sender_send_data` — see `bindings/c/include/tstrans.h`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_data(
+    p: *mut TstMuxSender,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_data(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one data payload targeting a specific data elementary stream.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_data_stream` at
+/// config time and is stable across the config→open boundary. Out-of-range
+/// handles surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`). Payload, PTS, and size-ceiling
+/// contracts are those of `tst_mux_sender_send_data` (the single-stream
+/// form).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_data` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_data_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstDataStreamHandle,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_mux_sender_send_video_to above.
+    let stream = match DataStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_data_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
 }
 
 /// Send one audio frame buffer (single-stream shorthand).

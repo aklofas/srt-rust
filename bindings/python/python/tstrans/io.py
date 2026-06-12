@@ -342,15 +342,17 @@ def transmux(
 
     Strict by default: streams the muxer cannot represent (DVB
     subtitling/teletext) fail the conversion with `MuxError` naming the
-    offenders, and a source carrying unknown stream types raises
-    `ValueError` at the transmux level — a TEMPORARY guard, pending the
-    data-stream push surface: the config conversion can represent
-    them, but transmux cannot yet route their samples, so passing them
-    through would silently emit declared-but-empty data PIDs. Pass the
-    offending kinds in `drop` (e.g. `drop=[StreamKindTag.UNKNOWN]`) to
-    exclude them instead. Events for dropped streams are skipped by
-    `write`. v1 supports single-program sources with a stable program
-    map — a second program (or a mid-stream layout change) raises
+    offenders. Private/application data streams (unknown stream types)
+    pass through byte-faithfully: `from_program_map` reproduces their
+    PMT entry (raw stream_type byte + descriptor loop verbatim) and
+    each `UnknownSample` payload is re-emitted as-is via
+    `push_data_to`. One nuance: converted data streams always carry
+    PTS, and the demuxer substitutes 0 for a PTS-less source PES — so
+    a source sample with no PTS re-emerges with a literal PTS of 0.
+    Pass `drop=[StreamKindTag.UNKNOWN]` to exclude data streams
+    instead; events for dropped streams are skipped by `write`. v1
+    supports single-program sources with a stable program map — a
+    second program (or a mid-stream layout change) raises
     `ValueError`.
 
     `atomic=True` routes the output through the `MuxerFileSink`
@@ -391,9 +393,13 @@ class Transmuxer:
     - Subtitle → `push_subtitle_to(handle, payload, pts)` (kept
       CEA-708/WebVTT streams; DVB offenders must be dropped or fail
       config).
+    - UnknownSample → `push_data_to(handle, payload, pts)`. The payload
+      is the raw PES payload, passed through verbatim (no framing, no
+      AU-cell wrap). Converted data streams always carry PTS and the
+      demuxer substitutes 0 for a PTS-less source PES, so a source
+      sample with no PTS re-emerges with a literal PTS of 0.
     - `ProgramMap` / `Discontinuity` / `NonConformant` /
-      `ReconnectDiscontinuity` (no mux representation) and
-      `UnknownSample` (only reachable for dropped streams) are accepted
+      `ReconnectDiscontinuity` (no mux representation) are accepted
       and skipped, as are sample events for dropped streams.
 
     Writing a sample event before the first `ProgramMap` has been
@@ -414,16 +420,11 @@ class Transmuxer:
     )
 
     # Events with no mux representation: accepted + skipped by write().
-    # UnknownSample is stream-bound but can only occur for dropped
-    # streams (the temporary _on_program_map guard rejects kept unknown
-    # streams until UnknownSample routing lands), so it is skipped on
-    # the same path.
     _SKIP_EVENTS = (
         DemuxEvent.ProgramMap,
         DemuxEvent.Discontinuity,
         DemuxEvent.NonConformant,
         DemuxEvent.ReconnectDiscontinuity,
-        DemuxEvent.UnknownSample,
     )
 
     def __init__(
@@ -506,21 +507,6 @@ class Transmuxer:
                     "ProgramMap (new program or mid-stream layout change)"
                 )
             return
-        # TEMPORARY guard (private-data arc W2): from_program_map now
-        # maps unknown stream types to Data specs, but transmux has no
-        # UnknownSample routing yet — without this guard the output
-        # would declare data PIDs that never receive payload (silent
-        # data loss). Removed in W3 of
-        # docs/plans/2026-06-11-private-data-streams.md when
-        # byte-faithful pass-through lands.
-        if StreamKindTag.UNKNOWN not in self._drop and any(
-            s.kind is StreamKindTag.UNKNOWN for s in pm.streams
-        ):
-            raise ValueError(
-                "source carries private/application data streams; pass "
-                "drop=[StreamKindTag.UNKNOWN] to exclude them (byte-faithful "
-                "pass-through arrives with the data-stream push surface)"
-            )
         # Build the output side. Order matters: nothing is recorded
         # until every fallible step succeeded, so a from_program_map
         # strictness error (or an unopenable dst) leaves no half-state.
@@ -551,11 +537,13 @@ class Transmuxer:
             if s.kind in (StreamKindTag.KLV_SYNC, StreamKindTag.KLV_ASYNC)
         ]
         subtitle = [s.pid for s in kept if s.kind is StreamKindTag.SUBTITLE]
+        data = [s.pid for s in kept if s.kind is StreamKindTag.UNKNOWN]
         handles: dict = {}
         handles.update(zip(video, muxer.video_handles()))
         handles.update(zip(audio, muxer.audio_handles()))
         handles.update(zip(klv, muxer.klv_handles()))
         handles.update(zip(subtitle, muxer.subtitle_handles()))
+        handles.update(zip(data, muxer.data_handles()))
         return handles
 
     def _handle_for(self, ev):
@@ -605,6 +593,13 @@ class Transmuxer:
             if handle is None:
                 return
             self._proxy.push_subtitle_to(handle, ev.payload, pts=ev.pts)
+        elif isinstance(ev, DemuxEvent.UnknownSample):
+            handle = self._handle_for(ev)
+            if handle is None:
+                return
+            # Raw PES payload pass-through. `ev.pts` is always set: the
+            # demuxer substitutes 0 when the source PES carried no PTS.
+            self._proxy.push_data_to(handle, ev.payload, pts=ev.pts)
         else:
             raise TypeError(
                 f"transmux.write: unsupported event type "

@@ -268,27 +268,91 @@ def test_transmux_tolerates_identical_pm_reemission(tmp_path):
     assert out_videos == ORIG_AUS
 
 
-def test_transmux_unknown_guard_raises_without_drop_and_no_partial_dst(tmp_path):
-    # TEMPORARY guard contract (private-data W2): from_program_map now
-    # maps unknown streams to Data specs, but transmux has no
-    # UnknownSample routing yet — without the guard the output would
-    # declare data PIDs that never receive payload (silent data loss).
-    # W3 replaces this ValueError with byte-faithful pass-through.
-    from _builders.unknown_stream import build_unknown_stream_ts
+# Private-data pass-through (W3): two data streams — one user-private
+# 0xF0 with a 0xFF name descriptor (carries_pts=True), one bare
+# ISO/IEC 13818-1 private-PES 0x06 (carries_pts=False). Distinct
+# payloads per stream so byte-faithfulness is distinguishable per
+# sample.
+DATA_DESCRIPTOR = b"\xff\x0aSERIAL_ADF"
+DATA_PAYLOADS_A = [b"\x01\x02record-a0", b"\x03\x04record-a1", b"\x05\x06record-a2"]
+DATA_PAYLOADS_B = [b"\xaa\xbb-b0", b"\xcc\xdd-b1", b"\xee\xff-b2"]
 
-    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
-    src.write_bytes(
-        build_unknown_stream_ts(stream_type=0x7F, payload=b"private-bytes")
+
+def _write_video_data_src(path: Path) -> None:
+    """Synthetic single-program source: H.264 video + the two private
+    data streams above, built via the W3 muxer data surface."""
+    cfg = (
+        MuxerConfigBuilder()
+        .add_program(
+            MuxerProgramConfigBuilder(1, 0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .add_data(0x1F0, 0xF0, carries_pts=True)
+            .add_data(0x1F1, 0x06, carries_pts=False)
+            .stream_descriptors_for_data(0, [DATA_DESCRIPTOR])
+            .build()
+        )
+        .build()
     )
-    with pytest.raises(ValueError, match="private/application data"):
-        with tio.transmux(src, dst) as tx:
-            for ev in tx:
-                tx.write(ev)
-    # The guard raised before the sink opened → no output file.
-    assert not dst.exists()
+    mux = Muxer(cfg)
+    handle_a, handle_b = mux.data_handles()
+    with mux.write_file(path) as proxy:
+        for i, (au, key) in enumerate(zip(ORIG_AUS, KEY_FRAMES)):
+            pts = Pts90khz.from_raw(PTS0 + i * PTS_STEP)
+            proxy.push_video(au, pts=pts, key_frame=key)
+            proxy.push_data_to(handle_a, DATA_PAYLOADS_A[i], pts=pts)
+            proxy.push_data_to(handle_b, DATA_PAYLOADS_B[i], pts=pts)
 
 
-def test_transmux_drop_unknown_succeeds_and_sheds_stream(tmp_path):
+def test_transmux_passes_unknown_streams_through_byte_faithfully(tmp_path):
+    # W3 pass-through contract (replaces the W2 temporary ValueError
+    # guard): private/application data streams survive a transmux
+    # byte-faithfully — PMT identity (raw stream_type + descriptor
+    # bytes) via from_program_map, sample payloads via push_data_to.
+    src, dst = tmp_path / "src.ts", tmp_path / "out.ts"
+    _write_video_data_src(src)
+
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+
+    # PMT identity: raw stream_type bytes + verbatim descriptor loop.
+    out_pm = tio.probe(dst).programs[0]
+    by_pid = {s.pid: s for s in out_pm.streams}
+    assert by_pid[0x1F0].kind is StreamKindTag.UNKNOWN
+    assert by_pid[0x1F0].stream_type == 0xF0
+    assert [(d.tag, d.data) for d in by_pid[0x1F0].raw_descriptors] == [
+        (0xFF, b"SERIAL_ADF")
+    ]
+    assert by_pid[0x1F1].kind is StreamKindTag.UNKNOWN
+    assert by_pid[0x1F1].stream_type == 0x06
+    assert by_pid[0x1F1].raw_descriptors == ()
+
+    # Samples: every payload byte-identical, in order; video untouched.
+    out_videos: list[bytes] = []
+    out_data: dict[int, list[tuple[int, bytes]]] = {0x1F0: [], 0x1F1: []}
+    for ev in tio.parse_file(dst):
+        if isinstance(ev, DemuxEvent.Video):
+            out_videos.append(bytes(ev.raw))
+        elif isinstance(ev, DemuxEvent.UnknownSample):
+            out_data[ev.stream.pid].append((ev.pts.raw, bytes(ev.payload)))
+    assert out_videos == ORIG_AUS
+    # carries_pts stream: payloads in push order WITH the source pts.
+    assert out_data[0x1F0] == [
+        (PTS0 + i * PTS_STEP, p) for i, p in enumerate(DATA_PAYLOADS_A)
+    ]
+    # The 0x06 stream was carries_pts=False at the source: its PES
+    # carried no PTS, so the demuxer substituted pts=0 on the way in
+    # and transmux re-pushed that 0 (converted data streams always
+    # carry PTS). The pts values pushed at the source are therefore
+    # NOT recoverable — the samples re-emerge with a literal PTS of 0.
+    assert out_data[0x1F1] == [(0, p) for p in DATA_PAYLOADS_B]
+
+
+def test_transmux_drop_unknown_still_sheds(tmp_path):
+    # drop=[UNKNOWN] remains the escape hatch now that pass-through is
+    # the default: the output PMT declares no unknown streams and the
+    # source's UnknownSample events are skipped silently by write()
+    # (dropped-stream no-handle path — no exception).
     from _builders.unknown_stream import build_unknown_stream_ts
 
     idr_au = ORIG_AUS[0]
@@ -300,7 +364,7 @@ def test_transmux_drop_unknown_succeeds_and_sheds_stream(tmp_path):
     )
     with tio.transmux(src, dst, drop=(StreamKindTag.UNKNOWN,)) as tx:
         for ev in tx:
-            tx.write(ev)  # UnknownSample events hit _SKIP_EVENTS → skipped
+            tx.write(ev)  # UnknownSample → no handle (dropped) → skipped
     out_videos, _ = _collect(dst)
     assert out_videos == [idr_au]
     # The unknown stream is shed: the output PMT declares no UNKNOWN kind.

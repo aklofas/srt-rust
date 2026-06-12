@@ -464,7 +464,8 @@ impl PyMuxerProgramConfig {
     /// Tuple of `StreamSpec` subclass instances mirroring
     /// `inner.streams` add-order. Returns the Python-side
     /// `VideoStreamSpec / KlvStreamSpec / AudioStreamSpec /
-    /// SubtitleStreamSpec` dataclasses from `tstrans.mpegts`.
+    /// SubtitleStreamSpec / DataStreamSpec` dataclasses from
+    /// `tstrans.mpegts`.
     #[getter]
     pub fn streams(&self, py: Python<'_>) -> PyResult<PyObject> {
         let mpegts_mod = py.import_bound("tstrans.mpegts")?;
@@ -503,12 +504,13 @@ impl PyMuxerProgramConfig {
                     let codec_obj = subtitle_codec_to_py(py, codec)?;
                     cls.call1((*pid, codec_obj))?.unbind()
                 }
-                // Unreachable in this wave: Python has no add_data binding
-                // and from_program_map does not map Unknown streams yet.
-                RustStreamSpec::Data { .. } => {
-                    return Err(pyo3::exceptions::PyNotImplementedError::new_err(
-                        "Data stream specs are not yet exposed to Python",
-                    ));
+                RustStreamSpec::Data {
+                    pid,
+                    stream_type,
+                    carries_pts,
+                } => {
+                    let cls = mpegts_mod.getattr("DataStreamSpec")?;
+                    cls.call1((*pid, *stream_type, *carries_pts))?.unbind()
                 }
             };
             items.push(obj);
@@ -861,25 +863,29 @@ impl PyMuxerConfig {
     /// entries here to obtain a config reproducing the program's
     /// topology (program number, PMT PID, stream PIDs, codecs).
     ///
-    /// Strict by default: streams the muxer cannot represent (UNKNOWN
-    /// stream types, DVB subtitling/teletext) raise
-    /// `tstrans.exceptions.MuxError` (CONFIG_INVALID) naming every
-    /// offender. Pass their `StreamKindTag` members in `drop` to
-    /// exclude them instead — the filter is kind-coarse
-    /// (`StreamKindTag.SUBTITLE` drops *every* subtitle stream).
+    /// Strict by default: streams the muxer cannot represent (DVB
+    /// subtitling/teletext) raise `tstrans.exceptions.MuxError`
+    /// (CONFIG_INVALID) naming every offender. Pass their
+    /// `StreamKindTag` members in `drop` to exclude them instead — the
+    /// filter is kind-coarse (`StreamKindTag.SUBTITLE` drops *every*
+    /// subtitle stream). UNKNOWN stream types are not offenders: they
+    /// map to `DataStreamSpec` PES pass-through entries keeping the
+    /// raw PMT stream_type byte, with the stream's PMT descriptors
+    /// preserved verbatim on `stream_descriptors`;
+    /// `StreamKindTag.UNKNOWN` in `drop` excludes them entirely.
     ///
-    /// `carries_pts` is always True for reconstructed KLV streams,
-    /// including async ones (whether the KLV PES carries a PTS is a
-    /// PES-level property the PMT cannot declare; PTS-carrying KLV is
-    /// the STANAG 4609 norm). Audio language is recovered from the
+    /// `carries_pts` is always True for reconstructed KLV and data
+    /// streams, including async KLV (whether the PES carries a PTS is
+    /// a PES-level property the PMT cannot declare; PTS-carrying KLV
+    /// is the STANAG 4609 norm). Audio language is recovered from the
     /// first ISO 639 language descriptor (tag 0x0A) on the stream's
     /// `raw_descriptors` when it carries a plausible lowercase
     /// ISO 639-2 code. The demuxed `pcr_pid` is copied iff it equals
-    /// a kept non-KLV stream's PID; otherwise it is left unset and the
-    /// builder default applies (first video → first KLV → first
-    /// audio). `klv_links` are ignored — the muxer re-derives
-    /// metadata linkage from its own configuration. Mirrors Rust's
-    /// `MuxerConfig::from_program_map`.
+    /// the PID of a kept stream that is neither KLV nor data;
+    /// otherwise it is left unset and the builder default applies
+    /// (first video → first KLV → first audio). `klv_links` are
+    /// ignored — the muxer re-derives metadata linkage from its own
+    /// configuration. Mirrors Rust's `MuxerConfig::from_program_map`.
     #[staticmethod]
     #[pyo3(signature = (pm, drop = None))]
     fn from_program_map(

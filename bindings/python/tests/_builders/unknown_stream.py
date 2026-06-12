@@ -4,8 +4,12 @@ Constructs a minimal TS bitstream containing:
   - One PAT packet (PID 0x0000) advertising a single program whose PMT
     lives on PID 0x0100.
   - One PMT packet (PID 0x0100) declaring a single elementary stream on
-    PID 0x0101 with the caller-supplied (unknown) stream_type byte.
-  - Seven PES packets (PID 0x0101) carrying the raw payload.
+    PID 0x0101 with the caller-supplied (unknown) stream_type byte,
+    optionally carrying ES_info descriptors and/or an additional H.264
+    video stream on PID 0x0102 (private-data W2: from_program_map needs
+    a PCR-eligible companion stream to convert an unknown-stream map).
+  - PES packets (PID 0x0101, and 0x0102 when video is requested)
+    carrying the raw payloads, padded to at least seven TS packets.
 
 The demuxer's sync-ingress state machine requires 5-of-7 aligned 0x47
 bytes before it considers the stream locked (SYNC_REACQ_N=5, M=7 per
@@ -78,23 +82,41 @@ def _pat_packet() -> bytes:
     return _ts_packet(pid=0x0000, payload=payload, pusi=True, cc=0)
 
 
-def _pmt_packet(stream_type: int) -> bytes:
-    """PMT (PID 0x0100): program 1, PCR PID 0x0101, one ES entry.
+def _pmt_packet(
+    stream_type: int, *, descriptors: bytes = b"", with_video: bool = False
+) -> bytes:
+    """PMT (PID 0x0100): program 1, one unknown-type ES entry on 0x0101.
 
-    ES entry: stream_type=<caller>, elementary_PID=0x0101, no descriptors.
+    Args:
+        stream_type: stream_type byte of the unknown ES entry.
+        descriptors: pre-encoded ES_info descriptor TLV bytes for the
+                     unknown ES entry (empty = no descriptors).
+        with_video:  also declare an H.264 (stream_type 0x1B) ES entry
+                     on PID 0x0102 and put the PCR there; without video
+                     the PCR PID stays on 0x0101.
     """
-    es_entry = bytes([
+    assert len(descriptors) <= 0x3FF, "ES_info_length is 10 bits"
+    es_entries = bytes([
         stream_type & 0xFF,   # stream_type byte
         0xE1, 0x01,           # reserved(3)=111b | elementary_PID[12:8]=0x01, PID[7:0]=0x01
-        0xF0, 0x00,           # reserved(4)=1111b, ES_info_length=0
-    ])
+        0xF0 | ((len(descriptors) >> 8) & 0x03),  # reserved(4)=1111b, ES_info_length hi
+        len(descriptors) & 0xFF,                  # ES_info_length lo
+    ]) + descriptors
+    if with_video:
+        es_entries += bytes([
+            0x1B,             # stream_type = H.264
+            0xE1, 0x02,       # reserved(3)=111b | elementary_PID = 0x0102
+            0xF0, 0x00,       # reserved(4)=1111b, ES_info_length=0
+        ])
+    pcr_pid = 0x0102 if with_video else 0x0101
     # PMT section body (after the fixed 8-byte section header fields):
     #   PCR_PID(2) + program_info_length(2, =0) + ES entries
     pcr_and_info = bytes([
-        0xE1, 0x01,   # reserved(3)=111b | PCR_PID[12:8]=0x01, PCR_PID[7:0]=0x01
+        0xE0 | ((pcr_pid >> 8) & 0x1F),  # reserved(3)=111b | PCR_PID[12:8]
+        pcr_pid & 0xFF,                  # PCR_PID[7:0]
         0xF0, 0x00,   # reserved(4)=1111b | program_info_length hi=0, lo=0
     ])
-    body = pcr_and_info + es_entry
+    body = pcr_and_info + es_entries
     section_length = 5 + len(body) + 4  # 5 = fixed header tail, 4 = CRC32
     header = bytes([
         0x02,              # table_id = 0x02 (PMT)
@@ -112,20 +134,18 @@ def _pmt_packet(stream_type: int) -> bytes:
     return _ts_packet(pid=0x0100, payload=payload, pusi=True, cc=0)
 
 
-def _pes_packets(payload: bytes) -> list[bytes]:
-    """PES on PID 0x0101 carrying `payload`.
+def _pes_packets(
+    payload: bytes, *, pid: int = 0x0101, stream_id: int = 0xBD, pts_bits: int = 0
+) -> list[bytes]:
+    """PES on `pid` carrying `payload`.
 
-    Builds a PES header (stream_id=0xBD private_stream_1, PTS=0) and
-    then fills as many 188-byte TS packets as needed.  Returns at least
-    7 packets (repeating stuffing packets if necessary) so the demuxer
-    can complete sync acquisition.
+    Builds a PES header (default stream_id=0xBD private_stream_1, PTS=0)
+    and then fills as many 188-byte TS packets as needed.
 
     The PES header structure per ISO/IEC 13818-1 §2.4.3.7:
       start_code_prefix(3) + stream_id(1) + PES_packet_length(2) +
       flags(2) + header_data_length(1) + PTS(5)
     """
-    # PTS = 0, encoded as 5 bytes
-    pts_bits = 0
     pts_b = bytes([
         0x21 | (((pts_bits >> 30) & 0x07) << 1),          # marker '0010', PTS[32:30], marker
         (pts_bits >> 22) & 0xFF,                            # PTS[29:22]
@@ -134,7 +154,7 @@ def _pes_packets(payload: bytes) -> list[bytes]:
         0x01 | ((pts_bits & 0x7F) << 1),                   # PTS[6:0], marker
     ])
     pes_header_after_startcode = bytes([
-        0xBD,          # stream_id = private_stream_1
+        stream_id & 0xFF,  # 0xBD private_stream_1 / 0xE0 video
     ])
     pes_optional_header = bytes([
         0x80,          # marker(2)=10b, no flags
@@ -158,14 +178,9 @@ def _pes_packets(payload: bytes) -> list[bytes]:
     while remaining:
         chunk = remaining[:184]
         remaining = remaining[184:]
-        ts_packets.append(_ts_packet(pid=0x0101, payload=chunk, pusi=pusi, cc=cc))
+        ts_packets.append(_ts_packet(pid=pid, payload=chunk, pusi=pusi, cc=cc))
         pusi = False
         cc = (cc + 1) & 0x0F
-
-    # Pad to at least 7 packets with null-like stuffing packets on PID 0x1FFF
-    # so the sync state machine sees ≥ 7 aligned 0x47 bytes.
-    while len(ts_packets) < 7:
-        ts_packets.append(_ts_packet(pid=0x1FFF, payload=b"", cc=0))
 
     return ts_packets
 
@@ -184,7 +199,13 @@ def _crc32_mpeg(data: bytes) -> int:
     return crc
 
 
-def build_unknown_stream_ts(*, stream_type: int, payload: bytes) -> bytes:
+def build_unknown_stream_ts(
+    *,
+    stream_type: int,
+    payload: bytes,
+    descriptors: bytes = b"",
+    video_au: bytes | None = None,
+) -> bytes:
     """Build a complete TS bitstream with one PES carrying an unknown stream_type.
 
     Args:
@@ -193,6 +214,13 @@ def build_unknown_stream_ts(*, stream_type: int, payload: bytes) -> bytes:
                      Subtitle/KLV; it should surface as UnknownSample.
         payload:     Raw PES payload bytes to carry (any length ≤ 65535
                      after PES header overhead).
+        descriptors: pre-encoded ES_info descriptor TLV bytes declared on
+                     the unknown stream's PMT entry (empty = none).
+        video_au:    when given, an H.264 Annex-B access unit carried as
+                     an additional video stream (stream_type 0x1B, PID
+                     0x0102, PES stream_id 0xE0, PTS 900_000) — needed by
+                     the from_program_map tests, where converting a map
+                     requires at least one PCR-eligible stream.
 
     Returns:
         bytes: a valid multi-packet MPEG-TS bitstream, always a multiple
@@ -200,6 +228,16 @@ def build_unknown_stream_ts(*, stream_type: int, payload: bytes) -> bytes:
     """
     packets: list[bytes] = []
     packets.append(_pat_packet())
-    packets.append(_pmt_packet(stream_type))
+    packets.append(
+        _pmt_packet(stream_type, descriptors=descriptors, with_video=video_au is not None)
+    )
+    if video_au is not None:
+        packets.extend(
+            _pes_packets(video_au, pid=0x0102, stream_id=0xE0, pts_bits=900_000)
+        )
     packets.extend(_pes_packets(payload))
+    # Pad to at least 7 packets with null-like stuffing packets on PID 0x1FFF
+    # so the sync state machine sees ≥ 7 aligned 0x47 bytes.
+    while len(packets) < 7:
+        packets.append(_ts_packet(pid=0x1FFF, payload=b"", cc=0))
     return b"".join(packets)

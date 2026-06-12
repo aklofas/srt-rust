@@ -143,7 +143,7 @@ class Av1CarriageMode(enum.Enum):
     INTEROP_RAW_OBU = "interop_raw_obu"
 
 
-# StreamSpec ABC + 4 concrete subclasses — match-statement-compat
+# StreamSpec ABC + 5 concrete subclasses — match-statement-compat
 # tagged union, same pattern as the DemuxEvent hierarchy.
 # Mirrors Rust `tst_core::mpegts::mux::StreamSpec`'s variants.
 
@@ -152,8 +152,8 @@ class StreamSpec:
     """Abstract base for elementary-stream specs within a program.
 
     Concrete subclasses: `VideoStreamSpec`, `KlvStreamSpec`,
-    `AudioStreamSpec`, `SubtitleStreamSpec`. Frozen + slotted so
-    instances are hashable, value-equal, and immutable.
+    `AudioStreamSpec`, `SubtitleStreamSpec`, `DataStreamSpec`. Frozen +
+    slotted so instances are hashable, value-equal, and immutable.
     """
 
     pid: int
@@ -193,6 +193,20 @@ class SubtitleStreamSpec(StreamSpec):
     DVB subtitling_type, etc.)."""
 
     codec: SubtitleCodec
+
+
+@dataclass(frozen=True, slots=True)
+class DataStreamSpec(StreamSpec):
+    """Private/application data elementary stream — `pid`, raw PMT
+    `stream_type` byte, and `carries_pts` (whether to emit a PTS in the
+    PES header). The write-side twin of `StreamKindTag.UNKNOWN`
+    streams: `MuxerConfig.from_program_map` reconstructs one per
+    unknown-type stream. PMT descriptors are not carried here — they
+    live on the muxer config's descriptor surface
+    (`MuxerProgramConfig.stream_descriptors`), not the spec."""
+
+    stream_type: int
+    carries_pts: bool
 
 
 # ---------------------------------------------------------------------------
@@ -1232,6 +1246,7 @@ __all__: list[str] = [
     "KlvStreamSpec",
     "AudioStreamSpec",
     "SubtitleStreamSpec",
+    "DataStreamSpec",
     "DvbSubtitlingConfig",
     "DvbTeletextConfig",
     "Cea708StandaloneConfig",

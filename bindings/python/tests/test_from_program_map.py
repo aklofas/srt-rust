@@ -1,9 +1,10 @@
 """MuxerConfig.from_program_map — the transmux bridge.
 
 Covers: demux→mux round-trip via a captured DemuxEvent.ProgramMap,
-strict offender rejection + the `drop` filter, audio language recovery
-from raw PMT descriptors, drop-argument validation, and sync-KLV kind
-reconstruction (codec=None)."""
+strict offender rejection (DVB subtitling/teletext) + the `drop`
+filter, the Unknown→DataStreamSpec mapping (private-data W2), audio
+language recovery from raw PMT descriptors, drop-argument validation,
+and sync-KLV kind reconstruction (codec=None)."""
 
 import pytest
 
@@ -11,6 +12,7 @@ from tstrans.exceptions import MuxError, MuxErrorKind
 from tstrans.mpegts import (
     AudioCodec,
     AudioStreamSpec,
+    DataStreamSpec,
     Demuxer,
     DemuxEvent,
     KlvStreamSpec,
@@ -31,6 +33,9 @@ from tstrans.mpegts import (
 )
 
 NAL_AUD = b"\x00\x00\x00\x01\x09\xF0"
+# A minimal-but-valid H.264 IDR access unit — payload for the synthetic
+# unknown-stream TS builder's companion video stream.
+IDR_AU = b"\x00\x00\x00\x01\x65\x88\x84\x00\x10\xaa\xbb"
 
 
 def _video_si(pid=0x101):
@@ -87,7 +92,11 @@ def test_roundtrip_demuxed_program_map_rebuilds_working_muxer():
     m2.push_video(NAL_AUD, pts=Pts90khz.from_raw(900_000))
 
 
-def test_unknown_stream_is_strict_offender_and_droppable():
+def test_unknown_stream_maps_to_data_spec_and_droppable():
+    # Deliberate pre-1.0 behavior change (private-data W2): unknown
+    # stream types are no longer strict offenders — they map to
+    # DataStreamSpec PES pass-through entries keeping the raw PMT
+    # stream_type byte. drop=[UNKNOWN] still excludes them entirely.
     unknown = StreamInfo(
         pid=0x1F1,
         stream_type=0xC0,
@@ -103,14 +112,46 @@ def test_unknown_stream_is_strict_offender_and_droppable():
         klv_links=(),
     )
 
-    with pytest.raises(MuxError) as ei:
-        MuxerConfig.from_program_map(pm)
-    assert ei.value.kind is MuxErrorKind.CONFIG_INVALID
-    assert "cannot represent" in str(ei.value)
-    assert "0x01F1" in str(ei.value)
+    cfg = MuxerConfig.from_program_map(pm)
+    spec = cfg.programs[0].streams[1]
+    assert spec == DataStreamSpec(pid=0x1F1, stream_type=0xC0, carries_pts=True)
 
     cfg = MuxerConfig.from_program_map(pm, drop=[StreamKindTag.UNKNOWN])
     assert [s.pid for s in cfg.programs[0].streams] == [0x101]
+
+
+def test_from_program_map_unknown_to_data_introspection():
+    """A demuxed unknown-stream map converts to a config whose data
+    stream introspects as a DataStreamSpec; the stream's PMT descriptors
+    are preserved byte-identical on the config's descriptor surface
+    (stream_descriptors), not on the spec."""
+    from _builders.unknown_stream import build_unknown_stream_ts
+
+    ts = build_unknown_stream_ts(
+        stream_type=0xF0,
+        payload=b"private-bytes",
+        descriptors=b"\xff\x0aSERIAL_ADF",
+        video_au=IDR_AU,
+    )
+    d = Demuxer()
+    d.feed(ts)
+    d.flush()
+    pm_events = [ev for ev in d if isinstance(ev, DemuxEvent.ProgramMap)]
+    assert pm_events, "expected at least one ProgramMap event"
+    pm = pm_events[0].programs[0]
+
+    cfg = MuxerConfig.from_program_map(pm)
+    prog = cfg.programs[0]
+    assert DataStreamSpec(pid=0x101, stream_type=0xF0, carries_pts=True) in prog.streams
+    i = [s.pid for s in prog.streams].index(0x101)
+    assert prog.stream_descriptors[i] == (b"\xff\x0aSERIAL_ADF",)
+
+    # drop=[UNKNOWN] excludes the data stream entirely.
+    cfg = MuxerConfig.from_program_map(pm, drop=[StreamKindTag.UNKNOWN])
+    assert [s.pid for s in cfg.programs[0].streams] == [0x102]
+    assert not any(
+        isinstance(s, DataStreamSpec) for s in cfg.programs[0].streams
+    )
 
 
 def test_audio_language_recovered_from_iso639_descriptor():

@@ -340,9 +340,14 @@ def transmux(
     stream PIDs, codecs). `dst` is created at that moment — a source
     with no PSI yields no events and produces NO output file.
 
-    Strict by default: streams the muxer cannot represent (unknown
-    stream types, DVB subtitling/teletext) fail the conversion with
-    `MuxError` naming the offenders; pass their kinds in `drop` to
+    Strict by default: streams the muxer cannot represent (DVB
+    subtitling/teletext) fail the conversion with `MuxError` naming the
+    offenders, and a source carrying unknown stream types raises
+    `ValueError` at the transmux level — a TEMPORARY guard, pending the
+    data-stream push surface: the config conversion can now represent
+    them, but transmux cannot yet route their samples, so passing them
+    through would silently emit declared-but-empty data PIDs. Pass the
+    offending kinds in `drop` (e.g. `drop=[StreamKindTag.UNKNOWN]`) to
     exclude them instead. Events for dropped streams are skipped by
     `write`. v1 supports single-program sources with a stable program
     map — a second program (or a mid-stream layout change) raises
@@ -409,9 +414,10 @@ class Transmuxer:
     )
 
     # Events with no mux representation: accepted + skipped by write().
-    # UnknownSample is stream-bound but can only occur for streams that
-    # from_program_map dropped (kept unknowns fail the conversion), so
-    # it is skipped on the same path.
+    # UnknownSample is stream-bound but can only occur for dropped
+    # streams (the temporary _on_program_map guard rejects kept unknown
+    # streams until UnknownSample routing lands), so it is skipped on
+    # the same path.
     _SKIP_EVENTS = (
         DemuxEvent.ProgramMap,
         DemuxEvent.Discontinuity,
@@ -500,6 +506,21 @@ class Transmuxer:
                     "ProgramMap (new program or mid-stream layout change)"
                 )
             return
+        # TEMPORARY guard (private-data arc W2): from_program_map now
+        # maps unknown stream types to Data specs, but transmux has no
+        # UnknownSample routing yet — without this guard the output
+        # would declare data PIDs that never receive payload (silent
+        # data loss). Removed in W3 of
+        # docs/plans/2026-06-11-private-data-streams.md when
+        # byte-faithful pass-through lands.
+        if StreamKindTag.UNKNOWN not in self._drop and any(
+            s.kind is StreamKindTag.UNKNOWN for s in pm.streams
+        ):
+            raise ValueError(
+                "source carries private/application data streams; pass "
+                "drop=[StreamKindTag.UNKNOWN] to exclude them (byte-faithful "
+                "pass-through arrives with the data-stream push surface)"
+            )
         # Build the output side. Order matters: nothing is recorded
         # until every fallible step succeeded, so a from_program_map
         # strictness error (or an unopenable dst) leaves no half-state.

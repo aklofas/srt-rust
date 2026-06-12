@@ -911,6 +911,185 @@ def test_push_klv_to_pts_positional_raises_type_error():
     assert m.pending_packets() >= 0
 
 
+# ---------------------------------------------------------------------------
+# W3 — push_data / push_data_to + data handle accessors
+# ---------------------------------------------------------------------------
+#
+# Data streams are a PES pass-through (no AU-cell wrap, no framing, one
+# push = one PES on stream_id 0xBD). The demux-side dual is
+# `DemuxEvent.UnknownSample`; carries_pts=False streams re-demux with
+# pts == 0 (the demuxer's no-PTS substitute).
+
+
+def _data_config() -> "MuxerConfig":
+    """Video + two data streams: one user-private 0xF0 with a 0xFF
+    descriptor (carries_pts=True), one bare 0x06 (carries_pts=False)."""
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .add_data(0x1F1, 0x06, carries_pts=False)
+        .stream_descriptors_for_data(0, [b"\xff\x04demo"])
+        .build()
+    )
+    return MuxerConfigBuilder().add_program(prog).build()
+
+
+def test_push_data_to_round_trips_payload_pts_and_pmt():
+    """End-to-end: push payloads on both data streams, drain, demux,
+    assert UnknownSample payload/pts fidelity (incl. pts==0 for the
+    no-PTS stream) and PMT stream_type + descriptor bytes."""
+    from tstrans.mpegts import Demuxer, DemuxerConfig, DemuxEvent, StreamKindTag
+
+    m = Muxer(_data_config())
+    handles = m.data_handles()
+    assert len(handles) == 2
+
+    payload_a = b"\x01\x02\x03\x04record-a"
+    payload_b = b"\xaa\xbb\xcc"
+    m.push_video(_minimal_h264_nal_aud(), pts=Pts90khz.from_raw(900_000))
+    m.push_data_to(handles[0], payload_a, pts=Pts90khz.from_raw(900_000))
+    m.push_data_to(handles[1], payload_b, pts=Pts90khz.from_raw(901_000))
+
+    buf = bytearray(m.pending_packets() * 188)
+    n = m.pull(buf)
+    assert n > 0 and n % 188 == 0
+    ts_bytes = bytes(buf[:n])
+
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    events = list(d)
+
+    # PMT advertises both data streams as Unknown with the raw
+    # stream_type bytes and the verbatim descriptor loop.
+    pmts = [e for e in events if isinstance(e, DemuxEvent.ProgramMap)]
+    assert pmts, "expected at least one ProgramMap event"
+    by_pid = {s.pid: s for s in pmts[-1].programs[0].streams}
+    assert by_pid[0x1F0].kind is StreamKindTag.UNKNOWN
+    assert by_pid[0x1F0].stream_type == 0xF0
+    assert [(desc.tag, desc.data) for desc in by_pid[0x1F0].raw_descriptors] == [
+        (0xFF, b"demo")
+    ]
+    assert by_pid[0x1F1].kind is StreamKindTag.UNKNOWN
+    assert by_pid[0x1F1].stream_type == 0x06
+    assert by_pid[0x1F1].raw_descriptors == ()
+
+    # Payload + pts fidelity. carries_pts=False → pts comes back as 0
+    # (the demuxer's no-PTS substitute), NOT the pushed 901_000.
+    samples = [e for e in events if isinstance(e, DemuxEvent.UnknownSample)]
+    by_stream = {s.stream.pid: s for s in samples}
+    assert by_stream[0x1F0].payload == payload_a
+    assert by_stream[0x1F0].pts.raw == 900_000
+    assert by_stream[0x1F0].stream_type == 0xF0
+    assert by_stream[0x1F1].payload == payload_b
+    assert by_stream[0x1F1].pts.raw == 0
+    assert by_stream[0x1F1].stream_type == 0x06
+
+
+def test_data_handle_accessors_and_forged_from_raw():
+    from tstrans.mpegts import DataStreamHandle
+
+    m = Muxer(_data_config())
+    handles = m.data_handles()
+    assert len(handles) == 2
+    assert all(isinstance(h, DataStreamHandle) for h in handles)
+
+    # by-index getter (program 0 only) + out-of-range → None.
+    h0 = m.data_stream_handle(0)
+    assert h0 is not None
+    assert h0 == handles[0]
+    assert m.data_stream_handle(99) is None
+
+    # by-program getter + unknown program raises INVALID_USAGE.
+    assert m.data_handles_for_program(1) == handles
+    with pytest.raises(MuxError) as ei:
+        m.data_handles_for_program(99)
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+    # raw round-trip + unpack.
+    again = DataStreamHandle.from_raw(handles[1].raw)
+    assert again == handles[1]
+    assert again.unpack() == (0, 1)
+    assert "DataStreamHandle" in repr(again)
+
+    # Forged raw with bits outside the canonical 8-bit packed layout
+    # rejects at from_raw itself (same contract as the other handles).
+    with pytest.raises(MuxError) as ei:
+        DataStreamHandle.from_raw(handles[0].raw | 0x100)
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+def test_push_data_single_stream_shorthand_works():
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .build()
+    )
+    m = Muxer(MuxerConfigBuilder().add_program(prog).build())
+    m.push_data(b"\x42\x43", pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0
+
+
+def test_push_data_ambiguous_with_two_data_streams_raises():
+    m = Muxer(_data_config())
+    with pytest.raises(MuxError) as ei:
+        m.push_data(b"\x42", pts=Pts90khz.from_raw(900_000))
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+    assert "ambiguous" in str(ei.value).lower()
+
+
+def test_push_data_on_video_only_muxer_raises_no_data_streams():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    m = Muxer(MuxerConfigBuilder().add_program(prog).build())
+    with pytest.raises(MuxError) as ei:
+        m.push_data(b"\x42", pts=Pts90khz.from_raw(900_000))
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+    assert "no data streams" in str(ei.value)
+
+
+def test_push_data_too_large_payload_raises_input_malformed():
+    """70_000 bytes exceeds the PES_packet_length ceiling (65527 with a
+    PTS field) — DataTooLarge → INPUT_MALFORMED, with the size and the
+    ceiling in the message."""
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .build()
+    )
+    m = Muxer(MuxerConfigBuilder().add_program(prog).build())
+    with pytest.raises(MuxError) as ei:
+        m.push_data(b"\x00" * 70_000, pts=Pts90khz.from_raw(900_000))
+    assert ei.value.kind is MuxErrorKind.INPUT_MALFORMED
+    msg = str(ei.value)
+    assert "70000" in msg
+    assert "65527" in msg
+
+
+def test_push_data_to_invalid_handle_raises_invalid_usage():
+    # See test_push_video_to_with_invalid_handle_raises_invalid_usage for
+    # rationale on the 0xFF (canonical-but-unconfigured) handle choice.
+    from tstrans.mpegts import DataStreamHandle
+
+    m = Muxer(_data_config())
+    bogus = DataStreamHandle.from_raw(0xFF)
+    with pytest.raises(MuxError) as ei:
+        m.push_data_to(bogus, b"\x42", pts=Pts90khz.from_raw(900_000))
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+def test_push_data_pts_positional_raises_type_error():
+    """pts is keyword-only on push_data / push_data_to (audit #9 shape)."""
+    m = Muxer(_data_config())
+    handle = m.data_handles()[0]
+    with pytest.raises(TypeError):
+        m.push_data_to(handle, b"\x42", Pts90khz.from_raw(900_000))  # positional pts
+    m.push_data_to(handle, b"\x42", pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() >= 0
+
+
 def test_push_video_to_with_dts_signature_unchanged():
     """Audit #9: push_video_to_with_dts was already kw-only — this test
     pins that the audit-9 sweep didn't accidentally regress its shape."""

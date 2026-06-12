@@ -19,9 +19,10 @@ use tst_core::mpegts::demux::{ProgramMap as DemuxProgramMap, StreamInfo as Demux
 use tst_core::mpegts::descriptors::RawDescriptor as RustRawDescriptor;
 use tst_core::mpegts::mux::{
     AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
-    Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
-    KlvStreamType as RustKlvStreamType, Muxer as RustMuxer, MuxerConfig as RustMuxerConfig,
-    MuxerConfigBuilder as RustMuxerConfigBuilder, MuxerProgramConfig as RustMuxerProgramConfig,
+    Av1CarriageMode as RustAv1CarriageMode, DataStreamHandle as RustDataStreamHandle,
+    KlvStreamHandle as RustKlvStreamHandle, KlvStreamType as RustKlvStreamType, Muxer as RustMuxer,
+    MuxerConfig as RustMuxerConfig, MuxerConfigBuilder as RustMuxerConfigBuilder,
+    MuxerProgramConfig as RustMuxerProgramConfig,
     MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, MuxerStats as RustMuxerStats,
     StreamSpec as RustStreamSpec, SubtitleCodec as RustSubtitleCodec,
     SubtitleStreamHandle as RustSubtitleStreamHandle, VideoCodec as RustVideoCodec,
@@ -116,7 +117,7 @@ pub(crate) fn av1_carriage_to_py(
 // based on the derived `PartialEq + Eq + Hash` impls. `from_raw` is a
 // staticmethod so callers can round-trip handles through the C ABI or
 // reconstruct them from saved state. Deliberate per-kind repetition
-// (~25 LoC × 4) keeps each class trivially auditable; a macro would
+// (~25 LoC × 5) keeps each class trivially auditable; a macro would
 // hide the `name` / `module` / repr-string per-kind variation that the
 // Python tests rely on.
 
@@ -274,6 +275,41 @@ impl PySubtitleStreamHandle {
 
     fn __repr__(&self) -> String {
         format!("SubtitleStreamHandle(raw={})", self.0.raw())
+    }
+}
+
+/// Opaque handle for a private/application data stream within a
+/// configured muxer. Obtain from `Muxer.data_handles()`. Equality +
+/// hash by raw `u32`.
+#[pyclass(name = "DataStreamHandle", module = "tstrans.mpegts", frozen, eq, hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct PyDataStreamHandle(pub(crate) RustDataStreamHandle);
+
+#[pymethods]
+impl PyDataStreamHandle {
+    /// Reconstruct a `DataStreamHandle` from a raw `u32`. Same
+    /// validation contract as `VideoStreamHandle.from_raw`: raises
+    /// `MuxError(INVALID_USAGE)` if the input has high bits set
+    /// outside the canonical 8-bit packed layout.
+    #[staticmethod]
+    pub fn from_raw(py: Python<'_>, raw: u32) -> PyResult<Self> {
+        match RustDataStreamHandle::try_from_raw(raw) {
+            Ok(h) => Ok(Self(h)),
+            Err(e) => Err(crate::errors::mux_error_to_pyerr(py, e)),
+        }
+    }
+
+    #[getter]
+    pub fn raw(&self) -> u32 {
+        self.0.raw()
+    }
+
+    pub fn unpack(&self) -> (usize, usize) {
+        self.0.unpack()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("DataStreamHandle(raw={})", self.0.raw())
     }
 }
 
@@ -655,6 +691,42 @@ impl PyMuxerProgramConfigBuilder {
         Ok(slf)
     }
 
+    /// Append an arbitrary private/application data elementary stream
+    /// to this program (PES pass-through — the write-side twin of demux
+    /// `StreamKindTag.UNKNOWN`).
+    ///
+    /// `stream_type` is the raw PMT stream_type byte as a plain int in
+    /// `0..=255` (e.g. 0xF0/0xF1 user-private, bare 0x06);
+    /// `carries_pts` controls whether each pushed payload's PES header
+    /// carries a PTS. The muxer never auto-emits a descriptor on a
+    /// data stream — supply caller descriptors via
+    /// `stream_descriptors_for_data`.
+    ///
+    /// The `(stream_type, descriptors)` pair must classify as Unknown
+    /// on the demux side: typed stream_type bytes (e.g. 0x1B H.264)
+    /// and classifying 0x06 descriptors (e.g. the KLVA registration
+    /// descriptor) are rejected at `MuxerConfigBuilder.build()` with
+    /// `MuxError(CONFIG_INVALID)` naming the classified kind — use the
+    /// typed `add_*` method for that kind instead.
+    ///
+    /// Returns `self` for fluent chaining. Mirrors Rust
+    /// `MuxerProgramConfigBuilder::add_data`.
+    #[pyo3(signature = (pid, stream_type, *, carries_pts))]
+    pub fn add_data(
+        mut slf: PyRefMut<'_, Self>,
+        pid: u16,
+        stream_type: i64,
+        carries_pts: bool,
+    ) -> PyResult<PyRefMut<'_, Self>> {
+        if !(0..=255).contains(&stream_type) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "stream_type must be a raw PMT stream_type byte in 0..=255, got {stream_type}"
+            )));
+        }
+        slf.get_mut()?.add_data(pid, stream_type as u8, carries_pts);
+        Ok(slf)
+    }
+
     pub fn pcr_pid(mut slf: PyRefMut<'_, Self>, pid: u16) -> PyResult<PyRefMut<'_, Self>> {
         slf.get_mut()?.pcr_pid(pid);
         Ok(slf)
@@ -712,6 +784,22 @@ impl PyMuxerProgramConfigBuilder {
     ) -> PyResult<PyRefMut<'py, Self>> {
         slf.get_mut()?
             .stream_descriptors_for_subtitle(subtitle_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    /// Set the descriptor list for the `data_idx`-th data stream in
+    /// this program (zero-indexed among `add_data` calls in add-order).
+    /// Data streams have no auto-emit — these caller descriptors are
+    /// the entire PMT descriptor loop for the stream.
+    pub fn stream_descriptors_for_data<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        data_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_data(data_idx, descs)
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
         Ok(slf)
     }
@@ -1437,9 +1525,79 @@ impl PyMuxer {
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
+    /// Push one data payload onto the lone configured data stream.
+    ///
+    /// **Pass-through contract:** the muxer applies no AU-cell wrap, no
+    /// framing, and no payload inspection — `data` lands verbatim as
+    /// the PES payload, and one push produces exactly one PES packet on
+    /// PES `stream_id` 0xBD (private_stream_1). Record boundaries
+    /// within `data` (if any) are entirely the caller's convention.
+    ///
+    /// `pts` is written into the PES header only when the stream was
+    /// configured with `carries_pts=True`; it is **always** used for
+    /// PSI/PCR pacing decisions regardless. A `carries_pts=False`
+    /// stream's PES omits the PTS field entirely — on re-demux this
+    /// library surfaces such samples with `pts == 0` (its no-PTS
+    /// substitute).
+    ///
+    /// Convenience for single-data-stream muxers — raises
+    /// `MuxError(INVALID_USAGE)` if zero or more than one data stream
+    /// is configured; use [`push_data_to`][PyMuxer::push_data_to] with
+    /// an explicit handle in that case.
+    ///
+    /// Raises `MuxError(INPUT_MALFORMED)` if `data` exceeds the
+    /// PES_packet_length ceiling (65532 bytes without PTS, 65527
+    /// with); `MuxError(BACKPRESSURE)` on a full queue.
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9
+    /// normalization across all `push_*` methods).
+    #[pyo3(signature = (data, *, pts))]
+    pub fn push_data(
+        &mut self,
+        py: Python<'_>,
+        data: &[u8],
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        // GIL-release rationale (audit #11): see `push_video` — `data`
+        // borrows from a `Py<PyBytes>` held by the caller's frame.
+        let res = py.allow_threads(|| self.inner.push_data(data, rust_pts));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one data payload onto a specific data stream identified by
+    /// `handle` (obtained from `Muxer.data_handles()`).
+    ///
+    /// Same pass-through contract as [`push_data`][PyMuxer::push_data]:
+    /// no AU-cell wrap, no framing, one push = one PES on `stream_id`
+    /// 0xBD; `pts` is written iff the stream's `carries_pts` and always
+    /// used for PSI/PCR pacing (a `carries_pts=False` stream's samples
+    /// re-demux with `pts == 0`).
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
+    /// `MuxError(INPUT_MALFORMED)` on oversized payload, or
+    /// `MuxError(BACKPRESSURE)` on a full queue.
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9
+    /// normalization across all `push_*` methods).
+    #[pyo3(signature = (handle, data, *, pts))]
+    pub fn push_data_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyDataStreamHandle>,
+        data: &[u8],
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        // GIL-release rationale (audit #11): see `push_video`.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| self.inner.push_data_to(handle_inner, data, rust_pts));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
     // -----------------------------------------------------------------
-    // Handle getters (video/audio/klv/subtitle × list + by_program +
-    // by_index).
+    // Handle getters (video/audio/klv/subtitle/data × list + by_program
+    // + by_index).
     // -----------------------------------------------------------------
     //
     // Rust surface (verified against tst-core/src/mpegts/mux/*.rs):
@@ -1447,6 +1605,7 @@ impl PyMuxer {
     //   audio_*    — list + by_program             (no by-index getter)
     //   klv_*      — list + by_program + by_index
     //   subtitle_* — list + by_program             (no by-index getter)
+    //   data_*     — list + by_program + by_index
     //
     // `_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
     // surfaces `ProgramNotFound` for an unknown program number; the
@@ -1568,6 +1727,36 @@ impl PyMuxer {
             .subtitle_handles_for_program(program_number)
             .map(|v| v.into_iter().map(PySubtitleStreamHandle).collect())
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// All [`DataStreamHandle`]s across every program, in
+    /// `(program_idx, stream_idx)` add-order.
+    pub fn data_handles(&self) -> Vec<PyDataStreamHandle> {
+        self.inner
+            .data_handles()
+            .into_iter()
+            .map(PyDataStreamHandle)
+            .collect()
+    }
+
+    /// All [`DataStreamHandle`]s belonging to the given program number.
+    /// Raises `MuxError(INVALID_USAGE)` if the program does not exist.
+    pub fn data_handles_for_program(
+        &self,
+        py: Python<'_>,
+        program_number: u16,
+    ) -> PyResult<Vec<PyDataStreamHandle>> {
+        self.inner
+            .data_handles_for_program(program_number)
+            .map(|v| v.into_iter().map(PyDataStreamHandle).collect())
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Single-program convenience: the `index`th data stream of the
+    /// first program, or `None` if out-of-range. Mirrors Rust's
+    /// `Muxer::data_stream_handle` (program 0 only).
+    pub fn data_stream_handle(&self, index: usize) -> Option<PyDataStreamHandle> {
+        self.inner.data_stream_handle(index).map(PyDataStreamHandle)
     }
 
     // -----------------------------------------------------------------

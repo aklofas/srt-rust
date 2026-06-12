@@ -70,6 +70,7 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::mux::PyAudioStreamHandle>()?;
     m.add_class::<crate::mux::PyKlvStreamHandle>()?;
     m.add_class::<crate::mux::PySubtitleStreamHandle>()?;
+    m.add_class::<crate::mux::PyDataStreamHandle>()?;
     // Program-level config + builder.
     m.add_class::<crate::mux::PyMuxerProgramConfig>()?;
     m.add_class::<crate::mux::PyMuxerProgramConfigBuilder>()?;

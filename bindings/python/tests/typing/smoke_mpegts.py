@@ -10,9 +10,12 @@ from typing import Any, List, Literal, Optional, Tuple, Union, assert_type
 
 import tstrans.klv as klv_mod
 from tstrans.mpegts import (
+    DataStreamHandle,
     DemuxEvent,
     Demuxer,
+    Muxer,
     MuxerConfigBuilder,
+    MuxerProgramConfigBuilder,
     Pts90khz,
     VideoCodec,
 )
@@ -66,3 +69,22 @@ assert_type(d.next_event(), Optional[DemuxEvent])
 b = MuxerConfigBuilder()
 assert_type(b.buffer_packets(1024), MuxerConfigBuilder)
 assert_type(VideoCodec.H264, Literal[VideoCodec.H264])
+
+# W3 data-stream surface — builder add_data/stream_descriptors_for_data
+# chain, the push_data pair, the handle-accessor trio, and the
+# DataStreamHandle members (mirrors how the klv handles are smoked).
+pb = MuxerProgramConfigBuilder(1, 0x100)
+assert_type(pb.add_data(0x1F0, 0xF0, carries_pts=True), MuxerProgramConfigBuilder)
+assert_type(
+    pb.stream_descriptors_for_data(0, [b"\xff\x04demo"]), MuxerProgramConfigBuilder
+)
+mux: Muxer
+mux.push_data(b"\x00", pts=Pts90khz.from_raw(0))
+assert_type(mux.data_handles(), List[DataStreamHandle])
+assert_type(mux.data_handles_for_program(1), List[DataStreamHandle])
+assert_type(mux.data_stream_handle(0), Optional[DataStreamHandle])
+dh = DataStreamHandle.from_raw(0)
+assert_type(dh, DataStreamHandle)
+assert_type(dh.raw, int)
+assert_type(dh.unpack(), Tuple[int, int])
+mux.push_data_to(dh, b"\x00", pts=Pts90khz.from_raw(0))

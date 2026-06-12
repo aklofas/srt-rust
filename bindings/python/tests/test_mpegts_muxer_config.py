@@ -246,3 +246,113 @@ def test_muxer_config_is_frozen():
 def test_muxer_config_static_builder_constructor():
     b = MuxerConfig.builder()
     assert isinstance(b, MuxerConfigBuilder)
+
+
+# --- W3: data streams (add_data + stream_descriptors_for_data) ---
+
+from tstrans.mpegts import DataStreamSpec
+
+
+def test_add_data_accepts_user_private_stream_type():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .build()
+    )
+    data_specs = [s for s in cfg.streams if isinstance(s, DataStreamSpec)]
+    assert len(data_specs) == 1
+    assert data_specs[0].pid == 0x1F0
+    assert data_specs[0].stream_type == 0xF0
+    assert data_specs[0].carries_pts is True
+    # Validates clean at top-level build: 0xF0 with no descriptors
+    # classifies as Unknown on the demux side.
+    MuxerConfigBuilder().add_program(cfg).build()
+
+
+def test_add_data_typed_stream_type_rejected_at_build():
+    """0x1B is H.264 — a typed stream_type must use add_video, not
+    add_data. The classify-Unknown rule is enforced Rust-side at
+    MuxerConfig validate/build; the error names the classified kind."""
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0x1B, carries_pts=True)
+        .build()
+    )
+    with pytest.raises(MuxError) as ei:
+        MuxerConfigBuilder().add_program(prog).build()
+    assert ei.value.kind is MuxErrorKind.CONFIG_INVALID
+    msg = str(ei.value)
+    assert "classifies as" in msg
+    assert "Video" in msg
+
+
+def test_add_data_klva_descriptor_masquerade_rejected_at_build():
+    """A bare 0x06 data stream is fine, but adding the KLVA
+    registration descriptor makes it classify as KLV — rejected at
+    build() so a Data spec can't lie to downstream demuxers."""
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0x06, carries_pts=True)
+        .stream_descriptors_for_data(0, [b"\x05\x04KLVA"])
+        .build()
+    )
+    with pytest.raises(MuxError) as ei:
+        MuxerConfigBuilder().add_program(prog).build()
+    assert ei.value.kind is MuxErrorKind.CONFIG_INVALID
+    assert "classifies as" in str(ei.value)
+
+
+def test_add_data_seventeen_streams_rejected_at_build():
+    """Per-program data-stream cap is 16 (mirrors the Rust DATA_CAP);
+    the 17th rejects at validate/build with CONFIG_INVALID."""
+    b = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264)
+    for i in range(17):
+        b = b.add_data(0x200 + i, 0xF0, carries_pts=True)
+    prog = b.build()
+    with pytest.raises(MuxError) as ei:
+        MuxerConfigBuilder().add_program(prog).build()
+    assert ei.value.kind is MuxErrorKind.CONFIG_INVALID
+    assert "too many data streams" in str(ei.value)
+
+
+def test_add_data_stream_type_out_of_u8_range_raises():
+    """stream_type is the raw PMT byte — 0..=255. Out-of-range values
+    reject at the binding boundary (same ValueError shape as the
+    add_audio_with_language language-length check)."""
+    b = MuxerProgramConfigBuilder(1, 0x100)
+    with pytest.raises(ValueError, match="stream_type"):
+        b.add_data(0x1F0, 256, carries_pts=True)
+    with pytest.raises(ValueError, match="stream_type"):
+        b.add_data(0x1F0, -1, carries_pts=True)
+
+
+def test_add_data_carries_pts_is_keyword_only():
+    b = MuxerProgramConfigBuilder(1, 0x100)
+    with pytest.raises(TypeError):
+        b.add_data(0x1F0, 0xF0, True)  # positional carries_pts
+
+
+def test_stream_descriptors_for_data_round_trip():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .stream_descriptors_for_data(0, [b"\xff\x04demo"])
+        .build()
+    )
+    # streams[1] is the data stream; stream_descriptors is indexed
+    # parallel to streams.
+    assert cfg.stream_descriptors[1] == (b"\xff\x04demo",)
+
+
+def test_stream_descriptors_for_data_out_of_range_raises():
+    # DescriptorIndexOutOfRange classifies as INVALID_USAGE (call-order
+    # misuse — no add_data has happened yet), matching the Rust
+    # MuxSenderErrorKind classifier.
+    b = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264)
+    with pytest.raises(MuxError) as ei:
+        b.stream_descriptors_for_data(0, [b"\xff\x04demo"])
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE

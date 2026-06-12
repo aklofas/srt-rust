@@ -386,6 +386,10 @@ pub type TstAudioStreamHandle = u32;
 /// encoding as [`TstVideoStreamHandle`].
 pub type TstSubtitleStreamHandle = u32;
 
+/// Opaque per-program ordinal for a private/application data elementary
+/// stream. Same packed encoding as [`TstVideoStreamHandle`].
+pub type TstDataStreamHandle = u32;
+
 /// Sentinel returned by `tst_mux_config_add_*_stream` on failure.
 /// On failure, the last-error is also populated; check
 /// `tst_get_last_error()` for the negative `TST_E_*` code.

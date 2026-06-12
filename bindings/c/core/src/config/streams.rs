@@ -1,7 +1,7 @@
 //! Per-stream and global-mux configuration entry points.
 //!
 //! Houses the `tst_mux_config_add_*_stream*` constructors (video / klv /
-//! audio / subtitle) plus the four global-mux setters (PCR pid, PCR
+//! audio / subtitle / data) plus the four global-mux setters (PCR pid, PCR
 //! interval, PSI interval, buffer packets). The codec / stream-type enums
 //! that parameterize these entries (`TstVideoCodec`, `TstAudioCodec`,
 //! `TstSubtitleCodec`, `TstKlvStreamType`) live alongside them since they
@@ -11,14 +11,14 @@
 use super::{TstMuxConfig, TstProgramHandle};
 use crate::error::{TstError, set_last_error};
 use crate::handle::{
-    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
-    TstVideoStreamHandle,
+    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstDataStreamHandle, TstKlvStreamHandle,
+    TstSubtitleStreamHandle, TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
 use alloc::vec::Vec;
 use tst_core::mpegts::mux::{
-    AudioCodec, AudioStreamHandle, KlvStreamHandle, KlvStreamType, StreamSpec, SubtitleCodec,
-    SubtitleStreamHandle, VideoCodec, VideoStreamHandle,
+    AudioCodec, AudioStreamHandle, DataStreamHandle, KlvStreamHandle, KlvStreamType, StreamSpec,
+    SubtitleCodec, SubtitleStreamHandle, VideoCodec, VideoStreamHandle,
 };
 
 /// Add a video elementary stream to the specified program and return its
@@ -138,6 +138,69 @@ pub unsafe extern "C" fn tst_mux_config_add_klv_stream(
         });
         prog.stream_descriptors.push(Vec::new());
         KlvStreamHandle::pack(prog_idx, within_idx).raw()
+    })
+}
+
+/// Add an arbitrary private/application data elementary stream (PES
+/// pass-through, the write-side dual of demux `TST_STREAM_KIND_UNKNOWN`)
+/// to the specified program and return its handle.
+///
+/// `stream_type` is the raw PMT `stream_type` byte (e.g. 0xF0/0xF1
+/// user-private, bare 0x06) — there is no enum; the byte is emitted in the
+/// PMT verbatim. The `(stream_type, descriptors)` pair must classify as
+/// Unknown under the demux cascade (no typed stream_type codepoints, no
+/// classifying descriptors) — that anti-masquerade rule is enforced at
+/// `_open` time (config validation), not here.
+///
+/// `carries_pts`: when `true` the PES header carries the PTS passed to
+/// each `push_data_to`; when `false` the PES omits the PTS field entirely.
+/// The push-time PTS is **always** used for PSI/PCR pacing decisions
+/// regardless.
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+/// `tst_mux_config_add_video_stream`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_data_stream(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    stream_type: u8,
+    carries_pts: bool,
+) -> TstDataStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // within_idx for data handles is the index among data streams only
+        // (Muxer builds data_streams[prog] as a filtered subset of streams).
+        let within_idx = prog
+            .streams
+            .iter()
+            .filter(|s| matches!(s, StreamSpec::Data { .. }))
+            .count();
+        if within_idx >= 16 {
+            // DataStreamHandle::pack() debug_asserts within_index < 16; reject
+            // before that fires so the C caller gets a defined error.
+            set_last_error(
+                TstError::InvalidUsage,
+                "per-program data stream cap (16) exceeded",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        prog.streams.push(StreamSpec::Data {
+            pid,
+            stream_type,
+            carries_pts,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        DataStreamHandle::pack(prog_idx, within_idx).raw()
     })
 }
 

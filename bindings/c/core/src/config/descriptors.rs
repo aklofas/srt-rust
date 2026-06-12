@@ -10,11 +10,12 @@
 use super::{TstMuxConfig, TstProgramHandle};
 use crate::error::{TstError, set_last_error};
 use crate::handle::{
-    TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+    TstAudioStreamHandle, TstDataStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
+    TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
 use alloc::vec::Vec;
-use tst_core::mpegts::mux::{KlvStreamHandle, StreamSpec, VideoStreamHandle};
+use tst_core::mpegts::mux::{DataStreamHandle, KlvStreamHandle, StreamSpec, VideoStreamHandle};
 
 /// Set program-level PMT descriptors for the specified program.
 ///
@@ -193,6 +194,76 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
                 set_last_error(
                     TstError::InvalidUsage,
                     "invalid klv stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        let descs = unsafe {
+            match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+                Ok(d) => d,
+                Err(rc) => return rc,
+            }
+        };
+        prog.stream_descriptors[stream_idx] = descs;
+        0
+    })
+}
+
+/// Set per-stream PMT descriptors for the specified data stream.
+///
+/// `data` is a handle previously returned by `tst_mux_config_add_data_stream`.
+/// The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
+///
+/// Returns 0 on success or a negative `TST_E_*` code on the same conditions
+/// as `tst_mux_config_set_stream_descriptors_for_video`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_data(
+    cfg: *mut TstMuxConfig,
+    data: TstDataStreamHandle,
+    tlv_bytes: *const u8,
+    tlv_total_len: usize,
+    tlv_count: usize,
+) -> crate::c_types::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Trust-boundary validation — see VideoStreamHandle::try_from_raw
+        // rationale in tst_mux_config_set_stream_descriptors_for_video above.
+        let (prog_idx, data_within_idx) = match DataStreamHandle::try_from_raw(data) {
+            Ok(h) => h.unpack(),
+            Err(_) => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid data stream handle (non-canonical raw bits set)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid data stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // data_within_idx is the index among data streams only; find the parallel
+        // position in prog.streams (which holds all stream kinds interleaved).
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
+            .nth(data_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid data stream handle (stream out of range)",
                 );
                 return TstError::InvalidUsage as i32;
             }
@@ -478,6 +549,66 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_descriptor(
                 set_last_error(
                     TstError::InvalidUsage,
                     "invalid subtitle stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        prog.stream_descriptors[stream_idx].push(tlv);
+        0
+    })
+}
+
+/// Append one PMT descriptor to a data stream's per-PID descriptor list.
+/// Same contract as `tst_mux_config_add_video_descriptor`.
+///
+/// `stream` is the handle returned by `tst_mux_config_add_data_stream`.
+/// Note the muxer never auto-emits a descriptor on a data stream, and the
+/// accumulated `(stream_type, descriptors)` pair must still classify as
+/// Unknown under the demux cascade — enforced at `_open` time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_data_descriptor(
+    cfg: *mut TstMuxConfig,
+    stream: TstDataStreamHandle,
+    desc: *const crate::event::TstDescriptor,
+) -> crate::c_types::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let Some(desc) = (unsafe { desc.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null descriptor pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let tlv = unsafe {
+            match desc_to_tlv_blob(desc) {
+                Ok(b) => b,
+                Err(rc) => return rc,
+            }
+        };
+        let prog_idx = (stream >> 4) as usize;
+        let data_within_idx = (stream & 0xF) as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid data stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
+            .nth(data_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid data stream handle (stream out of range)",
                 );
                 return TstError::InvalidUsage as i32;
             }

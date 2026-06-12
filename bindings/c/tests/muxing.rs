@@ -9,6 +9,8 @@
 mod audio_subtitle;
 #[path = "muxing/codec_stats.rs"]
 mod codec_stats;
+#[path = "muxing/data_stream.rs"]
+mod data_stream;
 #[path = "muxing/demux_config_av1_parity.rs"]
 mod demux_config_av1_parity;
 #[path = "muxing/multi_program.rs"]

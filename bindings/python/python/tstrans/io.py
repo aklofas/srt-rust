@@ -344,7 +344,7 @@ def transmux(
     subtitling/teletext) fail the conversion with `MuxError` naming the
     offenders, and a source carrying unknown stream types raises
     `ValueError` at the transmux level — a TEMPORARY guard, pending the
-    data-stream push surface: the config conversion can now represent
+    data-stream push surface: the config conversion can represent
     them, but transmux cannot yet route their samples, so passing them
     through would silently emit declared-but-empty data PIDs. Pass the
     offending kinds in `drop` (e.g. `drop=[StreamKindTag.UNKNOWN]`) to

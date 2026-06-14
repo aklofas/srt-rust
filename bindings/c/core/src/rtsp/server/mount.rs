@@ -46,7 +46,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 
 use crate::config::TstMuxConfig;
@@ -54,7 +54,8 @@ use crate::error::{
     TstError, mount_error_to_code, record_mux_error, rtsp_server_error_to_code, set_last_error,
 };
 use crate::handle::{
-    TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+    TstAudioStreamHandle, TstDataStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
+    TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
 use crate::rtsp::server::types::{TstRtspMountHandle, TstRtspServer};
@@ -544,6 +545,53 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle(
     })
 }
 
+/// Push one data payload through the mount's single data stream and out the
+/// RTSP broadcast fanout (single-stream shorthand).
+///
+/// Pass-through: `data` lands verbatim as one PES packet on `stream_id`
+/// 0xBD. PTS is written only for `carries_pts = true` streams.
+///
+/// Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+/// `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+/// `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `data` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_data(
+    handle: *mut TstRtspMountHandle,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_data(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_data failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Push — multi-stream (_to) variants
 // ---------------------------------------------------------------------------
@@ -758,6 +806,56 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle_to(
             Err(e) => {
                 let code = mount_error_to_code(&e);
                 set_last_error(code, &format!("push_subtitle_to failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one data payload targeting a specific data elementary stream.
+///
+/// On a single-stream mount, prefer `tst_rtsp_mount_push_data`.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `data` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_data_to(
+    handle: *mut TstRtspMountHandle,
+    stream_handle: TstDataStreamHandle,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        // Trust-boundary validation — see push_video_to rationale above.
+        let stream = match DataStreamHandle::try_from_raw(stream_handle) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::error::record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_data_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_data_to failed: {e}"));
                 code as i32
             }
         }
@@ -1038,6 +1136,20 @@ mod tests {
     fn push_subtitle_null_handle_returns_invalid_config() {
         let rc =
             unsafe { tst_rtsp_mount_push_subtitle(std::ptr::null_mut(), [0u8; 4].as_ptr(), 4, 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn push_data_null_handle_returns_invalid_config() {
+        let rc = unsafe { tst_rtsp_mount_push_data(std::ptr::null_mut(), [0u8; 4].as_ptr(), 4, 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn push_data_to_null_handle_returns_invalid_config() {
+        let rc = unsafe {
+            tst_rtsp_mount_push_data_to(std::ptr::null_mut(), 0, [0u8; 4].as_ptr(), 4, 0)
+        };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 

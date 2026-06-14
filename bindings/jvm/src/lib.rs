@@ -33,10 +33,12 @@ use jni::sys::jstring;
 /// resolves it.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_Version_versionString<'local>(
-    env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    env.new_string(env!("CARGO_PKG_VERSION"))
-        .expect("failed to allocate Java string")
-        .into_raw()
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        env.new_string(env!("CARGO_PKG_VERSION"))
+            .expect("failed to allocate Java string")
+            .into_raw()
+    })
 }

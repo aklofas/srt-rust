@@ -55,10 +55,10 @@ static REGISTRY: LazyLock<HandleRegistry<Demuxer>> = LazyLock::new(HandleRegistr
 /// its raw pointer as a `jlong` handle.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpen<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jlong {
-    REGISTRY.insert(Demuxer::new()) as jlong
+    crate::panic::jni_catch(&mut env, 0, |_env| REGISTRY.insert(Demuxer::new()) as jlong)
 }
 
 /// `nOpenWithConfig(...)` — build a configured [`Demuxer`]. The `strict`/`av1`
@@ -69,7 +69,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpen<'local>(
 /// `build_demuxer_config` field-by-field.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     strict: jint,
     pes_cap_per_pid: jlong,
@@ -79,16 +79,18 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    let opts = build_demux_config_from_args(
-        strict,
-        pes_cap_per_pid,
-        pes_cap_total,
-        cfi,
-        av1,
-        au_cell_cap,
-        lenient_psi,
-    );
-    REGISTRY.insert(Demuxer::with_config(opts)) as jlong
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        let opts = build_demux_config_from_args(
+            strict,
+            pes_cap_per_pid,
+            pes_cap_total,
+            cfi,
+            av1,
+            au_cell_cap,
+            lenient_psi,
+        );
+        REGISTRY.insert(Demuxer::with_config(opts)) as jlong
+    })
 }
 
 /// Assemble a `tst_core` [`DemuxerConfig`] from the 7 marshalled JNI primitives
@@ -147,13 +149,15 @@ pub(crate) fn build_demux_config_from_args(
 /// flush/finalize).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nClose<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    // The winning close gets the demuxer back; it has no extra teardown, so just
-    // let it drop here.
-    let _ = REGISTRY.close(handle as u64);
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // The winning close gets the demuxer back; it has no extra teardown, so just
+        // let it drop here.
+        let _ = REGISTRY.close(handle as u64);
+    })
 }
 
 /// `nFeed(handle, bytes)` — read the Java byte array into a Rust buffer and feed
@@ -167,19 +171,21 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
     handle: jlong,
     bytes: JByteArray<'local>,
 ) {
-    let buf = match env.convert_byte_array(&bytes) {
-        Ok(b) => b,
-        Err(_) => {
-            throw_demux(&mut env, "INTERNAL", "failed to read byte[] argument");
-            return;
-        }
-    };
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let buf = match env.convert_byte_array(&bytes) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_demux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
 
-    match REGISTRY.with(handle as u64, |dx| dx.feed(&buf)) {
-        Some(Ok(())) => {}
-        Some(Err(e)) => throw_demux_error(&mut env, &e),
-        None => closed(&mut env),
-    }
+        match REGISTRY.with(handle as u64, |dx| dx.feed(&buf)) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_demux_error(env, &e),
+            None => closed(env),
+        }
+    })
 }
 
 /// Map a `tst_core` [`DemuxError`] to a thrown `org.tstrans.DemuxException`,
@@ -208,9 +214,11 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    if REGISTRY.with(handle as u64, |dx| dx.flush()).is_none() {
-        closed(&mut env);
-    }
+    crate::panic::jni_catch(&mut env, (), |env| {
+        if REGISTRY.with(handle as u64, |dx| dx.flush()).is_none() {
+            closed(env);
+        }
+    })
 }
 
 /// `nNextEvent(handle)` — pull the next event, converting it to a Java
@@ -224,35 +232,36 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    // Lease + drive the pull loop under the resource lock. `with` runs the
-    // closure synchronously, so capturing `&mut env` to build the Java record
-    // in-place is sound. `None` (closed/absent) → IllegalStateException.
-    let env = &mut env;
-    let result = REGISTRY.with(handle as u64, |dx| {
-        loop {
-            let Some(ev) = dx.next_event() else {
-                return JObject::null().into_raw();
-            };
-            match convert_event(env, &ev) {
-                Ok(Some(obj)) => return obj.into_raw(),
-                // All current `DemuxEvent` variants map to `Ok(Some(..))`, so this
-                // branch is currently unreachable; retained as a forward-compat
-                // guard should a future skip-worthy variant appear.
-                Ok(None) => continue,
-                Err(()) => {
-                    throw_demux(env, "INTERNAL", "event conversion failed");
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Lease + drive the pull loop under the resource lock. `with` runs the
+        // closure synchronously, so capturing `env` (`&mut JNIEnv`) to build the
+        // Java record in-place is sound. `None` (closed/absent) → IllegalStateException.
+        let result = REGISTRY.with(handle as u64, |dx| {
+            loop {
+                let Some(ev) = dx.next_event() else {
                     return JObject::null().into_raw();
+                };
+                match convert_event(env, &ev) {
+                    Ok(Some(obj)) => return obj.into_raw(),
+                    // All current `DemuxEvent` variants map to `Ok(Some(..))`, so this
+                    // branch is currently unreachable; retained as a forward-compat
+                    // guard should a future skip-worthy variant appear.
+                    Ok(None) => continue,
+                    Err(()) => {
+                        throw_demux(env, "INTERNAL", "event conversion failed");
+                        return JObject::null().into_raw();
+                    }
                 }
             }
+        });
+        match result {
+            Some(obj) => obj,
+            None => {
+                closed(env);
+                JObject::null().into_raw()
+            }
         }
-    });
-    match result {
-        Some(obj) => obj,
-        None => {
-            closed(env);
-            JObject::null().into_raw()
-        }
-    }
+    })
 }
 
 /// Throw `IllegalStateException` for a leased call that found a closed/absent

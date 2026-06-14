@@ -342,12 +342,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideoTo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &nal) else {
             return;
@@ -370,12 +370,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlvTo<'local>(
     metadata_service_id: jint,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| KlvStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+            return;
         };
         let Ok(service_id) = checked_u8(env, i64::from(metadata_service_id), "metadataServiceId")
         else {
@@ -401,12 +401,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudioTo<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| AudioStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &frames) else {
             return;
@@ -428,12 +428,12 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
     payload: JByteArray<'local>,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| SubtitleStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &payload) else {
             return;
@@ -447,9 +447,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
 /// `nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
 /// validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
 /// chain (rejecting negative / out-of-u32 values up front rather than
-/// truncating, mirroring `Muxer::nPushDataTo`). The older `*To` siblings in
-/// this file still decode their handles with the truncating `as u32` cast;
-/// hardening them is deliberately deferred.
+/// truncating, mirroring `Muxer::nPushDataTo`).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushDataTo<'local>(
     mut env: JNIEnv<'local>,

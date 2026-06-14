@@ -787,14 +787,14 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideoTo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                // MountHandle has no transport concept — a forged handle is a MOUNT error
-                // (DIFFERS from MuxSender, which maps forged handles to RtpException(TRANSPORT)).
-                throw_rtsp(env, "MOUNT", "invalid stream handle");
-                return;
-            }
+        // MountHandle has no transport concept — a forged handle is a MOUNT error
+        // (DIFFERS from MuxSender, which maps forged handles to RtpException(TRANSPORT)).
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_rtsp(env, "MOUNT", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &nal) else {
             return;
@@ -822,12 +822,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlvTo<'local>(
     metadata_service_id: jint,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_rtsp(env, "MOUNT", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| KlvStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_rtsp(env, "MOUNT", "invalid stream handle");
+            return;
         };
         let Ok(service_id) = checked_u8(env, i64::from(metadata_service_id), "metadataServiceId")
         else {
@@ -858,12 +858,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudioTo<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_rtsp(env, "MOUNT", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| AudioStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_rtsp(env, "MOUNT", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &frames) else {
             return;
@@ -890,12 +890,12 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitleTo<'local>(
     payload: JByteArray<'local>,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
-            Ok(h) => h,
-            Err(_) => {
-                throw_rtsp(env, "MOUNT", "invalid stream handle");
-                return;
-            }
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| SubtitleStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_rtsp(env, "MOUNT", "invalid stream handle");
+            return;
         };
         let Some(buf) = read_bytes(env, &payload) else {
             return;

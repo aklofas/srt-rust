@@ -44,21 +44,25 @@ pub extern "system" fn Java_org_tstrans_rtp_CancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    if REGISTRY_CANCEL
-        .with(handle as u64, |c| c.inner.cancel())
-        .is_none()
-    {
-        let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-    }
+    crate::panic::jni_catch(&mut env, (), |env| {
+        if REGISTRY_CANCEL
+            .with(handle as u64, |c| c.inner.cancel())
+            .is_none()
+        {
+            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+        }
+    })
 }
 
 /// Free the boxed cancel handle.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_CancelHandle_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
     // Atomic + idempotent drop.
-    let _ = REGISTRY_CANCEL.close(handle as u64);
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        let _ = REGISTRY_CANCEL.close(handle as u64);
+    })
 }

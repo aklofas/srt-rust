@@ -79,44 +79,46 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nFromUrl(
     pkt_size: jint,
     ssrc_boxed: JObject<'_>,
 ) -> jlong {
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return 0;
-        }
-    };
-    let ssrc = match unbox_ssrc(&mut env, &ssrc_boxed) {
-        Ok(v) => v,
-        Err(()) => return 0,
-    };
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
+        let ssrc = match unbox_ssrc(env, &ssrc_boxed) {
+            Ok(v) => v,
+            Err(()) => return 0,
+        };
 
-    let mut builder = match RtpSocketBuilder::from_url(&url_str) {
-        Ok(b) => b,
-        Err(e) => {
-            throw_rtp(&mut env, "TRANSPORT", &e.to_string());
-            return 0;
+        let mut builder = match RtpSocketBuilder::from_url(&url_str) {
+            Ok(b) => b,
+            Err(e) => {
+                throw_rtp(env, "TRANSPORT", &e.to_string());
+                return 0;
+            }
+        };
+        builder.pkt_size(pkt_size.max(0) as usize);
+        if let Some(s) = ssrc {
+            builder.ssrc(s);
         }
-    };
-    builder.pkt_size(pkt_size.max(0) as usize);
-    if let Some(s) = ssrc {
-        builder.ssrc(s);
-    }
-    let inner = match builder.build() {
-        Ok(t) => t,
-        Err(e) => {
-            connect_error_to_rtp(&mut env, &e);
-            return 0;
-        }
-    };
-    let cancel = inner
-        .cancel_handle()
-        .expect("RtpTransport always returns Some(cancel_handle)");
-    let cancel_for_hook = cancel.clone();
-    REGISTRY_SENDER.insert_with_cancel(
-        JniRtpSender { inner, cancel },
-        Some(Box::new(move || cancel_for_hook.cancel())),
-    ) as jlong
+        let inner = match builder.build() {
+            Ok(t) => t,
+            Err(e) => {
+                connect_error_to_rtp(env, &e);
+                return 0;
+            }
+        };
+        let cancel = inner
+            .cancel_handle()
+            .expect("RtpTransport always returns Some(cancel_handle)");
+        let cancel_for_hook = cancel.clone();
+        REGISTRY_SENDER.insert_with_cancel(
+            JniRtpSender { inner, cancel },
+            Some(Box::new(move || cancel_for_hook.cancel())),
+        ) as jlong
+    })
 }
 
 /// Send one MPEG-TS payload chunk over RTP. Throws `RtpException` on failure.
@@ -127,20 +129,22 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSend(
     handle: jlong,
     data: JByteArray<'_>,
 ) {
-    let bytes: Vec<u8> = match env.convert_byte_array(&data) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return;
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let bytes: Vec<u8> = match env.convert_byte_array(&data) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return;
+            }
+        };
+        match REGISTRY_SENDER.with(handle as u64, |w| w.inner.send_bytes(&bytes)) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => transport_error_to_rtp(env, &e),
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
+            }
         }
-    };
-    match REGISTRY_SENDER.with(handle as u64, |w| w.inner.send_bytes(&bytes)) {
-        Some(Ok(())) => {}
-        Some(Err(e)) => transport_error_to_rtp(&mut env, &e),
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
-        }
-    }
+    })
 }
 
 /// Return a `SocketStats` record. Returns null on JNI builder error (non-fatal).
@@ -150,43 +154,49 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |w| {
-        w.inner.socket_stats().unwrap_or_default()
-    }) else {
-        return JObject::null();
-    };
-    build_socket_stats(&mut env, &stats).unwrap_or_else(|_| JObject::null())
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_SENDER.with(handle as u64, |w| {
+            w.inner.socket_stats().unwrap_or_default()
+        }) else {
+            return JObject::null();
+        };
+        build_socket_stats(env, &stats).unwrap_or_else(|_| JObject::null())
+    })
 }
 
 /// Return a cancel-handle `jlong` (Box<JniRtpCancel>).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Sender_nCancelHandle(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    REGISTRY_SENDER
-        .with(handle as u64, |w| {
-            JniRtpCancel {
-                inner: w.cancel.clone(),
-            }
-            .into_handle()
-        })
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_SENDER
+            .with(handle as u64, |w| {
+                JniRtpCancel {
+                    inner: w.cancel.clone(),
+                }
+                .into_handle()
+            })
+            .unwrap_or(0)
+    })
 }
 
 /// Close the Sender, freeing the native box. The cancel hook fires first (waking
 /// a parked `send`) before the resource is taken.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Sender_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
     // Atomic + idempotent: cancel hook wakes a parked send, then take + teardown.
-    if let Some(mut w) = REGISTRY_SENDER.close(handle as u64) {
-        w.inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        if let Some(mut w) = REGISTRY_SENDER.close(handle as u64) {
+            w.inner.close();
+        }
+    })
 }
 
 // ── Receiver (org.tstrans.rtp.Receiver) ────────────────────────────────────
@@ -200,41 +210,43 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nFromUrl(
     url: JString<'_>,
     pkt_size: jint,
 ) -> jlong {
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return 0;
-        }
-    };
-    let mut builder = match RtpRecvSocketBuilder::from_url(&url_str) {
-        Ok(b) => b,
-        Err(e) => {
-            throw_rtp(&mut env, "TRANSPORT", &e.to_string());
-            return 0;
-        }
-    };
-    builder.pkt_size(pkt_size.max(0) as usize);
-    let inner = match builder.build() {
-        Ok(t) => t,
-        Err(e) => {
-            connect_error_to_rtp(&mut env, &e);
-            return 0;
-        }
-    };
-    let scratch_len = inner.max_payload();
-    let cancel = inner
-        .cancel_handle()
-        .expect("RtpRecvTransport always returns Some(cancel_handle)");
-    let cancel_for_hook = cancel.clone();
-    REGISTRY_RECEIVER.insert_with_cancel(
-        JniRtpReceiver {
-            inner,
-            cancel,
-            scratch: vec![0u8; scratch_len],
-        },
-        Some(Box::new(move || cancel_for_hook.cancel())),
-    ) as jlong
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
+        let mut builder = match RtpRecvSocketBuilder::from_url(&url_str) {
+            Ok(b) => b,
+            Err(e) => {
+                throw_rtp(env, "TRANSPORT", &e.to_string());
+                return 0;
+            }
+        };
+        builder.pkt_size(pkt_size.max(0) as usize);
+        let inner = match builder.build() {
+            Ok(t) => t,
+            Err(e) => {
+                connect_error_to_rtp(env, &e);
+                return 0;
+            }
+        };
+        let scratch_len = inner.max_payload();
+        let cancel = inner
+            .cancel_handle()
+            .expect("RtpRecvTransport always returns Some(cancel_handle)");
+        let cancel_for_hook = cancel.clone();
+        REGISTRY_RECEIVER.insert_with_cancel(
+            JniRtpReceiver {
+                inner,
+                cancel,
+                scratch: vec![0u8; scratch_len],
+            },
+            Some(Box::new(move || cancel_for_hook.cancel())),
+        ) as jlong
+    })
 }
 
 /// Receive one MPEG-TS payload chunk (RTP header already stripped). Returns the
@@ -245,33 +257,35 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jbyteArray {
-    // `recv_bytes` may park; the closure holds the resource lock for its
-    // duration. A concurrent `close()` fires the cancel hook (waking the recv)
-    // before taking the lock. We copy the received bytes OUT of `scratch` inside
-    // the closure so the Java array is built after the lease releases.
-    let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |w| {
-        let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
-        Ok::<Vec<u8>, _>(w.scratch[..n].to_vec())
-    }) else {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
-        return std::ptr::null_mut();
-    };
-    match res {
-        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-            Ok(arr) => arr.into_raw(),
-            // Allocating the Java array failed (effectively OOM). Throw rather
-            // than return null silently, so `recv()` always yields bytes or an
-            // RtpException — matching tst-py's contract (it never returns None).
-            Err(_) => {
-                throw_rtp(&mut env, "TRANSPORT", "failed to allocate received packet");
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // `recv_bytes` may park; the closure holds the resource lock for its
+        // duration. A concurrent `close()` fires the cancel hook (waking the recv)
+        // before taking the lock. We copy the received bytes OUT of `scratch` inside
+        // the closure so the Java array is built after the lease releases.
+        let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |w| {
+            let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
+            Ok::<Vec<u8>, _>(w.scratch[..n].to_vec())
+        }) else {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
+            return std::ptr::null_mut();
+        };
+        match res {
+            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                Ok(arr) => arr.into_raw(),
+                // Allocating the Java array failed (effectively OOM). Throw rather
+                // than return null silently, so `recv()` always yields bytes or an
+                // RtpException — matching tst-py's contract (it never returns None).
+                Err(_) => {
+                    throw_rtp(env, "TRANSPORT", "failed to allocate received packet");
+                    std::ptr::null_mut()
+                }
+            },
+            Err(e) => {
+                transport_error_to_rtp(env, &e);
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            transport_error_to_rtp(&mut env, &e);
-            std::ptr::null_mut()
         }
-    }
+    })
 }
 
 /// Return a `SocketStats` record. Returns null on JNI builder error (non-fatal).
@@ -281,29 +295,33 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |w| {
-        w.inner.socket_stats().unwrap_or_default()
-    }) else {
-        return JObject::null();
-    };
-    build_socket_stats(&mut env, &stats).unwrap_or_else(|_| JObject::null())
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |w| {
+            w.inner.socket_stats().unwrap_or_default()
+        }) else {
+            return JObject::null();
+        };
+        build_socket_stats(env, &stats).unwrap_or_else(|_| JObject::null())
+    })
 }
 
 /// Return a cancel-handle `jlong` (Box<JniRtpCancel>).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Receiver_nCancelHandle(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    REGISTRY_RECEIVER
-        .with(handle as u64, |w| {
-            JniRtpCancel {
-                inner: w.cancel.clone(),
-            }
-            .into_handle()
-        })
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_RECEIVER
+            .with(handle as u64, |w| {
+                JniRtpCancel {
+                    inner: w.cancel.clone(),
+                }
+                .into_handle()
+            })
+            .unwrap_or(0)
+    })
 }
 
 /// Close the Receiver, freeing the native box. The cancel hook fires first
@@ -311,12 +329,14 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nCancelHandle(
 /// `PyReceiver.close`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_Receiver_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
     // Atomic + idempotent: cancel hook wakes a parked recv, then take + teardown.
-    if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
-        w.inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        if let Some(mut w) = REGISTRY_RECEIVER.close(handle as u64) {
+            w.inner.close();
+        }
+    })
 }

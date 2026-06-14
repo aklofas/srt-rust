@@ -501,7 +501,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
         let out_len = match env.get_array_length(&out) {
             Ok(l) => l as usize,
             Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] length");
+                let _ = env.throw_new("java/lang/RuntimeException", "failed to read byte[] length");
                 return 0;
             }
         };
@@ -520,7 +520,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
         // read by `set_byte_array_region`.
         let i8_view = unsafe { core::slice::from_raw_parts(scratch.as_ptr() as *const i8, n) };
         if env.set_byte_array_region(&out, 0, i8_view).is_err() {
-            throw_mux(env, "INTERNAL", "failed to write byte[] result");
+            let _ = env.throw_new("java/lang/RuntimeException", "failed to write byte[] result");
             return 0;
         }
         n as jint

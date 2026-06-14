@@ -7517,6 +7517,10 @@ item = "tst_rtp::rtsp::server::mount::MountHandle::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rtp::rtsp::server::mount::MountHandle::data_handles"
+reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_rtp::rtsp::server::mount::MountHandle::klv_handles"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -7546,6 +7550,14 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 
 [[exempt]]
 item = "tst_rtp::rtsp::server::mount::MountHandle::push_klv_to"
+reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rtp::rtsp::server::mount::MountHandle::push_data"
+reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rtp::rtsp::server::mount::MountHandle::push_data_to"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

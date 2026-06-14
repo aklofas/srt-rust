@@ -53,7 +53,7 @@ use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtU
 
 use crate::errors::{make_demux_error, make_srt_error, mux_error_to_pyerr};
 use crate::mux::{
-    PyAudioStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
+    PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PyMuxerStats,
     PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
 };
 use crate::srt::errors::{
@@ -286,8 +286,6 @@ impl PyManagedMuxSender {
     }
 
     // ── Push family — single-stream variants ──────────────────────────────
-    // No `push_data` here deliberately (W3 private-data arc) — same gap as
-    // rtp's `PyMountHandle`; recorded internal-consistency follow-up, W5.
 
     /// Push one video access unit onto the lone configured video stream.
     /// Annex-B framing for H.264/H.265/H.266; raw OBU stream for AV1.
@@ -365,6 +363,26 @@ impl PyManagedMuxSender {
         let coerced = coerce_bytes_like(py, payload)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_subtitle(slice, rust_pts));
+        res.map_err(|e| mux_sender_error_to_pyerr(py, e))
+    }
+
+    /// Push one data payload onto the lone configured data stream.
+    /// Pass-through: lands verbatim as one PES packet on stream_id 0xBD.
+    #[pyo3(signature = (data, *, pts))]
+    fn push_data(
+        &self,
+        py: Python<'_>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_srt_error(py, "CLOSED", "ManagedMuxSender is closed"))?;
+        let rust_pts = py_pts90khz(pts)?;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| inner.send_data(slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
@@ -455,6 +473,26 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
+    #[pyo3(signature = (handle, data, *, pts))]
+    fn push_data_to(
+        &self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyDataStreamHandle>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| make_srt_error(py, "CLOSED", "ManagedMuxSender is closed"))?;
+        let rust_pts = py_pts90khz(pts)?;
+        let handle_inner = handle.0;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| inner.send_data_to(handle_inner, slice, rust_pts));
+        res.map_err(|e| mux_sender_error_to_pyerr(py, e))
+    }
+
     // ── Handle getters ────────────────────────────────────────────────────
 
     fn video_handle(&self) -> Option<PyVideoStreamHandle> {
@@ -491,6 +529,15 @@ impl PyManagedMuxSender {
             .into_iter()
             .next()
             .map(PySubtitleStreamHandle)
+    }
+
+    fn data_handle(&self) -> Option<PyDataStreamHandle> {
+        let inner = self.inner.as_ref()?;
+        inner
+            .data_handles()
+            .into_iter()
+            .next()
+            .map(PyDataStreamHandle)
     }
 
     // ── Stats ──────────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ import tstrans
 import tstrans.srt
 from tstrans.exceptions import SrtError, SrtErrorKind
 from tstrans.mpegts import (
+    DataStreamHandle,
     DemuxEvent,
     DemuxerConfig,
     MuxerProgramConfigBuilder,
@@ -62,6 +63,16 @@ def _video_only_program() -> object:
     return (
         MuxerProgramConfigBuilder(1, 0x100)
         .add_video(0x101, VideoCodec.H264)
+        .build()
+    )
+
+
+def _video_data_program() -> object:
+    """Video + one private data stream (user-private stream_type 0xF0)."""
+    return (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
         .build()
     )
 
@@ -322,3 +333,154 @@ def test_managed_demux_receiver_iter_returns_self() -> None:
     finally:
         sender.close()
         receiver.close()
+
+
+# --------------------------------------------------------------------------- #
+# push_data / push_data_to / data_handle                                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_data_handle_none_for_video_only_program() -> None:
+    """data_handle() returns None when no data stream is configured."""
+    port = _free_tcp_port()
+    sender, receiver = _make_managed_pair(port)
+    try:
+        assert sender.data_handle() is None
+    finally:
+        sender.close()
+        receiver.close()
+
+
+def test_data_handle_returns_handle_for_data_program() -> None:
+    """data_handle() returns a DataStreamHandle when a data stream is
+    configured in the program."""
+    port = _free_tcp_port()
+    listener_url = f"srt://:{port}?mode=listener"
+    caller_url = f"srt://127.0.0.1:{port}?mode=caller"
+
+    rx_box: list[ManagedDemuxReceiver] = []
+    rx_err: list[BaseException] = []
+
+    def accept_worker() -> None:
+        try:
+            r = ManagedDemuxReceiver.from_url(listener_url, policy=_fast_policy())
+            rx_box.append(r)
+        except BaseException as exc:  # noqa: BLE001
+            rx_err.append(exc)
+
+    t = threading.Thread(target=accept_worker, daemon=True)
+    t.start()
+    time.sleep(0.1)
+    sender = ManagedMuxSender.from_url(
+        caller_url, _video_data_program(), policy=_fast_policy()
+    )
+    t.join(timeout=5.0)
+    if rx_err:
+        sender.close()
+        raise rx_err[0]
+    receiver = rx_box[0]
+    try:
+        h = sender.data_handle()
+        assert h is not None
+        assert isinstance(h, DataStreamHandle)
+    finally:
+        sender.close()
+        receiver.close()
+
+
+def test_push_data_on_closed_sender_raises_closed() -> None:
+    """push_data on a closed ManagedMuxSender raises SrtError(CLOSED)."""
+    port = _free_tcp_port()
+    listener_url = f"srt://:{port}?mode=listener"
+    caller_url = f"srt://127.0.0.1:{port}?mode=caller"
+
+    rx_box: list[ManagedDemuxReceiver] = []
+
+    def accept_worker() -> None:
+        try:
+            r = ManagedDemuxReceiver.from_url(listener_url, policy=_fast_policy())
+            rx_box.append(r)
+        except BaseException:  # noqa: BLE001
+            pass
+
+    t = threading.Thread(target=accept_worker, daemon=True)
+    t.start()
+    time.sleep(0.1)
+    sender = ManagedMuxSender.from_url(
+        caller_url, _video_data_program(), policy=_fast_policy()
+    )
+    t.join(timeout=5.0)
+    if rx_box:
+        rx_box[0].close()
+    sender.close()
+    with pytest.raises(SrtError) as exc_info:
+        sender.push_data(b"\x01\x02\x03", pts=Pts90khz.from_raw(0))
+    assert exc_info.value.kind == SrtErrorKind.CLOSED
+
+
+def test_push_data_and_push_data_to_land_bytes() -> None:
+    """push_data (single-stream) + push_data_to (explicit handle) both
+    succeed and produce at least one event on the receiver side."""
+    port = _free_tcp_port()
+    listener_url = f"srt://:{port}?mode=listener"
+    caller_url = f"srt://127.0.0.1:{port}?mode=caller"
+
+    DATA_RECORD = b"\x01\x02\x03\x04private-record"
+    # Also push a key-frame video NAL so the demuxer can emit a ProgramMap.
+    NAL_IDR_DATA = b"\x00\x00\x00\x01\x65\xBB"
+
+    rx_box: list[ManagedDemuxReceiver] = []
+    rx_err: list[BaseException] = []
+
+    def accept_worker() -> None:
+        try:
+            r = ManagedDemuxReceiver.from_url(listener_url, policy=_fast_policy())
+            rx_box.append(r)
+        except BaseException as exc:  # noqa: BLE001
+            rx_err.append(exc)
+
+    t = threading.Thread(target=accept_worker, daemon=True)
+    t.start()
+    time.sleep(0.1)
+    sender = ManagedMuxSender.from_url(
+        caller_url, _video_data_program(), policy=_fast_policy()
+    )
+    t.join(timeout=5.0)
+    if rx_err:
+        sender.close()
+        raise rx_err[0]
+    receiver = rx_box[0]
+
+    events: list[object] = []
+    consumer_err: list[BaseException] = []
+
+    def consumer() -> None:
+        try:
+            for ev in receiver:
+                events.append(ev)
+                if isinstance(ev, (DemuxEvent.Video, DemuxEvent.Unknown)):
+                    break
+        except BaseException as exc:  # noqa: BLE001
+            consumer_err.append(exc)
+
+    ct = threading.Thread(target=consumer, daemon=True)
+    ct.start()
+    time.sleep(0.2)
+    try:
+        data_h = sender.data_handle()
+        assert data_h is not None
+        for i in range(16):
+            pts = Pts90khz.from_raw(i * 3000)
+            sender.push_video(NAL_IDR_DATA, pts=pts, key_frame=(i % 4 == 0))
+            sender.push_data(DATA_RECORD, pts=pts)
+            sender.push_data_to(data_h, DATA_RECORD, pts=pts)
+        time.sleep(0.3)
+    finally:
+        sender.close()
+    ct.join(timeout=5.0)
+    receiver.close()
+    # At minimum we expect at least one event was received.
+    saw_any = len(events) > 0
+    if not saw_any and consumer_err:
+        pytest.fail(f"consumer raised before any event: {consumer_err}")
+    assert saw_any, "expected at least one demux event from the data+video stream"

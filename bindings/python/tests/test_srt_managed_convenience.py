@@ -418,15 +418,32 @@ def test_push_data_on_closed_sender_raises_closed() -> None:
     assert exc_info.value.kind == SrtErrorKind.CLOSED
 
 
-def test_push_data_and_push_data_to_land_bytes() -> None:
-    """push_data (single-stream) + push_data_to (explicit handle) both
-    succeed and produce at least one event on the receiver side."""
+def test_push_data_round_trips_payload_fidelity() -> None:
+    """End-to-end over a managed SRT loopback: push distinct payloads via
+    both `push_data` (single-stream shorthand) and `push_data_to`
+    (explicit handle); the receiver-side demuxer must surface them
+    byte-faithfully as `UnknownSample` events on the data PID (0x1F0,
+    stream_type 0xF0), with the pushed PTS preserved (carries_pts=True).
+
+    The consumer thread only *collects* events — all fidelity assertions
+    run on the main thread after draining, so a genuine payload/pts
+    mismatch surfaces as a real test failure instead of being swallowed
+    into a background-thread exception list."""
     port = _free_tcp_port()
     listener_url = f"srt://:{port}?mode=listener"
     caller_url = f"srt://127.0.0.1:{port}?mode=caller"
 
-    DATA_RECORD = b"\x01\x02\x03\x04private-record"
-    # Also push a key-frame video NAL so the demuxer can emit a ProgramMap.
+    DATA_PID = 0x1F0
+    DATA_STREAM_TYPE = 0xF0
+    PAYLOAD_SHORTHAND = b"\x01\x02\x03\x04shorthand-record"
+    PAYLOAD_HANDLE = b"\x05\x06\x07\x08handle-record"
+    # carries_pts=True → the pushed PTS round-trips verbatim (non-zero).
+    PTS_BASE = 900_000
+    PTS_STEP = 3000
+    N = 24
+    pushed_pts = {PTS_BASE + i * PTS_STEP for i in range(N)}
+    # Key-frame video NAL so the demuxer reaches a ProgramMap and starts
+    # surfacing samples promptly.
     NAL_IDR_DATA = b"\x00\x00\x00\x01\x65\xBB"
 
     rx_box: list[ManagedDemuxReceiver] = []
@@ -451,36 +468,73 @@ def test_push_data_and_push_data_to_land_bytes() -> None:
         raise rx_err[0]
     receiver = rx_box[0]
 
-    events: list[object] = []
+    data_samples: list[object] = []
     consumer_err: list[BaseException] = []
 
     def consumer() -> None:
+        # Collect-only: append every UnknownSample, break once both
+        # target payloads have been observed. No assertions here.
         try:
+            seen_payloads: set[bytes] = set()
             for ev in receiver:
-                events.append(ev)
-                if isinstance(ev, (DemuxEvent.Video, DemuxEvent.Unknown)):
-                    break
+                if isinstance(ev, DemuxEvent.UnknownSample):
+                    data_samples.append(ev)
+                    seen_payloads.add(bytes(ev.payload))
+                    if {PAYLOAD_SHORTHAND, PAYLOAD_HANDLE} <= seen_payloads:
+                        break
         except BaseException as exc:  # noqa: BLE001
             consumer_err.append(exc)
 
     ct = threading.Thread(target=consumer, daemon=True)
     ct.start()
+    # Park the receiver inside recv_event before pushing.
     time.sleep(0.2)
     try:
         data_h = sender.data_handle()
         assert data_h is not None
-        for i in range(16):
-            pts = Pts90khz.from_raw(i * 3000)
+        for i in range(N):
+            pts = Pts90khz.from_raw(PTS_BASE + i * PTS_STEP)
             sender.push_video(NAL_IDR_DATA, pts=pts, key_frame=(i % 4 == 0))
-            sender.push_data(DATA_RECORD, pts=pts)
-            sender.push_data_to(data_h, DATA_RECORD, pts=pts)
-        time.sleep(0.3)
+            sender.push_data(PAYLOAD_SHORTHAND, pts=pts)
+            sender.push_data_to(data_h, PAYLOAD_HANDLE, pts=pts)
+        # Give TSBPD time to release the buffered packets to the consumer.
+        time.sleep(0.5)
     finally:
+        # Close the RECEIVER first: its cancel handle fires while the
+        # consumer is parked in recv_event (after it has drained the
+        # buffered samples), unblocking it cleanly. Closing the sender
+        # first would break the SRT link and make the managed receiver
+        # attempt a reconnect, parking in a blocking re-accept the cancel
+        # handle can't interrupt — a dropped/mismatched record would then
+        # HANG the test instead of failing loud.
+        receiver.close()
+        ct.join(timeout=5.0)
         sender.close()
-    ct.join(timeout=5.0)
-    receiver.close()
-    # At minimum we expect at least one event was received.
-    saw_any = len(events) > 0
-    if not saw_any and consumer_err:
-        pytest.fail(f"consumer raised before any event: {consumer_err}")
-    assert saw_any, "expected at least one demux event from the data+video stream"
+
+    if not data_samples and consumer_err:
+        pytest.fail(f"consumer raised before any data sample: {consumer_err}")
+
+    # ── Fidelity assertions (main thread) ──────────────────────────────
+    assert data_samples, (
+        "expected at least one UnknownSample on the data stream; got none "
+        "(a regression dropping every data record would land here)"
+    )
+    payloads = {bytes(s.payload) for s in data_samples}
+    assert PAYLOAD_SHORTHAND in payloads, (
+        f"push_data payload not round-tripped; observed payloads={payloads!r}"
+    )
+    assert PAYLOAD_HANDLE in payloads, (
+        f"push_data_to payload not round-tripped; observed payloads={payloads!r}"
+    )
+    # No corruption: every surfaced data payload is exactly one of the two
+    # we pushed, on the right PID / stream_type, with a preserved PTS.
+    for s in data_samples:
+        assert bytes(s.payload) in (PAYLOAD_SHORTHAND, PAYLOAD_HANDLE), (
+            f"unexpected/corrupt data payload: {bytes(s.payload)!r}"
+        )
+        assert s.stream.pid == DATA_PID
+        assert s.stream_type == DATA_STREAM_TYPE
+        # carries_pts=True ⇒ pts is one of the pushed (non-zero) values,
+        # not the demuxer's no-PTS substitute of 0.
+        assert s.pts.raw != 0
+        assert s.pts.raw in pushed_pts

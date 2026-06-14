@@ -12,9 +12,13 @@ mod handle;
 mod jutil;
 mod klv;
 mod mpegts;
+mod panic;
 mod pipeline;
 mod rtp;
 mod srt;
+
+#[cfg(feature = "jni-test-hooks")]
+mod test_hooks;
 
 use jni::JNIEnv;
 use jni::objects::JClass;

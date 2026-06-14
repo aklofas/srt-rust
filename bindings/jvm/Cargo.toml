@@ -15,6 +15,11 @@ name       = "tstjni"
 crate-type = ["cdylib"]
 doctest    = false
 
+[features]
+# Compiles the test-only panic probe (bindings/jvm/src/test_hooks.rs) used by
+# PanicIsolationTest. Default-OFF; never enabled for the published cdylib.
+jni-test-hooks = []
+
 [dependencies]
 # jni-rs: self-contained JNI bindings. Compiling the cdylib needs no JDK/JVM;
 # the JVM is only present at runtime when Java `System.load`s the library.

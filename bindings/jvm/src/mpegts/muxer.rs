@@ -160,6 +160,10 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
         }
     };
     let desc_lens = read_int_array(env, data_desc_lens).ok_or(())?;
+    if kinds.len() != n || codecs.len() != n || type_codes.len() != n || carries.len() != n {
+        throw_mux(env, "INTERNAL", "stream sibling-array length mismatch");
+        return Err(());
+    }
     if desc_lens.len() != n {
         throw_mux(env, "INTERNAL", "dataDescLens length mismatch");
         return Err(());
@@ -520,7 +524,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
         // read by `set_byte_array_region`.
         let i8_view = unsafe { core::slice::from_raw_parts(scratch.as_ptr() as *const i8, n) };
         if env.set_byte_array_region(&out, 0, i8_view).is_err() {
-            let _ = env.throw_new("java/lang/RuntimeException", "failed to write byte[] result");
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to write byte[] result",
+            );
             return 0;
         }
         n as jint

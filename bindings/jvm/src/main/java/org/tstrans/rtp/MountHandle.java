@@ -6,6 +6,7 @@ import java.util.Optional;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
 import org.tstrans.mpegts.AudioStreamHandle;
+import org.tstrans.mpegts.DataStreamHandle;
 import org.tstrans.mpegts.KlvStreamHandle;
 import org.tstrans.mpegts.SubtitleStreamHandle;
 import org.tstrans.mpegts.VideoStreamHandle;
@@ -61,6 +62,15 @@ public final class MountHandle implements AutoCloseable {
     public void pushSubtitle(byte[] payload, long pts) throws RtspException {
         ensureOpen(); nPushSubtitle(handle.get(), pts, payload);
     }
+    /**
+     * Push one private-data payload onto the lone configured data stream
+     * (pass-through: no AU-cell wrap, no framing — {@code data} lands verbatim as
+     * the PES payload). {@code pts} drives PSI/PCR pacing and is written into the
+     * PES header only when the stream was configured with {@code carriesPts = true}.
+     */
+    public void pushData(byte[] data, long pts) throws RtspException {
+        ensureOpen(); nPushData(handle.get(), data, pts);
+    }
 
     // ── Push family — handle-targeted ─────────────────────────────────────
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
@@ -77,6 +87,14 @@ public final class MountHandle implements AutoCloseable {
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws RtspException {
         ensureOpen(); nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
+    }
+    /**
+     * Push one private-data payload to a specific configured data stream. Same
+     * pass-through and PTS semantics as {@link #pushData}. An invalid handle
+     * raises {@link RtspException} of kind {@code MOUNT}.
+     */
+    public void pushDataTo(DataStreamHandle h, byte[] data, long pts) throws RtspException {
+        ensureOpen(); nPushDataTo(handle.get(), h.raw(), data, pts);
     }
 
     // ── Stream-handle accessors (first-of-kind + all-of-kind) ─────────────
@@ -95,6 +113,10 @@ public final class MountHandle implements AutoCloseable {
     public Optional<SubtitleStreamHandle> subtitleHandle() {
         ensureOpen(); long r = nSubtitleHandle(handle.get());
         return r < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(r));
+    }
+    public Optional<DataStreamHandle> dataHandle() {
+        ensureOpen(); long r = nDataHandle(handle.get());
+        return r < 0 ? Optional.empty() : Optional.of(DataStreamHandle.fromRaw(r));
     }
     public List<VideoStreamHandle> videoHandles() {
         ensureOpen();
@@ -118,6 +140,12 @@ public final class MountHandle implements AutoCloseable {
         ensureOpen();
         List<SubtitleStreamHandle> out = new ArrayList<>();
         for (long r : nSubtitleHandles(handle.get())) out.add(SubtitleStreamHandle.fromRaw(r));
+        return out;
+    }
+    public List<DataStreamHandle> dataHandles() {
+        ensureOpen();
+        List<DataStreamHandle> out = new ArrayList<>();
+        for (long r : nDataHandles(handle.get())) out.add(DataStreamHandle.fromRaw(r));
         return out;
     }
 
@@ -150,6 +178,7 @@ public final class MountHandle implements AutoCloseable {
     private static native void nPushAudio(long handle, byte[] frames, long pts) throws RtspException;
     private static native void nPushSubtitle(long handle, long pts, byte[] payload)
         throws RtspException;
+    private static native void nPushData(long handle, byte[] data, long pts) throws RtspException;
     private static native void nPushVideoTo(long handle, long streamHandleRaw, byte[] nal, long pts,
         boolean keyFrame) throws RtspException;
     private static native void nPushKlvTo(long handle, long streamHandleRaw, byte[] klv, long pts,
@@ -158,14 +187,18 @@ public final class MountHandle implements AutoCloseable {
         long pts) throws RtspException;
     private static native void nPushSubtitleTo(long handle, long streamHandleRaw, long pts,
         byte[] payload) throws RtspException;
+    private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data,
+        long pts) throws RtspException;
     private static native long nVideoHandle(long handle);
     private static native long nKlvHandle(long handle);
     private static native long nAudioHandle(long handle);
     private static native long nSubtitleHandle(long handle);
+    private static native long nDataHandle(long handle);
     private static native long[] nVideoHandles(long handle);
     private static native long[] nKlvHandles(long handle);
     private static native long[] nAudioHandles(long handle);
     private static native long[] nSubtitleHandles(long handle);
+    private static native long[] nDataHandles(long handle);
     private static native void nFlush(long handle);
     private static native void nResetStats(long handle);
     private static native void nClose(long handle);

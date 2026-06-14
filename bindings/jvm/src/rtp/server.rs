@@ -16,7 +16,7 @@ use secrecy::SecretString;
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_rtp::RtspServer as RustRtspServer;
 use tst_rtp::RtspServerCancelHandle as RustServerCancel;
@@ -749,6 +749,30 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitle<'local>(
     })
 }
 
+/// `MountHandle.nPushData(handle, data, pts)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushData<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(buf) = read_bytes(env, &data) else {
+            return;
+        };
+        let Some(res) = with_mount(env, handle, |inner| {
+            inner.push_data(&buf, Pts90khz::new(pts))
+        }) else {
+            return;
+        };
+        if let Err(e) = res {
+            mount_error_to_jvm(env, &e);
+        }
+    })
+}
+
 // ── MountHandle: push family — handle-targeted variants ─────────────────────
 
 /// `MountHandle.nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
@@ -887,6 +911,42 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitleTo<'local>(
     })
 }
 
+/// `MountHandle.nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle
+/// is validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
+/// chain (rejecting negative / out-of-u32 values up front rather than
+/// truncating). A forged handle is a `MOUNT` error (DIFFERS from MuxSender, which
+/// maps forged handles to RtpException(TRANSPORT)).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushDataTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_rtsp(env, "MOUNT", "invalid stream handle");
+            return;
+        };
+        let Some(buf) = read_bytes(env, &data) else {
+            return;
+        };
+        let Some(res) = with_mount(env, handle, |inner| {
+            inner.push_data_to(h, &buf, Pts90khz::new(pts))
+        }) else {
+            return;
+        };
+        if let Err(e) = res {
+            mount_error_to_jvm(env, &e);
+        }
+    })
+}
+
 // ── MountHandle: stream-handle accessors (first-of-kind; -1 = none) ──────────
 
 /// `MountHandle.nVideoHandle(handle)` — first configured video stream handle, or `-1`.
@@ -960,6 +1020,26 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nSubtitleHandle(
         with_mount(env, handle, |inner| {
             inner
                 .subtitle_handles()
+                .into_iter()
+                .next()
+                .map(|h| i64::from(h.raw()))
+                .unwrap_or(-1)
+        })
+        .unwrap_or(-1)
+    })
+}
+
+/// `MountHandle.nDataHandle(handle)` — first configured data stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nDataHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        with_mount(env, handle, |inner| {
+            inner
+                .data_handles()
                 .into_iter()
                 .next()
                 .map(|h| i64::from(h.raw()))
@@ -1060,6 +1140,32 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nSubtitleHandles<'local>
         let Some(raws) = with_mount(env, handle, |inner| {
             inner
                 .subtitle_handles()
+                .into_iter()
+                .map(|h| i64::from(h.raw()))
+                .collect::<Vec<i64>>()
+        }) else {
+            return JObject::null().into();
+        };
+        let arr = match env.new_long_array(raws.len() as i32) {
+            Ok(a) => a,
+            Err(_) => return JObject::null().into(),
+        };
+        let _ = env.set_long_array_region(&arr, 0, &raws);
+        arr
+    })
+}
+
+/// `MountHandle.nDataHandles(handle)` → `long[]` of all data stream handles.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nDataHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null().into(), |env| {
+        let Some(raws) = with_mount(env, handle, |inner| {
+            inner
+                .data_handles()
                 .into_iter()
                 .map(|h| i64::from(h.raw()))
                 .collect::<Vec<i64>>()

@@ -16,14 +16,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   + `streamDescriptorsForData(dataIndex, descriptors)`, the
   `DataStreamHandle` record, the offline `Muxer.pushData` / `pushDataTo`
   pair plus the `dataHandles()` / `dataStreamHandle(index)` accessors,
-  `MuxerFileSink.pushData` / `pushDataTo`, and `pushData` / `pushDataTo` /
-  `dataHandle()` on the srt and rtp `MuxSender`s. Pass-through / PTS /
-  size-ceiling semantics are those of the Rust `push_data` family (see the
-  muxer + pipeline entry below). Not yet exposed (recorded follow-ups): the
-  rtp `MountHandle` and srt `ManagedMuxSender` data push families, and
+  `MuxerFileSink.pushData` / `pushDataTo`, `pushData` / `pushDataTo` /
+  `dataHandle()` on the srt and rtp `MuxSender`s, the srt
+  `ManagedMuxSender.pushData` / `pushDataTo` / `dataHandle()` pair, and the
+  rtp `MountHandle.pushData` / `pushDataTo` / `dataHandle()` / `dataHandles()`
+  family. Pass-through / PTS / size-ceiling semantics are those of the Rust
+  `push_data` family (see the muxer + pipeline entry below). Not yet exposed:
   `data_handles_for_program` (the JVM `MuxerConfig` is single-program).
 
-### Added — C data-stream surface (ABI minor 12)
+### Added — C data-stream surface (ABI minor 12 → 13)
 
 - **tst-c** gains the data-stream mux surface, binding the Rust
   muxer/pipeline family below: `tst_data_stream_handle_t` plus seven new
@@ -36,6 +37,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   those of the Rust `push_data` family (see the muxer + pipeline entry
   below). ABI minor 11 → 12; additive — no symbol removed, no signature or
   struct layout changed.
+- **tst-c** further gains the managed-sender and RTSP-mount data push pairs:
+  `tst_managed_mux_sender_send_data` / `_to` (behind `TST_HAS_SRT`) and
+  `tst_rtsp_mount_push_data` / `_to` (behind `TST_HAS_RTP`), mirroring the
+  `send_klv` / `push_klv` families. ABI minor 12 → 13; additive — no symbol
+  removed, no signature or struct layout changed.
 
 ### Added — Python data-stream surface (`tstrans.mpegts` + srt/rtp `MuxSender`)
 
@@ -48,6 +54,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`tstrans.srt.MuxSender` / `tstrans.rtp.MuxSender`** gain `push_data` /
   `push_data_to` / `data_handle()` — push raw private-PES payloads through a
   live sender, following the `push_klv` family shape.
+- **`tstrans.srt.ManagedMuxSender`** and **`tstrans.rtp.MountHandle`** gain the
+  same `push_data` / `push_data_to` / `data_handle()` trio, completing data
+  parity across every live sender / mount shell.
 
 ### Changed — `tio.transmux` passes private/application data streams through
 
@@ -59,6 +68,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   opt-out for excluding data streams. PTS nuance: re-muxed data streams
   always carry PTS and the demuxer substitutes 0 for a PTS-less source PES,
   so a source sample with no PTS re-emerges with a literal PTS of 0.
+
+### Changed — tst-jni panic safety + handle-decode hardening (`org.tstrans`)
+
+- An unexpected Rust panic inside any `org.tstrans` JVM native now surfaces as
+  a `java.lang.RuntimeException` instead of aborting the JVM process — every
+  native is wrapped in a `jni_catch` panic boundary (the JVM twin of the C
+  binding's `ffi_catch`).
+- `Muxer.pull`'s JNI-bridge failure cases now throw an unchecked
+  `RuntimeException` rather than a checked `MuxException` (the hot drain path
+  keeps no `throws` clause), and every handle-targeted `*To` push native now
+  rejects out-of-range / negative stream handles instead of silently
+  truncating them to a valid handle.
 
 ### Added — private/application data streams (muxer + pipeline)
 

@@ -43,12 +43,14 @@ static REGISTRY: LazyLock<HandleRegistry<PairingDemuxer>> = LazyLock::new(Handle
 /// and hand the JVM its raw pointer as a `jlong` handle.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpen<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     video_pid: jint,
     klv_pid: jint,
 ) -> jlong {
-    REGISTRY.insert(PairingDemuxer::new(video_pid as u16, klv_pid as u16)) as jlong
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY.insert(PairingDemuxer::new(video_pid as u16, klv_pid as u16)) as jlong
+    })
 }
 
 /// `nOpenWithConfig(...)` — build a configured [`PairingDemuxer`]. The
@@ -63,7 +65,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpen<'local>(
 /// mirroring tst-py's `build_pairing_demuxer`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     video_pid: jint,
     klv_pid: jint,
@@ -82,44 +84,46 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    let mode = if buffered != 0 {
-        PairerMode::Buffered {
-            max_lag: Duration::from_nanos(max_lag_nanos as u64),
-        }
-    } else {
-        PairerMode::Realtime
-    };
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        let mode = if buffered != 0 {
+            PairerMode::Buffered {
+                max_lag: Duration::from_nanos(max_lag_nanos as u64),
+            }
+        } else {
+            PairerMode::Realtime
+        };
 
-    let mut pairer = PairerConfig::default();
-    pairer.mode = mode;
-    pairer.tolerance = Duration::from_nanos(tolerance_nanos as u64);
-    pairer.max_buffered_klv = max_buffered_klv as u64;
-    pairer.max_buffered_video = max_buffered_video as u64;
-    pairer.link_klv_to_video = link_klv_to_video != 0;
+        let mut pairer = PairerConfig::default();
+        pairer.mode = mode;
+        pairer.tolerance = Duration::from_nanos(tolerance_nanos as u64);
+        pairer.max_buffered_klv = max_buffered_klv as u64;
+        pairer.max_buffered_video = max_buffered_video as u64;
+        pairer.link_klv_to_video = link_klv_to_video != 0;
 
-    let demuxer = if has_demuxer_config != 0 {
-        build_demux_config_from_args(
-            strict,
-            pes_cap_per_pid,
-            pes_cap_total,
-            cfi,
-            av1,
-            au_cell_cap,
-            lenient_psi,
-        )
-    } else {
-        DemuxerConfig::default()
-    };
+        let demuxer = if has_demuxer_config != 0 {
+            build_demux_config_from_args(
+                strict,
+                pes_cap_per_pid,
+                pes_cap_total,
+                cfi,
+                av1,
+                au_cell_cap,
+                lenient_psi,
+            )
+        } else {
+            DemuxerConfig::default()
+        };
 
-    let mut cfg = PairingDemuxerConfig::default();
-    cfg.pairer = pairer;
-    cfg.demuxer = demuxer;
+        let mut cfg = PairingDemuxerConfig::default();
+        cfg.pairer = pairer;
+        cfg.demuxer = demuxer;
 
-    REGISTRY.insert(PairingDemuxer::with_config(
-        video_pid as u16,
-        klv_pid as u16,
-        cfg,
-    )) as jlong
+        REGISTRY.insert(PairingDemuxer::with_config(
+            video_pid as u16,
+            klv_pid as u16,
+            cfg,
+        )) as jlong
+    })
 }
 
 /// `nFeed(handle, bytes)` — read the Java byte array, feed it, and return
@@ -133,32 +137,34 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFeed<'local>(
     handle: jlong,
     bytes: JByteArray<'local>,
 ) -> jobject {
-    let buf = match env.convert_byte_array(&bytes) {
-        Ok(b) => b,
-        Err(_) => {
-            throw_demux(&mut env, "INTERNAL", "failed to read byte[] argument");
-            return JObject::null().into_raw();
-        }
-    };
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let buf = match env.convert_byte_array(&bytes) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_demux(env, "INTERNAL", "failed to read byte[] argument");
+                return JObject::null().into_raw();
+            }
+        };
 
-    // Lease + feed under the resource lock; the owned `PairerOutput`s leave the
-    // closure so the Java list is built outside it. `None` → closed handle.
-    let Some(feed_result) = REGISTRY.with(handle as u64, |pd| pd.feed(&buf)) else {
-        closed(&mut env);
-        return JObject::null().into_raw();
-    };
-    let outputs = match feed_result {
-        Ok(v) => v,
-        Err(e) => {
-            throw_demux_error(&mut env, &e);
+        // Lease + feed under the resource lock; the owned `PairerOutput`s leave the
+        // closure so the Java list is built outside it. `None` → closed handle.
+        let Some(feed_result) = REGISTRY.with(handle as u64, |pd| pd.feed(&buf)) else {
+            closed(env);
             return JObject::null().into_raw();
-        }
-    };
+        };
+        let outputs = match feed_result {
+            Ok(v) => v,
+            Err(e) => {
+                throw_demux_error(env, &e);
+                return JObject::null().into_raw();
+            }
+        };
 
-    match build_output_list(&mut env, &outputs) {
-        Ok(list) => list.into_raw(),
-        Err(()) => JObject::null().into_raw(),
-    }
+        match build_output_list(env, &outputs) {
+            Ok(list) => list.into_raw(),
+            Err(()) => JObject::null().into_raw(),
+        }
+    })
 }
 
 /// `nFlush(handle)` — drain end-of-stream state and return the trailing
@@ -169,14 +175,16 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFlush<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(outputs) = REGISTRY.with(handle as u64, |pd| pd.flush()) else {
-        closed(&mut env);
-        return JObject::null().into_raw();
-    };
-    match build_output_list(&mut env, &outputs) {
-        Ok(list) => list.into_raw(),
-        Err(()) => JObject::null().into_raw(),
-    }
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(outputs) = REGISTRY.with(handle as u64, |pd| pd.flush()) else {
+            closed(env);
+            return JObject::null().into_raw();
+        };
+        match build_output_list(env, &outputs) {
+            Ok(list) => list.into_raw(),
+            Err(()) => JObject::null().into_raw(),
+        }
+    })
 }
 
 /// Build a `java.util.ArrayList<PairerOutput>` from a slice of outputs.
@@ -323,23 +331,25 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(s) = REGISTRY.with(handle as u64, |pd| pd.stats()) else {
-        closed(&mut env);
-        return JObject::null().into_raw();
-    };
-    match env.new_object(
-        "org/tstrans/pipeline/PairerStats",
-        "(JJJJ)V",
-        &[
-            JValue::Long(s.paired as i64),
-            JValue::Long(s.unpaired_video as i64),
-            JValue::Long(s.unpaired_klv as i64),
-            JValue::Long(s.pass_through as i64),
-        ],
-    ) {
-        Ok(o) => o.into_raw(),
-        Err(_) => JObject::null().into_raw(),
-    }
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(s) = REGISTRY.with(handle as u64, |pd| pd.stats()) else {
+            closed(env);
+            return JObject::null().into_raw();
+        };
+        match env.new_object(
+            "org/tstrans/pipeline/PairerStats",
+            "(JJJJ)V",
+            &[
+                JValue::Long(s.paired as i64),
+                JValue::Long(s.unpaired_video as i64),
+                JValue::Long(s.unpaired_klv as i64),
+                JValue::Long(s.pass_through as i64),
+            ],
+        ) {
+            Ok(o) => o.into_raw(),
+            Err(_) => JObject::null().into_raw(),
+        }
+    })
 }
 
 /// `nDemuxerStats(handle)` — snapshot the underlying demuxer counters as a
@@ -352,25 +362,27 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nDemuxerStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let Some(s) = REGISTRY.with(handle as u64, |pd| pd.demuxer_stats()) else {
-        closed(&mut env);
-        return JObject::null().into_raw();
-    };
-    match env.new_object(
-        "org/tstrans/mpegts/DemuxerStats",
-        "(JJJJJJ)V",
-        &[
-            JValue::Long(s.program_maps_seen as i64),
-            JValue::Long(s.pmt_versions_seen as i64),
-            JValue::Long(s.discontinuities as i64),
-            JValue::Long(s.nonconformant as i64),
-            JValue::Long(s.programs_seen as i64),
-            JValue::Long(s.subtitle_streams_seen as i64),
-        ],
-    ) {
-        Ok(o) => o.into_raw(),
-        Err(_) => JObject::null().into_raw(),
-    }
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(s) = REGISTRY.with(handle as u64, |pd| pd.demuxer_stats()) else {
+            closed(env);
+            return JObject::null().into_raw();
+        };
+        match env.new_object(
+            "org/tstrans/mpegts/DemuxerStats",
+            "(JJJJJJ)V",
+            &[
+                JValue::Long(s.program_maps_seen as i64),
+                JValue::Long(s.pmt_versions_seen as i64),
+                JValue::Long(s.discontinuities as i64),
+                JValue::Long(s.nonconformant as i64),
+                JValue::Long(s.programs_seen as i64),
+                JValue::Long(s.subtitle_streams_seen as i64),
+            ],
+        ) {
+            Ok(o) => o.into_raw(),
+            Err(_) => JObject::null().into_raw(),
+        }
+    })
 }
 
 /// `nResetStats(handle)` — zero the pairing counters (not demuxer stats).
@@ -380,12 +392,14 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nResetStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    if REGISTRY
-        .with(handle as u64, |pd| pd.reset_stats())
-        .is_none()
-    {
-        closed(&mut env);
-    }
+    crate::panic::jni_catch(&mut env, (), |env| {
+        if REGISTRY
+            .with(handle as u64, |pd| pd.reset_stats())
+            .is_none()
+        {
+            closed(env);
+        }
+    })
 }
 
 /// `nClose(handle)` — take + drop the registered [`PairingDemuxer`]. Atomic +
@@ -394,13 +408,15 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nResetStats<'local>(
 /// flush/finalize).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nClose<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) {
-    // The winning close gets the pairing demuxer back; it has no extra teardown,
-    // so just let it drop here.
-    let _ = REGISTRY.close(handle as u64);
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // The winning close gets the pairing demuxer back; it has no extra teardown,
+        // so just let it drop here.
+        let _ = REGISTRY.close(handle as u64);
+    })
 }
 
 /// Throw `IllegalStateException` for a leased call that found a closed/absent

@@ -1237,6 +1237,92 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle_to(
         })
 }
 
+/// Send one data payload through the managed mux sender's single data
+/// stream and out the underlying reconnecting transport.
+///
+/// Pass-through contract identical to `tst_mux_sender_send_data`: `data`
+/// lands verbatim as one PES packet on `stream_id` 0xBD; PTS is written
+/// only for `carries_pts = true` streams.
+///
+/// Single-stream form: see `tst_managed_mux_sender_send_data_to` for the
+/// multi-stream variant.
+///
+/// # Errors
+///
+/// Routed through `tst_get_last_error()`. Same code set as
+/// `tst_mux_sender_send_data` plus `TST_E_NOT_AVAILABLE` (transport
+/// mid-reconnect; transient).
+///
+/// # C ABI
+///
+/// `tst_managed_mux_sender_send_data` — see `bindings/c/include/tstrans.h`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_data(
+    p: *mut TstManagedMuxSender,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_data(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one data payload targeting a specific data elementary stream on a
+/// managed (auto-reconnecting) sender. `stream_handle` is stable across
+/// reconnects. Out-of-range handles surface as `TST_E_INVALID_USAGE`.
+///
+/// On a single-stream sender, prefer `tst_managed_mux_sender_send_data`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_data_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstDataStreamHandle,
+    data: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(data, len, "data") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match DataStreamHandle::try_from_raw(stream_handle) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::error::record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_data_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
 /// Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is

@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.12` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.13` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 12` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 13` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -253,7 +253,14 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   alongside video/KLV, mirroring the Rust `push_data` family.
 ///   Additive — no symbol removed, no signature or struct layout
 ///   changed.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 12;
+/// - `13` — private-data push through the managed-sender and RTSP-mount
+///   pipeline shells: the srt-gated pair `tst_managed_mux_sender_send_data`
+///   / `tst_managed_mux_sender_send_data_to` (behind `TST_HAS_SRT`) and the
+///   rtp-gated pair `tst_rtsp_mount_push_data` / `tst_rtsp_mount_push_data_to`
+///   (behind `TST_HAS_RTP`). Completes the data-stream surface parity with the
+///   video/klv/audio/subtitle push families on both shells. Additive — no
+///   symbol removed, no signature or struct layout changed.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 13;
 
 // =========================================================================
 // Runtime version accessors

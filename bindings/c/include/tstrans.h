@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 12` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 13` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -123,8 +123,15 @@
  *   alongside video/KLV, mirroring the Rust `push_data` family.
  *   Additive — no symbol removed, no signature or struct layout
  *   changed.
+ * - `13` — private-data push through the managed-sender and RTSP-mount
+ *   pipeline shells: the srt-gated pair `tst_managed_mux_sender_send_data`
+ *   / `tst_managed_mux_sender_send_data_to` (behind `TST_HAS_SRT`) and the
+ *   rtp-gated pair `tst_rtsp_mount_push_data` / `tst_rtsp_mount_push_data_to`
+ *   (behind `TST_HAS_RTP`). Completes the data-stream surface parity with the
+ *   video/klv/audio/subtitle push families on both shells. Additive — no
+ *   symbol removed, no signature or struct layout changed.
  */
-#define TST_ABI_VERSION_MINOR 12
+#define TST_ABI_VERSION_MINOR 13
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -1757,6 +1764,12 @@ typedef struct tst_mux_sender_stats_t {
 typedef uint32_t tst_audio_stream_handle_t;
 
 /**
+ * Opaque per-program ordinal for a private/application data elementary
+ * stream. Same packed encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_data_stream_handle_t;
+
+/**
  * Opaque per-program ordinal for a KLV elementary stream. Same packed
  * encoding as [`TstVideoStreamHandle`].
  */
@@ -1839,12 +1852,6 @@ typedef struct tst_sender_stats_t {
  * config→open boundary — the same index applies after `tst_muxer_open`.
  */
 typedef uint32_t tst_program_handle_t;
-
-/**
- * Opaque per-program ordinal for a private/application data elementary
- * stream. Same packed encoding as [`TstVideoStreamHandle`].
- */
-typedef uint32_t tst_data_stream_handle_t;
 
 /**
  * `repr(C)` mirror of `tst_core::publisher::PublisherStats` — the
@@ -2281,6 +2288,51 @@ int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
                                          const uint8_t *frames,
                                          size_t len,
                                          int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Send one data payload through the managed mux sender's single data
+ * stream and out the underlying reconnecting transport.
+ *
+ * Pass-through contract identical to `tst_mux_sender_send_data`: `data`
+ * lands verbatim as one PES packet on `stream_id` 0xBD; PTS is written
+ * only for `carries_pts = true` streams.
+ *
+ * Single-stream form: see `tst_managed_mux_sender_send_data_to` for the
+ * multi-stream variant.
+ *
+ * # Errors
+ *
+ * Routed through `tst_get_last_error()`. Same code set as
+ * `tst_mux_sender_send_data` plus `TST_E_NOT_AVAILABLE` (transport
+ * mid-reconnect; transient).
+ *
+ * # C ABI
+ *
+ * `tst_managed_mux_sender_send_data` — see `bindings/c/include/tstrans.h`.
+ */
+
+int tst_managed_mux_sender_send_data(struct tst_managed_mux_sender_t *p,
+                                     const uint8_t *data,
+                                     size_t len,
+                                     int64_t pts_90khz);
+#endif
+
+#if defined(TST_HAS_SRT)
+/**
+ * Send one data payload targeting a specific data elementary stream on a
+ * managed (auto-reconnecting) sender. `stream_handle` is stable across
+ * reconnects. Out-of-range handles surface as `TST_E_INVALID_USAGE`.
+ *
+ * On a single-stream sender, prefer `tst_managed_mux_sender_send_data`.
+ */
+
+int tst_managed_mux_sender_send_data_to(struct tst_managed_mux_sender_t *p,
+                                        tst_data_stream_handle_t stream_handle,
+                                        const uint8_t *data,
+                                        size_t len,
+                                        int64_t pts_90khz);
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -7552,6 +7604,49 @@ int tst_rtsp_mount_push_audio_to(struct TstRtspMountHandle *handle,
                                  const uint8_t *frames,
                                  size_t len,
                                  int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+/**
+ * Push one data payload through the mount's single data stream and out the
+ * RTSP broadcast fanout (single-stream shorthand).
+ *
+ * Pass-through: `data` lands verbatim as one PES packet on `stream_id`
+ * 0xBD. PTS is written only for `carries_pts = true` streams.
+ *
+ * Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+ * `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+ * `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `data` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_data(struct TstRtspMountHandle *handle,
+                             const uint8_t *data,
+                             size_t len,
+                             int64_t pts_90khz);
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+/**
+ * Push one data payload targeting a specific data elementary stream.
+ *
+ * On a single-stream mount, prefer `tst_rtsp_mount_push_data`.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `data` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_data_to(struct TstRtspMountHandle *handle,
+                                tst_data_stream_handle_t stream_handle,
+                                const uint8_t *data,
+                                size_t len,
+                                int64_t pts_90khz);
 #endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))

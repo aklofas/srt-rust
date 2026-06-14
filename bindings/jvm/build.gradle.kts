@@ -32,6 +32,12 @@ val gatingTriples = listOf("linux-x86_64", "linux-aarch64", "macos-aarch64", "wi
 // build the current platform's cdylib via cargo.
 val nativeStagingDir = project.findProperty("nativeStagingDir") as String?
 
+// When true (-PjniTestHooks=true), build the cdylib with the `jni-test-hooks`
+// cargo feature so the test-only panic probe symbol is present, and enable the
+// @EnabledIfSystemProperty-gated PanicIsolationTest. Default-OFF; the shipped
+// JAR is always built probe-free (CI rebuilds without this before staging).
+val jniTestHooks: Boolean = (project.findProperty("jniTestHooks") as String?)?.toBoolean() ?: false
+
 // Resolve the running host to the canonical <os>-<arch> triple that
 // NativeLoader.triple() produces at runtime. MUST stay in sync with
 // NativeLoader.triple() — any os/arch normalization change there must be
@@ -76,7 +82,12 @@ val cargoBuild = tasks.register<Exec>("cargoBuild") {
     onlyIf { nativeStagingDir == null }
     workingDir = workspaceRoot
     environment("SRT_FORCE_VENDORED", "1")
-    commandLine("cargo", "build", "--release", "-p", "tst-jni")
+    val cargoCmd = mutableListOf("cargo", "build", "--release", "-p", "tst-jni")
+    if (jniTestHooks) {
+        // Build the test-only panic probe symbol into the cdylib.
+        cargoCmd.addAll(listOf("--features", "jni-test-hooks"))
+    }
+    commandLine(cargoCmd)
 }
 
 // --- Dev mode: stage the just-built cdylib into native/<currentTriple>/,
@@ -116,6 +127,10 @@ tasks.test {
     dependsOn(copyNative) // dev-mode native; assemble job runs `jar`, not `test`.
     useJUnitPlatform()
     testLogging { showStandardStreams = true }
+    // Gate PanicIsolationTest (@EnabledIfSystemProperty) on the probe being built.
+    if (jniTestHooks) {
+        systemProperty("tst.jniTestHooks", "true")
+    }
 }
 
 // javac (like javadoc below) defaults to the platform charset, which is

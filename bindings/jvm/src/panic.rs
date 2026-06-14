@@ -1,0 +1,72 @@
+//! JNI panic isolation helper — the JVM twin of `tst-c`'s `crate::panic::ffi_catch`.
+//!
+//! Every `Java_org_tstrans_*` native body is run inside [`jni_catch`], which
+//! converts a Rust panic into a thrown `java.lang.RuntimeException` plus a
+//! caller-supplied default return value. Without this, a panic unwinding out of
+//! `extern "system"` aborts the JVM process (panics across an `extern "C"`-ABI
+//! boundary are an abort, not unwinding).
+//!
+//! # Default-value convention
+//!
+//! Once a Java exception is pending, the JVM **discards** the native's return
+//! value — so the `default` passed here only has to be a valid value of the
+//! return type, never a meaningful error signal (unlike `tst-c`, where the
+//! return value *is* the error code). Pass the type's zero:
+//!
+//! | Native return type                  | Default to pass        |
+//! |-------------------------------------|------------------------|
+//! | `jlong` / `jint`                    | `0`                    |
+//! | `jboolean`                          | `0` (`JNI_FALSE`)      |
+//! | `jobject` / `jstring` / `jbyteArray`| `std::ptr::null_mut()` |
+//! | `()` (void natives)                 | `()`                   |
+
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+use jni::JNIEnv;
+
+/// Run `f` inside a panic boundary. On panic, throw a `RuntimeException`
+/// (unless a Java exception is already pending) and return `default`. On
+/// success, return `f`'s value unchanged.
+///
+/// `AssertUnwindSafe` is sound here for the same reason as `tst-c`'s
+/// `ffi_catch`: the panic arm only *throws + returns a default*; it never
+/// observes potentially-broken state behind the `&mut JNIEnv` or any captured
+/// handle. A panic mid-body either drops an in-progress `Box` (leaking
+/// nothing) or leaves the registry entry usable — the lock simply unlocks
+/// (poison-tolerated) on unwind; any partial mutation persists.
+// Currently the only caller is the feature-gated panic probe; later sweep
+// tasks make this the universal wrapper for every `Java_org_tstrans_*` native,
+// so it is intentionally retained (not dead) outside the test-hooks build.
+#[cfg_attr(not(feature = "jni-test-hooks"), allow(dead_code))]
+pub(crate) fn jni_catch<'local, R, F>(env: &mut JNIEnv<'local>, default: R, f: F) -> R
+where
+    F: FnOnce(&mut JNIEnv<'local>) -> R,
+{
+    match catch_unwind(AssertUnwindSafe(|| f(env))) {
+        Ok(value) => value,
+        Err(payload) => {
+            // Do not clobber an exception the body already raised before panicking.
+            if !env.exception_check().unwrap_or(false) {
+                let detail = panic_payload_message(&*payload);
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("native panic in tst-jni: {detail}"),
+                );
+            }
+            default
+        }
+    }
+}
+
+/// Best-effort detail string from a `catch_unwind` payload. Mirrors
+/// `tst-c`'s `panic_payload_message`.
+#[cfg_attr(not(feature = "jni-test-hooks"), allow(dead_code))]
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        String::from(*s)
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        String::from("non-string panic payload")
+    }
+}

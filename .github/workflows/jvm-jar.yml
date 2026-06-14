@@ -60,7 +60,20 @@ jobs:
         shell: bash
         env:
           SRT_FORCE_VENDORED: "1"
-        run: ./gradlew test --no-daemon --stacktrace
+        # -PjniTestHooks=true builds the test-only panic probe and runs
+        # PanicIsolationTest, proving a Rust panic is isolated as a thrown
+        # RuntimeException instead of aborting the JVM.
+        run: ./gradlew test --no-daemon --stacktrace -PjniTestHooks=true
+
+      - name: Rebuild shippable native lib (probe-free)
+        working-directory: bindings/jvm
+        shell: bash
+        env:
+          SRT_FORCE_VENDORED: "1"
+        # cargoBuild without -PjniTestHooks omits the jni-test-hooks feature;
+        # cargo rebuilds (feature set changed) and copyNative re-stages the
+        # probe-free lib into resources/ before the upload step copies it.
+        run: ./gradlew copyNative --no-daemon --stacktrace
 
       - name: check-jvm-error-mapping-coverage
         if: matrix.triple == 'linux-x86_64'
@@ -75,6 +88,21 @@ jobs:
           cp bindings/jvm/src/main/resources/native/${{ matrix.triple }}/libtstjni.* \
              upload/native/${{ matrix.triple }}/
           ls -la upload/native/${{ matrix.triple }}/
+
+      # Belt-and-suspenders: prove the rebuild step produced a probe-free lib so
+      # a future refactor dropping that step can't silently ship the probe.
+      # Linux-only: nm/symbol tooling isn't portable across macos/windows
+      # runners, and the feature-gating + rebuild logic is identical on every
+      # platform, so linux is a sufficient sentinel.
+      - name: Assert shipped native lib has no test-probe symbol
+        if: matrix.triple == 'linux-x86_64'
+        shell: bash
+        run: |
+          LIB=upload/native/linux-x86_64/libtstjni.so
+          if nm -D "$LIB" | grep -q 'PanicProbe'; then
+            echo "FAIL: test-only PanicProbe symbol present in shipped lib ($LIB)"; exit 1
+          fi
+          echo "OK: no PanicProbe symbol in shipped native lib"
 
       - uses: actions/upload-artifact@v4
         with:

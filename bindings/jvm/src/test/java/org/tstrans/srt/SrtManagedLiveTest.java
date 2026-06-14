@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.tstrans.SrtException;
 import org.tstrans.codec.NalUnit;
 import org.tstrans.codec.VideoUnit;
+import org.tstrans.mpegts.DataStreamHandle;
 import org.tstrans.mpegts.DemuxEvent;
 import org.tstrans.mpegts.Demuxer;
 import org.tstrans.mpegts.Muxer;
@@ -108,6 +109,7 @@ class SrtManagedLiveTest {
 
         CompletableFuture<Integer> portFuture = new CompletableFuture<>();
         CompletableFuture<String> shaFuture = new CompletableFuture<>();
+        CompletableFuture<DemuxEvent.UnknownSample> dataFuture = new CompletableFuture<>();
         // Counted down by main once it has STOPPED pushing and closed the sender;
         // the receiver holds its teardown on it so a final in-flight mini-batch can
         // never land on a closing peer (which would surface spurious sender-side
@@ -130,16 +132,20 @@ class SrtManagedLiveTest {
                 rx = sock.intoDemuxReceiver();
 
                 String sha = null;
+                DemuxEvent.UnknownSample data = null;
                 try {
                     for (DemuxEvent e : rx) {
-                        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+                        if (sha == null && e instanceof DemuxEvent.Video v
+                                && !v.payload().isEmpty()) {
                             sha = sha256Units(v.payload());
-                            break;
+                        } else if (data == null && e instanceof DemuxEvent.UnknownSample u) {
+                            data = u;
                         }
+                        if (sha != null && data != null) break;
                     }
                 } catch (RuntimeException re) {
                     if (!isCleanEndOfStream(re)) throw re;
-                    // else: fall through; sha may still be null → fail below
+                    // else: fall through; sha/data may still be null → fail below
                 }
 
                 if (sha == null) {
@@ -148,9 +154,16 @@ class SrtManagedLiveTest {
                 } else {
                     shaFuture.complete(sha);
                 }
+                if (data == null) {
+                    dataFuture.completeExceptionally(new AssertionError(
+                        "no UnknownSample (private-data) event arrived before end-of-stream"));
+                } else {
+                    dataFuture.complete(data);
+                }
             } catch (Exception ex) {
                 portFuture.completeExceptionally(ex);
                 shaFuture.completeExceptionally(ex);
+                dataFuture.completeExceptionally(ex);
             } finally {
                 // Hold teardown until main has stopped pushing and closed its sender
                 // (bounded, so a failed main can never park this daemon forever).
@@ -194,12 +207,32 @@ class SrtManagedLiveTest {
             // on the failure path. (Daemon-side runaway caps may use 400; main-side
             // loops must fit the budget.)
             long pts = 0;
-            for (int round = 0; round < 200 && !shaFuture.isDone(); round++) {
+            for (int round = 0;
+                    round < 200 && (!shaFuture.isDone() || !dataFuture.isDone());
+                    round++) {
                 for (int i = 0; i < 6; i++, pts += 3000L) {
                     s.pushVideo(syntheticH264Idr(), pts, true);
                 }
+                // One distinctive private-data record per round (lone-data-stream
+                // pushData shorthand) so it deterministically flows under continuous
+                // streaming — identical bytes each push; the receiver captures the
+                // first. The following round's video pushes flush its PES.
+                s.pushData(DATA_PAYLOAD, pts);
                 Thread.sleep(50);
             }
+            // Convenience accessor: the config declares one data stream, so the
+            // handle must surface (exercises the native + sentinel path on a live
+            // managed sender).
+            assertTrue(s.dataHandle().isPresent(),
+                "config declares one data stream → dataHandle() must surface it");
+            // Strict handle decode: a forged/negative handle is rejected with
+            // SrtException(CONFIG_INVALID) in the JNI shim before reaching the
+            // muxer (DIFFERS from Muxer.pushDataTo, which maps it to MuxException).
+            // Thrown before any push, so the live sender's state is untouched.
+            SrtException forged = assertThrows(SrtException.class,
+                () -> s.pushDataTo(DataStreamHandle.fromRaw(-1L), DATA_PAYLOAD, 0L));
+            assertEquals(SrtException.Kind.CONFIG_INVALID, forged.kind(),
+                "forged DataStreamHandle must raise SrtException(CONFIG_INVALID)");
             long attempts = s.reconnectAttempts();
             TransportStats st = s.stats();
             assertEquals(0L, attempts, "no reconnect should have occurred on the happy path");
@@ -220,6 +253,22 @@ class SrtManagedLiveTest {
             "live ManagedMuxSender→SRT→DemuxReceiver path must demux to the same video "
                 + "payload SHA as the offline Muxer→Demuxer path (cross-binding parity, "
                 + "self-validating)");
+
+        // The pushData record must round-trip byte-faithfully as an UnknownSample
+        // on the configured 0xF0 data stream.
+        DemuxEvent.UnknownSample dataSample;
+        try {
+            dataSample = dataFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("receiver thread did not surface the private-data sample", e);
+        }
+        assertEquals(0xF0, dataSample.streamType(),
+            "private-data sample must carry the configured raw stream_type");
+        ByteBuffer dataView = dataSample.payload().duplicate();
+        byte[] dataBytes = new byte[dataView.remaining()];
+        dataView.get(dataBytes);
+        assertArrayEquals(DATA_PAYLOAD, dataBytes,
+            "private-data payload must arrive verbatim (pass-through, no framing)");
 
         receiverThread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SEC));
     }
@@ -542,11 +591,16 @@ class SrtManagedLiveTest {
         return buf;
     }
 
-    /** The single-program H.264 config shared by the live and offline paths. */
+    /** Distinctive private-data record pushed alongside the video stream (test 1). */
+    private static final byte[] DATA_PAYLOAD =
+        {(byte) 0xD0, 'D', 'A', 'T', 'A', (byte) 0xBE, (byte) 0xEF, 0x01};
+
+    /** The single-program H.264 + private-data config shared by the live and offline paths. */
     private static MuxerConfig roundtripConfig() {
         return MuxerConfig.builder()
             .programNumber(1).pmtPid(0x1000)
             .addVideo(0x1011, VideoCodec.H264)
+            .addData(0x0100, 0xF0, true)
             .build();
     }
 

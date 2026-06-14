@@ -5,6 +5,7 @@ import org.tstrans.MuxException;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 import org.tstrans.mpegts.AudioStreamHandle;
+import org.tstrans.mpegts.DataStreamHandle;
 import org.tstrans.mpegts.KlvStreamHandle;
 import org.tstrans.mpegts.MuxerConfig;
 import org.tstrans.mpegts.SubtitleStreamHandle;
@@ -179,6 +180,29 @@ public final class ManagedMuxSender implements AutoCloseable {
         nPushSubtitle(handle.get(), pts, payload);
     }
 
+    /**
+     * Push one private-data payload onto the lone configured data stream.
+     * Pass-through: the muxer applies no AU-cell wrap and no framing (UNLIKE
+     * {@link #pushKlv}) — {@code data} lands verbatim as the PES payload, and
+     * one push produces exactly one PES packet on stream_id {@code 0xBD}
+     * ({@code private_stream_1}). {@code pts} is written into the PES header
+     * only when the stream was configured with {@code carriesPts = true}, but
+     * it ALWAYS drives PSI/PCR pacing.
+     *
+     * @param data raw payload bytes (caller's framing convention; at most
+     *             65527 bytes with PTS, 65532 without)
+     * @param pts  90&nbsp;kHz presentation timestamp
+     * @throws IllegalStateException if the sender is closed
+     * @throws MuxException {@code INPUT_MALFORMED} (payload over the PES
+     *     ceiling), or {@code INVALID_USAGE} (zero data streams, or &gt;1 —
+     *     ambiguous, use {@link #pushDataTo})
+     * @throws SrtException on transport failure
+     */
+    public void pushData(byte[] data, long pts) throws MuxException, SrtException {
+        ensureOpen();
+        nPushData(handle.get(), data, pts);
+    }
+
     // ── Push family — handle-targeted variants ────────────────────────────
 
     /**
@@ -250,6 +274,24 @@ public final class ManagedMuxSender implements AutoCloseable {
         nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
     }
 
+    /**
+     * Push one private-data payload to a specific configured data stream. Same
+     * pass-through and PTS semantics as {@link #pushData}.
+     *
+     * @param h    the target stream handle (from {@link #dataHandle()})
+     * @param data raw payload bytes (caller's framing convention; at most
+     *             65527 bytes with PTS, 65532 without)
+     * @param pts  90&nbsp;kHz presentation timestamp
+     * @throws IllegalStateException if the sender is closed
+     * @throws SrtException {@code CONFIG_INVALID} if the handle is invalid
+     * @throws MuxException on muxer failure
+     */
+    public void pushDataTo(DataStreamHandle h, byte[] data, long pts)
+            throws MuxException, SrtException {
+        ensureOpen();
+        nPushDataTo(handle.get(), h.raw(), data, pts);
+    }
+
     // ── Handle getters ────────────────────────────────────────────────────
 
     /**
@@ -294,6 +336,17 @@ public final class ManagedMuxSender implements AutoCloseable {
         ensureOpen();
         long raw = nSubtitleHandle(handle.get());
         return raw < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(raw));
+    }
+
+    /**
+     * First configured data stream handle, or {@link Optional#empty()}.
+     *
+     * @return the first data handle, if any
+     */
+    public Optional<DataStreamHandle> dataHandle() {
+        ensureOpen();
+        long raw = nDataHandle(handle.get());
+        return raw < 0 ? Optional.empty() : Optional.of(DataStreamHandle.fromRaw(raw));
     }
 
     // ── Stats + lifecycle ─────────────────────────────────────────────────
@@ -368,6 +421,8 @@ public final class ManagedMuxSender implements AutoCloseable {
         throws MuxException, SrtException;
     private static native void nPushSubtitle(long handle, long pts, byte[] payload)
         throws MuxException, SrtException;
+    private static native void nPushData(long handle, byte[] data, long pts)
+        throws MuxException, SrtException;
 
     private static native void nPushVideoTo(long handle, long streamHandleRaw, byte[] nal,
         long pts, boolean keyFrame) throws MuxException, SrtException;
@@ -377,11 +432,14 @@ public final class ManagedMuxSender implements AutoCloseable {
         long pts) throws MuxException, SrtException;
     private static native void nPushSubtitleTo(long handle, long streamHandleRaw, long pts,
         byte[] payload) throws MuxException, SrtException;
+    private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data,
+        long pts) throws MuxException, SrtException;
 
     private static native long nVideoHandle(long handle);
     private static native long nKlvHandle(long handle);
     private static native long nAudioHandle(long handle);
     private static native long nSubtitleHandle(long handle);
+    private static native long nDataHandle(long handle);
 
     private static native TransportStats nStats(long handle);
     private static native long nReconnectAttempts(long handle);

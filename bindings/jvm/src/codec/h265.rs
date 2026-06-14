@@ -368,20 +368,22 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265Sps<'local>(
     _class: JClass<'local>,
     rbsp: JByteArray<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&rbsp) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-    match parse_sps(&bytes) {
-        Ok(sps) => match build_sps(&mut env, &sps) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "h265");
-            JObject::null().into_raw()
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&rbsp) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
+        match parse_sps(&bytes) {
+            Ok(sps) => match build_sps(env, &sps) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "h265");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -390,20 +392,22 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265Pps<'local>(
     _class: JClass<'local>,
     rbsp: JByteArray<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&rbsp) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-    match parse_pps(&bytes) {
-        Ok(pps) => match build_pps(&mut env, &pps) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "h265");
-            JObject::null().into_raw()
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&rbsp) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
+        match parse_pps(&bytes) {
+            Ok(pps) => match build_pps(env, &pps) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "h265");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -412,20 +416,22 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265Vps<'local>(
     _class: JClass<'local>,
     rbsp: JByteArray<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&rbsp) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-    match parse_vps(&bytes) {
-        Ok(vps) => match build_vps(&mut env, &vps) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "h265");
-            JObject::null().into_raw()
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&rbsp) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
+        match parse_vps(&bytes) {
+            Ok(vps) => match build_vps(env, &vps) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "h265");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -436,49 +442,51 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265SliceHeaderLight<'
     sps: JObject<'local>,
     nal_unit_type: jint,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&rbsp) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-
-    // SPS context: re-parse the Java SPS's rawRbsp to recover the equivalent
-    // Rust `H265Sps` (only `log2_max_pic_order_cnt_lsb_minus4` is consulted). A
-    // null `sps` means no context → `pic_order_cnt_lsb` stays None. See the
-    // module doc.
-    let sps_ctx: Option<H265Sps> = if sps.is_null() {
-        None
-    } else {
-        let buf = match env.call_method(&sps, "rawRbsp", "()Ljava/nio/ByteBuffer;", &[]) {
-            Ok(v) => match v.l() {
-                Ok(o) => o,
-                Err(_) => return JObject::null().into_raw(),
-            },
-            Err(_) => return JObject::null().into_raw(),
-        };
-        let sps_bytes = match read_byte_buffer(&mut env, &buf) {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&rbsp) {
             Ok(b) => b,
             Err(_) => return JObject::null().into_raw(),
         };
-        match parse_sps(&sps_bytes) {
-            Ok(s) => Some(s),
+
+        // SPS context: re-parse the Java SPS's rawRbsp to recover the equivalent
+        // Rust `H265Sps` (only `log2_max_pic_order_cnt_lsb_minus4` is consulted). A
+        // null `sps` means no context → `pic_order_cnt_lsb` stays None. See the
+        // module doc.
+        let sps_ctx: Option<H265Sps> = if sps.is_null() {
+            None
+        } else {
+            let buf = match env.call_method(&sps, "rawRbsp", "()Ljava/nio/ByteBuffer;", &[]) {
+                Ok(v) => match v.l() {
+                    Ok(o) => o,
+                    Err(_) => return JObject::null().into_raw(),
+                },
+                Err(_) => return JObject::null().into_raw(),
+            };
+            let sps_bytes = match read_byte_buffer(env, &buf) {
+                Ok(b) => b,
+                Err(_) => return JObject::null().into_raw(),
+            };
+            match parse_sps(&sps_bytes) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    map_codec_parse_error(env, &e, "h265");
+                    return JObject::null().into_raw();
+                }
+            }
+        };
+
+        let nut = (nal_unit_type & 0xff) as u8;
+        match parse_slice_header_light(&bytes, sps_ctx.as_ref(), nut) {
+            Ok(h) => match build_slice(env, &h) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
             Err(e) => {
-                map_codec_parse_error(&mut env, &e, "h265");
-                return JObject::null().into_raw();
+                map_codec_parse_error(env, &e, "h265");
+                JObject::null().into_raw()
             }
         }
-    };
-
-    let nut = (nal_unit_type & 0xff) as u8;
-    match parse_slice_header_light(&bytes, sps_ctx.as_ref(), nut) {
-        Ok(h) => match build_slice(&mut env, &h) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "h265");
-            JObject::null().into_raw()
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -487,84 +495,86 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseH265ParameterSets<'loc
     _class: JClass<'local>,
     nals: JObject<'local>,
 ) -> jobject {
-    // Read each Java NalUnit, filtering to the H265 variant (mirrors tst-py's
-    // `parse_h265_parameter_sets_py`: non-H265 entries are dropped before
-    // handing to the Rust parser).
-    let size = match env.call_method(&nals, "size", "()I", &[]) {
-        Ok(v) => match v.i() {
-            Ok(n) => n,
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Read each Java NalUnit, filtering to the H265 variant (mirrors tst-py's
+        // `parse_h265_parameter_sets_py`: non-H265 entries are dropped before
+        // handing to the Rust parser).
+        let size = match env.call_method(&nals, "size", "()I", &[]) {
+            Ok(v) => match v.i() {
+                Ok(n) => n,
+                Err(_) => return JObject::null().into_raw(),
+            },
             Err(_) => return JObject::null().into_raw(),
-        },
-        Err(_) => return JObject::null().into_raw(),
-    };
+        };
 
-    let mut rust_nals: Vec<NalUnit> = Vec::new();
-    for i in 0..size {
-        let parsed = env.with_local_frame(16, |inner| {
-            let item = inner
-                .call_method(&nals, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
-                .l()?;
-            let kind = inner
-                .call_method(&item, "kind", "()Ljava/lang/String;", &[])?
-                .l()?;
-            let kind_jstr = jni::objects::JString::from(kind);
-            let kind_str: String = inner.get_string(&kind_jstr)?.into();
-            if kind_str != "H265" {
-                return Ok::<Option<NalUnit>, jni::errors::Error>(None);
+        let mut rust_nals: Vec<NalUnit> = Vec::new();
+        for i in 0..size {
+            let parsed = env.with_local_frame(16, |inner| {
+                let item = inner
+                    .call_method(&nals, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                let kind = inner
+                    .call_method(&item, "kind", "()Ljava/lang/String;", &[])?
+                    .l()?;
+                let kind_jstr = jni::objects::JString::from(kind);
+                let kind_str: String = inner.get_string(&kind_jstr)?.into();
+                if kind_str != "H265" {
+                    return Ok::<Option<NalUnit>, jni::errors::Error>(None);
+                }
+                let nal_type_raw = inner.call_method(&item, "nalType", "()I", &[])?.i()?;
+                let nal_type = crate::jutil::checked_u8(inner, nal_type_raw as i64, "nalType")?;
+                // layerId / temporalIdPlus1 are (nullable) Integer; H265 NalUnits
+                // always carry them, but default to 0 / 1 if absent (mirrors tst-py
+                // `layer_id.unwrap_or(0)` / `temporal_id_plus1.unwrap_or(1)`).
+                let layer_id_obj = inner
+                    .call_method(&item, "layerId", "()Ljava/lang/Integer;", &[])?
+                    .l()?;
+                let layer_id = if layer_id_obj.is_null() {
+                    0u8
+                } else {
+                    let layer_id_raw = inner
+                        .call_method(&layer_id_obj, "intValue", "()I", &[])?
+                        .i()?;
+                    crate::jutil::checked_u8(inner, layer_id_raw as i64, "layerId")?
+                };
+                let tid_obj = inner
+                    .call_method(&item, "temporalIdPlus1", "()Ljava/lang/Integer;", &[])?
+                    .l()?;
+                let temporal_id_plus1 = if tid_obj.is_null() {
+                    1u8
+                } else {
+                    let tid_raw = inner.call_method(&tid_obj, "intValue", "()I", &[])?.i()?;
+                    crate::jutil::checked_u8(inner, tid_raw as i64, "temporalIdPlus1")?
+                };
+                let payload_buf = inner
+                    .call_method(&item, "payload", "()Ljava/nio/ByteBuffer;", &[])?
+                    .l()?;
+                let payload = read_byte_buffer(inner, &payload_buf)?;
+                Ok(Some(NalUnit::H265 {
+                    nal_type,
+                    layer_id,
+                    temporal_id_plus1,
+                    payload: payload.into(),
+                }))
+            });
+            match parsed {
+                Ok(Some(n)) => rust_nals.push(n),
+                Ok(None) => {}
+                Err(_) => return JObject::null().into_raw(),
             }
-            let nal_type_raw = inner.call_method(&item, "nalType", "()I", &[])?.i()?;
-            let nal_type = crate::jutil::checked_u8(inner, nal_type_raw as i64, "nalType")?;
-            // layerId / temporalIdPlus1 are (nullable) Integer; H265 NalUnits
-            // always carry them, but default to 0 / 1 if absent (mirrors tst-py
-            // `layer_id.unwrap_or(0)` / `temporal_id_plus1.unwrap_or(1)`).
-            let layer_id_obj = inner
-                .call_method(&item, "layerId", "()Ljava/lang/Integer;", &[])?
-                .l()?;
-            let layer_id = if layer_id_obj.is_null() {
-                0u8
-            } else {
-                let layer_id_raw = inner
-                    .call_method(&layer_id_obj, "intValue", "()I", &[])?
-                    .i()?;
-                crate::jutil::checked_u8(inner, layer_id_raw as i64, "layerId")?
-            };
-            let tid_obj = inner
-                .call_method(&item, "temporalIdPlus1", "()Ljava/lang/Integer;", &[])?
-                .l()?;
-            let temporal_id_plus1 = if tid_obj.is_null() {
-                1u8
-            } else {
-                let tid_raw = inner.call_method(&tid_obj, "intValue", "()I", &[])?.i()?;
-                crate::jutil::checked_u8(inner, tid_raw as i64, "temporalIdPlus1")?
-            };
-            let payload_buf = inner
-                .call_method(&item, "payload", "()Ljava/nio/ByteBuffer;", &[])?
-                .l()?;
-            let payload = read_byte_buffer(inner, &payload_buf)?;
-            Ok(Some(NalUnit::H265 {
-                nal_type,
-                layer_id,
-                temporal_id_plus1,
-                payload: payload.into(),
-            }))
-        });
-        match parsed {
-            Ok(Some(n)) => rust_nals.push(n),
-            Ok(None) => {}
-            Err(_) => return JObject::null().into_raw(),
         }
-    }
 
-    match parse_parameter_sets(&rust_nals) {
-        Ok(ps) => match build_parameter_sets(&mut env, &ps) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "h265");
-            JObject::null().into_raw()
+        match parse_parameter_sets(&rust_nals) {
+            Ok(ps) => match build_parameter_sets(env, &ps) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "h265");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 /// Build a Java

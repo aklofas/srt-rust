@@ -226,20 +226,22 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseAv1SequenceHeader<'loc
     _class: JClass<'local>,
     payload: JByteArray<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&payload) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-    match parse_sequence_header(&bytes) {
-        Ok(seq) => match build_sequence_header(&mut env, &seq) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "av1");
-            JObject::null().into_raw()
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&payload) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
+        match parse_sequence_header(&bytes) {
+            Ok(seq) => match build_sequence_header(env, &seq) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "av1");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -249,42 +251,44 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseAv1FrameHeaderLight<'l
     payload: JByteArray<'local>,
     seq: JObject<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&payload) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-
-    // SPS context is REQUIRED. Recover the Rust seq by re-parsing the Java
-    // seq's `raw()` ByteBuffer (the Java record can't hold the Rust struct).
-    let raw_buf = match env.call_method(&seq, "raw", "()Ljava/nio/ByteBuffer;", &[]) {
-        Ok(v) => match v.l() {
-            Ok(o) => o,
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&payload) {
+            Ok(b) => b,
             Err(_) => return JObject::null().into_raw(),
-        },
-        Err(_) => return JObject::null().into_raw(),
-    };
-    let seq_bytes = match read_byte_buffer(&mut env, &raw_buf) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
-    let seq_ctx = match parse_sequence_header(&seq_bytes) {
-        Ok(s) => s,
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "av1");
-            return JObject::null().into_raw();
-        }
-    };
+        };
 
-    match parse_frame_header_light(&bytes, &seq_ctx) {
-        Ok(fh) => match build_frame_header(&mut env, &fh) {
-            Ok(obj) => obj.into_raw(),
-            Err(()) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "av1");
-            JObject::null().into_raw()
+        // SPS context is REQUIRED. Recover the Rust seq by re-parsing the Java
+        // seq's `raw()` ByteBuffer (the Java record can't hold the Rust struct).
+        let raw_buf = match env.call_method(&seq, "raw", "()Ljava/nio/ByteBuffer;", &[]) {
+            Ok(v) => match v.l() {
+                Ok(o) => o,
+                Err(_) => return JObject::null().into_raw(),
+            },
+            Err(_) => return JObject::null().into_raw(),
+        };
+        let seq_bytes = match read_byte_buffer(env, &raw_buf) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
+        let seq_ctx = match parse_sequence_header(&seq_bytes) {
+            Ok(s) => s,
+            Err(e) => {
+                map_codec_parse_error(env, &e, "av1");
+                return JObject::null().into_raw();
+            }
+        };
+
+        match parse_frame_header_light(&bytes, &seq_ctx) {
+            Ok(fh) => match build_frame_header(env, &fh) {
+                Ok(obj) => obj.into_raw(),
+                Err(()) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_codec_parse_error(env, &e, "av1");
+                JObject::null().into_raw()
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -293,35 +297,37 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseAv1ObuStream<'local>(
     _class: JClass<'local>,
     obus: JObject<'local>,
 ) -> jobject {
-    // INFALLIBLE: failures are collected into the result's `unparseable` list,
-    // never thrown. Read each Java Obu inside a per-element local frame.
-    let size = match env.call_method(&obus, "size", "()I", &[]) {
-        Ok(v) => match v.i() {
-            Ok(n) => n,
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // INFALLIBLE: failures are collected into the result's `unparseable` list,
+        // never thrown. Read each Java Obu inside a per-element local frame.
+        let size = match env.call_method(&obus, "size", "()I", &[]) {
+            Ok(v) => match v.i() {
+                Ok(n) => n,
+                Err(_) => return JObject::null().into_raw(),
+            },
             Err(_) => return JObject::null().into_raw(),
-        },
-        Err(_) => return JObject::null().into_raw(),
-    };
+        };
 
-    let mut rust_obus: Vec<Obu> = Vec::new();
-    for i in 0..size {
-        let parsed = env.with_local_frame(16, |inner| {
-            let item = inner
-                .call_method(&obus, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
-                .l()?;
-            read_obu(inner, &item)
-        });
-        match parsed {
-            Ok(o) => rust_obus.push(o),
-            Err(_) => return JObject::null().into_raw(),
+        let mut rust_obus: Vec<Obu> = Vec::new();
+        for i in 0..size {
+            let parsed = env.with_local_frame(16, |inner| {
+                let item = inner
+                    .call_method(&obus, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                read_obu(inner, &item)
+            });
+            match parsed {
+                Ok(o) => rust_obus.push(o),
+                Err(_) => return JObject::null().into_raw(),
+            }
         }
-    }
 
-    let stream = parse_obu_stream(&rust_obus);
-    match build_obu_stream(&mut env, &stream) {
-        Ok(obj) => obj.into_raw(),
-        Err(()) => JObject::null().into_raw(),
-    }
+        let stream = parse_obu_stream(&rust_obus);
+        match build_obu_stream(env, &stream) {
+            Ok(obj) => obj.into_raw(),
+            Err(()) => JObject::null().into_raw(),
+        }
+    })
 }
 
 /// Build a Java

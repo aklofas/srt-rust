@@ -88,36 +88,38 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeSecurity<'local>(
     buf: JByteArray<'local>,
     strict: jni::sys::jboolean,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&buf) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nDecodeSecurity: byte[] read failed: {e}"),
-            );
-            return JObject::null().into_raw();
-        }
-    };
-    let result = if strict != 0 {
-        decode_strict(&bytes)
-    } else {
-        decode_lenient(&bytes)
-    };
-    match result {
-        Ok(sec) => match build_security(&mut env, &sec) {
-            Ok(raw) => raw,
-            Err(_) => {
-                // A JNI op inside build_security failed (e.g. OOM building a
-                // local ref). The JVM exception is already pending; return null
-                // so it propagates when control returns to Java.
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&buf) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nDecodeSecurity: byte[] read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let result = if strict != 0 {
+            decode_strict(&bytes)
+        } else {
+            decode_lenient(&bytes)
+        };
+        match result {
+            Ok(sec) => match build_security(env, &sec) {
+                Ok(raw) => raw,
+                Err(_) => {
+                    // A JNI op inside build_security failed (e.g. OOM building a
+                    // local ref). The JVM exception is already pending; return null
+                    // so it propagates when control returns to Java.
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                map_klv_decode_error(env, &e);
                 JObject::null().into_raw()
             }
-        },
-        Err(e) => {
-            map_klv_decode_error(&mut env, &e);
-            JObject::null().into_raw()
         }
-    }
+    })
 }
 
 /// Build a `org.tstrans.klv.SecurityLs` Java record from a Rust `SecurityLs`
@@ -336,33 +338,35 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeSecurity<'local>(
     _c: JClass<'local>,
     record: JObject<'local>,
 ) -> jobject {
-    match read_security(&mut env, &record) {
-        Ok(rust_rec) => match encode_to_vec(&rust_rec) {
-            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-                Ok(arr) => arr.into_raw(),
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_security(env, &record) {
+            Ok(rust_rec) => match encode_to_vec(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!("nEncodeSecurity: byte_array_from_slice failed: {e}"),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
                 Err(e) => {
-                    let _ = env.throw_new(
-                        "java/lang/RuntimeException",
-                        format!("nEncodeSecurity: byte_array_from_slice failed: {e}"),
-                    );
+                    map_klv_encode_error(env, &e);
                     JObject::null().into_raw()
                 }
             },
             Err(e) => {
-                map_klv_encode_error(&mut env, &e);
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeSecurity: field read failed: {e}"),
+                    );
+                }
                 JObject::null().into_raw()
             }
-        },
-        Err(e) => {
-            if !env.exception_check().unwrap_or(false) {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("nEncodeSecurity: field read failed: {e}"),
-                );
-            }
-            JObject::null().into_raw()
         }
-    }
+    })
 }
 
 /// Read all fields from a Java `SecurityLs` record into a Rust `SecurityLs`.

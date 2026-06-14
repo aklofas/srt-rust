@@ -97,31 +97,33 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeVmti<'local>(
     buf: JByteArray<'local>,
     strict: jni::sys::jboolean,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&buf) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nDecodeVmti: byte[] read failed: {e}"),
-            );
-            return JObject::null().into_raw();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&buf) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nDecodeVmti: byte[] read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let result = if strict != 0 {
+            decode_strict(&bytes)
+        } else {
+            decode_lenient(&bytes)
+        };
+        match result {
+            Ok(vmti) => match build_vmti(env, &vmti) {
+                Ok(raw) => raw,
+                Err(_) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_klv_decode_error(env, &e);
+                JObject::null().into_raw()
+            }
         }
-    };
-    let result = if strict != 0 {
-        decode_strict(&bytes)
-    } else {
-        decode_lenient(&bytes)
-    };
-    match result {
-        Ok(vmti) => match build_vmti(&mut env, &vmti) {
-            Ok(raw) => raw,
-            Err(_) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_klv_decode_error(&mut env, &e);
-            JObject::null().into_raw()
-        }
-    }
+    })
 }
 
 // -----------------------------------------------------------------------
@@ -139,33 +141,35 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmti<'local>(
     _c: JClass<'local>,
     record: JObject<'local>,
 ) -> jobject {
-    match read_vmti(&mut env, &record) {
-        Ok(rust_rec) => match encode_to_vec(&rust_rec) {
-            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-                Ok(arr) => arr.into_raw(),
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_vmti(env, &record) {
+            Ok(rust_rec) => match encode_to_vec(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!("nEncodeVmti: byte_array_from_slice failed: {e}"),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
                 Err(e) => {
-                    let _ = env.throw_new(
-                        "java/lang/RuntimeException",
-                        format!("nEncodeVmti: byte_array_from_slice failed: {e}"),
-                    );
+                    map_klv_encode_error(env, &e);
                     JObject::null().into_raw()
                 }
             },
             Err(e) => {
-                map_klv_encode_error(&mut env, &e);
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeVmti: field read failed: {e}"),
+                    );
+                }
                 JObject::null().into_raw()
             }
-        },
-        Err(e) => {
-            if !env.exception_check().unwrap_or(false) {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("nEncodeVmti: field read failed: {e}"),
-                );
-            }
-            JObject::null().into_raw()
         }
-    }
+    })
 }
 
 /// `org.tstrans.klv.Klv.nEncodeVmtiStandalone(VmtiLs) -> byte[]`
@@ -180,33 +184,35 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmtiStandalone<'local>(
     _c: JClass<'local>,
     record: JObject<'local>,
 ) -> jobject {
-    match read_vmti(&mut env, &record) {
-        Ok(rust_rec) => match encode_to_vec_standalone(&rust_rec) {
-            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-                Ok(arr) => arr.into_raw(),
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_vmti(env, &record) {
+            Ok(rust_rec) => match encode_to_vec_standalone(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!("nEncodeVmtiStandalone: byte_array_from_slice failed: {e}"),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
                 Err(e) => {
-                    let _ = env.throw_new(
-                        "java/lang/RuntimeException",
-                        format!("nEncodeVmtiStandalone: byte_array_from_slice failed: {e}"),
-                    );
+                    map_klv_encode_error(env, &e);
                     JObject::null().into_raw()
                 }
             },
             Err(e) => {
-                map_klv_encode_error(&mut env, &e);
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeVmtiStandalone: field read failed: {e}"),
+                    );
+                }
                 JObject::null().into_raw()
             }
-        },
-        Err(e) => {
-            if !env.exception_check().unwrap_or(false) {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("nEncodeVmtiStandalone: field read failed: {e}"),
-                );
-            }
-            JObject::null().into_raw()
         }
-    }
+    })
 }
 
 // -----------------------------------------------------------------------

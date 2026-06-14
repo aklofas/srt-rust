@@ -48,7 +48,7 @@ use jni::sys::{jboolean, jint, jlong, jobject};
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_core::transport::TransportError;
 use tst_pipeline::{
@@ -413,6 +413,25 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'loca
     })
 }
 
+/// `nPushData(handle, data, pts)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushData<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(buf) = read_bytes(env, &data) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_data(&buf, Pts90khz::new(pts))
+        });
+    })
+}
+
 // ── Push family — handle-targeted variants ─────────────────────────────────
 
 /// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
@@ -529,6 +548,36 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'lo
     })
 }
 
+/// `nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
+/// validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
+/// chain (rejecting negative / out-of-u32 values up front rather than
+/// truncating, mirroring `MuxSender::nPushDataTo`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushDataTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    data: JByteArray<'local>,
+    pts: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+            return;
+        };
+        let Some(buf) = read_bytes(env, &data) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_data_to(h, &buf, Pts90khz::new(pts))
+        });
+    })
+}
+
 // ── Handle getters ─────────────────────────────────────────────────────────
 
 /// `nVideoHandle(handle)` — first configured video stream handle, or `-1`.
@@ -583,6 +632,20 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSubtitleHandle(
     crate::panic::jni_catch(&mut env, 0, |env| {
         mux_first_handle(env, handle, |inner| {
             inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+        })
+    })
+}
+
+/// `nDataHandle(handle)` — first configured data stream handle, or `-1`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nDataHandle(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        mux_first_handle(env, handle, |inner| {
+            inner.data_handles().into_iter().next().map(|h| h.raw())
         })
     })
 }

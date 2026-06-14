@@ -66,7 +66,6 @@ pub struct TstRtspCancelHandle {
 ///   `tst_rtsp_server_builder_start`.
 /// - `out` must be a non-NULL, writable pointer to a `tst_server_stats_t`
 ///   that is valid for this call. The caller retains ownership.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_get_stats(
     server: *mut TstRtspServer,
@@ -121,7 +120,6 @@ pub unsafe extern "C" fn tst_rtsp_server_get_stats(
 ///
 /// - `server` must be a non-NULL, non-freed pointer from
 ///   `tst_rtsp_server_builder_start`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_cancel_handle(
     server: *mut TstRtspServer,
@@ -151,7 +149,6 @@ pub unsafe extern "C" fn tst_rtsp_server_cancel_handle(
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_cancel_handle`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_cancel_handle_cancel(handle: *mut TstRtspCancelHandle) {
     ffi_catch((), || {
@@ -173,7 +170,6 @@ pub unsafe extern "C" fn tst_rtsp_cancel_handle_cancel(handle: *mut TstRtspCance
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_cancel_handle`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_cancel_handle_free(handle: *mut TstRtspCancelHandle) {
     ffi_catch((), || {
@@ -209,7 +205,6 @@ pub unsafe extern "C" fn tst_rtsp_cancel_handle_free(handle: *mut TstRtspCancelH
 ///
 /// - `server` must be a non-NULL, non-freed pointer from
 ///   `tst_rtsp_server_builder_start`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_stop(
     server: *mut TstRtspServer,
@@ -263,7 +258,6 @@ pub unsafe extern "C" fn tst_rtsp_server_stop(
 ///
 /// - `server` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_builder_start`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_free(server: *mut TstRtspServer) {
     ffi_catch((), || {

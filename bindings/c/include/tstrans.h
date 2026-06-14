@@ -4943,7 +4943,7 @@ void tst_publisher_free(struct TstPublisher *p);
  */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Close and free a `tst_rist_demux_receiver_t`.
  *
@@ -4957,7 +4957,7 @@ void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 void tst_rist_demux_receiver_close(struct TstRistDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Close and free a `tst_rist_mux_sender_t`.
  *
@@ -4971,7 +4971,7 @@ void tst_rist_demux_receiver_close(struct TstRistDemuxReceiver *p);
 void tst_rist_mux_sender_close(struct TstRistMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Close and free a `tst_rist_receiver_t`.
  *
@@ -4986,7 +4986,7 @@ void tst_rist_mux_sender_close(struct TstRistMuxSender *p);
 void tst_rist_receiver_close(struct TstRistReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Close and free a `tst_rist_sender_t`.
  *
@@ -5002,7 +5002,7 @@ void tst_rist_receiver_close(struct TstRistReceiver *p);
 void tst_rist_sender_close(struct TstRistSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel a `tst_rtp_demux_receiver_t`. Signals the underlying RTP socket
  * to stop, unblocking any thread parked in `_next_event`. Safe to call
@@ -5020,7 +5020,7 @@ void tst_rist_sender_close(struct TstRistSender *p);
 int tst_rtp_demux_receiver_cancel(struct TstRtpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Close and free a `tst_rtp_demux_receiver_t`.
  *
@@ -5034,7 +5034,7 @@ int tst_rtp_demux_receiver_cancel(struct TstRtpDemuxReceiver *p);
 void tst_rtp_demux_receiver_close(struct TstRtpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel a `tst_rtp_mux_sender_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in a `_push_*` entry point. Safe to
@@ -5052,7 +5052,7 @@ void tst_rtp_demux_receiver_close(struct TstRtpDemuxReceiver *p);
 int tst_rtp_mux_sender_cancel(struct TstRtpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Close and free a `tst_rtp_mux_sender_t`.
  *
@@ -5066,7 +5066,7 @@ int tst_rtp_mux_sender_cancel(struct TstRtpMuxSender *p);
 void tst_rtp_mux_sender_close(struct TstRtpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel a `tst_rtp_receiver_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in `_recv_ts`. Safe to call from
@@ -5084,7 +5084,7 @@ void tst_rtp_mux_sender_close(struct TstRtpMuxSender *p);
 int tst_rtp_receiver_cancel(struct TstRtpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Close and free a `tst_rtp_receiver_t`.
  *
@@ -5099,7 +5099,7 @@ int tst_rtp_receiver_cancel(struct TstRtpReceiver *p);
 void tst_rtp_receiver_close(struct TstRtpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel a `tst_rtp_sender_t`. Signals the underlying RTP socket to
  * stop, unblocking any thread parked in `_send_ts`. Safe to call from
@@ -5116,7 +5116,7 @@ void tst_rtp_receiver_close(struct TstRtpReceiver *p);
 int tst_rtp_sender_cancel(struct TstRtpSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Close and free a `tst_rtp_sender_t`.
  *
@@ -5132,7 +5132,7 @@ int tst_rtp_sender_cancel(struct TstRtpSender *p);
 void tst_rtp_sender_close(struct TstRtpSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Fire the hard cancel on a cancel handle.
  *
@@ -5151,7 +5151,7 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
 void tst_rtsp_cancel_handle_cancel(struct tst_rtsp_cancel_handle_t *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Free a cancel handle obtained from `tst_rtsp_server_cancel_handle`.
  *
@@ -5188,7 +5188,7 @@ void tst_rtsp_cancel_handle_free(struct tst_rtsp_cancel_handle_t *handle);
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel a mount handle. All subsequent `push_*` calls on this handle will
  * return `TST_E_CLOSED` immediately without entering the muxer.
@@ -5211,7 +5211,7 @@ void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 int tst_rtsp_mount_cancel(struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Free an RTSP mount handle.
  *
@@ -5231,7 +5231,7 @@ int tst_rtsp_mount_cancel(struct TstRtspMountHandle *handle);
 void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Free a builder without starting the server.
  *
@@ -5251,7 +5251,7 @@ void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
 void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Free the RTSP server handle.
  *
@@ -5273,7 +5273,7 @@ void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
 void tst_rtsp_server_free(struct TstRtspServer *server);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Cancel any blocking RTSP I/O on the control channel.
  *
@@ -5294,7 +5294,7 @@ void tst_rtsp_server_free(struct TstRtspServer *server);
 int tst_rtsp_session_cancel(struct TstRtspSession *session);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Send TEARDOWN and free the session handle.
  *
@@ -5315,7 +5315,7 @@ int tst_rtsp_session_cancel(struct TstRtspSession *session);
 int tst_rtsp_session_teardown_and_free(struct TstRtspSession *session);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Close and free a `tst_tcp_demux_receiver_t`.
  *
@@ -5330,7 +5330,7 @@ int tst_rtsp_session_teardown_and_free(struct TstRtspSession *session);
 void tst_tcp_demux_receiver_close(struct TstTcpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Close the listening socket and free the `tst_tcp_listener_t`.
  *
@@ -5348,7 +5348,7 @@ void tst_tcp_demux_receiver_close(struct TstTcpDemuxReceiver *p);
 void tst_tcp_listener_free(struct TstTcpListener *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Close and free a `tst_tcp_mux_sender_t`.
  *
@@ -5362,7 +5362,7 @@ void tst_tcp_listener_free(struct TstTcpListener *p);
 void tst_tcp_mux_sender_close(struct TstTcpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Close and free a `tst_tcp_receiver_t`.
  *
@@ -5377,7 +5377,7 @@ void tst_tcp_mux_sender_close(struct TstTcpMuxSender *p);
 void tst_tcp_receiver_close(struct TstTcpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Close and free a `tst_tcp_sender_t`.
  *
@@ -5393,7 +5393,7 @@ void tst_tcp_receiver_close(struct TstTcpReceiver *p);
 void tst_tcp_sender_close(struct TstTcpSender *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Close and free a `tst_udp_demux_receiver_t`.
  *
@@ -5407,7 +5407,7 @@ void tst_tcp_sender_close(struct TstTcpSender *p);
 void tst_udp_demux_receiver_close(struct TstUdpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Close and free a `tst_udp_mux_sender_t`.
  *
@@ -5421,7 +5421,7 @@ void tst_udp_demux_receiver_close(struct TstUdpDemuxReceiver *p);
 void tst_udp_mux_sender_close(struct TstUdpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Close and free a `tst_udp_receiver_t`.
  *
@@ -5436,7 +5436,7 @@ void tst_udp_mux_sender_close(struct TstUdpMuxSender *p);
 void tst_udp_receiver_close(struct TstUdpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Close and free a `tst_udp_sender_t`.
  *
@@ -5978,7 +5978,7 @@ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int3
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Read wire-level transport stats for the underlying RIST transport.
  *
@@ -6000,7 +6000,7 @@ int tst_rist_demux_receiver_get_socket_stats(struct TstRistDemuxReceiver *p,
                                              struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot aggregate stats for a `tst_rist_demux_receiver_t` into `*out`.
  *
@@ -6021,7 +6021,7 @@ int tst_rist_demux_receiver_get_stats(struct TstRistDemuxReceiver *p,
                                       struct tst_demux_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot codec-specific stats for one PID on a
  * `tst_rist_demux_receiver_t`.
@@ -6047,7 +6047,7 @@ int tst_rist_demux_receiver_get_stream_codec_stats(struct TstRistDemuxReceiver *
                                                    struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot per-PID stats for a `tst_rist_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -6075,7 +6075,7 @@ int tst_rist_demux_receiver_get_stream_stats(struct TstRistDemuxReceiver *p,
                                              size_t *out_count);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -6104,7 +6104,7 @@ int tst_rist_demux_receiver_next_event(struct TstRistDemuxReceiver *p,
                                        struct tst_event_t *out_event);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Open a RIST-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
  * which case default demux options apply (lenient / CFI-tolerant mode).
@@ -6135,7 +6135,7 @@ struct TstRistDemuxReceiver *tst_rist_demux_receiver_open(const char *url,
                                                           const struct tst_demux_config_t *demux_cfg);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Reset stats counters for a `tst_rist_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -6152,7 +6152,7 @@ struct TstRistDemuxReceiver *tst_rist_demux_receiver_open(const char *url,
 int tst_rist_demux_receiver_reset_stats(struct TstRistDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot mux-sender-level stats for a `tst_rist_mux_sender_t` into `*out`.
  *
@@ -6170,7 +6170,7 @@ int tst_rist_mux_sender_get_mux_sender_stats(struct TstRistMuxSender *p,
                                              struct tst_mux_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Read wire-level transport stats for the underlying RIST transport.
  *
@@ -6192,7 +6192,7 @@ int tst_rist_mux_sender_get_socket_stats(struct TstRistMuxSender *p,
                                          struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_rist_mux_sender_t`.
  *
@@ -6217,7 +6217,7 @@ int tst_rist_mux_sender_get_stream_codec_stats(struct TstRistMuxSender *p,
                                                struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Open a RIST-backed `MuxSender` that muxes MPEG-TS in real time and
  * sends over RIST. `mux_cfg` must be a valid `tst_mux_config_t`
@@ -6244,7 +6244,7 @@ struct TstRistMuxSender *tst_rist_mux_sender_open(const char *url,
                                                   const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one audio frame buffer through the muxer's single audio stream
  * and out the RIST transport (single-stream shorthand).
@@ -6265,7 +6265,7 @@ int tst_rist_mux_sender_push_audio(struct TstRistMuxSender *p,
                                    int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -6284,7 +6284,7 @@ int tst_rist_mux_sender_push_audio_to(struct TstRistMuxSender *p,
                                       int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one raw KLV blob through the muxer's single KLV stream and out
  * the RIST transport (single-stream shorthand).
@@ -6307,7 +6307,7 @@ int tst_rist_mux_sender_push_klv(struct TstRistMuxSender *p,
                                  int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one KLV blob targeting a specific KLV elementary stream.
  *
@@ -6328,7 +6328,7 @@ int tst_rist_mux_sender_push_klv_to(struct TstRistMuxSender *p,
                                     int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one subtitle PES unit through the muxer's single subtitle stream
  * and out the RIST transport (single-stream shorthand).
@@ -6348,7 +6348,7 @@ int tst_rist_mux_sender_push_subtitle(struct TstRistMuxSender *p,
                                       int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -6367,7 +6367,7 @@ int tst_rist_mux_sender_push_subtitle_to(struct TstRistMuxSender *p,
                                          int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one Annex-B NAL through the muxer's single video stream and
  * out the RIST transport (single-stream shorthand).
@@ -6393,7 +6393,7 @@ int tst_rist_mux_sender_push_video(struct TstRistMuxSender *p,
                                    bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -6418,7 +6418,7 @@ int tst_rist_mux_sender_push_video_to(struct TstRistMuxSender *p,
                                       bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Reset stats counters for a `tst_rist_mux_sender_t` to zero.
  *
@@ -6433,7 +6433,7 @@ int tst_rist_mux_sender_push_video_to(struct TstRistMuxSender *p,
 int tst_rist_mux_sender_reset_stats(struct TstRistMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Read wire-level transport stats for the underlying RIST transport.
  *
@@ -6452,7 +6452,7 @@ int tst_rist_mux_sender_reset_stats(struct TstRistMuxSender *p);
 int tst_rist_receiver_get_socket_stats(struct TstRistReceiver *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot stats for a `tst_rist_receiver_t` into `*out`.
  *
@@ -6467,7 +6467,7 @@ int tst_rist_receiver_get_socket_stats(struct TstRistReceiver *p, struct tst_soc
 int tst_rist_receiver_get_stats(struct TstRistReceiver *p, struct tst_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it
  * into the caller's buffer.
@@ -6503,7 +6503,7 @@ int tst_rist_receiver_recv_ts(struct TstRistReceiver *p,
                               size_t *out_n);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Reset stats counters for a `tst_rist_receiver_t` to zero.
  *
@@ -6517,7 +6517,7 @@ int tst_rist_receiver_recv_ts(struct TstRistReceiver *p,
 int tst_rist_receiver_reset_stats(struct TstRistReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Open a RIST receiver listening on the bind endpoint described by
  * `url`. Returns `NULL` on error.
@@ -6548,7 +6548,7 @@ int tst_rist_receiver_reset_stats(struct TstRistReceiver *p);
 struct TstRistReceiver *tst_rist_recv_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Read wire-level transport stats for the underlying RIST transport.
  *
@@ -6568,7 +6568,7 @@ struct TstRistReceiver *tst_rist_recv_open(const char *url);
 int tst_rist_sender_get_socket_stats(struct TstRistSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Snapshot stats for a `tst_rist_sender_t` into `*out`.
  *
@@ -6583,7 +6583,7 @@ int tst_rist_sender_get_socket_stats(struct TstRistSender *p, struct tst_socket_
 int tst_rist_sender_get_stats(struct TstRistSender *p, struct tst_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Open a RIST sender to the unicast or multicast endpoint described by
  * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
@@ -6613,7 +6613,7 @@ int tst_rist_sender_get_stats(struct TstRistSender *p, struct tst_sender_stats_t
 struct TstRistSender *tst_rist_sender_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Reset stats counters for a `tst_rist_sender_t` to zero.
  *
@@ -6627,7 +6627,7 @@ struct TstRistSender *tst_rist_sender_open(const char *url);
 int tst_rist_sender_reset_stats(struct TstRistSender *p);
 #endif
 
-#if (defined(TST_HAS_RIST) && defined(TST_HAS_RIST))
+#if defined(TST_HAS_RIST)
 /**
  * Push pre-muxed TS bytes through the RIST sender.
  *
@@ -6651,7 +6651,7 @@ int tst_rist_sender_reset_stats(struct TstRistSender *p);
 int tst_rist_sender_send_ts(struct TstRistSender *p, const uint8_t *bytes, size_t len);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -6673,7 +6673,7 @@ int tst_rtp_demux_receiver_get_socket_stats(struct TstRtpDemuxReceiver *p,
                                             struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot aggregate stats for a `tst_rtp_demux_receiver_t` into `*out`.
  *
@@ -6694,7 +6694,7 @@ int tst_rtp_demux_receiver_get_stats(struct TstRtpDemuxReceiver *p,
                                      struct tst_demux_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot codec-specific stats for one PID on a
  * `tst_rtp_demux_receiver_t`.
@@ -6720,7 +6720,7 @@ int tst_rtp_demux_receiver_get_stream_codec_stats(struct TstRtpDemuxReceiver *p,
                                                   struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot per-PID stats for a `tst_rtp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -6748,7 +6748,7 @@ int tst_rtp_demux_receiver_get_stream_stats(struct TstRtpDemuxReceiver *p,
                                             size_t *out_count);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -6777,7 +6777,7 @@ int tst_rtp_demux_receiver_next_event(struct TstRtpDemuxReceiver *p,
                                       struct tst_event_t *out_event);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Open an RTP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
  * which case default demux options apply (lenient / CFI-tolerant mode).
@@ -6797,7 +6797,7 @@ struct TstRtpDemuxReceiver *tst_rtp_demux_receiver_open(const char *url,
                                                         const struct tst_demux_config_t *demux_cfg);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Reset stats counters for a `tst_rtp_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -6814,7 +6814,7 @@ struct TstRtpDemuxReceiver *tst_rtp_demux_receiver_open(const char *url,
 int tst_rtp_demux_receiver_reset_stats(struct TstRtpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot mux-sender-level stats for a `tst_rtp_mux_sender_t` into `*out`.
  *
@@ -6832,7 +6832,7 @@ int tst_rtp_mux_sender_get_mux_sender_stats(struct TstRtpMuxSender *p,
                                             struct tst_mux_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -6852,7 +6852,7 @@ int tst_rtp_mux_sender_get_mux_sender_stats(struct TstRtpMuxSender *p,
 int tst_rtp_mux_sender_get_socket_stats(struct TstRtpMuxSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_rtp_mux_sender_t`.
  *
@@ -6877,7 +6877,7 @@ int tst_rtp_mux_sender_get_stream_codec_stats(struct TstRtpMuxSender *p,
                                               struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Open an RTP-backed `MuxSender` that muxes MPEG-TS in real time and
  * sends over UDP/RTP. `mux_cfg` must be a valid `tst_mux_config_t`
@@ -6899,7 +6899,7 @@ struct TstRtpMuxSender *tst_rtp_mux_sender_open(const char *url,
                                                 const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one audio frame buffer through the muxer's single audio stream
  * and out the RTP transport (single-stream shorthand).
@@ -6920,7 +6920,7 @@ int tst_rtp_mux_sender_push_audio(struct TstRtpMuxSender *p,
                                   int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -6939,7 +6939,7 @@ int tst_rtp_mux_sender_push_audio_to(struct TstRtpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one raw KLV blob through the muxer's single KLV stream and out
  * the RTP transport (single-stream shorthand).
@@ -6962,7 +6962,7 @@ int tst_rtp_mux_sender_push_klv(struct TstRtpMuxSender *p,
                                 int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one KLV blob targeting a specific KLV elementary stream.
  *
@@ -6983,7 +6983,7 @@ int tst_rtp_mux_sender_push_klv_to(struct TstRtpMuxSender *p,
                                    int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one subtitle PES unit through the muxer's single subtitle stream
  * and out the RTP transport (single-stream shorthand).
@@ -7003,7 +7003,7 @@ int tst_rtp_mux_sender_push_subtitle(struct TstRtpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -7022,7 +7022,7 @@ int tst_rtp_mux_sender_push_subtitle_to(struct TstRtpMuxSender *p,
                                         int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one Annex-B NAL through the muxer's single video stream and
  * out the RTP transport (single-stream shorthand).
@@ -7048,7 +7048,7 @@ int tst_rtp_mux_sender_push_video(struct TstRtpMuxSender *p,
                                   bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -7073,7 +7073,7 @@ int tst_rtp_mux_sender_push_video_to(struct TstRtpMuxSender *p,
                                      bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Reset stats counters for a `tst_rtp_mux_sender_t` to zero.
  *
@@ -7088,7 +7088,7 @@ int tst_rtp_mux_sender_push_video_to(struct TstRtpMuxSender *p,
 int tst_rtp_mux_sender_reset_stats(struct TstRtpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -7107,7 +7107,7 @@ int tst_rtp_mux_sender_reset_stats(struct TstRtpMuxSender *p);
 int tst_rtp_receiver_get_socket_stats(struct TstRtpReceiver *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot stats for a `tst_rtp_receiver_t` into `*out`.
  *
@@ -7122,7 +7122,7 @@ int tst_rtp_receiver_get_socket_stats(struct TstRtpReceiver *p, struct tst_socke
 int tst_rtp_receiver_get_stats(struct TstRtpReceiver *p, struct tst_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it
  * into the caller's buffer.
@@ -7151,7 +7151,7 @@ int tst_rtp_receiver_recv_ts(struct TstRtpReceiver *p,
                              size_t *out_n);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Reset stats counters for a `tst_rtp_receiver_t` to zero.
  *
@@ -7165,7 +7165,7 @@ int tst_rtp_receiver_recv_ts(struct TstRtpReceiver *p,
 int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Open an RTP receiver listening on the unicast or multicast endpoint
  * described by `url`. Returns `NULL` on error.
@@ -7185,7 +7185,7 @@ int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
 struct TstRtpReceiver *tst_rtp_recv_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Read wire-level transport stats for the underlying RTP socket.
  *
@@ -7205,7 +7205,7 @@ struct TstRtpReceiver *tst_rtp_recv_open(const char *url);
 int tst_rtp_sender_get_socket_stats(struct TstRtpSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot stats for a `tst_rtp_sender_t` into `*out`.
  *
@@ -7220,7 +7220,7 @@ int tst_rtp_sender_get_socket_stats(struct TstRtpSender *p, struct tst_socket_st
 int tst_rtp_sender_get_stats(struct TstRtpSender *p, struct tst_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Open an RTP sender to the unicast or multicast endpoint described by
  * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
@@ -7241,7 +7241,7 @@ int tst_rtp_sender_get_stats(struct TstRtpSender *p, struct tst_sender_stats_t *
 struct TstRtpSender *tst_rtp_sender_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Reset stats counters for a `tst_rtp_sender_t` to zero.
  *
@@ -7255,7 +7255,7 @@ struct TstRtpSender *tst_rtp_sender_open(const char *url);
 int tst_rtp_sender_reset_stats(struct TstRtpSender *p);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push pre-muxed TS bytes through the RTP sender.
  *
@@ -7356,7 +7356,7 @@ void tst_rtsp_client_builder_auth_digest_sha256(struct tst_rtsp_client_builder_t
                                                 const char *pass);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Consume a builder and open a live RTSP session (OPTIONS → DESCRIBE → SETUP).
  *
@@ -7491,7 +7491,7 @@ void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *bu
                                             uint32_t pref);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Return the first configured audio stream handle for this mount.
  *
@@ -7506,7 +7506,7 @@ void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *bu
 tst_audio_stream_handle_t tst_rtsp_mount_audio_handle(const struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Drain any TS packets buffered in the mount's inner muxer and broadcast
  * them through the mount's fanout channel.
@@ -7525,7 +7525,7 @@ tst_audio_stream_handle_t tst_rtsp_mount_audio_handle(const struct TstRtspMountH
 int tst_rtsp_mount_flush(struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot per-mount stats into `*out`.
  *
@@ -7547,7 +7547,7 @@ int tst_rtsp_mount_get_stats(const struct TstRtspMountHandle *handle,
                              struct tst_mount_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Return the first configured KLV stream handle for this mount.
  *
@@ -7562,7 +7562,7 @@ int tst_rtsp_mount_get_stats(const struct TstRtspMountHandle *handle,
 tst_klv_stream_handle_t tst_rtsp_mount_klv_handle(const struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one audio frame buffer through the mount's single audio stream
  * (single-stream shorthand).
@@ -7587,7 +7587,7 @@ int tst_rtsp_mount_push_audio(struct TstRtspMountHandle *handle,
                               int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -7606,7 +7606,7 @@ int tst_rtsp_mount_push_audio_to(struct TstRtspMountHandle *handle,
                                  int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one data payload through the mount's single data stream and out the
  * RTSP broadcast fanout (single-stream shorthand).
@@ -7630,7 +7630,7 @@ int tst_rtsp_mount_push_data(struct TstRtspMountHandle *handle,
                              int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one data payload targeting a specific data elementary stream.
  *
@@ -7649,7 +7649,7 @@ int tst_rtsp_mount_push_data_to(struct TstRtspMountHandle *handle,
                                 int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one raw KLV blob through the mount's single KLV stream (single-stream
  * shorthand).
@@ -7676,7 +7676,7 @@ int tst_rtsp_mount_push_klv(struct TstRtspMountHandle *handle,
                             int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one raw KLV blob targeting a specific KLV elementary stream.
  *
@@ -7699,7 +7699,7 @@ int tst_rtsp_mount_push_klv_to(struct TstRtspMountHandle *handle,
                                int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one subtitle payload through the mount's single subtitle stream
  * (single-stream shorthand).
@@ -7724,7 +7724,7 @@ int tst_rtsp_mount_push_subtitle(struct TstRtspMountHandle *handle,
                                  int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one subtitle payload targeting a specific subtitle elementary stream.
  *
@@ -7743,7 +7743,7 @@ int tst_rtsp_mount_push_subtitle_to(struct TstRtspMountHandle *handle,
                                     int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one Annex-B NAL through the mount's single video stream and out the
  * RTSP broadcast fanout (single-stream shorthand).
@@ -7774,7 +7774,7 @@ int tst_rtsp_mount_push_video(struct TstRtspMountHandle *handle,
                               bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -7799,7 +7799,7 @@ int tst_rtsp_mount_push_video_to(struct TstRtspMountHandle *handle,
                                  bool key_frame);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Reset all flow counters on the mount to zero.
  *
@@ -7818,7 +7818,7 @@ int tst_rtsp_mount_push_video_to(struct TstRtspMountHandle *handle,
 int tst_rtsp_mount_reset_stats(struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Return the first configured subtitle stream handle for this mount.
  *
@@ -7834,7 +7834,7 @@ int tst_rtsp_mount_reset_stats(struct TstRtspMountHandle *handle);
 tst_subtitle_stream_handle_t tst_rtsp_mount_subtitle_handle(const struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Return the first configured video stream handle for this mount.
  *
@@ -7854,7 +7854,7 @@ tst_subtitle_stream_handle_t tst_rtsp_mount_subtitle_handle(const struct TstRtsp
 tst_video_stream_handle_t tst_rtsp_mount_video_handle(const struct TstRtspMountHandle *handle);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Register a **multicast** mount on a started RTSP server.
  *
@@ -7902,7 +7902,7 @@ struct TstRtspMountHandle *tst_rtsp_server_add_multicast_mount(struct TstRtspSer
                                                                const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Register a **unicast** mount on a started RTSP server.
  *
@@ -7940,7 +7940,7 @@ struct TstRtspMountHandle *tst_rtsp_server_add_unicast_mount(struct TstRtspServe
                                                              const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Require HTTP Basic authentication (RFC 7617) from connecting clients.
  *
@@ -7968,7 +7968,7 @@ void tst_rtsp_server_builder_auth_basic(struct TstRtspServerBuilder *builder,
                                         const char *pass);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Require HTTP Digest MD5 authentication (RFC 7616 §3.4) from connecting
  * clients.
@@ -7996,7 +7996,7 @@ void tst_rtsp_server_builder_auth_digest_md5(struct TstRtspServerBuilder *builde
                                              const char *pass);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Require HTTP Digest SHA-256 authentication (RFC 7616 §3.4) from
  * connecting clients.
@@ -8024,7 +8024,7 @@ void tst_rtsp_server_builder_auth_digest_sha256(struct TstRtspServerBuilder *bui
                                                 const char *pass);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Change or override the bind address.
  *
@@ -8047,7 +8047,7 @@ void tst_rtsp_server_builder_auth_digest_sha256(struct TstRtspServerBuilder *bui
 void tst_rtsp_server_builder_bind(struct TstRtspServerBuilder *builder, const char *addr);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Set the per-mount broadcast channel capacity (frame count).
  *
@@ -8068,7 +8068,7 @@ void tst_rtsp_server_builder_bind(struct TstRtspServerBuilder *builder, const ch
 void tst_rtsp_server_builder_fanout_capacity(struct TstRtspServerBuilder *builder, uint32_t cap);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Set the graceful-shutdown drain window in milliseconds.
  *
@@ -8090,7 +8090,7 @@ void tst_rtsp_server_builder_graceful_shutdown_drain_ms(struct TstRtspServerBuil
                                                         uint32_t ms);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Set the maximum number of concurrent client sessions.
  *
@@ -8110,7 +8110,7 @@ void tst_rtsp_server_builder_graceful_shutdown_drain_ms(struct TstRtspServerBuil
 void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, uint32_t n);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Allocate a new RTSP server builder for binding to `addr`.
  *
@@ -8140,7 +8140,7 @@ void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, 
 struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Set the session timeout in seconds.
  *
@@ -8161,7 +8161,7 @@ struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
 void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builder, uint32_t secs);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Consume a builder and start the RTSP server.
  *
@@ -8198,7 +8198,7 @@ void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builde
 struct TstRtspServer *tst_rtsp_server_builder_start(struct TstRtspServerBuilder *builder);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Supply a PEM-encoded TLS certificate chain and private key for
  * `rtsps://` binds.
@@ -8240,7 +8240,7 @@ void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
                                           size_t key_len);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Obtain a hard-cancel handle for this server.
  *
@@ -8264,7 +8264,7 @@ void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
 struct tst_rtsp_cancel_handle_t *tst_rtsp_server_cancel_handle(struct TstRtspServer *server);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Snapshot aggregate server stats into `*out`.
  *
@@ -8287,7 +8287,7 @@ struct tst_rtsp_cancel_handle_t *tst_rtsp_server_cancel_handle(struct TstRtspSer
 int tst_rtsp_server_get_stats(struct TstRtspServer *server, struct tst_server_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Graceful shutdown — two-phase (stop then free).
  *
@@ -8317,7 +8317,7 @@ int tst_rtsp_server_get_stats(struct TstRtspServer *server, struct tst_server_st
 int tst_rtsp_server_stop(struct TstRtspServer *server, uint32_t _drain_ms);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Consume the session's data-plane transport and return a
  * `tst_rtp_demux_receiver_t` ready for event iteration.
@@ -8356,7 +8356,7 @@ struct TstRtpDemuxReceiver *tst_rtsp_session_into_demux_receiver(struct TstRtspS
                                                                  const struct tst_demux_config_t *demux_cfg);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Send an RTSP PAUSE request on the session.
  *
@@ -8373,7 +8373,7 @@ struct TstRtpDemuxReceiver *tst_rtsp_session_into_demux_receiver(struct TstRtspS
 int tst_rtsp_session_pause(struct TstRtspSession *session);
 #endif
 
-#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#if defined(TST_HAS_RTP)
 /**
  * Send an RTSP PLAY request on the session.
  *
@@ -8391,7 +8391,7 @@ int tst_rtsp_session_pause(struct TstRtspSession *session);
 int tst_rtsp_session_play(struct TstRtspSession *session);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Read wire-level transport stats for the underlying TCP socket.
  *
@@ -8413,7 +8413,7 @@ int tst_tcp_demux_receiver_get_socket_stats(struct TstTcpDemuxReceiver *p,
                                             struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot aggregate stats for a `tst_tcp_demux_receiver_t` into `*out`.
  *
@@ -8434,7 +8434,7 @@ int tst_tcp_demux_receiver_get_stats(struct TstTcpDemuxReceiver *p,
                                      struct tst_demux_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot codec-specific stats for one PID on a
  * `tst_tcp_demux_receiver_t`.
@@ -8460,7 +8460,7 @@ int tst_tcp_demux_receiver_get_stream_codec_stats(struct TstTcpDemuxReceiver *p,
                                                   struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot per-PID stats for a `tst_tcp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -8488,7 +8488,7 @@ int tst_tcp_demux_receiver_get_stream_stats(struct TstTcpDemuxReceiver *p,
                                             size_t *out_count);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -8517,7 +8517,7 @@ int tst_tcp_demux_receiver_next_event(struct TstTcpDemuxReceiver *p,
                                       struct tst_event_t *out_event);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Open a TCP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
  * which case default demux options apply (lenient / CFI-tolerant mode).
@@ -8543,7 +8543,7 @@ struct TstTcpDemuxReceiver *tst_tcp_demux_receiver_open(const char *url,
                                                         const struct tst_demux_config_t *demux_cfg);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Reset stats counters for a `tst_tcp_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -8560,7 +8560,7 @@ struct TstTcpDemuxReceiver *tst_tcp_demux_receiver_open(const char *url,
 int tst_tcp_demux_receiver_reset_stats(struct TstTcpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Block until one inbound TCP connection arrives and return it wrapped
  * as a `tst_tcp_receiver_t`.
@@ -8580,7 +8580,7 @@ int tst_tcp_demux_receiver_reset_stats(struct TstTcpDemuxReceiver *p);
 struct TstTcpReceiver *tst_tcp_listener_accept_receiver(struct TstTcpListener *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Block until one inbound TCP connection arrives and return it wrapped
  * as a `tst_tcp_sender_t`.
@@ -8601,7 +8601,7 @@ struct TstTcpReceiver *tst_tcp_listener_accept_receiver(struct TstTcpListener *p
 struct TstTcpSender *tst_tcp_listener_accept_sender(struct TstTcpListener *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Bind a TCP listener on the socket address `bind_addr` (e.g.
  * `"0.0.0.0:7001"` or `"[::]:7001"` for dual-stack). Returns `NULL` on
@@ -8623,7 +8623,7 @@ struct TstTcpSender *tst_tcp_listener_accept_sender(struct TstTcpListener *p);
 struct TstTcpListener *tst_tcp_listener_bind(const char *bind_addr);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Bind a TCP listener from a `tcp://addr:port?listen=1` URL.
  * Returns `NULL` on error; check `tst_get_last_error()` for the code and
@@ -8641,7 +8641,7 @@ struct TstTcpListener *tst_tcp_listener_bind(const char *bind_addr);
 struct TstTcpListener *tst_tcp_listener_from_url(const char *url);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot mux-sender-level stats for a `tst_tcp_mux_sender_t` into `*out`.
  *
@@ -8659,7 +8659,7 @@ int tst_tcp_mux_sender_get_mux_sender_stats(struct TstTcpMuxSender *p,
                                             struct tst_mux_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Read wire-level transport stats for the underlying TCP socket.
  *
@@ -8679,7 +8679,7 @@ int tst_tcp_mux_sender_get_mux_sender_stats(struct TstTcpMuxSender *p,
 int tst_tcp_mux_sender_get_socket_stats(struct TstTcpMuxSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_tcp_mux_sender_t`.
  *
@@ -8704,7 +8704,7 @@ int tst_tcp_mux_sender_get_stream_codec_stats(struct TstTcpMuxSender *p,
                                               struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Open a TCP-backed `MuxSender` that muxes MPEG-TS in real time and
  * sends over TCP. `mux_cfg` must be a valid `tst_mux_config_t`
@@ -8733,7 +8733,7 @@ struct TstTcpMuxSender *tst_tcp_mux_sender_open(const char *url,
                                                 const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one audio frame buffer through the muxer's single audio stream
  * and out the TCP transport (single-stream shorthand).
@@ -8754,7 +8754,7 @@ int tst_tcp_mux_sender_push_audio(struct TstTcpMuxSender *p,
                                   int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -8773,7 +8773,7 @@ int tst_tcp_mux_sender_push_audio_to(struct TstTcpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one raw KLV blob through the muxer's single KLV stream and out
  * the TCP transport (single-stream shorthand).
@@ -8796,7 +8796,7 @@ int tst_tcp_mux_sender_push_klv(struct TstTcpMuxSender *p,
                                 int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one KLV blob targeting a specific KLV elementary stream.
  *
@@ -8817,7 +8817,7 @@ int tst_tcp_mux_sender_push_klv_to(struct TstTcpMuxSender *p,
                                    int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one subtitle PES unit through the muxer's single subtitle stream
  * and out the TCP transport (single-stream shorthand).
@@ -8837,7 +8837,7 @@ int tst_tcp_mux_sender_push_subtitle(struct TstTcpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -8856,7 +8856,7 @@ int tst_tcp_mux_sender_push_subtitle_to(struct TstTcpMuxSender *p,
                                         int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one Annex-B NAL through the muxer's single video stream and
  * out the TCP transport (single-stream shorthand).
@@ -8882,7 +8882,7 @@ int tst_tcp_mux_sender_push_video(struct TstTcpMuxSender *p,
                                   bool key_frame);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -8907,7 +8907,7 @@ int tst_tcp_mux_sender_push_video_to(struct TstTcpMuxSender *p,
                                      bool key_frame);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Reset stats counters for a `tst_tcp_mux_sender_t` to zero.
  *
@@ -8922,7 +8922,7 @@ int tst_tcp_mux_sender_push_video_to(struct TstTcpMuxSender *p,
 int tst_tcp_mux_sender_reset_stats(struct TstTcpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Read wire-level transport stats for the underlying TCP socket.
  *
@@ -8942,7 +8942,7 @@ int tst_tcp_mux_sender_reset_stats(struct TstTcpMuxSender *p);
 int tst_tcp_receiver_get_socket_stats(struct TstTcpReceiver *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot stats for a `tst_tcp_receiver_t` into `*out`.
  *
@@ -8958,7 +8958,7 @@ int tst_tcp_receiver_get_socket_stats(struct TstTcpReceiver *p, struct tst_socke
 int tst_tcp_receiver_get_stats(struct TstTcpReceiver *p, struct tst_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it
  * into the caller's buffer.
@@ -8992,7 +8992,7 @@ int tst_tcp_receiver_recv_ts(struct TstTcpReceiver *p,
                              size_t *out_n);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Reset stats counters for a `tst_tcp_receiver_t` to zero.
  *
@@ -9007,7 +9007,7 @@ int tst_tcp_receiver_recv_ts(struct TstTcpReceiver *p,
 int tst_tcp_receiver_reset_stats(struct TstTcpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Open a TCP receiver connecting to the endpoint described by `url`.
  * Returns `NULL` on error.
@@ -9029,7 +9029,7 @@ int tst_tcp_receiver_reset_stats(struct TstTcpReceiver *p);
 struct TstTcpReceiver *tst_tcp_recv_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Read wire-level transport stats for the underlying TCP socket.
  *
@@ -9050,7 +9050,7 @@ struct TstTcpReceiver *tst_tcp_recv_open(const char *url);
 int tst_tcp_sender_get_socket_stats(struct TstTcpSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Snapshot stats for a `tst_tcp_sender_t` into `*out`.
  *
@@ -9066,7 +9066,7 @@ int tst_tcp_sender_get_socket_stats(struct TstTcpSender *p, struct tst_socket_st
 int tst_tcp_sender_get_stats(struct TstTcpSender *p, struct tst_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Open a TCP sender to the endpoint described by `url`. Returns `NULL`
  * on error; check `tst_get_last_error()` for the negative error code and
@@ -9090,7 +9090,7 @@ int tst_tcp_sender_get_stats(struct TstTcpSender *p, struct tst_sender_stats_t *
 struct TstTcpSender *tst_tcp_sender_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Reset stats counters for a `tst_tcp_sender_t` to zero.
  *
@@ -9105,7 +9105,7 @@ struct TstTcpSender *tst_tcp_sender_open(const char *url);
 int tst_tcp_sender_reset_stats(struct TstTcpSender *p);
 #endif
 
-#if (defined(TST_HAS_TCP) && defined(TST_HAS_TCP))
+#if defined(TST_HAS_TCP)
 /**
  * Push pre-muxed TS bytes through the TCP sender.
  *
@@ -9129,7 +9129,7 @@ int tst_tcp_sender_reset_stats(struct TstTcpSender *p);
 int tst_tcp_sender_send_ts(struct TstTcpSender *p, const uint8_t *bytes, size_t len);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Read wire-level transport stats for the underlying UDP socket.
  *
@@ -9151,7 +9151,7 @@ int tst_udp_demux_receiver_get_socket_stats(struct TstUdpDemuxReceiver *p,
                                             struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot aggregate stats for a `tst_udp_demux_receiver_t` into `*out`.
  *
@@ -9172,7 +9172,7 @@ int tst_udp_demux_receiver_get_stats(struct TstUdpDemuxReceiver *p,
                                      struct tst_demux_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot codec-specific stats for one PID on a
  * `tst_udp_demux_receiver_t`.
@@ -9198,7 +9198,7 @@ int tst_udp_demux_receiver_get_stream_codec_stats(struct TstUdpDemuxReceiver *p,
                                                   struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot per-PID stats for a `tst_udp_demux_receiver_t` into the
  * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
@@ -9226,7 +9226,7 @@ int tst_udp_demux_receiver_get_stream_stats(struct TstUdpDemuxReceiver *p,
                                             size_t *out_count);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Block until one typed `TstEvent` is ready, then populate
  * `*out_event` with the converted event.
@@ -9255,7 +9255,7 @@ int tst_udp_demux_receiver_next_event(struct TstUdpDemuxReceiver *p,
                                       struct tst_event_t *out_event);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Open a UDP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
  * which case default demux options apply (lenient / CFI-tolerant mode).
@@ -9275,7 +9275,7 @@ struct TstUdpDemuxReceiver *tst_udp_demux_receiver_open(const char *url,
                                                         const struct tst_demux_config_t *demux_cfg);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Reset stats counters for a `tst_udp_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
@@ -9292,7 +9292,7 @@ struct TstUdpDemuxReceiver *tst_udp_demux_receiver_open(const char *url,
 int tst_udp_demux_receiver_reset_stats(struct TstUdpDemuxReceiver *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot mux-sender-level stats for a `tst_udp_mux_sender_t` into `*out`.
  *
@@ -9310,7 +9310,7 @@ int tst_udp_mux_sender_get_mux_sender_stats(struct TstUdpMuxSender *p,
                                             struct tst_mux_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Read wire-level transport stats for the underlying UDP socket.
  *
@@ -9330,7 +9330,7 @@ int tst_udp_mux_sender_get_mux_sender_stats(struct TstUdpMuxSender *p,
 int tst_udp_mux_sender_get_socket_stats(struct TstUdpMuxSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot codec-specific stats for one PID on a `tst_udp_mux_sender_t`.
  *
@@ -9355,7 +9355,7 @@ int tst_udp_mux_sender_get_stream_codec_stats(struct TstUdpMuxSender *p,
                                               struct tst_stream_codec_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Open a UDP-backed `MuxSender` that muxes MPEG-TS in real time and
  * sends over UDP. `mux_cfg` must be a valid `tst_mux_config_t`
@@ -9381,7 +9381,7 @@ struct TstUdpMuxSender *tst_udp_mux_sender_open(const char *url,
                                                 const struct tst_mux_config_t *mux_cfg);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one audio frame buffer through the muxer's single audio stream
  * and out the UDP transport (single-stream shorthand).
@@ -9402,7 +9402,7 @@ int tst_udp_mux_sender_push_audio(struct TstUdpMuxSender *p,
                                   int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one audio frame buffer targeting a specific audio elementary stream.
  *
@@ -9421,7 +9421,7 @@ int tst_udp_mux_sender_push_audio_to(struct TstUdpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one raw KLV blob through the muxer's single KLV stream and out
  * the UDP transport (single-stream shorthand).
@@ -9444,7 +9444,7 @@ int tst_udp_mux_sender_push_klv(struct TstUdpMuxSender *p,
                                 int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one KLV blob targeting a specific KLV elementary stream.
  *
@@ -9465,7 +9465,7 @@ int tst_udp_mux_sender_push_klv_to(struct TstUdpMuxSender *p,
                                    int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one subtitle PES unit through the muxer's single subtitle stream
  * and out the UDP transport (single-stream shorthand).
@@ -9485,7 +9485,7 @@ int tst_udp_mux_sender_push_subtitle(struct TstUdpMuxSender *p,
                                      int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one subtitle PES unit targeting a specific subtitle elementary stream.
  *
@@ -9504,7 +9504,7 @@ int tst_udp_mux_sender_push_subtitle_to(struct TstUdpMuxSender *p,
                                         int64_t pts_90khz);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one Annex-B NAL through the muxer's single video stream and
  * out the UDP transport (single-stream shorthand).
@@ -9530,7 +9530,7 @@ int tst_udp_mux_sender_push_video(struct TstUdpMuxSender *p,
                                   bool key_frame);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
@@ -9555,7 +9555,7 @@ int tst_udp_mux_sender_push_video_to(struct TstUdpMuxSender *p,
                                      bool key_frame);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Reset stats counters for a `tst_udp_mux_sender_t` to zero.
  *
@@ -9570,7 +9570,7 @@ int tst_udp_mux_sender_push_video_to(struct TstUdpMuxSender *p,
 int tst_udp_mux_sender_reset_stats(struct TstUdpMuxSender *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Read wire-level transport stats for the underlying UDP socket.
  *
@@ -9589,7 +9589,7 @@ int tst_udp_mux_sender_reset_stats(struct TstUdpMuxSender *p);
 int tst_udp_receiver_get_socket_stats(struct TstUdpReceiver *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot stats for a `tst_udp_receiver_t` into `*out`.
  *
@@ -9604,7 +9604,7 @@ int tst_udp_receiver_get_socket_stats(struct TstUdpReceiver *p, struct tst_socke
 int tst_udp_receiver_get_stats(struct TstUdpReceiver *p, struct tst_receiver_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it
  * into the caller's buffer.
@@ -9633,7 +9633,7 @@ int tst_udp_receiver_recv_ts(struct TstUdpReceiver *p,
                              size_t *out_n);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Reset stats counters for a `tst_udp_receiver_t` to zero.
  *
@@ -9647,7 +9647,7 @@ int tst_udp_receiver_recv_ts(struct TstUdpReceiver *p,
 int tst_udp_receiver_reset_stats(struct TstUdpReceiver *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Open a UDP receiver listening on the unicast or multicast endpoint
  * described by `url`. Returns `NULL` on error.
@@ -9667,7 +9667,7 @@ int tst_udp_receiver_reset_stats(struct TstUdpReceiver *p);
 struct TstUdpReceiver *tst_udp_recv_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Read wire-level transport stats for the underlying UDP socket.
  *
@@ -9687,7 +9687,7 @@ struct TstUdpReceiver *tst_udp_recv_open(const char *url);
 int tst_udp_sender_get_socket_stats(struct TstUdpSender *p, struct tst_socket_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Snapshot stats for a `tst_udp_sender_t` into `*out`.
  *
@@ -9702,7 +9702,7 @@ int tst_udp_sender_get_socket_stats(struct TstUdpSender *p, struct tst_socket_st
 int tst_udp_sender_get_stats(struct TstUdpSender *p, struct tst_sender_stats_t *out);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Open a UDP sender to the unicast or multicast endpoint described by
  * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
@@ -9723,7 +9723,7 @@ int tst_udp_sender_get_stats(struct TstUdpSender *p, struct tst_sender_stats_t *
 struct TstUdpSender *tst_udp_sender_open(const char *url);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Reset stats counters for a `tst_udp_sender_t` to zero.
  *
@@ -9737,7 +9737,7 @@ struct TstUdpSender *tst_udp_sender_open(const char *url);
 int tst_udp_sender_reset_stats(struct TstUdpSender *p);
 #endif
 
-#if (defined(TST_HAS_UDP) && defined(TST_HAS_UDP))
+#if defined(TST_HAS_UDP)
 /**
  * Push pre-muxed TS bytes through the UDP sender.
  *

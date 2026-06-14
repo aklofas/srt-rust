@@ -75,7 +75,6 @@ pub struct TstTcpListener {
 /// `bind_addr` must be a NUL-terminated C string valid for the duration of
 /// this call. The returned handle must eventually be freed with
 /// `tst_tcp_listener_free`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_bind(bind_addr: *const c_char) -> *mut TstTcpListener {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -116,7 +115,6 @@ pub unsafe extern "C" fn tst_tcp_listener_bind(bind_addr: *const c_char) -> *mut
 /// `url` must be a NUL-terminated C string valid for the duration of this
 /// call. The returned handle must eventually be freed with
 /// `tst_tcp_listener_free`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_from_url(url: *const c_char) -> *mut TstTcpListener {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -154,7 +152,6 @@ pub unsafe extern "C" fn tst_tcp_listener_from_url(url: *const c_char) -> *mut T
 /// # Safety
 ///
 /// `p` must be a valid non-freed `*mut TstTcpListener`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_accept_sender(
     p: *mut TstTcpListener,
@@ -194,7 +191,6 @@ pub unsafe extern "C" fn tst_tcp_listener_accept_sender(
 /// # Safety
 ///
 /// `p` must be a valid non-freed `*mut TstTcpListener`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_accept_receiver(
     p: *mut TstTcpListener,
@@ -236,7 +232,6 @@ pub unsafe extern "C" fn tst_tcp_listener_accept_receiver(
 /// # Safety
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstTcpListener`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_listener_free(p: *mut TstTcpListener) {
     crate::panic::ffi_catch((), || {

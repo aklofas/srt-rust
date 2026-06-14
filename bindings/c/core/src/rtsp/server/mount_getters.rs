@@ -54,7 +54,6 @@ use crate::stats::{TstMountStats, fill_mount_stats};
 ///   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
 /// - `out` must be a non-NULL, writable pointer to a `tst_mount_stats_t`
 ///   struct valid for this call.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_get_stats(
     handle: *const TstRtspMountHandle,
@@ -91,7 +90,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_get_stats(
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_video_handle(
     handle: *const TstRtspMountHandle,
@@ -117,7 +115,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_video_handle(
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_klv_handle(
     handle: *const TstRtspMountHandle,
@@ -143,7 +140,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_klv_handle(
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_audio_handle(
     handle: *const TstRtspMountHandle,
@@ -169,7 +165,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_audio_handle(
 ///
 /// - `handle` must be NULL, or a non-freed pointer from
 ///   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_subtitle_handle(
     handle: *const TstRtspMountHandle,

@@ -59,7 +59,6 @@ pub struct TstUdpReceiver {
 ///
 /// `url` must be a NUL-terminated C string. The returned handle must
 /// eventually be freed with `tst_udp_receiver_close`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_recv_open(url: *const c_char) -> *mut TstUdpReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -102,7 +101,6 @@ pub unsafe extern "C" fn tst_udp_recv_open(url: *const c_char) -> *mut TstUdpRec
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstUdpReceiver` returned
 /// by `tst_udp_recv_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_receiver_close(p: *mut TstUdpReceiver) {
     crate::panic::ffi_catch((), || {
@@ -138,7 +136,6 @@ pub unsafe extern "C" fn tst_udp_receiver_close(p: *mut TstUdpReceiver) {
 ///
 /// `p` must be a valid non-freed `*mut TstUdpReceiver`. `buf` must be
 /// writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_receiver_recv_ts(
     p: *mut TstUdpReceiver,
@@ -193,7 +190,6 @@ pub unsafe extern "C" fn tst_udp_receiver_recv_ts(
 ///
 /// `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
 /// `out` must point to a writable `TstReceiverStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_receiver_get_stats(
     p: *mut TstUdpReceiver,
@@ -227,7 +223,6 @@ pub unsafe extern "C" fn tst_udp_receiver_get_stats(
 ///
 /// `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
 /// `out` must point to a writable `TstSocketStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_receiver_get_socket_stats(
     p: *mut TstUdpReceiver,
@@ -261,7 +256,6 @@ pub unsafe extern "C" fn tst_udp_receiver_get_socket_stats(
 /// # Safety
 ///
 /// `p` must be a valid `*mut TstUdpReceiver` opened via `tst_udp_recv_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_receiver_reset_stats(p: *mut TstUdpReceiver) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

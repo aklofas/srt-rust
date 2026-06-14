@@ -65,7 +65,6 @@ pub struct TstRtpReceiver {
 ///
 /// `url` must be a NUL-terminated C string. The returned handle must
 /// eventually be freed with `tst_rtp_receiver_close`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -108,7 +107,6 @@ pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpRec
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpReceiver` returned
 /// by `tst_rtp_recv_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_close(p: *mut TstRtpReceiver) {
     crate::panic::ffi_catch((), || {
@@ -148,7 +146,6 @@ pub unsafe extern "C" fn tst_rtp_receiver_close(p: *mut TstRtpReceiver) {
 ///
 /// `p` must be a valid non-freed `*mut TstRtpReceiver`. `buf` must be
 /// writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_recv_ts(
     p: *mut TstRtpReceiver,
@@ -221,7 +218,6 @@ pub unsafe extern "C" fn tst_rtp_receiver_recv_ts(
 /// # Safety
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpReceiver`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_cancel(p: *mut TstRtpReceiver) -> libc::c_int {
     crate::panic::ffi_catch(TstError::Internal as i32, || {
@@ -249,7 +245,6 @@ pub unsafe extern "C" fn tst_rtp_receiver_cancel(p: *mut TstRtpReceiver) -> libc
 ///
 /// `p` must be a valid `*mut TstRtpReceiver` opened via `tst_rtp_recv_open`.
 /// `out` must point to a writable `TstReceiverStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_get_stats(
     p: *mut TstRtpReceiver,
@@ -283,7 +278,6 @@ pub unsafe extern "C" fn tst_rtp_receiver_get_stats(
 ///
 /// `p` must be a valid `*mut TstRtpReceiver` opened via `tst_rtp_recv_open`.
 /// `out` must point to a writable `TstSocketStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_get_socket_stats(
     p: *mut TstRtpReceiver,
@@ -317,7 +311,6 @@ pub unsafe extern "C" fn tst_rtp_receiver_get_socket_stats(
 /// # Safety
 ///
 /// `p` must be a valid `*mut TstRtpReceiver` opened via `tst_rtp_recv_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_receiver_reset_stats(p: *mut TstRtpReceiver) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

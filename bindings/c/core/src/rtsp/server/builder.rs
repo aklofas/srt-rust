@@ -86,7 +86,6 @@ use crate::panic::ffi_catch;
 /// duration of this call.  The returned pointer is owned by the caller
 /// and must not be aliased.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_new(
     addr: *const c_char,
 ) -> *mut TstRtspServerBuilder {
@@ -135,7 +134,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_new(
 ///   and not yet freed or consumed.
 /// - `addr` must be a valid, NUL-terminated C string valid for this call.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_bind(
     builder: *mut TstRtspServerBuilder,
     addr: *const c_char,
@@ -194,7 +192,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_bind(
 /// - `user` and `pass` must each be a valid, NUL-terminated C string valid
 ///   for the duration of this call.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_auth_basic(
     builder: *mut TstRtspServerBuilder,
     user: *const c_char,
@@ -237,7 +234,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_auth_basic(
 /// - `user` and `pass` must each be a valid, NUL-terminated C string valid
 ///   for the duration of this call.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_auth_digest_md5(
     builder: *mut TstRtspServerBuilder,
     user: *const c_char,
@@ -280,7 +276,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_auth_digest_md5(
 /// - `user` and `pass` must each be a valid, NUL-terminated C string valid
 ///   for the duration of this call.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_auth_digest_sha256(
     builder: *mut TstRtspServerBuilder,
     user: *const c_char,
@@ -323,7 +318,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_auth_digest_sha256(
 /// `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
 /// and not yet freed or consumed.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_max_sessions(
     builder: *mut TstRtspServerBuilder,
     n: u32,
@@ -350,7 +344,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_max_sessions(
 /// `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
 /// and not yet freed or consumed.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_session_timeout(
     builder: *mut TstRtspServerBuilder,
     secs: u32,
@@ -377,7 +370,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_session_timeout(
 /// `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
 /// and not yet freed or consumed.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_fanout_capacity(
     builder: *mut TstRtspServerBuilder,
     cap: u32,
@@ -403,7 +395,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_fanout_capacity(
 /// `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
 /// and not yet freed or consumed.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_graceful_shutdown_drain_ms(
     builder: *mut TstRtspServerBuilder,
     ms: u32,
@@ -450,7 +441,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_graceful_shutdown_drain_ms(
 /// - `key` must point to at least `key_len` valid bytes.
 /// - No pointer needs to outlive this call.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_tls_cert_pem(
     builder: *mut TstRtspServerBuilder,
     cert: *const u8,
@@ -507,7 +497,6 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_tls_cert_pem(
 /// `tst_rtsp_server_builder_new` that has not yet been freed or passed to
 /// `_start`.
 #[unsafe(no_mangle)]
-#[cfg(feature = "rtp")]
 pub unsafe extern "C" fn tst_rtsp_server_builder_free(builder: *mut TstRtspServerBuilder) {
     ffi_catch((), || {
         if builder.is_null() {

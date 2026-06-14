@@ -66,7 +66,6 @@ pub struct TstUdpMuxSender {
 /// `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
 /// pointer to a `tst_mux_config_t` valid for this call. The returned
 /// handle must eventually be freed with `tst_udp_mux_sender_close`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_open(
     url: *const c_char,
@@ -131,7 +130,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_open(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstUdpMuxSender` returned
 /// by `tst_udp_mux_sender_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_close(p: *mut TstUdpMuxSender) {
     crate::panic::ffi_catch((), || {
@@ -163,7 +161,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_close(p: *mut TstUdpMuxSender) {
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_video(
     p: *mut TstUdpMuxSender,
@@ -205,7 +202,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_video(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_klv(
     p: *mut TstUdpMuxSender,
@@ -244,7 +240,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_klv(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_audio(
     p: *mut TstUdpMuxSender,
@@ -282,7 +277,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_audio(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle(
     p: *mut TstUdpMuxSender,
@@ -327,7 +321,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_video_to(
     p: *mut TstUdpMuxSender,
@@ -377,7 +370,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_video_to(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_klv_to(
     p: *mut TstUdpMuxSender,
@@ -421,7 +413,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_klv_to(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_audio_to(
     p: *mut TstUdpMuxSender,
@@ -465,7 +456,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_audio_to(
 ///
 /// `p` must be a valid non-freed `*mut TstUdpMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle_to(
     p: *mut TstUdpMuxSender,
@@ -515,7 +505,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle_to(
 /// `p` must be a valid `*mut TstUdpMuxSender` opened via
 /// `tst_udp_mux_sender_open`. `out` must point to a writable
 /// `TstMuxSenderStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_get_mux_sender_stats(
     p: *mut TstUdpMuxSender,
@@ -564,7 +553,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_mux_sender_stats(
 /// `p` must be a valid `*mut TstUdpMuxSender` opened via
 /// `tst_udp_mux_sender_open`. `out` must point to a writable
 /// `TstSocketStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_get_socket_stats(
     p: *mut TstUdpMuxSender,
@@ -606,7 +594,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_socket_stats(
 ///
 /// `p` must be a valid pointer obtained from `tst_udp_mux_sender_open`.
 /// `out` must be a writable `tst_stream_codec_stats_t`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_get_stream_codec_stats(
     p: *mut TstUdpMuxSender,
@@ -641,7 +628,6 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_stream_codec_stats(
 ///
 /// `p` must be a valid `*mut TstUdpMuxSender` opened via
 /// `tst_udp_mux_sender_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_mux_sender_reset_stats(p: *mut TstUdpMuxSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

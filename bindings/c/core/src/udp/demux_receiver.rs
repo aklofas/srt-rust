@@ -66,7 +66,6 @@ pub struct TstUdpDemuxReceiver {
 /// `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
 /// valid `tst_demux_config_t*`. The returned handle must eventually be
 /// freed with `tst_udp_demux_receiver_close`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_open(
     url: *const c_char,
@@ -117,7 +116,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_open(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstUdpDemuxReceiver`
 /// returned by `tst_udp_demux_receiver_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_close(p: *mut TstUdpDemuxReceiver) {
     crate::panic::ffi_catch((), || {
@@ -155,7 +153,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_close(p: *mut TstUdpDemuxReceive
 ///
 /// `p` must be a valid non-freed `*mut TstUdpDemuxReceiver`. `out_event`
 /// must be a valid writable `*mut TstEvent`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_next_event(
     p: *mut TstUdpDemuxReceiver,
@@ -217,7 +214,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_next_event(
 /// `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
 /// `tst_udp_demux_receiver_open`. `out` must point to a writable
 /// `TstDemuxReceiverStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_get_stats(
     p: *mut TstUdpDemuxReceiver,
@@ -252,7 +248,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_get_stats(
 /// `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
 /// `tst_udp_demux_receiver_open`. `out` must point to a writable
 /// `TstSocketStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_get_socket_stats(
     p: *mut TstUdpDemuxReceiver,
@@ -295,7 +290,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_get_socket_stats(
 ///
 /// `p` must be a valid pointer obtained from `tst_udp_demux_receiver_open`.
 /// `out` must be a writable `tst_stream_codec_stats_t`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_codec_stats(
     p: *mut TstUdpDemuxReceiver,
@@ -332,7 +326,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_codec_stats(
 ///
 /// `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
 /// `tst_udp_demux_receiver_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_reset_stats(
     p: *mut TstUdpDemuxReceiver,
@@ -370,7 +363,6 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_reset_stats(
 /// `p` must be a valid `*mut TstUdpDemuxReceiver` opened via
 /// `tst_udp_demux_receiver_open`. `out_array` and `out_count` must be
 /// valid non-null pointers.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_stats(
     p: *mut TstUdpDemuxReceiver,

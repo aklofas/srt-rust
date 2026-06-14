@@ -89,7 +89,6 @@ use crate::rtsp::server::types::{TstRtspMountHandle, TstRtspServer};
 /// - `path` must be a NUL-terminated C string valid for this call.
 /// - `mux_cfg` must be a non-NULL pointer from `tst_mux_config_new`,
 ///   valid for this call (caller retains ownership).
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_add_unicast_mount(
     server: *mut TstRtspServer,
@@ -198,7 +197,6 @@ pub unsafe extern "C" fn tst_rtsp_server_add_unicast_mount(
 /// - `iface_name` may be NULL or a NUL-terminated interface string.
 /// - `mux_cfg` must be a non-NULL pointer from `tst_mux_config_new`,
 ///   valid for this call.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_add_multicast_mount(
     server: *mut TstRtspServer,
@@ -323,7 +321,6 @@ pub unsafe extern "C" fn tst_rtsp_server_add_multicast_mount(
 /// `handle` must be NULL, or a pointer returned by
 /// `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`
 /// that has not yet been freed.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_handle_free(handle: *mut TstRtspMountHandle) {
     ffi_catch((), || {
@@ -360,7 +357,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_handle_free(handle: *mut TstRtspMountHan
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `nal` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_video(
     handle: *mut TstRtspMountHandle,
@@ -411,7 +407,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_video(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `klv` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_klv(
     handle: *mut TstRtspMountHandle,
@@ -464,7 +459,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_klv(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `frames` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_audio(
     handle: *mut TstRtspMountHandle,
@@ -512,7 +506,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_audio(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `payload` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle(
     handle: *mut TstRtspMountHandle,
@@ -559,7 +552,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `data` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_data(
     handle: *mut TstRtspMountHandle,
@@ -609,7 +601,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_data(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `nal` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_video_to(
     handle: *mut TstRtspMountHandle,
@@ -665,7 +656,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_video_to(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `klv` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_klv_to(
     handle: *mut TstRtspMountHandle,
@@ -720,7 +710,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_klv_to(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `frames` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_audio_to(
     handle: *mut TstRtspMountHandle,
@@ -770,7 +759,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_audio_to(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `payload` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle_to(
     handle: *mut TstRtspMountHandle,
@@ -820,7 +808,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle_to(
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
 /// `data` must be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_push_data_to(
     handle: *mut TstRtspMountHandle,
@@ -879,7 +866,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_push_data_to(
 /// # Safety
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_flush(handle: *mut TstRtspMountHandle) -> libc::c_int {
     ffi_catch(TstError::Internal as i32, || {
@@ -909,7 +895,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_flush(handle: *mut TstRtspMountHandle) -
 /// # Safety
 ///
 /// `handle` must be NULL or a valid non-freed `*mut tst_rtsp_mount_handle_t`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_cancel(handle: *mut TstRtspMountHandle) -> libc::c_int {
     ffi_catch(TstError::Internal as i32, || {
@@ -938,7 +923,6 @@ pub unsafe extern "C" fn tst_rtsp_mount_cancel(handle: *mut TstRtspMountHandle) 
 /// # Safety
 ///
 /// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_mount_reset_stats(
     handle: *mut TstRtspMountHandle,

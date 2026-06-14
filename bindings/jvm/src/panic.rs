@@ -34,10 +34,6 @@ use jni::JNIEnv;
 /// handle. A panic mid-body either drops an in-progress `Box` (leaking
 /// nothing) or leaves the registry entry usable — the lock simply unlocks
 /// (poison-tolerated) on unwind; any partial mutation persists.
-// Currently the only caller is the feature-gated panic probe; later sweep
-// tasks make this the universal wrapper for every `Java_org_tstrans_*` native,
-// so it is intentionally retained (not dead) outside the test-hooks build.
-#[cfg_attr(not(feature = "jni-test-hooks"), allow(dead_code))]
 pub(crate) fn jni_catch<'local, R, F>(env: &mut JNIEnv<'local>, default: R, f: F) -> R
 where
     F: FnOnce(&mut JNIEnv<'local>) -> R,
@@ -60,7 +56,6 @@ where
 
 /// Best-effort detail string from a `catch_unwind` payload. Mirrors
 /// `tst-c`'s `panic_payload_message`.
-#[cfg_attr(not(feature = "jni-test-hooks"), allow(dead_code))]
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
         String::from(*s)

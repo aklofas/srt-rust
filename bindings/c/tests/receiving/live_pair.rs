@@ -27,9 +27,10 @@ use tstrans::config::{
 };
 use tstrans::error::tst_get_last_error_str;
 use tstrans::sender::mux_sender::{
-    tst_managed_mux_sender_close, tst_managed_mux_sender_open, tst_managed_mux_sender_send_klv_to,
-    tst_managed_mux_sender_send_video_to, tst_mux_sender_close, tst_mux_sender_open,
-    tst_mux_sender_send_data, tst_mux_sender_send_data_to, tst_mux_sender_send_video,
+    tst_managed_mux_sender_close, tst_managed_mux_sender_open, tst_managed_mux_sender_send_data_to,
+    tst_managed_mux_sender_send_klv_to, tst_managed_mux_sender_send_video_to, tst_mux_sender_close,
+    tst_mux_sender_open, tst_mux_sender_send_data, tst_mux_sender_send_data_to,
+    tst_mux_sender_send_video,
 };
 
 fn last_error_msg() -> String {
@@ -378,6 +379,134 @@ fn mux_sender_data_stream_loopback() {
         );
 
         tst_mux_sender_close(s);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+// ---------------------------------------------------------------------------
+// Managed data stream: managed_mux_sender with 1 video + 1 data stream
+// ---------------------------------------------------------------------------
+
+#[test]
+fn managed_mux_sender_data_stream_loopback() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (bytes_tx, bytes_rx) = mpsc::channel::<Vec<u8>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (mut accepted, _peer) = listener.accept().expect("accept");
+
+        // Accumulate until both PIDs (video 0x1011, data 0x1041) have been
+        // seen or the deadline expires.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut accumulated = Vec::with_capacity(64 * 1024);
+        let mut buf = vec![0u8; 4096];
+        while std::time::Instant::now() < deadline {
+            match accepted.recv(&mut buf) {
+                Ok(n) if n > 0 => accumulated.extend_from_slice(&buf[..n]),
+                Ok(_) => break,
+                Err(_) => break,
+            }
+            let seen = pids_seen(&accumulated);
+            if seen.contains(&0x1011) && seen.contains(&0x1041) {
+                break;
+            }
+        }
+        bytes_tx.send(accumulated).expect("send bytes");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener didn't bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}")).unwrap();
+
+    unsafe {
+        let cfg: *mut TstMuxConfig = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        // Capture both handles before the config is freed — they are stable
+        // integer indices (not pointers) and survive config teardown.
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        // One data stream (stream_type 0xF0, carries_pts = true).
+        let h_data = tst_mux_config_add_data_stream(cfg, prog, 0x1041, 0xF0, true);
+
+        let policy = tst_reconnect_policy_new();
+        let s = tst_managed_mux_sender_open(url.as_ptr(), cfg, policy);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+        tst_mux_config_free(cfg);
+        tst_reconnect_policy_free(policy);
+
+        let nal: [u8; 9] = [0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xAA, 0xAA, 0xAA];
+        // Arbitrary opaque payload — data streams are a PES pass-through, so
+        // the muxer applies no framing and no payload inspection.
+        let payload: [u8; 12] = [
+            0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        ];
+
+        // Three rounds; PTS strictly increasing. Uses the explicit-handle
+        // tst_managed_mux_sender_send_data_to entry point.
+        for round in 0u64..3 {
+            let base_pts = (round * 3003) as i64;
+            let rc_video = tst_managed_mux_sender_send_video_to(
+                s,
+                h_video,
+                nal.as_ptr(),
+                nal.len(),
+                base_pts,
+                true,
+            );
+            assert_eq!(
+                rc_video,
+                0,
+                "send_video_to round {round} failed: {}",
+                last_error_msg()
+            );
+
+            let rc_data = tst_managed_mux_sender_send_data_to(
+                s,
+                h_data,
+                payload.as_ptr(),
+                payload.len(),
+                base_pts + 1,
+            );
+            assert_eq!(
+                rc_data,
+                0,
+                "send_data_to round {round} failed: {}",
+                last_error_msg()
+            );
+        }
+
+        let received = bytes_rx
+            .recv_timeout(Duration::from_secs(15))
+            .expect("listener thread didn't deliver bytes within 15s");
+
+        assert!(!received.is_empty(), "received empty buffer");
+        assert_eq!(
+            received[0], 0x47,
+            "expected TS sync byte 0x47 at offset 0; got 0x{:02x}",
+            received[0]
+        );
+
+        let pids = pids_seen(&received);
+        eprintln!("pids_seen = {:?}", pids);
+        assert!(
+            pids.contains(&0x1011),
+            "missing video PID 0x1011; pids_seen = {:?}",
+            pids
+        );
+        assert!(
+            pids.contains(&0x1041),
+            "missing data PID 0x1041; pids_seen = {:?}",
+            pids
+        );
+
+        tst_managed_mux_sender_close(s);
     }
 
     listener_thread.join().expect("listener thread panicked");

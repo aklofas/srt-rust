@@ -20,6 +20,7 @@ import pytest
 from tstrans.exceptions import RtspError, RtspErrorKind
 from tstrans.mpegts import (
     AudioCodec,
+    DataStreamHandle,
     KlvStreamType,
     MuxerProgramConfigBuilder,
     Pts90khz,
@@ -522,3 +523,79 @@ def test_reset_stats_zeros_counters():
         mount.reset_stats()
         assert mount.stats().bytes_pushed == 0
         assert mount.stats().packets_pushed == 0
+
+
+# ---------------------------------------------------------------------------
+# push_data / push_data_to / data_handle on MountHandle.
+# ---------------------------------------------------------------------------
+
+
+def _video_data_program():
+    """Video + one private data stream (user-private stream_type 0xF0)."""
+    return (
+        MuxerProgramConfigBuilder(1, 0x1000)
+        .add_video(0x1011, VideoCodec.H264)
+        .add_data(0x1F0, 0xF0, carries_pts=True)
+        .build()
+    )
+
+
+_DATA_RECORD = b"\x01\x02\x03\x04private-mount-data"
+
+
+def test_data_handle_returns_none_for_video_only_program():
+    """data_handle() returns None when no data stream is configured."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _single_video_program())
+        assert mount.data_handle() is None
+
+
+def test_data_handle_returns_handle_for_data_program():
+    """data_handle() returns a DataStreamHandle when a data stream is
+    configured in the program."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _video_data_program())
+        h = mount.data_handle()
+        assert h is not None
+        assert isinstance(h, DataStreamHandle)
+
+
+def test_push_data_succeeds_with_no_peers():
+    """push_data to a mount with no connected peers succeeds (broadcast
+    no-receivers path; muxer consumes the payload, fanout is suppressed)."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _video_data_program())
+        mount.push_data(_DATA_RECORD, pts=Pts90khz(0))
+
+
+def test_push_data_to_with_explicit_handle():
+    """push_data_to with an explicit DataStreamHandle succeeds."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _video_data_program())
+        h = mount.data_handle()
+        assert h is not None
+        mount.push_data_to(h, _DATA_RECORD, pts=Pts90khz(0))
+
+
+def test_push_data_updates_mount_stats():
+    """push_data contributes to bytes_pushed (same accounting as push_video)."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _video_data_program())
+        # Push a key-frame so the muxer can emit its first TS packet set
+        # (muxer holds back until it can emit a PCR-bearing adaptation).
+        mount.push_video(_IDR_NAL, pts=Pts90khz(0), key_frame=True)
+        mount.push_data(_DATA_RECORD, pts=Pts90khz(3000))
+        assert mount.stats().bytes_pushed > 0
+
+
+def test_push_data_accepts_bytearray():
+    """push_data accepts bytearray (bytes-like coercion path)."""
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", graceful_shutdown_drain_ms=50)
+    with RtspServer.start(cfg) as server:
+        mount = server.add_unicast_mount("/live", _video_data_program())
+        mount.push_data(bytearray(_DATA_RECORD), pts=Pts90khz(0))

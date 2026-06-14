@@ -29,8 +29,8 @@ use tst_rtp::rtsp::server::{RtspServer as RustRtspServer, ServerStats as RustSer
 
 use crate::errors::{make_rtp_error, make_rtsp_error};
 use crate::mux::{
-    PyAudioStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig, PySubtitleStreamHandle,
-    PyVideoStreamHandle, py_pts90khz,
+    PyAudioStreamHandle, PyDataStreamHandle, PyKlvStreamHandle, PyMuxerProgramConfig,
+    PySubtitleStreamHandle, PyVideoStreamHandle, py_pts90khz,
 };
 
 // ---------------------------------------------------------------------------
@@ -382,6 +382,22 @@ impl PyMountHandle {
         res.map_err(|e| mount_error_to_pyerr(py, e))
     }
 
+    /// Push one data payload onto the lone configured data stream.
+    /// Pass-through: lands verbatim as one PES packet on stream_id 0xBD.
+    #[pyo3(signature = (data, *, pts))]
+    pub fn push_data(
+        &self,
+        py: Python<'_>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| self.inner.push_data(slice, rust_pts));
+        res.map_err(|e| mount_error_to_pyerr(py, e))
+    }
+
     // ── Push surface — multi-stream variants ───────────────────────────────
     //
     // The `_to` variants take an explicit stream handle (obtained from
@@ -466,6 +482,22 @@ impl PyMountHandle {
         res.map_err(|e| mount_error_to_pyerr(py, e))
     }
 
+    #[pyo3(signature = (handle, data, *, pts))]
+    pub fn push_data_to(
+        &self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyDataStreamHandle>,
+        data: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        let handle_inner = handle.0;
+        let coerced = coerce_bytes_like(py, data)?;
+        let slice = coerced.as_bytes();
+        let res = py.allow_threads(|| self.inner.push_data_to(handle_inner, slice, rust_pts));
+        res.map_err(|e| mount_error_to_pyerr(py, e))
+    }
+
     // ── Stream-handle accessors ────────────────────────────────────────────
     //
     // Return the first configured handle of each kind (single-stream
@@ -511,6 +543,16 @@ impl PyMountHandle {
             .into_iter()
             .next()
             .map(PySubtitleStreamHandle)
+    }
+
+    /// Get the first configured data stream handle, or `None` if none
+    /// declared.
+    pub fn data_handle(&self) -> Option<PyDataStreamHandle> {
+        self.inner
+            .data_handles()
+            .into_iter()
+            .next()
+            .map(PyDataStreamHandle)
     }
 
     /// All configured video stream handles.

@@ -72,7 +72,6 @@ pub struct TstRistMuxSender {
 /// `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
 /// pointer to a `tst_mux_config_t` valid for this call. The returned
 /// handle must eventually be freed with `tst_rist_mux_sender_close`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_open(
     url: *const c_char,
@@ -149,7 +148,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_open(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRistMuxSender` returned
 /// by `tst_rist_mux_sender_open`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_close(p: *mut TstRistMuxSender) {
     crate::panic::ffi_catch((), || {
@@ -181,7 +179,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_close(p: *mut TstRistMuxSender) {
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_video(
     p: *mut TstRistMuxSender,
@@ -223,7 +220,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_video(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_klv(
     p: *mut TstRistMuxSender,
@@ -262,7 +258,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_klv(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_audio(
     p: *mut TstRistMuxSender,
@@ -300,7 +295,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_audio(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_subtitle(
     p: *mut TstRistMuxSender,
@@ -345,7 +339,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_subtitle(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_video_to(
     p: *mut TstRistMuxSender,
@@ -395,7 +388,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_video_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_klv_to(
     p: *mut TstRistMuxSender,
@@ -439,7 +431,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_klv_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_audio_to(
     p: *mut TstRistMuxSender,
@@ -483,7 +474,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_audio_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRistMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_push_subtitle_to(
     p: *mut TstRistMuxSender,
@@ -533,7 +523,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_push_subtitle_to(
 /// `p` must be a valid `*mut TstRistMuxSender` opened via
 /// `tst_rist_mux_sender_open`. `out` must point to a writable
 /// `TstMuxSenderStats`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_get_mux_sender_stats(
     p: *mut TstRistMuxSender,
@@ -582,7 +571,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_get_mux_sender_stats(
 /// `p` must be a valid `*mut TstRistMuxSender` opened via
 /// `tst_rist_mux_sender_open`. `out` must point to a writable
 /// `TstSocketStats`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_get_socket_stats(
     p: *mut TstRistMuxSender,
@@ -624,7 +612,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_get_socket_stats(
 ///
 /// `p` must be a valid pointer obtained from `tst_rist_mux_sender_open`.
 /// `out` must be a writable `tst_stream_codec_stats_t`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_get_stream_codec_stats(
     p: *mut TstRistMuxSender,
@@ -659,7 +646,6 @@ pub unsafe extern "C" fn tst_rist_mux_sender_get_stream_codec_stats(
 ///
 /// `p` must be a valid `*mut TstRistMuxSender` opened via
 /// `tst_rist_mux_sender_open`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_mux_sender_reset_stats(p: *mut TstRistMuxSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

@@ -127,7 +127,6 @@ pub struct TstRtspSession {
 ///
 /// `builder` must be a non-NULL pointer returned by
 /// `tst_rtsp_client_builder_new` that has not yet been freed or consumed.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_client_builder_connect(
     builder: *mut TstRtspClientBuilder,
@@ -234,7 +233,6 @@ pub unsafe extern "C" fn tst_rtsp_client_builder_connect(
 ///
 /// `session` must be a non-NULL, non-freed pointer returned by
 /// `tst_rtsp_client_builder_connect`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_session_play(session: *mut TstRtspSession) -> libc::c_int {
     ffi_catch(TstError::Internal as i32, || {
@@ -284,7 +282,6 @@ pub unsafe extern "C" fn tst_rtsp_session_play(session: *mut TstRtspSession) -> 
 ///
 /// `session` must be a non-NULL, non-freed pointer returned by
 /// `tst_rtsp_client_builder_connect`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_session_pause(session: *mut TstRtspSession) -> libc::c_int {
     ffi_catch(TstError::Internal as i32, || {
@@ -338,7 +335,6 @@ pub unsafe extern "C" fn tst_rtsp_session_pause(session: *mut TstRtspSession) ->
 /// `session` must be NULL, or a pointer returned by
 /// `tst_rtsp_client_builder_connect` that has not yet been freed or
 /// consumed by [`tst_rtsp_session_into_demux_receiver`].
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_session_teardown_and_free(
     session: *mut TstRtspSession,
@@ -405,7 +401,6 @@ pub unsafe extern "C" fn tst_rtsp_session_teardown_and_free(
 /// # Safety
 ///
 /// `session` must be NULL or a valid non-freed `*mut TstRtspSession`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_session_cancel(session: *mut TstRtspSession) -> libc::c_int {
     ffi_catch(TstError::Internal as i32, || {
@@ -455,7 +450,6 @@ pub unsafe extern "C" fn tst_rtsp_session_cancel(session: *mut TstRtspSession) -
 ///   `tst_rtsp_client_builder_connect`.
 /// - `demux_cfg` may be NULL (default options) or a valid pointer from
 ///   `tst_demux_config_new`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_session_into_demux_receiver(
     session: *mut TstRtspSession,

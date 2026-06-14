@@ -67,7 +67,6 @@ pub struct TstRtpMuxSender {
 /// `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
 /// pointer to a `tst_mux_config_t` valid for this call. The returned
 /// handle must eventually be freed with `tst_rtp_mux_sender_close`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_open(
     url: *const c_char,
@@ -138,7 +137,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_open(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpMuxSender` returned
 /// by `tst_rtp_mux_sender_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_close(p: *mut TstRtpMuxSender) {
     crate::panic::ffi_catch((), || {
@@ -171,7 +169,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_close(p: *mut TstRtpMuxSender) {
 /// # Safety
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpMuxSender`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_cancel(p: *mut TstRtpMuxSender) -> libc::c_int {
     crate::panic::ffi_catch(TstError::Internal as i32, || {
@@ -209,7 +206,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_cancel(p: *mut TstRtpMuxSender) -> l
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_video(
     p: *mut TstRtpMuxSender,
@@ -251,7 +247,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_video(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_klv(
     p: *mut TstRtpMuxSender,
@@ -290,7 +285,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_klv(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_audio(
     p: *mut TstRtpMuxSender,
@@ -328,7 +322,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_audio(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_subtitle(
     p: *mut TstRtpMuxSender,
@@ -373,7 +366,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_subtitle(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `nal` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_video_to(
     p: *mut TstRtpMuxSender,
@@ -423,7 +415,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_video_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `klv` must be
 /// readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_klv_to(
     p: *mut TstRtpMuxSender,
@@ -467,7 +458,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_klv_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `frames` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_audio_to(
     p: *mut TstRtpMuxSender,
@@ -511,7 +501,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_audio_to(
 ///
 /// `p` must be a valid non-freed `*mut TstRtpMuxSender`. `payload` must
 /// be readable for `len` bytes.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_push_subtitle_to(
     p: *mut TstRtpMuxSender,
@@ -561,7 +550,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_subtitle_to(
 /// `p` must be a valid `*mut TstRtpMuxSender` opened via
 /// `tst_rtp_mux_sender_open`. `out` must point to a writable
 /// `TstMuxSenderStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_get_mux_sender_stats(
     p: *mut TstRtpMuxSender,
@@ -610,7 +598,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_get_mux_sender_stats(
 /// `p` must be a valid `*mut TstRtpMuxSender` opened via
 /// `tst_rtp_mux_sender_open`. `out` must point to a writable
 /// `TstSocketStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_get_socket_stats(
     p: *mut TstRtpMuxSender,
@@ -652,7 +639,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_get_socket_stats(
 ///
 /// `p` must be a valid pointer obtained from `tst_rtp_mux_sender_open`.
 /// `out` must be a writable `tst_stream_codec_stats_t`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_get_stream_codec_stats(
     p: *mut TstRtpMuxSender,
@@ -687,7 +673,6 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_get_stream_codec_stats(
 ///
 /// `p` must be a valid `*mut TstRtpMuxSender` opened via
 /// `tst_rtp_mux_sender_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_mux_sender_reset_stats(p: *mut TstRtpMuxSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

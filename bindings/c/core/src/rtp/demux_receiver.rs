@@ -66,7 +66,6 @@ pub struct TstRtpDemuxReceiver {
 /// `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
 /// valid `tst_demux_config_t*`. The returned handle must eventually be
 /// freed with `tst_rtp_demux_receiver_close`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
     url: *const c_char,
@@ -117,7 +116,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpDemuxReceiver`
 /// returned by `tst_rtp_demux_receiver_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_close(p: *mut TstRtpDemuxReceiver) {
     crate::panic::ffi_catch((), || {
@@ -159,7 +157,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_close(p: *mut TstRtpDemuxReceive
 ///
 /// `p` must be a valid non-freed `*mut TstRtpDemuxReceiver`. `out_event`
 /// must be a valid writable `*mut TstEvent`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_next_event(
     p: *mut TstRtpDemuxReceiver,
@@ -233,7 +230,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_next_event(
 /// # Safety
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRtpDemuxReceiver`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_cancel(p: *mut TstRtpDemuxReceiver) -> libc::c_int {
     crate::panic::ffi_catch(TstError::Internal as i32, || {
@@ -269,7 +265,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_cancel(p: *mut TstRtpDemuxReceiv
 /// `p` must be a valid `*mut TstRtpDemuxReceiver` opened via
 /// `tst_rtp_demux_receiver_open`. `out` must point to a writable
 /// `TstDemuxReceiverStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stats(
     p: *mut TstRtpDemuxReceiver,
@@ -304,7 +299,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stats(
 /// `p` must be a valid `*mut TstRtpDemuxReceiver` opened via
 /// `tst_rtp_demux_receiver_open`. `out` must point to a writable
 /// `TstSocketStats`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_get_socket_stats(
     p: *mut TstRtpDemuxReceiver,
@@ -347,7 +341,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_get_socket_stats(
 ///
 /// `p` must be a valid pointer obtained from `tst_rtp_demux_receiver_open`.
 /// `out` must be a writable `tst_stream_codec_stats_t`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stream_codec_stats(
     p: *mut TstRtpDemuxReceiver,
@@ -384,7 +377,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stream_codec_stats(
 ///
 /// `p` must be a valid `*mut TstRtpDemuxReceiver` opened via
 /// `tst_rtp_demux_receiver_open`.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_reset_stats(
     p: *mut TstRtpDemuxReceiver,
@@ -422,7 +414,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_reset_stats(
 /// `p` must be a valid `*mut TstRtpDemuxReceiver` opened via
 /// `tst_rtp_demux_receiver_open`. `out_array` and `out_count` must be
 /// valid non-null pointers.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stream_stats(
     p: *mut TstRtpDemuxReceiver,

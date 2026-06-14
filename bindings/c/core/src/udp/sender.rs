@@ -54,7 +54,6 @@ pub struct TstUdpSender {
 /// `url` must be a NUL-terminated C string valid for the duration of
 /// this call. The returned handle must eventually be freed with
 /// `tst_udp_sender_close`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_open(url: *const c_char) -> *mut TstUdpSender {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -98,7 +97,6 @@ pub unsafe extern "C" fn tst_udp_sender_open(url: *const c_char) -> *mut TstUdpS
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstUdpSender` returned
 /// by `tst_udp_sender_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_close(p: *mut TstUdpSender) {
     crate::panic::ffi_catch((), || {
@@ -128,7 +126,6 @@ pub unsafe extern "C" fn tst_udp_sender_close(p: *mut TstUdpSender) {
 ///
 /// `p` must be a valid non-freed `*mut TstUdpSender`. `bytes` must be
 /// readable for `len` bytes.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_send_ts(
     p: *mut TstUdpSender,
@@ -158,7 +155,6 @@ pub unsafe extern "C" fn tst_udp_sender_send_ts(
 ///
 /// `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
 /// `out` must point to a writable `TstSenderStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_get_stats(
     p: *mut TstUdpSender,
@@ -193,7 +189,6 @@ pub unsafe extern "C" fn tst_udp_sender_get_stats(
 ///
 /// `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
 /// `out` must point to a writable `TstSocketStats`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_get_socket_stats(
     p: *mut TstUdpSender,
@@ -227,7 +222,6 @@ pub unsafe extern "C" fn tst_udp_sender_get_socket_stats(
 /// # Safety
 ///
 /// `p` must be a valid `*mut TstUdpSender` opened via `tst_udp_sender_open`.
-#[cfg(feature = "udp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_udp_sender_reset_stats(p: *mut TstUdpSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

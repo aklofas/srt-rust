@@ -60,7 +60,6 @@ pub struct TstTcpSender {
 /// `url` must be a NUL-terminated C string valid for the duration of
 /// this call. The returned handle must eventually be freed with
 /// `tst_tcp_sender_close`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_open(url: *const c_char) -> *mut TstTcpSender {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -104,7 +103,6 @@ pub unsafe extern "C" fn tst_tcp_sender_open(url: *const c_char) -> *mut TstTcpS
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstTcpSender` returned
 /// by `tst_tcp_sender_open` or `tst_tcp_listener_accept_sender`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_close(p: *mut TstTcpSender) {
     crate::panic::ffi_catch((), || {
@@ -139,7 +137,6 @@ pub unsafe extern "C" fn tst_tcp_sender_close(p: *mut TstTcpSender) {
 ///
 /// `p` must be a valid non-freed `*mut TstTcpSender`. `bytes` must be
 /// readable for `len` bytes.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_send_ts(
     p: *mut TstTcpSender,
@@ -170,7 +167,6 @@ pub unsafe extern "C" fn tst_tcp_sender_send_ts(
 /// `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
 /// or `tst_tcp_listener_accept_sender`.
 /// `out` must point to a writable `TstSenderStats`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_get_stats(
     p: *mut TstTcpSender,
@@ -206,7 +202,6 @@ pub unsafe extern "C" fn tst_tcp_sender_get_stats(
 /// `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
 /// or `tst_tcp_listener_accept_sender`.
 /// `out` must point to a writable `TstSocketStats`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_get_socket_stats(
     p: *mut TstTcpSender,
@@ -241,7 +236,6 @@ pub unsafe extern "C" fn tst_tcp_sender_get_socket_stats(
 ///
 /// `p` must be a valid `*mut TstTcpSender` opened via `tst_tcp_sender_open`
 /// or `tst_tcp_listener_accept_sender`.
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_tcp_sender_reset_stats(p: *mut TstTcpSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

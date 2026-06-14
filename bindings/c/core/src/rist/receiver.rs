@@ -75,7 +75,6 @@ pub struct TstRistReceiver {
 ///
 /// `url` must be a NUL-terminated C string. The returned handle must
 /// eventually be freed with `tst_rist_receiver_close`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_recv_open(url: *const c_char) -> *mut TstRistReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
@@ -131,7 +130,6 @@ pub unsafe extern "C" fn tst_rist_recv_open(url: *const c_char) -> *mut TstRistR
 ///
 /// `p` must be NULL or a valid non-freed `*mut TstRistReceiver` returned
 /// by `tst_rist_recv_open`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_receiver_close(p: *mut TstRistReceiver) {
     crate::panic::ffi_catch((), || {
@@ -174,7 +172,6 @@ pub unsafe extern "C" fn tst_rist_receiver_close(p: *mut TstRistReceiver) {
 ///
 /// `p` must be a valid non-freed `*mut TstRistReceiver`. `buf` must be
 /// writable for `buf_len` bytes. `out_n` must be a valid `*mut usize`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_receiver_recv_ts(
     p: *mut TstRistReceiver,
@@ -229,7 +226,6 @@ pub unsafe extern "C" fn tst_rist_receiver_recv_ts(
 ///
 /// `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
 /// `out` must point to a writable `TstReceiverStats`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_receiver_get_stats(
     p: *mut TstRistReceiver,
@@ -263,7 +259,6 @@ pub unsafe extern "C" fn tst_rist_receiver_get_stats(
 ///
 /// `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
 /// `out` must point to a writable `TstSocketStats`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_receiver_get_socket_stats(
     p: *mut TstRistReceiver,
@@ -297,7 +292,6 @@ pub unsafe extern "C" fn tst_rist_receiver_get_socket_stats(
 /// # Safety
 ///
 /// `p` must be a valid `*mut TstRistReceiver` opened via `tst_rist_recv_open`.
-#[cfg(feature = "rist")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rist_receiver_reset_stats(p: *mut TstRistReceiver) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {

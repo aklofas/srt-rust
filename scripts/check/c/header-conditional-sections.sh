@@ -9,14 +9,16 @@
 # leak outside their guard, producing C-side compile errors when
 # downstream consumers build with --features srt only.
 #
-# Implementation note: cbindgen with sort_by = "Name" emits opaque struct
-# typedefs inside per-item #if defined(TST_HAS_RTP) / #endif pairs, but
-# function declarations in the sorted function section do NOT get wrapping
-# guards (cbindgen limitation). The Rust-side #[cfg(feature = "rtp")] on
-# every extern "C" fn ensures the symbol is absent in rtp-disabled builds.
-# This ratchet therefore verifies the guard invariant by checking an
-# rtp-disabled cbindgen run produces zero tst_rtp_*/tst_rtsp_* symbols,
-# rather than parsing the combined header's #if blocks.
+# Implementation note: every tst_rtp_*/tst_rtsp_* item lives inside the
+# rtp/rtsp modules, which are gated at declaration with #[cfg(feature =
+# "rtp")] (bindings/c/core/src/lib.rs). That module gate is the sole source
+# of each symbol's #if defined(TST_HAS_RTP) guard in the combined header
+# (the per-fn cfgs that once duplicated it — emitting a doubled
+# #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP)) — were removed) and it
+# also ensures the symbol is absent from rtp-disabled builds. This ratchet
+# verifies the guard invariant by checking an rtp-disabled cbindgen run
+# produces zero tst_rtp_*/tst_rtsp_* symbols, rather than parsing the
+# combined header's #if blocks.
 
 set -euo pipefail
 
@@ -42,11 +44,11 @@ fi
 # (rtp disabled) and verify no tst_rtp_*/tst_rtsp_* function declarations
 # appear in the output.
 #
-# This is the correct invariant to enforce: the Rust source gates every
-# extern "C" fn with #[cfg(feature = "rtp")], so cbindgen must omit them
-# in non-rtp builds. The per-symbol #if defined(TST_HAS_RTP) guard in the
-# combined header is cosmetic documentation — the real guard is the
-# feature flag on the symbol itself.
+# This is the correct invariant to enforce: the rtp/rtsp modules are gated
+# with #[cfg(feature = "rtp")] at declaration, so cbindgen omits every
+# tst_rtp_*/tst_rtsp_* symbol in non-rtp builds. The per-symbol
+# #if defined(TST_HAS_RTP) guard in the combined header is cosmetic
+# documentation — the real guard is the module feature gate.
 if command -v cbindgen >/dev/null 2>&1; then
     TMPFILE=$(mktemp /tmp/tstrans_srt_only_XXXXXX.h)
     trap 'rm -f "$TMPFILE"' EXIT

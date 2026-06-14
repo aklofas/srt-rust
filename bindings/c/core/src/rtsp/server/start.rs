@@ -73,7 +73,6 @@ use crate::rtsp::server::types::TstRtspServer;
 /// `tst_rtsp_server_builder_new` that has not yet been freed or consumed.
 /// After this call the `builder` pointer is invalid regardless of success or
 /// failure.
-#[cfg(feature = "rtp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_rtsp_server_builder_start(
     builder: *mut TstRtspServerBuilder,

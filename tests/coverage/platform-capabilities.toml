@@ -95,22 +95,20 @@ note = "Gating."
 
 [[capability]]
 platform = "macos-arm64"
-status = "A-soft"
-soft_until = "2026-06-13"
+status = "A"
 note = """
-continue-on-error: true (ci.yml matrix). Earliest gating date 2026-05-30 (plan
-#64 14-day phase-in); first clean all-green run 2026-05-30 (CI 26672638228).
-Promote by flipping matrix `continue` to false once satisfied with run count.
+Gating since 2026-05-30 (d5ef206a; plan #64 14-day phase-in complete). First
+clean all-green run 2026-05-30 (CI 26672638228); matrix `continue` = false in
+ci.yml + jvm-jar.yml.
 """
 
 [[capability]]
 platform = "windows-msvc"
-status = "A-soft"
-soft_until = "2026-06-13"
+status = "A"
 note = """
-continue-on-error: true. First all-green run 2026-05-29. Promote after several
-consecutive green runs. RIST runtime + IPv6 multicast remain gated (see
-platform_skip rows); those do not block promotion of the rest of the suite.
+Gating since 2026-05-30 (d5ef206a); matrix `continue` = false in ci.yml +
+jvm-jar.yml. RIST runtime + IPv6 multicast remain gated (see platform_skip
+rows); those do not block the rest of the suite.
 """
 
 [[capability]]

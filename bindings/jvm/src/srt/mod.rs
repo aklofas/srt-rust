@@ -85,13 +85,15 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nCancel(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    let ran = REGISTRY_CANCEL.with(handle as u64, |c| {
-        c.flag.store(true, Ordering::Release);
-        c.inner.cancel();
-    });
-    if ran.is_none() {
-        let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-    }
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let ran = REGISTRY_CANCEL.with(handle as u64, |c| {
+            c.flag.store(true, Ordering::Release);
+            c.inner.cancel();
+        });
+        if ran.is_none() {
+            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+        }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -100,23 +102,28 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nIsCancelled(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    // A cancel target is never "parked", so `try_with` never reports `Locked`
-    // here; treat `Locked`/`Taken` as closed.
-    match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.flag.load(Ordering::Acquire))) {
-        TryWith::Ran(v) => v,
-        _ => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
-            0
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // A cancel target is never "parked", so `try_with` never reports `Locked`
+        // here; treat `Locked`/`Taken` as closed.
+        match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.flag.load(Ordering::Acquire)))
+        {
+            TryWith::Ran(v) => v,
+            _ => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+                0
+            }
         }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent drop.
-    let _ = REGISTRY_CANCEL.close(handle as u64);
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent drop.
+        let _ = REGISTRY_CANCEL.close(handle as u64);
+    })
 }

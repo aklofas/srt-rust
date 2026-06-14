@@ -229,102 +229,104 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
     gap_buffer_capacity: jint,
     overflow_policy: jint,
 ) -> jlong {
-    // Build the MuxerConfig FIRST — a pending MuxException is thrown on Err(()).
-    let muxer_cfg = match build_muxer_config_from_arrays(
-        &mut env,
-        program_number,
-        pmt_pid,
-        pcr_pid,
-        pcr_interval_ms,
-        psi_interval_ms,
-        buffer_packets,
-        av1_carriage,
-        &stream_pids,
-        &stream_kinds,
-        &stream_codecs,
-        &stream_type_codes,
-        &stream_carries_pts,
-        &data_desc_bytes,
-        &data_desc_lens,
-    ) {
-        Ok(c) => c,
-        Err(()) => return 0,
-    };
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Build the MuxerConfig FIRST — a pending MuxException is thrown on Err(()).
+        let muxer_cfg = match build_muxer_config_from_arrays(
+            env,
+            program_number,
+            pmt_pid,
+            pcr_pid,
+            pcr_interval_ms,
+            psi_interval_ms,
+            buffer_packets,
+            av1_carriage,
+            &stream_pids,
+            &stream_kinds,
+            &stream_codecs,
+            &stream_type_codes,
+            &stream_carries_pts,
+            &data_desc_bytes,
+            &data_desc_lens,
+        ) {
+            Ok(c) => c,
+            Err(()) => return 0,
+        };
 
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
+
+        let parsed = match SrtUrl::parse(&url_str) {
+            Ok(p) => p,
+            Err(e) => {
+                super::errors::url_error(env, &e);
+                return 0;
+            }
+        };
+        if parsed.mode != Mode::Caller {
+            let msg = format!(
+                "ManagedMuxSender.fromUrl requires mode=caller (default); got mode={:?}",
+                parsed.mode
+            );
+            throw_srt(env, "CONFIG_INVALID", &msg);
             return 0;
         }
-    };
 
-    let parsed = match SrtUrl::parse(&url_str) {
-        Ok(p) => p,
-        Err(e) => {
-            super::errors::url_error(&mut env, &e);
-            return 0;
-        }
-    };
-    if parsed.mode != Mode::Caller {
-        let msg = format!(
-            "ManagedMuxSender.fromUrl requires mode=caller (default); got mode={:?}",
-            parsed.mode
+        let mut sock_cfg = SocketConfig::default();
+        parsed.overlay.apply_to_socket(&mut sock_cfg);
+
+        let policy = super::build_reconnect_policy(
+            max_attempts_present != 0,
+            max_attempts,
+            backoff_kind,
+            backoff_base_ms,
+            backoff_max_ms,
+            gap_buffer_capacity,
+            overflow_policy,
         );
-        throw_srt(&mut env, "CONFIG_INVALID", &msg);
-        return 0;
-    }
 
-    let mut sock_cfg = SocketConfig::default();
-    parsed.overlay.apply_to_socket(&mut sock_cfg);
+        // Reconnect factory: bump the attempt counter on every call, then dial.
+        // `ManagedTransport::new` requires `Fn + Send + Sync`.
+        let attempts = Arc::new(AtomicU64::new(0));
+        let attempts_for_factory = attempts.clone();
+        let host_for_factory = parsed.host.clone();
+        let port_for_factory = parsed.port;
+        let cfg_for_factory = sock_cfg.clone();
+        let factory = move || -> Result<SrtTransport, TransportError> {
+            attempts_for_factory.fetch_add(1, Ordering::Release);
+            connect_srt(&host_for_factory, port_for_factory, &cfg_for_factory)
+        };
 
-    let policy = super::build_reconnect_policy(
-        max_attempts_present != 0,
-        max_attempts,
-        backoff_kind,
-        backoff_base_ms,
-        backoff_max_ms,
-        gap_buffer_capacity,
-        overflow_policy,
-    );
+        // Initial connect — failure maps to CONNECT_FAILED (divergence #6), not
+        // BROKEN, so callers can distinguish it from runtime reconnect failures.
+        let initial = match connect_srt(&parsed.host, parsed.port, &sock_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                let msg = match &e {
+                    TransportError::Broken { msg, .. } => msg.clone(),
+                    _ => format!("{e:?}"),
+                };
+                throw_srt(env, "CONNECT_FAILED", &msg);
+                return 0;
+            }
+        };
 
-    // Reconnect factory: bump the attempt counter on every call, then dial.
-    // `ManagedTransport::new` requires `Fn + Send + Sync`.
-    let attempts = Arc::new(AtomicU64::new(0));
-    let attempts_for_factory = attempts.clone();
-    let host_for_factory = parsed.host.clone();
-    let port_for_factory = parsed.port;
-    let cfg_for_factory = sock_cfg.clone();
-    let factory = move || -> Result<SrtTransport, TransportError> {
-        attempts_for_factory.fetch_add(1, Ordering::Release);
-        connect_srt(&host_for_factory, port_for_factory, &cfg_for_factory)
-    };
-
-    // Initial connect — failure maps to CONNECT_FAILED (divergence #6), not
-    // BROKEN, so callers can distinguish it from runtime reconnect failures.
-    let initial = match connect_srt(&parsed.host, parsed.port, &sock_cfg) {
-        Ok(t) => t,
-        Err(e) => {
-            let msg = match &e {
-                TransportError::Broken { msg, .. } => msg.clone(),
-                _ => format!("{e:?}"),
-            };
-            throw_srt(&mut env, "CONNECT_FAILED", &msg);
-            return 0;
+        let managed = ManagedTransport::new(initial, factory, policy);
+        match RustMuxSender::new(managed, muxer_cfg) {
+            Ok(sender) => REGISTRY_MUX.insert(JniManagedMuxSender {
+                inner: sender,
+                factory_attempts: attempts,
+            }) as jlong,
+            Err(e) => {
+                throw_mux_error(env, &e);
+                0
+            }
         }
-    };
-
-    let managed = ManagedTransport::new(initial, factory, policy);
-    match RustMuxSender::new(managed, muxer_cfg) {
-        Ok(sender) => REGISTRY_MUX.insert(JniManagedMuxSender {
-            inner: sender,
-            factory_attempts: attempts,
-        }) as jlong,
-        Err(e) => {
-            throw_mux_error(&mut env, &e);
-            0
-        }
-    }
+    })
 }
 
 // ── Push family — single-stream variants ───────────────────────────────────
@@ -339,12 +341,14 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideo<'local>(
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let Some(buf) = read_bytes(&mut env, &nal) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_video(&buf, Pts90khz::new(pts), key_frame != 0)
-    });
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(buf) = read_bytes(env, &nal) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_video(&buf, Pts90khz::new(pts), key_frame != 0)
+        });
+    })
 }
 
 /// `nPushKlv(handle, klv, pts, metadataServiceId)`.
@@ -357,19 +361,18 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let Ok(service_id) = checked_u8(
-        &mut env,
-        i64::from(metadata_service_id),
-        "metadataServiceId",
-    ) else {
-        return; // IllegalArgumentException pending
-    };
-    let Some(buf) = read_bytes(&mut env, &klv) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_klv(&buf, Pts90khz::new(pts), service_id)
-    });
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Ok(service_id) = checked_u8(env, i64::from(metadata_service_id), "metadataServiceId")
+        else {
+            return; // IllegalArgumentException pending
+        };
+        let Some(buf) = read_bytes(env, &klv) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_klv(&buf, Pts90khz::new(pts), service_id)
+        });
+    })
 }
 
 /// `nPushAudio(handle, frames, pts)`.
@@ -381,12 +384,14 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudio<'local>(
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let Some(buf) = read_bytes(&mut env, &frames) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_audio(&buf, Pts90khz::new(pts))
-    });
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(buf) = read_bytes(env, &frames) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_audio(&buf, Pts90khz::new(pts))
+        });
+    })
 }
 
 /// `nPushSubtitle(handle, pts, payload)` — note the swapped arg order.
@@ -398,12 +403,14 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'loca
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let Some(buf) = read_bytes(&mut env, &payload) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_subtitle(&buf, Pts90khz::new(pts))
-    });
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(buf) = read_bytes(env, &payload) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_subtitle(&buf, Pts90khz::new(pts))
+        });
+    })
 }
 
 // ── Push family — handle-targeted variants ─────────────────────────────────
@@ -419,19 +426,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local
     pts: jlong,
     key_frame: jboolean,
 ) {
-    let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
-        Ok(h) => h,
-        Err(_) => {
-            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let h = match VideoStreamHandle::try_from_raw(stream_handle_raw as u32) {
+            Ok(h) => h,
+            Err(_) => {
+                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+                return;
+            }
+        };
+        let Some(buf) = read_bytes(env, &nal) else {
             return;
-        }
-    };
-    let Some(buf) = read_bytes(&mut env, &nal) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
-    });
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+        });
+    })
 }
 
 /// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
@@ -445,26 +454,25 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
     pts: jlong,
     metadata_service_id: jint,
 ) {
-    let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
-        Ok(h) => h,
-        Err(_) => {
-            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let h = match KlvStreamHandle::try_from_raw(stream_handle_raw as u32) {
+            Ok(h) => h,
+            Err(_) => {
+                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+                return;
+            }
+        };
+        let Ok(service_id) = checked_u8(env, i64::from(metadata_service_id), "metadataServiceId")
+        else {
             return;
-        }
-    };
-    let Ok(service_id) = checked_u8(
-        &mut env,
-        i64::from(metadata_service_id),
-        "metadataServiceId",
-    ) else {
-        return;
-    };
-    let Some(buf) = read_bytes(&mut env, &klv) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
-    });
+        };
+        let Some(buf) = read_bytes(env, &klv) else {
+            return;
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_klv_to(h, &buf, Pts90khz::new(pts), service_id)
+        });
+    })
 }
 
 /// `nPushAudioTo(handle, streamHandleRaw, frames, pts)`.
@@ -477,19 +485,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local
     frames: JByteArray<'local>,
     pts: jlong,
 ) {
-    let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
-        Ok(h) => h,
-        Err(_) => {
-            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let h = match AudioStreamHandle::try_from_raw(stream_handle_raw as u32) {
+            Ok(h) => h,
+            Err(_) => {
+                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+                return;
+            }
+        };
+        let Some(buf) = read_bytes(env, &frames) else {
             return;
-        }
-    };
-    let Some(buf) = read_bytes(&mut env, &frames) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_audio_to(h, &buf, Pts90khz::new(pts))
-    });
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_audio_to(h, &buf, Pts90khz::new(pts))
+        });
+    })
 }
 
 /// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)`.
@@ -502,19 +512,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'lo
     pts: jlong,
     payload: JByteArray<'local>,
 ) {
-    let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
-        Ok(h) => h,
-        Err(_) => {
-            throw_srt(&mut env, "CONFIG_INVALID", "invalid stream handle");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let h = match SubtitleStreamHandle::try_from_raw(stream_handle_raw as u32) {
+            Ok(h) => h,
+            Err(_) => {
+                throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
+                return;
+            }
+        };
+        let Some(buf) = read_bytes(env, &payload) else {
             return;
-        }
-    };
-    let Some(buf) = read_bytes(&mut env, &payload) else {
-        return;
-    };
-    with_mux_push(&mut env, handle, |inner| {
-        inner.send_subtitle_to(h, &buf, Pts90khz::new(pts))
-    });
+        };
+        with_mux_push(env, handle, |inner| {
+            inner.send_subtitle_to(h, &buf, Pts90khz::new(pts))
+        });
+    })
 }
 
 // ── Handle getters ─────────────────────────────────────────────────────────
@@ -526,8 +538,10 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nVideoHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    mux_first_handle(&mut env, handle, |inner| {
-        inner.video_handles().into_iter().next().map(|h| h.raw())
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        mux_first_handle(env, handle, |inner| {
+            inner.video_handles().into_iter().next().map(|h| h.raw())
+        })
     })
 }
 
@@ -538,8 +552,10 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nKlvHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    mux_first_handle(&mut env, handle, |inner| {
-        inner.klv_handles().into_iter().next().map(|h| h.raw())
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        mux_first_handle(env, handle, |inner| {
+            inner.klv_handles().into_iter().next().map(|h| h.raw())
+        })
     })
 }
 
@@ -550,8 +566,10 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nAudioHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    mux_first_handle(&mut env, handle, |inner| {
-        inner.audio_handles().into_iter().next().map(|h| h.raw())
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        mux_first_handle(env, handle, |inner| {
+            inner.audio_handles().into_iter().next().map(|h| h.raw())
+        })
     })
 }
 
@@ -562,8 +580,10 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSubtitleHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    mux_first_handle(&mut env, handle, |inner| {
-        inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        mux_first_handle(env, handle, |inner| {
+            inner.subtitle_handles().into_iter().next().map(|h| h.raw())
+        })
     })
 }
 
@@ -578,36 +598,38 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some((sock, pipe)) = REGISTRY_MUX.with(handle as u64, |jstruct| {
-        (
-            jstruct.inner.socket_stats().unwrap_or_default(),
-            jstruct.inner.stats(),
-        )
-    }) else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedMuxSender is closed",
-        );
-        return JObject::null();
-    };
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some((sock, pipe)) = REGISTRY_MUX.with(handle as u64, |jstruct| {
+            (
+                jstruct.inner.socket_stats().unwrap_or_default(),
+                jstruct.inner.stats(),
+            )
+        }) else {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedMuxSender is closed",
+            );
+            return JObject::null();
+        };
 
-    let sock_obj = match build_socket_stats(&mut env, &sock) {
-        Ok(o) => o,
-        Err(_) => return JObject::null(),
-    };
-    let mux_obj = match build_muxer_stats(
-        &mut env,
-        pipe.packets_sent as i64,
-        pipe.bytes_sent as i64,
-        i64::from(pipe.programs_configured),
-    ) {
-        Ok(o) => o,
-        Err(_) => return JObject::null(),
-    };
-    match build_transport_stats(&mut env, &sock_obj, &mux_obj) {
-        Ok(o) => o,
-        Err(_) => JObject::null(),
-    }
+        let sock_obj = match build_socket_stats(env, &sock) {
+            Ok(o) => o,
+            Err(_) => return JObject::null(),
+        };
+        let mux_obj = match build_muxer_stats(
+            env,
+            pipe.packets_sent as i64,
+            pipe.bytes_sent as i64,
+            i64::from(pipe.programs_configured),
+        ) {
+            Ok(o) => o,
+            Err(_) => return JObject::null(),
+        };
+        match build_transport_stats(env, &sock_obj, &mux_obj) {
+            Ok(o) => o,
+            Err(_) => JObject::null(),
+        }
+    })
 }
 
 /// `nReconnectAttempts(handle)` — total factory invocations since construction.
@@ -617,43 +639,49 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectAttempts(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    REGISTRY_MUX
-        .with(handle as u64, |jstruct| {
-            jstruct.factory_attempts.load(Ordering::Acquire) as jlong
-        })
-        .unwrap_or_else(|| {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedMuxSender is closed",
-            );
-            0
-        })
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        REGISTRY_MUX
+            .with(handle as u64, |jstruct| {
+                jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+            })
+            .unwrap_or_else(|| {
+                let _ = env.throw_new(
+                    "java/lang/IllegalStateException",
+                    "ManagedMuxSender is closed",
+                );
+                0
+            })
+    })
 }
 
 /// `nClose(handle)` — drop the boxed sender (best-effort drain + close). No-op on
 /// a zero handle so a double `close()` is safe.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent: the winning close gets the shell back for teardown.
-    if let Some(jstruct) = REGISTRY_MUX.close(handle as u64) {
-        jstruct.inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent: the winning close gets the shell back for teardown.
+        if let Some(jstruct) = REGISTRY_MUX.close(handle as u64) {
+            jstruct.inner.close();
+        }
+    })
 }
 
 /// `nIsAlive(handle)` — whether the sender owns a live transport.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nIsAlive(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    REGISTRY_MUX
-        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_MUX
+            .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+            .unwrap_or(0)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -794,18 +822,20 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrl<'local
     gap_buffer_capacity: jint,
     overflow_policy: jint,
 ) -> jlong {
-    build_demux_from_url(
-        &mut env,
-        &url,
-        None,
-        max_attempts_present,
-        max_attempts,
-        backoff_kind,
-        backoff_base_ms,
-        backoff_max_ms,
-        gap_buffer_capacity,
-        overflow_policy,
-    )
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        build_demux_from_url(
+            env,
+            &url,
+            None,
+            max_attempts_present,
+            max_attempts,
+            backoff_kind,
+            backoff_base_ms,
+            backoff_max_ms,
+            gap_buffer_capacity,
+            overflow_policy,
+        )
+    })
 }
 
 /// `ManagedDemuxReceiver.nFromUrlWithConfig(url, ...policyArgs..., ...demuxArgs...)`.
@@ -830,27 +860,29 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nFromUrlWithCon
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    let opts = build_demux_config_from_args(
-        strict,
-        pes_cap_per_pid,
-        pes_cap_total,
-        cfi,
-        av1,
-        au_cell_cap,
-        lenient_psi,
-    );
-    build_demux_from_url(
-        &mut env,
-        &url,
-        Some(opts),
-        max_attempts_present,
-        max_attempts,
-        backoff_kind,
-        backoff_base_ms,
-        backoff_max_ms,
-        gap_buffer_capacity,
-        overflow_policy,
-    )
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let opts = build_demux_config_from_args(
+            strict,
+            pes_cap_per_pid,
+            pes_cap_total,
+            cfi,
+            av1,
+            au_cell_cap,
+            lenient_psi,
+        );
+        build_demux_from_url(
+            env,
+            &url,
+            Some(opts),
+            max_attempts_present,
+            max_attempts,
+            backoff_kind,
+            backoff_base_ms,
+            backoff_max_ms,
+            gap_buffer_capacity,
+            overflow_policy,
+        )
+    })
 }
 
 /// `nNext(handle)` — block until the next `DemuxEvent`, returning it as a Java
@@ -864,35 +896,38 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nNext<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    // recv_event runs INSIDE the registry lease (under the resource lock,
-    // single-threaded per the Receiver model).
-    let Some(res) = REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.recv_event()) else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedDemuxReceiver is closed",
-        );
-        return JObject::null().into_raw();
-    };
-    match res {
-        Ok(None) => JObject::null().into_raw(),
-        Ok(Some(ev)) => match convert_event(&mut env, &ev) {
-            Ok(Some(obj)) => obj.into_raw(),
-            // All current `DemuxEvent` variants map to a record; retained as a
-            // forward-compat guard (mirrors demux_receiver::nNext).
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // recv_event runs INSIDE the registry lease (under the resource lock,
+        // single-threaded per the Receiver model).
+        let Some(res) = REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.recv_event())
+        else {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedDemuxReceiver is closed",
+            );
+            return JObject::null().into_raw();
+        };
+        match res {
             Ok(None) => JObject::null().into_raw(),
-            Err(()) => {
-                // Event-conversion JNI failure. `throw_demux` guards against
-                // clobbering a pending exception; the INTERNAL literal stays
-                // ratchet-visible.
-                crate::error::throw_demux(&mut env, "INTERNAL", "event conversion failed");
+            Ok(Some(ev)) => match convert_event(env, &ev) {
+                Ok(Some(obj)) => obj.into_raw(),
+                // All current `DemuxEvent` variants map to a record; retained as a
+                // forward-compat guard (mirrors demux_receiver::nNext).
+                Ok(None) => JObject::null().into_raw(),
+                Err(()) => {
+                    // Event-conversion JNI failure. `throw_demux` guards against
+                    // clobbering a pending exception; the INTERNAL literal stays
+                    // ratchet-visible.
+                    crate::error::throw_demux(env, "INTERNAL", "event conversion failed");
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                super::demux_receiver::throw_demux_recv_error(env, &e);
                 JObject::null().into_raw()
             }
-        },
-        Err(e) => {
-            super::demux_receiver::throw_demux_recv_error(&mut env, &e);
-            JObject::null().into_raw()
         }
-    }
+    })
 }
 
 /// `nCancelHandle(handle)` — return a shareable cancel handle that wakes a thread
@@ -904,29 +939,31 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(maybe_arc) =
-        REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
-    else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedDemuxReceiver is closed",
-        );
-        return 0;
-    };
-    match maybe_arc {
-        Some(arc) => JniCancel {
-            inner: arc,
-            flag: AtomicBool::new(false),
-        }
-        .into_handle(),
-        None => {
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let Some(maybe_arc) =
+            REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
+        else {
             let _ = env.throw_new(
                 "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver did not return a cancel handle (mid-reconnect)",
+                "ManagedDemuxReceiver is closed",
             );
-            0
+            return 0;
+        };
+        match maybe_arc {
+            Some(arc) => JniCancel {
+                inner: arc,
+                flag: AtomicBool::new(false),
+            }
+            .into_handle(),
+            None => {
+                let _ = env.throw_new(
+                    "java/lang/IllegalStateException",
+                    "ManagedDemuxReceiver did not return a cancel handle (mid-reconnect)",
+                );
+                0
+            }
         }
-    }
+    })
 }
 
 /// `nSocketStats(handle)` — scheme-neutral 16-field wire stats. Uses
@@ -938,19 +975,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSocketStats<'l
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
-        jstruct.inner.socket_stats().unwrap_or_default()
-    }) else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedDemuxReceiver is closed",
-        );
-        return JObject::null();
-    };
-    match build_socket_stats(&mut env, &stats) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
+            jstruct.inner.socket_stats().unwrap_or_default()
+        }) else {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedDemuxReceiver is closed",
+            );
+            return JObject::null();
+        };
+        match build_socket_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
+    })
 }
 
 /// `nSrtStats(handle)` — stats drift (divergence #4): returns the SAME
@@ -962,19 +1001,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSrtStats<'loca
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
-        jstruct.inner.socket_stats().unwrap_or_default()
-    }) else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedDemuxReceiver is closed",
-        );
-        return JObject::null();
-    };
-    match build_socket_stats(&mut env, &stats) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
+            jstruct.inner.socket_stats().unwrap_or_default()
+        }) else {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedDemuxReceiver is closed",
+            );
+            return JObject::null();
+        };
+        match build_socket_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
+    })
 }
 
 /// `nReconnectAttempts(handle)` — total factory invocations since construction.
@@ -984,41 +1025,47 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nReconnectAttem
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    REGISTRY_DEMUX
-        .with(handle as u64, |jstruct| {
-            jstruct.factory_attempts.load(Ordering::Acquire) as jlong
-        })
-        .unwrap_or_else(|| {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver is closed",
-            );
-            0
-        })
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        REGISTRY_DEMUX
+            .with(handle as u64, |jstruct| {
+                jstruct.factory_attempts.load(Ordering::Acquire) as jlong
+            })
+            .unwrap_or_else(|| {
+                let _ = env.throw_new(
+                    "java/lang/IllegalStateException",
+                    "ManagedDemuxReceiver is closed",
+                );
+                0
+            })
+    })
 }
 
 /// `nClose(handle)` — close the underlying transport and drop the box. No-op on a
 /// zero handle so a double `close()` is safe.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent: the winning close gets the shell back for teardown.
-    if let Some(mut jstruct) = REGISTRY_DEMUX.close(handle as u64) {
-        jstruct.inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent: the winning close gets the shell back for teardown.
+        if let Some(mut jstruct) = REGISTRY_DEMUX.close(handle as u64) {
+            jstruct.inner.close();
+        }
+    })
 }
 
 /// `nIsAlive(handle)` — whether the receiver owns a live transport.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nIsAlive(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    REGISTRY_DEMUX
-        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_DEMUX
+            .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+            .unwrap_or(0)
+    })
 }

@@ -163,26 +163,28 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseAacFrames<'local>(
     _class: JClass<'local>,
     bytes: JByteArray<'local>,
 ) -> jobject {
-    let buf = match env.convert_byte_array(&bytes) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let buf = match env.convert_byte_array(&bytes) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
 
-    // STRICT: the first Err throws and returns null (mirrors parse_aac_frames_py).
-    let owned: Result<Vec<AdtsFrameOwned>, _> =
-        frames(&buf).map(|res| res.map(|f| f.to_owned())).collect();
-    let owned = match owned {
-        Ok(v) => v,
-        Err(e) => {
-            map_codec_parse_error(&mut env, &e, "aac");
-            return JObject::null().into_raw();
+        // STRICT: the first Err throws and returns null (mirrors parse_aac_frames_py).
+        let owned: Result<Vec<AdtsFrameOwned>, _> =
+            frames(&buf).map(|res| res.map(|f| f.to_owned())).collect();
+        let owned = match owned {
+            Ok(v) => v,
+            Err(e) => {
+                map_codec_parse_error(env, &e, "aac");
+                return JObject::null().into_raw();
+            }
+        };
+
+        match build_frame_list(env, &owned) {
+            Ok(obj) => obj.into_raw(),
+            Err(()) => JObject::null().into_raw(),
         }
-    };
-
-    match build_frame_list(&mut env, &owned) {
-        Ok(obj) => obj.into_raw(),
-        Err(()) => JObject::null().into_raw(),
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -191,20 +193,22 @@ pub extern "system" fn Java_org_tstrans_codec_Codec_nParseAacFramesWithResync<'l
     _class: JClass<'local>,
     bytes: JByteArray<'local>,
 ) -> jobject {
-    let buf = match env.convert_byte_array(&bytes) {
-        Ok(b) => b,
-        Err(_) => return JObject::null().into_raw(),
-    };
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let buf = match env.convert_byte_array(&bytes) {
+            Ok(b) => b,
+            Err(_) => return JObject::null().into_raw(),
+        };
 
-    // BEST-EFFORT: Err items are silently dropped (mirrors
-    // parse_aac_frames_with_resync_py's `.filter_map(|res| res.ok())`).
-    let owned: Vec<AdtsFrameOwned> = frames_with_resync(&buf)
-        .filter_map(|res| res.ok())
-        .map(|f| f.to_owned())
-        .collect();
+        // BEST-EFFORT: Err items are silently dropped (mirrors
+        // parse_aac_frames_with_resync_py's `.filter_map(|res| res.ok())`).
+        let owned: Vec<AdtsFrameOwned> = frames_with_resync(&buf)
+            .filter_map(|res| res.ok())
+            .map(|f| f.to_owned())
+            .collect();
 
-    match build_frame_list(&mut env, &owned) {
-        Ok(obj) => obj.into_raw(),
-        Err(()) => JObject::null().into_raw(),
-    }
+        match build_frame_list(env, &owned) {
+            Ok(obj) => obj.into_raw(),
+            Err(()) => JObject::null().into_raw(),
+        }
+    })
 }

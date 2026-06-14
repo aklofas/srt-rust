@@ -72,33 +72,35 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeUasDatalink<'local>(
     strict: jni::sys::jboolean,
     compliance: jni::sys::jboolean,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&buf) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nDecodeUasDatalink: byte[] read failed: {e}"),
-            );
-            return JObject::null().into_raw();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&buf) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nDecodeUasDatalink: byte[] read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let result = if compliance != 0 {
+            decode_strict_compliance(&bytes)
+        } else if strict != 0 {
+            decode_strict(&bytes)
+        } else {
+            decode_lenient(&bytes)
+        };
+        match result {
+            Ok(rec) => match build_uas_datalink(env, &rec) {
+                Ok(raw) => raw,
+                Err(_) => JObject::null().into_raw(),
+            },
+            Err(e) => {
+                map_klv_decode_error(env, &e);
+                JObject::null().into_raw()
+            }
         }
-    };
-    let result = if compliance != 0 {
-        decode_strict_compliance(&bytes)
-    } else if strict != 0 {
-        decode_strict(&bytes)
-    } else {
-        decode_lenient(&bytes)
-    };
-    match result {
-        Ok(rec) => match build_uas_datalink(&mut env, &rec) {
-            Ok(raw) => raw,
-            Err(_) => JObject::null().into_raw(),
-        },
-        Err(e) => {
-            map_klv_decode_error(&mut env, &e);
-            JObject::null().into_raw()
-        }
-    }
+    })
 }
 
 // -----------------------------------------------------------------------
@@ -117,33 +119,37 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalink<'local>(
     _c: JClass<'local>,
     record: JObject<'local>,
 ) -> jobject {
-    match read_uas_datalink(&mut env, &record) {
-        Ok(rust_rec) => match encode_to_vec(&rust_rec) {
-            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-                Ok(arr) => arr.into_raw(),
+    crate::panic::jni_catch(
+        &mut env,
+        std::ptr::null_mut(),
+        |env| match read_uas_datalink(env, &record) {
+            Ok(rust_rec) => match encode_to_vec(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!("nEncodeUasDatalink: byte_array_from_slice failed: {e}"),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
                 Err(e) => {
-                    let _ = env.throw_new(
-                        "java/lang/RuntimeException",
-                        format!("nEncodeUasDatalink: byte_array_from_slice failed: {e}"),
-                    );
+                    map_klv_encode_error(env, &e);
                     JObject::null().into_raw()
                 }
             },
             Err(e) => {
-                map_klv_encode_error(&mut env, &e);
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeUasDatalink: field read failed: {e}"),
+                    );
+                }
                 JObject::null().into_raw()
             }
         },
-        Err(e) => {
-            if !env.exception_check().unwrap_or(false) {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("nEncodeUasDatalink: field read failed: {e}"),
-                );
-            }
-            JObject::null().into_raw()
-        }
-    }
+    )
 }
 
 /// `org.tstrans.klv.Klv.nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]`
@@ -158,35 +164,39 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalinkStrictComplian
     _c: JClass<'local>,
     record: JObject<'local>,
 ) -> jobject {
-    match read_uas_datalink(&mut env, &record) {
-        Ok(rust_rec) => match encode_strict_compliance(&rust_rec) {
-            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-                Ok(arr) => arr.into_raw(),
+    crate::panic::jni_catch(
+        &mut env,
+        std::ptr::null_mut(),
+        |env| match read_uas_datalink(env, &record) {
+            Ok(rust_rec) => match encode_strict_compliance(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!(
+                                "nEncodeUasDatalinkStrictCompliance: byte_array_from_slice failed: {e}"
+                            ),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
                 Err(e) => {
-                    let _ = env.throw_new(
-                        "java/lang/RuntimeException",
-                        format!(
-                            "nEncodeUasDatalinkStrictCompliance: byte_array_from_slice failed: {e}"
-                        ),
-                    );
+                    map_klv_encode_error(env, &e);
                     JObject::null().into_raw()
                 }
             },
             Err(e) => {
-                map_klv_encode_error(&mut env, &e);
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeUasDatalinkStrictCompliance: field read failed: {e}"),
+                    );
+                }
                 JObject::null().into_raw()
             }
         },
-        Err(e) => {
-            if !env.exception_check().unwrap_or(false) {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("nEncodeUasDatalinkStrictCompliance: field read failed: {e}"),
-                );
-            }
-            JObject::null().into_raw()
-        }
-    }
+    )
 }
 
 // -----------------------------------------------------------------------

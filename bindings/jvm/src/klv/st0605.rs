@@ -29,23 +29,25 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodePrecisionTimestamp<'local
     _c: JClass<'local>,
     buf: JByteArray<'local>,
 ) -> jobject {
-    let bytes = match env.convert_byte_array(&buf) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nDecodePrecisionTimestamp: byte[] read failed: {e}"),
-            );
-            return JObject::null().into_raw();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&buf) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nDecodePrecisionTimestamp: byte[] read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        match decode(&bytes) {
+            Ok(p) => build_pack(env, &p).unwrap_or_else(|_| JObject::null().into_raw()),
+            Err(e) => {
+                map_klv_decode_error(env, &e);
+                JObject::null().into_raw()
+            }
         }
-    };
-    match decode(&bytes) {
-        Ok(p) => build_pack(&mut env, &p).unwrap_or_else(|_| JObject::null().into_raw()),
-        Err(e) => {
-            map_klv_decode_error(&mut env, &e);
-            JObject::null().into_raw()
-        }
-    }
+    })
 }
 
 /// Build a `org.tstrans.klv.PrecisionTimeStampPack` Java record from a Rust
@@ -78,60 +80,62 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodePrecisionTimestamp<'local
     _c: JClass<'local>,
     pack: JObject<'local>,
 ) -> jobject {
-    // Read timeStatus() accessor → TimeStatus record
-    let ts_obj = match env
-        .call_method(&pack, "timeStatus", "()Lorg/tstrans/klv/TimeStatus;", &[])
-        .and_then(|v| v.l())
-    {
-        Ok(o) => o,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nEncodePrecisionTimestamp: timeStatus() call failed: {e}"),
-            );
-            return JObject::null().into_raw();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Read timeStatus() accessor → TimeStatus record
+        let ts_obj = match env
+            .call_method(&pack, "timeStatus", "()Lorg/tstrans/klv/TimeStatus;", &[])
+            .and_then(|v| v.l())
+        {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nEncodePrecisionTimestamp: timeStatus() call failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        // Read TimeStatus.raw() → int
+        let raw = match env
+            .call_method(&ts_obj, "raw", "()I", &[])
+            .and_then(|v| v.i())
+        {
+            Ok(r) => r as u8,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nEncodePrecisionTimestamp: TimeStatus.raw() call failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        // Read timestampUs() → long
+        let us = match env
+            .call_method(&pack, "timestampUs", "()J", &[])
+            .and_then(|v| v.j())
+        {
+            Ok(j) => j as u64,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nEncodePrecisionTimestamp: timestampUs() call failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let wire = encode(&PrecisionTimeStampPack {
+            time_status: TimeStatus(raw),
+            timestamp_us: us,
+        });
+        match env.byte_array_from_slice(&wire) {
+            Ok(arr) => arr.into_raw(),
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nEncodePrecisionTimestamp: byte_array_from_slice failed: {e}"),
+                );
+                JObject::null().into_raw()
+            }
         }
-    };
-    // Read TimeStatus.raw() → int
-    let raw = match env
-        .call_method(&ts_obj, "raw", "()I", &[])
-        .and_then(|v| v.i())
-    {
-        Ok(r) => r as u8,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nEncodePrecisionTimestamp: TimeStatus.raw() call failed: {e}"),
-            );
-            return JObject::null().into_raw();
-        }
-    };
-    // Read timestampUs() → long
-    let us = match env
-        .call_method(&pack, "timestampUs", "()J", &[])
-        .and_then(|v| v.j())
-    {
-        Ok(j) => j as u64,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nEncodePrecisionTimestamp: timestampUs() call failed: {e}"),
-            );
-            return JObject::null().into_raw();
-        }
-    };
-    let wire = encode(&PrecisionTimeStampPack {
-        time_status: TimeStatus(raw),
-        timestamp_us: us,
-    });
-    match env.byte_array_from_slice(&wire) {
-        Ok(arr) => arr.into_raw(),
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("nEncodePrecisionTimestamp: byte_array_from_slice failed: {e}"),
-            );
-            JObject::null().into_raw()
-        }
-    }
+    })
 }

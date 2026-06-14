@@ -23,8 +23,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nRaiseDecodeForTest<'local>(
     _class: JClass<'local>,
     kind: JString<'local>,
 ) {
-    let k: String = env.get_string(&kind).map(Into::into).unwrap_or_default();
-    throw_klv_decode(&mut env, &k, "forced decode error for test");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let k: String = env.get_string(&kind).map(Into::into).unwrap_or_default();
+        throw_klv_decode(env, &k, "forced decode error for test");
+    })
 }
 
 /// Test-only: `org.tstrans.klv.Klv.nRaiseEncodeForTest(kind)`.
@@ -36,6 +38,8 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nRaiseEncodeForTest<'local>(
     _class: JClass<'local>,
     kind: JString<'local>,
 ) {
-    let k: String = env.get_string(&kind).map(Into::into).unwrap_or_default();
-    throw_klv_encode(&mut env, &k, None, "forced encode error for test");
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let k: String = env.get_string(&kind).map(Into::into).unwrap_or_default();
+        throw_klv_encode(env, &k, None, "forced encode error for test");
+    })
 }

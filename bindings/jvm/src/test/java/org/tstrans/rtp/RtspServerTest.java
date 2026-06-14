@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.tstrans.RtspException;
+import org.tstrans.mpegts.DataStreamHandle;
 import org.tstrans.mpegts.MuxerConfig;
 import org.tstrans.mpegts.VideoCodec;
 
@@ -120,6 +121,33 @@ class RtspServerTest {
                 assertTrue(m.stats().bytesPushed() > before.bytesPushed());
                 m.resetStats();
                 assertEquals(0L, m.stats().bytesPushed());
+            }
+        }
+    }
+
+    @Test @Timeout(15)
+    void addUnicastMountDataPushAndStats() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000)
+                .addVideo(0x1011, VideoCodec.H264)
+                .addData(0x0100, 0xF0, true).build();
+            try (MountHandle m = s.addUnicastMount("/data", cfg)) {
+                // The config declares one data stream → both accessors surface it.
+                assertTrue(m.dataHandle().isPresent());
+                assertEquals(1, m.dataHandles().size());
+                MountStats before = m.stats();
+                // pushData (lone-data-stream shorthand) advances the flow counters.
+                m.pushData(new byte[] {(byte) 0xD0, 'D', 'A', 'T', 'A'}, 0L);
+                m.flush();
+                assertTrue(m.stats().bytesPushed() > before.bytesPushed());
+                // pushDataTo with the configured handle also succeeds.
+                m.pushDataTo(m.dataHandle().get(), new byte[] {1, 2, 3}, 90_000L);
+                // Strict handle decode: a forged/negative handle is rejected with
+                // RtspException(MOUNT) in the JNI shim before reaching the mount.
+                RtspException forged = assertThrows(RtspException.class,
+                    () -> m.pushDataTo(DataStreamHandle.fromRaw(-1L), new byte[] {1}, 0L));
+                assertEquals(RtspException.Kind.MOUNT, forged.kind());
             }
         }
     }

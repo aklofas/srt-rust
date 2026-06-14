@@ -298,6 +298,28 @@ impl MountHandle {
         Ok(())
     }
 
+    /// Push one data payload. Mirror of
+    /// `tst_pipeline::MuxSender::send_data`.
+    ///
+    /// Pass-through: no AU-cell wrap, no framing, no inspection — `data`
+    /// lands verbatim as one PES packet on `stream_id` 0xBD. See
+    /// [`Self::push_video`] for the drain + broadcast contract and error
+    /// mapping.
+    pub fn push_data(
+        &self,
+        data: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_data(data, pts)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
     // ── Multi-stream / multi-program variants ────────────────────────────
     //
     // Use these when the mount's `MuxerConfig` declares more than one
@@ -388,6 +410,24 @@ impl MountHandle {
         Ok(())
     }
 
+    /// Push to a specific data stream handle. Mirror of
+    /// `MuxSender::send_data_to`.
+    pub fn push_data_to(
+        &self,
+        handle: tst_core::mpegts::mux::DataStreamHandle,
+        data: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_data_to(handle, data, pts)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
     // ── Lifecycle helpers ────────────────────────────────────────────────
 
     /// Drain any TS packets queued in the inner muxer and broadcast them
@@ -461,6 +501,14 @@ impl MountHandle {
     pub fn subtitle_handles(&self) -> Vec<tst_core::mpegts::mux::SubtitleStreamHandle> {
         match self.state.muxer.lock() {
             Ok(m) => m.subtitle_handles(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Configured data stream handles. Mirror of `Muxer::data_handles`.
+    pub fn data_handles(&self) -> Vec<tst_core::mpegts::mux::DataStreamHandle> {
+        match self.state.muxer.lock() {
+            Ok(m) => m.data_handles(),
             Err(_) => Vec::new(),
         }
     }
@@ -631,5 +679,39 @@ mod tests {
         let handle = MountHandle { state };
         let handles = handle.video_handles();
         assert_eq!(handles.len(), 1);
+    }
+
+    fn mock_unicast_mount_state_with_data() -> Arc<MountState> {
+        // Program with H.264 video (for PCR) + one data stream (PCR-ineligible).
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        prog.add_data(0x1012, 0x06, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        let cfg = b.build().unwrap();
+        MountState::new("/test", MountKind::Unicast, cfg, 256).unwrap()
+    }
+
+    #[test]
+    fn push_data_without_subscribers_succeeds() {
+        let state = mock_unicast_mount_state_with_data();
+        let handle = MountHandle { state };
+        handle
+            .push_data(&[0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0))
+            .expect("push_data succeeds even with no peers");
+    }
+
+    #[test]
+    fn push_data_to_specific_handle_succeeds() {
+        let state = mock_unicast_mount_state_with_data();
+        let handle = MountHandle { state };
+        let h = handle
+            .data_handles()
+            .into_iter()
+            .next()
+            .expect("one data handle configured");
+        handle
+            .push_data_to(h, &[0x01, 0x02], Pts90khz::new(900))
+            .expect("push_data_to succeeds");
     }
 }

@@ -357,84 +357,86 @@ pub extern "system" fn Java_org_tstrans_srt_Builder_nConnect<'local>(
     mss: JObject<'local>,
     payload_size: JObject<'local>,
 ) -> jlong {
-    // Ordinal 3 = RENDEZVOUS, ordinal 2 = LISTENER (wrong for connect).
-    if mode == 3 {
-        throw_srt(
-            &mut env,
-            "CONFIG_INVALID",
-            "rendezvous mode is not yet supported by tst-srt",
-        );
-        return 0;
-    }
-    if mode == 2 {
-        throw_srt(
-            &mut env,
-            "CONFIG_INVALID",
-            "Builder.connect() requires caller mode (mode is LISTENER)",
-        );
-        return 0;
-    }
-
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Ordinal 3 = RENDEZVOUS, ordinal 2 = LISTENER (wrong for connect).
+        if mode == 3 {
+            throw_srt(
+                env,
+                "CONFIG_INVALID",
+                "rendezvous mode is not yet supported by tst-srt",
+            );
             return 0;
         }
-    };
-
-    // knob overflow checks happen BEFORE the network call (checked_u16 in build_socket_config)
-    let mut cfg = match build_socket_config(
-        &mut env,
-        &latency_ms,
-        &passphrase,
-        &stream_id,
-        &congestion,
-        &connect_timeout_ms,
-        &recv_timeout_ms,
-        &send_timeout_ms,
-        &peer_latency_ms,
-        &recv_latency_ms,
-        &max_bandwidth_bps,
-        &mss,
-        &payload_size,
-    ) {
-        Ok(c) => c,
-        Err(_) => return 0, // exception already thrown (IllegalArgumentException or SrtException)
-    };
-
-    let parsed = match SrtUrl::parse(&url_str) {
-        Ok(p) => p,
-        Err(e) => {
-            url_error(&mut env, &e);
+        if mode == 2 {
+            throw_srt(
+                env,
+                "CONFIG_INVALID",
+                "Builder.connect() requires caller mode (mode is LISTENER)",
+            );
             return 0;
         }
-    };
 
-    // Validate that the URL mode is caller (or default) — mode=1 (CALLER) asserts this.
-    // mode=0 (URL_CHOICE) also requires URL to be caller-default.
-    if parsed.mode != Mode::Caller {
-        let msg = format!(
-            "Builder.connect() requires URL mode=caller (default); got mode={:?}",
-            parsed.mode
-        );
-        throw_srt(&mut env, "CONFIG_INVALID", &msg);
-        return 0;
-    }
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
 
-    // URL overlay AFTER kwargs — URL wins on conflict (Q4-A).
-    parsed.overlay.apply_to_socket(&mut cfg);
+        // knob overflow checks happen BEFORE the network call (checked_u16 in build_socket_config)
+        let mut cfg = match build_socket_config(
+            env,
+            &latency_ms,
+            &passphrase,
+            &stream_id,
+            &congestion,
+            &connect_timeout_ms,
+            &recv_timeout_ms,
+            &send_timeout_ms,
+            &peer_latency_ms,
+            &recv_latency_ms,
+            &max_bandwidth_bps,
+            &mss,
+            &payload_size,
+        ) {
+            Ok(c) => c,
+            Err(_) => return 0, // exception already thrown (IllegalArgumentException or SrtException)
+        };
 
-    let addr = join_host_port(&parsed.host, parsed.port);
-    let socket = match SrtSocket::connect_with(&cfg, addr.as_str()) {
-        Ok(s) => s,
-        Err(e) => {
-            connect_error(&mut env, &e);
+        let parsed = match SrtUrl::parse(&url_str) {
+            Ok(p) => p,
+            Err(e) => {
+                url_error(env, &e);
+                return 0;
+            }
+        };
+
+        // Validate that the URL mode is caller (or default) — mode=1 (CALLER) asserts this.
+        // mode=0 (URL_CHOICE) also requires URL to be caller-default.
+        if parsed.mode != Mode::Caller {
+            let msg = format!(
+                "Builder.connect() requires URL mode=caller (default); got mode={:?}",
+                parsed.mode
+            );
+            throw_srt(env, "CONFIG_INVALID", &msg);
             return 0;
         }
-    };
 
-    REGISTRY_SOCKET.insert(socket) as jlong
+        // URL overlay AFTER kwargs — URL wins on conflict (Q4-A).
+        parsed.overlay.apply_to_socket(&mut cfg);
+
+        let addr = join_host_port(&parsed.host, parsed.port);
+        let socket = match SrtSocket::connect_with(&cfg, addr.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                connect_error(env, &e);
+                return 0;
+            }
+        };
+
+        REGISTRY_SOCKET.insert(socket) as jlong
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -467,89 +469,91 @@ pub extern "system" fn Java_org_tstrans_srt_Builder_nListen<'local>(
     mss: JObject<'local>,
     payload_size: JObject<'local>,
 ) -> jlong {
-    if mode == 3 {
-        throw_srt(
-            &mut env,
-            "CONFIG_INVALID",
-            "rendezvous mode is not yet supported by tst-srt",
-        );
-        return 0;
-    }
-    if mode == 1 {
-        throw_srt(
-            &mut env,
-            "CONFIG_INVALID",
-            "Builder.listen() requires listener mode (mode is CALLER)",
-        );
-        return 0;
-    }
-
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        if mode == 3 {
+            throw_srt(
+                env,
+                "CONFIG_INVALID",
+                "rendezvous mode is not yet supported by tst-srt",
+            );
             return 0;
         }
-    };
-
-    // knob overflow checks happen BEFORE the network call
-    let mut cfg = match build_listener_config(
-        &mut env,
-        &latency_ms,
-        &passphrase,
-        &congestion,
-        &recv_timeout_ms,
-        &send_timeout_ms,
-        &recv_latency_ms,
-        &max_bandwidth_bps,
-        &mss,
-        &payload_size,
-    ) {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
-
-    // Silently ignore: stream_id (no ListenerConfig field), connect_timeout_ms
-    // (no ListenerConfig field), peer_latency_ms (no ListenerConfig field).
-    // This matches tst-py: apply_stream_id goes to socket_cfg only; peer_latency
-    // goes to socket_cfg only; connect_timeout goes to socket_cfg only.
-    let _ = (&stream_id, &connect_timeout_ms, &peer_latency_ms); // suppress unused warnings
-
-    let parsed = match SrtUrl::parse(&url_str) {
-        Ok(p) => p,
-        Err(e) => {
-            url_error(&mut env, &e);
+        if mode == 1 {
+            throw_srt(
+                env,
+                "CONFIG_INVALID",
+                "Builder.listen() requires listener mode (mode is CALLER)",
+            );
             return 0;
         }
-    };
 
-    if parsed.mode != Mode::Listener {
-        let msg = format!(
-            "Builder.listen() requires URL ?mode=listener; got mode={:?}",
-            parsed.mode
-        );
-        throw_srt(&mut env, "CONFIG_INVALID", &msg);
-        return 0;
-    }
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
 
-    // URL overlay AFTER kwargs.
-    parsed.overlay.apply_to_listener(&mut cfg);
+        // knob overflow checks happen BEFORE the network call
+        let mut cfg = match build_listener_config(
+            env,
+            &latency_ms,
+            &passphrase,
+            &congestion,
+            &recv_timeout_ms,
+            &send_timeout_ms,
+            &recv_latency_ms,
+            &max_bandwidth_bps,
+            &mss,
+            &payload_size,
+        ) {
+            Ok(c) => c,
+            Err(_) => return 0,
+        };
 
-    let addr = if parsed.host.is_empty() {
-        format!("0.0.0.0:{}", parsed.port)
-    } else {
-        join_host_port(&parsed.host, parsed.port)
-    };
+        // Silently ignore: stream_id (no ListenerConfig field), connect_timeout_ms
+        // (no ListenerConfig field), peer_latency_ms (no ListenerConfig field).
+        // This matches tst-py: apply_stream_id goes to socket_cfg only; peer_latency
+        // goes to socket_cfg only; connect_timeout goes to socket_cfg only.
+        let _ = (&stream_id, &connect_timeout_ms, &peer_latency_ms); // suppress unused warnings
 
-    let listener = match SrtListener::bind_with(&cfg, addr.as_str()) {
-        Ok(l) => l,
-        Err(e) => {
-            bind_error(&mut env, &e);
+        let parsed = match SrtUrl::parse(&url_str) {
+            Ok(p) => p,
+            Err(e) => {
+                url_error(env, &e);
+                return 0;
+            }
+        };
+
+        if parsed.mode != Mode::Listener {
+            let msg = format!(
+                "Builder.listen() requires URL ?mode=listener; got mode={:?}",
+                parsed.mode
+            );
+            throw_srt(env, "CONFIG_INVALID", &msg);
             return 0;
         }
-    };
 
-    register_listener(listener) as jlong
+        // URL overlay AFTER kwargs.
+        parsed.overlay.apply_to_listener(&mut cfg);
+
+        let addr = if parsed.host.is_empty() {
+            format!("0.0.0.0:{}", parsed.port)
+        } else {
+            join_host_port(&parsed.host, parsed.port)
+        };
+
+        let listener = match SrtListener::bind_with(&cfg, addr.as_str()) {
+            Ok(l) => l,
+            Err(e) => {
+                bind_error(env, &e);
+                return 0;
+            }
+        };
+
+        register_listener(listener) as jlong
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -564,15 +568,17 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoSender(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    // Take the Socket out of its registry (atomic; idempotent). `None` = already
-    // closed/consumed → the Java caller zeroed its field, so this is a stale call.
-    let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-        return 0;
-    };
-    let transport = SrtTransport::new(socket);
-    let sender = PlSender::new(transport, SenderConfig::default());
-    super::transport::REGISTRY_SENDER.insert(sender) as jlong
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Take the Socket out of its registry (atomic; idempotent). `None` = already
+        // closed/consumed → the Java caller zeroed its field, so this is a stale call.
+        let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            return 0;
+        };
+        let transport = SrtTransport::new(socket);
+        let sender = PlSender::new(transport, SenderConfig::default());
+        super::transport::REGISTRY_SENDER.insert(sender) as jlong
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -586,13 +592,15 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoReceiver(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
-        let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-        return 0;
-    };
-    let transport = SrtTransport::new(socket);
-    let receiver = PlReceiver::new(transport, ReceiverConfig::default());
-    super::transport::REGISTRY_RECEIVER.insert(receiver) as jlong
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
+            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            return 0;
+        };
+        let transport = SrtTransport::new(socket);
+        let receiver = PlReceiver::new(transport, ReceiverConfig::default());
+        super::transport::REGISTRY_RECEIVER.insert(receiver) as jlong
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -605,23 +613,25 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nLocalAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.local_addr()) {
-        Some(r) => r,
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-            return std::ptr::null_mut();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.local_addr()) {
+            Some(r) => r,
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+                return std::ptr::null_mut();
+            }
+        };
+        match addr {
+            Ok(addr) => match build_host_port(env, addr) {
+                Ok(obj) => obj.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            Err(e) => {
+                io_error(env, &e);
+                std::ptr::null_mut()
+            }
         }
-    };
-    match addr {
-        Ok(addr) => match build_host_port(&mut env, addr) {
-            Ok(obj) => obj.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        Err(e) => {
-            io_error(&mut env, &e);
-            std::ptr::null_mut()
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -630,55 +640,61 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nPeerAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.peer_addr()) {
-        Some(r) => r,
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
-            return std::ptr::null_mut();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.peer_addr()) {
+            Some(r) => r,
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+                return std::ptr::null_mut();
+            }
+        };
+        match addr {
+            Ok(addr) => match build_host_port(env, addr) {
+                Ok(obj) => obj.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            Err(e) => {
+                io_error(env, &e);
+                std::ptr::null_mut()
+            }
         }
-    };
-    match addr {
-        Ok(addr) => match build_host_port(&mut env, addr) {
-            Ok(obj) => obj.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        Err(e) => {
-            io_error(&mut env, &e);
-            std::ptr::null_mut()
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_Socket_nStreamId<'local>(
-    env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    // Closed handle or absent stream-id both yield null (no throw, matching the
-    // original contract).
-    let id = REGISTRY_SOCKET
-        .with(handle as u64, |s| s.stream_id().map(str::to_owned))
-        .flatten();
-    match id {
-        Some(id) => match env.new_string(id) {
-            Ok(s) => s.into_raw() as jobject,
-            Err(_) => std::ptr::null_mut(),
-        },
-        None => std::ptr::null_mut(),
-    }
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Closed handle or absent stream-id both yield null (no throw, matching the
+        // original contract).
+        let id = REGISTRY_SOCKET
+            .with(handle as u64, |s| s.stream_id().map(str::to_owned))
+            .flatten();
+        match id {
+            Some(id) => match env.new_string(id) {
+                Ok(s) => s.into_raw() as jobject,
+                Err(_) => std::ptr::null_mut(),
+            },
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_Socket_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent: only the winning close gets the Socket back.
-    if let Some(socket) = REGISTRY_SOCKET.close(handle as u64) {
-        let _ = socket.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent: only the winning close gets the Socket back.
+        if let Some(socket) = REGISTRY_SOCKET.close(handle as u64) {
+            let _ = socket.close();
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -692,28 +708,30 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nAccept(
     handle: jlong,
     timeout_ms: jlong,
 ) -> jlong {
-    // Run accept INSIDE the registry lease — the closure holds the entry's
-    // resource lock, so a racing `nClose` (which fires the cancel hook before
-    // taking the lock) wakes a parked accept rather than freeing under it.
-    // `None` = absent/closed/taken → throw and bail.
-    let result = REGISTRY_LISTENER.with(handle as u64, |listener| {
-        if timeout_ms < 0 {
-            listener.accept()
-        } else {
-            listener.accept_timeout(Duration::from_millis(timeout_ms as u64))
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Run accept INSIDE the registry lease — the closure holds the entry's
+        // resource lock, so a racing `nClose` (which fires the cancel hook before
+        // taking the lock) wakes a parked accept rather than freeing under it.
+        // `None` = absent/closed/taken → throw and bail.
+        let result = REGISTRY_LISTENER.with(handle as u64, |listener| {
+            if timeout_ms < 0 {
+                listener.accept()
+            } else {
+                listener.accept_timeout(Duration::from_millis(timeout_ms as u64))
+            }
+        });
+        match result {
+            Some(Ok((socket, _peer))) => REGISTRY_SOCKET.insert(socket) as jlong,
+            Some(Err(e)) => {
+                accept_error(env, &e);
+                0
+            }
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
+                0
+            }
         }
-    });
-    match result {
-        Some(Ok((socket, _peer))) => REGISTRY_SOCKET.insert(socket) as jlong,
-        Some(Err(e)) => {
-            accept_error(&mut env, &e);
-            0
-        }
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-            0
-        }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -722,28 +740,30 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nAccept(
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_Listener_nCancelHandle(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    // Lease + derive a fresh independent `SrtCancelHandle` from the listener.
-    // `cancel()` closes the SRTSOCKET (waking a parked accept) WITHOUT freeing
-    // the Listener — the sanctioned cross-thread wake. Mirrors tst-py's
-    // PyCancelHandle. The lease here is brief (no blocking op), so it does not
-    // contend meaningfully with a parked accept.
-    let cancel: Option<Arc<dyn TransportCancel + Send + Sync>> =
-        REGISTRY_LISTENER.with(handle as u64, |listener| {
-            Arc::new(LowLevelSrtCancel(listener.cancel_handle()))
-                as Arc<dyn TransportCancel + Send + Sync>
-        });
-    match cancel {
-        Some(inner) => JniCancel {
-            inner,
-            flag: AtomicBool::new(false),
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        // Lease + derive a fresh independent `SrtCancelHandle` from the listener.
+        // `cancel()` closes the SRTSOCKET (waking a parked accept) WITHOUT freeing
+        // the Listener — the sanctioned cross-thread wake. Mirrors tst-py's
+        // PyCancelHandle. The lease here is brief (no blocking op), so it does not
+        // contend meaningfully with a parked accept.
+        let cancel: Option<Arc<dyn TransportCancel + Send + Sync>> =
+            REGISTRY_LISTENER.with(handle as u64, |listener| {
+                Arc::new(LowLevelSrtCancel(listener.cancel_handle()))
+                    as Arc<dyn TransportCancel + Send + Sync>
+            });
+        match cancel {
+            Some(inner) => JniCancel {
+                inner,
+                flag: AtomicBool::new(false),
+            }
+            .into_handle(),
+            None => 0,
         }
-        .into_handle(),
-        None => 0,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -756,38 +776,42 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nLocalAddr<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> jobject {
-    let addr_result = match REGISTRY_LISTENER.with(handle as u64, |listener| listener.local_addr())
-    {
-        Some(r) => r,
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
-            return std::ptr::null_mut();
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let addr_result =
+            match REGISTRY_LISTENER.with(handle as u64, |listener| listener.local_addr()) {
+                Some(r) => r,
+                None => {
+                    let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
+                    return std::ptr::null_mut();
+                }
+            };
+        match addr_result {
+            Ok(addr) => match build_host_port(env, addr) {
+                Ok(obj) => obj.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            Err(e) => {
+                io_error(env, &e);
+                std::ptr::null_mut()
+            }
         }
-    };
-    match addr_result {
-        Ok(addr) => match build_host_port(&mut env, addr) {
-            Ok(obj) => obj.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        Err(e) => {
-            io_error(&mut env, &e);
-            std::ptr::null_mut()
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_Listener_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // `REGISTRY.close` fires the cancel hook FIRST (waking any parked accept via
-    // the independent SRTSOCKET cancel WITHOUT touching the Listener allocation),
-    // THEN takes the Listener under the resource lock — blocking until the woken
-    // accept released it. So the free below is sound against a parked accept.
-    // Atomic + idempotent: a double close finds the id gone → no-op.
-    if let Some(listener) = REGISTRY_LISTENER.close(handle as u64) {
-        let _ = listener.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // `REGISTRY.close` fires the cancel hook FIRST (waking any parked accept via
+        // the independent SRTSOCKET cancel WITHOUT touching the Listener allocation),
+        // THEN takes the Listener under the resource lock — blocking until the woken
+        // accept released it. So the free below is sound against a parked accept.
+        // Atomic + idempotent: a double close finds the id gone → no-op.
+        if let Some(listener) = REGISTRY_LISTENER.close(handle as u64) {
+            let _ = listener.close();
+        }
+    })
 }

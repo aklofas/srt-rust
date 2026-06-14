@@ -147,63 +147,67 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
     gap_buffer_capacity: jint,
     overflow_policy: jint,
 ) -> jlong {
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return 0;
-        }
-    };
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
 
-    // Validate URL up-front so a malformed URL / wrong mode raises
-    // CONFIG_INVALID before we materialize the factory closure (otherwise the
-    // same failure would surface as a Broken from the factory, the wrong kind
-    // for a caller-misconfigured URL).
-    let parsed = match SrtUrl::parse(&url_str) {
-        Ok(p) => p,
-        Err(e) => {
-            super::errors::url_error(&mut env, &e);
+        // Validate URL up-front so a malformed URL / wrong mode raises
+        // CONFIG_INVALID before we materialize the factory closure (otherwise the
+        // same failure would surface as a Broken from the factory, the wrong kind
+        // for a caller-misconfigured URL).
+        let parsed = match SrtUrl::parse(&url_str) {
+            Ok(p) => p,
+            Err(e) => {
+                super::errors::url_error(env, &e);
+                return 0;
+            }
+        };
+        if parsed.mode != Mode::Caller {
+            let msg = format!(
+                "ManagedSender.fromUrl requires mode=caller (default); got mode={:?}",
+                parsed.mode
+            );
+            super::errors::throw_srt(env, "CONFIG_INVALID", &msg);
             return 0;
         }
-    };
-    if parsed.mode != Mode::Caller {
-        let msg = format!(
-            "ManagedSender.fromUrl requires mode=caller (default); got mode={:?}",
-            parsed.mode
+
+        let policy = super::build_reconnect_policy(
+            max_attempts_present != 0,
+            max_attempts,
+            backoff_kind,
+            backoff_base_ms,
+            backoff_max_ms,
+            gap_buffer_capacity,
+            overflow_policy,
         );
-        super::errors::throw_srt(&mut env, "CONFIG_INVALID", &msg);
-        return 0;
-    }
 
-    let policy = super::build_reconnect_policy(
-        max_attempts_present != 0,
-        max_attempts,
-        backoff_kind,
-        backoff_base_ms,
-        backoff_max_ms,
-        gap_buffer_capacity,
-        overflow_policy,
-    );
+        // Initial connect — the FIRST inner ManagedTransport::new wraps.
+        let initial = match build_sender_transport(&url_str) {
+            Ok(t) => t,
+            Err(e) => {
+                super::errors::transport_error(env, &e);
+                return 0;
+            }
+        };
 
-    // Initial connect — the FIRST inner ManagedTransport::new wraps.
-    let initial = match build_sender_transport(&url_str) {
-        Ok(t) => t,
-        Err(e) => {
-            super::errors::transport_error(&mut env, &e);
-            return 0;
-        }
-    };
+        // Factory for subsequent reconnects. `Fn + Send + Sync + 'static` per
+        // ManagedTransport::new's bound; `move` captures the URL string.
+        let factory = {
+            let url_for_factory = url_str.clone();
+            move || -> Result<SrtTransport, TransportError> {
+                build_sender_transport(&url_for_factory)
+            }
+        };
 
-    // Factory for subsequent reconnects. `Fn + Send + Sync + 'static` per
-    // ManagedTransport::new's bound; `move` captures the URL string.
-    let factory = {
-        let url_for_factory = url_str.clone();
-        move || -> Result<SrtTransport, TransportError> { build_sender_transport(&url_for_factory) }
-    };
-
-    let managed = ManagedTransport::new(initial, factory, policy);
-    let inner = PlSender::new(managed, SenderConfig::default());
-    REGISTRY_SENDER.insert(inner) as jlong
+        let managed = ManagedTransport::new(initial, factory, policy);
+        let inner = PlSender::new(managed, SenderConfig::default());
+        REGISTRY_SENDER.insert(inner) as jlong
+    })
 }
 
 /// Send pre-muxed TS bytes through the managed sender. Throws `SrtException` on
@@ -215,27 +219,29 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
     handle: jlong,
     data: JByteArray<'_>,
 ) {
-    let bytes: Vec<u8> = match env.convert_byte_array(&data) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return;
-        }
-    };
-
-    match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
-        Some(Ok(())) => {}
-        Some(Err(e)) => match e.source {
-            SenderErrorSource::Transport(t) => super::errors::transport_error(&mut env, &t),
-            SenderErrorSource::Framing(f) => {
-                super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let bytes: Vec<u8> = match env.convert_byte_array(&data) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return;
             }
-            _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
-        },
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
+        };
+
+        match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => match e.source {
+                SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
+                SenderErrorSource::Framing(f) => {
+                    super::errors::throw_srt(env, "CONFIG_INVALID", &f.to_string())
+                }
+                _ => super::errors::throw_srt(env, "IO", &e.to_string()),
+            },
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
+            }
         }
-    }
+    })
 }
 
 /// Flush any buffered partial TS bundle. Throws `SrtException` on failure.
@@ -245,19 +251,21 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFlush(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
-        Some(Ok(())) => {}
-        Some(Err(e)) => match e.source {
-            SenderErrorSource::Transport(t) => super::errors::transport_error(&mut env, &t),
-            SenderErrorSource::Framing(f) => {
-                super::errors::throw_srt(&mut env, "CONFIG_INVALID", &f.to_string())
+    crate::panic::jni_catch(&mut env, (), |env| {
+        match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => match e.source {
+                SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
+                SenderErrorSource::Framing(f) => {
+                    super::errors::throw_srt(env, "CONFIG_INVALID", &f.to_string())
+                }
+                _ => super::errors::throw_srt(env, "IO", &e.to_string()),
+            },
+            None => {
+                let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
             }
-            _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
-        },
-        None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
         }
-    }
+    })
 }
 
 /// Obtain a cancel handle for this managed sender. Returns a `jlong` handle on
@@ -268,25 +276,28 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    // Closed handle → 0 (no throw, matching the original contract).
-    let Some(maybe_arc) = REGISTRY_SENDER.with(handle as u64, |inner| inner.cancel_handle()) else {
-        return 0;
-    };
-    match maybe_arc {
-        Some(arc) => JniCancel {
-            inner: arc,
-            flag: AtomicBool::new(false),
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Closed handle → 0 (no throw, matching the original contract).
+        let Some(maybe_arc) = REGISTRY_SENDER.with(handle as u64, |inner| inner.cancel_handle())
+        else {
+            return 0;
+        };
+        match maybe_arc {
+            Some(arc) => JniCancel {
+                inner: arc,
+                flag: AtomicBool::new(false),
+            }
+            .into_handle(),
+            None => {
+                // ManagedTransport::cancel_handle is documented as always Some.
+                let _ = env.throw_new(
+                    "java/lang/IllegalStateException",
+                    "ManagedTransport did not return a cancel handle",
+                );
+                0
+            }
         }
-        .into_handle(),
-        None => {
-            // ManagedTransport::cancel_handle is documented as always Some.
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedTransport did not return a cancel handle",
-            );
-            0
-        }
-    }
+    })
 }
 
 /// Return a `SocketStats` record from the current inner transport. Returns null
@@ -298,15 +309,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSocketStats<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| {
-        inner.socket_stats().unwrap_or_default()
-    }) else {
-        return JObject::null();
-    };
-    match build_socket_stats(&mut env, &stats) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_SENDER.with(handle as u64, |inner| {
+            inner.socket_stats().unwrap_or_default()
+        }) else {
+            return JObject::null();
+        };
+        match build_socket_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
+    })
 }
 
 /// SRT-rich stats are NOT available on a managed sender — this ALWAYS throws
@@ -317,39 +330,45 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSrtStats<'local>(
     _class: JClass<'local>,
     _handle: jlong,
 ) -> JObject<'local> {
-    super::errors::throw_srt(
-        &mut env,
-        "IO",
-        "srt_stats not available on ManagedSender (use socketStats); a future \
-         tst-pipeline accessor will expose the SRT-rich shape",
-    );
-    JObject::null()
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        super::errors::throw_srt(
+            env,
+            "IO",
+            "srt_stats not available on ManagedSender (use socketStats); a future \
+             tst-pipeline accessor will expose the SRT-rich shape",
+        );
+        JObject::null()
+    })
 }
 
 /// Close the managed sender, deallocating the native box. `close()` latches the
 /// cancel flag (so any in-flight reconnect loop exits) and tears down the inner.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent: the winning close gets the shell back for teardown.
-    if let Some(mut inner) = REGISTRY_SENDER.close(handle as u64) {
-        inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent: the winning close gets the shell back for teardown.
+        if let Some(mut inner) = REGISTRY_SENDER.close(handle as u64) {
+            inner.close();
+        }
+    })
 }
 
 /// Return whether the managed sender holds a live transport.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nIsAlive(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    REGISTRY_SENDER
-        .with(handle as u64, |inner| u8::from(inner.is_alive()))
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_SENDER
+            .with(handle as u64, |inner| u8::from(inner.is_alive()))
+            .unwrap_or(0)
+    })
 }
 
 // -----------------------------------------------------------------------
@@ -388,61 +407,63 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
     gap_buffer_capacity: jint,
     overflow_policy: jint,
 ) -> jlong {
-    let url_str: String = match env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-            return 0;
-        }
-    };
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
 
-    let parsed = match SrtUrl::parse(&url_str) {
-        Ok(p) => p,
-        Err(e) => {
-            super::errors::url_error(&mut env, &e);
+        let parsed = match SrtUrl::parse(&url_str) {
+            Ok(p) => p,
+            Err(e) => {
+                super::errors::url_error(env, &e);
+                return 0;
+            }
+        };
+        if parsed.mode != Mode::Listener {
+            let msg = format!(
+                "ManagedReceiver.fromUrl requires mode=listener; got mode={:?}",
+                parsed.mode
+            );
+            super::errors::throw_srt(env, "CONFIG_INVALID", &msg);
             return 0;
         }
-    };
-    if parsed.mode != Mode::Listener {
-        let msg = format!(
-            "ManagedReceiver.fromUrl requires mode=listener; got mode={:?}",
-            parsed.mode
+
+        let policy = super::build_reconnect_policy(
+            max_attempts_present != 0,
+            max_attempts,
+            backoff_kind,
+            backoff_base_ms,
+            backoff_max_ms,
+            gap_buffer_capacity,
+            overflow_policy,
         );
-        super::errors::throw_srt(&mut env, "CONFIG_INVALID", &msg);
-        return 0;
-    }
 
-    let policy = super::build_reconnect_policy(
-        max_attempts_present != 0,
-        max_attempts,
-        backoff_kind,
-        backoff_base_ms,
-        backoff_max_ms,
-        gap_buffer_capacity,
-        overflow_policy,
-    );
+        // Initial bind+accept — the FIRST inner ManagedRecvTransport::new wraps.
+        let initial = match build_receiver_transport(&url_str) {
+            Ok(t) => t,
+            Err(e) => {
+                super::errors::transport_error(env, &e);
+                return 0;
+            }
+        };
 
-    // Initial bind+accept — the FIRST inner ManagedRecvTransport::new wraps.
-    let initial = match build_receiver_transport(&url_str) {
-        Ok(t) => t,
-        Err(e) => {
-            super::errors::transport_error(&mut env, &e);
-            return 0;
-        }
-    };
+        // FnMut factory for the recv-side (no `Sync` required — it lives entirely
+        // behind `&mut self` on the recv path).
+        let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> = {
+            let url_for_factory = url_str.clone();
+            Box::new(move || build_receiver_transport(&url_for_factory))
+        };
 
-    // FnMut factory for the recv-side (no `Sync` required — it lives entirely
-    // behind `&mut self` on the recv path).
-    let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> = {
-        let url_for_factory = url_str.clone();
-        Box::new(move || build_receiver_transport(&url_for_factory))
-    };
-
-    let managed = ManagedRecvTransport::new(initial, factory, policy);
-    // Snapshot the reconnect counter BEFORE moving `managed` into the shell.
-    let reconnects = managed.reconnects_handle();
-    let inner = PlReceiver::new(managed, ReceiverConfig::default());
-    REGISTRY_RECEIVER.insert(JniManagedReceiver { inner, reconnects }) as jlong
+        let managed = ManagedRecvTransport::new(initial, factory, policy);
+        // Snapshot the reconnect counter BEFORE moving `managed` into the shell.
+        let reconnects = managed.reconnects_handle();
+        let inner = PlReceiver::new(managed, ReceiverConfig::default());
+        REGISTRY_RECEIVER.insert(JniManagedReceiver { inner, reconnects }) as jlong
+    })
 }
 
 /// Receive one TS packet (188 bytes). Returns the packet as a `jbyteArray` on
@@ -455,41 +476,46 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nRecvBytes(
     handle: jlong,
     _max_len: jint,
 ) -> jbyteArray {
-    let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.next_packet())
-    else {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            "ManagedReceiver is closed",
-        );
-        return std::ptr::null_mut();
-    };
-    match res {
-        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-            Ok(arr) => arr.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        Err(e) => {
-            match e.source {
-                ReceiverErrorSource::Transport(t) => super::errors::transport_error(&mut env, &t),
-                _ => super::errors::throw_srt(&mut env, "IO", &e.to_string()),
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let Some(res) =
+            REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.next_packet())
+        else {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "ManagedReceiver is closed",
+            );
+            return std::ptr::null_mut();
+        };
+        match res {
+            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                Ok(arr) => arr.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            Err(e) => {
+                match e.source {
+                    ReceiverErrorSource::Transport(t) => super::errors::transport_error(env, &t),
+                    _ => super::errors::throw_srt(env, "IO", &e.to_string()),
+                }
+                std::ptr::null_mut()
             }
-            std::ptr::null_mut()
         }
-    }
+    })
 }
 
 /// Return the total number of successful reconnect rebuilds.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nReconnectAttempts(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    REGISTRY_RECEIVER
-        .with(handle as u64, |jstruct| {
-            jstruct.reconnects.load(Ordering::Acquire) as jlong
-        })
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_RECEIVER
+            .with(handle as u64, |jstruct| {
+                jstruct.reconnects.load(Ordering::Acquire) as jlong
+            })
+            .unwrap_or(0)
+    })
 }
 
 /// Obtain a cancel handle for this managed receiver.
@@ -499,26 +525,28 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nCancelHandle(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jlong {
-    // Closed handle → 0 (no throw, matching the original contract).
-    let Some(maybe_arc) =
-        REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
-    else {
-        return 0;
-    };
-    match maybe_arc {
-        Some(arc) => JniCancel {
-            inner: arc,
-            flag: AtomicBool::new(false),
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Closed handle → 0 (no throw, matching the original contract).
+        let Some(maybe_arc) =
+            REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
+        else {
+            return 0;
+        };
+        match maybe_arc {
+            Some(arc) => JniCancel {
+                inner: arc,
+                flag: AtomicBool::new(false),
+            }
+            .into_handle(),
+            None => {
+                let _ = env.throw_new(
+                    "java/lang/IllegalStateException",
+                    "ManagedRecvTransport did not return a cancel handle",
+                );
+                0
+            }
         }
-        .into_handle(),
-        None => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedRecvTransport did not return a cancel handle",
-            );
-            0
-        }
-    }
+    })
 }
 
 /// Return a `SocketStats` record from the current inner transport.
@@ -528,15 +556,17 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nSocketStats<'local>
     _class: JClass<'local>,
     handle: jlong,
 ) -> JObject<'local> {
-    let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |jstruct| {
-        jstruct.inner.socket_stats().unwrap_or_default()
-    }) else {
-        return JObject::null();
-    };
-    match build_socket_stats(&mut env, &stats) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        let Some(stats) = REGISTRY_RECEIVER.with(handle as u64, |jstruct| {
+            jstruct.inner.socket_stats().unwrap_or_default()
+        }) else {
+            return JObject::null();
+        };
+        match build_socket_stats(env, &stats) {
+            Ok(obj) => obj,
+            Err(_) => JObject::null(),
+        }
+    })
 }
 
 /// SRT-rich stats are NOT available on a managed receiver — this ALWAYS throws
@@ -547,36 +577,42 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nSrtStats<'local>(
     _class: JClass<'local>,
     _handle: jlong,
 ) -> JObject<'local> {
-    super::errors::throw_srt(
-        &mut env,
-        "IO",
-        "srt_stats not available on ManagedReceiver (use socketStats); a future \
-         tst-pipeline accessor will expose the SRT-rich shape",
-    );
-    JObject::null()
+    crate::panic::jni_catch(&mut env, JObject::null(), |env| {
+        super::errors::throw_srt(
+            env,
+            "IO",
+            "srt_stats not available on ManagedReceiver (use socketStats); a future \
+             tst-pipeline accessor will expose the SRT-rich shape",
+        );
+        JObject::null()
+    })
 }
 
 /// Close the managed receiver, deallocating the native box.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nClose(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    // Atomic + idempotent: the winning close gets the shell back for teardown.
-    if let Some(mut jstruct) = REGISTRY_RECEIVER.close(handle as u64) {
-        jstruct.inner.close();
-    }
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        // Atomic + idempotent: the winning close gets the shell back for teardown.
+        if let Some(mut jstruct) = REGISTRY_RECEIVER.close(handle as u64) {
+            jstruct.inner.close();
+        }
+    })
 }
 
 /// Return whether the managed receiver holds a live shell.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nIsAlive(
-    _env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    REGISTRY_RECEIVER
-        .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
-        .unwrap_or(0)
+    crate::panic::jni_catch(&mut env, 0, |_env| {
+        REGISTRY_RECEIVER
+            .with(handle as u64, |jstruct| u8::from(jstruct.inner.is_alive()))
+            .unwrap_or(0)
+    })
 }

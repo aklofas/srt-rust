@@ -560,6 +560,10 @@ def test_data_handle_returns_handle_for_data_program():
         h = mount.data_handle()
         assert h is not None
         assert isinstance(h, DataStreamHandle)
+        # data_handles() (list form) mirrors the other *_handles() accessors.
+        handles = mount.data_handles()
+        assert len(handles) == 1
+        assert all(isinstance(x, DataStreamHandle) for x in handles)
 
 
 def test_push_data_succeeds_with_no_peers():

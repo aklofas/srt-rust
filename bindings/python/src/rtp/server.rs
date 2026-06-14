@@ -591,6 +591,15 @@ impl PyMountHandle {
             .collect()
     }
 
+    /// All configured data stream handles.
+    pub fn data_handles(&self) -> Vec<PyDataStreamHandle> {
+        self.inner
+            .data_handles()
+            .into_iter()
+            .map(PyDataStreamHandle)
+            .collect()
+    }
+
     // ── Lifecycle helpers ──────────────────────────────────────────────────
 
     /// Drain any TS packets queued in the inner muxer and broadcast them

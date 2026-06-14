@@ -8,6 +8,7 @@ import org.tstrans.RtspException;
 import org.tstrans.mpegts.DataStreamHandle;
 import org.tstrans.mpegts.MuxerConfig;
 import org.tstrans.mpegts.VideoCodec;
+import org.tstrans.mpegts.VideoStreamHandle;
 
 class RtspServerTest {
 
@@ -183,6 +184,35 @@ class RtspServerTest {
                 RtspException ex = assertThrows(RtspException.class,
                     () -> s.addUnicastMount("/live", cfg));
                 assertEquals(RtspException.Kind.MOUNT, ex.kind());
+            }
+        }
+    }
+
+    /**
+     * Strict handle decode in {@code pushVideoTo}: a negative jlong or a value
+     * exceeding {@code u32::MAX} must be rejected with
+     * {@code RtspException(MOUNT)} without truncating into a plausible handle.
+     * Regression for the pre-3.4 {@code as u32} cast that would silently wrap
+     * {@code -1L} to {@code 0xFFFF_FFFF} and {@code 0x1_0000_0000L} to {@code 0}.
+     */
+    @Test @Timeout(15)
+    void pushVideoToRejectsForgedStreamHandle() throws Exception {
+        try (RtspServer s = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            MuxerConfig cfg = MuxerConfig.builder()
+                .programNumber(1).pmtPid(0x1000)
+                .addVideo(0x1011, VideoCodec.H264).build();
+            try (MountHandle m = s.addUnicastMount("/v", cfg)) {
+                byte[] nal = idr();
+                // Negative jlong: rejected by the u32::try_from leg before try_from_raw.
+                RtspException neg = assertThrows(RtspException.class,
+                    () -> m.pushVideoTo(VideoStreamHandle.fromRaw(-1L), nal, 0L, true));
+                assertEquals(RtspException.Kind.MOUNT, neg.kind(),
+                    "negative VideoStreamHandle must raise RtspException(MOUNT)");
+                // Out-of-u32 jlong: also rejected by the u32::try_from leg.
+                RtspException over = assertThrows(RtspException.class,
+                    () -> m.pushVideoTo(VideoStreamHandle.fromRaw(0x1_0000_0000L), nal, 0L, true));
+                assertEquals(RtspException.Kind.MOUNT, over.kind(),
+                    "out-of-u32 VideoStreamHandle must raise RtspException(MOUNT)");
             }
         }
     }

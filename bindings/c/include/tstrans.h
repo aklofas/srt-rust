@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 13` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 14` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -130,8 +130,11 @@
  *   (behind `TST_HAS_RTP`). Completes the data-stream surface parity with the
  *   video/klv/audio/subtitle push families on both shells. Additive — no
  *   symbol removed, no signature or struct layout changed.
+ * - `14` — AV1 carriage work (WP-B): `TstError::InvalidAv1Obu` (-44) B0 guard
+ *   error code. Extended by subsequent WP-B C-surface commits
+ *   (carriage-provenance field + wire push) in the same release.
  */
-#define TST_ABI_VERSION_MINOR 13
+#define TST_ABI_VERSION_MINOR 14
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -413,6 +416,14 @@ enum tst_e
    * Maps from `HlsErrorKind::{Tls, TlsDisabled}`.
    */
   TST_E_HLS_TLS = -37,
+  /**
+   * (-44) AV1 OBU input is not a well-formed elementary OBU stream;
+   * the wrapping push rejected it. Returned when the caller feeds
+   * already-carried (binding-framed) wire bytes to `push_video_to`
+   * instead of raw elementary OBUs.
+   * Maps from `MuxError::InvalidAv1Obu`.
+   */
+  TST_E_INVALID_AV1_OBU = -44,
   /**
    * (-38) RIST librist FFI failure; check the message for the
    * underlying librist function name + error code.

@@ -25,7 +25,7 @@ use jni::objects::JClass;
 use jni::sys::jstring;
 
 /// `org.tstrans.Version.versionString()` — returns the Rust workspace crate
-/// version (e.g. "0.1.0") as a Java string, proving a value crosses the JNI
+/// version (e.g. "0.2.0") as a Java string, proving a value crosses the JNI
 /// boundary from Rust to the JVM.
 ///
 /// `#[unsafe(no_mangle)]` (edition 2024 spelling) keeps the symbol name exactly

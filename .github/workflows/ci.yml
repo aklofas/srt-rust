@@ -345,8 +345,10 @@ jobs:
       - name: check-release-version-consistency (cross-source version + tag)
         # REL-01: every version source-of-truth (workspace/pyproject/tst-py
         # Cargo, C version constants + header, python version test) must agree.
-        # On a v* tag build GITHUB_REF_NAME also forces tag == source version,
-        # so a v0.2.0 tag can never publish over 0.1.0 sources. Self-test runs
+        # This workflow runs only on push/PR to main (never on tags), so here
+        # the rail enforces cross-source EQUALITY; the tag == source-version
+        # enforcement lives in the release workflows (python-wheels.yml +
+        # jvm-jar.yml), where GITHUB_REF_NAME is the v* tag. Self-test runs
         # first to prove the rail still catches its negatives. Gated to
         # linux-x86_64 — the sources are platform-independent.
         if: matrix.name == 'linux-x86_64'

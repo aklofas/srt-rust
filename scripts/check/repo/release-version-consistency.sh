@@ -100,17 +100,22 @@ run_check() { # [EXPECTED_VERSION]
   local labels=() versions=()
   local v
 
-  v="$(toml_version "$RVC_CARGO_TOML")"
+  # `|| true` so an extractor that returns non-zero (e.g. a missing/reformatted
+  # version line in rust_const_version/cdefine_version, which `&&`-chain to a
+  # non-zero status) yields an EMPTY $v under `set -e` instead of aborting the
+  # script with no diagnostic — the empty-check loop below then reports which
+  # source failed. Still fails closed (rc=1) either way.
+  v="$(toml_version "$RVC_CARGO_TOML" || true)"
   labels+=("workspace-cargo  ($RVC_CARGO_TOML)"); versions+=("$v")
-  v="$(toml_version "$RVC_PYPROJECT")"
+  v="$(toml_version "$RVC_PYPROJECT" || true)"
   labels+=("pyproject        ($RVC_PYPROJECT)"); versions+=("$v")
-  v="$(toml_version "$RVC_PY_CARGO")"
+  v="$(toml_version "$RVC_PY_CARGO" || true)"
   labels+=("tst-py-cargo     ($RVC_PY_CARGO)"); versions+=("$v")
-  v="$(rust_const_version "$RVC_C_LIB")"
+  v="$(rust_const_version "$RVC_C_LIB" || true)"
   labels+=("c-version-consts ($RVC_C_LIB)"); versions+=("$v")
-  v="$(cdefine_version "$RVC_C_HEADER")"
+  v="$(cdefine_version "$RVC_C_HEADER" || true)"
   labels+=("c-header-defines ($RVC_C_HEADER)"); versions+=("$v")
-  v="$(pytest_version "$RVC_PY_TEST")"
+  v="$(pytest_version "$RVC_PY_TEST" || true)"
   labels+=("python-version-test ($RVC_PY_TEST)"); versions+=("$v")
 
   # (1) every extraction must be non-empty.

@@ -3,6 +3,7 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::transport::{Transport, TransportError};
@@ -22,7 +23,7 @@ pub struct RistTransport {
     pkt_size: usize,
     peer_url: String,
     alive: Arc<AtomicBool>,
-    stats: RistStats,
+    stats: Arc<Mutex<RistStats>>,
 }
 
 // librist's rist_ctx is safe to share across threads as long as we don't pass
@@ -128,7 +129,7 @@ impl RistTransport {
             pkt_size: cfg.pkt_size,
             peer_url: peer_url_str,
             alive: Arc::new(AtomicBool::new(true)),
-            stats: RistStats::default(),
+            stats: Arc::new(Mutex::new(RistStats::default())),
         })
     }
 
@@ -139,7 +140,7 @@ impl RistTransport {
 
     /// Current snapshot of cumulative stats.
     pub fn stats(&self) -> RistStats {
-        self.stats
+        self.stats.lock().map(|s| *s).unwrap_or_default()
     }
 }
 
@@ -177,8 +178,10 @@ impl Transport for RistTransport {
             });
         }
 
-        self.stats.bytes_sent = self.stats.bytes_sent.wrapping_add(msg.len() as u64);
-        self.stats.packets_sent = self.stats.packets_sent.wrapping_add(1);
+        if let Ok(mut s) = self.stats.lock() {
+            s.bytes_sent = s.bytes_sent.wrapping_add(msg.len() as u64);
+            s.packets_sent = s.packets_sent.wrapping_add(1);
+        }
         Ok(())
     }
 

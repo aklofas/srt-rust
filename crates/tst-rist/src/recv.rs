@@ -17,6 +17,34 @@ use crate::url::RistUrl;
 /// `close()` from another thread (via `alive` swap) is observed quickly.
 const POLL_TIMEOUT_MS: i32 = 100;
 
+/// What to do with a librist data block once read. Pure decision so it can be
+/// unit-tested without a live RIST session.
+#[derive(Debug, PartialEq, Eq)]
+enum BlockDisposition {
+    /// Payload that fits (≤ buf) — copy `n` bytes (`n` may be 0 for an
+    /// empty/zero-length block).
+    Accept(usize),
+    /// `payload_len > buf.len()` — caller buffer too small; drop the datagram
+    /// (non-fatal, retryable) rather than killing the transport.
+    DropOversize,
+    /// `payload_len > 0` with a NULL payload pointer — malformed block from
+    /// librist; drop it (non-fatal, retryable).
+    DropMalformed,
+}
+
+/// Classify a librist block. `payload_null` is `payload_ptr.is_null()`.
+fn classify_block(payload_len: usize, payload_null: bool, buf_len: usize) -> BlockDisposition {
+    if payload_len > 0 && payload_null {
+        return BlockDisposition::DropMalformed;
+    }
+    if payload_len > buf_len {
+        return BlockDisposition::DropOversize;
+    }
+    // payload_len <= buf_len here (the DropOversize early-return above caught
+    // the larger case), so no clamp is needed.
+    BlockDisposition::Accept(payload_len)
+}
+
 /// Receive-side RIST transport.
 ///
 /// Wraps a librist `rist_ctx` configured as a receiver. Per-call recv via
@@ -145,6 +173,12 @@ impl RistRecvTransport {
     pub fn stats(&self) -> RistStats {
         self.stats
     }
+
+    /// Count one dropped datagram (oversize / malformed). Centralized so the
+    /// counter source is consistent once stats move behind a lock (Task 3).
+    fn bump_dropped(&mut self) {
+        self.stats.packets_dropped = self.stats.packets_dropped.wrapping_add(1);
+    }
 }
 
 impl RecvTransport for RistRecvTransport {
@@ -179,51 +213,58 @@ impl RecvTransport for RistRecvTransport {
         let (payload_ptr, payload_len) =
             unsafe { ((*block).payload as *const u8, (*block).payload_len) };
 
-        // A non-empty payload paired with a NULL data pointer is malformed:
-        // librist promised `payload_len` bytes but handed us no buffer. Do NOT
-        // report `copy_n` "received" bytes from the caller's stale buffer —
-        // free the block (mirroring the success path's free below so we don't
-        // leak the librist block) and surface a Broken error.
-        if payload_len > 0 && payload_ptr.is_null() {
-            unsafe {
-                rist_sys::rist_receiver_data_block_free2(&mut block);
+        // Classify the block before touching any memory or freeing, so each
+        // arm below owns exactly one free of `block`.
+        match classify_block(payload_len, payload_ptr.is_null(), buf.len()) {
+            BlockDisposition::DropMalformed => {
+                // Non-fatal: free the block and return Backpressure so the
+                // pipeline receive loop retries. Do NOT set alive=false — one
+                // malformed block from librist does not break the session.
+                unsafe {
+                    rist_sys::rist_receiver_data_block_free2(&mut block);
+                }
+                self.bump_dropped();
+                Err(TransportError::Backpressure {
+                    msg: format!(
+                        "rist recv: dropped malformed block (null payload, len={payload_len})"
+                    ),
+                    errno_code: None,
+                })
             }
-            self.alive.store(false, Ordering::Release);
-            return Err(TransportError::Broken {
-                msg: format!("rist recv: null payload pointer with payload_len={payload_len}"),
-                errno_code: None,
-            });
-        }
-
-        let copy_n = payload_len.min(buf.len());
-        if copy_n > 0 && !payload_ptr.is_null() {
-            unsafe {
-                std::ptr::copy_nonoverlapping(payload_ptr, buf.as_mut_ptr(), copy_n);
+            BlockDisposition::DropOversize => {
+                // Non-fatal: caller's buffer is smaller than the datagram. Free
+                // the block and return Backpressure so the next call reads the
+                // next packet. The transport stays alive — individual oversize
+                // datagrams do not indicate a protocol error.
+                unsafe {
+                    rist_sys::rist_receiver_data_block_free2(&mut block);
+                }
+                self.bump_dropped();
+                Err(TransportError::Backpressure {
+                    msg: format!(
+                        "rist recv: dropped oversize datagram (have {}, need {payload_len})",
+                        buf.len()
+                    ),
+                    errno_code: None,
+                })
+            }
+            BlockDisposition::Accept(copy_n) => {
+                if copy_n > 0 && !payload_ptr.is_null() {
+                    // SAFETY: payload_ptr valid for payload_len bytes until free;
+                    // copy_n <= payload_len and <= buf.len() by classify_block.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(payload_ptr, buf.as_mut_ptr(), copy_n);
+                    }
+                }
+                // Always release the block back to librist.
+                unsafe {
+                    rist_sys::rist_receiver_data_block_free2(&mut block);
+                }
+                self.stats.bytes_received = self.stats.bytes_received.wrapping_add(copy_n as u64);
+                self.stats.packets_received = self.stats.packets_received.wrapping_add(1);
+                Ok(copy_n)
             }
         }
-
-        // Always release the block back to librist. After this call block is
-        // NULL'd by librist.
-        unsafe {
-            rist_sys::rist_receiver_data_block_free2(&mut block);
-        }
-
-        if payload_len > buf.len() {
-            // Caller's buffer was too small. librist gives us no partial-read
-            // contract, so map this to a Broken-style failure.
-            self.alive.store(false, Ordering::Release);
-            return Err(TransportError::Broken {
-                msg: format!(
-                    "rist recv buffer too small: have {}, need {payload_len}",
-                    buf.len()
-                ),
-                errno_code: None,
-            });
-        }
-
-        self.stats.bytes_received = self.stats.bytes_received.wrapping_add(copy_n as u64);
-        self.stats.packets_received = self.stats.packets_received.wrapping_add(1);
-        Ok(copy_n)
     }
 
     fn max_payload(&self) -> usize {
@@ -266,6 +307,17 @@ impl RistRecvTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classify_block_decisions() {
+        use BlockDisposition::*;
+        assert_eq!(classify_block(100, false, 200), Accept(100)); // fits
+        assert_eq!(classify_block(200, false, 200), Accept(200)); // exact fit
+        assert_eq!(classify_block(201, false, 200), DropOversize); // 1 over
+        assert_eq!(classify_block(50, true, 200), DropMalformed); // null+len>0
+        assert_eq!(classify_block(0, true, 200), Accept(0)); // null+len==0 is OK (empty)
+        assert_eq!(classify_block(0, false, 200), Accept(0));
+    }
 
     /// Regression: after an error path sets alive=false WITHOUT destroying ctx,
     /// a subsequent close() (or Drop) MUST still destroy and null the ctx.

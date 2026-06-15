@@ -22,6 +22,15 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecP
     let mut br = Av1BitReader::new(payload);
 
     let profile = br.f(3)? as u8;
+    // AV1 §6.4.1: seq_profile values 3..=7 are reserved. Reject immediately
+    // rather than carry a misparsed profile through the later branches
+    // (which treat any non-{0,1} value as profile 2).
+    if profile > 2 {
+        return Err(CodecParseError::ReservedValue {
+            field: "seq_profile",
+            value: u32::from(profile),
+        });
+    }
     let still_picture = br.f(1)? != 0;
     let reduced_still_picture_header = br.f(1)? != 0;
 

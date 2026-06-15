@@ -1,7 +1,9 @@
 //! AV1 Sequence Header parser tests.
 
 use crate::codec::av1::parse_sequence_header;
-use crate::codec::{ChromaFormat, ColourPrimaries, MatrixCoefficients, TransferCharacteristics};
+use crate::codec::{
+    ChromaFormat, CodecParseError, ColourPrimaries, MatrixCoefficients, TransferCharacteristics,
+};
 
 /// Append-only bit writer for hand-crafting AV1 OBU payloads.
 struct BitWriter {
@@ -365,4 +367,16 @@ fn truncated_payload_returns_err() {
     let payload = vec![0u8; 2]; // Way too short.
     let r = parse_sequence_header(&payload);
     assert!(r.is_err());
+}
+
+#[test]
+fn seq_profile_above_2_is_reserved() {
+    // First 3 bits = seq_profile = 3 (0b011). Remaining bits arbitrary;
+    // parse must reject before consuming them.
+    let payload = [0b0110_0000u8, 0x00, 0x00, 0x00];
+    let r = parse_sequence_header(&payload);
+    assert!(matches!(
+        r,
+        Err(CodecParseError::ReservedValue { field: "seq_profile", value: 3 })
+    ));
 }

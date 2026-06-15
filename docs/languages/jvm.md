@@ -12,6 +12,7 @@
 > - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
 > - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
 > - How to send and receive MPEG-TS over SRT and RTP (`org.tstrans.srt` / `org.tstrans.rtp`) — pre-muxed bytes or the `MuxSender`/`DemuxReceiver` shells — and how to drive RTSP (client + server)
+> - How to pair video with KLV metadata by PTS using `org.tstrans.pipeline.Pairer`
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
 > - How this binding differs from the Rust core
 
@@ -1319,6 +1320,87 @@ try (RtspServer server = RtspServer.start(cfg);
   `start()`. Both fields must be set together (both or neither) or `build()` will
   throw `IllegalArgumentException`.
 
+## Pipeline pairing (`org.tstrans.pipeline.Pairer`)
+
+MPEG-TS programs that carry synchronized KLV metadata (e.g. MISB ST 0601 UAS
+Datalink) multiplex video on one PID and KLV on another, both timestamped against
+the same 90 kHz clock but arriving in separate PES packets.
+`Pairer` — wrapping the Rust core `tst_pipeline::ext::pairing::PairingDemuxer` —
+correlates the two streams by PTS without exposing any demux events across the FFI
+boundary: you feed raw TS bytes, and for each video access unit the pairer searches
+for the nearest-PTS KLV sample within the configured tolerance (default 300 ms). A
+successful match produces a `PairerOutput.Paired`; a sample with no counterpart in
+the window becomes `PairerOutput.UnpairedVideo` or `PairerOutput.UnpairedKlv`;
+every other demux event — PMT, off-PID samples, discontinuity notices — surfaces as
+`PairerOutput.PassThrough`.
+
+```java
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import org.tstrans.DemuxException;
+import org.tstrans.pipeline.Pairer;
+import org.tstrans.pipeline.PairerConfig;
+import org.tstrans.pipeline.PairerMode;
+import org.tstrans.pipeline.PairerOutput;
+import org.tstrans.pipeline.PairerStats;
+import org.tstrans.pipeline.PairingDemuxerConfig;
+
+int videoPid = 0x101, klvPid = 0x102;
+
+// Realtime nearest-PTS pairing, 100 ms tolerance. Pass null for demuxer defaults.
+PairingDemuxerConfig cfg = new PairingDemuxerConfig(
+    new PairerConfig(new PairerMode.Realtime(), Duration.ofMillis(100), 32, 32, true),
+    null);
+
+try (Pairer pairer = new Pairer(videoPid, klvPid, cfg)) {
+    List<PairerOutput> outs = new ArrayList<>(pairer.feed(tsBytes));
+    outs.addAll(pairer.flush());              // drain end-of-stream (no-op in Realtime)
+    for (PairerOutput out : outs) {
+        if (out instanceof PairerOutput.Paired p) {
+            // p.video().codec() (e.g. VideoCodec.H264)
+            // p.video().payload() is List<VideoUnit> (NalUnit / Obu units)
+            // p.klv().payload() is a ByteBuffer of raw KLV LS bytes
+        } else if (out instanceof PairerOutput.PassThrough pt) {
+            // pt.event() is a DemuxEvent (ProgramMap, off-PID samples, ...)
+        }
+    }
+    PairerStats s = pairer.stats();           // s.paired(), s.unpairedVideo(), ...
+}
+```
+
+The simplest form — `new Pairer(videoPid, klvPid)` — uses `PairerConfig.defaults()`
+(Realtime mode, 300 ms tolerance, 32/32 buffers, `linkKlvToVideo = true`) with
+demuxer defaults. To tolerate arrival skew, switch to Buffered mode: pass
+`new PairerMode.Buffered(Duration.ofMillis(200))` as the mode; `flush()` becomes
+load-bearing at end-of-stream because buffered samples are held until the lag window
+closes.
+
+`feed` returns a `List<PairerOutput>` containing all outputs produced from the
+supplied bytes; match each element with `instanceof` on the four sealed records:
+`Paired` (video + KLV matched within tolerance), `UnpairedVideo` (video with no KLV
+counterpart), `UnpairedKlv` (KLV with no video counterpart), and `PassThrough` (any
+other demux event, including `DemuxEvent.ProgramMap`). `feed` throws the checked
+`DemuxException` on non-conformant input (same exception kind as
+`org.tstrans.mpegts.Demuxer`). `stats()` returns a frozen `PairerStats` snapshot
+with `paired`, `unpairedVideo`, `unpairedKlv`, and `passThrough` counters;
+`demuxerStats()` returns the underlying `DemuxerStats`; `resetStats()` zeroes the
+pairer counters without touching demuxer stats.
+
+Gotchas:
+
+- **`KlvSample.payload()` is a heap-copied, JVM-owned `ByteBuffer`** — the KLV LS
+  bytes are copied from Rust on each event (consistent with the page-wide
+  `ByteBuffer` policy). Safe to retain indefinitely.
+- **Single-threaded contract.** `Pairer` is not thread-safe — the consumer owns
+  concurrency, the same as `org.tstrans.mpegts.Demuxer`.
+- **`flush()` is load-bearing only in Buffered mode.** In Realtime mode it is a
+  no-op. Always call it at end-of-stream when using Buffered mode.
+- **`feed` throws checked `DemuxException`.** Declare it in `throws` or wrap it.
+- **Closed `Pairer` → `IllegalStateException`.** All methods (`feed`, `flush`,
+  `stats`, `demuxerStats`, `resetStats`) throw `IllegalStateException` after
+  `close()`.
+
 ## Language-specific gotchas
 
 - **`payload` is a heap-copied, JVM-owned `ByteBuffer`.** Each
@@ -1409,9 +1491,6 @@ See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jn
   linux-x86_64 / linux-aarch64 / macos-arm64 / windows-x86_64
   native libraries, published as `org.tstrans:tstrans-jvm` — **SHIPPED
   (v0.1.0).**
-- **data push-family parity follow-ups** — `pushData` / `pushDataTo` on the
-  rtp `MountHandle` and the srt `ManagedMuxSender` (recorded follow-up), and
-  a documented `org.tstrans.pipeline.Pairer` section on this page.
 
 ## Where to go next
 

@@ -1402,3 +1402,26 @@ the trigger that would unblock it.
 - **Scope when added:** A stream_id selector on `StreamSpec::Data`
   (default `0xBD`), validation forcing `carries_pts = false` for
   `0xBF`, and the slimmer header-less PES emission path.
+
+## RTCP statistics reporting (RFC 3550 §6.4 Sender/Receiver Reports)
+
+- **Status:** Deferred. The RTCP encoders are correct — SR (Sender
+  Report) and RR (Receiver Report) packets are transmitted on the RTCP
+  schedule — but all statistics fields are placeholder zeros: NTP
+  timestamp, RTP timestamp, sender packet and octet counts in SR, and all
+  RR report-block fields (fraction lost, cumulative lost,
+  extended-highest-sequence-number, interarrival jitter, LSR, DLSR).
+- **Why deferred:** Populating the SR sender fields is a contained
+  counter-sharing refactor, but full RR report blocks require a
+  substantially larger new subsystem: RFC 3550 §A.1 sequence and cycle
+  tracking, §A.8 interarrival-jitter estimation, and loss accounting must
+  be built from scratch on the receive side, along with UDP-side RTCP
+  reception (not yet implemented) to supply the LSR/DLSR feedback loop.
+  Additionally, the production RTSP server and client paths emit no RTCP
+  today; adding statistics reporting on those paths is greenfield wiring.
+  The combined scope is sizable enough to be its own release-cycle
+  deliverable.
+- **Trigger to revisit:** A consumer needs RFC 3550–conformant RTCP
+  statistics or RR feedback — for example, for congestion control, QoS
+  monitoring, or interoperability with an endpoint that acts on received
+  SR/RR values.

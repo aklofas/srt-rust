@@ -9,6 +9,34 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
 
+### Fixed — H.265 parameter-set IDs validated instead of silently truncated
+
+- `codec::h265` now validates the four `ue(v)`-decoded values cast to `u8`
+  during PPS and SPS parsing — PPS `pps_pic_parameter_set_id`, PPS
+  `pps_seq_parameter_set_id`, SPS `sps_seq_parameter_set_id`, and the SPS VUI
+  `chroma_sample_loc_type_top_field` — and returns
+  `CodecParseError::ReservedValue` when any value exceeds the H.265 spec
+  ceiling. Previously out-of-range values silently truncated or wrapped,
+  potentially aliasing an unrelated parameter-set map entry on a malformed
+  or hostile bitstream.
+
+### Fixed — RIST receiver recovers from oversize and malformed datagrams
+
+- A RIST receiver that encounters an oversize datagram (larger than the
+  caller-provided receive buffer) or a malformed null-payload block no
+  longer shuts down permanently. The offending datagram is now dropped and
+  counted; the receive call returns `TransportError::Backpressure` so the
+  caller can retry. Previously one such datagram closed the receiver forever.
+
+### Changed — RIST transport statistics now populated
+
+- `tst-rist` now wires librist's statistics callback and reports real
+  counters through `socket_stats()` and `RistStats`: `packets_retransmitted`,
+  `packets_dropped`, bandwidth (`RistStats::bandwidth_kbps`, also surfaced as
+  `SocketStats::link_bandwidth_bps`), and `rtt` are populated from the live
+  librist stats callback. Previously those four counters were always zero and
+  `socket_stats()` returned `None` for RIST transports.
+
 ### Added — JVM data-stream surface (`org.tstrans`)
 
 - **tst-jni** gains the data-stream mux surface, mirroring the Python

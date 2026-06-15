@@ -34,8 +34,9 @@
 #   RVC_C_HEADER     bindings/c/include/tstrans.h
 #   RVC_PY_TEST      bindings/python/tests/test_version.py
 #
-# Bash 3.2-portable: no `mapfile`/`readarray`/`declare -A`/`declare -a`
-# (see feedback_bash_ratchets_macos_portability.md). Does not read stdin.
+# Bash 3.2-portable (macOS CI is a gating platform): no
+# `mapfile`/`readarray`/`declare -A`/`declare -a`, and `mktemp` is always given
+# an explicit template (BSD/macOS `mktemp` requires one). Does not read stdin.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -166,7 +167,8 @@ run_check() { # [EXPECTED_VERSION]
 # throwaway fixtures and assert each expected outcome.
 # ---------------------------------------------------------------------------
 self_test() {
-  local tmp; tmp="$(mktemp -d)"
+  # Explicit template: BSD/macOS mktemp requires one (GNU accepts it too).
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/rvc-selftest.XXXXXX")"
   trap 'rm -rf "$tmp"' RETURN
 
   write_fixtures() { # <version>

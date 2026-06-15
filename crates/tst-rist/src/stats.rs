@@ -1,9 +1,13 @@
 //! [`RistStats`] — sender + receiver stats projections.
 
 use std::os::raw::{c_int, c_void};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tst_core::transport::SocketStats;
+
+/// librist stats-callback interval, milliseconds. 1 s matches librist's own
+/// default cadence and is ample for cumulative counters polled on demand.
+pub(crate) const STATS_INTERVAL_MS: i32 = 1000;
 
 /// Cumulative stats for a single RIST transport handle.
 ///
@@ -115,6 +119,8 @@ pub(crate) extern "C" fn stats_trampoline(
         if let Ok(mut acc) = lock.lock() {
             accumulate_stats(&mut acc, s);
         }
+        // Free unconditionally — intentionally OUTSIDE the `if let Ok` above so
+        // librist's container is freed even on a poisoned lock and never leaks.
         // SAFETY: librist transferred ownership of the heap container to this
         // callback; freeing it is the documented contract. The `stats` arg is
         // already `*const`, matching `rist_stats_free`'s signature.
@@ -123,6 +129,30 @@ pub(crate) extern "C" fn stats_trampoline(
         }
     });
     0
+}
+
+/// Create the shared stats accumulator and register the librist stats callback
+/// on `ctx`.
+///
+/// Returns `(arc, raw)`: store `arc` in the transport for [`stats()`] snapshots,
+/// and reclaim `raw` (`Arc::from_raw`) EXACTLY ONCE in `close()` AFTER
+/// `rist_destroy` (which joins the protocol thread, so no callback can be in
+/// flight). One Arc ref is leaked into librist as the callback `arg`; a non-zero
+/// rc from `rist_stats_callback_set` is non-fatal — stats just won't populate,
+/// and the leaked ref is still reclaimed at close.
+///
+/// [`stats()`]: crate::transport::RistTransport::stats
+pub(crate) fn register_stats_callback(
+    ctx: *mut rist_sys::rist_ctx,
+) -> (Arc<Mutex<RistStats>>, *mut c_void) {
+    let stats = Arc::new(Mutex::new(RistStats::default()));
+    let stats_arg = Arc::into_raw(stats.clone()) as *mut c_void;
+    // SAFETY: ctx is a started rist_ctx; stats_arg is a live leaked Arc ref that
+    // outlives registration (reclaimed only at close, after rist_destroy).
+    let _rc = unsafe {
+        rist_sys::rist_stats_callback_set(ctx, STATS_INTERVAL_MS, Some(stats_trampoline), stats_arg)
+    };
+    (stats, stats_arg)
 }
 
 #[cfg(test)]
@@ -169,6 +199,22 @@ mod trampoline_tests {
         assert_eq!(acc.bandwidth_kbps, 2); // gauge overwrites
         assert_eq!(acc.rtt_us, 5_000); // gauge overwrites (ms→µs)
         assert_eq!(acc.packets_received, 0); // inline-only, untouched
+    }
+
+    #[test]
+    fn unknown_stats_type_is_a_noop() {
+        let mut s: rist_sys::rist_stats = unsafe { core::mem::zeroed() };
+        s.stats_type = 99; // neither SENDER_PEER nor RECEIVER_FLOW → no-op arm
+        let mut acc = RistStats::default();
+        accumulate_stats(&mut acc, &s);
+        // accumulate_stats only ever writes these four fields; the unknown arm
+        // touches nothing, so all stay at their default zero. (RistStats has no
+        // PartialEq — checking these four against an all-zero start is the full
+        // "unchanged" proof without widening the public API.)
+        assert_eq!(acc.packets_retransmitted, 0);
+        assert_eq!(acc.packets_dropped, 0);
+        assert_eq!(acc.bandwidth_kbps, 0);
+        assert_eq!(acc.rtt_us, 0);
     }
 }
 

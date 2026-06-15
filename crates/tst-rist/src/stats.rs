@@ -22,6 +22,12 @@ pub struct RistStats {
     pub packets_sent: u64,
     pub packets_received: u64,
     pub packets_retransmitted: u64,
+    /// Packets that never reached the application. Aggregates librist's
+    /// wire-loss count (the `lost` counter from the receiver stats callback)
+    /// with packets librist delivered but this transport dropped at the app
+    /// boundary (a datagram larger than the caller's buffer, or a malformed
+    /// null-payload block). These are disjoint sets, so there is no
+    /// double-counting; the wire-loss term normally dominates.
     pub packets_dropped: u64,
     /// Smoothed bandwidth, kbps.
     pub bandwidth_kbps: u32,

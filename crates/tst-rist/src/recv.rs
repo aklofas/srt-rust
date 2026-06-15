@@ -2,6 +2,7 @@
 
 use std::ffi::CString;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::transport::{RecvTransport, TransportError};
@@ -55,7 +56,7 @@ pub struct RistRecvTransport {
     pkt_size: usize,
     bind_url: String,
     alive: Arc<AtomicBool>,
-    stats: RistStats,
+    stats: Arc<Mutex<RistStats>>,
 }
 
 // Same Send/!Sync reasoning as RistTransport: RecvTransport methods take
@@ -160,7 +161,7 @@ impl RistRecvTransport {
             pkt_size: cfg.pkt_size,
             bind_url: bind_url_str,
             alive: Arc::new(AtomicBool::new(true)),
-            stats: RistStats::default(),
+            stats: Arc::new(Mutex::new(RistStats::default())),
         })
     }
 
@@ -171,13 +172,15 @@ impl RistRecvTransport {
 
     /// Current snapshot of cumulative stats.
     pub fn stats(&self) -> RistStats {
-        self.stats
+        self.stats.lock().map(|s| *s).unwrap_or_default()
     }
 
     /// Count one dropped datagram (oversize / malformed). Centralized so the
-    /// counter source is consistent once stats move behind a lock (Task 3).
-    fn bump_dropped(&mut self) {
-        self.stats.packets_dropped = self.stats.packets_dropped.wrapping_add(1);
+    /// counter source is consistent now that stats live behind a lock (Task 3).
+    fn bump_dropped(&self) {
+        if let Ok(mut s) = self.stats.lock() {
+            s.packets_dropped = s.packets_dropped.wrapping_add(1);
+        }
     }
 }
 
@@ -260,8 +263,10 @@ impl RecvTransport for RistRecvTransport {
                 unsafe {
                     rist_sys::rist_receiver_data_block_free2(&mut block);
                 }
-                self.stats.bytes_received = self.stats.bytes_received.wrapping_add(copy_n as u64);
-                self.stats.packets_received = self.stats.packets_received.wrapping_add(1);
+                if let Ok(mut s) = self.stats.lock() {
+                    s.bytes_received = s.bytes_received.wrapping_add(copy_n as u64);
+                    s.packets_received = s.packets_received.wrapping_add(1);
+                }
                 Ok(copy_n)
             }
         }

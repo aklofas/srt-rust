@@ -213,6 +213,58 @@ fn h265_sps_rejects_bit_depth_overflow() {
 }
 
 /// Construct a synthetic H.265 SPS prefix that walks correctly up
+/// through `sps_seq_parameter_set_id`, then writes the caller-supplied
+/// value at that field. `parse_sps` validates `sps_seq_parameter_set_id`
+/// eagerly right after the read, so the bytes after that field don't
+/// need to be valid.
+///
+/// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax with
+/// `max_sub_layers_minus1 = 0` (no sublayer fields).
+fn h265_sps_with_seq_parameter_set_id(sps_seq_parameter_set_id: u32) -> Vec<u8> {
+    let mut bw = BitWriter::new();
+
+    // §7.3.2.2 SPS header.
+    bw.write(0, 4); // sps_video_parameter_set_id
+    bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+    bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+    // §7.3.3 profile_tier_level(max_sub_layers_minus1 = 0): 96 bits.
+    bw.write(0, 2); // general_profile_space
+    bw.write(0, 1); // general_tier_flag
+    bw.write(1, 5); // general_profile_idc = 1 (Main)
+    bw.write(0, 32); // general_profile_compatibility_flags
+    bw.write(0, 32); // 32 of the 48 constraint/reserved bits
+    bw.write(0, 16); // remaining 16 of the 48 constraint/reserved bits
+    bw.write(120, 8); // general_level_idc = 120 (Level 4.0)
+
+    // §7.3.2.2 continues.
+    bw.write_ue(sps_seq_parameter_set_id); // sps_seq_parameter_set_id
+
+    bw.bytes
+}
+
+/// Per H.265 §7.4.3.2.1, `sps_seq_parameter_set_id ∈ 0..=15`. The field
+/// is the `sps_by_id` map key and is stored in a `u8`; an unchecked
+/// `as u8` would silently wrap a fuzzed value of 16 to a valid-looking
+/// id, aliasing a different parameter set. Caught now via the eager
+/// range check (`read_ue_max`).
+#[test]
+fn h265_sps_rejects_seq_parameter_set_id_above_15() {
+    let rbsp = h265_sps_with_seq_parameter_set_id(16);
+    let result = parse_sps(&rbsp);
+    assert!(
+        matches!(
+            result,
+            Err(CodecParseError::ReservedValue {
+                field: "sps_seq_parameter_set_id",
+                value: 16
+            })
+        ),
+        "expected ReservedValue, got {result:?}"
+    );
+}
+
+/// Construct a synthetic H.265 SPS prefix that walks correctly up
 /// through `log2_max_pic_order_cnt_lsb_minus4`, then writes the
 /// caller-supplied value at that field. `parse_sps` validates eagerly
 /// right after the read, so the bytes after that field don't need to

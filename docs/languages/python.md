@@ -1,17 +1,19 @@
 # Python bindings (`tstrans`)
 
-> **Who this is for:** You write Python and want to inspect, build, or
-> process MPEG-TS + KLV files. Note: live SRT transport is not available
-> in v1 — use the Rust core or C bindings for live streaming.
+> **Who this is for:** You write Python and want to inspect, build,
+> stream, or receive MPEG-TS + KLV — offline files *and* live transports
+> (SRT, RTP/RTSP, UDP, TCP, RIST).
 
 > **You will learn:**
 > - How to install `tstrans` (with or without the pandas extra)
 > - How to read a `.ts` file and inspect typed `DemuxEvent` items in ~5 lines
 > - How to build a `.ts` file by pushing video + KLV through the `Muxer`
 > - How to encode and decode all 4 MISB KLV sets (ST 0601 / 0102 / 0605 / 0903)
+> - How to send and receive live MPEG-TS over SRT, RTP/RTSP, UDP, TCP, and RIST
+> - How to pair video with synchronized KLV via `tstrans.pipeline.Pairer`
 > - How to drive bulk KLV → pandas DataFrame ETL with the optional `[pandas]` extra
 > - The Python-specific gotchas: GIL release, dataclass strictness, optional extras
-> - How this binding differs from the Rust core (file-only, no live SRT)
+> - How this binding differs from the Rust core
 
 ## Install
 
@@ -30,17 +32,26 @@ union syntax and `match` statements without compat hacks).
 
 The compiled extension is imported as `tstrans._native`. Public API lives
 on `tstrans` and its topic submodules — `tstrans.io`, `tstrans.mpegts`,
-`tstrans.klv`, `tstrans.codec`, and the optional `tstrans.pandas`. Don't
-reach into `tstrans._native` directly; it may reorganize between versions.
+`tstrans.klv`, `tstrans.codec`, the live-transport modules `tstrans.srt`,
+`tstrans.rtp`, `tstrans.udp`, `tstrans.tcp`, `tstrans.rist`, the
+`tstrans.pipeline` pairer, and the optional `tstrans.pandas`. Don't reach
+into `tstrans._native` directly; it may reorganize between versions.
 
-> **Status (Phase 6 shipped, 2026-05-23):** `tstrans` is feature-complete
-> for v1: file inspection + construction (`Demuxer` / `Muxer` /
-> `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 /
-> ST 0605 / ST 0903 (with `VTargetPack`), codec parsers for H.264 /
-> H.265 / H.266 / AV1 / AAC / MPEG-2 audio, and optional pandas
-> DataFrame adapters + NumPy snapshot views via
-> `pip install tstrans[pandas]`. ~582 pytest tests. Live SRT (v2) and
-> RTP (v3) transports remain on the roadmap.
+Published wheels ship the SRT, RTP/RTSP, UDP, TCP, and RIST transports
+on by default — with two caveats: **RIST is excluded from the Windows
+wheel** (the Linux and macOS wheels include it), and the **experimental
+HLS publisher (`tstrans.hls`) is not in any published wheel** — it is
+available only in a source build compiled with `--features hls` (see
+[HLS publisher](#hls-publisher-tstranshls) below).
+
+> **Status:** `tstrans` ships the full surface — offline file inspection
+> + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV
+> decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with
+> `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC /
+> MPEG-2 audio, optional pandas DataFrame adapters + NumPy snapshot views
+> via `pip install tstrans[pandas]`, the live transports
+> `tstrans.{srt,rtp,udp,tcp,rist}` (with RTSP client + server and SRT
+> auto-reconnect), and `tstrans.pipeline.Pairer`. ~1149 pytest tests.
 
 ## Hello world
 
@@ -60,6 +71,7 @@ the `Muxer`:
 
 ```python
 from tstrans.mpegts import (
+    KlvStreamType,
     Muxer,
     MuxerConfigBuilder,
     MuxerProgramConfigBuilder,
@@ -70,7 +82,7 @@ from tstrans.mpegts import (
 prog = (
     MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x100)
     .add_video(0x101, VideoCodec.H264)
-    .add_klv(0x102)
+    .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
     .build()
 )
 cfg = MuxerConfigBuilder().add_program(prog).build()
@@ -204,6 +216,573 @@ supports single-program sources (a second program raises
 `atomic=True` writes through a same-directory `*.partial` temp file and
 `os.replace`s it into place only on clean exit, so no partial output can
 appear at the destination.
+
+## SRT transport (`tstrans.srt`)
+
+`tstrans.srt` wraps `tst_pipeline`'s `Sender` / `Receiver` over an SRT
+transport plus the low-level `tst_srt` `Builder` / `Socket` / `Listener`,
+for streaming pre-muxed MPEG-TS bytes over SRT. Use the raw `Sender` /
+`Receiver` when you already hold TS bytes (e.g. from a `Muxer` or a file);
+use the `MuxSender` / `DemuxReceiver` convenience shells (next section) to
+push elementary streams directly. SRT ships in published wheels
+(default-on).
+
+`SrtError` and `SrtErrorKind` live in `tstrans.exceptions`, **not** in
+`tstrans.srt` (the same pattern as `tstrans.rtp`):
+
+```python
+from tstrans.exceptions import SrtError, SrtErrorKind
+```
+
+### Sender hello
+
+Caller mode is the default when `?mode=` is omitted. URL query parameters
+(`passphrase`, `latency`, `streamid`, `mss`, `payloadsize`, …) apply
+through the SRT URL overlay:
+
+```python
+from tstrans.srt import Sender
+
+# mode=caller is the default when ?mode= is omitted.
+with Sender.from_url("srt://host:9000?mode=caller&passphrase=secret") as tx:
+    tx.send_bytes(ts_bytes)   # pre-muxed TS bytes, any length
+    tx.flush()                # emit any buffered partial bundle
+```
+
+`send_bytes` accepts a bytes-like payload of any length; the sender frames
+it into 7-packet (1316-byte) SRT bundles internally. Call `flush()` after
+the last push to emit a partial bundle. `socket_stats()` returns the
+scheme-neutral 16-field `SocketStats`; `srt_stats()` returns the
+libsrt-rich `SrtStats` (estimated bandwidth, symmetric send/recv-side loss
+split).
+
+### Receiver hello
+
+`Receiver.from_url` does a one-shot bind + accept (listener mode). Each
+`recv_bytes()` returns one 188-byte TS packet:
+
+```python
+from tstrans.srt import Receiver
+from tstrans.exceptions import SrtError, SrtErrorKind
+
+with Receiver.from_url("srt://:9000?mode=listener") as rx:
+    try:
+        while True:
+            pkt = rx.recv_bytes()   # one 188-byte TS packet per call
+            ...                     # process pkt
+    except SrtError as e:
+        # CLOSED / BROKEN both signal end of stream.
+        if e.kind not in (SrtErrorKind.CLOSED, SrtErrorKind.BROKEN):
+            raise
+```
+
+### Builder → Socket low-level path
+
+When you need the listener's bound port (e.g. binding to an ephemeral
+`:0`), drive the `Builder` → `Listener` → `Socket` path. A `Socket` is
+consumed by exactly one of `into_sender()` / `into_receiver()` /
+`into_mux_sender(program_config)` / `into_demux_receiver(demux_config=None)`:
+
+```python
+from tstrans.srt import Builder
+
+# Caller side: connect, then turn the socket into a Sender.
+with Builder("srt://host:9000").caller().latency_ms(200).connect() as sock:
+    with sock.into_sender() as tx:
+        tx.send_bytes(ts_bytes)
+        tx.flush()
+
+# Listener side: bind an ephemeral port, read it back, accept one peer.
+with Builder("srt://127.0.0.1:0?mode=listener").listener().listen() as listener:
+    host, port = listener.local_addr()
+    print("listening on", port)
+    sock = listener.accept()          # blocks for the first peer
+    with sock.into_receiver() as rx:
+        pkt = rx.recv_bytes()
+```
+
+The `Builder` mode setters (`.caller()` / `.listener()`) set only the
+Python-side mode; `.listen()` still requires `?mode=listener` in the URL.
+URL-provided values win over kwargs / setters. A `Listener` is iterable —
+iterating yields accepted `Socket`s until `cancel_handle().cancel()` stops
+it.
+
+### Cancellation
+
+`Sender` / `Receiver` / `Listener` (and the `DemuxReceiver` shell) expose
+`cancel_handle()`; calling `.cancel()` from another thread wakes a thread
+parked in `send_bytes` / `recv_bytes` / `accept` within ~3–10 ms,
+surfacing `SrtError(BROKEN)` or `SrtError(CLOSED)`:
+
+```python
+tx = Sender.from_url("srt://host:9000?mode=caller")
+cancel = tx.cancel_handle()
+# On another thread:
+cancel.cancel()   # wakes tx.send_bytes() → SrtError(BROKEN | CLOSED)
+```
+
+`is_cancelled()` is per-clone, but `cancel()` on any clone wakes the shared
+socket.
+
+### SRT convenience (`MuxSender` / `DemuxReceiver`)
+
+`MuxSender` bundles a `Muxer` + an SRT `Sender`: push encoded elementary
+streams and it muxes + sends in one call. `DemuxReceiver` bundles a
+`Receiver` + a `Demuxer`: iterate to get the same
+`tstrans.mpegts.DemuxEvent` subclass instances the offline `Demuxer`
+produces. Both release the GIL around the muxer / transport work, and both
+are context managers.
+
+```python
+from tstrans.srt import MuxSender
+from tstrans.mpegts import MuxerProgramConfigBuilder, Pts90khz, VideoCodec
+
+program = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+    .add_video(0x1011, VideoCodec.H264)
+    .build()
+)
+
+with MuxSender.from_url(
+    "srt://host:9000?mode=caller&latency=120", program
+) as s:
+    pts = 0
+    for nal in access_units:
+        s.push_video(nal, pts=Pts90khz.from_raw(pts), key_frame=True)
+        pts += 3000   # 90 kHz ticks per frame
+```
+
+`pts` is keyword-only on every push method. The push surface mirrors the
+offline muxer: `push_video` / `push_klv` / `push_audio` / `push_subtitle`
+/ `push_data` (raw private-data bytes, passed through verbatim), plus the
+handle-targeted `push_*_to` variants for multi-stream programs and the
+first-of-kind handle accessors (`video_handle()`, `klv_handle()`, …,
+`data_handle()`). `stats()` returns a `(SocketStats, MuxerStats)` tuple.
+There is no `flush()` — bytes flush per-push and again on `close()`.
+
+Receiving:
+
+```python
+from tstrans.srt import DemuxReceiver
+from tstrans.mpegts import DemuxEvent
+
+with DemuxReceiver.from_url("srt://:9000?mode=listener") as rx:
+    for event in rx:
+        match event:
+            case DemuxEvent.Video(pts=p, raw=b):
+                ...   # one encoded access unit
+            case DemuxEvent.Klv(payload=b):
+                ...
+```
+
+`add_byte_sink(callback)` fans out every 188-byte TS packet (as `bytes`)
+to a callback BEFORE demuxing — register it before iterating. If the
+callback raises, the error re-raises from the next iteration step and
+iteration stops. Keep the sink cheap (it runs on the recv-loop thread) and
+never re-enter the receiver from it.
+
+### SRT managed reconnect
+
+The four `Managed*` shells add automatic reconnect: on a Broken/Closed
+transport they re-dial (caller) or re-bind + re-accept (listener) under a
+`ReconnectPolicy` and resume, replaying buffered gap data. `ManagedSender`
+/ `ManagedReceiver` are the raw-bytes pair; `ManagedMuxSender` /
+`ManagedDemuxReceiver` are the convenience pair.
+
+```python
+from tstrans.srt import (
+    ManagedMuxSender,
+    ReconnectPolicy,
+    BackoffStrategy,
+    OverflowPolicy,
+)
+from tstrans.mpegts import MuxerProgramConfigBuilder, Pts90khz, VideoCodec
+
+policy = ReconnectPolicy(
+    max_attempts=None,                  # None = retry forever; an int caps attempts
+    backoff=BackoffStrategy.exponential(base_ms=100, max_ms=10_000),
+    gap_buffer_capacity=256,
+    overflow_policy=OverflowPolicy.DROP_OLDEST,
+)
+
+program = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+    .add_video(0x1011, VideoCodec.H264)
+    .build()
+)
+
+with ManagedMuxSender.from_url(
+    "srt://host:9000?mode=caller&latency=120", program, policy=policy
+) as s:
+    for i, nal in enumerate(access_units):
+        s.push_video(nal, pts=Pts90khz.from_raw(i * 3000), key_frame=True)
+```
+
+Passing `policy=None` (or omitting it) uses the defaults
+(`max_attempts=10`, `BackoffStrategy.exponential(base_ms=100,
+max_ms=10_000)`, `gap_buffer_capacity=256`, `OverflowPolicy.DROP_OLDEST`).
+`BackoffStrategy.constant(ms)` is the fixed-wait alternative;
+`OverflowPolicy` is `DROP_OLDEST` or `REJECT`; `gap_buffer_capacity == 0`
+raises `ValueError`.
+
+On the receive side, each reconnect emits exactly one
+`DemuxEvent.ReconnectDiscontinuity` before the post-reconnect events —
+drop your per-stream caches on receipt and rebuild from the next
+`ProgramMap`:
+
+```python
+from tstrans.srt import ManagedDemuxReceiver
+from tstrans.mpegts import DemuxEvent
+
+with ManagedDemuxReceiver.from_url(
+    "srt://host:9000?mode=caller&latency=120", policy=policy
+) as rx:
+    for event in rx:
+        if isinstance(event, DemuxEvent.ReconnectDiscontinuity):
+            caches.clear()     # transport rebuilt — re-derive from next ProgramMap
+        elif isinstance(event, DemuxEvent.Video):
+            ...
+```
+
+Unlike the plain `DemuxReceiver` (listener only), `ManagedDemuxReceiver`
+accepts `mode=caller` too — it re-dials in caller mode and re-binds +
+re-accepts in listener mode.
+
+**Stats drift on the managed shells** (mirrors the JVM binding):
+`ManagedSender.srt_stats()` and `ManagedReceiver.srt_stats()` raise
+`SrtError(IO)` today — the managed transport exposes no SRT-rich shape, so
+use `socket_stats()` (the 16-field `SocketStats`) instead.
+`ManagedDemuxReceiver.srt_stats()` does NOT throw — it returns a
+`SocketStats` (not `SrtStats`). `ManagedReceiver.reconnect_attempts()` is a
+success count (excludes the initial accept); `ManagedMuxSender` and
+`ManagedDemuxReceiver` `reconnect_attempts()` count every reconnect-factory
+invocation.
+
+## RTP transport (`tstrans.rtp`)
+
+`tstrans.rtp` wraps `tst_rtp` directly for MPEG-TS-over-RTP/UDP
+(RFC 2250): each `send` produces one RTP datagram (12-byte header + TS
+payload); each `recv` returns one datagram's TS payload with the header
+stripped. Unlike SRT, the raw `Sender` / `Receiver` are constructed with
+`__init__`, not `from_url`. RTP ships in published wheels (default-on).
+`RtpError` / `RtpErrorKind` and `RtspError` / `RtspErrorKind` live in
+`tstrans.exceptions`.
+
+### Sender / Receiver hello
+
+```python
+from tstrans.rtp import Sender, Receiver
+
+# pkt_size caps the datagram (RTP header + TS payload); ssrc pins the SSRC.
+with Sender("rtp://239.0.0.1:5004", pkt_size=1316) as tx:
+    tx.send(ts_bytes)        # one UDP datagram per call
+
+# Multicast bind URLs auto-join the group.
+with Receiver("rtp://239.0.0.1:5004") as rx:
+    payload = rx.recv()      # one datagram's TS payload (RTP header stripped)
+```
+
+`send` accepts a TS payload up to `pkt_size − 12`; oversize raises
+`RtpError(MALFORMED_PACKET)`. `recv()` blocks until a datagram arrives or a
+cancel fires. RTP/UDP is connectionless — a remote sender closing does NOT
+end a `recv()` loop; stop on a sentinel or via `cancel_handle().cancel()`,
+which wakes a parked `send` / `recv` with `RtpError(CANCELLED)` within
+~100 ms. The RTP `CancelHandle` has only `cancel()` — no `is_cancelled()`
+(differs from SRT). A literal `rtp://host:0` receiver is unusable: RTCP
+auto-binds `port + 1`, which for port 0 lands on port 1 — bind a concrete
+port.
+
+### RTP convenience (`MuxSender` / `DemuxReceiver`)
+
+`MuxSender` takes the same elementary-stream push surface as the SRT
+shell, constructed with `MuxSender(url, program_config, *,
+pkt_size=1316)`; `DemuxReceiver` iterates `DemuxEvent`s and is constructed
+with `DemuxReceiver(url, *, demux_config=None)`. Both expose **no
+`cancel_handle()` and no `socket_stats()`** — only `stats()` (a
+`(SocketStats, MuxerStats)` tuple) and `close()`:
+
+```python
+from tstrans.rtp import MuxSender, DemuxReceiver
+from tstrans.mpegts import (
+    DemuxEvent,
+    MuxerProgramConfigBuilder,
+    Pts90khz,
+    VideoCodec,
+)
+
+program = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+    .add_video(0x1011, VideoCodec.H264)
+    .build()
+)
+with MuxSender("rtp://127.0.0.1:5004", program) as s:
+    s.push_video(nal, pts=Pts90khz.from_raw(0), key_frame=True)
+
+with DemuxReceiver("rtp://0.0.0.0:5004") as rx:
+    rx.add_byte_sink(lambda pkt: record(pkt))   # each raw 188-byte TS packet
+    for event in rx:
+        if isinstance(event, DemuxEvent.Video):
+            ...
+```
+
+To stop a `DemuxReceiver` iteration parked on the next datagram, call
+`close()` from another thread — it cancels the in-flight recv first, then
+frees the receiver (safe cross-thread).
+
+### RTSP client
+
+`RtspClient.connect(config)` runs OPTIONS / DESCRIBE / SETUP / PLAY and
+returns a live `RtspSession`; `RtspSession.into_demux_receiver()` hands you
+the RTP data plane as a `DemuxReceiver`. Auth is `BasicAuth(user,
+password, realm=None)` or `DigestAuth(user, password, algorithm=...,
+realm=None)`:
+
+```python
+from tstrans.rtp import (
+    RtspClient,
+    RtspClientConfig,
+    DigestAuth,
+    TransportPref,
+)
+
+cfg = RtspClientConfig(
+    "rtsp://cam.local:554/stream1",
+    auth=DigestAuth("admin", "secret"),     # BasicAuth | DigestAuth | None
+    transport_pref=TransportPref.AUTO,      # UDP-first, TCP fallback on 461
+)
+
+with RtspClient.connect(cfg) as session:
+    with session.into_demux_receiver() as rx:
+        for event in rx:
+            ...     # DemuxEvent.Video / .Klv / ...
+    # session.play() / session.pause() / session.teardown() drive RTSP state.
+```
+
+- **Passwords stay Rust-side.** `BasicAuth` / `DigestAuth` hold the
+  password in Rust memory (never re-exposed); only `user`, `realm`, and
+  `algorithm` are readable. `repr()` redacts the secret.
+- **TLS is forward-compat only.** `rtsps://` surfaces `RtspError(TLS)`;
+  `tls_root_certs_pem` is accepted for parity but is not read by `connect`.
+- **Cancellation.** Obtain a `RtspCancelHandle` from
+  `session.cancel_handle()` *before* a blocking control call, then flip
+  `cancel()` from another thread to break it out.
+
+### RTSP server
+
+`RtspServer.start(config)` hosts a server; `add_unicast_mount(path,
+program_config)` / `add_multicast_mount(path, group, port, *,
+program_config=...)` register mounts, and the returned `MountHandle` takes
+the same elementary-stream push family as `MuxSender` (the `push_*` /
+`push_*_to` family plus per-kind handle accessors). The `MountHandle` is
+`Arc`-shared, so multiple producer threads may push concurrently.
+
+```python
+from tstrans.rtp import RtspServer, RtspServerConfig
+from tstrans.mpegts import MuxerProgramConfigBuilder, Pts90khz, VideoCodec
+
+program = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+    .add_video(0x1011, VideoCodec.H264)
+    .build()
+)
+
+cfg = RtspServerConfig(bind_addr="0.0.0.0:8554")   # defaults: max_sessions=100, …
+with RtspServer.start(cfg) as server:
+    mount = server.add_unicast_mount("/live", program)
+    mount.push_video(nal, pts=Pts90khz.from_raw(0), key_frame=True)
+    print(server.local_addr())     # bound "ip:port" (useful with port 0)
+# __exit__ sends a graceful Notice-5402 teardown to active sessions.
+```
+
+`RtspServerConfig` is a frozen dataclass (`bind_addr`, `auth`,
+`max_sessions`, `session_timeout_secs`, `fanout_capacity`,
+`graceful_shutdown_drain_ms`, `tls_cert_pem`, `tls_key_pem`). Its TLS
+fields are forward-compat: setting `tls_cert_pem` / `tls_key_pem` raises
+`RtspError(TLS)` at `start()` (and they must be set together or
+`__post_init__` raises `ValueError`). For a credentialed server pass
+`auth=BasicAuth("user", "pass", "realm")` — the realm is required
+server-side. `server.cancel_handle()` returns an `RtspServerCancelHandle`
+for an immediate hard teardown that bypasses the drain window.
+
+## UDP / TCP / RIST transports
+
+These three are the raw datagram / stream transports — lighter than SRT or
+RTP (no muxer shells), used to move pre-muxed TS bytes. Each exposes a
+fluent builder. All three ship in published wheels (RIST on Linux + macOS
+only — see the caveat under [Install](#install)). Their error types
+(`UdpError`, `TcpError`, `RistError` and the matching `*ErrorKind`
+`IntEnum`s) live in `tstrans.exceptions` and are also re-exported from each
+submodule.
+
+### UDP (`tstrans.udp`)
+
+```python
+from tstrans.udp import Transport, RecvTransport
+
+# Sender — fixed peer.
+with Transport.builder().url("udp://239.0.0.1:5000").ttl(8).build() as tx:
+    tx.send(ts_bytes)                       # one datagram; default cap 1316 bytes
+
+# Receiver — bind, then recv (timeout_ms=None blocks).
+with RecvTransport.builder().bind_url("udp://@239.0.0.1:5000").build() as rx:
+    payload, _addr = rx.recv(timeout_ms=1000)   # raises UdpError(IO) on timeout
+```
+
+`recv()` returns `(payload, sender_addr)` — the address string is
+currently always `""`. Use `udp://@group:port` (the `@` prefix) on
+`bind_url` for a multicast join; `RecvTransport.local_addr_port()` reads
+back an ephemeral port when you bind `:0`.
+
+### TCP (`tstrans.tcp`)
+
+`Transport` is full-duplex (send + recv on one handle); a `Listener`
+accepts inbound connections:
+
+```python
+from tstrans.tcp import Transport, Listener
+
+# Client.
+with Transport.builder().url("tcp://host:5001").nodelay(True).build() as conn:
+    conn.send(ts_bytes)
+    buf = bytearray(64 * 1024)
+    n = conn.recv(buf)                       # bytes read into buf
+
+# Server.
+with Listener.builder().bind("0.0.0.0:5001").build() as listener:
+    conn = listener.accept_blocking()        # -> Transport
+    with conn:
+        n = conn.recv(buf := bytearray(64 * 1024))
+```
+
+`tcps://` URLs raise `TcpError(TLS_DISABLED)` at `build()` — TLS is not
+compiled into the published wheels. `Listener.builder().bind("host:0")`
+plus `local_port()` gives you an ephemeral port.
+
+### RIST (`tstrans.rist`)
+
+```python
+from tstrans.rist import Transport, RecvTransport, EncryptionKey
+
+# Sender.
+with Transport.builder().url("rist://host:5004").build() as tx:
+    tx.send(ts_bytes)
+
+# Receiver — the @ prefix is REQUIRED on bind_url.
+with RecvTransport.builder().bind_url("rist://@0.0.0.0:5004").build() as rx:
+    payload = rx.recv(timeout_ms=1000)       # raises RistError(RECV_TIMEOUT)
+
+# Encryption forces RistProfile.MAIN.
+enc = EncryptionKey.aes256("pre-shared-secret")
+tx = Transport.builder().url("rist://host:5004").encryption(enc).build()
+```
+
+The `@` prefix on `bind_url` is mandatory (per librist / ffmpeg
+convention); omit it on the sender's `url`. Mixing them up raises
+`RistError(INVALID_CONFIG)`. `EncryptionKey.aes128` / `aes192` / `aes256`
+each force `RistProfile.MAIN` (the profile that carries encryption); the
+default is `RistProfile.SIMPLE`. Both transports return a `RistStats`
+snapshot from `stats()`.
+
+## HLS publisher (`tstrans.hls`)
+
+> **Experimental — not in published wheels.** `tstrans.hls` is available
+> only in a source build compiled with `--features hls`. From a PyPI
+> wheel, `import tstrans.hls` raises `ImportError`. The surface and its
+> on-disk / HTTP behavior may change.
+
+`HlsPublisher` segments pre-muxed MPEG-TS to disk and serves an HTTP
+playlist; `MuxPublisher` is the pipeline shell that owns a muxer + an
+`HlsPublisher` so you can push elementary streams instead of TS bytes:
+
+```python
+from tstrans.hls import HlsPublisher, MuxPublisher
+from tstrans.mpegts import MuxerProgramConfigBuilder, Pts90khz, VideoCodec
+
+publisher = (
+    HlsPublisher.builder()
+    .bind("127.0.0.1:0")               # 0 = ephemeral; read back via local_addr()
+    .output_dir("/tmp/hls")
+    .segment_duration_ms(2000)
+    .build()
+)
+
+program = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+    .add_video(0x1011, VideoCodec.H264)
+    .build()
+)
+
+# with_config_hls CONSUMES the publisher.
+mp = MuxPublisher.with_config_hls(publisher, program)
+mp.send_video(nal, pts=Pts90khz.from_raw(0), key_frame=True)  # auto-cuts on key_frame
+pub = mp.finish_into_publisher()   # recover the publisher to finish() it cleanly
+pub.finish()
+```
+
+`push_ts` (on the publisher) requires a 188-multiple and raises
+`HlsError(UNALIGNED_PUSH_TS)` otherwise; once consumed (by `finish()` or
+`with_config_hls`) further calls raise `HlsError(FINISHED)`.
+`HlsMode.LIVE` / `EVENT` / `VOD` selects playlist behavior.
+
+## Pipeline pairing (`tstrans.pipeline.Pairer`)
+
+MPEG-TS programs that carry synchronized KLV (e.g. MISB ST 0601 UAS
+Datalink) multiplex video on one PID and KLV on another, both timestamped
+against the same 90 kHz clock but arriving in separate PES packets.
+`Pairer` — wrapping the Rust core `PairingDemuxer` — correlates the two by
+PTS without exposing demux events across the FFI boundary: you feed raw TS
+bytes and get back `PairerOutput`s. `Pairer` is **not** a context manager
+and is single-threaded (the consumer owns concurrency).
+
+```python
+from datetime import timedelta
+from tstrans.pipeline import (
+    Pairer,
+    PairerConfig,
+    PairerMode,
+    PairerOutput,
+    PairingDemuxerConfig,
+)
+
+video_pid, klv_pid = 0x101, 0x102
+
+# Realtime nearest-PTS pairing, 100 ms tolerance. config=None → defaults
+# (Realtime, 300 ms tolerance, 32/32 buffers, link_klv_to_video=True).
+cfg = PairingDemuxerConfig(
+    pairer=PairerConfig(
+        mode=PairerMode.Realtime,
+        tolerance=timedelta(milliseconds=100),
+    ),
+)
+
+pairer = Pairer(video_pid, klv_pid, cfg)
+outputs = pairer.feed(ts_bytes)
+outputs += pairer.flush()              # drain end-of-stream (no-op in Realtime)
+
+for out in outputs:
+    match out:
+        case PairerOutput.Paired(video=v, klv=k):
+            # v.codec, v.payload (list[NalUnit] | list[Obu]); k.payload (bytes)
+            ...
+        case PairerOutput.UnpairedVideo(video=v):
+            ...
+        case PairerOutput.UnpairedKlv(klv=k):
+            ...
+        case PairerOutput.PassThrough(event=ev):
+            ...   # a tstrans.mpegts.DemuxEvent.* instance (ProgramMap, off-PID, …)
+
+print(pairer.stats())   # {'paired': N, 'unpaired_video': N, 'unpaired_klv': N, 'pass_through': N}
+```
+
+The simplest form — `Pairer(video_pid, klv_pid)` — uses all defaults. To
+tolerate arrival skew, switch to Buffered mode by passing
+`mode=PairerMode.Buffered(max_lag=timedelta(milliseconds=200))` to
+`PairerConfig`; `flush()` becomes load-bearing at end-of-stream because
+buffered samples are held until the lag window closes. `feed` and `flush`
+each return a `list[PairerOutput]`; `feed` raises
+`tstrans.exceptions.DemuxError` on non-conformant input. `stats()` and
+`demuxer_stats()` return dicts; `reset_stats()` zeroes the pairing
+counters without touching demuxer stats.
 
 ## Language-specific gotchas
 
@@ -544,13 +1123,22 @@ output directly when absolute byte offsets matter.
 
 ## Where this binding differs from the Rust core
 
-- **File I/O only in v1.** `tstrans` v1 ships file inspection
-  (`tstrans.io.parse_file`) and offline `.ts` construction (`Muxer` +
-  `MuxerFileSink`). Live SRT transport lands in v2 (the Rust core is
-  ready; only the Python wrap is the work). RTP transport lands in v3.
-- **No raw `RawSender` / `RawReceiver`.** Only the composed `Muxer` /
-  `Demuxer` surface is wrapped. (Live SRT in v2 will add `Sender` /
-  `Receiver` wraps.)
+- **Pipeline-shell naming follows the C-ABI convention, not the Rust
+  crate's.** The TS-bytes-through-transport shells are `Sender` /
+  `Receiver` (e.g. `tstrans.srt.Sender`) and the raw transports are
+  `Transport` / `RecvTransport` (e.g. `tstrans.udp.Transport`) — there is
+  no `RawSender` / `RawReceiver`. The composite shells keep the qualified
+  `MuxSender` / `DemuxReceiver` names.
+- **HLS is experimental and not in published wheels.** `tstrans.hls`
+  imports only in a source build compiled with `--features hls`; from a
+  PyPI wheel `import tstrans.hls` raises `ImportError`.
+- **RIST is excluded from the Windows wheel.** The Linux and macOS wheels
+  bundle librist; the Windows wheel does not. (SRT / RTP / UDP / TCP ship
+  on every platform.)
+- **RTSP passwords never round-trip to Python.** `BasicAuth` /
+  `DigestAuth` hold the password in Rust memory; only `user` / `realm`
+  (and `DigestAuth.algorithm`) are readable. `RtspServerConfig` TLS fields
+  are forward-compat — setting them raises `RtspError(TLS)` at `start()`.
 - **Subtitle Mux API is dataclass-driven.** Rust uses struct-variant
   enums for subtitle codec config; Python wraps each variant as a
   separate dataclass (`DvbSubtitlingConfig`, `DvbTeletextConfig`,
@@ -576,13 +1164,10 @@ See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-
 
 ## Roadmap
 
-- v1 — SHIPPED 2026-05-23 (Phases 0-6).
-  - Phase 0+1 — scaffolding + exception hierarchy. SHIPPED 2026-05-22.
-  - Phase 2 — Demuxer wrap + `io.parse_file` + `io.probe`. SHIPPED 2026-05-22.
-  - Phase 3 — KLV typed decode (`UasDatalinkLs`, `parse_klv_universal`). SHIPPED 2026-05-23.
-  - Phase 4 — Muxer wrap + `Muxer.write_file` + symmetric KLV encoders. SHIPPED 2026-05-23.
-  - Phase 5 — codec parsers (`NalUnit`, `Obu`, `AdtsFrame`, `Mpeg2AudioFrame`). SHIPPED 2026-05-23.
-  - Phase 6 — pandas / NumPy adapters via `[pandas]` extra. SHIPPED 2026-05-23.
-  - Phase 7 — CI wheels + PyPI publish. UP NEXT.
-- v2 — add live SRT (Sender / Receiver / MuxSender / DemuxReceiver shells).
-- v3 — add RTP transport (MPEG-TS-over-RTP per RFC 2250).
+The full surface has shipped — offline file I/O, typed KLV decode /
+encode, codec parsers, pandas / NumPy adapters, the SRT / RTP / RTSP /
+UDP / TCP / RIST transports, and `tstrans.pipeline.Pairer`. Wheels are
+published to PyPI on tagged releases. Remaining items are incremental: a
+zero-copy Python-buffer-protocol path for the NumPy accessors (today each
+access copies once — see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)),
+and graduating the experimental HLS publisher into the published wheels.

@@ -1,6 +1,7 @@
 //! [`RistRecvTransport`] — RIST receiver impl [`RecvTransport`].
 
 use std::ffi::CString;
+use std::os::raw::c_void;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,6 +58,9 @@ pub struct RistRecvTransport {
     bind_url: String,
     alive: Arc<AtomicBool>,
     stats: Arc<Mutex<RistStats>>,
+    /// Leaked `Arc<Mutex<RistStats>>` ref handed to librist as the stats
+    /// callback `arg`. Reclaimed exactly once in `close()` after `rist_destroy`.
+    stats_arg: *mut c_void,
 }
 
 // Same Send/!Sync reasoning as RistTransport: RecvTransport methods take
@@ -156,12 +160,29 @@ impl RistRecvTransport {
             });
         }
 
+        // ===== Register the stats callback =====
+        // Leak one Arc ref into librist as the callback `arg`; reclaimed exactly
+        // once in close() after rist_destroy joins the protocol thread. The
+        // interval is milliseconds. A non-zero rc is non-fatal — stats simply
+        // won't populate; we still reclaim stats_arg at close.
+        let stats = Arc::new(Mutex::new(RistStats::default()));
+        let stats_arg = Arc::into_raw(stats.clone()) as *mut c_void;
+        let _rc = unsafe {
+            rist_sys::rist_stats_callback_set(
+                ctx,
+                1000,
+                Some(crate::stats::stats_trampoline),
+                stats_arg,
+            )
+        };
+
         Ok(Self {
             ctx,
             pkt_size: cfg.pkt_size,
             bind_url: bind_url_str,
             alive: Arc::new(AtomicBool::new(true)),
-            stats: Arc::new(Mutex::new(RistStats::default())),
+            stats,
+            stats_arg,
         })
     }
 
@@ -287,6 +308,15 @@ impl RecvTransport for RistRecvTransport {
                 rist_sys::rist_destroy(self.ctx);
             }
             self.ctx = std::ptr::null_mut();
+        }
+        // Reclaim the leaked Arc ref EXACTLY ONCE. rist_destroy above joined
+        // librist's protocol thread, so no callback can be in flight. The
+        // null-guard makes double-close / Drop-after-close a no-op.
+        if !self.stats_arg.is_null() {
+            unsafe {
+                drop(Arc::from_raw(self.stats_arg as *const Mutex<RistStats>));
+            }
+            self.stats_arg = std::ptr::null_mut();
         }
     }
 }

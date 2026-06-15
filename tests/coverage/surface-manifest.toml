@@ -6232,6 +6232,10 @@ item = "tst_rist::recv::RistRecvTransport::recv_bytes"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rist::recv::RistRecvTransport::socket_stats"
+reason = "chunk #3 RIST stats: RecvTransport::socket_stats override; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_rist::recv::RistRecvTransport::stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -6286,6 +6290,10 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 [[exempt]]
 item = "tst_rist::transport::RistTransport::send_bytes"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_rist::transport::RistTransport::socket_stats"
+reason = "chunk #3 RIST stats: Transport::socket_stats override; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
 item = "tst_rist::transport::RistTransport::stats"

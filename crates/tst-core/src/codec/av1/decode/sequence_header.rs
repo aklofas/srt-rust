@@ -52,20 +52,45 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecP
             // timing_info() — §5.5.3
             let num_units_in_display_tick = br.f(32)? as u32;
             let time_scale = br.f(32)? as u32;
-            let equal_picture_interval = br.f(1)? != 0;
-            if equal_picture_interval {
-                let _num_ticks_per_picture_minus_1 = br.uvlc()?;
-            }
-            // Surface frame rate as time_scale / num_units_in_display_tick
-            // when the encoder asserts a fixed picture interval. When
-            // num_units_in_display_tick is 0 the rate is undefined per spec —
-            // skip the surfacing rather than emit a div-by-zero rational.
-            if equal_picture_interval && num_units_in_display_tick != 0 {
-                frame_rate = Some(Rational {
-                    num: time_scale,
-                    den: num_units_in_display_tick,
+            // AV1 §6.4.3: both fields are required to be greater than 0.
+            if num_units_in_display_tick == 0 {
+                return Err(CodecParseError::ReservedValue {
+                    field: "num_units_in_display_tick",
+                    value: 0,
                 });
             }
+            if time_scale == 0 {
+                return Err(CodecParseError::ReservedValue {
+                    field: "time_scale",
+                    value: 0,
+                });
+            }
+            let equal_picture_interval = br.f(1)? != 0;
+            if equal_picture_interval {
+                // §6.4.3: the display interval per picture is
+                //   (num_ticks_per_picture_minus_1 + 1) * num_units_in_display_tick
+                // display ticks, so the picture rate is
+                //   time_scale / [num_units_in_display_tick * (ticks_minus_1 + 1)].
+                // The previous code discarded num_ticks_per_picture_minus_1
+                // and reported time_scale / num_units, overstating the rate
+                // by (ticks_minus_1 + 1)x.
+                let num_ticks_per_picture_minus_1 = br.uvlc()?; // u64
+                let ticks = num_ticks_per_picture_minus_1.saturating_add(1);
+                if let Some(den_u64) = u64::from(num_units_in_display_tick).checked_mul(ticks) {
+                    let g = gcd(u64::from(time_scale), den_u64).max(1);
+                    let num = u64::from(time_scale) / g;
+                    let den = den_u64 / g;
+                    // Surface only when the reduced rational fits u32 Rational;
+                    // otherwise leave None rather than truncate silently.
+                    if let (Ok(num), Ok(den)) = (u32::try_from(num), u32::try_from(den)) {
+                        if den != 0 {
+                            frame_rate = Some(Rational { num, den });
+                        }
+                    }
+                }
+            }
+            // (When equal_picture_interval is false the stream asserts no
+            // constant picture rate; frame_rate stays None.)
             decoder_model_info_present = br.f(1)? != 0;
             if decoder_model_info_present {
                 // decoder_model_info() — §5.5.4
@@ -296,4 +321,15 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecP
         frame_rate,
         raw: payload.to_vec(),
     })
+}
+
+/// Euclid GCD for reducing the frame-rate rational. Both AV1 timing
+/// integers are 32-bit; the product is computed in u64.
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
 }

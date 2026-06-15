@@ -51,9 +51,23 @@ env:
   RUSTUP_TOOLCHAIN: "1.85"
 
 jobs:
+  version-preflight:
+    name: version preflight (REL-01)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        # No submodules: the rail only reads version strings from tracked files.
+      - name: Assert version consistency (and tag == source version on tag builds)
+        # On a v* tag push GITHUB_REF_NAME (e.g. v0.2.0) forces the source
+        # version to equal the tag, so a tag can never build/publish a
+        # mismatched wheel. On workflow_dispatch / PR there is no tag, so this
+        # just asserts the six version sources agree with each other.
+        run: bash scripts/check/repo/release-version-consistency.sh
+
   linux-wheel:
     name: wheel (linux-${{ matrix.target }})
     runs-on: ubuntu-latest
+    needs: version-preflight
     strategy:
       fail-fast: false
       matrix:
@@ -143,6 +157,7 @@ jobs:
   macos-wheel:
     name: wheel (macos-${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    needs: version-preflight
     strategy:
       fail-fast: false
       matrix:
@@ -201,6 +216,7 @@ jobs:
   windows-wheel:
     name: wheel (windows-x86_64)
     runs-on: windows-latest
+    needs: version-preflight
     # Best-effort: tst-c has windows-msvc compile+link only (runtime
     # tests deferred — see project_plan_65). The tst-py wheel may build
     # but isn't runtime-verified. We still cut a wheel so Windows users
@@ -248,6 +264,7 @@ jobs:
   sdist:
     name: sdist
     runs-on: ubuntu-latest
+    needs: version-preflight
     steps:
       - uses: actions/checkout@v5
         with:
@@ -319,77 +336,97 @@ jobs:
       #                       -> manylinux_2_28_x86_64
       #       macos arm64   : target aarch64-apple-darwin + MACOSX_DEPLOYMENT_TARGET=11.0
       #                       -> macosx_11_0_arm64
-      #   - The distribution name/version prefix (tstrans-<version>-cp310-abi3-)
-      #     is asserted too, so a renamed/misversioned wheel also trips the gate.
-      - name: Require-set manifest gate (block partial PyPI publish)
+      #   - The distribution name AND version are asserted too: the version is
+      #     derived from the git tag (GITHUB_REF_NAME minus its leading `v`), and
+      #     EVERY required artifact must match it in BOTH its filename and its
+      #     embedded metadata (wheel .dist-info/METADATA `Version:` /
+      #     sdist PKG-INFO `Version:`) — so a renamed, stale, or misversioned
+      #     artifact (filename OR embedded) trips the gate before publish.
+      - name: Require-set manifest gate (block partial PyPI publish) + version
         run: |
-          python3 - <<'PY'
-          import glob, os, re, sys
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          echo "Expected version (from tag $GITHUB_REF_NAME): $EXPECTED_VERSION"
+          EXPECTED_VERSION="$EXPECTED_VERSION" python3 - <<'PY'
+          import glob, os, re, sys, zipfile, tarfile
 
           DIST = "dist"
+          EXPECTED = os.environ["EXPECTED_VERSION"]
+          if not EXPECTED:
+              print("RELEASE GATE FAILED: empty EXPECTED_VERSION (tag not v-prefixed?)"); sys.exit(1)
           files = sorted(os.path.basename(p) for p in glob.glob(os.path.join(DIST, "*")))
 
-          # --- REQUIRED artifacts (must be present exactly once) ----------------
-          # Each required wheel is identified by its unique platform tag. The
-          # `cp310-abi3` Python/ABI tag and the `tstrans-<ver>-` distribution
-          # prefix are asserted via the regex so a wrong name/version also fails.
-          REQUIRED_WHEEL_PLATFORM_TAGS = [
-              "manylinux_2_28_x86_64",   # linux-wheel  target x86_64  (continue-on-error: false)
-              "macosx_11_0_arm64",       # macos-wheel  aarch64-apple-darwin (continue-on-error: false)
-          ]
-          # The sdist is required (it is the universal install fallback).
-          SDIST_RE = re.compile(r"^tstrans-[^-]+\.tar\.gz$")
-          WHEEL_RE = (
-              lambda tag: re.compile(r"^tstrans-[^-]+-cp310-abi3-" + re.escape(tag) + r"\.whl$")
-          )
+          REQUIRED_WHEEL_PLATFORM_TAGS = ["manylinux_2_28_x86_64", "macosx_11_0_arm64"]
+          BEST_EFFORT_PLATFORM_TAGS = ["manylinux_2_28_aarch64", "win_amd64"]
 
-          # --- BEST-EFFORT allow-list (allowed to be absent) --------------------
-          # These map to the `continue-on-error: true` matrix legs. Present is
-          # fine; absent is fine. Anything NOT covered here and NOT required is a
-          # surprise artifact (treated as informational, not fatal).
-          BEST_EFFORT_PLATFORM_TAGS = [
-              "manylinux_2_28_aarch64",  # linux-wheel  target aarch64 (continue-on-error: true)
-              "win_amd64",               # windows-wheel x86_64           (continue-on-error: true)
-          ]
+          def wheel_re(tag):
+              return re.compile(r"^tstrans-" + re.escape(EXPECTED) + r"-cp310-abi3-" + re.escape(tag) + r"\.whl$")
+          SDIST_RE = re.compile(r"^tstrans-" + re.escape(EXPECTED) + r"\.tar\.gz$")
+
+          def wheel_metadata_version(path):
+              with zipfile.ZipFile(path) as z:
+                  names = [n for n in z.namelist() if n.endswith(".dist-info/METADATA")]
+                  if not names: return None
+                  for line in z.read(names[0]).decode("utf-8", "replace").splitlines():
+                      if line.startswith("Version:"):
+                          return line.split(":", 1)[1].strip()
+              return None
+
+          def sdist_pkginfo_version(path):
+              with tarfile.open(path, "r:gz") as t:
+                  names = [n for n in t.getnames() if n.endswith("/PKG-INFO") or n == "PKG-INFO"]
+                  if not names: return None
+                  f = t.extractfile(names[0])
+                  for line in f.read().decode("utf-8", "replace").splitlines():
+                      if line.startswith("Version:"):
+                          return line.split(":", 1)[1].strip()
+              return None
 
           print("Downloaded artifacts:")
-          for f in files:
-              print(f"  {f}")
-          print()
+          for f in files: print(f"  {f}")
+          print(f"Expecting version: {EXPECTED}\n")
 
           errors = []
 
-          # Every REQUIRED wheel present exactly once.
           for tag in REQUIRED_WHEEL_PLATFORM_TAGS:
-              rx = WHEEL_RE(tag)
+              rx = wheel_re(tag)
               matches = [f for f in files if rx.match(f)]
               if len(matches) == 0:
-                  errors.append(f"MISSING required wheel: tstrans-*-cp310-abi3-{tag}.whl")
+                  errors.append(f"MISSING required wheel: tstrans-{EXPECTED}-cp310-abi3-{tag}.whl")
               elif len(matches) > 1:
                   errors.append(f"DUPLICATE required wheel {tag}: {matches}")
+              else:
+                  mv = wheel_metadata_version(os.path.join(DIST, matches[0]))
+                  if mv != EXPECTED:
+                      errors.append(f"WHEEL METADATA Version {mv!r} != tag {EXPECTED!r} for {matches[0]}")
 
-          # sdist present exactly once.
           sdists = [f for f in files if SDIST_RE.match(f)]
           if len(sdists) == 0:
-              errors.append("MISSING required sdist: tstrans-*.tar.gz")
+              errors.append(f"MISSING required sdist: tstrans-{EXPECTED}.tar.gz")
           elif len(sdists) > 1:
               errors.append(f"DUPLICATE sdist: {sdists}")
+          else:
+              pv = sdist_pkginfo_version(os.path.join(DIST, sdists[0]))
+              if pv != EXPECTED:
+                  errors.append(f"SDIST PKG-INFO Version {pv!r} != tag {EXPECTED!r} for {sdists[0]}")
 
-          # Informational: list which best-effort wheels showed up / are absent.
-          best_effort_res = [re.compile(r"^tstrans-[^-]+-cp310-abi3-" + t + r"\.whl$")
-                             for t in BEST_EFFORT_PLATFORM_TAGS]
-          for t, rx in zip(BEST_EFFORT_PLATFORM_TAGS, best_effort_res):
-              present = any(rx.match(f) for f in files)
-              print(f"best-effort {t}: {'present' if present else 'absent (allowed)'}")
+          # Best-effort wheels: absence is OK, but a PRESENT one must be the right
+          # version (a stale/misversioned best-effort wheel must not slip through).
+          for tag in BEST_EFFORT_PLATFORM_TAGS:
+              anyrx = re.compile(r"^tstrans-[^-]+-cp310-abi3-" + re.escape(tag) + r"\.whl$")
+              present = [f for f in files if anyrx.match(f)]
+              if not present:
+                  print(f"best-effort {tag}: absent (allowed)")
+              elif all(wheel_re(tag).match(f) for f in present):
+                  print(f"best-effort {tag}: present at {EXPECTED}")
+              else:
+                  errors.append(f"best-effort wheel {tag} present at wrong version (expected {EXPECTED}): {present}")
           print()
 
           if errors:
-              print("RELEASE GATE FAILED — refusing to publish a partial release:")
-              for e in errors:
-                  print(f"  - {e}")
+              print("RELEASE GATE FAILED — refusing to publish:")
+              for e in errors: print(f"  - {e}")
               sys.exit(1)
-
-          print("Release manifest gate OK: all required wheels + sdist present exactly once.")
+          print(f"Release manifest gate OK: required wheels + sdist present exactly once at {EXPECTED} (filename + embedded metadata).")
           PY
 
       - uses: pypa/gh-action-pypi-publish@release/v1

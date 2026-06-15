@@ -228,6 +228,9 @@ jobs:
           pattern: native-*
           merge-multiple: true
 
+      - name: Assert version consistency (tag == source version) [REL-01]
+        run: bash scripts/check/repo/release-version-consistency.sh
+
       # Builds + signs the fat jar + sources + javadoc and uploads them to the
       # Central Portal in STAGED state (automaticRelease=false in build.gradle.kts).
       # A maintainer then releases manually in the Portal UI. Version is the tag

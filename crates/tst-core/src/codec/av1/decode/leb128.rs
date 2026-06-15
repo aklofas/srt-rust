@@ -22,6 +22,15 @@ pub fn read_leb128(buf: &[u8], offset: usize) -> Result<(u64, usize), CodecParse
         value |= u64::from(byte & 0x7F) << (i * 7);
         consumed += 1;
         if byte & 0x80 == 0 {
+            // AV1 §4.10.5: it is a requirement of bitstream conformance
+            // that the decoded value is <= (1 << 32) - 1. OBU sizes that
+            // exceed u32 are rejected here so the demux/mux narrowing below
+            // is always lossless.
+            if value > u64::from(u32::MAX) {
+                return Err(CodecParseError::InvalidLeb128 {
+                    offset_bytes: offset as u32,
+                });
+            }
             return Ok((value, consumed));
         }
     }
@@ -68,6 +77,23 @@ mod tests {
     #[test]
     fn leb128_overlong_returns_err() {
         let buf = [0x80; 9];
+        let r = read_leb128(&buf, 0);
+        assert!(matches!(r, Err(CodecParseError::InvalidLeb128 { .. })));
+    }
+
+    #[test]
+    fn leb128_accepts_u32_max() {
+        // u32::MAX = 0xFFFF_FFFF encodes as 5 LEB128 bytes: FF FF FF FF 0F.
+        let buf = [0xFF, 0xFF, 0xFF, 0xFF, 0x0F];
+        let (v, n) = read_leb128(&buf, 0).unwrap();
+        assert_eq!(v, u64::from(u32::MAX));
+        assert_eq!(n, 5);
+    }
+
+    #[test]
+    fn leb128_rejects_above_u32_max() {
+        // u32::MAX + 1 = 0x1_0000_0000 encodes as 5 bytes: 80 80 80 80 10.
+        let buf = [0x80, 0x80, 0x80, 0x80, 0x10];
         let r = read_leb128(&buf, 0);
         assert!(matches!(r, Err(CodecParseError::InvalidLeb128 { .. })));
     }

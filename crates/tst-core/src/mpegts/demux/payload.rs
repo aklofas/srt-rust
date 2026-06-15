@@ -330,11 +330,17 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
         };
         i += consumed;
 
-        let body_end = i + obu_size as usize;
-        if body_end > bytes.len() {
-            // Length runs past buffer end. Stop walking.
-            break;
-        }
+        // AV1 §4.10.5 guarantees obu_size <= u32::MAX (read_leb128 enforces
+        // it), so try_from is infallible on 64-bit and safe on 32-bit; the
+        // checked_add prevents `i + obu_size` from wrapping near usize::MAX.
+        let obu_size = match usize::try_from(obu_size) {
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        let body_end = match i.checked_add(obu_size) {
+            Some(end) if end <= bytes.len() => end,
+            _ => break,
+        };
         // Zero-copy view: body runs from i to body_end.
         let payload = es_payload.slice(i..body_end);
         i = body_end;

@@ -446,7 +446,10 @@ fn seq_profile_above_2_is_reserved() {
     let r = parse_sequence_header(&payload);
     assert!(matches!(
         r,
-        Err(CodecParseError::ReservedValue { field: "seq_profile", value: 3 })
+        Err(CodecParseError::ReservedValue {
+            field: "seq_profile",
+            value: 3
+        })
     ));
 }
 

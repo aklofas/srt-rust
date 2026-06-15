@@ -203,6 +203,7 @@ pub fn tst_rist::recv::RistRecvTransport::close(&mut self)
 pub fn tst_rist::recv::RistRecvTransport::is_alive(&self) -> bool
 pub fn tst_rist::recv::RistRecvTransport::max_payload(&self) -> usize
 pub fn tst_rist::recv::RistRecvTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_rist::recv::RistRecvTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_rist::recv::RistRecvTransport
 impl !core::marker::Sync for tst_rist::recv::RistRecvTransport
 impl core::marker::Unpin for tst_rist::recv::RistRecvTransport
@@ -250,6 +251,7 @@ pub fn tst_rist::transport::RistTransport::close(&mut self)
 pub fn tst_rist::transport::RistTransport::is_alive(&self) -> bool
 pub fn tst_rist::transport::RistTransport::max_payload(&self) -> usize
 pub fn tst_rist::transport::RistTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_rist::transport::RistTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_rist::transport::RistTransport
 impl !core::marker::Sync for tst_rist::transport::RistTransport
 impl core::marker::Unpin for tst_rist::transport::RistTransport
@@ -482,6 +484,7 @@ pub fn tst_rist::recv::RistRecvTransport::close(&mut self)
 pub fn tst_rist::recv::RistRecvTransport::is_alive(&self) -> bool
 pub fn tst_rist::recv::RistRecvTransport::max_payload(&self) -> usize
 pub fn tst_rist::recv::RistRecvTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_rist::recv::RistRecvTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_rist::recv::RistRecvTransport
 impl !core::marker::Sync for tst_rist::recv::RistRecvTransport
 impl core::marker::Unpin for tst_rist::recv::RistRecvTransport
@@ -560,6 +563,7 @@ pub fn tst_rist::transport::RistTransport::close(&mut self)
 pub fn tst_rist::transport::RistTransport::is_alive(&self) -> bool
 pub fn tst_rist::transport::RistTransport::max_payload(&self) -> usize
 pub fn tst_rist::transport::RistTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_rist::transport::RistTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_rist::transport::RistTransport
 impl !core::marker::Sync for tst_rist::transport::RistTransport
 impl core::marker::Unpin for tst_rist::transport::RistTransport

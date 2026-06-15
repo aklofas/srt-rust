@@ -213,6 +213,10 @@ impl Transport for RistTransport {
         self.alive.load(Ordering::Acquire)
     }
 
+    fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        Some(self.stats().to_socket_stats())
+    }
+
     fn close(&mut self) {
         self.alive.store(false, Ordering::Release);
         if !self.ctx.is_null() {

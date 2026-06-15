@@ -53,7 +53,7 @@ pub(crate) fn parse(
     let chroma_loc_info_present_flag = br.read_bool()?;
     let mut chroma_loc = None;
     if chroma_loc_info_present_flag {
-        let top = br.read_ue()? as u8;
+        let top = super::read_ue_max(br, "chroma_sample_loc_type_top_field", 5)? as u8;
         let _bottom = br.read_ue()?;
         chroma_loc = Some(top);
     }

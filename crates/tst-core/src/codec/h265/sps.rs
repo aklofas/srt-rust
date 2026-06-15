@@ -116,7 +116,8 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, CodecParseError> {
 
     let ptl = profile_tier_level::parse(&mut br, max_sub_layers_minus1)?;
 
-    let sps_seq_parameter_set_id = br.read_ue()? as u8;
+    let sps_seq_parameter_set_id =
+        super::read_ue_max(&mut br, "sps_seq_parameter_set_id", 15)? as u8;
     let chroma_format_idc = br.read_ue()?;
     let separate_colour_plane_flag = if chroma_format_idc == 3 {
         br.read_bool()?

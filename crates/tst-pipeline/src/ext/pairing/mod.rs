@@ -107,8 +107,11 @@ fn duration_to_pts_ticks(d: Duration) -> i64 {
 /// `Pairer` is a passive aggregator — it owns no transport and no OS
 /// handles. Drop is the only shutdown and is trivially synchronous.
 /// Call [`Self::flush`] before drop at end-of-stream to drain any
-/// remaining buffered video AUs (a no-op in `PairerMode::Realtime`,
-/// load-bearing in `PairerMode::Buffered`).
+/// remaining state: unused KLV history is emitted as trailing
+/// `UnpairedKlv` in **both** modes, and in `PairerMode::Buffered` the
+/// buffered video AUs are additionally force-drained. Most load-bearing
+/// in `Buffered`, but skipping it in `Realtime` can still drop trailing
+/// metadata.
 ///
 /// ## Per-language idiom
 ///
@@ -117,7 +120,7 @@ fn duration_to_pts_ticks(d: Duration) -> i64 {
 /// | Rust | `let _ = pairer.flush(); drop(pairer);` (or just let it fall out of scope) |
 /// | Java | Drain via `flush()`, then let GC reclaim — no `AutoCloseable` needed |
 /// | Kotlin | Drain via `flush()`, then let GC reclaim |
-/// | Swift | `deinit` calls drop; explicit `flush()` before exit if `Buffered` mode |
+/// | Swift | `deinit` calls drop; explicit `flush()` before exit to drain trailing outputs |
 /// | Python | `pairer.flush()` at end-of-stream; let GC reclaim |
 /// | C | (deferred to per-binding plan — pairer C ABI not yet shipped) |
 pub struct Pairer {

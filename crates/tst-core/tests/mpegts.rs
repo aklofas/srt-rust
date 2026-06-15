@@ -14,6 +14,8 @@ mod au_reassembly;
 mod audio_fixtures;
 #[path = "mpegts/audio_treat_as.rs"]
 mod audio_treat_as;
+#[path = "mpegts/av1_wrap_guard.rs"]
+mod av1_wrap_guard;
 #[path = "mpegts/demux.rs"]
 mod demux;
 #[path = "mpegts/demux_audio.rs"]

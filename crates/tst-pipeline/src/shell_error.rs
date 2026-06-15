@@ -158,6 +158,7 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
         MuxError::InvalidConfig(_) => ConfigInvalid,
         MuxError::ConfigInvalid { .. } => ConfigInvalid,
         MuxError::InvalidNal => InputMalformed,
+        MuxError::InvalidAv1Obu => InputMalformed,
         MuxError::BufferFull { .. } => Backpressure,
         MuxError::KlvTooLarge { .. } => InputMalformed,
         MuxError::AudioTooLarge { .. } => InputMalformed,

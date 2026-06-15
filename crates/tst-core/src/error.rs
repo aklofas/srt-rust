@@ -288,6 +288,16 @@ pub enum MuxError {
     #[error("video input is not Annex-B framed (no start code prefix)")]
     InvalidNal,
 
+    /// AV1 OBU input could not be framed for binding-mode carriage — the
+    /// bytes are not a well-formed elementary OBU stream (e.g. already-
+    /// carried on-wire bytes from a demuxer, or a truncated/malformed OBU
+    /// sequence). Use `push_video_wire_to` for already-carried wire bytes;
+    /// pass raw elementary OBUs to `push_video_to`.
+    #[error(
+        "AV1 OBU input is not a well-formed elementary OBU stream; use push_video_wire_to for already-carried wire bytes"
+    )]
+    InvalidAv1Obu,
+
     #[error("muxer packet buffer is full ({capacity_packets} packets); drain via pull and retry")]
     BufferFull { capacity_packets: u64 },
 
@@ -585,7 +595,8 @@ pub enum MuxError {
 pub enum MuxSenderErrorKind {
     /// Caller pushed input bytes that don't conform to the expected
     /// shape. Includes non-Annex-B NAL units
-    /// ([`MuxError::InvalidNal`]), KLV blobs over the
+    /// ([`MuxError::InvalidNal`]), non-well-formed AV1 OBU streams
+    /// ([`MuxError::InvalidAv1Obu`]), KLV blobs over the
     /// `PES_packet_length` ceiling ([`MuxError::KlvTooLarge`]), and
     /// audio / subtitle / data PES payloads over the PES cap
     /// ([`MuxError::AudioTooLarge`], [`MuxError::SubtitleTooLarge`],
@@ -687,9 +698,10 @@ impl MuxError {
         // variants are explicitly classified".
         #[allow(unreachable_patterns)]
         match self {
-            // === InputMalformed (5 variants) ===
+            // === InputMalformed (6 variants) ===
             // Caller pushed bytes that don't conform to the expected shape.
             MuxError::InvalidNal => InputMalformed,
+            MuxError::InvalidAv1Obu => InputMalformed,
             MuxError::KlvTooLarge { .. } => InputMalformed,
             MuxError::AudioTooLarge { .. } => InputMalformed,
             MuxError::SubtitleTooLarge { .. } => InputMalformed,

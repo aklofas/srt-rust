@@ -160,21 +160,9 @@ impl RistRecvTransport {
             });
         }
 
-        // ===== Register the stats callback =====
-        // Leak one Arc ref into librist as the callback `arg`; reclaimed exactly
-        // once in close() after rist_destroy joins the protocol thread. The
-        // interval is milliseconds. A non-zero rc is non-fatal — stats simply
-        // won't populate; we still reclaim stats_arg at close.
-        let stats = Arc::new(Mutex::new(RistStats::default()));
-        let stats_arg = Arc::into_raw(stats.clone()) as *mut c_void;
-        let _rc = unsafe {
-            rist_sys::rist_stats_callback_set(
-                ctx,
-                1000,
-                Some(crate::stats::stats_trampoline),
-                stats_arg,
-            )
-        };
+        // Register the librist stats callback (interval, leak-one-Arc-ref +
+        // reclaim-at-close contract live in stats::register_stats_callback).
+        let (stats, stats_arg) = crate::stats::register_stats_callback(ctx);
 
         Ok(Self {
             ctx,

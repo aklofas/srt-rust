@@ -5,6 +5,75 @@ use crate::codec::{
     ChromaFormat, CodecParseError, ColourPrimaries, MatrixCoefficients, TransferCharacteristics,
 };
 
+// ---------------------------------------------------------------------------
+// Shared helpers for timing-info payload builders
+// ---------------------------------------------------------------------------
+
+/// Write the sequence header prefix up to and including `equal_picture_interval=1`.
+/// Callers write the uvlc-encoded `num_ticks_per_picture_minus_1` immediately after.
+fn write_timing_prefix(bw: &mut BitWriter, num_units: u32, time_scale: u32) {
+    bw.write(0, 3); // seq_profile = 0 (Main)
+    bw.write(0, 1); // still_picture = 0
+    bw.write(0, 1); // reduced_still_picture_header = 0
+    bw.write(1, 1); // timing_info_present_flag = 1
+    bw.write(u64::from(num_units), 32); // num_units_in_display_tick
+    bw.write(u64::from(time_scale), 32); // time_scale
+    bw.write(1, 1); // equal_picture_interval = 1
+}
+
+/// Write decoder_model_info_present_flag=0 and all subsequent syntax
+/// elements through film_grain_params_present=0 — the invariant suffix
+/// shared by all timing-info payload builders (Main profile, 8-bit 4:2:0,
+/// 320×240, no color description, limited range, single operating point).
+fn write_timing_suffix(bw: &mut BitWriter) {
+    bw.write(0, 1); // decoder_model_info_present_flag = 0
+    bw.write(0, 1); // initial_display_delay_present_flag = 0
+    bw.write(0, 5); // operating_points_cnt_minus_1 = 0
+    // i=0 operating point:
+    bw.write(0, 12); // operating_point_idc[0] = 0
+    bw.write(0, 5); // seq_level_idx[0] = 0 (level 2.0; ≤7 so no seq_tier)
+    // decoder_model_present_for_this_op + initial_display_delay_present_for_this_op
+    // both skipped (gate flags are 0).
+
+    bw.write(8, 4); // frame_width_bits_minus_1 = 8 (9 bits → max 512-1)
+    bw.write(7, 4); // frame_height_bits_minus_1 = 7 (8 bits → max 256-1)
+    bw.write(319, 9); // max_frame_width_minus_1 = 319 → width 320
+    bw.write(239, 8); // max_frame_height_minus_1 = 239 → height 240
+
+    bw.write(0, 1); // frame_id_numbers_present_flag = 0
+    bw.write(0, 1); // use_128x128_superblock = 0
+    bw.write(0, 1); // enable_filter_intra = 0
+    bw.write(0, 1); // enable_intra_edge_filter = 0
+
+    // !reduced_still_picture_header → tool flags are coded:
+    bw.write(0, 1); // enable_interintra_compound = 0
+    bw.write(0, 1); // enable_masked_compound = 0
+    bw.write(0, 1); // enable_warped_motion = 0
+    bw.write(0, 1); // enable_dual_filter = 0
+    bw.write(0, 1); // enable_order_hint = 0
+    // enable_order_hint=0 → enable_jnt_comp + enable_ref_frame_mvs not coded
+    bw.write(0, 1); // seq_choose_screen_content_tools = 0
+    bw.write(0, 1); // seq_force_screen_content_tools = 0
+    // seq_force_screen_content_tools=0 → integer-mv bits not coded
+    // enable_order_hint=0 → order_hint_bits_minus_1 not coded
+
+    bw.write(0, 1); // enable_superres = 0
+    bw.write(0, 1); // enable_cdef = 0
+    bw.write(0, 1); // enable_restoration = 0
+
+    // color_config():
+    bw.write(0, 1); // high_bitdepth = 0 → BitDepth = 8
+    bw.write(0, 1); // mono_chrome = 0
+    bw.write(0, 1); // color_description_present_flag = 0
+    // !mono_chrome AND defaults CP_UNSPECIFIED ≠ CP_BT_709 → else branch:
+    bw.write(0, 1); // color_range = 0 (limited)
+    // profile == 0 → subsampling_x=1, subsampling_y=1 (NOT coded)
+    bw.write(0, 2); // chroma_sample_position = 0 (CSP_UNKNOWN)
+    bw.write(0, 1); // separate_uv_delta_q = 0
+
+    bw.write(0, 1); // film_grain_params_present = 0
+}
+
 /// Append-only bit writer for hand-crafting AV1 OBU payloads.
 struct BitWriter {
     bytes: Vec<u8>,
@@ -379,4 +448,97 @@ fn seq_profile_above_2_is_reserved() {
         r,
         Err(CodecParseError::ReservedValue { field: "seq_profile", value: 3 })
     ));
+}
+
+// ---------------------------------------------------------------------------
+// REF-AV1-02: correct constant frame-rate denominator + reject zero timing
+// ---------------------------------------------------------------------------
+
+/// ticks_minus_1 = 1 (uvlc `010`, 3 bits): denominator doubles.
+/// 60000 / (1000 * 2) = 30/1 after GCD reduction.
+#[test]
+fn timing_info_ticks_1_halves_frame_rate() {
+    let mut bw = BitWriter::new();
+    write_timing_prefix(&mut bw, 1000, 60000);
+    // uvlc(1): 1 leading zero + marker 1 + 1 extra bit = 0 → `010`
+    bw.write(0b010, 3); // num_ticks_per_picture_minus_1 = 1
+    write_timing_suffix(&mut bw);
+
+    let seq = parse_sequence_header(&bw.bytes).expect("should parse");
+    let fr = seq.frame_rate.expect("frame_rate should be Some");
+    // ticks = 2, den = 1000 * 2 = 2000, gcd(60000, 2000) = 2000 → 30/1
+    assert_eq!(fr.num, 30);
+    assert_eq!(fr.den, 1);
+}
+
+/// ticks_minus_1 = 99 (uvlc: 6 leading zeros + marker + 6 extra bits = 36):
+/// exercises the checked-multiply path without overflow.
+/// 30000 / (1000 * 100) → gcd(30000, 100000) = 10000 → 3/10.
+#[test]
+fn timing_info_large_ticks_reduces_correctly() {
+    let mut bw = BitWriter::new();
+    write_timing_prefix(&mut bw, 1000, 30000);
+    // uvlc(99): 99 = (1<<6) - 1 + 36, so 6 leading zeros + marker + 6-bit extra = 36
+    bw.write(0, 6); // 6 leading zeros
+    bw.write(1, 1); // marker bit
+    bw.write(36, 6); // extra bits → num_ticks_per_picture_minus_1 = 99
+    write_timing_suffix(&mut bw);
+
+    let seq = parse_sequence_header(&bw.bytes).expect("should parse");
+    let fr = seq.frame_rate.expect("frame_rate should be Some");
+    // ticks = 100, den = 1000 * 100 = 100000, gcd(30000, 100000) = 10000 → 3/10
+    assert_eq!(fr.num, 3);
+    assert_eq!(fr.den, 10);
+}
+
+/// AV1 §6.4.3: num_units_in_display_tick == 0 is forbidden → ReservedValue.
+#[test]
+fn timing_info_zero_num_units_is_reserved() {
+    let mut bw = BitWriter::new();
+    bw.write(0, 3); // seq_profile = 0
+    bw.write(0, 1); // still_picture = 0
+    bw.write(0, 1); // reduced_still_picture_header = 0
+    bw.write(1, 1); // timing_info_present_flag = 1
+    bw.write(0, 32); // num_units_in_display_tick = 0  ← forbidden
+    bw.write(30000, 32); // time_scale (irrelevant; parse rejects before here)
+    // Parser returns before reading equal_picture_interval; no further bits needed.
+    bw.write(0, 8); // padding so the reader doesn't hit TruncatedRbsp first
+
+    let r = parse_sequence_header(&bw.bytes);
+    assert!(
+        matches!(
+            r,
+            Err(CodecParseError::ReservedValue {
+                field: "num_units_in_display_tick",
+                value: 0
+            })
+        ),
+        "expected ReservedValue for num_units=0, got {r:?}"
+    );
+}
+
+/// AV1 §6.4.3: time_scale == 0 is forbidden → ReservedValue.
+#[test]
+fn timing_info_zero_time_scale_is_reserved() {
+    let mut bw = BitWriter::new();
+    bw.write(0, 3); // seq_profile = 0
+    bw.write(0, 1); // still_picture = 0
+    bw.write(0, 1); // reduced_still_picture_header = 0
+    bw.write(1, 1); // timing_info_present_flag = 1
+    bw.write(1001, 32); // num_units_in_display_tick (nonzero)
+    bw.write(0, 32); // time_scale = 0  ← forbidden
+    // Parser returns before reading equal_picture_interval; no further bits needed.
+    bw.write(0, 8); // padding so the reader doesn't hit TruncatedRbsp first
+
+    let r = parse_sequence_header(&bw.bytes);
+    assert!(
+        matches!(
+            r,
+            Err(CodecParseError::ReservedValue {
+                field: "time_scale",
+                value: 0
+            })
+        ),
+        "expected ReservedValue for time_scale=0, got {r:?}"
+    );
 }

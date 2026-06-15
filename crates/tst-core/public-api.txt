@@ -1353,6 +1353,7 @@ pub tst_core::error::MuxError::DuplicateProgramNumber
 pub tst_core::error::MuxError::DuplicateProgramNumber::program_number: u16
 pub tst_core::error::MuxError::EmptyProgram
 pub tst_core::error::MuxError::EmptyProgram::program_number: u16
+pub tst_core::error::MuxError::InvalidAv1Obu
 pub tst_core::error::MuxError::InvalidConfig(&'static str)
 pub tst_core::error::MuxError::InvalidLanguageCode
 pub tst_core::error::MuxError::InvalidLanguageCode::code: [u8; 3]
@@ -4627,6 +4628,7 @@ pub tst_core::mpegts::mux::_detail::MuxError::DuplicateProgramNumber
 pub tst_core::mpegts::mux::_detail::MuxError::DuplicateProgramNumber::program_number: u16
 pub tst_core::mpegts::mux::_detail::MuxError::EmptyProgram
 pub tst_core::mpegts::mux::_detail::MuxError::EmptyProgram::program_number: u16
+pub tst_core::mpegts::mux::_detail::MuxError::InvalidAv1Obu
 pub tst_core::mpegts::mux::_detail::MuxError::InvalidConfig(&'static str)
 pub tst_core::mpegts::mux::_detail::MuxError::InvalidLanguageCode
 pub tst_core::mpegts::mux::_detail::MuxError::InvalidLanguageCode::code: [u8; 3]
@@ -5737,6 +5739,7 @@ pub tst_core::MuxError::DuplicateProgramNumber
 pub tst_core::MuxError::DuplicateProgramNumber::program_number: u16
 pub tst_core::MuxError::EmptyProgram
 pub tst_core::MuxError::EmptyProgram::program_number: u16
+pub tst_core::MuxError::InvalidAv1Obu
 pub tst_core::MuxError::InvalidConfig(&'static str)
 pub tst_core::MuxError::InvalidLanguageCode
 pub tst_core::MuxError::InvalidLanguageCode::code: [u8; 3]

@@ -150,6 +150,13 @@ pub enum TstError {
     /// Maps from `HlsErrorKind::{Tls, TlsDisabled}`.
     HlsTls = -37,
 
+    /// (-44) AV1 OBU input is not a well-formed elementary OBU stream;
+    /// the wrapping push rejected it. Returned when the caller feeds
+    /// already-carried (binding-framed) wire bytes to `push_video_to`
+    /// instead of raw elementary OBUs.
+    /// Maps from `MuxError::InvalidAv1Obu`.
+    InvalidAv1Obu = -44,
+
     // Plan A5a — RIST error codes (-38..=-43).
     /// (-38) RIST librist FFI failure; check the message for the
     /// underlying librist function name + error code.
@@ -332,8 +339,8 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 /// The code projection routes through `MuxError::kind()` for the
 /// `ConfigInvalid` / `InvalidUsage` / `Backpressure` / `Internal`
 /// categories (each has a stable per-kind `TST_E_*` code). The
-/// `InputMalformed` category has 4 variants mapping to 3 different
-/// `TstError` codes, so 2 variants get explicit overrides. The
+/// `InputMalformed` category has 6 variants mapping to 4 different
+/// `TstError` codes, so 3 variants get explicit overrides. The
 /// diagnostic message uses `MuxError`'s `Display` impl preserving
 /// spec-rich diagnostics from the `#[error("...")]` attributes.
 ///
@@ -343,7 +350,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 ///    variant must be mentioned in the per-variant routing table
 ///    inside this function before the wildcard arm.
 /// 2. The in-file unit test `every_known_mux_error_variant_maps_to_expected_code`
-///    verifies all 36 variants produce the expected `TstError` code.
+///    verifies all 37 variants produce the expected `TstError` code.
 #[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_mux_error(e: &MuxError) {
     use tst_core::error::MuxSenderErrorKind;
@@ -354,6 +361,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     // every MuxError::VariantName before the wildcard arm.
     //
     //   MuxError::InvalidNal              -> TstError::InvalidNal     [override]
+    //   MuxError::InvalidAv1Obu          -> TstError::InvalidAv1Obu  [override]
     //   MuxError::KlvTooLarge             -> TstError::KlvTooLarge    [override]
     //   MuxError::AudioTooLarge           -> TstError::InvalidUsage   (InputMalformed kind default)
     //   MuxError::SubtitleTooLarge        -> TstError::InvalidUsage   (InputMalformed kind default)
@@ -392,9 +400,10 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     let code = match e {
         // InputMalformed bucket — variant-specific code overrides.
         // The kind-default for InputMalformed maps to InvalidUsage;
-        // these 2 variants project to more specific codes for
+        // these 3 variants project to more specific codes for
         // diagnostic precision.
         MuxError::InvalidNal => TstError::InvalidNal,
+        MuxError::InvalidAv1Obu => TstError::InvalidAv1Obu,
         MuxError::KlvTooLarge { .. } => TstError::KlvTooLarge,
 
         // All other variants route via the kind() projection.
@@ -941,6 +950,7 @@ mod tests {
                 TstError::InvalidConfig,
             ),
             (MuxError::InvalidNal, TstError::InvalidNal),
+            (MuxError::InvalidAv1Obu, TstError::InvalidAv1Obu),
             (
                 MuxError::BufferFull {
                     capacity_packets: 1,

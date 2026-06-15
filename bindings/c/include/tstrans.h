@@ -417,14 +417,6 @@ enum tst_e
    */
   TST_E_HLS_TLS = -37,
   /**
-   * (-44) AV1 OBU input is not a well-formed elementary OBU stream;
-   * the wrapping push rejected it. Returned when the caller feeds
-   * already-carried (binding-framed) wire bytes to `push_video_to`
-   * instead of raw elementary OBUs.
-   * Maps from `MuxError::InvalidAv1Obu`.
-   */
-  TST_E_INVALID_AV1_OBU = -44,
-  /**
    * (-38) RIST librist FFI failure; check the message for the
    * underlying librist function name + error code.
    * Maps from `tst_rist::RistErrorKind::{Ffi, ContextCreateFailed, PeerCreateFailed}`.
@@ -457,6 +449,14 @@ enum tst_e
    * Maps from `RistErrorKind::Io`.
    */
   TST_E_RIST_IO = -43,
+  /**
+   * (-44) AV1 OBU input is not a well-formed elementary OBU stream;
+   * the wrapping push rejected it. Returned when the caller feeds
+   * already-carried (binding-framed) wire bytes to `push_video_to`
+   * instead of raw elementary OBUs.
+   * Maps from `MuxError::InvalidAv1Obu`.
+   */
+  TST_E_INVALID_AV1_OBU = -44,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;

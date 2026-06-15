@@ -150,13 +150,6 @@ pub enum TstError {
     /// Maps from `HlsErrorKind::{Tls, TlsDisabled}`.
     HlsTls = -37,
 
-    /// (-44) AV1 OBU input is not a well-formed elementary OBU stream;
-    /// the wrapping push rejected it. Returned when the caller feeds
-    /// already-carried (binding-framed) wire bytes to `push_video_to`
-    /// instead of raw elementary OBUs.
-    /// Maps from `MuxError::InvalidAv1Obu`.
-    InvalidAv1Obu = -44,
-
     // Plan A5a — RIST error codes (-38..=-43).
     /// (-38) RIST librist FFI failure; check the message for the
     /// underlying librist function name + error code.
@@ -179,6 +172,13 @@ pub enum TstError {
     /// (-43) RIST socket I/O failure underlying the librist transport.
     /// Maps from `RistErrorKind::Io`.
     RistIo = -43,
+
+    /// (-44) AV1 OBU input is not a well-formed elementary OBU stream;
+    /// the wrapping push rejected it. Returned when the caller feeds
+    /// already-carried (binding-framed) wire bytes to `push_video_to`
+    /// instead of raw elementary OBUs.
+    /// Maps from `MuxError::InvalidAv1Obu`.
+    InvalidAv1Obu = -44,
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 //! [`RistStats`] — sender + receiver stats projections.
 
+use std::os::raw::{c_int, c_void};
+use std::sync::Mutex;
+
 use tst_core::transport::SocketStats;
 
 /// Cumulative stats for a single RIST transport handle.
@@ -39,6 +42,128 @@ impl RistStats {
         s.packets_retransmitted = self.packets_retransmitted;
         s.rtt_us = self.rtt_us;
         s
+    }
+}
+
+/// Fold one librist `rist_stats` sample into the cumulative [`RistStats`].
+///
+/// This is the pure, panic-free core of the stats callback — separated from
+/// [`stats_trampoline`] so it can be unit-tested directly against stack-built
+/// `rist_stats` data. The trampoline itself ends by calling `rist_stats_free`,
+/// which `free()`s librist's heap-allocated container, so the trampoline can
+/// only be exercised against a genuine librist-owned container in a live
+/// session — that path is verified by code review against the librist contract,
+/// not a unit test.
+///
+/// Counter semantics (librist contract): the per-packet fields
+/// (`retransmitted` / `lost`) are **per-interval deltas** that librist zeroes
+/// after each callback, so we **accumulate** them with `+=`; `bandwidth` and
+/// `rtt` are **gauges**, so we **overwrite**. We deliberately do NOT touch
+/// `packets_sent` / `packets_received` / `bytes_*` here — those stay exact on
+/// the inline data path, so touching them here would double-count. `rtt` is
+/// integer milliseconds in librist, so sub-millisecond RTT truncates to 0 µs.
+fn accumulate_stats(acc: &mut RistStats, s: &rist_sys::rist_stats) {
+    match s.stats_type {
+        rist_sys::rist_stats_type_RIST_STATS_SENDER_PEER => {
+            // SAFETY: stats_type discriminates the union; sender_peer is active.
+            let sp = unsafe { s.stats.sender_peer };
+            acc.packets_retransmitted = acc.packets_retransmitted.wrapping_add(sp.retransmitted);
+            acc.bandwidth_kbps = (sp.bandwidth / 1000) as u32;
+            acc.rtt_us = sp.rtt.saturating_mul(1000);
+        }
+        rist_sys::rist_stats_type_RIST_STATS_RECEIVER_FLOW => {
+            // SAFETY: stats_type discriminates the union; receiver_flow is active.
+            let rf = unsafe { s.stats.receiver_flow };
+            acc.packets_dropped = acc.packets_dropped.wrapping_add(rf.lost as u64);
+            acc.bandwidth_kbps = (rf.bandwidth / 1000) as u32;
+            acc.rtt_us = rf.rtt.saturating_mul(1000);
+        }
+        _ => {}
+    }
+}
+
+/// librist stats callback. Runs on librist's internal protocol thread.
+///
+/// `arg` is a leaked `Arc<Mutex<RistStats>>` ref (reclaimed in the transport's
+/// `close()` after `rist_destroy`, which joins the protocol thread so no
+/// callback can be in flight). This thin wrapper only BORROWS the Arc (`&*ptr`,
+/// never drops it), folds the sample in via [`accumulate_stats`], then frees the
+/// container: once a callback is registered librist transfers ownership of the
+/// heap-allocated container to us and skips its own `rist_stats_free`, so we
+/// MUST free it here. `catch_unwind` guards the whole body — unwinding across
+/// the FFI boundary into C is undefined behavior.
+pub(crate) extern "C" fn stats_trampoline(
+    arg: *mut c_void,
+    stats: *const rist_sys::rist_stats,
+) -> c_int {
+    let _ = std::panic::catch_unwind(|| {
+        if arg.is_null() || stats.is_null() {
+            return;
+        }
+        // SAFETY: `arg` is the pointer from `Arc::into_raw` at registration,
+        // still live (reclaimed only at close, after rist_destroy joins this
+        // thread). Borrow — do NOT reconstruct/drop the Arc, or we'd free the
+        // still-registered allocation.
+        let lock = unsafe { &*(arg as *const Mutex<RistStats>) };
+        // SAFETY: librist passes a valid container for the duration of this call.
+        let s = unsafe { &*stats };
+        if let Ok(mut acc) = lock.lock() {
+            accumulate_stats(&mut acc, s);
+        }
+        // SAFETY: librist transferred ownership of the heap container to this
+        // callback; freeing it is the documented contract. The `stats` arg is
+        // already `*const`, matching `rist_stats_free`'s signature.
+        unsafe {
+            rist_sys::rist_stats_free(stats);
+        }
+    });
+    0
+}
+
+#[cfg(test)]
+mod trampoline_tests {
+    use super::*;
+
+    #[test]
+    fn sender_deltas_accumulate_gauges_overwrite() {
+        let mk = |retrans: u64, bw_bps: usize, rtt_ms: u32| {
+            let mut sp: rist_sys::rist_stats_sender_peer = unsafe { core::mem::zeroed() };
+            sp.retransmitted = retrans;
+            sp.bandwidth = bw_bps;
+            sp.rtt = rtt_ms;
+            let mut s: rist_sys::rist_stats = unsafe { core::mem::zeroed() };
+            s.stats_type = rist_sys::rist_stats_type_RIST_STATS_SENDER_PEER;
+            s.stats.sender_peer = sp;
+            s
+        };
+        let mut acc = RistStats::default();
+        accumulate_stats(&mut acc, &mk(3, 8_000, 12));
+        accumulate_stats(&mut acc, &mk(2, 16_000, 7));
+        assert_eq!(acc.packets_retransmitted, 5); // deltas accumulate
+        assert_eq!(acc.bandwidth_kbps, 16); // gauge overwrites
+        assert_eq!(acc.rtt_us, 7_000); // gauge overwrites (ms→µs)
+        assert_eq!(acc.packets_sent, 0); // inline-only, untouched
+    }
+
+    #[test]
+    fn receiver_lost_accumulates_into_dropped() {
+        let mk = |lost: u32, bw_bps: usize, rtt_ms: u32| {
+            let mut rf: rist_sys::rist_stats_receiver_flow = unsafe { core::mem::zeroed() };
+            rf.lost = lost;
+            rf.bandwidth = bw_bps;
+            rf.rtt = rtt_ms;
+            let mut s: rist_sys::rist_stats = unsafe { core::mem::zeroed() };
+            s.stats_type = rist_sys::rist_stats_type_RIST_STATS_RECEIVER_FLOW;
+            s.stats.receiver_flow = rf;
+            s
+        };
+        let mut acc = RistStats::default();
+        accumulate_stats(&mut acc, &mk(4, 1_000, 3));
+        accumulate_stats(&mut acc, &mk(1, 2_000, 5));
+        assert_eq!(acc.packets_dropped, 5); // lost deltas accumulate
+        assert_eq!(acc.bandwidth_kbps, 2); // gauge overwrites
+        assert_eq!(acc.rtt_us, 5_000); // gauge overwrites (ms→µs)
+        assert_eq!(acc.packets_received, 0); // inline-only, untouched
     }
 }
 

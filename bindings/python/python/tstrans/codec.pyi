@@ -751,7 +751,10 @@ def split_units(
     codec: Any,
     *,
     strict: bool = ...,
-) -> Tuple[List[Any], List[str]]: ...   # (units: List[NalUnit]|List[Obu], issues: List[str])
+) -> Union[Tuple[List[Any], List[str]], List[Any]]: ...
+# strict=False (default) → (units, issues) where units is List[NalUnit]|List[Obu]
+# and issues is List[str]; strict=True → units only, raising ValueError on the
+# first ES-conformance issue.
 def parse_audio(
     raw: _BytesLike,
     codec: Any,

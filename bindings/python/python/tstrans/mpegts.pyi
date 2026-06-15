@@ -314,10 +314,10 @@ class DemuxEvent:
         codec: VideoCodec
         raw: bytes
         random_access_indicator: bool
-        # strict=False → List[NalUnit | Obu]; strict=True → (units, issues).
-        def parse(
-            self, *, strict: bool = ...
-        ) -> Union[List[Any], Tuple[List[Any], List[str]]]: ...
+        # Always a flat list of units (NalUnit | Obu); strict=True raises
+        # ValueError on the first ES-conformance issue. For (units, issues),
+        # call tstrans.codec.split_units(raw, codec) instead.
+        def parse(self, *, strict: bool = ...) -> List[Any]: ...
 
     @dataclass(frozen=True, slots=True)
     class Audio(DemuxEvent):
@@ -327,6 +327,7 @@ class DemuxEvent:
         codec: AudioCodec
         raw: bytes
         # List[AdtsFrame] | List[Mpeg2AudioFrame] | [] — element type erased.
+        # strict=True raises CodecError on the first malformed frame.
         def parse(self, *, strict: bool = ...) -> List[Any]: ...
 
     @dataclass(frozen=True, slots=True)

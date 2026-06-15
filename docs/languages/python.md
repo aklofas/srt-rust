@@ -757,7 +757,7 @@ cfg = PairingDemuxerConfig(
 
 pairer = Pairer(video_pid, klv_pid, cfg)
 outputs = pairer.feed(ts_bytes)
-outputs += pairer.flush()              # drain end-of-stream (no-op in Realtime)
+outputs += pairer.flush()              # drain end-of-stream (trailing UnpairedKlv; buffered video too)
 
 for out in outputs:
     match out:
@@ -777,8 +777,11 @@ print(pairer.stats())   # {'paired': N, 'unpaired_video': N, 'unpaired_klv': N, 
 The simplest form — `Pairer(video_pid, klv_pid)` — uses all defaults. To
 tolerate arrival skew, switch to Buffered mode by passing
 `mode=PairerMode.Buffered(max_lag=timedelta(milliseconds=200))` to
-`PairerConfig`; `flush()` becomes load-bearing at end-of-stream because
-buffered samples are held until the lag window closes. `feed` and `flush`
+`PairerConfig`; `flush()` is most load-bearing in Buffered mode, where
+buffered samples are held until the lag window closes. Call `flush()` at
+end-of-stream in **either** mode, though: it drains any unused KLV history as
+trailing `UnpairedKlv` (e.g. metadata that arrived after the last video access
+unit), so skipping it can drop tail metadata. `feed` and `flush`
 each return a `list[PairerOutput]`; `feed` raises
 `tstrans.exceptions.DemuxError` on non-conformant input. `stats()` and
 `demuxer_stats()` return dicts; `reset_stats()` zeroes the pairing

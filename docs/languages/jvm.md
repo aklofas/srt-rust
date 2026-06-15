@@ -1355,7 +1355,7 @@ PairingDemuxerConfig cfg = new PairingDemuxerConfig(
 
 try (Pairer pairer = new Pairer(videoPid, klvPid, cfg)) {
     List<PairerOutput> outs = new ArrayList<>(pairer.feed(tsBytes));
-    outs.addAll(pairer.flush());              // drain end-of-stream (no-op in Realtime)
+    outs.addAll(pairer.flush());              // drain end-of-stream (trailing UnpairedKlv; buffered video too)
     for (PairerOutput out : outs) {
         if (out instanceof PairerOutput.Paired p) {
             // p.video().codec() (e.g. VideoCodec.H264)
@@ -1394,8 +1394,12 @@ Gotchas:
   `ByteBuffer` policy). Safe to retain indefinitely.
 - **Single-threaded contract.** `Pairer` is not thread-safe — the consumer owns
   concurrency, the same as `org.tstrans.mpegts.Demuxer`.
-- **`flush()` is load-bearing only in Buffered mode.** In Realtime mode it is a
-  no-op. Always call it at end-of-stream when using Buffered mode.
+- **Always call `flush()` at end-of-stream — in either mode.** It drains any
+  unused KLV history as trailing `UnpairedKlv` (in both Realtime and Buffered —
+  e.g. metadata that arrived after the last video access unit), and in Buffered
+  mode it additionally force-drains the buffered video AUs (best-effort matched).
+  It is most load-bearing in Buffered mode, but skipping it in Realtime can still
+  drop tail metadata.
 - **`feed` throws checked `DemuxException`.** Declare it in `throws` or wrap it.
 - **Closed `Pairer` → `IllegalStateException`.** All methods (`feed`, `flush`,
   `stats`, `demuxerStats`, `resetStats`) throw `IllegalStateException` after

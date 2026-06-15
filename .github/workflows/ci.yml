@@ -342,6 +342,16 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/repo/platform-capabilities.sh
 
+      - name: check-release-version-consistency (cross-source version + tag)
+        # REL-01: every version source-of-truth (workspace/pyproject/tst-py
+        # Cargo, C version constants + header, python version test) must agree.
+        # On a v* tag build GITHUB_REF_NAME also forces tag == source version,
+        # so a v0.2.0 tag can never publish over 0.1.0 sources. Self-test runs
+        # first to prove the rail still catches its negatives. Gated to
+        # linux-x86_64 — the sources are platform-independent.
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check/repo/release-version-consistency.sh --self-test && bash scripts/check/repo/release-version-consistency.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

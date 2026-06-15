@@ -168,7 +168,8 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFeed<'local>(
 }
 
 /// `nFlush(handle)` — drain end-of-stream state and return the trailing
-/// `PairerOutput`s. No-op (empty list) in `Realtime` mode.
+/// `PairerOutput`s: any unused KLV history as `UnpairedKlv` (in both modes),
+/// plus the buffered video AUs in `Buffered` mode.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFlush<'local>(
     mut env: JNIEnv<'local>,

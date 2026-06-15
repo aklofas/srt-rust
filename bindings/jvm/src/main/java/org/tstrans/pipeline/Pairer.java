@@ -63,7 +63,13 @@ public final class Pairer implements AutoCloseable {
         return (List<PairerOutput>) nFeed(handle.get(), bytes);
     }
 
-    /** Drain end-of-stream state (load-bearing in Buffered mode; no-op in Realtime). */
+    /**
+     * Drain end-of-stream state. Returns any unused KLV history as trailing
+     * {@code UnpairedKlv} (in <em>both</em> modes — e.g. metadata after the last
+     * video access unit), plus the buffered video access units in Buffered mode.
+     * Most load-bearing in Buffered mode, but call it at end-of-stream in either
+     * mode or trailing metadata can be dropped.
+     */
     @SuppressWarnings("unchecked")
     public List<PairerOutput> flush() {
         ensureOpen();

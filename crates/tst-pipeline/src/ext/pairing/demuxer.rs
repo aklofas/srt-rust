@@ -34,9 +34,11 @@ pub struct PairingDemuxerConfig {
 /// Byte-feeding KLV↔video pairer: owns a [`Demuxer`] + a [`Pairer`].
 ///
 /// Feed TS bytes; collect [`PairerOutput`]s. Call [`Self::flush`] at
-/// end-of-stream to drain buffered video AUs (load-bearing in
-/// [`PairerMode::Buffered`](super::PairerMode::Buffered), a no-op in
-/// `Realtime`).
+/// end-of-stream to drain any remaining state: unused KLV history is
+/// emitted as trailing `UnpairedKlv` in **both** modes (e.g. metadata that
+/// arrived after the last video AU), and in
+/// [`PairerMode::Buffered`](super::PairerMode::Buffered) the buffered video
+/// AUs are additionally force-drained (best-effort matched).
 pub struct PairingDemuxer {
     demuxer: Demuxer,
     pairer: Pairer,

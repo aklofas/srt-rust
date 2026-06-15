@@ -118,8 +118,8 @@ fn duration_to_pts_ticks(d: Duration) -> i64 {
 /// | Language | Idiom |
 /// |----------|-------|
 /// | Rust | `let _ = pairer.flush(); drop(pairer);` (or just let it fall out of scope) |
-/// | Java | Drain via `flush()`, then let GC reclaim — no `AutoCloseable` needed |
-/// | Kotlin | Drain via `flush()`, then let GC reclaim |
+/// | Java | Drain via `flush()`, then `close()` (try-with-resources) — the JVM `Pairer` is `AutoCloseable` and holds a native handle with no GC fallback |
+/// | Kotlin | Drain via `flush()`, then `close()` (`use { }`) — same native-handle lifecycle as Java |
 /// | Swift | `deinit` calls drop; explicit `flush()` before exit to drain trailing outputs |
 /// | Python | `pairer.flush()` at end-of-stream; let GC reclaim |
 /// | C | (deferred to per-binding plan — pairer C ABI not yet shipped) |

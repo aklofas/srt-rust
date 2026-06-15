@@ -41,6 +41,11 @@ impl RistStats {
         s.packets_received = self.packets_received;
         s.packets_retransmitted = self.packets_retransmitted;
         s.rtt_us = self.rtt_us;
+        // bandwidth is role-neutral → link_bandwidth_bps; packets_dropped is
+        // only ever non-zero on the receiver (sender stats never set it), so
+        // packets_dropped_recv is the correct sink for both roles.
+        s.link_bandwidth_bps = (self.bandwidth_kbps as u64) * 1000;
+        s.packets_dropped_recv = self.packets_dropped;
         s
     }
 }
@@ -178,6 +183,8 @@ mod tests {
             packets_sent: 5,
             packets_retransmitted: 1,
             rtt_us: 12_345,
+            bandwidth_kbps: 8,
+            packets_dropped: 4,
             ..RistStats::default()
         };
         let s = r.to_socket_stats();
@@ -185,6 +192,8 @@ mod tests {
         assert_eq!(s.packets_sent, 5);
         assert_eq!(s.packets_retransmitted, 1);
         assert_eq!(s.rtt_us, 12_345);
+        assert_eq!(s.link_bandwidth_bps, 8_000); // kbps → bps
+        assert_eq!(s.packets_dropped_recv, 4);
     }
 
     #[test]

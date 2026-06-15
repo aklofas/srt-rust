@@ -284,9 +284,12 @@ pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> usiz
             Err(_) => break, // truncated LEB128 — stop
         };
         i += consumed;
-        let body_end = match i.checked_add(obu_size as usize) {
+        let obu_size = match usize::try_from(obu_size) {
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        let body_end = match i.checked_add(obu_size) {
             Some(end) if end <= obu_bytes.len() => end,
-            // size runs past buffer end OR usize overflow — stop.
             _ => break,
         };
         let obu_slice = &obu_bytes[obu_start..body_end];

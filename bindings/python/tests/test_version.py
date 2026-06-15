@@ -7,9 +7,9 @@ def test_version_is_str():
     assert isinstance(tstrans.__version__, str)
 
 
-def test_version_is_0_1_0():
+def test_version_is_0_2_0():
     # Bump this assertion when tst-py's version in Cargo.toml changes.
-    assert tstrans.__version__ == "0.1.0"
+    assert tstrans.__version__ == "0.2.0"
 
 
 def test_native_submodule_loads():

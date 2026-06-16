@@ -268,7 +268,12 @@ fn payload_size(p: &SamplePayload) -> usize {
         // Raw-first: the demuxer hands us the encoded AU bytes; the NAL
         // byte tally is now an opt-in `split_video` away. (OBU-shaped AV1
         // contributes 0 here, matching the prior behavior.)
-        SamplePayload::Video { codec, raw, .. } => match split_video(raw, *codec).0 {
+        SamplePayload::Video {
+            codec,
+            raw,
+            av1_carriage,
+            ..
+        } => match split_video(raw, *codec, av1_carriage.unwrap_or_default()).0 {
             VideoPayload::Nals(nals) => nals.iter().map(nal_payload_len).sum(),
             VideoPayload::Obus(_) => 0,
         },
@@ -297,8 +302,9 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
             // packet (ISO/IEC 13818-1 §2.4.3.4); marker for AUs the encoder
             // treats as decoder-resync points.
             random_access_indicator,
+            av1_carriage,
             ..
-        } => match split_video(raw, *codec).0 {
+        } => match split_video(raw, *codec, av1_carriage.unwrap_or_default()).0 {
             VideoPayload::Nals(nals) => {
                 // NAL-unit type tally so you can see slice/IDR/SPS/PPS/SEI
                 // distribution at a glance. Indexed by raw nal_type so the

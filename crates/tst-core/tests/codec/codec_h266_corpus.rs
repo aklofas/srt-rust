@@ -24,6 +24,7 @@ use tst_core::codec::h266;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
 };
+use tst_core::mpegts::mux::Av1CarriageMode;
 
 fn ffprobe_available() -> bool {
     Command::new("ffprobe").arg("-version").output().is_ok()
@@ -120,7 +121,9 @@ fn h266_fixtures_match_ffprobe() {
             } = ev
             {
                 // Raw-first: split the encoded AU into NALs via the opt-in call.
-                let VideoPayload::Nals(nals) = split_video(&raw, VideoCodec::H266).0 else {
+                let VideoPayload::Nals(nals) =
+                    split_video(&raw, VideoCodec::H266, Av1CarriageMode::Mpeg2TsBinding).0
+                else {
                     continue;
                 };
                 if let Ok(sets) = h266::parse_parameter_sets(&nals) {

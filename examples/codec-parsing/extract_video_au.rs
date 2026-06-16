@@ -68,11 +68,17 @@ fn main() -> std::io::Result<()> {
         // any ES-conformance `_issues`, and reconstruct Annex-B from the NALs.
         if let DemuxEvent::Sample {
             pts,
-            payload: SamplePayload::Video { codec, raw, .. },
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    raw,
+                    av1_carriage,
+                    ..
+                },
             ..
         } = event
         {
-            let (payload, _issues) = split_video(&raw, codec);
+            let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
             let VideoPayload::Nals(nals) = payload else {
                 // OBU-shaped video (AV1) — not handled by this Annex-B example.
                 continue;

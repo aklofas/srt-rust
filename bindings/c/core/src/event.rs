@@ -806,6 +806,7 @@ fn fill_sample(
             codec: vc,
             raw,
             random_access_indicator: rai,
+            av1_carriage,
             ..
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
@@ -823,7 +824,7 @@ fn fill_sample(
             arena.payload_buf.extend_from_slice(raw);
             let raw_base = raw.as_ptr() as usize;
             let raw_len = raw.len();
-            let (vp, _issues) = split_video(raw, *vc);
+            let (vp, _issues) = split_video(raw, *vc, av1_carriage.unwrap_or_default());
             match &vp {
                 VideoPayload::Nals(nals) => {
                     // Two-pass: collect each NAL's offset, resolve to

@@ -13,7 +13,7 @@ use tst_core::mpegts::demux::event::{
     DemuxEvent, NonConformantIssue, Obu, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
-use tst_core::mpegts::demux::split_video;
+use tst_core::mpegts::demux::{split_video, split_video_strict};
 use tst_core::mpegts::mux::{
     Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -104,7 +104,8 @@ fn av1_mux_demux_roundtrip_emits_obus() {
             raw,
             ..
         } => {
-            let (split, issues) = split_video(&raw, VideoCodec::Av1);
+            let (split, issues) =
+                split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
             assert!(issues.is_empty(), "binding-conformant AU emits no issues");
             let VideoPayload::Obus(obus) = split else {
                 panic!("expected OBUs from split_video");
@@ -192,7 +193,8 @@ fn av1_binding_mode_round_trip_no_issues_with_emulation_prevention() {
         // split_video reverses the binding framing + emulation-prevention,
         // recovering the original OBU bytes byte-for-byte. A binding-conformant
         // AU raises no split issues.
-        let (split, split_issues) = split_video(&raw, VideoCodec::Av1);
+        let (split, split_issues) =
+            split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
         assert!(
             split_issues.is_empty(),
             "binding-conformant AU emits no split issues: {split_issues:?}"
@@ -276,8 +278,10 @@ fn av1_interop_sender_into_binding_demuxer_surfaces_both_issues() {
     assert!(saw_wrong_stream_id, "expected Av1WrongStreamId issue");
     let raw = raw_au.expect("lenient mode still emits the Sample (raw AU)");
     // The opt-in split now carries the missing-framing conformance signal and
-    // still recovers the OBUs via the raw-OBU fallback.
-    let (split, issues) = split_video(&raw, VideoCodec::Av1);
+    // still recovers the OBUs via the raw-OBU fallback. Pass Mpeg2TsBinding:
+    // the demuxer here is binding-mode, so the binding-absent framing IS a
+    // genuine issue.
+    let (split, issues) = split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
     assert!(
         issues
             .iter()
@@ -441,6 +445,35 @@ fn binding_demux_stamps_sample_with_binding_carriage() {
         }
     }
     assert_eq!(carriage, Some(Av1CarriageMode::Mpeg2TsBinding));
+}
+
+/// AV1-03: an interop sample (raw OBUs, no binding framing) must parse clean
+/// under `InteropRawObu` carriage and must surface `Av1MissingTsObuFraming`
+/// under `Mpeg2TsBinding` carriage. This pins the carriage-aware branch in
+/// `split_video` / `split_video_strict`.
+#[test]
+fn interop_sample_split_is_clean_under_interop_carriage() {
+    // Raw OBUs (no binding framing) — the interop on-wire payload.
+    // OBU header byte: (obu_type << 3) | 0x02 (obu_has_size_field=1).
+    // TD obu_type=2: header=0x12, size=0.
+    // SeqHdr obu_type=1: header=0x0A, size=1, body=0xAA.
+    let raw = SharedBytes::from_vec(vec![0x12, 0x00, 0x0A, 0x01, 0xAA]);
+
+    // Interop carriage: raw OBUs are expected — no Av1MissingTsObuFraming.
+    let strict = split_video_strict(&raw, VideoCodec::Av1, Av1CarriageMode::InteropRawObu);
+    assert!(
+        strict.is_ok(),
+        "interop raw OBUs must parse clean under InteropRawObu carriage: {strict:?}"
+    );
+
+    // Binding carriage on the same raw OBU input: missing framing IS an issue.
+    let (_payload, issues) = split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
+    assert!(
+        issues
+            .iter()
+            .any(|i| matches!(i, NonConformantIssue::Av1MissingTsObuFraming { .. })),
+        "binding carriage on raw-OBU input must surface missing-framing: {issues:?}"
+    );
 }
 
 // Suppress unused import warning when StreamId-only branches don't fire.

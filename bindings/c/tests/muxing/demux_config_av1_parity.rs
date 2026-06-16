@@ -153,7 +153,8 @@ fn c_demux_config_av1_interop_round_trip_no_binding_issues() {
             // Raw-first: the demuxer emits the encoded AU; recover the OBUs via
             // the opt-in `split_video`. Interop carriage round-trips cleanly, so
             // the four OBUs come back with no split issues.
-            let (split, _issues) = split_video(raw, VideoCodec::Av1);
+            let (split, _issues) =
+                split_video(raw, VideoCodec::Av1, Av1CarriageMode::InteropRawObu);
             let VideoPayload::Obus(obus) = split else {
                 panic!("expected OBUs from split_video");
             };
@@ -207,7 +208,8 @@ fn c_demux_config_av1_binding_round_trip_no_binding_issues() {
         {
             // Raw-first: recover the OBUs via the opt-in `split_video` (which
             // reverses the binding framing in `Mpeg2TsBinding` mode).
-            let (split, _issues) = split_video(raw, VideoCodec::Av1);
+            let (split, _issues) =
+                split_video(raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
             let VideoPayload::Obus(obus) = split else {
                 panic!("expected OBUs from split_video");
             };
@@ -272,7 +274,7 @@ fn c_demux_config_av1_mismatch_surfaces_both_binding_issues() {
     // The opt-in split now carries the missing-framing conformance signal and
     // still recovers the OBUs via the raw-OBU fallback.
     let raw = raw_au.expect("lenient mode still emits the raw AU Sample");
-    let (_split, split_issues) = split_video(raw, VideoCodec::Av1);
+    let (_split, split_issues) = split_video(raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding);
     assert!(
         split_issues
             .iter()

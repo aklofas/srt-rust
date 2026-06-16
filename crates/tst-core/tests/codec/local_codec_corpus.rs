@@ -11,6 +11,7 @@ use tst_core::codec::{h264, h265};
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
 };
+use tst_core::mpegts::mux::Av1CarriageMode;
 
 fn ffprobe_video_stream(path: &Path) -> Option<(u32, u32, String, String)> {
     let out = Command::new("ffprobe")
@@ -88,7 +89,9 @@ fn local_corpus_parameter_sets_match_ffprobe() {
             } = ev
             {
                 // Raw-first: split the encoded AU into NALs via the opt-in call.
-                let VideoPayload::Nals(nals) = split_video(&raw, codec).0 else {
+                let VideoPayload::Nals(nals) =
+                    split_video(&raw, codec, Av1CarriageMode::Mpeg2TsBinding).0
+                else {
                     continue;
                 };
                 match codec {

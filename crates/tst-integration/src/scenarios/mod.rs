@@ -601,13 +601,15 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                         codec,
                         raw: au,
                         random_access_indicator,
+                        av1_carriage,
                         ..
                     } => {
                         // Raw-first: the demuxer emits the encoded access unit;
                         // recover the parsed NAL/OBU bodies via the opt-in
                         // `split_video` so the golden SHA matches the prior
                         // (parsed) demuxer output exactly.
-                        let (vp, _issues) = split_video(&au, codec);
+                        let (vp, _issues) =
+                            split_video(&au, codec, av1_carriage.unwrap_or_default());
                         let raw = video_payload_bytes(&vp);
                         events.push(CoreEvent::Video {
                             program: stream.program_number,

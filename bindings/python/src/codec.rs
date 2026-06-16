@@ -3372,13 +3372,16 @@ fn split_units(
     use tst_core::shared::SharedBytes;
     let rust_codec = py_video_codec_to_rust(py, codec)?;
     let shared = SharedBytes::from_vec(raw.to_vec());
+    // TODO(WP-B Task 9): thread carriage from the Python caller so that
+    // AV1 interop samples parsed via `split_units` use `InteropRawObu`.
+    let carriage = tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding;
     if strict {
-        match split_video_strict(&shared, rust_codec) {
+        match split_video_strict(&shared, rust_codec, carriage) {
             Ok(vp) => crate::mpegts::convert_video_payload(py, &vp),
             Err(issue) => Err(pyo3::exceptions::PyValueError::new_err(format!("{issue}"))),
         }
     } else {
-        let (vp, issues) = split_video(&shared, rust_codec);
+        let (vp, issues) = split_video(&shared, rust_codec, carriage);
         let units = crate::mpegts::convert_video_payload(py, &vp)?;
         let issue_strs: Vec<String> = issues.iter().map(|i| format!("{i}")).collect();
         Ok((units, issue_strs).into_py(py))

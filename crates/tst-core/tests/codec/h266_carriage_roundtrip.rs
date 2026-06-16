@@ -11,7 +11,7 @@ use tst_core::mpegts::demux::event::{
 };
 use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
-    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+    Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 /// Build a minimal valid Annex-B H.266 access unit: AUD + VPS + SPS + PPS + IDR.
@@ -101,7 +101,8 @@ fn h266_mux_demux_roundtrip_emits_h266_nals() {
             ..
         } => {
             // Raw-first: split the encoded AU into NALs via the opt-in call.
-            let (split, issues) = split_video(raw, VideoCodec::H266);
+            let (split, issues) =
+                split_video(raw, VideoCodec::H266, Av1CarriageMode::Mpeg2TsBinding);
             assert!(issues.is_empty(), "conformant H.266 AU emits no issues");
             let VideoPayload::Nals(nals) = split else {
                 panic!("expected NALs from split_video");

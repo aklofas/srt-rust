@@ -4992,6 +4992,8 @@ impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::push_video(&mut self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_to(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_to_with_dts(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_video_wire_to(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_video_wire_to_with_dts(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::VideoStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::video_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::VideoStreamHandle>, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::video_stream_handle(&self, usize) -> core::option::Option<tst_core::mpegts::mux::VideoStreamHandle>

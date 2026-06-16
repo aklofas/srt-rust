@@ -1342,12 +1342,14 @@ impl PyMuxer {
     }
 
     /// Push pre-framed (on-wire) video bytes to a specific stream without
-    /// re-wrapping. For AV1, `raw` is the exact PES payload as demuxed
+    /// re-wrapping. For AV1, `wire` is the exact PES payload as demuxed
     /// (binding-framed or raw-OBU depending on the muxer's `av1_carriage`
-    /// setting). For H.264/H.265/H.266 this is equivalent to
-    /// `push_video_to_with_dts` — both paths emit the bytes verbatim
-    /// into the TS PES. Use this in transmux loops to avoid the
-    /// binding-mode double-wrap that would produce an empty AU (AV1-01).
+    /// setting). For H.264/H.265/H.266 the on-wire form is already Annex-B,
+    /// so this emits the same bytes as `push_video_to_with_dts` would — but
+    /// it skips that method's Annex-B start-code validation (the input is
+    /// trusted and emitted verbatim, so the error behavior differs). Use
+    /// this in transmux loops to avoid the binding-mode double-wrap that
+    /// would produce an empty AU (AV1-01).
     ///
     /// `dts=None` (default) emits a PTS-only PES header; supply `dts`
     /// for reordered streams that carry a genuine decode timestamp.

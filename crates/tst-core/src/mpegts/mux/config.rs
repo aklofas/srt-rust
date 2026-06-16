@@ -242,6 +242,13 @@ impl MuxerConfig {
     ///   bytes via
     ///   [`Muxer::push_video_wire_to`](crate::mpegts::mux::Muxer::push_video_wire_to)
     ///   to preserve the original PES framing.
+    /// - **PMT descriptor preservation**: raw PMT descriptors are preserved
+    ///   byte-for-byte (tag, length, body, and order) for ALL stream kinds —
+    ///   video, audio, KLV (sync and async), CEA-708, WebVTT, and Unknown/Data.
+    ///   Auto-emitted descriptors (KLVA/AV01/AC-3 Registration, ISO-639 0x0A,
+    ///   subtitle codec markers) are suppressed when the caller-supplied
+    ///   descriptor set already contains an equivalent, so there are no
+    ///   duplicate descriptors in the output PMT.
     /// - **PCR copy rule**: the demuxed `pcr_pid` is copied iff it equals
     ///   the PID of a kept video or audio stream. KLV, data, and subtitle
     ///   PIDs are PCR-ineligible — the PCR pin is not copied (an explicit
@@ -254,10 +261,6 @@ impl MuxerConfig {
     ///   ([`MuxError::NoPcrEligibleStream`](crate::error::MuxError::NoPcrEligibleStream));
     ///   an explicit pin onto a KLV PID still errors
     ///   ([`MuxError::KlvPidUsedAsPcrPid`](crate::error::MuxError::KlvPidUsedAsPcrPid)).
-    /// - **Audio language**: recovered from the first ISO 639 language
-    ///   descriptor (tag `0x0A`) on the stream's raw PMT descriptors when
-    ///   it carries a plausible lowercase ISO 639-2 code; otherwise the
-    ///   stream is added language-less (never an error).
     /// - `klv_links` are ignored — the muxer re-derives metadata linkage
     ///   from its own configuration.
     ///
@@ -289,8 +292,12 @@ impl MuxerConfig {
         // §4.0 / EN 300 743 §6.1), and validate() rejects an explicit PCR
         // pin on any of them.
         let mut kept: Vec<(u16, bool)> = Vec::new();
-        // Count of Data streams added so far — the kind-scoped index that
-        // stream_descriptors_for_data expects.
+        // Per-kind stream counts — the kind-scoped indices that the
+        // stream_descriptors_for_* builder methods expect.
+        let mut video_idx = 0usize;
+        let mut audio_idx = 0usize;
+        let mut klv_idx = 0usize;
+        let mut subtitle_idx = 0usize;
         let mut data_idx = 0usize;
         for s in &pm.streams {
             if drop.contains(&s.kind.tag()) {
@@ -305,6 +312,15 @@ impl MuxerConfig {
                         DemuxVideo::Av1 => VideoCodec::Av1,
                     };
                     prog.add_video(s.pid, codec);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_video(video_idx, tlvs)?;
+                    }
+                    video_idx += 1;
                     kept.push((s.pid, false));
                 }
                 DemuxKind::Audio(c) => {
@@ -314,14 +330,36 @@ impl MuxerConfig {
                         DemuxAudio::AacLatm => AudioCodec::AacLatm,
                         DemuxAudio::Ac3 => AudioCodec::Ac3,
                     };
-                    match iso639_language(&s.raw_descriptors) {
-                        Some(lang) => prog.add_audio_with_language(s.pid, codec, lang),
-                        None => prog.add_audio(s.pid, codec),
-                    };
+                    // Use add_audio (language: None) and pass raw PMT
+                    // descriptors verbatim. The ISO-639 descriptor (tag 0x0A)
+                    // passes through exactly as it appeared on the wire —
+                    // uppercase codes, multiple entries, and the audio_type
+                    // byte are all preserved. The muxer's auto-emit of 0x0A
+                    // only fires when language: Some(_), so there is no
+                    // duplicate when the caller supplies their own 0x0A.
+                    prog.add_audio(s.pid, codec);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_audio(audio_idx, tlvs)?;
+                    }
+                    audio_idx += 1;
                     kept.push((s.pid, false));
                 }
                 DemuxKind::KlvSync { .. } => {
                     prog.add_klv(s.pid, KlvStreamType::SynchronousMetadata, true);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_klv(klv_idx, tlvs)?;
+                    }
+                    klv_idx += 1;
                     kept.push((s.pid, true));
                 }
                 DemuxKind::KlvAsync => {
@@ -329,16 +367,43 @@ impl MuxerConfig {
                     // true is the STANAG 4609 norm. Callers needing false build
                     // the config by hand.
                     prog.add_klv(s.pid, KlvStreamType::PrivateData, true);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_klv(klv_idx, tlvs)?;
+                    }
+                    klv_idx += 1;
                     kept.push((s.pid, true));
                 }
                 DemuxKind::Subtitle(DemuxSub::Cea708Standalone) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::Cea708Standalone);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_subtitle(subtitle_idx, tlvs)?;
+                    }
+                    subtitle_idx += 1;
                     // PCR-ineligible: subtitles must not carry PCR (ETSI
                     // EN 300 472 §4.0 / EN 300 743 §6.1).
                     kept.push((s.pid, true));
                 }
                 DemuxKind::Subtitle(DemuxSub::WebVttInTs) => {
                     prog.add_subtitle(s.pid, SubtitleCodec::WebVttInTs);
+                    if !s.raw_descriptors.is_empty() {
+                        let tlvs = s
+                            .raw_descriptors
+                            .iter()
+                            .map(|d| raw_descriptor_to_tlv(s.pid, d))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        prog.stream_descriptors_for_subtitle(subtitle_idx, tlvs)?;
+                    }
+                    subtitle_idx += 1;
                     // PCR-ineligible, as for CEA-708 above.
                     kept.push((s.pid, true));
                 }
@@ -1144,10 +1209,11 @@ impl MuxerProgramConfigBuilder {
     /// this program (zero-indexed among `StreamSpec::Subtitle` entries in
     /// add-order).
     ///
-    /// Caller-supplied descriptors append to the auto-emitted codec-
-    /// disambiguating descriptor; they do not suppress it (contrast with
-    /// KLV's KLVA-suppression rule — for subtitles, the auto-emit IS the
-    /// codec marker for receiver classification).
+    /// Recognized subtitle codec markers (tags 0x59/0x56/0x46, or
+    /// Registration with format_identifier VTTC/GA94) SUPPRESS the
+    /// auto-emitted codec-disambiguating descriptor — the caller's takes
+    /// precedence. Other (unrecognized/private) caller descriptors are
+    /// appended after the auto-emitted marker.
     ///
     /// # Errors
     /// [`MuxError::DescriptorIndexOutOfRange`](crate::error::MuxError::DescriptorIndexOutOfRange) when `subtitle_idx` is past
@@ -1282,15 +1348,6 @@ fn raw_descriptor_to_tlv(
     tlv.push(len);
     tlv.extend_from_slice(&d.data);
     Ok(tlv)
-}
-
-/// First ISO 639 language descriptor (tag 0x0A) → 3-byte code, only when
-/// it looks like a valid lowercase ISO 639-2 code; None otherwise (the
-/// caller falls back to language-less audio rather than erroring).
-fn iso639_language(descs: &[crate::mpegts::descriptors::RawDescriptor]) -> Option<[u8; 3]> {
-    let d = descs.iter().find(|d| d.tag == 0x0A)?;
-    let code: [u8; 3] = d.data.get(..3)?.try_into().ok()?;
-    code.iter().all(|b| b.is_ascii_lowercase()).then_some(code)
 }
 
 /// ISO 639-2 language codes per ETSI EN 300 468 §6.2.41/§6.2.43 ride the

@@ -214,7 +214,7 @@ Subtitle PIDs cannot serve as the PCR PID (too sparse for PCR pacing).
 | Multi-language single-PID `teletext_descriptor` (ETSI EN 300 468 §6.2.43) | ✅ Full | `mpegts::descriptors::teletext_descriptor_multi`. |
 | Subtitle auto-emit suppression on caller-supplied descriptor | ✅ Full | When `MuxerConfigBuilder::stream_descriptors_for_subtitle` supplies a recognized codec marker (`subtitling_descriptor` 0x59 / `teletext_descriptor` 0x56 / VBI teletext 0x46 / `registration_descriptor` with `VTTC` or `GA94` format_identifier), the muxer suppresses its codec-driven auto-emit (mirrors KLVA / AV01 suppression). |
 | ISO 639 language code casing (EN 300 468) | ✅ Full | `validate_language_code` accepts both lowercase and uppercase 3-letter ASCII alphabetic codes. |
-| Subtitle-only program rejection | ✅ Full | `MuxerConfig::validate` rejects programs with subtitle streams but no video/audio/KLV (`MuxError::SubtitleOnlyProgram`); subtitle PIDs are too sparse to anchor PCR. |
+| No-PCR-eligible-stream rejection | ✅ Full | `MuxerConfig::validate` rejects programs with no video or audio stream (`MuxError::NoPcrEligibleStream`); KLV/data/subtitle cannot carry PCR — their cadence is too sparse to anchor it. |
 | Multi-descriptor `stream_type 0x06` ambiguity (demux) | ✅ Full | `NonConformantIssue::SubtitleDescriptorAmbiguous` surfaced when ≥2 distinguishing descriptors co-exist (subtitling / teletext / `VTTC` / `GA94`); cascade picks first match. |
 
 ---

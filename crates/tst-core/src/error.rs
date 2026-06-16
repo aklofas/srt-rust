@@ -474,16 +474,15 @@ pub enum MuxError {
     PmtPidConflictsWithStream { pmt_pid: u16, program_number: u16 },
 
     /// `MuxerConfig::validate` rejected a program that contains no
-    /// PCR-eligible stream (video / KLV / audio). Subtitle streams must
-    /// NOT carry PCR per ETSI EN 300 472 §4.0 + EN 300 743 §6.1, and
-    /// data streams have no cadence guarantee, so neither can anchor
-    /// PCR fallback resolution. The variant name predates data streams;
-    /// the condition is "no PCR-eligible stream", not literally
-    /// subtitle-only.
+    /// PCR-eligible stream. Only video and audio streams may carry PCR:
+    /// KLV cadence is too sparse for ETSI TR 101 290 §5.6.1's 100 ms
+    /// ceiling, subtitles must NOT carry PCR per ETSI EN 300 472 §4.0 +
+    /// EN 300 743 §6.1, and data streams have no cadence guarantee. Add
+    /// at least one video or audio stream to the program.
     #[error(
-        "program {program_number} contains no PCR-eligible stream (video/KLV/audio); subtitle and data streams cannot carry PCR"
+        "program {program_number} has no PCR-eligible stream — needs at least one video or audio stream (KLV, data, and subtitle streams cannot carry PCR)"
     )]
-    SubtitleOnlyProgram { program_number: u16 },
+    NoPcrEligibleStream { program_number: u16 },
 
     /// `Muxer::push_data` shorthand called when no data streams configured.
     /// Use `push_data_to(handle, ...)` with a data handle from `data_handles()`,
@@ -732,7 +731,7 @@ impl MuxError {
             MuxError::SubtitlePidUsedAsPcrPid { .. } => ConfigInvalid,
             MuxError::KlvPidUsedAsPcrPid { .. } => ConfigInvalid,
             MuxError::DataPidUsedAsPcrPid { .. } => ConfigInvalid,
-            MuxError::SubtitleOnlyProgram { .. } => ConfigInvalid,
+            MuxError::NoPcrEligibleStream { .. } => ConfigInvalid,
             MuxError::MalformedDescriptor { .. } => ConfigInvalid,
             MuxError::PmtTooLarge { .. } => ConfigInvalid,
 

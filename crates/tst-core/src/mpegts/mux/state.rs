@@ -452,19 +452,25 @@ pub(super) fn collect_stream_states(
     (video, klv, audio, subtitle, data)
 }
 
+/// The PCR-PID fallback when no PCR PID is pinned: first video, then first
+/// audio. KLV/data/subtitle are NEVER auto-selected — KLV cadence is too
+/// sparse for ETSI TR 101 290 §5.6.1's 100 ms ceiling, subtitles must not
+/// carry PCR per ETSI EN 300 472 §4.0, and data has no cadence guarantee.
+/// Selection (here) and validation (`MuxerConfig::validate`) share this so
+/// they can never disagree (MUX-02).
+pub(super) fn default_pcr_pid(prog: &MuxerProgramConfig) -> Option<u16> {
+    prog.first_video_pid().or_else(|| prog.first_audio_pid())
+}
+
 /// Resolve the PCR-carrying PID for a program. Priority order: caller-pinned >
-/// first video > first KLV > first audio. Subtitle and data streams are
-/// deliberately excluded from the fallback chain — neither has a cadence
-/// guarantee, so neither can promise the ETSI TR 101 290 §5.6.1 100 ms PCR
-/// ceiling. `validate()` rejects programs with no PCR-eligible (video / KLV /
-/// audio) stream, so the `expect()` below cannot panic in well-formed configs.
+/// first video > first audio. KLV, data, and subtitle streams are deliberately
+/// excluded from the fallback chain — see `default_pcr_pid`. `validate()`
+/// rejects programs with no PCR-eligible (video / audio) stream, so the
+/// `expect()` below cannot panic in well-formed configs.
 pub(super) fn resolve_pcr_pid(prog: &MuxerProgramConfig) -> u16 {
-    prog.pcr_pid.unwrap_or_else(|| {
-        prog.first_video_pid()
-            .or_else(|| prog.first_klv_pid())
-            .or_else(|| prog.first_audio_pid())
-            .expect("validate() guarantees ≥1 PCR-eligible stream per program")
-    })
+    prog.pcr_pid
+        .or_else(|| default_pcr_pid(prog))
+        .expect("validate() guarantees ≥1 PCR-eligible stream per program")
 }
 
 /// Build the per-stream PMT descriptor cache for one program. Each entry is

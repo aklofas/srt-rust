@@ -330,9 +330,9 @@ fn mux_error_pmt_pid_conflicts_routes_to_config_invalid() {
 }
 
 #[test]
-fn mux_error_subtitle_only_program_routes_to_config_invalid() {
+fn mux_error_no_pcr_eligible_stream_routes_to_config_invalid() {
     assert_mux(
-        MuxError::SubtitleOnlyProgram { program_number: 1 },
+        MuxError::NoPcrEligibleStream { program_number: 1 },
         ShellErrorKind::ConfigInvalid,
     );
 }

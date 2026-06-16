@@ -334,9 +334,9 @@ non-`StreamKindTag` entries in `drop`. Field values outside their wire range
 - **PCR copy rule.** The demuxed `pcr_pid` is copied to the rebuilt config iff
   it equals the PID of a kept video or audio stream. KLV, data, and subtitle
   PIDs are PCR-ineligible — the PCR pin is not copied; `pcr_pid` is left
-  `None` and the builder default applies (first video → first KLV → first
-  audio). An explicit PCR pin on any ineligible PID is rejected by
-  `validate()`.
+  `None` and the builder default applies (first video → first audio;
+  KLV/data/subtitle are never auto-selected). An explicit PCR pin on any
+  ineligible PID is rejected by `validate()`.
 - **`klv_links` are ignored.** The muxer re-derives KLV-to-video linkage from
   its own configuration; the PMT-declared `metadata_descriptor` links in the
   `ProgramMap` are not forwarded.
@@ -657,7 +657,8 @@ the wrong stream when N > 1.
 `MuxerConfig::pcr_pid` controls which PID carries the PCR:
 
 - If unset, the muxer pins PCR to the first video stream's PID
-  (or the first KLV stream's PID if the muxer is KLV-only).
+  (or the first audio stream's PID if there is no video). KLV, data,
+  and subtitle streams are never auto-selected.
 - If set to a value that matches no configured stream, validation
   rejects with `MuxError::InvalidConfig`.
 
@@ -847,7 +848,7 @@ program 2's streams into a non-conflicting range.
 
 Each program has its own PCR PID. Set explicitly via `.pcr_pid(N)` inside
 the `add_program(...)` block, or omit and let it auto-fall-back to the
-program's first video PID (or first KLV PID for KLV-only programs). PCR
+program's first video PID (or first audio PID if there is no video). PCR
 cadence is independent per-program — program 2's PCR doesn't drift when
 program 1 is stalled.
 

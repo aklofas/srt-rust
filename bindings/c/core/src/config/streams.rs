@@ -491,7 +491,7 @@ unsafe fn add_subtitle_stream_inner(
 }
 
 /// Pin the PCR PID for the specified program. By default the muxer uses the
-/// first video stream's PID (or first KLV PID for KLV-only programs).
+/// first video stream's PID (or first audio stream's PID if there is no video).
 ///
 /// Returns 0 on success, or a negative `TST_E_*` code on null pointer or
 /// invalid program handle.

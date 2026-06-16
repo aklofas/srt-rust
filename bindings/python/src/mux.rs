@@ -972,9 +972,10 @@ impl PyMuxerConfig {
     /// the PID of a kept video or audio stream; KLV, data, and
     /// subtitle PIDs are PCR-ineligible — the pin is not copied, the
     /// field is left unset, and the builder default applies
-    /// (first video → first KLV → first audio). `klv_links` are
-    /// ignored — the muxer re-derives metadata linkage from its own
-    /// configuration. Mirrors Rust's `MuxerConfig::from_program_map`.
+    /// (first video → first audio; KLV/data/subtitle are never
+    /// auto-selected). `klv_links` are ignored — the muxer re-derives
+    /// metadata linkage from its own configuration. Mirrors Rust's
+    /// `MuxerConfig::from_program_map`.
     ///
     /// `av1_carriage` — optional `Av1CarriageMode` enum member (or `None`
     /// to keep the default `MPEG2_TS_BINDING`). Pass the source carriage

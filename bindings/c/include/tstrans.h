@@ -2803,7 +2803,7 @@ int tst_mux_config_set_pcr_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
 
 /**
  * Pin the PCR PID for the specified program. By default the muxer uses the
- * first video stream's PID (or first KLV PID for KLV-only programs).
+ * first video stream's PID (or first audio stream's PID if there is no video).
  *
  * Returns 0 on success, or a negative `TST_E_*` code on null pointer or
  * invalid program handle.

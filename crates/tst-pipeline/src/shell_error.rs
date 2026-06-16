@@ -189,7 +189,7 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
         MuxError::DuplicatePidAcrossPrograms { .. } => ConfigInvalid,
         MuxError::ProgramNotFound { .. } => ConfigInvalid,
         MuxError::PmtPidConflictsWithStream { .. } => ConfigInvalid,
-        MuxError::SubtitleOnlyProgram { .. } => ConfigInvalid,
+        MuxError::NoPcrEligibleStream { .. } => ConfigInvalid,
         MuxError::DescriptorIndexOutOfRange { .. } => ConfigInvalid,
         MuxError::AbsIndexOutOfRange { .. } => ConfigInvalid,
         // Required by #[non_exhaustive]. CI ratchet

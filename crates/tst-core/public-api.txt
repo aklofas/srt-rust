@@ -1377,6 +1377,8 @@ pub tst_core::error::MuxError::MalformedDescriptor::stream_index: usize
 pub tst_core::error::MuxError::NoAudioStreamsConfigured
 pub tst_core::error::MuxError::NoDataStreamsConfigured
 pub tst_core::error::MuxError::NoKlvStreamsConfigured
+pub tst_core::error::MuxError::NoPcrEligibleStream
+pub tst_core::error::MuxError::NoPcrEligibleStream::program_number: u16
 pub tst_core::error::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::error::MuxError::PmtPidConflictsWithStream
 pub tst_core::error::MuxError::PmtPidConflictsWithStream::pmt_pid: u16
@@ -1386,8 +1388,6 @@ pub tst_core::error::MuxError::PmtTooLarge::max_bytes: usize
 pub tst_core::error::MuxError::PmtTooLarge::used_bytes: usize
 pub tst_core::error::MuxError::ProgramNotFound
 pub tst_core::error::MuxError::ProgramNotFound::program_number: u16
-pub tst_core::error::MuxError::SubtitleOnlyProgram
-pub tst_core::error::MuxError::SubtitleOnlyProgram::program_number: u16
 pub tst_core::error::MuxError::SubtitlePidUsedAsPcrPid
 pub tst_core::error::MuxError::SubtitlePidUsedAsPcrPid::pid: u16
 pub tst_core::error::MuxError::SubtitleTooLarge
@@ -4654,6 +4654,8 @@ pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::stream_index:
 pub tst_core::mpegts::mux::_detail::MuxError::NoAudioStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoDataStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoKlvStreamsConfigured
+pub tst_core::mpegts::mux::_detail::MuxError::NoPcrEligibleStream
+pub tst_core::mpegts::mux::_detail::MuxError::NoPcrEligibleStream::program_number: u16
 pub tst_core::mpegts::mux::_detail::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::PmtPidConflictsWithStream
 pub tst_core::mpegts::mux::_detail::MuxError::PmtPidConflictsWithStream::pmt_pid: u16
@@ -4663,8 +4665,6 @@ pub tst_core::mpegts::mux::_detail::MuxError::PmtTooLarge::max_bytes: usize
 pub tst_core::mpegts::mux::_detail::MuxError::PmtTooLarge::used_bytes: usize
 pub tst_core::mpegts::mux::_detail::MuxError::ProgramNotFound
 pub tst_core::mpegts::mux::_detail::MuxError::ProgramNotFound::program_number: u16
-pub tst_core::mpegts::mux::_detail::MuxError::SubtitleOnlyProgram
-pub tst_core::mpegts::mux::_detail::MuxError::SubtitleOnlyProgram::program_number: u16
 pub tst_core::mpegts::mux::_detail::MuxError::SubtitlePidUsedAsPcrPid
 pub tst_core::mpegts::mux::_detail::MuxError::SubtitlePidUsedAsPcrPid::pid: u16
 pub tst_core::mpegts::mux::_detail::MuxError::SubtitleTooLarge
@@ -5767,6 +5767,8 @@ pub tst_core::MuxError::MalformedDescriptor::stream_index: usize
 pub tst_core::MuxError::NoAudioStreamsConfigured
 pub tst_core::MuxError::NoDataStreamsConfigured
 pub tst_core::MuxError::NoKlvStreamsConfigured
+pub tst_core::MuxError::NoPcrEligibleStream
+pub tst_core::MuxError::NoPcrEligibleStream::program_number: u16
 pub tst_core::MuxError::NoSubtitleStreamsConfigured
 pub tst_core::MuxError::PmtPidConflictsWithStream
 pub tst_core::MuxError::PmtPidConflictsWithStream::pmt_pid: u16
@@ -5776,8 +5778,6 @@ pub tst_core::MuxError::PmtTooLarge::max_bytes: usize
 pub tst_core::MuxError::PmtTooLarge::used_bytes: usize
 pub tst_core::MuxError::ProgramNotFound
 pub tst_core::MuxError::ProgramNotFound::program_number: u16
-pub tst_core::MuxError::SubtitleOnlyProgram
-pub tst_core::MuxError::SubtitleOnlyProgram::program_number: u16
 pub tst_core::MuxError::SubtitlePidUsedAsPcrPid
 pub tst_core::MuxError::SubtitlePidUsedAsPcrPid::pid: u16
 pub tst_core::MuxError::SubtitleTooLarge

@@ -519,14 +519,13 @@ fn data_pid_rejected_as_pcr_pid() {
 #[test]
 fn data_only_program_rejected_no_pcr_eligible_stream() {
     // Data streams are excluded from the PCR fallback chain, so a
-    // data-only program trips the no-PCR-eligible-stream guard (the
-    // variant name predates data streams).
+    // data-only program trips the no-PCR-eligible-stream guard.
     let mut prog = MuxerProgramConfigBuilder::new(1, 0x0100);
     prog.add_data(0x1100, 0xF0, true);
     let err = build_cfg(prog.build()).unwrap_err();
     assert!(
-        matches!(err, MuxError::SubtitleOnlyProgram { program_number: 1 }),
-        "expected SubtitleOnlyProgram {{ program_number: 1 }}, got {err:?}"
+        matches!(err, MuxError::NoPcrEligibleStream { program_number: 1 }),
+        "expected NoPcrEligibleStream {{ program_number: 1 }}, got {err:?}"
     );
 }
 

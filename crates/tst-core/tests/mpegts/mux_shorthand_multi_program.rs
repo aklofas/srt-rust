@@ -40,10 +40,10 @@ fn config_video_in_program_one() -> MuxerConfig {
 /// - Program 1: video only at PID 0x1011.
 /// - Program 2: audio (Mp2) at PID 0x1121 + one KLV stream at PID 0x1131.
 ///
-/// Audio is added alongside KLV so PCR-fallback (`video > KLV > audio`)
-/// resolves to the audio PID, not the KLV PID — KLV-as-PCR is rejected
-/// by `MuxerConfig::validate` (ETSI TR 101 290 §5.6.1 requires ≤100 ms
-/// between PCRs, KLV streams are sparse).
+/// Audio is added alongside KLV so PCR-fallback (`video > audio`)
+/// resolves to the audio PID — KLV is never PCR-eligible (a KLV-only
+/// program is rejected by `MuxerConfig::validate`; ETSI TR 101 290
+/// §5.6.1 requires ≤100 ms between PCRs, KLV streams are sparse).
 fn config_klv_in_program_one() -> MuxerConfig {
     let mut prog1 = MuxerProgramConfig::new(1, 0x1000);
     prog1.streams = vec![StreamSpec::Video {

@@ -214,9 +214,9 @@ fn klv_pid_used_as_pcr_pid_routes_to_config_invalid() {
 }
 
 #[test]
-fn subtitle_only_program_routes_to_config_invalid() {
+fn no_pcr_eligible_stream_routes_to_config_invalid() {
     assert_kind(
-        MuxError::SubtitleOnlyProgram { program_number: 1 },
+        MuxError::NoPcrEligibleStream { program_number: 1 },
         MuxSenderErrorKind::ConfigInvalid,
     );
 }

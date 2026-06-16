@@ -406,9 +406,10 @@ fn validate_rejects_caller_pinned_pcr_on_klv_pid() {
 }
 
 #[test]
-fn validate_rejects_klv_only_program_via_pcr_fallback() {
-    // No video, no audio — only KLV. The fallback chain
-    // `video > KLV > audio` would resolve PCR to the first KLV PID.
+fn validate_rejects_klv_only_program_no_pcr_eligible_stream() {
+    // No video, no audio — only KLV. KLV is not a PCR-eligible carrier
+    // (cadence too sparse for ETSI TR 101 290 §5.6.1's 100 ms ceiling),
+    // so the no-PCR-eligible-stream guard fires before PCR resolution.
     let err = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
@@ -417,8 +418,8 @@ fn validate_rejects_klv_only_program_via_pcr_fallback() {
         b.build().unwrap_err()
     };
     assert!(
-        matches!(err, MuxError::KlvPidUsedAsPcrPid { pid: 0x101 }),
-        "expected KlvPidUsedAsPcrPid for fallback-resolved KLV PID, got {err:?}"
+        matches!(err, MuxError::NoPcrEligibleStream { program_number: 1 }),
+        "expected NoPcrEligibleStream, got {err:?}"
     );
 }
 
@@ -482,7 +483,7 @@ fn config_validate_rejects_magazine_out_of_range() {
 fn validate_rejects_subtitle_only_program() {
     // Subtitles must not carry PCR per ETSI EN 300 472 §4.0 +
     // EN 300 743 §6.1. The PCR fallback chain (caller-pinned > video >
-    // KLV > audio) excludes subtitles, so a subtitle-only program has
+    // audio) excludes subtitles, so a subtitle-only program has
     // no resolvable PCR PID.
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
@@ -492,10 +493,10 @@ fn validate_rejects_subtitle_only_program() {
         b.build()
     };
     match cfg {
-        Err(MuxError::SubtitleOnlyProgram { program_number }) => {
+        Err(MuxError::NoPcrEligibleStream { program_number }) => {
             assert_eq!(program_number, 1);
         }
-        other => panic!("expected SubtitleOnlyProgram, got {other:?}"),
+        other => panic!("expected NoPcrEligibleStream, got {other:?}"),
     }
 }
 

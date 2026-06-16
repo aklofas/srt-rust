@@ -288,7 +288,7 @@ fn dvb_subtitle_errors_cea708_and_webvtt_map() {
 }
 
 #[test]
-fn drop_video_from_audio_klv_program_fails_pcr_resolution() {
+fn drop_video_from_audio_klv_program_validates_with_audio_pcr() {
     let p = pm(
         0x100,
         0x101,
@@ -305,15 +305,55 @@ fn drop_video_from_audio_klv_program_fails_pcr_resolution() {
         ],
     );
     // Dropping the video also drops the demuxed PCR carrier, so the rebuilt
-    // program has `pcr_pid: None`. `MuxerConfig::validate` then resolves the
-    // default PCR via first-video → first-KLV → first-audio; with no video
-    // the fallback lands on the KLV PID, and validate rejects KLV-carried
-    // PCR (KLV cadence is too sparse for ETSI TR 101 290 §5.6.1's 100 ms
-    // ceiling) — so a video-less audio+KLV program errors rather than
-    // falling through to the audio stream.
-    match MuxerConfig::from_program_map(&p, &[StreamKindTag::Video]) {
-        Err(MuxError::KlvPidUsedAsPcrPid { pid }) => assert_eq!(pid, 0x102),
-        other => panic!("expected KlvPidUsedAsPcrPid, got {other:?}"),
+    // program has `pcr_pid: None`. The PCR fallback (first video → first
+    // audio; KLV is never auto-selected) resolves to the audio PID 0x103 —
+    // the program validates successfully (MUX-02 fix).
+    let cfg =
+        MuxerConfig::from_program_map(&p, &[StreamKindTag::Video]).expect("audio PCR resolves");
+    let prog = &cfg.programs[0];
+    assert!(
+        prog.streams.iter().all(|s| spec_pid(s) != 0x101),
+        "dropped video PID 0x101 must be absent"
+    );
+    // pcr_pid is None (the demuxed PCR was on the dropped video PID);
+    // the fallback must pick the audio PID 0x103. Confirm the audio stream
+    // is present and is the only non-KLV stream remaining.
+    assert_eq!(prog.pcr_pid, None);
+    let audio_pid = prog
+        .streams
+        .iter()
+        .find_map(|s| match s {
+            StreamSpec::Audio { pid, .. } => Some(*pid),
+            _ => None,
+        })
+        .expect("audio stream must be present after drop");
+    assert_eq!(
+        audio_pid, 0x103,
+        "audio PID must be 0x103 (fallback PCR carrier)"
+    );
+}
+
+#[test]
+fn klv_only_program_has_no_pcr_eligible_stream() {
+    // A program with only a KLV stream (no video or audio) has no
+    // PCR-eligible carrier — KLV cadence cannot promise the ETSI TR 101 290
+    // §5.6.1 100 ms ceiling. Validate rejects it with NoPcrEligibleStream.
+    let p = pm(
+        0x100,
+        0x102,
+        vec![stream(
+            0x102,
+            0x15,
+            DemuxKind::KlvSync {
+                declared_link: None,
+            },
+        )],
+    );
+    match MuxerConfig::from_program_map(&p, &[]) {
+        Err(MuxError::NoPcrEligibleStream { program_number }) => {
+            assert_eq!(program_number, 1);
+        }
+        other => panic!("expected NoPcrEligibleStream, got {other:?}"),
     }
 }
 

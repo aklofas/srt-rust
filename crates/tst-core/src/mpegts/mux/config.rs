@@ -35,8 +35,9 @@ pub struct MuxerProgramConfig {
     /// Elementary streams in this program. ≤16 video, ≤16 KLV, ≥1 of either.
     pub streams: Vec<StreamSpec>,
 
-    /// PID carrying this program's PCR. `None` = first video stream's PID,
-    /// or first KLV stream's PID if the program is KLV-only.
+    /// PID carrying this program's PCR. `None` = fallback to first video
+    /// stream's PID, then first audio stream's PID (KLV/data/subtitle
+    /// are never auto-selected — see `default_pcr_pid`).
     pub pcr_pid: Option<u16>,
 
     /// Caller-supplied descriptors at the program (PMT-level) loop, before
@@ -88,14 +89,6 @@ impl MuxerProgramConfig {
     pub(crate) fn first_video_pid(&self) -> Option<u16> {
         self.streams.iter().find_map(|s| match s {
             StreamSpec::Video { pid, .. } => Some(*pid),
-            _ => None,
-        })
-    }
-
-    /// Returns the PID of the first KLV stream in this program, if any.
-    pub(crate) fn first_klv_pid(&self) -> Option<u16> {
-        self.streams.iter().find_map(|s| match s {
-            StreamSpec::Klv { pid, .. } => Some(*pid),
             _ => None,
         })
     }
@@ -256,8 +249,10 @@ impl MuxerConfig {
     ///   In every other case (PCR ineligible, on a dropped stream, or on
     ///   a PID outside the program) `pcr_pid` is left `None`, so the
     ///   builder default applies: `validate()` resolves first video →
-    ///   first KLV → first audio, which can itself error for a video-less
-    ///   program whose fallback lands on a KLV PID
+    ///   first audio (KLV/data/subtitle are never auto-selected). A
+    ///   video-less program needs at least one audio stream, or it errors
+    ///   ([`MuxError::NoPcrEligibleStream`](crate::error::MuxError::NoPcrEligibleStream));
+    ///   an explicit pin onto a KLV PID still errors
     ///   ([`MuxError::KlvPidUsedAsPcrPid`](crate::error::MuxError::KlvPidUsedAsPcrPid)).
     /// - **Audio language**: recovered from the first ISO 639 language
     ///   descriptor (tag `0x0A`) on the stream's raw PMT descriptors when
@@ -275,10 +270,8 @@ impl MuxerConfig {
     /// `treat_as`-forced Data spec whose stream_type/descriptors classify
     /// as a typed kind — the error names the stream and the classified
     /// kind). A `ProgramMap` whose kept streams are all `Unknown` converts
-    /// but fails validation with the no-PCR-eligible-stream error
-    /// ([`MuxError::SubtitleOnlyProgram`](crate::error::MuxError::SubtitleOnlyProgram)
-    /// — a historical name; the condition is "no PCR-eligible stream",
-    /// not literally subtitle-only).
+    /// but fails validation with
+    /// [`MuxError::NoPcrEligibleStream`](crate::error::MuxError::NoPcrEligibleStream).
     pub fn from_program_map(
         pm: &crate::mpegts::demux::ProgramMap,
         drop: &[crate::mpegts::demux::StreamKindTag],
@@ -480,15 +473,12 @@ impl MuxerConfig {
                 });
             }
 
-            // Programs with no PCR-eligible stream (video/KLV/audio) cannot
-            // resolve a PCR PID. Subtitles must NOT carry PCR per ETSI
-            // EN 300 472 §4.0 + EN 300 743 §6.1, and data streams have no
-            // cadence guarantee; the PCR fallback chain in `Muxer::new`
-            // (caller-pinned > video > KLV > audio) excludes both
-            // deliberately. Reject at validate-time rather than panicking
-            // at runtime.
-            if video_count == 0 && klv_count == 0 && audio_count == 0 {
-                return Err(MuxError::SubtitleOnlyProgram {
+            // A program with no video or audio stream has no PCR-eligible
+            // carrier (KLV/data/subtitle cannot carry PCR — see
+            // `default_pcr_pid`). Reject at validate-time rather than
+            // panicking at runtime.
+            if video_count == 0 && audio_count == 0 {
+                return Err(MuxError::NoPcrEligibleStream {
                     program_number: prog.program_number,
                 });
             }
@@ -571,16 +561,9 @@ impl MuxerConfig {
                 }
             }
 
-            // Resolve effective PCR PID (caller-pinned or fallback) and
-            // reject when it lands on a KLV stream — KLV cadence is too
-            // sparse for ETSI TR 101 290 §5.6.1's 100 ms ceiling and
-            // today's deterministic muxer can't emit standalone PCR-only
-            // TS packets between push events.
-            let effective_pcr_pid = prog.pcr_pid.or_else(|| {
-                prog.first_video_pid()
-                    .or_else(|| prog.first_klv_pid())
-                    .or_else(|| prog.first_audio_pid())
-            });
+            // Resolve effective PCR PID and reject if the caller explicitly
+            // pinned it to a KLV stream (the fallback never selects KLV).
+            let effective_pcr_pid = prog.pcr_pid.or_else(|| super::state::default_pcr_pid(prog));
             if let Some(pcr) = effective_pcr_pid {
                 let lands_on_klv = prog
                     .streams
@@ -635,7 +618,7 @@ impl MuxerConfig {
             // are caller-paced with no cadence guarantee, so a data PID
             // cannot promise ETSI TR 101 290 §5.6.1's 100 ms PCR ceiling.
             // Only the explicit pin needs checking — the effective-PCR
-            // fallback chain (video > KLV > audio) never lands on data.
+            // fallback chain (video > audio) never lands on data.
             for s in &prog.streams {
                 if let StreamSpec::Data { pid, .. } = s {
                     if prog.pcr_pid == Some(*pid) {
@@ -1045,7 +1028,7 @@ impl MuxerProgramConfigBuilder {
     }
 
     /// Pin this program's PCR to a specific PID. Default: first video stream's
-    /// PID (or first KLV PID for KLV-only programs).
+    /// PID (or first audio stream's PID if there is no video).
     pub fn pcr_pid(&mut self, pid: u16) -> &mut Self {
         self.program.pcr_pid = Some(pid);
         self

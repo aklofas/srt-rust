@@ -233,7 +233,7 @@ fn pcr_pid_pinned_to_video_is_declared_in_pmt() {
 #[test]
 fn pcr_is_carried_on_video_pid_packets_by_default() {
     // PCR follows the video PID when no explicit pcr_pid is configured
-    // (fallback chain: video > KLV > audio). Real TS packets on the video
+    // (fallback chain: video > audio). Real TS packets on the video
     // PID must carry the PCR adaptation field; KLV packets must not.
     let cfg = MuxerConfig::default();
     let video_pid = cfg.programs[0]

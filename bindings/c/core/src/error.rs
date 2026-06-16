@@ -385,7 +385,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //   MuxError::SubtitlePidUsedAsPcrPid -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::KlvPidUsedAsPcrPid      -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::DataPidUsedAsPcrPid     -> TstError::InvalidConfig  (ConfigInvalid kind default)
-    //   MuxError::SubtitleOnlyProgram     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::NoPcrEligibleStream     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::MalformedDescriptor     -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::PmtTooLarge             -> TstError::InvalidConfig  (ConfigInvalid kind default)
     //   MuxError::InvalidStreamHandle     -> TstError::InvalidUsage   (InvalidUsage kind default)
@@ -1080,7 +1080,7 @@ mod tests {
                 TstError::InvalidConfig,
             ),
             (
-                MuxError::SubtitleOnlyProgram { program_number: 1 },
+                MuxError::NoPcrEligibleStream { program_number: 1 },
                 TstError::InvalidConfig,
             ),
             (

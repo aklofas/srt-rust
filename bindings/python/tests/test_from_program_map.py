@@ -2,9 +2,9 @@
 
 Covers: demux→mux round-trip via a captured DemuxEvent.ProgramMap,
 strict offender rejection (DVB subtitling/teletext) + the `drop`
-filter, the Unknown→DataStreamSpec mapping (private-data W2), audio
-language recovery from raw PMT descriptors, drop-argument validation,
-and sync-KLV kind reconstruction (codec=None)."""
+filter, the Unknown→DataStreamSpec mapping (private-data W2), exact
+descriptor preservation for all typed stream kinds (MUX-01/CFG-01),
+drop-argument validation, and sync-KLV kind reconstruction (codec=None)."""
 
 import pytest
 
@@ -154,14 +154,19 @@ def test_from_program_map_unknown_to_data_introspection():
     )
 
 
-def test_audio_language_recovered_from_iso639_descriptor():
+def test_audio_iso639_descriptor_preserved_verbatim_language_none():
+    # MUX-01 / CFG-01: from_program_map uses add_audio (language=None) for
+    # every audio stream. The raw ISO-639 0x0A descriptor passes through
+    # verbatim in stream_descriptors — it is NOT parsed into the `language`
+    # field. This avoids re-encoding ambiguities (uppercase codes, multiple
+    # entries, audio_type bytes) and guarantees byte-identical round-trips.
     audio = StreamInfo(
         pid=0x103,
         stream_type=0x0F,
         kind=StreamKindTag.AUDIO,
         codec=AudioCodec.AAC,
         program_number=1,
-        # ISO 639 language descriptor (tag 0x0A): 3-byte code + audio_type.
+        # ISO 639 language descriptor (tag 0x0A): 3-byte code + audio_type byte.
         raw_descriptors=(RawDescriptor(tag=0x0A, data=b"eng\x00"),),
     )
     pm = ProgramMap(
@@ -172,10 +177,16 @@ def test_audio_language_recovered_from_iso639_descriptor():
         klv_links=(),
     )
     cfg = MuxerConfig.from_program_map(pm)
-    spec = cfg.programs[0].streams[1]
+    prog = cfg.programs[0]
+    spec = prog.streams[1]
     assert isinstance(spec, AudioStreamSpec)
     assert spec.codec is AudioCodec.AAC
-    assert spec.language == b"eng"
+    # language field is None — add_audio is used, not add_audio_with_language.
+    assert spec.language is None
+    # The 0x0A descriptor is preserved verbatim in stream_descriptors as a
+    # TLV byte string: tag (0x0A) + length (4) + data (b"eng\x00").
+    audio_idx = [s.pid for s in prog.streams].index(0x103)
+    assert prog.stream_descriptors[audio_idx] == (b"\x0a\x04eng\x00",)
 
 
 def test_drop_rejects_non_enum_items():

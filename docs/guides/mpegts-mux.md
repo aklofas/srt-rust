@@ -197,10 +197,10 @@ them; DVB subtitling/teletext are the only such kinds.
 | `Video(H265)` — `0x24` | `add_video(pid, VideoCodec::H265)` | Codec-for-codec; Annex-B framing preserved. |
 | `Video(H266)` — `0x33` | `add_video(pid, VideoCodec::H266)` | Codec-for-codec; Annex-B framing preserved. |
 | `Video(Av1)` — `0x06` + `AV01` registration | `add_video(pid, VideoCodec::Av1)` | AV01 registration descriptor auto-re-emitted on the rebuilt PMT. |
-| `Audio(Mp2)` — `0x03` / `0x04` | `add_audio` / `add_audio_with_language` | Demuxer recognizes both `0x03` (ISO/IEC 11172-3, MPEG-1 audio) and `0x04` (ISO/IEC 13818-3, MPEG-2 audio) as `Mp2`; rebuilt PMT emits `0x03`. ISO 639 language descriptor (tag `0x0A`) recovered from `raw_descriptors` when present and plausible — the first three bytes must be a lowercase ISO 639-2 code; anything else (including uppercase) falls back to language-less audio. Never an error if absent. Same language-recovery rule applies to the three audio rows below. |
-| `Audio(Aac)` — `0x0F` | `add_audio` / `add_audio_with_language` | |
-| `Audio(AacLatm)` — `0x11` | `add_audio` / `add_audio_with_language` | |
-| `Audio(Ac3)` — `0x81` | `add_audio` / `add_audio_with_language` | AC-3 registration descriptor auto-re-emitted on the rebuilt PMT. |
+| `Audio(Mp2)` — `0x03` / `0x04` | `add_audio` | Demuxer recognizes both `0x03` (ISO/IEC 11172-3, MPEG-1 audio) and `0x04` (ISO/IEC 13818-3, MPEG-2 audio) as `Mp2`; rebuilt PMT emits `0x03`. Raw PMT descriptors are preserved verbatim in the rebuilt config (MUX-01): the ISO-639 `0x0A` descriptor passes through byte-for-byte — including uppercase codes, multiple entries, and the `audio_type` byte. The `language` field is not separately recovered; `add_audio` (not `add_audio_with_language`) is always used. Same exact-preservation rule applies to the three audio rows below. |
+| `Audio(Aac)` — `0x0F` | `add_audio` | |
+| `Audio(AacLatm)` — `0x11` | `add_audio` | |
+| `Audio(Ac3)` — `0x81` | `add_audio` | AC-3 registration descriptor auto-re-emitted on the rebuilt PMT. |
 | `KlvSync { .. }` — `0x15` | `add_klv(pid, SynchronousMetadata, carries_pts=true)` | `carries_pts` is a PES-level property; the PMT cannot declare it. `true` is the STANAG 4609 norm. |
 | `KlvAsync` — `0x06` + `KLVA` registration | `add_klv(pid, PrivateData, carries_pts=true)` | Same `carries_pts` rule. Callers needing `false` build the config by hand. |
 | `Subtitle(Cea708Standalone)` — `0x06` + `GA94` registration | `add_subtitle(pid, SubtitleCodec::Cea708Standalone)` | Registration descriptor auto-re-emitted. |

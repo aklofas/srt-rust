@@ -243,6 +243,11 @@ impl Muxer {
     ///
     /// For elementary OBU / Annex-B input use [`Self::push_video_to`].
     ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video_wire_to` — see `bindings/c/include/tstrans.h`.
+    /// The single-stream shorthand is `tst_muxer_push_video_wire`.
+    ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of range
     ///   for this muxer's configured video stream count.

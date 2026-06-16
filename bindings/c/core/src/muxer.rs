@@ -12,9 +12,10 @@ use crate::handle::{
 };
 use alloc::boxed::Box;
 use alloc::format;
+use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, Muxer, SubtitleStreamHandle,
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, Muxer, StreamKind, SubtitleStreamHandle,
     VideoStreamHandle,
 };
 
@@ -191,6 +192,121 @@ pub unsafe extern "C" fn tst_muxer_push_video_to(
                 unsafe { crate::error::tst_get_last_error() }
             }
         })
+}
+
+/// Push an already-carried on-wire video access unit onto the muxer's
+/// single video stream (single-stream shorthand).
+///
+/// Emits `wire` verbatim — no Annex-B start-code validation, no AV1 OBU
+/// re-wrapping. Intended for byte-faithful transmux: demux a sample
+/// (`tst_demux_receiver_recv_event` / `tst_demuxer_next_event`), take
+/// `ev.u.sample.payload`, read `ev.u.sample.av1_carriage`, configure the
+/// destination muxer's carriage via `tst_mux_config_set_av1_carriage`, then
+/// push through this function. For H.264/H.265/H.266 you may use
+/// `tst_muxer_push_video` instead (Annex-B is structurally unchanged after
+/// demux).
+///
+/// Resolves only when exactly one video stream is configured across all
+/// programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `AmbiguousTarget`).
+///
+/// # Errors
+///
+/// - `TST_E_INVALID_USAGE` — zero or more than one video stream configured.
+/// - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+/// - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_wire(
+    p: *mut TstMuxer,
+    wire: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> crate::c_types::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(wire, len, "wire") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    handle.inner.with_inner_mut(|m| {
+        // Single-stream resolution: same ambiguity contract as push_video.
+        let handles = m.video_handles();
+        let h = match handles.as_slice() {
+            [single] => *single,
+            _ => {
+                let e = MuxError::AmbiguousTarget {
+                    kind: StreamKind::Video,
+                    count: handles.len(),
+                };
+                record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        match m.push_video_wire_to(h, slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        }
+    })
+}
+
+/// Push an already-carried on-wire video access unit targeting a specific
+/// video elementary stream.
+///
+/// Emits `wire` verbatim — no Annex-B start-code validation, no AV1 OBU
+/// re-wrapping. See `tst_muxer_push_video_wire` for the byte-faithful
+/// transmux workflow.
+///
+/// `handle` is obtained from `tst_mux_config_add_video_stream` at config
+/// time and is stable across managed-sender reconnects. On a single-stream
+/// muxer, prefer `tst_muxer_push_video_wire` — same effect, no handle
+/// required.
+///
+/// # Errors
+///
+/// - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+/// - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+/// - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_wire_to(
+    p: *mut TstMuxer,
+    handle: TstVideoStreamHandle,
+    wire: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> crate::c_types::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(wire, len, "wire") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.inner.with_inner_mut(
+        |m| match m.push_video_wire_to(stream, slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        },
+    )
 }
 
 /// Push one pre-built KLV blob targeting a specific KLV elementary stream.

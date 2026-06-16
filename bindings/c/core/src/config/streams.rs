@@ -9,6 +9,7 @@
 //! used on `tst_event_t` payloads (via `from_core`) so they remain `pub`.
 
 use super::{TstMuxConfig, TstProgramHandle};
+use crate::demux_config::TstAv1CarriageMode;
 use crate::error::{TstError, set_last_error};
 use crate::handle::{
     TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstDataStreamHandle, TstKlvStreamHandle,
@@ -562,6 +563,44 @@ pub unsafe extern "C" fn tst_mux_config_set_buffer_packets(
             return TstError::InvalidConfig as i32;
         };
         cfg.buffer_packets = Some(n);
+        0
+    })
+}
+
+/// Set the AV1 PES carriage mode for this mux config. `mode` is one of
+/// `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING` (0, default — spec-conformant
+/// per the AV1-in-MPEG-2-TS binding, OBUs wrapped in
+/// `ts_open_bitstream_unit()` framing on PES `stream_id=0xBD`) or
+/// `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU` (1 — raw OBU payload on PES
+/// `stream_id=0xE0`, matching ffmpeg / libaom / hls.js / mediamtx senders).
+///
+/// Must match the source carriage when remuxing AV1 via
+/// `tst_muxer_push_video_wire`; read the carriage from
+/// `ev.u.sample.av1_carriage` on the demuxed event.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+/// unrecognized `mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_av1_carriage(
+    cfg: *mut TstMuxConfig,
+    mode: crate::c_types::c_int,
+) -> crate::c_types::c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        let Some(parsed) = TstAv1CarriageMode::from_c_int(mode) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "unrecognized av1 carriage mode (valid: 0..=1)",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.av1_carriage = Some(parsed.to_rust());
         0
     })
 }

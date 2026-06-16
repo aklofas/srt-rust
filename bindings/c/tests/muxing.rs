@@ -7,6 +7,8 @@
 //! gates still apply (a gated-out member compiles to an empty module).
 #[path = "muxing/audio_subtitle.rs"]
 mod audio_subtitle;
+#[path = "muxing/av1_carriage_provenance.rs"]
+mod av1_carriage_provenance;
 #[path = "muxing/codec_stats.rs"]
 mod codec_stats;
 #[path = "muxing/data_stream.rs"]

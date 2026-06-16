@@ -260,9 +260,12 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   (behind `TST_HAS_RTP`). Completes the data-stream surface parity with the
 ///   video/klv/audio/subtitle push families on both shells. Additive — no
 ///   symbol removed, no signature or struct layout changed.
-/// - `14` — AV1 carriage work (WP-B): `TstError::InvalidAv1Obu` (-44) B0 guard
-///   error code. Extended by subsequent WP-B C-surface commits
-///   (carriage-provenance field + wire push) in the same release.
+/// - `14` — AV1 carriage work (WP-B): `TstError::InvalidAv1Obu` (-44) B0
+///   guard error code; `av1_carriage` provenance byte on `TstEventSample`
+///   (repurposed pad byte — 0=`MPEG2_TS_BINDING`, 1=`INTEROP_RAW_OBU`,
+///   0xFF=N/A for non-AV1); `tst_muxer_push_video_wire` /
+///   `tst_muxer_push_video_wire_to` pass-through push for byte-faithful
+///   transmux; `tst_mux_config_set_av1_carriage` mux-side carriage setter.
 pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 14;
 
 // =========================================================================

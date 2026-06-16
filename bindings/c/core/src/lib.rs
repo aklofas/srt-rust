@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 14` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 15` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -266,7 +266,13 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   0xFF=N/A for non-AV1); `tst_muxer_push_video_wire` /
 ///   `tst_muxer_push_video_wire_to` pass-through push for byte-faithful
 ///   transmux; `tst_mux_config_set_av1_carriage` mux-side carriage setter.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 14;
+/// - `15` — REF-PSI-01: `TstNonConformantCode::PmtProgramNumberMismatch`
+///   (= 33). PMT body `program_number` mismatch vs PAT assignment. Surfaces
+///   on `TstEventNonConformant`; `pid` is the PMT PID; `programs[0]` =
+///   `pat_program`, `programs[1]` = `pmt_program` (reuses the two-element
+///   `programs_buf` carrier, same layout as `PidReusedAcrossPrograms`).
+///   The mislabeled topology is NOT adopted. No struct layout change.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 15;
 
 // =========================================================================
 // Runtime version accessors

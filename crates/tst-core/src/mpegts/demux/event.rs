@@ -812,6 +812,18 @@ pub enum NonConformantIssue {
     /// context.
     Av1MissingTsObuFraming { pid: u16 },
 
+    /// A PMT section's body `program_number` (H.222.0 §2.4.4.8) does not match
+    /// the `program_number` the PAT (§2.4.4.4) assigned to this PMT PID. The
+    /// mislabeled topology is NOT adopted. REF-PSI-01.
+    PmtProgramNumberMismatch {
+        /// The PMT PID on which the mislabeled section arrived.
+        pid: u16,
+        /// The `program_number` the PAT assigned to this PMT PID.
+        pat_program: u16,
+        /// The `program_number` found in the PMT body — the mislabeled value.
+        pmt_program: u16,
+    },
+
     /// Other.
     Other(String),
 }
@@ -1178,6 +1190,17 @@ impl core::fmt::Display for NonConformantIssue {
                     f,
                     "AV1 PES on PID 0x{pid:04X} missing ts_open_bitstream_unit \
                      start code (AV1-in-MPEG-2-TS binding §3.2 mandates 0x00 0x00 0x01 prefix)"
+                )
+            }
+            NonConformantIssue::PmtProgramNumberMismatch {
+                pid,
+                pat_program,
+                pmt_program,
+            } => {
+                write!(
+                    f,
+                    "PMT on PID 0x{pid:04X} body program_number={pmt_program} does not match \
+                     PAT assignment program_number={pat_program} (H.222.0 §2.4.4.8 REF-PSI-01)"
                 )
             }
             NonConformantIssue::Other(msg) => {

@@ -100,7 +100,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (28 variants)
+// Non-conformant-issue codes (34 variants, codes 0..=33)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -197,6 +197,13 @@ pub enum TstNonConformantCode {
     /// The KLV metadata payload was also emitted as a separate
     /// `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
     CfiTolerated = 32,
+    /// PMT body `program_number` (H.222.0 §2.4.4.8) does not match the
+    /// `program_number` the PAT (§2.4.4.4) assigned to this PMT PID.
+    /// The mislabeled topology is NOT adopted (REF-PSI-01).
+    /// `pid` carries the PMT PID. `programs[0]` = `pat_program`;
+    /// `programs[1]` = `pmt_program` (reuses the two-element `programs_buf`
+    /// carrier, same layout as `PidReusedAcrossPrograms`).
+    PmtProgramNumberMismatch = 33,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
@@ -555,7 +562,7 @@ pub struct TstEventNonConformant {
     /// before reading. The accompanying `observed_len` field carries
     /// the cumulative inner-byte count discarded.
     pub multi_cell_au_reason: c_int,
-    pub programs: *const u16, // PidReusedAcrossPrograms (len 2)
+    pub programs: *const u16, // PidReusedAcrossPrograms / PmtProgramNumberMismatch (len 2; [0]=pat_program, [1]=pmt_program for the latter)
     pub tags: *const u8,      // SubtitleDescriptorAmbiguous
     pub tag_count: usize,
     pub detail: *const c_char, // Other(String); also human-readable summary
@@ -615,7 +622,8 @@ pub(crate) struct EventArena {
     /// CString buffer for NonConformant::Other(String).detail; one
     /// per convert() call.
     pub(crate) detail_buf: Vec<u8>,
-    /// Programs array for PidReusedAcrossPrograms (always len 2 when used).
+    /// Programs array for PidReusedAcrossPrograms and PmtProgramNumberMismatch
+    /// (always len 2 when used; for the latter [0]=pat_program, [1]=pmt_program).
     pub(crate) programs_buf: [u16; 2],
     /// Tags array for SubtitleDescriptorAmbiguous.
     pub(crate) tags_buf: Vec<u8>,
@@ -1363,6 +1371,19 @@ fn fill_nonconformant(
             // payload beyond the PID.
             body.issue_code = TstNonConformantCode::Av1MissingTsObuFraming as c_int;
             body.pid = *pid;
+        }
+        NonConformantIssue::PmtProgramNumberMismatch {
+            pid,
+            pat_program,
+            pmt_program,
+        } => {
+            // REF-PSI-01. Reuse the `programs_buf` carrier (same two-element
+            // layout as PidReusedAcrossPrograms): programs[0]=pat_program,
+            // programs[1]=pmt_program. No struct growth needed.
+            body.issue_code = TstNonConformantCode::PmtProgramNumberMismatch as c_int;
+            body.pid = *pid;
+            arena.programs_buf = [*pat_program, *pmt_program];
+            body.programs = arena.programs_buf.as_ptr();
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

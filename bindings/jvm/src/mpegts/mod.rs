@@ -551,6 +551,7 @@ fn nonconformant_kind<'local>(
         Ac3SyncMissing { .. } => "AC3_SYNC_MISSING",
         Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",
         Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
+        PmtProgramNumberMismatch { .. } => "PMT_PROGRAM_NUMBER_MISMATCH",
         Other(_) => "OTHER",
     };
     enum_const(env, "NonConformantKind", name)

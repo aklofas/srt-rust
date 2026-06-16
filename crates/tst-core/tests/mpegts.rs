@@ -26,6 +26,8 @@ mod demux_audio;
 mod demux_caps;
 #[path = "mpegts/demux_local.rs"]
 mod demux_local;
+#[path = "mpegts/demux_psi_program_number.rs"]
+mod demux_psi_program_number;
 #[path = "mpegts/demux_multi_program.rs"]
 mod demux_multi_program;
 #[path = "mpegts/demux_pes_validation.rs"]

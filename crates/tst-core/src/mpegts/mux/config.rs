@@ -239,6 +239,16 @@ impl MuxerConfig {
     ///   property the PMT cannot declare, and PTS-carrying KLV is the
     ///   STANAG 4609 norm. Callers that need a PTS-less stream build the
     ///   config by hand.
+    /// - **AV1 carriage**: [`Av1CarriageMode`] is a PES-level property absent
+    ///   from the PMT — `from_program_map` always yields
+    ///   `av1_carriage: Av1CarriageMode::Mpeg2TsBinding` (the spec-conformant
+    ///   default). Callers re-muxing demuxed AV1 must read the `av1_carriage`
+    ///   field on each
+    ///   [`SamplePayload::Video`](crate::mpegts::demux::SamplePayload::Video)
+    ///   event and copy it into this config before re-muxing; push the wire
+    ///   bytes via
+    ///   [`Muxer::push_video_wire_to`](crate::mpegts::mux::Muxer::push_video_wire_to)
+    ///   to preserve the original PES framing.
     /// - **PCR copy rule**: the demuxed `pcr_pid` is copied iff it equals
     ///   the PID of a kept video or audio stream. KLV, data, and subtitle
     ///   PIDs are PCR-ineligible — the PCR pin is not copied (an explicit

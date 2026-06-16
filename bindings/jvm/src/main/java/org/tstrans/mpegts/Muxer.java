@@ -73,6 +73,31 @@ public final class Muxer implements AutoCloseable {
     }
 
     /**
+     * Push one already-carried on-wire video access unit onto the lone configured
+     * video stream. Emits {@code wire} verbatim — no Annex-B start-code check, no
+     * AV1 OBU re-wrapping. Use this for byte-faithful AV1 transmux: configure the
+     * destination muxer to the same {@link Av1CarriageMode} as the source, then
+     * feed {@link DemuxEvent.Video#raw()} here instead of
+     * {@link #pushVideo(byte[], long, boolean)} — {@code pushVideo} would re-wrap
+     * the wire bytes and corrupt an AV1 binding-mode stream (AV1-01).
+     *
+     * <p>For elementary OBU / Annex-B input (encoding directly, not re-muxing),
+     * use {@link #pushVideo} instead.
+     *
+     * @param wire     the on-wire access unit bytes (e.g. {@code Video.raw()} from
+     *                 the demuxer, already in the target carriage framing)
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param keyFrame whether this AU is a random-access point
+     * @throws MuxException {@code INVALID_USAGE} (zero or &gt;1 video stream —
+     *     configure exactly one), or {@code BACKPRESSURE} (queue full — drain via
+     *     {@link #pull}).
+     */
+    public void pushVideoWire(byte[] wire, long pts, boolean keyFrame) throws MuxException {
+        ensureOpen();
+        nPushVideoWire(handle.get(), wire, pts, keyFrame);
+    }
+
+    /**
      * Push one KLV local-set onto the lone configured KLV stream. Pass raw KLV
      * LS bytes — for {@code SYNCHRONOUS_METADATA} streams the muxer auto-prepends
      * the 5-byte {@code Metadata_AU_cell} header (do NOT pre-wrap).
@@ -243,6 +268,8 @@ public final class Muxer implements AutoCloseable {
             int[] streamTypeCodes, boolean[] streamCarriesPts,
             byte[] dataDescBytes, int[] dataDescLens) throws MuxException;
     private static native void nPushVideo(long handle, byte[] nal, long pts, boolean keyFrame)
+            throws MuxException;
+    private static native void nPushVideoWire(long handle, byte[] wire, long pts, boolean keyFrame)
             throws MuxException;
     private static native void nPushKlv(long handle, byte[] klv, long pts, int metadataServiceId)
             throws MuxException;

@@ -696,7 +696,7 @@ fn convert_sample_event(
             codec,
             raw,
             random_access_indicator,
-            ..
+            av1_carriage,
         } => {
             // Raw-first: the demuxer emits the encoded access unit; surface it
             // verbatim as `.raw`. Typed NAL/OBU splitting is opt-in Python-side
@@ -709,6 +709,13 @@ fn convert_sample_event(
             kwargs.set_item("codec", video_codec_to_py(py, mpegts, codec)?)?;
             kwargs.set_item("raw", PyBytes::new_bound(py, raw))?;
             kwargs.set_item("random_access_indicator", *random_access_indicator)?;
+            let av1_carriage_py: pyo3::PyObject = match av1_carriage {
+                Some(mode) => crate::mux::av1_carriage_to_py(py, *mode)?
+                    .into_any()
+                    .unbind(),
+                None => py.None(),
+            };
+            kwargs.set_item("av1_carriage", av1_carriage_py)?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Audio { codec, frames } => {

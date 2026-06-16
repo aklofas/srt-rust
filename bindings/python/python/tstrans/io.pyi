@@ -64,6 +64,7 @@ class Transmuxer:
         *,
         drop: Sequence[StreamKindTag] = ...,
         atomic: bool = ...,
+        config: Optional[DemuxerConfig] = ...,
     ) -> None: ...
     def __enter__(self) -> Transmuxer: ...
     def __exit__(
@@ -84,6 +85,7 @@ def transmux(
     *,
     drop: Sequence[StreamKindTag] = ...,
     atomic: bool = ...,
+    config: Optional[DemuxerConfig] = ...,
 ) -> Transmuxer: ...
 
 __all__ = [

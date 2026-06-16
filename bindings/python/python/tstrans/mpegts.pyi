@@ -314,6 +314,7 @@ class DemuxEvent:
         codec: VideoCodec
         raw: bytes
         random_access_indicator: bool
+        av1_carriage: Optional[Av1CarriageMode] = ...
         # Always a flat list of units (NalUnit | Obu); strict=True raises
         # ValueError on the first ES-conformance issue. For (units, issues),
         # call tstrans.codec.split_units(raw, codec) instead.
@@ -527,7 +528,9 @@ class MuxerConfig:
     def builder() -> MuxerConfigBuilder: ...
     @staticmethod
     def from_program_map(
-        pm: ProgramMap, drop: Optional[Sequence[StreamKindTag]] = ...
+        pm: ProgramMap,
+        drop: Optional[Sequence[StreamKindTag]] = ...,
+        av1_carriage: Optional[Av1CarriageMode] = ...,
     ) -> MuxerConfig: ...
     @property
     def programs(self) -> Tuple[MuxerProgramConfig, ...]: ...
@@ -602,6 +605,15 @@ class Muxer:
         self,
         handle: VideoStreamHandle,
         nal: _BytesLike,
+        *,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz] = ...,
+        key_frame: bool = ...,
+    ) -> None: ...
+    def push_video_wire_to(
+        self,
+        handle: VideoStreamHandle,
+        wire: _BytesLike,
         *,
         pts: Pts90khz,
         dts: Optional[Pts90khz] = ...,

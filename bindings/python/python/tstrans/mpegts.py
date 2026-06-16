@@ -619,14 +619,26 @@ class _VideoEvent(DemuxEvent):
     codec: VideoCodec
     raw: bytes  # the exact encoded access unit (Annex-B for H.26x; on-wire PES payload for AV1)
     random_access_indicator: bool
+    # AV1 carriage provenance from the demuxer. `Some(mode)` for AV1 samples;
+    # `None` for H.264/H.265/H.266 (carriage is an AV1-only concept). Pass
+    # this to `split_units(carriage=...)` and to the destination muxer's
+    # `push_video_wire_to` to ensure a faithful round-trip. Default `None` for
+    # backward compatibility with call sites that construct the event directly.
+    av1_carriage: Optional["Av1CarriageMode"] = None
 
     def parse(self, *, strict: bool = False):
         """Opt-in: split `raw` into typed NAL/OBU units. Lenient drops the issue
-        list (use `tstrans.codec.split_units` if you want the issues)."""
+        list (use `tstrans.codec.split_units` if you want the issues).
+
+        For AV1, the carriage provenance (`self.av1_carriage`) is forwarded to
+        `split_units` automatically so the framing expectation matches the
+        on-wire bytes demuxed from the source stream."""
         from tstrans import codec as _codec
         if strict:
-            return _codec.split_units(self.raw, self.codec, strict=True)
-        units, _issues = _codec.split_units(self.raw, self.codec)
+            return _codec.split_units(self.raw, self.codec, strict=True,
+                                      carriage=self.av1_carriage)
+        units, _issues = _codec.split_units(self.raw, self.codec,
+                                            carriage=self.av1_carriage)
         return units
 
 
@@ -1072,6 +1084,7 @@ class MuxerDrainProxy:
     # silent-BufferFull gap class) or vice versa.
     _PUSH_METHODS = frozenset({
         "push_video", "push_video_to", "push_video_to_with_dts",
+        "push_video_wire_to",
         "push_audio", "push_audio_to",
         "push_klv", "push_klv_to",
         "push_subtitle", "push_subtitle_to",

@@ -558,3 +558,166 @@ def test_transmux_audio_copied_byte_faithfully(tmp_path):
             out_audio.append(bytes(ev.raw))
     assert out_videos == ORIG_AUS
     assert out_audio == audio_pes
+
+
+# ---------------------------------------------------------------------------
+# AV1-01 / AV1-03 acceptance tests (WP-B Task 9)
+# ---------------------------------------------------------------------------
+#
+# AV1 fixture helpers are defined inline here (same logic as
+# test_demux_config_parity.py's _synthetic_av1_au + _build_av1_ts) to avoid
+# cross-test-file imports (pytest rootdir adds tests/ to sys.path, so a plain
+# `from test_demux_config_parity import ...` would work, but duplicating
+# these two small helpers is simpler and avoids the dependency).
+
+def _av1_synthetic_au() -> bytes:
+    """4-OBU AV1 AU: TD + SeqHeader + FrameHeader + TileGroup."""
+
+    def obu(obu_type: int, body: bytes) -> bytes:
+        return bytes([(obu_type << 3) | 0x02, len(body)]) + body
+
+    return (
+        obu(2, b"")           # Temporal Delimiter
+        + obu(1, b"\x00\x00") # Sequence Header (placeholder)
+        + obu(3, b"\x00")     # Frame Header (placeholder)
+        + obu(4, b"\x00\x01\x02")  # Tile Group (placeholder)
+    )
+
+
+def _build_av1_ts_local(mux_mode) -> bytes:
+    """Synthesize a single-AU AV1-in-TS stream under `mux_mode`."""
+    from tstrans.mpegts import (
+        Muxer, MuxerConfig, MuxerConfigBuilder, MuxerProgramConfigBuilder,
+        Pts90khz, VideoCodec,
+    )
+    prog = MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x100)
+    prog.add_video(pid=0x101, codec=VideoCodec.AV1)
+    builder = MuxerConfig.builder()
+    builder.add_program(prog.build())
+    builder.av1_carriage(mux_mode)
+    mux = Muxer(builder.build())
+    handle = mux.video_handles()[0]
+    mux.push_video_to(handle, _av1_synthetic_au(), pts=Pts90khz(90_000), key_frame=True)
+    out = bytearray()
+    buf = bytearray(1316)
+    while True:
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out.extend(buf[:n])
+    return bytes(out)
+
+
+def _collect_av1(path: Path, demux_mode):
+    """Demux `path` under `demux_mode`; return (raw_bytes, av1_carriage) per Video."""
+    from tstrans.mpegts import DemuxerConfig
+    cfg = DemuxerConfig(av1_carriage=demux_mode)
+    videos = []
+    for ev in tio.parse_file(path, config=cfg):
+        if isinstance(ev, DemuxEvent.Video):
+            videos.append((bytes(ev.raw), ev.av1_carriage))
+    return videos
+
+
+def test_av1_binding_transmux_fixpoint(tmp_path: Path) -> None:
+    """Binding-mode AV1 transmux: output AU must be non-empty and
+    byte-identical to the source AU (AV1-01 acceptance for Python)."""
+    from tstrans.mpegts import Av1CarriageMode
+    src = tmp_path / "av1_binding_src.ts"
+    src.write_bytes(_build_av1_ts_local(Av1CarriageMode.MPEG2_TS_BINDING))
+    dst = tmp_path / "av1_binding_dst.ts"
+
+    # Transmux — no config kwarg needed for binding (default is MPEG2_TS_BINDING).
+    with tio.transmux(src, dst) as tx:
+        for ev in tx:
+            tx.write(ev)
+
+    src_videos = _collect_av1(src, Av1CarriageMode.MPEG2_TS_BINDING)
+    out_videos = _collect_av1(dst, Av1CarriageMode.MPEG2_TS_BINDING)
+    assert len(out_videos) >= 1, "at least one AV1 Video event must survive transmux"
+    src_raw = src_videos[0][0]
+    out_raw, out_carriage = out_videos[0]
+    assert len(out_raw) > 0, "transmux must NOT produce an empty AV1 AU (AV1-01)"
+    assert out_raw == src_raw, "output AU must be byte-identical to source"
+    assert out_carriage is Av1CarriageMode.MPEG2_TS_BINDING
+
+
+def test_av1_interop_transmux_fixpoint(tmp_path: Path) -> None:
+    """Interop-mode AV1 transmux: output AU must be non-empty and
+    byte-identical to the source AU (AV1-01, interop mode)."""
+    from tstrans.mpegts import Av1CarriageMode, DemuxerConfig
+    src = tmp_path / "av1_interop_src.ts"
+    src.write_bytes(_build_av1_ts_local(Av1CarriageMode.INTEROP_RAW_OBU))
+    dst = tmp_path / "av1_interop_dst.ts"
+
+    interop_cfg = DemuxerConfig(av1_carriage=Av1CarriageMode.INTEROP_RAW_OBU)
+    with tio.transmux(src, dst, config=interop_cfg) as tx:
+        for ev in tx:
+            tx.write(ev)
+
+    src_videos = _collect_av1(src, Av1CarriageMode.INTEROP_RAW_OBU)
+    out_videos = _collect_av1(dst, Av1CarriageMode.INTEROP_RAW_OBU)
+    assert len(out_videos) >= 1, "at least one AV1 Video event must survive interop transmux"
+    src_raw = src_videos[0][0]
+    out_raw, out_carriage = out_videos[0]
+    assert len(out_raw) > 0, "interop transmux must NOT produce an empty AV1 AU (AV1-01)"
+    assert out_raw == src_raw, "interop AU must be byte-identical to source"
+    assert out_carriage is Av1CarriageMode.INTEROP_RAW_OBU
+
+
+def test_av1_carriage_provenance_on_binding_event(tmp_path: Path) -> None:
+    """AV1 binding-mode demux event carries MPEG2_TS_BINDING provenance (Part A)."""
+    from tstrans.mpegts import Av1CarriageMode
+    ts_path = tmp_path / "binding.ts"
+    ts_path.write_bytes(_build_av1_ts_local(Av1CarriageMode.MPEG2_TS_BINDING))
+    videos = _collect_av1(ts_path, Av1CarriageMode.MPEG2_TS_BINDING)
+    assert len(videos) >= 1
+    _, carriage = videos[0]
+    assert carriage is Av1CarriageMode.MPEG2_TS_BINDING
+
+
+def test_h264_event_av1_carriage_is_none(tmp_path: Path) -> None:
+    """H.264 Video events must have av1_carriage == None (Part A provenance)."""
+    src = tmp_path / "h264.ts"
+    _write_video_klv_src(src)
+    for ev in tio.parse_file(src):
+        if isinstance(ev, DemuxEvent.Video):
+            assert ev.av1_carriage is None, (
+                f"H.264 event must have av1_carriage=None, got {ev.av1_carriage!r}"
+            )
+            break
+    else:
+        pytest.fail("no Video event found in H.264 source")
+
+
+def test_av1_parse_binding_mode_no_spurious_issues(tmp_path: Path) -> None:
+    """AV1-03 for Python: binding-mode ev.parse(strict=True) succeeds without
+    raising (the demuxer carriage is forwarded to split_units automatically)."""
+    from tstrans.mpegts import Av1CarriageMode, DemuxerConfig
+    ts_path = tmp_path / "binding.ts"
+    ts_path.write_bytes(_build_av1_ts_local(Av1CarriageMode.MPEG2_TS_BINDING))
+    cfg = DemuxerConfig(av1_carriage=Av1CarriageMode.MPEG2_TS_BINDING)
+    for ev in tio.parse_file(ts_path, config=cfg):
+        if isinstance(ev, DemuxEvent.Video):
+            # strict=True must not raise for a conformant binding-mode AU.
+            units = ev.parse(strict=True)
+            assert len(units) >= 1, "parse must recover at least one OBU"
+            break
+    else:
+        pytest.fail("no Video event found in binding-mode AV1 source")
+
+
+def test_av1_parse_interop_mode_no_spurious_issues(tmp_path: Path) -> None:
+    """AV1-03 for Python: interop-mode ev.parse(strict=True) succeeds without
+    raising (carriage is threaded so raw-OBU AU parses cleanly)."""
+    from tstrans.mpegts import Av1CarriageMode, DemuxerConfig
+    ts_path = tmp_path / "interop.ts"
+    ts_path.write_bytes(_build_av1_ts_local(Av1CarriageMode.INTEROP_RAW_OBU))
+    cfg = DemuxerConfig(av1_carriage=Av1CarriageMode.INTEROP_RAW_OBU)
+    for ev in tio.parse_file(ts_path, config=cfg):
+        if isinstance(ev, DemuxEvent.Video):
+            units = ev.parse(strict=True)
+            assert len(units) >= 1, "interop parse must recover at least one OBU"
+            break
+    else:
+        pytest.fail("no Video event found in interop-mode AV1 source")

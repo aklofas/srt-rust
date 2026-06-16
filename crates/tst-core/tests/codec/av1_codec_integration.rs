@@ -6,7 +6,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
 use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
-    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+    Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 fn obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
@@ -69,7 +69,9 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
         } = e
         {
             // Raw-first: split the encoded AU into OBUs via the opt-in call.
-            if let VideoPayload::Obus(obus) = split_video(&raw, VideoCodec::Av1).0 {
+            if let VideoPayload::Obus(obus) =
+                split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding).0
+            {
                 all_obus.extend(obus);
             }
         }

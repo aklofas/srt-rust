@@ -9,7 +9,9 @@
 use tst_core::codec::h264;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload, split_video};
-use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+use tst_core::mpegts::mux::{
+    Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 const SPS_RBSP: &[u8] = include_bytes!("../fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
 const PPS_RBSP: &[u8] = include_bytes!("../fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
@@ -102,7 +104,9 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
         } = ev
         {
             // Raw-first: split the encoded AU into NALs via the opt-in call.
-            let VideoPayload::Nals(nals) = split_video(&raw, codec).0 else {
+            let VideoPayload::Nals(nals) =
+                split_video(&raw, codec, Av1CarriageMode::Mpeg2TsBinding).0
+            else {
                 continue;
             };
             // parse_parameter_sets walks every NalUnit in the AU and collects

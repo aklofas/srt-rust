@@ -240,6 +240,7 @@ fn repack_event(
                     // re-scanning NALs for nal_type==5 — it reflects the
                     // upstream encoder's own RA signal.
                     random_access_indicator,
+                    av1_carriage,
                     ..
                 },
             ..
@@ -257,7 +258,8 @@ fn repack_event(
                 // if RAI is set OR an IDR slice is present, mark as key_frame.
                 // The OR fallback handles upstream muxers that fail to set RAI
                 // on IDR boundaries (some software encoders).
-                let (split, _issues) = split_video(&raw, codec);
+                let (split, _issues) =
+                    split_video(&raw, codec, av1_carriage.unwrap_or_default());
                 let has_idr = matches!(&split, VideoPayload::Nals(nals)
                     if nals.iter().any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. })));
                 let key_frame = random_access_indicator || has_idr;

@@ -113,7 +113,13 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
         // skipped — run demux_to_events.rs for the full annotated event dump.
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec, raw, .. },
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    raw,
+                    av1_carriage,
+                    ..
+                },
             ..
         } = ev
         else {
@@ -122,9 +128,10 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
 
         // Raw-first: the demuxer hands you the encoded access unit. Parsing it
         // into NAL/OBU units is now an OPT-IN call via `split_video` (mirrors
-        // how KLV surfaces raw bytes with an opt-in decode). We split here and
-        // drop any ES-conformance `_issues`.
-        let (payload, _issues) = split_video(&raw, codec);
+        // how KLV surfaces raw bytes with an opt-in decode). Pass `av1_carriage`
+        // from the sample so AV1 interop streams parse correctly; H.26x ignores
+        // it. We drop any ES-conformance `_issues`.
+        let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
 
         // Two payload shapes ride VideoPayload:
         //   * Nals(Vec<NalUnit>) for H.264 / H.265 / H.266 — NAL-framed codecs

@@ -18,8 +18,8 @@ use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
 };
 use tst_core::mpegts::mux::{
-    AudioCodec as MuxAudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder,
-    SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+    AudioCodec as MuxAudioCodec, Av1CarriageMode, KlvStreamType, Muxer, MuxerConfig,
+    MuxerProgramConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
 };
 use tst_core::mpegts::stats::StreamCodecStats;
 use tst_core::shared::SharedBytes;
@@ -162,7 +162,9 @@ fn stream_codec_stats_h264_idr_increments_video_counters() {
     }
     // The 2 NALs (AUD + IDR) are still recoverable via the opt-in split.
     let raw = raw_au.expect("expected a Video Sample event");
-    let VideoPayload::Nals(nals) = split_video(&raw, VideoCodec::H264).0 else {
+    let VideoPayload::Nals(nals) =
+        split_video(&raw, VideoCodec::H264, Av1CarriageMode::Mpeg2TsBinding).0
+    else {
         panic!("expected NALs from split_video");
     };
     assert!(

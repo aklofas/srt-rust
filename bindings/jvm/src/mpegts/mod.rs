@@ -319,13 +319,15 @@ pub(crate) fn convert_event<'local>(
                     codec,
                     raw,
                     random_access_indicator,
+                    av1_carriage,
                     ..
                 } => {
                     // Raw-first: the demuxer emits the encoded access unit; split
                     // it into NAL/OBU units here via the opt-in `split_video` so
                     // the Java VideoUnit list surface is unchanged. ES-conformance
                     // issues are not surfaced over this binding.
-                    let (video_payload, _issues) = split_video(raw, *codec);
+                    let (video_payload, _issues) =
+                        split_video(raw, *codec, av1_carriage.unwrap_or_default());
                     let units = build_video_units(env, &video_payload)?;
                     let codec_obj = codec_enum(env, "VideoCodec", video_codec_name(*codec))?;
                     // `raw` parity with tst-py: the exact encoded AU as a heap

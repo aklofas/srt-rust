@@ -23,6 +23,7 @@ use tst_core::codec::av1;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload, split_video,
 };
+use tst_core::mpegts::mux::Av1CarriageMode;
 
 fn ffprobe_available() -> bool {
     Command::new("ffprobe").arg("-version").output().is_ok()
@@ -118,7 +119,9 @@ fn av1_fixtures_match_ffprobe() {
             } = ev
             {
                 // Raw-first: split the encoded AU into OBUs via the opt-in call.
-                if let VideoPayload::Obus(obus) = split_video(&raw, VideoCodec::Av1).0 {
+                if let VideoPayload::Obus(obus) =
+                    split_video(&raw, VideoCodec::Av1, Av1CarriageMode::Mpeg2TsBinding).0
+                {
                     all_obus.extend(obus);
                 }
             }

@@ -4381,8 +4381,8 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::StreamInfo
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::StreamInfo
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::StreamInfo
 pub fn tst_core::mpegts::demux::pts_to_duration(tst_core::mpegts::common::Pts90khz) -> core::time::Duration
-pub fn tst_core::mpegts::demux::split_video(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec) -> (tst_core::mpegts::demux::event::VideoPayload, alloc::vec::Vec<tst_core::mpegts::demux::event::NonConformantIssue>)
-pub fn tst_core::mpegts::demux::split_video_strict(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec) -> core::result::Result<tst_core::mpegts::demux::event::VideoPayload, tst_core::mpegts::demux::event::NonConformantIssue>
+pub fn tst_core::mpegts::demux::split_video(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec, tst_core::mpegts::mux::Av1CarriageMode) -> (tst_core::mpegts::demux::event::VideoPayload, alloc::vec::Vec<tst_core::mpegts::demux::event::NonConformantIssue>)
+pub fn tst_core::mpegts::demux::split_video_strict(&tst_core::shared::SharedBytes, tst_core::mpegts::demux::event::VideoCodec, tst_core::mpegts::mux::Av1CarriageMode) -> core::result::Result<tst_core::mpegts::demux::event::VideoPayload, tst_core::mpegts::demux::event::NonConformantIssue>
 pub mod tst_core::mpegts::descriptors
 pub mod tst_core::mpegts::descriptors::parse
 #[non_exhaustive] pub enum tst_core::mpegts::descriptors::parse::DescriptorParseError

@@ -364,28 +364,34 @@ pub fn split_obus(es_payload: &SharedBytes) -> (Vec<Obu>, Vec<NonConformantIssue
 /// non-conformance issues observed (lenient — issues are reported, not fatal).
 ///
 /// The returned NAL/OBU payloads are zero-copy `SharedBytes` views into `raw`.
-/// For AV1, this call also reverses the `ts_open_bitstream_unit()` binding
-/// framing (§3.2) when present: if `raw` is binding-framed it is unwrapped
-/// first and the OBUs view into the unwrapped buffer (a non-zero-copy ~2× case);
-/// if `raw` carries no binding framing (interop / raw-OBU carriage) the OBUs are
-/// split directly and an [`NonConformantIssue::Av1MissingTsObuFraming`] issue is
-/// included. See the design spec for AV1 carriage.
+///
+/// For AV1 the `av1_carriage` parameter governs framing expectations (H.26x
+/// ignores it):
+///
+/// - **`Mpeg2TsBinding`** ([`crate::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding`]):
+///   reverses `ts_open_bitstream_unit()` binding framing (§3.2) when present;
+///   if framing is absent the OBUs are split directly and
+///   [`NonConformantIssue::Av1MissingTsObuFraming`] is included (binding
+///   REQUIRES framing, so its absence is non-conformant).
+/// - **`InteropRawObu`** ([`crate::mpegts::mux::Av1CarriageMode::InteropRawObu`]):
+///   splits raw OBUs directly and does NOT surface `Av1MissingTsObuFraming`
+///   — absent framing is correct for interop carriage (AV1-03).
+///
+/// Pass the `av1_carriage` field from the demux
+/// [`crate::mpegts::demux::SamplePayload::Video`] to get the right behavior.
 pub fn split_video(
     raw: &SharedBytes,
     codec: VideoCodec,
+    av1_carriage: crate::mpegts::mux::Av1CarriageMode,
 ) -> (VideoPayload, Vec<NonConformantIssue>) {
+    use crate::mpegts::mux::Av1CarriageMode;
     match codec {
         VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
             let (nals, issues) = split_nals(raw, codec);
             (VideoPayload::Nals(nals), issues)
         }
-        VideoCodec::Av1 => {
-            // AV1 carriage: the demuxer no longer unwraps the
-            // `ts_open_bitstream_unit()` binding framing during demux, so the
-            // opt-in parse does it here. This keeps `split_video(raw, Av1)`
-            // producing the same OBUs the demuxer's Video arm produced for
-            // BOTH binding (§3.2) and interop (raw-OBU) carriage.
-            match unwrap_av1_binding(raw) {
+        VideoCodec::Av1 => match av1_carriage {
+            Av1CarriageMode::Mpeg2TsBinding => match unwrap_av1_binding(raw) {
                 Av1BindingUnwrap::Conformant(unwrapped) => {
                     // Binding-framed: OBU views point into the unwrapped buffer
                     // (the documented AV1 ~2× allocation case).
@@ -393,17 +399,22 @@ pub fn split_video(
                     (VideoPayload::Obus(obus), issues)
                 }
                 Av1BindingUnwrap::MissingFraming => {
-                    // No binding framing — interop / raw-OBU carriage. Split
-                    // the raw bytes directly and surface the missing-framing
-                    // issue so it isn't lost (the demuxer used to raise it).
+                    // Binding REQUIRES ts_open_bitstream_unit framing; its
+                    // absence is genuinely non-conformant here.
                     // `pid: 0` sentinel — this opt-in path has no PID context
                     // (matching how `split_obus` sentinel-pids its own issues).
                     let (obus, mut issues) = split_obus(raw);
                     issues.insert(0, NonConformantIssue::Av1MissingTsObuFraming { pid: 0 });
                     (VideoPayload::Obus(obus), issues)
                 }
+            },
+            Av1CarriageMode::InteropRawObu => {
+                // Interop carriage carries raw OBUs by design — split directly
+                // and do NOT flag missing framing (AV1-03).
+                let (obus, issues) = split_obus(raw);
+                (VideoPayload::Obus(obus), issues)
             }
-        }
+        },
     }
 }
 
@@ -411,11 +422,17 @@ pub fn split_video(
 /// mirroring `klv::st0601::decode_strict`. Use when the caller wants
 /// malformed-ES rejection (the responsibility the demuxer's `StrictMode` no
 /// longer carries for ES content).
+///
+/// The `av1_carriage` parameter is passed through to [`split_video`]; see its
+/// doc for carriage semantics. Pass the `av1_carriage` field from the demux
+/// [`crate::mpegts::demux::SamplePayload::Video`] so that interop samples
+/// parse cleanly under interop carriage (AV1-03).
 pub fn split_video_strict(
     raw: &SharedBytes,
     codec: VideoCodec,
+    av1_carriage: crate::mpegts::mux::Av1CarriageMode,
 ) -> Result<VideoPayload, NonConformantIssue> {
-    let (payload, mut issues) = split_video(raw, codec);
+    let (payload, mut issues) = split_video(raw, codec, av1_carriage);
     if !issues.is_empty() {
         return Err(issues.swap_remove(0));
     }
@@ -1265,7 +1282,11 @@ mod tests {
     fn split_video_h264_returns_nal_views_and_no_issues_for_clean_au() {
         // Two H.264 NALs: SPS (nal_ref_idc=3, type=7) then a slice (type=5), 4-byte start codes.
         let au = SharedBytes::from_vec(vec![0, 0, 0, 1, 0x67, 0xAA, 0xBB, 0, 0, 0, 1, 0x65, 0xCC]);
-        let (payload, issues) = split_video(&au, VideoCodec::H264);
+        let (payload, issues) = split_video(
+            &au,
+            VideoCodec::H264,
+            crate::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding,
+        );
         assert!(issues.is_empty());
         match payload {
             VideoPayload::Nals(nals) => assert_eq!(nals.len(), 2),
@@ -1277,7 +1298,11 @@ mod tests {
     fn split_video_strict_errs_on_malformed_nal_header() {
         // forbidden_zero_bit set (0x80) → a NAL-header issue.
         let au = SharedBytes::from_vec(vec![0, 0, 0, 1, 0x80, 0x00]);
-        let res = split_video_strict(&au, VideoCodec::H264);
+        let res = split_video_strict(
+            &au,
+            VideoCodec::H264,
+            crate::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding,
+        );
         assert!(res.is_err());
     }
 

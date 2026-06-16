@@ -21,7 +21,7 @@ use tst_core::mpegts::demux::event::{
 };
 use tst_core::mpegts::demux::split_video;
 use tst_core::mpegts::mux::{
-    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+    Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 /// Wrap a NAL body in an Annex-B start code + 2-byte H.266 NAL header.
@@ -266,7 +266,7 @@ fn h266_end_to_end_parses_minimal_vps_sps_pps() {
                         ..
                     },
                 ..
-            } => match split_video(raw, VideoCodec::H266).0 {
+            } => match split_video(raw, VideoCodec::H266, Av1CarriageMode::Mpeg2TsBinding).0 {
                 VideoPayload::Nals(nals) => Some(nals),
                 _ => None,
             },

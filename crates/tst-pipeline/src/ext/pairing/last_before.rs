@@ -36,12 +36,18 @@ impl LastBeforeState {
                 stream,
                 pts,
                 dts,
-                payload: SamplePayload::Video { codec, raw, .. },
+                payload:
+                    SamplePayload::Video {
+                        codec,
+                        raw,
+                        av1_carriage,
+                        ..
+                    },
             } if stream.pid == self.video_pid => {
                 // Video parsing is now opt-in: the demuxer emits the raw access
                 // unit and the pairing projection splits it into NAL/OBU units
                 // here (issues are not surfaced separately by the pairer).
-                let (payload, _issues) = split_video(&raw, codec);
+                let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
                 let v = VideoSample {
                     stream,
                     pts,

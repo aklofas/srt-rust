@@ -126,9 +126,11 @@ fn main() {
                         // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
                         // marked as decoder-resync points (IDR / CRA / etc.).
                         random_access_indicator,
+                        av1_carriage,
                         ..
                     } => {
-                        let (payload, _issues) = split_video(&raw, codec);
+                        let (payload, _issues) =
+                            split_video(&raw, codec, av1_carriage.unwrap_or_default());
                         match payload {
                             VideoPayload::Nals(nals) => {
                                 println!(

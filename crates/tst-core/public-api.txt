@@ -3034,6 +3034,10 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed::pid:
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms::programs: [u16; 2]
+pub tst_core::mpegts::demux::event::NonConformantIssue::PmtProgramNumberMismatch
+pub tst_core::mpegts::demux::event::NonConformantIssue::PmtProgramNumberMismatch::pat_program: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PmtProgramNumberMismatch::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PmtProgramNumberMismatch::pmt_program: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiCcDiscontinuity
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiCcDiscontinuity::expected: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiCcDiscontinuity::observed: u8
@@ -3900,6 +3904,10 @@ pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms::programs: [u16; 2]
+pub tst_core::mpegts::demux::NonConformantIssue::PmtProgramNumberMismatch
+pub tst_core::mpegts::demux::NonConformantIssue::PmtProgramNumberMismatch::pat_program: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PmtProgramNumberMismatch::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PmtProgramNumberMismatch::pmt_program: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PsiCcDiscontinuity
 pub tst_core::mpegts::demux::NonConformantIssue::PsiCcDiscontinuity::expected: u8
 pub tst_core::mpegts::demux::NonConformantIssue::PsiCcDiscontinuity::observed: u8

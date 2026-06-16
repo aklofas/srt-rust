@@ -472,6 +472,7 @@ class NonConformantKind(enum.Enum):
     MISSING_METADATA_DESCRIPTOR = "missing_metadata_descriptor"
     SUBTITLE_DESCRIPTOR_AMBIGUOUS = "subtitle_descriptor_ambiguous"
     SUBTITLE_DESCRIPTOR_MALFORMED = "subtitle_descriptor_malformed"
+    PMT_PROGRAM_NUMBER_MISMATCH = "pmt_program_number_mismatch"
     OTHER = "other"
 
 

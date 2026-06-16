@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 14` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 15` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -136,8 +136,14 @@
  *   0xFF=N/A for non-AV1); `tst_muxer_push_video_wire` /
  *   `tst_muxer_push_video_wire_to` pass-through push for byte-faithful
  *   transmux; `tst_mux_config_set_av1_carriage` mux-side carriage setter.
+ * - `15` — REF-PSI-01: `TstNonConformantCode::PmtProgramNumberMismatch`
+ *   (= 33). PMT body `program_number` mismatch vs PAT assignment. Surfaces
+ *   on `TstEventNonConformant`; `pid` is the PMT PID; `programs[0]` =
+ *   `pat_program`, `programs[1]` = `pmt_program` (reuses the two-element
+ *   `programs_buf` carrier, same layout as `PidReusedAcrossPrograms`).
+ *   The mislabeled topology is NOT adopted. No struct layout change.
  */
-#define TST_ABI_VERSION_MINOR 14
+#define TST_ABI_VERSION_MINOR 15
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -679,6 +685,15 @@ enum tst_nonconformant_code
    * `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
    */
   TST_NONCONFORMANT_CODE_CFI_TOLERATED = 32,
+  /**
+   * PMT body `program_number` (H.222.0 §2.4.4.8) does not match the
+   * `program_number` the PAT (§2.4.4.4) assigned to this PMT PID.
+   * The mislabeled topology is NOT adopted (REF-PSI-01).
+   * `pid` carries the PMT PID. `programs[0]` = `pat_program`;
+   * `programs[1]` = `pmt_program` (reuses the two-element `programs_buf`
+   * carrier, same layout as `PidReusedAcrossPrograms`).
+   */
+  TST_NONCONFORMANT_CODE_PMT_PROGRAM_NUMBER_MISMATCH = 33,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

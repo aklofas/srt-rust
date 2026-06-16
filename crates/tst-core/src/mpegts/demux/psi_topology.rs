@@ -406,6 +406,26 @@ impl super::demuxer::Demuxer {
             None => return, // PMT arriving on PID not in PAT — drop.
         };
 
+        // REF-PSI-01: reject PMT whose body program_number doesn't match PAT.
+        // A validly-checksummed PMT for program B arriving on program A's PMT
+        // PID is a structural violation per H.222.0 §2.4.4.8. Do NOT adopt
+        // topology; emit a NonConformant diagnostic.
+        if pmt.program_number != program_number {
+            self.queue_nonconformant(
+                StreamId {
+                    pid: pmt_pid,
+                    kind: StreamKind::Unknown(0),
+                    program_number,
+                },
+                NonConformantIssue::PmtProgramNumberMismatch {
+                    pid: pmt_pid,
+                    pat_program: program_number,
+                    pmt_program: pmt.program_number,
+                },
+            );
+            return;
+        }
+
         // Dedup: re-emit only if version changed or first ever.
         if let Some(tracker) = self.programs.get(&pmt_pid) {
             if Some(pmt.version) == tracker.pmt_version {

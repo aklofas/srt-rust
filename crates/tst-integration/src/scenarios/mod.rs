@@ -834,6 +834,7 @@ pub fn nonconformant_issue_code(
         NonConformantIssue::LatmFraming { .. } => "LATM_FRAMING",
         NonConformantIssue::Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",
         NonConformantIssue::Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
+        NonConformantIssue::PmtProgramNumberMismatch { .. } => "PMT_PROGRAM_NUMBER_MISMATCH",
         NonConformantIssue::Other(_) => "OTHER",
     }
     .into()

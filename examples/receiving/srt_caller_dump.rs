@@ -297,6 +297,7 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
             // packet (ISO/IEC 13818-1 §2.4.3.4); marker for AUs the encoder
             // treats as decoder-resync points.
             random_access_indicator,
+            ..
         } => match split_video(raw, *codec).0 {
             VideoPayload::Nals(nals) => {
                 // NAL-unit type tally so you can see slice/IDR/SPS/PPS/SEI

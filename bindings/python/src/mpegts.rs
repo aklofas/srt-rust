@@ -696,6 +696,7 @@ fn convert_sample_event(
             codec,
             raw,
             random_access_indicator,
+            ..
         } => {
             // Raw-first: the demuxer emits the encoded access unit; surface it
             // verbatim as `.raw`. Typed NAL/OBU splitting is opt-in Python-side

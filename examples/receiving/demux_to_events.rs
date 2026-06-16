@@ -126,6 +126,7 @@ fn main() {
                         // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
                         // marked as decoder-resync points (IDR / CRA / etc.).
                         random_access_indicator,
+                        ..
                     } => {
                         let (payload, _issues) = split_video(&raw, codec);
                         match payload {

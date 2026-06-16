@@ -49,6 +49,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
                 SharedBytes::from_vec(au)
             },
             random_access_indicator: frame_index % 30 == 0,
+            av1_carriage: None,
         },
     }
 }

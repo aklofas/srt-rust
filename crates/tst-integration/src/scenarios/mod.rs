@@ -601,6 +601,7 @@ pub fn demux_to_core_events(ts_bytes: &[u8]) -> Vec<CoreEvent> {
                         codec,
                         raw: au,
                         random_access_indicator,
+                        ..
                     } => {
                         // Raw-first: the demuxer emits the encoded access unit;
                         // recover the parsed NAL/OBU bodies via the opt-in

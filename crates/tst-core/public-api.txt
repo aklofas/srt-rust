@@ -3133,6 +3133,7 @@ pub tst_core::mpegts::demux::event::SamplePayload::Unknown
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown::raw: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::event::SamplePayload::Video
+pub tst_core::mpegts::demux::event::SamplePayload::Video::av1_carriage: core::option::Option<tst_core::mpegts::mux::Av1CarriageMode>
 pub tst_core::mpegts::demux::event::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::event::SamplePayload::Video::random_access_indicator: bool
 pub tst_core::mpegts::demux::event::SamplePayload::Video::raw: tst_core::shared::SharedBytes
@@ -3998,6 +3999,7 @@ pub tst_core::mpegts::demux::SamplePayload::Unknown
 pub tst_core::mpegts::demux::SamplePayload::Unknown::raw: tst_core::shared::SharedBytes
 pub tst_core::mpegts::demux::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::SamplePayload::Video
+pub tst_core::mpegts::demux::SamplePayload::Video::av1_carriage: core::option::Option<tst_core::mpegts::mux::Av1CarriageMode>
 pub tst_core::mpegts::demux::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::SamplePayload::Video::random_access_indicator: bool
 pub tst_core::mpegts::demux::SamplePayload::Video::raw: tst_core::shared::SharedBytes

@@ -192,6 +192,17 @@ pub enum SamplePayload {
         /// signal is independent of NAL-level type and reflects the
         /// stream-level RA contract.
         random_access_indicator: bool,
+        /// AV1 carriage provenance. `Some(mode)` for AV1
+        /// samples — the carriage the demuxer was configured for
+        /// ([`crate::mpegts::demux::DemuxerConfig::av1_carriage`]); `None` for H.264/H.265/H.266
+        /// (carriage is an AV1-only concept). `raw` is the exact on-wire PES
+        /// payload regardless: in `Mpeg2TsBinding` mode it is
+        /// `ts_open_bitstream_unit()`-framed, in `InteropRawObu` mode it is
+        /// raw OBUs. To re-mux it faithfully, configure the destination
+        /// muxer's carriage to this value and push `raw` via
+        /// `Muxer::push_video_wire_to`. To parse it, pass this carriage to
+        /// [`split_video`](crate::mpegts::demux::split_video).
+        av1_carriage: Option<crate::mpegts::mux::Av1CarriageMode>,
     },
     Audio {
         codec: AudioCodec,

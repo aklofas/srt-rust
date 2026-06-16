@@ -240,6 +240,7 @@ fn repack_event(
                     // re-scanning NALs for nal_type==5 — it reflects the
                     // upstream encoder's own RA signal.
                     random_access_indicator,
+                    ..
                 },
             ..
         } => {

@@ -806,6 +806,7 @@ fn fill_sample(
             codec: vc,
             raw,
             random_access_indicator: rai,
+            ..
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             random_access_indicator = u8::from(*rai);
@@ -1634,6 +1635,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: shared,
                 random_access_indicator: true,
+                av1_carriage: None,
             },
         };
         let mut arena = EventArena::new();
@@ -1672,6 +1674,9 @@ mod tests {
                 codec: VideoCodec::Av1,
                 raw: shared,
                 random_access_indicator: true,
+                // av1_carriage: the C ABI does not surface this field
+                // (fill_sample ignores it); value is irrelevant here.
+                av1_carriage: None,
             },
         };
         let mut arena = EventArena::new();
@@ -1710,6 +1715,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: shared,
                 random_access_indicator: true,
+                av1_carriage: None,
             },
         };
         let mut arena = EventArena::new();
@@ -1767,6 +1773,7 @@ mod tests {
                 codec: VideoCodec::Av1,
                 raw: shared,
                 random_access_indicator: true,
+                av1_carriage: None,
             },
         };
         let mut arena = EventArena::new();
@@ -1809,6 +1816,7 @@ mod tests {
                 codec: VideoCodec::Av1,
                 raw: shared,
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         };
         let mut arena = EventArena::new();

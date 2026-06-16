@@ -3360,28 +3360,36 @@ fn py_video_codec_to_rust(
 /// `strict=False` (default) returns `(units, issues)` where `units` is a
 /// `list[NalUnit] | list[Obu]` and `issues` is a `list[str]` of
 /// human-readable descriptions of any conformance issues found.
+///
+/// `carriage` is the AV1 carriage mode (a Python `Av1CarriageMode` enum
+/// member, or `None` to default to `Mpeg2TsBinding`). Ignored for
+/// H.264/H.265/H.266. For AV1, pass the `av1_carriage` field from the
+/// `DemuxEvent.Video` so the framing expectation matches the on-wire bytes.
 #[pyfunction]
-#[pyo3(signature = (raw, codec, *, strict = false))]
+#[pyo3(signature = (raw, codec, *, strict = false, carriage = None))]
 fn split_units(
     py: Python<'_>,
     raw: &[u8],
     codec: &Bound<'_, PyAny>,
     strict: bool,
+    carriage: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyObject> {
     use tst_core::mpegts::demux::{split_video, split_video_strict};
+    use tst_core::mpegts::mux::Av1CarriageMode;
     use tst_core::shared::SharedBytes;
     let rust_codec = py_video_codec_to_rust(py, codec)?;
     let shared = SharedBytes::from_vec(raw.to_vec());
-    // TODO(WP-B Task 9): thread carriage from the Python caller so that
-    // AV1 interop samples parsed via `split_units` use `InteropRawObu`.
-    let carriage = tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding;
+    let rust_carriage = match carriage {
+        Some(v) => crate::mux::py_av1_carriage(v)?,
+        None => Av1CarriageMode::Mpeg2TsBinding,
+    };
     if strict {
-        match split_video_strict(&shared, rust_codec, carriage) {
+        match split_video_strict(&shared, rust_codec, rust_carriage) {
             Ok(vp) => crate::mpegts::convert_video_payload(py, &vp),
             Err(issue) => Err(pyo3::exceptions::PyValueError::new_err(format!("{issue}"))),
         }
     } else {
-        let (vp, issues) = split_video(&shared, rust_codec, carriage);
+        let (vp, issues) = split_video(&shared, rust_codec, rust_carriage);
         let units = crate::mpegts::convert_video_payload(py, &vp)?;
         let issue_strs: Vec<String> = issues.iter().map(|i| format!("{i}")).collect();
         Ok((units, issue_strs).into_py(py))

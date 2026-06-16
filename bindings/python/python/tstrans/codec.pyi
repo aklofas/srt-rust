@@ -751,10 +751,13 @@ def split_units(
     codec: Any,
     *,
     strict: bool = ...,
+    carriage: Optional[Any] = ...,
 ) -> Union[Tuple[List[Any], List[str]], List[Any]]: ...
 # strict=False (default) → (units, issues) where units is List[NalUnit]|List[Obu]
 # and issues is List[str]; strict=True → units only, raising ValueError on the
 # first ES-conformance issue.
+# carriage — Optional[Av1CarriageMode]; forwarded from DemuxEvent.Video.av1_carriage
+# so split_units uses the right framing expectation for AV1. Ignored for H.26x.
 def parse_audio(
     raw: _BytesLike,
     codec: Any,

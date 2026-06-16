@@ -975,12 +975,18 @@ impl PyMuxerConfig {
     /// (first video → first KLV → first audio). `klv_links` are
     /// ignored — the muxer re-derives metadata linkage from its own
     /// configuration. Mirrors Rust's `MuxerConfig::from_program_map`.
+    ///
+    /// `av1_carriage` — optional `Av1CarriageMode` enum member (or `None`
+    /// to keep the default `MPEG2_TS_BINDING`). Pass the source carriage
+    /// when building a transmux destination so the output carriage matches
+    /// the input.
     #[staticmethod]
-    #[pyo3(signature = (pm, drop = None))]
+    #[pyo3(signature = (pm, drop = None, av1_carriage = None))]
     fn from_program_map(
         py: Python<'_>,
         pm: &Bound<'_, PyAny>,
         drop: Option<&Bound<'_, PyAny>>,
+        av1_carriage: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let core_pm = py_program_map(pm)?;
         let core_drop = match drop {
@@ -993,9 +999,12 @@ impl PyMuxerConfig {
                 tags
             }
         };
-        RustMuxerConfig::from_program_map(&core_pm, &core_drop)
-            .map(|inner| Self { inner })
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        let mut inner = RustMuxerConfig::from_program_map(&core_pm, &core_drop)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        if let Some(mode) = av1_carriage {
+            inner.av1_carriage = py_av1_carriage(mode)?;
+        }
+        Ok(Self { inner })
     }
 
     /// Tuple of [`MuxerProgramConfig`] entries — one per program in
@@ -1326,6 +1335,51 @@ impl PyMuxer {
                 self.inner
                     .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)
             }
+        });
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push pre-framed (on-wire) video bytes to a specific stream without
+    /// re-wrapping. For AV1, `raw` is the exact PES payload as demuxed
+    /// (binding-framed or raw-OBU depending on the muxer's `av1_carriage`
+    /// setting). For H.264/H.265/H.266 this is equivalent to
+    /// `push_video_to_with_dts` — both paths emit the bytes verbatim
+    /// into the TS PES. Use this in transmux loops to avoid the
+    /// binding-mode double-wrap that would produce an empty AU (AV1-01).
+    ///
+    /// `dts=None` (default) emits a PTS-only PES header; supply `dts`
+    /// for reordered streams that carry a genuine decode timestamp.
+    ///
+    /// No Annex-B or OBU validation is performed — bytes are emitted
+    /// verbatim. `MuxError(InvalidStreamHandle)` or
+    /// `MuxError(BufferFull)` are the only possible errors.
+    #[pyo3(signature = (handle, wire, *, pts, dts = None, key_frame = false))]
+    pub fn push_video_wire_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyVideoStreamHandle>,
+        wire: &[u8],
+        pts: &Bound<'_, PyAny>,
+        dts: Option<&Bound<'_, PyAny>>,
+        key_frame: bool,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        let rust_dts = match dts {
+            Some(v) => Some(py_pts90khz(v)?),
+            None => None,
+        };
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| match rust_dts {
+            None => self
+                .inner
+                .push_video_wire_to(handle_inner, wire, rust_pts, key_frame),
+            Some(rust_dts) => self.inner.push_video_wire_to_with_dts(
+                handle_inner,
+                wire,
+                rust_pts,
+                rust_dts,
+                key_frame,
+            ),
         });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }

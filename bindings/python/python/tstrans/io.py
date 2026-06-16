@@ -322,6 +322,7 @@ def transmux(
     *,
     drop: Sequence[StreamKindTag] = (),
     atomic: bool = False,
+    config: Optional[DemuxerConfig] = None,
 ) -> "Transmuxer":
     """Open a demux→remux bridge from `src` to `dst`: iterate demux
     events and write back the ones to keep — byte-faithful for
@@ -359,9 +360,15 @@ def transmux(
     temp-file machinery: `dst` appears only on clean exit (`os.replace`
     from a same-directory `*.partial`); on an exception nothing is left
     at the destination.
+
+    `config` — optional `DemuxerConfig` forwarded to the source demuxer.
+    Use `DemuxerConfig(av1_carriage=Av1CarriageMode.INTEROP_RAW_OBU)` when
+    the source was produced by ffmpeg / libaom / mediamtx interop tools
+    so the demuxer uses the right AV1 framing expectation and the
+    destination muxer is configured to match.
     """
 
-    return Transmuxer(src, dst, drop=drop, atomic=atomic)
+    return Transmuxer(src, dst, drop=drop, atomic=atomic, config=config)
 
 
 class Transmuxer:
@@ -379,9 +386,11 @@ class Transmuxer:
     internally from the event's source PID (see `transmux` for the
     construction story):
 
-    - Video → `push_video_to_with_dts(handle, raw, pts, dts,
-      key_frame)`; `dts=None` is preserved as a PTS-only PES, not
-      coerced to dts=pts.
+    - Video → `push_video_wire_to(handle, raw, pts, dts, key_frame)`;
+      emits the demuxed bytes verbatim (no re-wrapping). For AV1
+      binding-mode this avoids the double-wrap that would otherwise
+      produce an empty AU (AV1-01). `dts=None` is preserved as a
+      PTS-only PES, not coerced to dts=pts.
     - Audio → `push_audio_to(handle, raw, pts)` (the mux push API
       carries no audio dts; dts≠pts audio does not occur for
       MP2/AAC/AC-3).
@@ -411,6 +420,7 @@ class Transmuxer:
         "_dst",
         "_drop",
         "_atomic",
+        "_config",
         "_events",
         "_pm",
         "_sink",
@@ -434,11 +444,13 @@ class Transmuxer:
         *,
         drop: Sequence[StreamKindTag] = (),
         atomic: bool = False,
+        config: Optional[DemuxerConfig] = None,
     ) -> None:
         self._src = Path(src)
         self._dst = Path(dst)
         self._drop = tuple(drop)
         self._atomic = atomic
+        self._config = config
         self._events = None  # shared single-pass generator
         self._pm = None  # first program's ProgramMap (identity anchor)
         self._sink = None  # MuxerFileSink, entered on first ProgramMap
@@ -483,7 +495,7 @@ class Transmuxer:
         return self._events
 
     def _event_gen(self) -> Iterator[DemuxEvent]:
-        for ev in parse_file(self._src):
+        for ev in parse_file(self._src, config=self._config):
             if isinstance(ev, DemuxEvent.ProgramMap):
                 self._on_program_map(ev)
             yield ev
@@ -510,7 +522,15 @@ class Transmuxer:
         # Build the output side. Order matters: nothing is recorded
         # until every fallible step succeeded, so a from_program_map
         # strictness error (or an unopenable dst) leaves no half-state.
-        config = MuxerConfig.from_program_map(pm, drop=list(self._drop))
+        #
+        # Thread the source AV1 carriage from the demuxer config so the
+        # destination muxer writes the same framing (binding-mode or
+        # interop-raw-OBU). For binding-mode sources (default) this is a
+        # no-op (from_program_map already defaults to MPEG2_TS_BINDING).
+        src_carriage = self._config.av1_carriage if self._config is not None else None
+        config = MuxerConfig.from_program_map(
+            pm, drop=list(self._drop), av1_carriage=src_carriage
+        )
         muxer = Muxer(config)
         sink = MuxerFileSink(muxer, self._dst, atomic=self._atomic)
         proxy = sink.__enter__()
@@ -576,7 +596,12 @@ class Transmuxer:
             handle = self._handle_for(ev)
             if handle is None:
                 return
-            self._proxy.push_video_to_with_dts(
+            # Wire-push: emit `ev.raw` verbatim without re-wrapping. For AV1
+            # binding-mode, `ev.raw` is already `ts_open_bitstream_unit()`-
+            # framed; re-wrapping via `push_video_to_with_dts` would produce
+            # an empty AU (AV1-01). For H.26x the wire bytes are identical
+            # to what `push_video_to_with_dts` would write, so this is safe.
+            self._proxy.push_video_wire_to(
                 handle,
                 ev.raw,
                 pts=ev.pts,

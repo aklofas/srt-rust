@@ -137,6 +137,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         }
     }

@@ -449,6 +449,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         };
         let out = p.feed(v);
@@ -487,6 +488,7 @@ mod tests {
                 codec: VideoCodec::H265,
                 raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         };
         let out = p.feed(v);
@@ -531,6 +533,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         };
         let _ = p.feed(sync_klv);
@@ -598,6 +601,7 @@ mod tests {
                 codec: VideoCodec::H264,
                 raw: SharedBytes::from_vec(Vec::new()),
                 random_access_indicator: false,
+                av1_carriage: None,
             },
         }
     }
@@ -691,6 +695,7 @@ mod proptests {
                     codec: VideoCodec::H264,
                     raw: SharedBytes::from_vec(Vec::new()),
                     random_access_indicator: false,
+                    av1_carriage: None,
                 },
             },
             SyntheticEvent::Klv(pts) => DemuxEvent::Metadata {

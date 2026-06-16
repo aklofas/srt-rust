@@ -319,6 +319,7 @@ pub(crate) fn convert_event<'local>(
                     codec,
                     raw,
                     random_access_indicator,
+                    ..
                 } => {
                     // Raw-first: the demuxer emits the encoded access unit; split
                     // it into NAL/OBU units here via the opt-in `split_video` so

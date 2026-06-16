@@ -242,6 +242,11 @@ impl super::demuxer::Demuxer {
                         codec,
                         raw,
                         random_access_indicator: rai,
+                        av1_carriage: if codec == VideoCodec::Av1 {
+                            Some(self.options.av1_carriage)
+                        } else {
+                            None
+                        },
                     },
                 });
             }

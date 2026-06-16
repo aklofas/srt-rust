@@ -409,6 +409,40 @@ fn av1_binding_mode_emits_one_start_code_per_obu_on_wire() {
     );
 }
 
+/// Task 5 (AV1-01/AV1-03): the demux `SamplePayload::Video` is stamped with the
+/// carriage mode the demuxer was configured for. A binding-mode demuxer on a
+/// binding-mode sender must report `Some(Av1CarriageMode::Mpeg2TsBinding)`.
+#[test]
+fn binding_demux_stamps_sample_with_binding_carriage() {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let mut mux = Muxer::new(cfg).unwrap();
+    let h = mux.video_handles()[0];
+    mux.push_video_to(h, &synthetic_av1_au(), Pts90khz::new(90_000), true)
+        .unwrap();
+    let ts = drain_mux(&mut mux);
+    let mut demux = Demuxer::new(); // default = binding
+    demux.feed(&ts).unwrap();
+    demux.flush();
+    let mut carriage = None;
+    while let Some(e) = demux.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { av1_carriage, .. },
+            ..
+        } = e
+        {
+            carriage = av1_carriage;
+            break;
+        }
+    }
+    assert_eq!(carriage, Some(Av1CarriageMode::Mpeg2TsBinding));
+}
+
 // Suppress unused import warning when StreamId-only branches don't fire.
 #[allow(dead_code)]
 fn _unused_imports(_: StreamId) {}

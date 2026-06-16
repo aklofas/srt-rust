@@ -54,6 +54,7 @@ ALLOWLIST=(
     "tst_mux_config_add_video_stream"
     "tst_mux_config_add_klv_stream"
     "tst_mux_config_add_data_stream"
+    "tst_mux_config_set_av1_carriage"
     "tst_mux_config_set_buffer_packets"
     "tst_mux_config_set_pcr_interval_ms"
     "tst_mux_config_set_pcr_pid"

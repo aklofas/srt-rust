@@ -441,7 +441,17 @@ pub struct TstEventSample {
     /// without correlating back to the most recent ProgramMap event. Zero
     /// for known stream types (use `codec` field instead).
     pub stream_type: u8,
-    pub _pad: [u8; 2],
+    /// (Video only) AV1 carriage provenance: `0` =
+    /// `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING`, `1` =
+    /// `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU`, `0xFF` = not applicable
+    /// (non-AV1 sample or AV1 with unknown carriage). Mirrors
+    /// `TstAv1CarriageMode`. For byte-faithful transmux, set the
+    /// destination muxer's carriage to this value via
+    /// `tst_mux_config_set_av1_carriage`, then push `payload` through
+    /// `tst_muxer_push_video_wire` — NOT `tst_muxer_push_video`, which
+    /// would re-wrap binding-framed OBUs and corrupt the stream.
+    pub av1_carriage: u8,
+    pub _pad: [u8; 1],
     /// (Video, NAL-shaped codecs) Parsed NAL-unit views of the access unit
     /// in `payload`. Null for non-video samples and AV1 (see `obus`).
     /// (`nal_count` may be 0.)
@@ -455,8 +465,13 @@ pub struct TstEventSample {
     /// / `_close` call on this handle.
     /// * Video (since v0.2.0; null before): the exact encoded access unit
     ///   — Annex-B byte stream for H.264/H.265/H.266, on-wire PES payload
-    ///   for AV1. Feed it back to `tst_muxer_push_video` for byte-faithful
-    ///   transmux. The parsed view of the same AU is in `nals` / `obus`.
+    ///   for AV1. For H.264/H.265/H.266: feed it back to
+    ///   `tst_muxer_push_video` for byte-faithful transmux. For AV1: use
+    ///   `tst_muxer_push_video_wire` (with the muxer configured via
+    ///   `tst_mux_config_set_av1_carriage` to match `av1_carriage`) —
+    ///   `tst_muxer_push_video` would re-wrap binding-framed OBUs and
+    ///   corrupt the stream. The parsed view of the same AU is in
+    ///   `nals` / `obus`.
     /// * Audio: the raw frame bytes (e.g. ADTS for AAC).
     /// * Subtitle / Unknown: the raw PES payload bytes.
     pub payload: *const u8,
@@ -782,6 +797,11 @@ fn fill_program_map(
     };
 }
 
+/// `TstEventSample::av1_carriage` "not applicable" sentinel: the sample is
+/// non-AV1, or AV1 with an unknown/future carriage mode. Distinct from the
+/// `0`/`1` carriage discriminants (`MPEG2_TS_BINDING` / `INTEROP_RAW_OBU`).
+pub(crate) const TST_AV1_CARRIAGE_NA: u8 = 0xFF;
+
 fn fill_sample(
     arena: &mut EventArena,
     stream: &tst_core::mpegts::demux::StreamId,
@@ -801,6 +821,8 @@ fn fill_sample(
     let payload_len: usize;
     let mut random_access_indicator: u8 = 0;
     let mut stream_type: u8 = 0;
+    // N/A sentinel for non-AV1 samples; overwritten to 0 or 1 in the Video arm.
+    let mut av1_carriage_byte: u8 = TST_AV1_CARRIAGE_NA;
     match payload {
         SamplePayload::Video {
             codec: vc,
@@ -811,6 +833,14 @@ fn fill_sample(
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             random_access_indicator = u8::from(*rai);
+            // 0=binding, 1=interop, 0xFF=N/A (non-AV1 or unknown).
+            // `Av1CarriageMode` is `#[non_exhaustive]`; the wildcard catches
+            // any future variants and falls back to the N/A sentinel.
+            av1_carriage_byte = match av1_carriage {
+                Some(tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding) => 0,
+                Some(tst_core::mpegts::mux::Av1CarriageMode::InteropRawObu) => 1,
+                Some(_) | None => TST_AV1_CARRIAGE_NA,
+            };
             // Raw-first: copy the encoded access unit once; `payload`/
             // `payload_len` expose it (parity with tst-py's `.raw` and the
             // JVM's `DemuxEvent.Video.raw`). Then split into NAL/OBU units
@@ -909,7 +939,8 @@ fn fill_sample(
         codec,
         random_access_indicator,
         stream_type,
-        _pad: [0; 2],
+        av1_carriage: av1_carriage_byte,
+        _pad: [0; 1],
         nals: nals_ptr,
         nal_count,
         obus: obus_ptr,
@@ -1675,8 +1706,7 @@ mod tests {
                 codec: VideoCodec::Av1,
                 raw: shared,
                 random_access_indicator: true,
-                // av1_carriage: the C ABI does not surface this field
-                // (fill_sample ignores it); value is irrelevant here.
+                // av1_carriage: None → fill_sample maps to 0xFF (N/A sentinel).
                 av1_carriage: None,
             },
         };

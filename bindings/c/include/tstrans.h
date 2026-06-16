@@ -130,9 +130,12 @@
  *   (behind `TST_HAS_RTP`). Completes the data-stream surface parity with the
  *   video/klv/audio/subtitle push families on both shells. Additive — no
  *   symbol removed, no signature or struct layout changed.
- * - `14` — AV1 carriage work (WP-B): `TstError::InvalidAv1Obu` (-44) B0 guard
- *   error code. Extended by subsequent WP-B C-surface commits
- *   (carriage-provenance field + wire push) in the same release.
+ * - `14` — AV1 carriage work (WP-B): `TstError::InvalidAv1Obu` (-44) B0
+ *   guard error code; `av1_carriage` provenance byte on `TstEventSample`
+ *   (repurposed pad byte — 0=`MPEG2_TS_BINDING`, 1=`INTEROP_RAW_OBU`,
+ *   0xFF=N/A for non-AV1); `tst_muxer_push_video_wire` /
+ *   `tst_muxer_push_video_wire_to` pass-through push for byte-faithful
+ *   transmux; `tst_mux_config_set_av1_carriage` mux-side carriage setter.
  */
 #define TST_ABI_VERSION_MINOR 14
 
@@ -1591,7 +1594,19 @@ typedef struct TstEventSample {
    * for known stream types (use `codec` field instead).
    */
   uint8_t stream_type;
-  uint8_t _pad[2];
+  /**
+   * (Video only) AV1 carriage provenance: `0` =
+   * `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING`, `1` =
+   * `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU`, `0xFF` = not applicable
+   * (non-AV1 sample or AV1 with unknown carriage). Mirrors
+   * `TstAv1CarriageMode`. For byte-faithful transmux, set the
+   * destination muxer's carriage to this value via
+   * `tst_mux_config_set_av1_carriage`, then push `payload` through
+   * `tst_muxer_push_video_wire` — NOT `tst_muxer_push_video`, which
+   * would re-wrap binding-framed OBUs and corrupt the stream.
+   */
+  uint8_t av1_carriage;
+  uint8_t _pad[1];
   /**
    * (Video, NAL-shaped codecs) Parsed NAL-unit views of the access unit
    * in `payload`. Null for non-video samples and AV1 (see `obus`).
@@ -1610,8 +1625,13 @@ typedef struct TstEventSample {
    * / `_close` call on this handle.
    * * Video (since v0.2.0; null before): the exact encoded access unit
    *   — Annex-B byte stream for H.264/H.265/H.266, on-wire PES payload
-   *   for AV1. Feed it back to `tst_muxer_push_video` for byte-faithful
-   *   transmux. The parsed view of the same AU is in `nals` / `obus`.
+   *   for AV1. For H.264/H.265/H.266: feed it back to
+   *   `tst_muxer_push_video` for byte-faithful transmux. For AV1: use
+   *   `tst_muxer_push_video_wire` (with the muxer configured via
+   *   `tst_mux_config_set_av1_carriage` to match `av1_carriage`) —
+   *   `tst_muxer_push_video` would re-wrap binding-framed OBUs and
+   *   corrupt the stream. The parsed view of the same AU is in
+   *   `nals` / `obus`.
    * * Audio: the raw frame bytes (e.g. ADTS for AAC).
    * * Subtitle / Unknown: the raw PES payload bytes.
    */
@@ -2753,6 +2773,23 @@ void tst_mux_config_free(struct tst_mux_config_t *p);
 struct tst_mux_config_t *tst_mux_config_new(void);
 
 /**
+ * Set the AV1 PES carriage mode for this mux config. `mode` is one of
+ * `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING` (0, default — spec-conformant
+ * per the AV1-in-MPEG-2-TS binding, OBUs wrapped in
+ * `ts_open_bitstream_unit()` framing on PES `stream_id=0xBD`) or
+ * `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU` (1 — raw OBU payload on PES
+ * `stream_id=0xE0`, matching ffmpeg / libaom / hls.js / mediamtx senders).
+ *
+ * Must match the source carriage when remuxing AV1 via
+ * `tst_muxer_push_video_wire`; read the carriage from
+ * `ev.u.sample.av1_carriage` on the demuxed event.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `mode`.
+ */
+int tst_mux_config_set_av1_carriage(struct tst_mux_config_t *cfg, int mode);
+
+/**
  * Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
  * Must be >= 10.
  */
@@ -3467,6 +3504,63 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
                             size_t len,
                             int64_t pts_90khz,
                             bool key_frame);
+
+/**
+ * Push an already-carried on-wire video access unit onto the muxer's
+ * single video stream (single-stream shorthand).
+ *
+ * Emits `wire` verbatim — no Annex-B start-code validation, no AV1 OBU
+ * re-wrapping. Intended for byte-faithful transmux: demux a sample
+ * (`tst_demux_receiver_recv_event` / `tst_demuxer_next_event`), take
+ * `ev.u.sample.payload`, read `ev.u.sample.av1_carriage`, configure the
+ * destination muxer's carriage via `tst_mux_config_set_av1_carriage`, then
+ * push through this function. For H.264/H.265/H.266 you may use
+ * `tst_muxer_push_video` instead (Annex-B is structurally unchanged after
+ * demux).
+ *
+ * Resolves only when exactly one video stream is configured across all
+ * programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `AmbiguousTarget`).
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — zero or more than one video stream configured.
+ * - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+ * - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+ */
+
+int tst_muxer_push_video_wire(struct tst_muxer_t *p,
+                              const uint8_t *wire,
+                              size_t len,
+                              int64_t pts_90khz,
+                              bool key_frame);
+
+/**
+ * Push an already-carried on-wire video access unit targeting a specific
+ * video elementary stream.
+ *
+ * Emits `wire` verbatim — no Annex-B start-code validation, no AV1 OBU
+ * re-wrapping. See `tst_muxer_push_video_wire` for the byte-faithful
+ * transmux workflow.
+ *
+ * `handle` is obtained from `tst_mux_config_add_video_stream` at config
+ * time and is stable across managed-sender reconnects. On a single-stream
+ * muxer, prefer `tst_muxer_push_video_wire` — same effect, no handle
+ * required.
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+ * - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+ * - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+ */
+
+int tst_muxer_push_video_wire_to(struct tst_muxer_t *p,
+                                 tst_video_stream_handle_t handle,
+                                 const uint8_t *wire,
+                                 size_t len,
+                                 int64_t pts_90khz,
+                                 bool key_frame);
 
 /**
  * Reset stats counters for a `tst_muxer_t` to zero.

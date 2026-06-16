@@ -15,7 +15,10 @@ mypy --strict clean.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union, final
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, final
+
+if TYPE_CHECKING:
+    from tstrans.mpegts import Av1CarriageMode
 
 # Bytes-like input accepted by the parsers. PyO3's &[u8] extractor takes any
 # buffer-protocol object; the raw-first entry points also accept SharedBytes-
@@ -751,13 +754,13 @@ def split_units(
     codec: Any,
     *,
     strict: bool = ...,
-    carriage: Optional[Any] = ...,
+    carriage: Optional[Av1CarriageMode] = ...,
 ) -> Union[Tuple[List[Any], List[str]], List[Any]]: ...
 # strict=False (default) → (units, issues) where units is List[NalUnit]|List[Obu]
 # and issues is List[str]; strict=True → units only, raising ValueError on the
 # first ES-conformance issue.
-# carriage — Optional[Av1CarriageMode]; forwarded from DemuxEvent.Video.av1_carriage
-# so split_units uses the right framing expectation for AV1. Ignored for H.26x.
+# carriage — forwarded from DemuxEvent.Video.av1_carriage so split_units uses the
+# right framing expectation for AV1. Ignored for H.26x.
 def parse_audio(
     raw: _BytesLike,
     codec: Any,

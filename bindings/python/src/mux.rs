@@ -1002,6 +1002,8 @@ impl PyMuxerConfig {
         let mut inner = RustMuxerConfig::from_program_map(&core_pm, &core_drop)
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
         if let Some(mode) = av1_carriage {
+            // av1_carriage has no cross-field invariants; safe to assign after
+            // from_program_map's internal validate().
             inner.av1_carriage = py_av1_carriage(mode)?;
         }
         Ok(Self { inner })

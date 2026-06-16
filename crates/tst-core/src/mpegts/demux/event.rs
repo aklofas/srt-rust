@@ -200,7 +200,8 @@ pub enum SamplePayload {
         /// `ts_open_bitstream_unit()`-framed, in `InteropRawObu` mode it is
         /// raw OBUs. To re-mux it faithfully, configure the destination
         /// muxer's carriage to this value and push `raw` via
-        /// `Muxer::push_video_wire_to`. To parse it, pass this carriage to
+        /// [`Muxer::push_video_wire_to`](crate::mpegts::mux::Muxer::push_video_wire_to).
+        /// To parse it, pass this carriage to
         /// [`split_video`](crate::mpegts::demux::split_video).
         av1_carriage: Option<crate::mpegts::mux::Av1CarriageMode>,
     },

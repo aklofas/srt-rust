@@ -20,6 +20,14 @@ use super::state::{ts_packets_for, validate_annex_b, wrap_av1_obus_binding};
 use super::ts::{AdaptationField, write_packet};
 use super::types::{Av1CarriageMode, StreamKind, VideoCodec, VideoStreamHandle};
 
+/// Whether the caller-supplied bytes are elementary (need binding
+/// framing in `Mpeg2TsBinding` mode) or already in on-wire carriage form
+/// (emitted verbatim — used by the wire push for byte-faithful re-mux).
+enum VideoInputForm {
+    Elementary,
+    Wire,
+}
+
 impl Muxer {
     /// Push one H.264 / H.265 access unit in Annex-B framing.
     ///
@@ -156,7 +164,14 @@ impl Muxer {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxError> {
-        self.push_video_to_internal(handle, nal, PesPtsField::PtsOnly(pts), pts, key_frame)
+        self.push_video_to_internal(
+            handle,
+            nal,
+            PesPtsField::PtsOnly(pts),
+            pts,
+            key_frame,
+            VideoInputForm::Elementary,
+        )
     }
 
     /// Push one access unit with explicit composition (PTS) and decode (DTS)
@@ -210,14 +225,86 @@ impl Muxer {
             PesPtsField::PtsAndDts { pts, dts },
             pts,
             key_frame,
+            VideoInputForm::Elementary,
         )
     }
 
-    /// Shared body for `push_video_to` and `push_video_to_with_dts`.
+    /// Push one video access unit that is ALREADY in the muxer's configured
+    /// on-wire carriage form — emitted verbatim as the PES payload with no
+    /// framing transformation and no Annex-B validation.
+    ///
+    /// This is the byte-faithful re-mux counterpart to demuxed
+    /// [`SamplePayload::Video::raw`](crate::mpegts::demux::SamplePayload):
+    /// configure this muxer's carriage to the sample's `av1_carriage`
+    /// provenance and feed `raw` straight back here. For AV1 in
+    /// `Mpeg2TsBinding` mode the input is expected to already be
+    /// `ts_open_bitstream_unit()`-framed (the demuxer's raw payload);
+    /// [`Self::push_video_to`] would re-wrap it and corrupt it (AV1-01).
+    ///
+    /// For elementary OBU / Annex-B input use [`Self::push_video_to`].
+    ///
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of range
+    ///   for this muxer's configured video stream count.
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
+    ///
+    /// `InvalidNal` and `InvalidAv1Obu` are never raised on this path — the
+    /// bytes are emitted verbatim with no Annex-B/OBU validation or framing.
+    pub fn push_video_wire_to(
+        &mut self,
+        handle: VideoStreamHandle,
+        wire: &[u8],
+        pts: Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        self.push_video_to_internal(
+            handle,
+            wire,
+            PesPtsField::PtsOnly(pts),
+            pts,
+            key_frame,
+            VideoInputForm::Wire,
+        )
+    }
+
+    /// PTS+DTS variant of [`Self::push_video_wire_to`] for reordered streams.
+    ///
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of range
+    ///   for this muxer's configured video stream count.
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
+    ///
+    /// `InvalidNal` and `InvalidAv1Obu` are never raised on this path — the
+    /// bytes are emitted verbatim with no Annex-B/OBU validation or framing.
+    pub fn push_video_wire_to_with_dts(
+        &mut self,
+        handle: VideoStreamHandle,
+        wire: &[u8],
+        pts: Pts90khz,
+        dts: Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        self.push_video_to_internal(
+            handle,
+            wire,
+            PesPtsField::PtsAndDts { pts, dts },
+            pts,
+            key_frame,
+            VideoInputForm::Wire,
+        )
+    }
+
+    /// Shared body for `push_video_to`, `push_video_to_with_dts`,
+    /// `push_video_wire_to`, and `push_video_wire_to_with_dts`.
     ///
     /// `pts_field` controls the PES header shape (PTS-only vs PTS+DTS);
     /// `pacing_pts` is the timestamp used for PCR / PSI cadence and stats
     /// (always the presentation time — DTS doesn't drive scheduling).
+    /// `form` selects whether `nal` is an elementary AU that may need
+    /// binding-mode framing (`Elementary`) or is already in on-wire form
+    /// and must be emitted verbatim (`Wire`).
     fn push_video_to_internal(
         &mut self,
         handle: VideoStreamHandle,
@@ -225,6 +312,7 @@ impl Muxer {
         pts_field: PesPtsField,
         pacing_pts: Pts90khz,
         key_frame: bool,
+        form: VideoInputForm,
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
         if prog_idx >= self.video_streams.len() || within_idx >= self.video_streams[prog_idx].len()
@@ -240,8 +328,10 @@ impl Muxer {
         let codec = self.video_streams[prog_idx][within_idx].codec;
         // AV1 carries OBUs (AV1 spec §5), not Annex-B NAL units — its push
         // payload is the OBU bitstream and must skip the Annex-B start-code
-        // check that H.264 / H.265 / H.266 require.
-        if !matches!(codec, VideoCodec::Av1) {
+        // check that H.264 / H.265 / H.266 require. Wire-form pushes also
+        // skip validation — the bytes are already on-wire payloads, not
+        // elementary bitstream.
+        if matches!(form, VideoInputForm::Elementary) && !matches!(codec, VideoCodec::Av1) {
             validate_annex_b(nal)?;
         }
 
@@ -254,6 +344,9 @@ impl Muxer {
         //   in `InteropRawObu` mode.
         // H.222.0 §2.4.3.7 leaves the alignment bit codec-defined for
         // H.264 / H.265 / H.266 — keep them unset.
+        //
+        // `av1_binding` keys off the CARRIAGE configuration, not the input
+        // form — a Wire-form binding-AV1 push still emits stream_id 0xBD.
         let av1_binding = matches!(codec, VideoCodec::Av1)
             && matches!(self.config.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
         let stream_id = if av1_binding {
@@ -269,12 +362,13 @@ impl Muxer {
         let pts = pacing_pts;
 
         // Bytes that will land in the PES payload (after the PES header).
-        // In `Mpeg2TsBinding` mode for AV1 streams, the raw OBU input is
-        // wrapped in `ts_open_bitstream_unit()` framing here so the
+        // In `Mpeg2TsBinding` mode for AV1 elementary input, the raw OBUs
+        // are wrapped in `ts_open_bitstream_unit()` framing here so the
         // payload size accounting below (ts_packets_for) sees the final
-        // on-wire length. Wrapping is one extra contiguous scratch
-        // buffer; the hot non-AV1 path is unchanged.
-        let wrapped_scratch: Vec<u8> = if av1_binding {
+        // on-wire length. Wire-form input is already framed and passes
+        // through verbatim — no re-wrap.
+        let do_wrap = av1_binding && matches!(form, VideoInputForm::Elementary);
+        let wrapped_scratch: Vec<u8> = if do_wrap {
             // Reserve an upper bound: 3-byte start code + body + worst-case
             // ~1.5x for emulation-prevention escapes. The wrap function
             // grows the Vec as needed; this preallocation just avoids
@@ -292,7 +386,7 @@ impl Muxer {
         } else {
             Vec::new()
         };
-        let payload_bytes: &[u8] = if av1_binding { &wrapped_scratch } else { nal };
+        let payload_bytes: &[u8] = if do_wrap { &wrapped_scratch } else { nal };
 
         let total = header_len + payload_bytes.len();
         let video_packets = ts_packets_for(total);

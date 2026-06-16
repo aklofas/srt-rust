@@ -291,8 +291,9 @@ pub enum MuxError {
     /// AV1 OBU input could not be framed for binding-mode carriage — the
     /// bytes are not a well-formed elementary OBU stream (e.g. already-
     /// carried on-wire bytes from a demuxer, or a truncated/malformed OBU
-    /// sequence). Use `push_video_wire_to` for already-carried wire bytes;
-    /// pass raw elementary OBUs to `push_video_to`.
+    /// sequence). Use [`Muxer::push_video_wire_to`](crate::mpegts::mux::Muxer::push_video_wire_to)
+    /// for already-carried wire bytes; pass raw elementary OBUs to
+    /// `push_video_to`.
     #[error(
         "AV1 OBU input is not a well-formed elementary OBU stream; use push_video_wire_to for already-carried wire bytes"
     )]

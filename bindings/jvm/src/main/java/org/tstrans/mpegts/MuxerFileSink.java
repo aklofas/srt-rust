@@ -76,6 +76,16 @@ public final class MuxerFileSink implements AutoCloseable {
     }
 
     /**
+     * Push one already-carried on-wire video access unit (pass-through; see
+     * {@link Muxer#pushVideoWire}). Drains pending TS packets to the file after
+     * pushing.
+     */
+    public void pushVideoWire(byte[] wire, long pts, boolean keyFrame) throws MuxException, IOException {
+        muxer.pushVideoWire(wire, pts, keyFrame);
+        drain();
+    }
+
+    /**
      * Push one KLV local-set payload. Drains pending TS packets to the file after
      * pushing.
      */

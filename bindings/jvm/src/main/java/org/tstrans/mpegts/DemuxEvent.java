@@ -58,20 +58,31 @@ public sealed interface DemuxEvent
      *                               payload for AV1 — as a heap (JVM-owned)
      *                               {@link ByteBuffer} copy, safe to retain (true
      *                               zero-copy is deferred to a JDK&nbsp;22+ FFM
-     *                               path). Feed it back to
+     *                               path). For H.264/H.265/H.266, feed it back to
      *                               {@link Muxer#pushVideo(byte[], long, boolean)}
-     *                               for byte-faithful transmux. Mirrors tst-py's
-     *                               {@code .raw}.
+     *                               for byte-faithful transmux. For AV1, use
+     *                               {@link Muxer#pushVideoWire(byte[], long, boolean)}
+     *                               instead (with a destination muxer configured to
+     *                               the same {@link #av1Carriage()} mode) — {@code
+     *                               pushVideo} would re-wrap the wire bytes and
+     *                               corrupt the stream. Mirrors tst-py's {@code .raw}.
      * @param randomAccessIndicator  whether this access unit is a random-access
      *                               point (keyframe)
      * @param codecParseError        always {@code null} for video — the units in
      *                               {@code payload} were split by the binding, so
      *                               typed payload construction cannot fail at
      *                               this layer
+     * @param av1Carriage            AV1 carriage provenance
+     *                               ({@link Av1CarriageMode#MPEG2_TS_BINDING} or
+     *                               {@link Av1CarriageMode#INTEROP_RAW_OBU});
+     *                               {@code null} for non-AV1 codecs. For
+     *                               byte-faithful re-mux, configure the destination
+     *                               muxer to this carriage mode and push {@code raw}
+     *                               via {@link Muxer#pushVideoWire}.
      */
     record Video(StreamId stream, long pts, Long dts, VideoCodec codec,
                  List<VideoUnit> payload, ByteBuffer raw, boolean randomAccessIndicator,
-                 CodecParseException codecParseError) implements DemuxEvent {}
+                 CodecParseException codecParseError, Av1CarriageMode av1Carriage) implements DemuxEvent {}
 
     /**
      * An audio access unit. On a clean AAC / MP2 parse the {@code payload} is a

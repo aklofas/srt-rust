@@ -41,6 +41,7 @@ use tst_core::mpegts::demux::{
     AudioCodec, DemuxEvent, Demuxer, DiscontinuityKind, MetadataKind, NonConformantIssue,
     SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload, split_video,
 };
+use tst_core::mpegts::mux::Av1CarriageMode;
 
 use crate::codec::aac::build_adts_frame;
 use crate::codec::mpegaudio::build_mpeg2_audio_frame;
@@ -112,7 +113,6 @@ pub(crate) fn build_demux_config_from_args(
     lenient_psi: jboolean,
 ) -> tst_core::mpegts::demux::DemuxerConfig {
     use tst_core::mpegts::demux::{DemuxerConfig, StrictMode};
-    use tst_core::mpegts::mux::Av1CarriageMode;
 
     // `DemuxerConfig` is non-exhaustive in `tst_core`, so it can't be built with
     // struct-expression syntax from this crate — assemble it field-by-field on
@@ -334,9 +334,14 @@ pub(crate) fn convert_event<'local>(
                     // (JVM-owned) copy — JDK < 22 forbids direct buffers over
                     // Rust memory.
                     let raw_buf = wrap_heap_byte_buffer(env, raw.as_slice())?;
+                    // av1Carriage: Some(mode) → enum constant; None → null (non-AV1).
+                    let av1_carriage_obj = match av1_carriage {
+                        Some(mode) => enum_const(env, "Av1CarriageMode", av1_carriage_name(*mode))?,
+                        None => JObject::null(),
+                    };
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Video",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;Ljava/nio/ByteBuffer;ZLorg/tstrans/CodecParseException;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;Ljava/nio/ByteBuffer;ZLorg/tstrans/CodecParseException;Lorg/tstrans/mpegts/Av1CarriageMode;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
@@ -349,6 +354,7 @@ pub(crate) fn convert_event<'local>(
                             // binding split the NALs/OBUs itself, so typed
                             // payload construction cannot fail at this layer.
                             JValue::Object(&JObject::null()),
+                            JValue::Object(&av1_carriage_obj),
                         ],
                     )
                     .map_err(|_| ())?
@@ -1036,5 +1042,17 @@ fn subtitle_codec_name(c: SubtitleCodec) -> &'static str {
         SubtitleCodec::DvbTeletext => "DVB_TELETEXT",
         SubtitleCodec::Cea708Standalone => "CEA708_STANDALONE",
         SubtitleCodec::WebVttInTs => "WEBVTT_IN_TS",
+    }
+}
+
+/// `Av1CarriageMode` enum-constant name in `org.tstrans.mpegts.Av1CarriageMode`.
+/// `Av1CarriageMode` is non-exhaustive; unknown future variants fall back to
+/// `MPEG2_TS_BINDING` (the default binding mode) since the demuxer only ever
+/// sets the two real variants today.
+fn av1_carriage_name(mode: Av1CarriageMode) -> &'static str {
+    match mode {
+        Av1CarriageMode::Mpeg2TsBinding => "MPEG2_TS_BINDING",
+        Av1CarriageMode::InteropRawObu => "INTEROP_RAW_OBU",
+        _ => "MPEG2_TS_BINDING",
     }
 }

@@ -34,7 +34,7 @@ use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, Av1CarriageMode, DataStreamHandle, KlvStreamType, Muxer, MuxerConfig,
-    MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
+    MuxerProgramConfigBuilder, StreamKind, SubtitleCodec, VideoCodec,
 };
 
 use crate::error::throw_mux;
@@ -286,6 +286,47 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideo<'local>(
         };
         match REGISTRY.with(handle as u64, |mux| {
             mux.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushVideoWire(handle, wire, pts, keyFrame)` — pass-through push of an
+/// already-carried on-wire video AU. Emits `wire` verbatim — no Annex-B
+/// start-code validation, no AV1 OBU re-wrapping. Mirrors the C ABI's
+/// `tst_muxer_push_video_wire`: resolves the single configured video stream
+/// handle via `video_handles()` and then calls `push_video_wire_to`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWire<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    wire: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let buf = match env.convert_byte_array(&wire) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            // Single-stream resolution: same ambiguity contract as push_video /
+            // C ABI's tst_muxer_push_video_wire.
+            let handles = mux.video_handles();
+            match handles.as_slice() {
+                [h] => mux.push_video_wire_to(*h, &buf, Pts90khz::new(pts), key_frame != 0),
+                _ => Err(MuxError::AmbiguousTarget {
+                    kind: StreamKind::Video,
+                    count: handles.len(),
+                }),
+            }
         }) {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_mux_error(env, &e),

@@ -292,7 +292,7 @@ fn decode_inner(
 
     let mut record = UasDatalinkLs {
         universal_label: ul,
-        declared_version: ul.version_byte(),
+        declared_version: ul.st0601_version_byte(),
         ..UasDatalinkLs::default()
     };
 

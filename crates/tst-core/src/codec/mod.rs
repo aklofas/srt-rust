@@ -79,8 +79,12 @@ pub enum ColourPrimaries {
     Film,
     Bt2020,
     SmpteSt428,
-    SmpteSt431_2,
-    SmpteSt432_1,
+    /// SMPTE RP 431-2 — DCI-P3 primaries (DCI white point). H.273 value 11.
+    /// (RP, not ST — the H.273 informative name is "SMPTE RP 431-2".)
+    SmpteRp431_2,
+    /// SMPTE EG 432-1 — Display P3 primaries (D65 white point). H.273 value 12.
+    /// (EG, not ST — the H.273 informative name is "SMPTE EG 432-1".)
+    SmpteEg432_1,
     Ebu3213E,
     /// Spec-reserved or registry-extension value; preserved verbatim.
     Reserved(u8),
@@ -99,8 +103,8 @@ impl ColourPrimaries {
             8 => Self::Film,
             9 => Self::Bt2020,
             10 => Self::SmpteSt428,
-            11 => Self::SmpteSt431_2,
-            12 => Self::SmpteSt432_1,
+            11 => Self::SmpteRp431_2,
+            12 => Self::SmpteEg432_1,
             22 => Self::Ebu3213E,
             other => Self::Reserved(other),
         }

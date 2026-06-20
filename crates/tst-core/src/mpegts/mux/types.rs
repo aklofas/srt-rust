@@ -152,10 +152,13 @@ pub enum SubtitleCodec {
     /// convention** — ATSC A/53 Part 4 §6.2.3 defines `"GA94"` as the
     /// `user_data_identifier` for caption data **embedded in MPEG-2
     /// video user_data**, not as a stream-level marker for a standalone
-    /// CEA-708 elementary stream. No published spec defines this carriage
-    /// form; the auto-emitted `registration_descriptor` with
-    /// `format_identifier = "GA94"` is interop-with-ATSC-ecosystem-tooling
-    /// best-effort.
+    /// CEA-708 elementary stream. No published spec defines this
+    /// *raw-`cc_data`* carriage form; the auto-emitted
+    /// `registration_descriptor` with `format_identifier = "GA94"` is
+    /// interop-with-ATSC-ecosystem-tooling best-effort. (The
+    /// standards-aligned standalone form — a SMPTE ST 334-2 Caption
+    /// Distribution Packet per EG 43 §6.7 — is not implemented; see
+    /// `docs/project/deferred-features.md` "CEA-708 interop".)
     Cea708Standalone,
     /// WebVTT cues carried inside MPEG-TS PES. **Informal industry
     /// convention** — neither RFC 8216 nor draft-pantos-hls-rfc8216bis

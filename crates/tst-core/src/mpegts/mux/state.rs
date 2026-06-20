@@ -524,6 +524,37 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
         {
             bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
         }
+        // Synchronous KLV (stream_type 0x15 = "Metadata in PES",
+        // ITU-T H.222.0 §2.12.4) additionally REQUIRES, per MISB
+        // ST 1402.2 ST 1402-15/-16/-17, a metadata_descriptor (tag
+        // 0x26) for each metadata service plus a single
+        // metadata_std_descriptor (tag 0x27), both inside the metadata
+        // ES descriptor loop. These sit alongside the KLVA registration
+        // above (ffmpeg/TSDuck consume both). service_id 0 matches
+        // push_klv's default AU-cell metadata_service_id; a caller using
+        // a non-zero service_id supplies its own metadata_klva, which
+        // suppresses the auto-emit per-tag below. Async KLV (0x06) does
+        // NOT carry these — RP 217 / ST 1402.2 §9.4.2 require only KLVA.
+        if matches!(
+            spec,
+            StreamSpec::Klv {
+                stream_type: KlvStreamType::SynchronousMetadata,
+                ..
+            }
+        ) {
+            let caller_has_metadata_descriptor = caller_descs
+                .iter()
+                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x26);
+            let caller_has_metadata_std = caller_descs
+                .iter()
+                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x27);
+            if !caller_has_metadata_descriptor {
+                bytes.extend_from_slice(&crate::mpegts::descriptors::metadata_klva(0));
+            }
+            if !caller_has_metadata_std {
+                bytes.extend_from_slice(&crate::mpegts::descriptors::metadata_std(0, 0, 0));
+            }
+        }
         // AV1 auto-emit: AV01 registration_descriptor (binding §2.1).
         // MUST be the FIRST descriptor in the per-stream PMT loop —
         // receivers gate AV1 classification on stream_type 0x06 +

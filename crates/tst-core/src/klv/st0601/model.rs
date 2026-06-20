@@ -99,7 +99,7 @@ impl Default for UasDatalinkLs {
     fn default() -> Self {
         Self {
             universal_label: UniversalLabel::ST_0601_LS,
-            declared_version: UniversalLabel::ST_0601_LS.version_byte(),
+            declared_version: UniversalLabel::ST_0601_LS.st0601_version_byte(),
             mission_id: None,
             platform_tail_number: None,
             platform_designation: None,

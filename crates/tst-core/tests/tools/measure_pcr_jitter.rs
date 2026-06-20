@@ -86,9 +86,12 @@ fn main() -> std::io::Result<()> {
     }
 
     // Convert 27 MHz ticks to milliseconds: ms = ticks / 27_000.
+    // Use the wrap-aware diff (PCR wraps at (1<<33)*300 ≈ every 26.5 h) so a
+    // wrap-straddling delta yields the true ~small interval, not a 2^64
+    // garbage value that a plain `wrapping_sub` would produce.
     let mut deltas_ms: Vec<f64> = pcrs
         .windows(2)
-        .map(|w| (w[1].wrapping_sub(w[0])) as f64 / (PCR_HZ / 1000.0))
+        .map(|w| tst_core::mpegts::common::pcr_diff_27mhz(w[1], w[0]) as f64 / (PCR_HZ / 1000.0))
         .collect();
     deltas_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
 

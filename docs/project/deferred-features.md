@@ -859,7 +859,13 @@ the trigger that would unblock it.
 - **Status:** Deferred. Plan #22 ships carriage layer only — payload
   bytes pass through verbatim. Typed parsers (`subtitle_data_segment`
   per ETSI EN 300 743; `teletext_data_unit` per ETSI EN 300 706;
-  `cc_data_pkt` per CEA-708-D) do not exist.
+  `cc_data_pkt` per CEA-708-D) do not exist. (Note: SMPTE ST 334-2
+  §5.4 — now cached — supplies the `cc_data_pkt` *container* byte layout
+  [`marker(5)='11111' | cc_valid(1) | cc_type(2) | cc_data_1(8) |
+  cc_data_2(8)`] plus the per-frame-rate `cc_count` table, so the
+  carriage/container layer is now spec-anchored; only the CEA-708
+  caption-text coding model itself remains behind the paywalled
+  CEA-708-D/-E.)
 - **Why deferred:** No driving consumer for typed access today; the
   typed layer is a separate session's worth of work per codec.
 - **Trigger to revisit:** A consumer asks for typed access to
@@ -903,10 +909,48 @@ the trigger that would unblock it.
   not normatively defined. Empirical interop testing requires the
   same fixture / matrix infrastructure as the WebVTT-in-TS entry
   above.
+- **Standards-aligned form not implemented (SMPTE ST 334-2 CDP):**
+  The 2026-06-20 SMPTE-spec audit confirmed that SMPTE ST 334-2
+  (Caption Distribution Packet) + EG 43 §6.7 define the *standards-aligned*
+  unit for standalone caption-on-a-PID carriage: a **CDP** (`0x9669`
+  header + `ccdata_section` + footer/checksum), NOT the bare
+  `cc_data_pkt` stream this library currently emits. The library carries
+  raw cc_data verbatim (passthrough), so it neither emits nor parses a
+  CDP. Adopting the CDP — wrap caller cc_data in a CDP on mux; strip /
+  validate on demux — would be the conformant upgrade; ST 334-2 §5.2-5.6
+  (cached at `reference/smpte/st0334-2-2015.pdf`) gives the full byte
+  layout. Do NOT silently change the wire format: if implemented, the CDP
+  form should be a distinct carriage variant, not a mutation of the
+  existing raw-cc_data `Cea708Standalone`.
 - **Trigger to revisit:** Validate-1 Wave I (empirical interop matrix)
   schedules CEA-708 interop testing against ATSC ecosystem tooling;
   results from that pass either confirm interop or surface the need
-  for a different marker convention.
+  for a different marker convention. A consumer requiring ATSC-ecosystem
+  interop is the trigger to implement the ST 334-2 CDP variant.
+
+## RP 225 registered private information in KLV (in-KLV-stream vendor metadata)
+
+- **Status:** Deferred / future opportunity (not a bug). Surfaced by the
+  2026-06-20 SMPTE-spec audit. The library carries vendor/application
+  private data **only** as a separate MPEG-TS private-data elementary
+  stream (`StreamSpec::Data` / `push_data`, a transport-layer concept).
+  It does NOT implement SMPTE RP 225 — the **KLV-layer** mechanism for
+  carrying registered private information *inside* a KLV stream via a
+  Universal Label whose registry category designator = `0x05`
+  ("registered private information") + a SMPTE-RA-registered
+  `format_identifier` mapped into UL bytes 9-16.
+- **Why deferred:** No driving consumer. The two "private" concepts are
+  distinct layers (transport private-data PID vs. KLV registered-private
+  UL); the shipped private-data arc correctly makes no RP 225 claim. The
+  generic KLV substrate (`klv::pack::encode_pack`, `UniversalLabel::new`,
+  `klv::length::write_ber`) is already sufficient to build RP 225 records.
+- **Trigger to revisit:** A consumer asks to carry self-identifying
+  vendor-private metadata records *inside* the existing KLV elementary
+  stream (alongside ST 0601) rather than on a side-channel private-data
+  PID. Then add a thin `klv::rp225` UL-builder per RP 225 §3/§4 Tables
+  1-3 (structure designator 1 for ASCII-only format_identifiers, 2 =
+  BER-OID per §4) over `encode_pack`. Spec cached at
+  `reference/smpte/rp0225-2005.pdf`.
 
 ## Subtitle carriage at the `tst-c` C ABI
 

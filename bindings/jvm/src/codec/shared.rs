@@ -60,8 +60,8 @@ pub(crate) fn build_colour_primaries<'local>(
         ColourPrimaries::Film => "FILM",
         ColourPrimaries::Bt2020 => "BT2020",
         ColourPrimaries::SmpteSt428 => "SMPTE_ST428",
-        ColourPrimaries::SmpteSt431_2 => "SMPTE_ST431_2",
-        ColourPrimaries::SmpteSt432_1 => "SMPTE_ST432_1",
+        ColourPrimaries::SmpteRp431_2 => "SMPTE_RP431_2",
+        ColourPrimaries::SmpteEg432_1 => "SMPTE_EG432_1",
         ColourPrimaries::Ebu3213E => "EBU3213E",
         _ => "RESERVED",
     };

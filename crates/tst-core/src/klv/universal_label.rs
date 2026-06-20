@@ -49,13 +49,17 @@ impl UniversalLabel {
         self.0[6]
     }
 
-    /// Byte 13 readout — the spec-canonical value is `0x00` per ST 0601.19
-    /// §6.2 (PDF p.4). Some legacy captures ship a non-zero byte 13 for
-    /// historical "document version" reasons (e.g. `0x13` = ST 0601.19
-    /// pre-canonical convention); `is_st0601_family()` is tolerant to allow
-    /// decode interop. ST 0601.8-19 forbids non-zero values in new
-    /// developments.
-    pub const fn version_byte(&self) -> u8 {
+    /// ST 0601 document-version convention byte (index 13).
+    ///
+    /// NOTE: this is **not** the SMPTE ST 336 / ST 298 structural "Version
+    /// Number" field, which lives at UL byte 8 (index 7). Index 13 sits in
+    /// the Item Designator region (bytes 9-16) and ST 0601 historically
+    /// repurposed it as a document-version marker. The spec-canonical value
+    /// is `0x00` per ST 0601.19 §6.2 (PDF p.4); some legacy captures ship a
+    /// non-zero byte 13 (e.g. `0x13` = a pre-canonical convention), and
+    /// `is_st0601_family()` is tolerant of it to allow decode interop.
+    /// ST 0601.8-19 forbids non-zero values in new developments.
+    pub const fn st0601_version_byte(&self) -> u8 {
         self.0[13]
     }
 
@@ -102,7 +106,7 @@ impl UniversalLabel {
     /// True if this UL belongs to the ST 0601 family — bytes 0-12 match
     /// the canonical prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01`,
     /// byte 15 must be `0x00`. Bytes 13 (the document version byte; see
-    /// `version_byte()`) and 14 are not validated by this gate.
+    /// `st0601_version_byte()`) and 14 are not validated by this gate.
     pub const fn is_st0601_family(&self) -> bool {
         let canonical = [
             0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01,
@@ -242,7 +246,7 @@ mod tests {
     fn const_compatible() {
         // Verifies the helpers are usable in const contexts.
         const UL: UniversalLabel = UniversalLabel::ST_0601_LS;
-        const VB: u8 = UL.version_byte();
+        const VB: u8 = UL.st0601_version_byte();
         assert_eq!(VB, 0x00);
     }
 }

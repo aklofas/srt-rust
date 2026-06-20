@@ -193,3 +193,49 @@ fn cache_auto_emits_klva_on_sync_klv() {
     assert_eq!(muxer.pmt_descriptor_caches[0][1][6], 0x26);
     assert_eq!(muxer.pmt_descriptor_caches[0][1][17], 0x27);
 }
+
+#[test]
+fn cache_auto_emits_metadata_descriptors_on_sync_klv() {
+    // MISB ST 1402.2 ST 1402-15/-16/-17: a Synchronous Metadata (0x15)
+    // PMT entry SHALL carry a metadata_descriptor (0x26) for each metadata
+    // service plus a single metadata_std_descriptor (0x27). The muxer must
+    // auto-emit both even when the caller supplies NO descriptors — the
+    // distinguishing case from `cache_auto_emits_klva_on_sync_klv` above,
+    // which supplies them by hand.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::SynchronousMetadata, true);
+        // NOTE: deliberately no stream_descriptors_for_klv call.
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let muxer = Muxer::new(cfg).unwrap();
+    // Cache index 0 = video (empty), index 1 = KLV.
+    // 6 (KLVA) + 11 (0x26 metadata_descriptor) + 11 (0x27 metadata_std) = 28.
+    assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 28);
+    assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x05); // KLVA Registration
+    assert_eq!(&muxer.pmt_descriptor_caches[0][1][2..6], b"KLVA");
+    assert_eq!(muxer.pmt_descriptor_caches[0][1][6], 0x26); // metadata_descriptor
+    assert_eq!(muxer.pmt_descriptor_caches[0][1][10], 0xFF); // metadata_format (defined by id)
+    assert_eq!(&muxer.pmt_descriptor_caches[0][1][11..15], b"KLVA"); // metadata_format_identifier
+    assert_eq!(muxer.pmt_descriptor_caches[0][1][17], 0x27); // metadata_std_descriptor
+}
+
+#[test]
+fn cache_async_klv_does_not_emit_metadata_descriptors() {
+    // Async KLV (stream_type 0x06) carries ONLY the KLVA registration per
+    // RP 217 / ST 1402.2 §9.4.2 — no metadata_descriptor / metadata_std.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let muxer = Muxer::new(cfg).unwrap();
+    assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 6); // KLVA only
+    assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x05);
+}

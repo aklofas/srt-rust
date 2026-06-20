@@ -74,10 +74,10 @@ pub enum ColourPrimariesPy {
     Bt2020,
     #[pyo3(name = "SMPTE_ST428")]
     SmpteSt428,
-    #[pyo3(name = "SMPTE_ST431_2")]
-    SmpteSt431_2,
-    #[pyo3(name = "SMPTE_ST432_1")]
-    SmpteSt432_1,
+    #[pyo3(name = "SMPTE_RP431_2")]
+    SmpteRp431_2,
+    #[pyo3(name = "SMPTE_EG432_1")]
+    SmpteEg432_1,
     #[pyo3(name = "EBU3213E")]
     Ebu3213E,
     /// Spec-reserved or registry-extension value.
@@ -97,8 +97,8 @@ impl From<RustColourPrimaries> for ColourPrimariesPy {
             RustColourPrimaries::Film => Self::Film,
             RustColourPrimaries::Bt2020 => Self::Bt2020,
             RustColourPrimaries::SmpteSt428 => Self::SmpteSt428,
-            RustColourPrimaries::SmpteSt431_2 => Self::SmpteSt431_2,
-            RustColourPrimaries::SmpteSt432_1 => Self::SmpteSt432_1,
+            RustColourPrimaries::SmpteRp431_2 => Self::SmpteRp431_2,
+            RustColourPrimaries::SmpteEg432_1 => Self::SmpteEg432_1,
             RustColourPrimaries::Ebu3213E => Self::Ebu3213E,
             // Reserved(u8) + any future #[non_exhaustive] variants.
             _ => Self::Reserved,

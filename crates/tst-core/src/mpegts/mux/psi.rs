@@ -146,14 +146,33 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramC
         let caller_has_registration = caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x05);
 
         let auto_emit_len = match spec {
-            StreamSpec::Klv {
-                stream_type: KlvStreamType::PrivateData | KlvStreamType::SynchronousMetadata,
-                ..
-            } => {
-                // KLVA Registration auto-emits on both PrivateData (0x06)
-                // and SynchronousMetadata (0x15) per ffmpeg mpegtsenc.c.
-                // Suppressed when caller supplies any Registration descriptor.
-                if caller_has_registration { 0 } else { 6 }
+            StreamSpec::Klv { stream_type, .. } => {
+                // KLVA Registration (6 B) auto-emits on both PrivateData
+                // (0x06) and SynchronousMetadata (0x15) per ffmpeg
+                // mpegtsenc.c. Suppressed when caller supplies any
+                // Registration descriptor.
+                let klva = if caller_has_registration { 0 } else { 6 };
+                // Sync KLV (0x15) additionally auto-emits metadata_descriptor
+                // (0x26, 11 B) + metadata_std_descriptor (0x27, 11 B) per MISB
+                // ST 1402.2 ST 1402-15/-16/-17, each suppressed by a
+                // caller-supplied tag-0x26 / tag-0x27. Mirrors the auto-emit
+                // in mux/state.rs build_pmt_descriptor_cache.
+                let sync = if matches!(stream_type, KlvStreamType::SynchronousMetadata) {
+                    let m = if caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x26) {
+                        0
+                    } else {
+                        11
+                    };
+                    let s = if caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x27) {
+                        0
+                    } else {
+                        11
+                    };
+                    m + s
+                } else {
+                    0
+                };
+                klva + sync
             }
             StreamSpec::Video {
                 codec: VideoCodec::Av1,

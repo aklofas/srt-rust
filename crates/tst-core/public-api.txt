@@ -988,9 +988,9 @@ pub tst_core::codec::ColourPrimaries::Film
 pub tst_core::codec::ColourPrimaries::Reserved(u8)
 pub tst_core::codec::ColourPrimaries::Smpte170M
 pub tst_core::codec::ColourPrimaries::Smpte240M
+pub tst_core::codec::ColourPrimaries::SmpteEg432_1
+pub tst_core::codec::ColourPrimaries::SmpteRp431_2
 pub tst_core::codec::ColourPrimaries::SmpteSt428
-pub tst_core::codec::ColourPrimaries::SmpteSt431_2
-pub tst_core::codec::ColourPrimaries::SmpteSt432_1
 pub tst_core::codec::ColourPrimaries::Unspecified
 impl tst_core::codec::ColourPrimaries
 pub fn tst_core::codec::ColourPrimaries::from_h273(u8) -> Self
@@ -2133,8 +2133,8 @@ pub const fn tst_core::klv::universal_label::UniversalLabel::is_st0601_family(&s
 pub const fn tst_core::klv::universal_label::UniversalLabel::new([u8; 16]) -> Self
 pub const fn tst_core::klv::universal_label::UniversalLabel::oid(&self) -> [u8; 4]
 pub const fn tst_core::klv::universal_label::UniversalLabel::registry(&self) -> u8
+pub const fn tst_core::klv::universal_label::UniversalLabel::st0601_version_byte(&self) -> u8
 pub const fn tst_core::klv::universal_label::UniversalLabel::structure(&self) -> u8
-pub const fn tst_core::klv::universal_label::UniversalLabel::version_byte(&self) -> u8
 impl core::clone::Clone for tst_core::klv::universal_label::UniversalLabel
 pub fn tst_core::klv::universal_label::UniversalLabel::clone(&self) -> tst_core::klv::universal_label::UniversalLabel
 impl core::cmp::Eq for tst_core::klv::universal_label::UniversalLabel
@@ -2430,8 +2430,8 @@ pub const fn tst_core::klv::universal_label::UniversalLabel::is_st0601_family(&s
 pub const fn tst_core::klv::universal_label::UniversalLabel::new([u8; 16]) -> Self
 pub const fn tst_core::klv::universal_label::UniversalLabel::oid(&self) -> [u8; 4]
 pub const fn tst_core::klv::universal_label::UniversalLabel::registry(&self) -> u8
+pub const fn tst_core::klv::universal_label::UniversalLabel::st0601_version_byte(&self) -> u8
 pub const fn tst_core::klv::universal_label::UniversalLabel::structure(&self) -> u8
-pub const fn tst_core::klv::universal_label::UniversalLabel::version_byte(&self) -> u8
 impl core::clone::Clone for tst_core::klv::universal_label::UniversalLabel
 pub fn tst_core::klv::universal_label::UniversalLabel::clone(&self) -> tst_core::klv::universal_label::UniversalLabel
 impl core::cmp::Eq for tst_core::klv::universal_label::UniversalLabel

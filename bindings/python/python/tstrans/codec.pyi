@@ -48,8 +48,8 @@ class ColourPrimaries:
     FILM: ColourPrimaries
     BT2020: ColourPrimaries
     SMPTE_ST428: ColourPrimaries
-    SMPTE_ST431_2: ColourPrimaries
-    SMPTE_ST432_1: ColourPrimaries
+    SMPTE_RP431_2: ColourPrimaries
+    SMPTE_EG432_1: ColourPrimaries
     EBU3213E: ColourPrimaries
     RESERVED: ColourPrimaries
 

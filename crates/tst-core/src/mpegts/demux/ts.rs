@@ -36,6 +36,13 @@ pub struct TsPacket<'a> {
     /// demod, CMTS) flagged the packet as known-corrupt. The demuxer drops
     /// these packets per ffmpeg `mpegts.c:3091-3097`.
     pub transport_error_indicator: bool,
+    /// `transport_scrambling_control` per ISO/IEC 13818-1 §2.4.3.2 (bits
+    /// 7-6 of byte 3). `0b00` = not scrambled; `0b01`/`0b10`/`0b11` =
+    /// user-defined scrambling modes. The library does not descramble:
+    /// the demuxer drops any packet with a non-zero value (does NOT route
+    /// the payload to PSI/PES) and surfaces
+    /// `NonConformantIssue::UnsupportedScrambling`.
+    pub transport_scrambling_control: u8,
     pub payload_unit_start: bool,
     pub continuity_counter: u8,
     pub has_adaptation_field: bool,
@@ -82,6 +89,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     let transport_error_indicator = (buf[1] & 0x80) != 0;
     let payload_unit_start = (buf[1] & 0x40) != 0;
     let pid = u16::from_be_bytes([buf[1] & 0x1F, buf[2]]);
+    let transport_scrambling_control = (buf[3] >> 6) & 0x03;
     let adaptation_control = (buf[3] >> 4) & 0x03;
     let has_adaptation_field = adaptation_control & 0b10 != 0;
     let has_payload = adaptation_control & 0b01 != 0;
@@ -136,6 +144,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     Ok(TsPacket {
         pid,
         transport_error_indicator,
+        transport_scrambling_control,
         payload_unit_start,
         continuity_counter,
         has_adaptation_field,
@@ -302,5 +311,22 @@ mod tests {
         let pkt = parse_ts_packet(&buf).unwrap();
         assert_eq!(pkt.pcr_27mhz, Some(0x100 * 300 + 299));
         assert_eq!(pkt.pcr_malformed, None);
+    }
+
+    #[test]
+    fn parses_transport_scrambling_control() {
+        // adaptation_control=01 (payload only); set TSC bits (byte 3 bits 7-6).
+        let mut buf = build_simple_packet(0x100, true, 0x0);
+        buf[3] = 0b1000_0000 | 0x10; // TSC=10 (user scrambled) + adaptation_control=01
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert_eq!(pkt.transport_scrambling_control, 0b10);
+
+        let clear = build_simple_packet(0x100, true, 0x0);
+        assert_eq!(
+            parse_ts_packet(&clear)
+                .unwrap()
+                .transport_scrambling_control,
+            0
+        );
     }
 }

@@ -824,6 +824,20 @@ pub enum NonConformantIssue {
         pmt_program: u16,
     },
 
+    /// Per ISO/IEC 13818-1 §2.4.3.2, `transport_scrambling_control` (bits
+    /// 7-6 of TS byte 3) was non-zero — the payload is scrambled. The
+    /// library does not descramble; the demuxer drops the packet (does NOT
+    /// route the payload to PSI/PES reassembly, so scrambled bytes can't
+    /// corrupt PSI/PES/codec/metadata state) and surfaces this issue.
+    /// `StrictMode::Full` rejects. A subsequent clear (TSC=0) packet on the
+    /// same PID recovers normally. REF-TS-01.
+    UnsupportedScrambling {
+        /// The PID the scrambled packet arrived on.
+        pid: u16,
+        /// The 2-bit `transport_scrambling_control` value (1, 2, or 3).
+        control: u8,
+    },
+
     /// Other.
     Other(String),
 }
@@ -1201,6 +1215,13 @@ impl core::fmt::Display for NonConformantIssue {
                     f,
                     "PMT on PID 0x{pid:04X} body program_number={pmt_program} does not match \
                      PAT assignment program_number={pat_program} (H.222.0 §2.4.4.8 REF-PSI-01)"
+                )
+            }
+            NonConformantIssue::UnsupportedScrambling { pid, control } => {
+                write!(
+                    f,
+                    "unsupported transport_scrambling_control=0b{control:02b} on PID 0x{pid:04X} \
+                     (H.222.0 §2.4.3.2; payload not routed)"
                 )
             }
             NonConformantIssue::Other(msg) => {

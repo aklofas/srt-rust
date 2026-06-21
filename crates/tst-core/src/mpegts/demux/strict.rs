@@ -126,6 +126,18 @@ mod tests {
         assert!(StrictMode::Full.rejects(&issue));
     }
 
+    #[test]
+    fn unsupported_scrambling_rejected_only_by_full() {
+        let issue = NonConformantIssue::UnsupportedScrambling {
+            pid: 0x100,
+            control: 1,
+        };
+        assert!(!StrictMode::Off.rejects(&issue));
+        assert!(!StrictMode::TimingOnly.rejects(&issue));
+        assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
+
     /// C11 — LATM framing is data-conformance (the bitstream itself, not
     /// timing or descriptors). Only `Full` strict mode rejects it; the
     /// narrower `TimingOnly` / `DescriptorsOnly` modes leave it as a

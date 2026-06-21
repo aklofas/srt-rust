@@ -3068,6 +3068,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleMissingDescripto
 pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleMissingDescriptor::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::TransportErrorPacket
 pub tst_core::mpegts::demux::event::NonConformantIssue::TransportErrorPacket::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling
+pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling::control: u8
+pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling::pid: u16
 impl core::clone::Clone for tst_core::mpegts::demux::event::NonConformantIssue
 pub fn tst_core::mpegts::demux::event::NonConformantIssue::clone(&self) -> tst_core::mpegts::demux::event::NonConformantIssue
 impl core::cmp::Eq for tst_core::mpegts::demux::event::NonConformantIssue
@@ -3938,6 +3941,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::SubtitleMissingDescriptor
 pub tst_core::mpegts::demux::NonConformantIssue::SubtitleMissingDescriptor::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket
 pub tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling
+pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling::control: u8
+pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling::pid: u16
 impl core::clone::Clone for tst_core::mpegts::demux::event::NonConformantIssue
 pub fn tst_core::mpegts::demux::event::NonConformantIssue::clone(&self) -> tst_core::mpegts::demux::event::NonConformantIssue
 impl core::cmp::Eq for tst_core::mpegts::demux::event::NonConformantIssue

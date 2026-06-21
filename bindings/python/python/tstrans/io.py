@@ -426,6 +426,7 @@ class Transmuxer:
         "_sink",
         "_proxy",
         "_handles",
+        "_dropped_pids",
         "_closed",
     )
 
@@ -456,6 +457,7 @@ class Transmuxer:
         self._sink = None  # MuxerFileSink, entered on first ProgramMap
         self._proxy = None  # MuxerDrainProxy — ALL pushes go through it
         self._handles = {}  # source pid -> muxer stream handle
+        self._dropped_pids: frozenset = frozenset()  # intentionally-dropped PIDs
         self._closed = False
 
     def __enter__(self) -> "Transmuxer":
@@ -539,13 +541,24 @@ class Transmuxer:
         self._sink = sink
         self._pm = pm
         self._proxy = proxy
+        self._dropped_pids = frozenset(
+            s.pid for s in pm.streams if s.kind in set(self._drop)
+        )
         self._handles = self._build_handles(pm, muxer)
 
     def _build_handles(self, pm, muxer) -> dict:
         """Map source PIDs to muxer stream handles, positionally per
         kind: `from_program_map` adds streams in PMT order within each
         kind (skipping dropped kinds), and the muxer's per-kind handle
-        lists are in add order — so zip() pairs them faithfully."""
+        lists are in add order — so zip() pairs them faithfully.
+
+        Guards:
+        - Per-kind: asserts len(pids) == len(handles) so zip() never
+          silently truncates a retained stream (internal invariant: both
+          sides derive from the same ProgramMap).
+        - Partition total: asserts every kept stream was routed to a
+          category (guards a future unrouted StreamKindTag value).
+        """
 
         dropped = set(self._drop)
         kept = [s for s in pm.streams if s.kind not in dropped]
@@ -558,17 +571,63 @@ class Transmuxer:
         ]
         subtitle = [s.pid for s in kept if s.kind is StreamKindTag.SUBTITLE]
         data = [s.pid for s in kept if s.kind is StreamKindTag.UNKNOWN]
+
+        # Partition-totality guard: every kept stream must appear in exactly
+        # one category.  If a future StreamKindTag value is added without
+        # updating the per-kind lists above, this assertion fires at setup
+        # rather than silently dropping streams.
+        routed = len(video) + len(audio) + len(klv) + len(subtitle) + len(data)
+        if routed != len(kept):
+            raise RuntimeError(
+                f"transmux internal error: partition incomplete — "
+                f"{len(kept)} kept streams but only {routed} were routed "
+                f"to a kind category (unhandled StreamKindTag?)"
+            )
+
+        # Materialize handle lists once so we can length-check before zipping.
+        vh = list(muxer.video_handles())
+        ah = list(muxer.audio_handles())
+        kh = list(muxer.klv_handles())
+        sh = list(muxer.subtitle_handles())
+        dh = list(muxer.data_handles())
+
+        def _check(kind_name: str, pids: list, kind_handles: list) -> None:
+            if len(pids) != len(kind_handles):
+                raise RuntimeError(
+                    f"transmux internal error: {kind_name} handle count mismatch — "
+                    f"{len(pids)} PID(s) from ProgramMap but "
+                    f"{len(kind_handles)} handle(s) from muxer "
+                    f"(from_program_map per-kind order drifted from muxer handle lists)"
+                )
+
+        _check("video", video, vh)
+        _check("audio", audio, ah)
+        _check("klv", klv, kh)
+        _check("subtitle", subtitle, sh)
+        _check("data", data, dh)
+
         handles: dict = {}
-        handles.update(zip(video, muxer.video_handles()))
-        handles.update(zip(audio, muxer.audio_handles()))
-        handles.update(zip(klv, muxer.klv_handles()))
-        handles.update(zip(subtitle, muxer.subtitle_handles()))
-        handles.update(zip(data, muxer.data_handles()))
+        handles.update(zip(video, vh))
+        handles.update(zip(audio, ah))
+        handles.update(zip(klv, kh))
+        handles.update(zip(subtitle, sh))
+        handles.update(zip(data, dh))
         return handles
 
     def _handle_for(self, ev):
-        """Resolve a sample event's muxer handle; None = dropped stream
-        (caller skips). Raises on lifecycle misuse."""
+        """Resolve a sample event's muxer handle.
+
+        Returns:
+          - The handle if the PID is mapped (retained stream).
+          - None if the PID is in _dropped_pids (intentional drop —
+            caller skips).
+
+        Raises:
+          - RuntimeError on lifecycle misuse (closed / no ProgramMap yet).
+          - RuntimeError if the PID is retained but has no mapping
+            (internal invariant violation; should be caught by
+            _build_handles, but guarded here as a second line of defence).
+        """
 
         if self._closed:
             raise RuntimeError(
@@ -580,7 +639,15 @@ class Transmuxer:
                 "transmuxer at least to the first ProgramMap event "
                 "before writing sample events"
             )
-        return self._handles.get(ev.stream.pid)
+        pid = ev.stream.pid
+        if pid in self._handles:
+            return self._handles[pid]
+        if pid in self._dropped_pids:
+            return None
+        raise RuntimeError(
+            f"transmux internal error: retained PID {pid} has no "
+            f"destination handle (handle mapping is incomplete)"
+        )
 
     def write(self, ev) -> None:
         """Copy one demux event to the output (see class docstring for

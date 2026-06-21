@@ -96,11 +96,11 @@ fn main() -> ExitCode {
         for output in pairer.feed(event) {
             match output {
                 PairerOutput::Paired { video, klv } => {
-                    // Real consumer: feed `video.raw` (the exact encoded
-                    // access unit — Annex-B for H.26x) straight into a
-                    // decoder, or call `video.split_units()` for parsed
-                    // NAL/OBU units; feed `klv.payload` into
-                    // `tst_core::klv::st0601::decode`.
+                    // Real consumer: feed `video.raw.as_slice()` (the exact
+                    // encoded access unit — Annex-B for H.26x; `SharedBytes`
+                    // derefs to `&[u8]`) into a decoder, or call
+                    // `video.split_units()` for parsed NAL/OBU units; feed
+                    // `klv.payload` into `tst_core::klv::st0601::decode`.
                     let _ = (video, klv);
                 }
                 PairerOutput::UnpairedVideo(_v) => {}

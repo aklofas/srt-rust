@@ -98,8 +98,11 @@ impl RawBytes {
         }
     }
 
-    /// Content hash — equals `hash(self.value)`'s byte content, so events that
-    /// compare equal by `.raw` content hash equal.
+    /// Content hash derived from the raw bytes — a stable Rust hash, NOT equal
+    /// to Python's `hash(bytes)`. Equal-content `RawBytes` hash equal, so the
+    /// events embedding them satisfy the hash/eq invariant. PyO3 maps the
+    /// returned `u64` to `Py_hash_t` with a wrapping `as isize` cast (the value
+    /// may be negative; it never raises `OverflowError`).
     fn __hash__(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.shared.as_slice().hash(&mut hasher);

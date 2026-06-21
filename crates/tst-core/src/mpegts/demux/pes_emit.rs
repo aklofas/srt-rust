@@ -73,11 +73,20 @@ impl super::demuxer::Demuxer {
         &mut self,
         pkt: &crate::mpegts::demux::ts::TsPacket<'_>,
     ) -> Result<(), crate::error::DemuxError> {
+        // REF-PES-01: zero PES_packet_length is legal only for video. Key the
+        // decision on the PMT-declared StreamKind, not the PES stream_id — the
+        // PID's kind is always known here (process_packet only routes to
+        // handle_pes_packet when stream_kind_by_pid contains pkt.pid).
+        let is_video = matches!(
+            self.stream_kind_by_pid.get(&pkt.pid),
+            Some(StreamKind::Video(_))
+        );
         let outcomes = self.pes.push(
             pkt.pid,
             pkt.payload,
             pkt.payload_unit_start,
             pkt.random_access_indicator,
+            is_video,
         )?;
         for outcome in outcomes {
             match outcome {
@@ -125,6 +134,17 @@ impl super::demuxer::Demuxer {
                             kind: DiscontinuityKind::PesTotalOversize,
                         });
                     }
+                }
+                ReassemblyOutcome::ZeroLengthNonVideo { pid, stream_id } => {
+                    let stream = self.lookup_stream(pid).unwrap_or(StreamId {
+                        pid,
+                        kind: StreamKind::Unknown(0),
+                        program_number: self.program_number_for_pid(pid),
+                    });
+                    self.queue_nonconformant(
+                        stream,
+                        NonConformantIssue::ZeroLengthPesNonVideo { pid, stream_id },
+                    );
                 }
             }
         }

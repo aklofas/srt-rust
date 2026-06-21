@@ -16,5 +16,7 @@ public enum NonConformantKind {
     UNSUPPORTED_SCRAMBLING,
     /** Adaptation-field control/length violation (REF-TS-02). */
     ADAPTATION_FIELD_MALFORMED,
+    /** Zero PES_packet_length on a non-video stream; partial dropped (REF-PES-01). */
+    ZERO_LENGTH_PES_NON_VIDEO,
     OTHER
 }

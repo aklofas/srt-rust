@@ -64,6 +64,13 @@ pub enum ReassemblyOutcome {
     Overflow { pid: u16 },
     /// Aggregate buffer cap exceeded; all partial PES on all PIDs dropped.
     OverflowTotal,
+    /// A zero `PES_packet_length` (unbounded) arrived on a stream the PMT
+    /// classifies as non-video. H.222.0 §2.4.3.7 permits zero only when the
+    /// payload is a video elementary stream; the reassembler drops the
+    /// partial (does not flush a bogus sample) and surfaces this so the
+    /// demuxer can emit a NonConformant. `stream_id` is the observed PES
+    /// stream_id, carried for diagnostics. REF-PES-01.
+    ZeroLengthNonVideo { pid: u16, stream_id: u8 },
 }
 
 #[derive(Debug)]
@@ -92,12 +99,20 @@ impl Reassembler {
     /// PES_start packet (PUSI=1) is latched onto the in-flight PES;
     /// continuation packets' RAI bits are ignored — encoders/muxers signal
     /// AU-level RA on the start packet only (matches ffmpeg/tsduck).
+    ///
+    /// `is_video` reflects the PMT-declared [`StreamKind`] of `pid`
+    /// ([`StreamKind::Video`](crate::mpegts::demux::StreamKind::Video) →
+    /// `true`). It gates the zero-`PES_packet_length` rule (REF-PES-01,
+    /// H.222.0 §2.4.3.7): an unbounded PES is legal only when the payload is
+    /// a video elementary stream. Callers without a PMT entry for `pid` pass
+    /// `false` (conservatively flag).
     pub fn push(
         &mut self,
         pid: u16,
         payload: &[u8],
         pusi: bool,
         random_access_indicator: bool,
+        is_video: bool,
     ) -> Result<Vec<ReassemblyOutcome>, DemuxError> {
         let mut out = Vec::new();
         // Deferred error from finalizing a malformed prior PES at PUSI.
@@ -145,10 +160,29 @@ impl Reassembler {
         self.total_buffered += payload.len();
         // Try to derive declared_total_len if still unknown.
         if part.declared_total_len.is_none() && part.buf.len() >= 6 {
+            let stream_id = part.buf[3];
             let pkt_len_field = u16::from_be_bytes([part.buf[4], part.buf[5]]);
             if pkt_len_field != 0 {
                 // PES_packet_length is the count of bytes after this 6-byte header.
                 part.declared_total_len = Some(6 + pkt_len_field as usize);
+            } else if !is_video {
+                // H.222.0 §2.4.3.7: a zero PES_packet_length (unbounded) is
+                // permitted ONLY when the payload is a video elementary
+                // stream. The decision is keyed on the PMT-declared
+                // `StreamKind` (passed as `is_video`), NOT on `stream_id`:
+                // AV1 *video* in MPEG-2-TS-binding carriage rides
+                // `stream_id = 0xBD` (private_stream_1) yet is classified
+                // `StreamKind::Video(Av1)`, so it must pass un-flagged; while
+                // AC-3 audio, DVB subtitle, async-KLV, and private-data PES
+                // (which also use 0xBD) are non-video and must be caught.
+                // On a non-video stream a zero length would buffer until the
+                // next PUSI / cap and flush a bogus sample — drop the partial
+                // and surface the violation. REF-PES-01. `stream_id` is kept
+                // purely as the diagnostic payload on the event.
+                self.total_buffered = self.total_buffered.saturating_sub(part.buf.len());
+                self.by_pid.remove(&pid);
+                out.push(ReassemblyOutcome::ZeroLengthNonVideo { pid, stream_id });
+                return Ok(out);
             }
         }
         // Aggregate cap check.
@@ -442,7 +476,7 @@ mod tests {
         // Split across two PUSI calls: first PUSI starts the PES, second PUSI
         // emits it.
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &pes, true, false).unwrap();
+        let out = r.push(0x100, &pes, true, false, true).unwrap();
         assert!(out.is_empty());
         // A second PUSI on the same PID closes the previous one. Zero this
         // PES's length field too so it doesn't immediately length-complete
@@ -450,7 +484,7 @@ mod tests {
         let mut pes2 = build_pes(0xE0, None, b"");
         pes2[4] = 0;
         pes2[5] = 0;
-        let out = r.push(0x100, &pes2, true, false).unwrap();
+        let out = r.push(0x100, &pes2, true, false, true).unwrap();
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
@@ -465,7 +499,7 @@ mod tests {
     fn length_driven_completion() {
         let pes = build_pes(0xE0, Some(0), b"abc");
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &pes, true, false).unwrap();
+        let out = r.push(0x100, &pes, true, false, true).unwrap();
         // PES_packet_length is set => completion when all bytes seen.
         assert_eq!(out.len(), 1);
     }
@@ -474,11 +508,17 @@ mod tests {
     fn per_pid_overflow_emits_event_and_clears() {
         let mut r = Reassembler::new(64, 1 << 20);
         let _ = r
-            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true, false)
+            .push(
+                0x100,
+                b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00",
+                true,
+                false,
+                true,
+            )
             .unwrap();
         // Now flood until overflow.
         let big = vec![0xCC; 256];
-        let out = r.push(0x100, &big, false, false).unwrap();
+        let out = r.push(0x100, &big, false, false, true).unwrap();
         assert!(matches!(out[0], ReassemblyOutcome::Overflow { pid: 0x100 }));
         assert_eq!(r.buffered_bytes(), 0);
     }
@@ -487,10 +527,16 @@ mod tests {
     fn aggregate_overflow() {
         let mut r = Reassembler::new(1 << 20, 200);
         let _ = r
-            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true, false)
+            .push(
+                0x100,
+                b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00",
+                true,
+                false,
+                true,
+            )
             .unwrap();
         let big = vec![0xCC; 300];
-        let out = r.push(0x100, &big, false, false).unwrap();
+        let out = r.push(0x100, &big, false, false, true).unwrap();
         assert!(
             out.iter()
                 .any(|o| matches!(o, ReassemblyOutcome::OverflowTotal))
@@ -507,14 +553,14 @@ mod tests {
         pes[5] = 0;
         let mut r = Reassembler::new(1 << 20, 4 << 20);
         // PUSI=1 with RAI=true latches RAI on the in-flight PES.
-        let _ = r.push(0x100, &pes, true, true).unwrap();
+        let _ = r.push(0x100, &pes, true, true, true).unwrap();
         // Continuation with RAI=false MUST NOT overwrite the latched value.
-        let _ = r.push(0x100, b"world", false, false).unwrap();
+        let _ = r.push(0x100, b"world", false, false, true).unwrap();
         // Second PUSI closes the previous PES.
         let mut pes2 = build_pes(0xE0, None, b"");
         pes2[4] = 0;
         pes2[5] = 0;
-        let out = r.push(0x100, &pes2, true, false).unwrap();
+        let out = r.push(0x100, &pes2, true, false, true).unwrap();
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
@@ -538,7 +584,7 @@ mod tests {
         let mut combined = pes.clone();
         combined.extend_from_slice(b"GARBAGE_NEXT_PES_BYTES");
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &combined, true, false).unwrap();
+        let out = r.push(0x100, &combined, true, false, true).unwrap();
         assert_eq!(
             out.len(),
             1,
@@ -576,7 +622,7 @@ mod tests {
         let mut chunk_a = pes_a.clone();
         chunk_a.extend_from_slice(&[0xAA; 7]); // simulate trailing bytes
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x200, &chunk_a, true, false).unwrap();
+        let out = r.push(0x200, &chunk_a, true, false, true).unwrap();
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
@@ -592,7 +638,7 @@ mod tests {
     fn random_access_indicator_false_when_pusi_packet_clears_it() {
         let pes = build_pes(0xE0, Some(0), b"abc");
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &pes, true, false).unwrap();
+        let out = r.push(0x100, &pes, true, false, true).unwrap();
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
@@ -687,5 +733,87 @@ mod tests {
             "conformant PES should produce zero header issues, got {:?}",
             parsed.header_issues
         );
+    }
+
+    #[test]
+    fn zero_length_non_video_pes_is_dropped_and_flagged() {
+        let mut r = Reassembler::new(1 << 20, 1 << 22);
+        // Build a zero-PES_packet_length PES on an AUDIO stream_id (0xC0).
+        let pes = build_pes(0xC0, Some(0), b"abcdef");
+        // build_pes backfills PES_packet_length; force it to zero (bytes 4-5).
+        let mut pes = pes;
+        pes[4] = 0;
+        pes[5] = 0;
+        // is_video=false: PMT classifies this PID as non-video.
+        let out = r.push(0x101, &pes, true, false, false).unwrap();
+        assert!(
+            out.iter().any(|o| matches!(
+                o,
+                ReassemblyOutcome::ZeroLengthNonVideo {
+                    pid: 0x101,
+                    stream_id: 0xC0
+                }
+            )),
+            "got {out:?}"
+        );
+        // The partial must be dropped — no buffered bytes linger.
+        assert_eq!(r.buffered_bytes(), 0);
+    }
+
+    #[test]
+    fn zero_length_video_pes_still_unbounded() {
+        let mut r = Reassembler::new(1 << 20, 1 << 22);
+        let mut pes = build_pes(0xE0, Some(0), b"abcdef");
+        pes[4] = 0;
+        pes[5] = 0; // zero length is LEGAL for video
+        // is_video=true: PMT classifies this PID as video.
+        let out = r.push(0x100, &pes, true, false, true).unwrap();
+        assert!(
+            !out.iter()
+                .any(|o| matches!(o, ReassemblyOutcome::ZeroLengthNonVideo { .. })),
+            "video zero-length must not flag; got {out:?}"
+        );
+    }
+
+    #[test]
+    fn zero_length_av1_0xbd_pes_still_unbounded() {
+        // REF-PES-01: AV1 *video* in MPEG-2-TS-binding carriage rides
+        // stream_id=0xBD (private_stream_1) yet is StreamKind::Video — so an
+        // unbounded PES on 0xBD must NOT be flagged when is_video=true. This
+        // proves the exemption is kind-based, not a stream_id allowlist.
+        let mut r = Reassembler::new(1 << 20, 1 << 22);
+        let mut pes = build_pes(0xBD, Some(0), b"abcdef");
+        pes[4] = 0;
+        pes[5] = 0;
+        let out = r.push(0x100, &pes, true, false, true).unwrap();
+        assert!(
+            !out.iter()
+                .any(|o| matches!(o, ReassemblyOutcome::ZeroLengthNonVideo { .. })),
+            "0xBD video (AV1 binding) zero-length must not flag; got {out:?}"
+        );
+    }
+
+    #[test]
+    fn zero_length_0xbd_non_video_pes_is_dropped_and_flagged() {
+        // Inverse of the AV1 case: a zero-length PES on stream_id=0xBD that the
+        // PMT classifies as NON-video (e.g. AC-3 audio / DVB subtitle /
+        // async-KLV / private-data — all of which also use 0xBD) IS caught.
+        // Confirms the decision keys on the kind, not on stream_id==0xBD.
+        let mut r = Reassembler::new(1 << 20, 1 << 22);
+        let mut pes = build_pes(0xBD, Some(0), b"abcdef");
+        pes[4] = 0;
+        pes[5] = 0;
+        let out = r.push(0x102, &pes, true, false, false).unwrap();
+        assert!(
+            out.iter().any(|o| matches!(
+                o,
+                ReassemblyOutcome::ZeroLengthNonVideo {
+                    pid: 0x102,
+                    stream_id: 0xBD
+                }
+            )),
+            "0xBD non-video zero-length must flag; got {out:?}"
+        );
+        assert_eq!(r.buffered_bytes(), 0);
     }
 }

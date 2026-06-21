@@ -211,6 +211,9 @@ pub enum TstNonConformantCode {
     /// `table_id` carries the AdaptationFieldKind discriminator
     /// (0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr, 0xFF=unknown).
     AdaptationFieldMalformed = 35,
+    /// REF-PES-01. Zero PES_packet_length on a non-video stream; partial
+    /// dropped. `pid` = the PID; `table_id` carries the PES stream_id byte.
+    ZeroLengthPesNonVideo = 36,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
@@ -1407,6 +1410,11 @@ fn fill_nonconformant(
                 AdaptationFieldKind::ShortPcr => 2,
                 _ => 0xFF,
             };
+        }
+        NonConformantIssue::ZeroLengthPesNonVideo { pid, stream_id } => {
+            body.issue_code = TstNonConformantCode::ZeroLengthPesNonVideo as c_int;
+            body.pid = *pid;
+            body.table_id = *stream_id; // PES stream_id byte (reuses table_id carrier)
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

@@ -149,8 +149,9 @@
  *   `table_id` = 2-bit transport_scrambling_control).
  *   `AdaptationFieldMalformed` (= 35, REF-TS-02; `table_id` = kind
  *   discriminator: 0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr,
- *   0xFF=unknown). Further WP-D codes are added under this same minor as
- *   their tasks land.
+ *   0xFF=unknown).
+ *   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
+ *   Further WP-D codes are added under this same minor as their tasks land.
  */
 #define TST_ABI_VERSION_MINOR 16
 
@@ -714,6 +715,11 @@ enum tst_nonconformant_code
    * (0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr, 0xFF=unknown).
    */
   TST_NONCONFORMANT_CODE_ADAPTATION_FIELD_MALFORMED = 35,
+  /**
+   * REF-PES-01. Zero PES_packet_length on a non-video stream; partial
+   * dropped. `pid` = the PID; `table_id` carries the PES stream_id byte.
+   */
+  TST_NONCONFORMANT_CODE_ZERO_LENGTH_PES_NON_VIDEO = 36,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

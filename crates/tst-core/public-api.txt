@@ -3094,6 +3094,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::TransportErrorPacket::pi
 pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling
 pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling::control: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::UnsupportedScrambling::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::ZeroLengthPesNonVideo
+pub tst_core::mpegts::demux::event::NonConformantIssue::ZeroLengthPesNonVideo::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::ZeroLengthPesNonVideo::stream_id: u8
 impl core::clone::Clone for tst_core::mpegts::demux::event::NonConformantIssue
 pub fn tst_core::mpegts::demux::event::NonConformantIssue::clone(&self) -> tst_core::mpegts::demux::event::NonConformantIssue
 impl core::cmp::Eq for tst_core::mpegts::demux::event::NonConformantIssue
@@ -3492,6 +3495,9 @@ pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::Complete(tst_core::mp
 pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::Overflow
 pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::Overflow::pid: u16
 pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::OverflowTotal
+pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::ZeroLengthNonVideo
+pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::ZeroLengthNonVideo::pid: u16
+pub tst_core::mpegts::demux::low_level::ReassemblyOutcome::ZeroLengthNonVideo::stream_id: u8
 impl core::clone::Clone for tst_core::mpegts::demux::low_level::ReassemblyOutcome
 pub fn tst_core::mpegts::demux::low_level::ReassemblyOutcome::clone(&self) -> tst_core::mpegts::demux::low_level::ReassemblyOutcome
 impl core::cmp::Eq for tst_core::mpegts::demux::low_level::ReassemblyOutcome
@@ -3634,7 +3640,7 @@ impl tst_core::mpegts::demux::low_level::Reassembler
 pub fn tst_core::mpegts::demux::low_level::Reassembler::buffered_bytes(&self) -> usize
 pub fn tst_core::mpegts::demux::low_level::Reassembler::drain_partial(&mut self) -> alloc::vec::Vec<tst_core::mpegts::demux::low_level::PesPayload>
 pub fn tst_core::mpegts::demux::low_level::Reassembler::new(usize, usize) -> Self
-pub fn tst_core::mpegts::demux::low_level::Reassembler::push(&mut self, u16, &[u8], bool, bool) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::demux::low_level::ReassemblyOutcome>, tst_core::error::DemuxError>
+pub fn tst_core::mpegts::demux::low_level::Reassembler::push(&mut self, u16, &[u8], bool, bool, bool) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::demux::low_level::ReassemblyOutcome>, tst_core::error::DemuxError>
 pub fn tst_core::mpegts::demux::low_level::Reassembler::remove_pid(&mut self, u16)
 impl core::fmt::Debug for tst_core::mpegts::demux::low_level::Reassembler
 pub fn tst_core::mpegts::demux::low_level::Reassembler::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -3990,6 +3996,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling
 pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling::control: u8
 pub tst_core::mpegts::demux::NonConformantIssue::UnsupportedScrambling::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::ZeroLengthPesNonVideo
+pub tst_core::mpegts::demux::NonConformantIssue::ZeroLengthPesNonVideo::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::ZeroLengthPesNonVideo::stream_id: u8
 impl core::clone::Clone for tst_core::mpegts::demux::event::NonConformantIssue
 pub fn tst_core::mpegts::demux::event::NonConformantIssue::clone(&self) -> tst_core::mpegts::demux::event::NonConformantIssue
 impl core::cmp::Eq for tst_core::mpegts::demux::event::NonConformantIssue

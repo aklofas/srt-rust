@@ -265,6 +265,43 @@ class St0102Test {
     }
 
     // -----------------------------------------------------------------------
+    // encodeSecurityStrictCompliance tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void encodeSecurityStrictComplianceMissingMandatoryTagThrows() {
+        // An empty SecurityLs is missing Tag 1 (Security Classification) — the first
+        // required tag. encode_strict_compliance checks tags [1,2,3,12,13,22] in order.
+        SecurityLs rec = new SecurityLs.Builder().build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeSecurityStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.MISSING_MANDATORY_ITEM, ex.kind());
+        assertTrue(ex.tag().isPresent(), "MISSING_MANDATORY_ITEM must carry the offending tag");
+        assertEquals(1L, ex.tag().get().longValue());
+    }
+
+    @Test
+    void encodeSecurityStrictComplianceSucceedsWithAllRequired() throws KlvEncodeException, KlvDecodeException {
+        // Provide all 6 required tags — strict compliance must succeed.
+        SecurityLs rec = new SecurityLs.Builder()
+                .securityClassification(SecurityClassification.UNCLASSIFIED)
+                .classifyingCountryCodingMethod(ClassifyingCountryCodingMethod.ISO_3166_TWO_LETTER)
+                .classifyingCountry("//US")
+                .objectCountryCodingMethod(ObjectCountryCodingMethod.ISO_3166_TWO_LETTER)
+                .objectCountryCodes("US")
+                .version(12)
+                .build();
+        byte[] wire = assertDoesNotThrow(() -> Klv.encodeSecurityStrictCompliance(rec));
+        assertNotNull(wire);
+        assertTrue(wire.length > 0);
+        // Round-trip: the encoded bytes must decode cleanly.
+        SecurityLs decoded = Klv.decodeSecurity(wire);
+        assertEquals(Optional.of(SecurityClassification.UNCLASSIFIED), decoded.securityClassification());
+        assertEquals("//US", decoded.classifyingCountry());
+        assertEquals(12, (int) decoded.version());
+    }
+
+    // -----------------------------------------------------------------------
     // Builder tests
     // -----------------------------------------------------------------------
 

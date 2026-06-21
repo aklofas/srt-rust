@@ -37,7 +37,8 @@ use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::jobject;
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs as RustVmtiLs, decode as decode_lenient, decode_strict,
-    encode_to_vec, encode_to_vec_standalone,
+    encode_standalone_strict_compliance, encode_strict_compliance, encode_to_vec,
+    encode_to_vec_standalone,
 };
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
@@ -207,6 +208,96 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmtiStandalone<'local>(
                     let _ = env.throw_new(
                         "java/lang/RuntimeException",
                         format!("nEncodeVmtiStandalone: field read failed: {e}"),
+                    );
+                }
+                JObject::null().into_raw()
+            }
+        }
+    })
+}
+
+/// `org.tstrans.klv.Klv.nEncodeVmtiStrictCompliance(VmtiLs) -> byte[]`
+///
+/// Reads all fields from the Java `VmtiLs` record, builds a Rust `VmtiLs`,
+/// calls `encode_strict_compliance` (embedded form). Enforces mandatory items
+/// (Tags 4/6 + non-empty VTargetPacks + unique target IDs) before encoding.
+/// Mirrors tst-py's `encode_vmti_strict_compliance`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmtiStrictCompliance<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    record: JObject<'local>,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_vmti(env, &record) {
+            Ok(rust_rec) => match encode_strict_compliance(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!(
+                                "nEncodeVmtiStrictCompliance: byte_array_from_slice failed: {e}"
+                            ),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
+                Err(e) => {
+                    map_klv_encode_error(env, &e);
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeVmtiStrictCompliance: field read failed: {e}"),
+                    );
+                }
+                JObject::null().into_raw()
+            }
+        }
+    })
+}
+
+/// `org.tstrans.klv.Klv.nEncodeVmtiStandaloneStrictCompliance(VmtiLs) -> byte[]`
+///
+/// Reads all fields from the Java `VmtiLs` record, builds a Rust `VmtiLs`,
+/// calls `encode_standalone_strict_compliance` (full `[UL][BER][body][Tag1 checksum]`
+/// with additional standalone mandatory checks for Tags 2/11/12/13 and
+/// forbidden offset tags). Mirrors tst-py's `encode_vmti_standalone_strict_compliance`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmtiStandaloneStrictCompliance<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    record: JObject<'local>,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_vmti(env, &record) {
+            Ok(rust_rec) => match encode_standalone_strict_compliance(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!(
+                                "nEncodeVmtiStandaloneStrictCompliance: byte_array_from_slice failed: {e}"
+                            ),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
+                Err(e) => {
+                    map_klv_encode_error(env, &e);
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeVmtiStandaloneStrictCompliance: field read failed: {e}"),
                     );
                 }
                 JObject::null().into_raw()

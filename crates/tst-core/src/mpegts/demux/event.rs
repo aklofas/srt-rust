@@ -6,7 +6,6 @@
 //! enum, no other public type changes.
 
 use alloc::string::String;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::time::Duration;
 
@@ -1299,20 +1298,23 @@ impl core::fmt::Display for NonConformantIssue {
                 table_id,
                 kind,
             } => {
-                let detail = match kind {
-                    PsiSyntaxKind::SectionSyntaxIndicatorUnset => {
-                        "section_syntax_indicator != 1".to_string()
-                    }
-                    PsiSyntaxKind::SectionNumberNonZero { observed } => {
-                        alloc::format!("section_number={observed} != 0 on single-section table")
-                    }
-                    PsiSyntaxKind::ReservedBits => "reserved bits not at spec values".to_string(),
-                };
+                // Write directly to the formatter — no intermediate String
+                // allocation (Display can be on the strict-rejection hot path,
+                // and tst-core is no_std-capable).
                 write!(
                     f,
-                    "PSI syntax violation on PID 0x{pid:04X} (table_id=0x{table_id:02X}): {detail} \
-                     (H.222.0 §2.4.4)"
-                )
+                    "PSI syntax violation on PID 0x{pid:04X} (table_id=0x{table_id:02X}): "
+                )?;
+                match kind {
+                    PsiSyntaxKind::SectionSyntaxIndicatorUnset => {
+                        write!(f, "section_syntax_indicator != 1")?
+                    }
+                    PsiSyntaxKind::SectionNumberNonZero { observed } => {
+                        write!(f, "section_number={observed} != 0 on single-section table")?
+                    }
+                    PsiSyntaxKind::ReservedBits => write!(f, "reserved bits not at spec values")?,
+                }
+                write!(f, " (H.222.0 §2.4.4)")
             }
             NonConformantIssue::Other(msg) => {
                 write!(f, "{msg}")

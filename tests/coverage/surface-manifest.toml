@@ -115,6 +115,33 @@ tier = "A"
 [[surface]]
 kind = "rust"
 crate = "tst-core"
+item = "tst_core::klv::st0102::encode_strict_compliance"
+owning_tests = ["crates/tst-core/tests/klv/st0102_via_st0601.rs"]
+bindings = ["python:encode_security_strict_compliance", "java:org.tstrans.klv.Klv.encodeSecurityStrictCompliance"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::encode_strict_compliance"
+owning_tests = ["crates/tst-core/tests/klv/st0903_via_st0601.rs"]
+bindings = ["python:encode_vmti_strict_compliance", "java:org.tstrans.klv.Klv.encodeVmtiStrictCompliance"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::klv::st0903::encode_standalone_strict_compliance"
+owning_tests = ["crates/tst-core/tests/klv/st0903_standalone_ul.rs"]
+bindings = ["python:encode_vmti_standalone_strict_compliance", "java:org.tstrans.klv.Klv.encodeVmtiStandaloneStrictCompliance"]
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
 item = "tst_core::klv::st0605::decode"
 owning_tests = ["crates/tst-core/tests/klv/typed_set_proptest.rs"]
 bindings = ["python:decode_precision_timestamp", "java:org.tstrans.klv.Klv.decodePrecisionTimestamp"]

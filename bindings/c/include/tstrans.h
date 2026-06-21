@@ -151,7 +151,8 @@
  *   discriminator: 0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr,
  *   0xFF=unknown).
  *   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
- *   Further WP-D codes are added under this same minor as their tasks land.
+ *   `PsiSyntax` (= 37, REF-PSI-03; table_id = PSI table_id, obu_type = kind,
+ *   cc_observed = section_number for SectionNumberNonZero).
  */
 #define TST_ABI_VERSION_MINOR 16
 
@@ -720,6 +721,14 @@ enum tst_nonconformant_code
    * dropped. `pid` = the PID; `table_id` carries the PES stream_id byte.
    */
   TST_NONCONFORMANT_CODE_ZERO_LENGTH_PES_NON_VIDEO = 36,
+  /**
+   * REF-PSI-03. PAT/PMT fixed/reserved syntax violation. `pid` = the PID;
+   * `table_id` = the PSI table_id (0x00 PAT, 0x02 PMT); `obu_type` carries
+   * the PsiSyntaxKind discriminator (0=SectionSyntaxIndicatorUnset,
+   * 1=SectionNumberNonZero, 2=ReservedBits, 0xFF=unknown); for
+   * SectionNumberNonZero, `cc_observed` carries the observed section_number.
+   */
+  TST_NONCONFORMANT_CODE_PSI_SYNTAX = 37,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

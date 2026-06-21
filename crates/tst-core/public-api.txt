@@ -3074,6 +3074,10 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupport
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiSyntax
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiSyntax::kind: tst_core::mpegts::demux::event::PsiSyntaxKind
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiSyntax::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiSyntax::table_id: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::PtsAnomaly
 pub tst_core::mpegts::demux::event::NonConformantIssue::PtsAnomaly::delta: i64
 pub tst_core::mpegts::demux::event::NonConformantIssue::PusiMidPes
@@ -3155,6 +3159,27 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::PesHeaderMalformedK
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::PsiSyntaxKind
+pub tst_core::mpegts::demux::event::PsiSyntaxKind::ReservedBits
+pub tst_core::mpegts::demux::event::PsiSyntaxKind::SectionNumberNonZero
+pub tst_core::mpegts::demux::event::PsiSyntaxKind::SectionNumberNonZero::observed: u8
+pub tst_core::mpegts::demux::event::PsiSyntaxKind::SectionSyntaxIndicatorUnset
+impl core::clone::Clone for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::clone(&self) -> tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::eq(&self, &tst_core::mpegts::demux::event::PsiSyntaxKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Send for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PsiSyntaxKind
 pub enum tst_core::mpegts::demux::event::SamplePayload
 pub tst_core::mpegts::demux::event::SamplePayload::Audio
 pub tst_core::mpegts::demux::event::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec
@@ -3976,6 +4001,10 @@ pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported::tab
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PsiSyntax
+pub tst_core::mpegts::demux::NonConformantIssue::PsiSyntax::kind: tst_core::mpegts::demux::event::PsiSyntaxKind
+pub tst_core::mpegts::demux::NonConformantIssue::PsiSyntax::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PsiSyntax::table_id: u8
 pub tst_core::mpegts::demux::NonConformantIssue::PtsAnomaly
 pub tst_core::mpegts::demux::NonConformantIssue::PtsAnomaly::delta: i64
 pub tst_core::mpegts::demux::NonConformantIssue::PusiMidPes
@@ -4057,6 +4086,27 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::PesHeaderMalformedK
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::PsiSyntaxKind
+pub tst_core::mpegts::demux::PsiSyntaxKind::ReservedBits
+pub tst_core::mpegts::demux::PsiSyntaxKind::SectionNumberNonZero
+pub tst_core::mpegts::demux::PsiSyntaxKind::SectionNumberNonZero::observed: u8
+pub tst_core::mpegts::demux::PsiSyntaxKind::SectionSyntaxIndicatorUnset
+impl core::clone::Clone for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::clone(&self) -> tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::eq(&self, &tst_core::mpegts::demux::event::PsiSyntaxKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::PsiSyntaxKind
+pub fn tst_core::mpegts::demux::event::PsiSyntaxKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Send for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PsiSyntaxKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PsiSyntaxKind
 pub enum tst_core::mpegts::demux::SamplePayload
 pub tst_core::mpegts::demux::SamplePayload::Audio
 pub tst_core::mpegts::demux::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec

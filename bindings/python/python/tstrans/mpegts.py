@@ -476,6 +476,7 @@ class NonConformantKind(enum.Enum):
     UNSUPPORTED_SCRAMBLING = "unsupported_scrambling"
     ADAPTATION_FIELD_MALFORMED = "adaptation_field_malformed"
     ZERO_LENGTH_PES_NON_VIDEO = "zero_length_pes_non_video"
+    PSI_SYNTAX = "psi_syntax"
     OTHER = "other"
 
 

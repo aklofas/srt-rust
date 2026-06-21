@@ -555,6 +555,7 @@ fn nonconformant_kind<'local>(
         UnsupportedScrambling { .. } => "UNSUPPORTED_SCRAMBLING",
         AdaptationFieldMalformed { .. } => "ADAPTATION_FIELD_MALFORMED",
         ZeroLengthPesNonVideo { .. } => "ZERO_LENGTH_PES_NON_VIDEO",
+        PsiSyntax { .. } => "PSI_SYNTAX",
         Other(_) => "OTHER",
     };
     enum_const(env, "NonConformantKind", name)

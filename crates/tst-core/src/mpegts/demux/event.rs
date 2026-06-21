@@ -6,6 +6,7 @@
 //! enum, no other public type changes.
 
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::time::Duration;
 
@@ -856,6 +857,19 @@ pub enum NonConformantIssue {
     /// rejects. `stream_id` is the PES stream_id byte. REF-PES-01.
     ZeroLengthPesNonVideo { pid: u16, stream_id: u8 },
 
+    /// A PAT/PMT section violated a fixed/reserved syntax field per H.222.0
+    /// §2.4.4. `section_syntax_indicator != 1` and `section_number != 0`
+    /// (on a single-section table) are validated in every mode; reserved-bit
+    /// violations are validated only when `StrictMode != Off` (real muxers set
+    /// reserved bits inconsistently, so always-on checking would false-positive
+    /// in default/lenient mode). `StrictMode::Full` rejects. `table_id` is the
+    /// PSI table_id (0x00 PAT, 0x02 PMT). REF-PSI-03.
+    PsiSyntax {
+        pid: u16,
+        table_id: u8,
+        kind: PsiSyntaxKind,
+    },
+
     /// Other.
     Other(String),
 }
@@ -891,6 +905,22 @@ pub enum PesHeaderMalformedKind {
     /// One of the three trailing marker bits inside a 5-byte PTS or DTS
     /// field is `0`. Each must be `1` per H.222.0 §2.4.3.7.
     InvalidPtsDtsMarkerBits,
+}
+
+/// Which fixed/reserved PSI syntax field a PAT/PMT section violated.
+/// Carried inside [`NonConformantIssue::PsiSyntax`]. H.222.0 §2.4.4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PsiSyntaxKind {
+    /// `section_syntax_indicator` (bit 0x80 of section byte 1) was 0;
+    /// PAT/PMT long-form sections require 1.
+    SectionSyntaxIndicatorUnset,
+    /// `section_number` (section byte 6) was non-zero on a single-section
+    /// table (one whose `last_section_number == 0`).
+    SectionNumberNonZero { observed: u8 },
+    /// A reserved/fixed bit field held a non-spec value. Surfaced only when
+    /// `StrictMode != Off` (gated to avoid lenient-mode false positives).
+    ReservedBits,
 }
 
 /// Spec-clause that a NAL header byte violated. Carried inside
@@ -1262,6 +1292,26 @@ impl core::fmt::Display for NonConformantIssue {
                     "zero PES_packet_length on non-video PID 0x{pid:04X} \
                      (stream_id=0x{stream_id:02X}); H.222.0 §2.4.3.7 permits zero \
                      only for video — packet dropped"
+                )
+            }
+            NonConformantIssue::PsiSyntax {
+                pid,
+                table_id,
+                kind,
+            } => {
+                let detail = match kind {
+                    PsiSyntaxKind::SectionSyntaxIndicatorUnset => {
+                        "section_syntax_indicator != 1".to_string()
+                    }
+                    PsiSyntaxKind::SectionNumberNonZero { observed } => {
+                        alloc::format!("section_number={observed} != 0 on single-section table")
+                    }
+                    PsiSyntaxKind::ReservedBits => "reserved bits not at spec values".to_string(),
+                };
+                write!(
+                    f,
+                    "PSI syntax violation on PID 0x{pid:04X} (table_id=0x{table_id:02X}): {detail} \
+                     (H.222.0 §2.4.4)"
                 )
             }
             NonConformantIssue::Other(msg) => {

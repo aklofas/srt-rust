@@ -838,6 +838,7 @@ pub fn nonconformant_issue_code(
         NonConformantIssue::UnsupportedScrambling { .. } => "UNSUPPORTED_SCRAMBLING",
         NonConformantIssue::AdaptationFieldMalformed { .. } => "ADAPTATION_FIELD_MALFORMED",
         NonConformantIssue::ZeroLengthPesNonVideo { .. } => "ZERO_LENGTH_PES_NON_VIDEO",
+        NonConformantIssue::PsiSyntax { .. } => "PSI_SYNTAX",
         NonConformantIssue::Other(_) => "OTHER",
     }
     .into()

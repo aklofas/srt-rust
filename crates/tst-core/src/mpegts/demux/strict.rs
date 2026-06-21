@@ -163,6 +163,20 @@ mod tests {
         assert!(StrictMode::Full.rejects(&issue));
     }
 
+    #[test]
+    fn psi_syntax_rejected_only_by_full() {
+        use crate::mpegts::demux::event::PsiSyntaxKind;
+        let issue = NonConformantIssue::PsiSyntax {
+            pid: 0x0000,
+            table_id: 0x00,
+            kind: PsiSyntaxKind::SectionSyntaxIndicatorUnset,
+        };
+        assert!(!StrictMode::Off.rejects(&issue));
+        assert!(!StrictMode::TimingOnly.rejects(&issue));
+        assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
+
     /// C11 — LATM framing is data-conformance (the bitstream itself, not
     /// timing or descriptors). Only `Full` strict mode rejects it; the
     /// narrower `TimingOnly` / `DescriptorsOnly` modes leave it as a

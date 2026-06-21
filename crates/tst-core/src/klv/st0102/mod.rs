@@ -89,7 +89,7 @@ pub(crate) mod tags;
 mod tests;
 
 pub use decode::{decode, decode_strict};
-pub use encode::{encode, encode_to_vec, encoded_len};
+pub use encode::{encode, encode_strict_compliance, encode_to_vec, encoded_len};
 pub use enums::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification,
 };

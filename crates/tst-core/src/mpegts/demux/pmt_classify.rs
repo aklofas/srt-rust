@@ -72,6 +72,29 @@ pub(crate) fn classify_pmt_stream(stream_type: u8, descriptors: &[RawDescriptor]
     }
 }
 
+/// True if `stream_type` denotes a video elementary stream per ISO/IEC
+/// 13818-1 Table 2-34 — including video codecs `tst-core` does not parse
+/// (MPEG-1/MPEG-2/MPEG-4 video), which [`classify_pmt_stream`] therefore
+/// returns as [`StreamKind::Unknown`].
+///
+/// Used by REF-PES-01 (zero-`PES_packet_length` handling, H.222.0 §2.4.3.7):
+/// an unbounded PES is legal whenever the payload is a *video* elementary
+/// stream — not only the codecs `tst-core` recognizes as
+/// [`StreamKind::Video`]. Keying the zero-length rule on
+/// [`StreamKind::Video`] alone would mis-flag a conformant MPEG-2 video
+/// stream (classified `Unknown(0x02)`) as a non-video violation.
+pub(crate) fn is_video_stream_type(stream_type: u8) -> bool {
+    matches!(
+        stream_type,
+        0x01      // ISO/IEC 11172-2 Video (MPEG-1)
+            | 0x02 // ITU-T H.262 | ISO/IEC 13818-2 Video (MPEG-2)
+            | 0x10 // ISO/IEC 14496-2 Visual (MPEG-4 Part 2)
+            | 0x1B // ITU-T H.264 | ISO/IEC 14496-10
+            | 0x24 // ITU-T H.265 | ISO/IEC 23008-2
+            | 0x33 // ITU-T H.266 | ISO/IEC 23090-3
+    )
+}
+
 /// Extract the `metadata_descriptor` declared link for a specific PID from
 /// a parsed PMT. Used by `build_program_map` to rebuild klv_links after
 /// collision filtering has already reduced the stream list.
@@ -229,6 +252,26 @@ pub(super) fn is_malformed_av1_registration(descriptors: &[RawDescriptor]) -> bo
 mod tests {
     use super::*;
     use alloc::vec;
+
+    #[test]
+    fn is_video_stream_type_covers_iso_video_codes() {
+        // Recognized-by-tst-core video.
+        assert!(is_video_stream_type(0x1B)); // H.264
+        assert!(is_video_stream_type(0x24)); // H.265
+        assert!(is_video_stream_type(0x33)); // H.266
+        // Video codecs tst-core does NOT parse (classified Unknown) but which
+        // are still video elementary streams (REF-PES-01 zero-length permission).
+        assert!(is_video_stream_type(0x01)); // MPEG-1 video
+        assert!(is_video_stream_type(0x02)); // MPEG-2 video (H.262)
+        assert!(is_video_stream_type(0x10)); // MPEG-4 Part 2 visual
+        // Non-video stream types.
+        assert!(!is_video_stream_type(0x03)); // MPEG-1 audio
+        assert!(!is_video_stream_type(0x04)); // MPEG-2 audio
+        assert!(!is_video_stream_type(0x0F)); // AAC ADTS
+        assert!(!is_video_stream_type(0x15)); // metadata in PES (KLV)
+        assert!(!is_video_stream_type(0x06)); // PES private data
+        assert!(!is_video_stream_type(0x00));
+    }
 
     #[test]
     fn classify_pmt_stream_matches_derive_cascade() {

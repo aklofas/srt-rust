@@ -100,12 +100,15 @@ impl Reassembler {
     /// continuation packets' RAI bits are ignored — encoders/muxers signal
     /// AU-level RA on the start packet only (matches ffmpeg/tsduck).
     ///
-    /// `is_video` reflects the PMT-declared [`StreamKind`] of `pid`
-    /// ([`StreamKind::Video`](crate::mpegts::demux::StreamKind::Video) →
-    /// `true`). It gates the zero-`PES_packet_length` rule (REF-PES-01,
-    /// H.222.0 §2.4.3.7): an unbounded PES is legal only when the payload is
-    /// a video elementary stream. Callers without a PMT entry for `pid` pass
-    /// `false` (conservatively flag).
+    /// `is_video` reflects whether the PMT-declared stream type of `pid` is a
+    /// video elementary stream — both the codecs tst-core parses
+    /// ([`StreamKind::Video`](crate::mpegts::demux::StreamKind::Video)) and
+    /// video codecs it does not (MPEG-1/2/4, classified
+    /// [`StreamKind::Unknown`](crate::mpegts::demux::StreamKind::Unknown) but a
+    /// video `stream_type`). It gates the zero-`PES_packet_length` rule
+    /// (REF-PES-01, H.222.0 §2.4.3.7): an unbounded PES is legal only when the
+    /// payload is a video elementary stream. Callers without a PMT entry for
+    /// `pid` pass `false` (conservatively flag).
     pub fn push(
         &mut self,
         pid: u16,

@@ -74,13 +74,21 @@ impl super::demuxer::Demuxer {
         pkt: &crate::mpegts::demux::ts::TsPacket<'_>,
     ) -> Result<(), crate::error::DemuxError> {
         // REF-PES-01: zero PES_packet_length is legal only for video. Key the
-        // decision on the PMT-declared StreamKind, not the PES stream_id — the
+        // decision on the PMT-declared stream type, not the PES stream_id — the
         // PID's kind is always known here (process_packet only routes to
-        // handle_pes_packet when stream_kind_by_pid contains pkt.pid).
-        let is_video = matches!(
-            self.stream_kind_by_pid.get(&pkt.pid),
-            Some(StreamKind::Video(_))
-        );
+        // handle_pes_packet when stream_kind_by_pid contains pkt.pid). A PID
+        // tst-core recognizes as video is `StreamKind::Video(_)`; a video
+        // codec it does NOT parse (MPEG-1/2/4) is `StreamKind::Unknown(t)` with
+        // a video `stream_type` `t` — both are video elementary streams per
+        // H.222.0 §2.4.3.7 and may carry an unbounded PES, so neither is
+        // flagged. Everything else (audio/KLV/subtitle/non-video Unknown) is.
+        let is_video = match self.stream_kind_by_pid.get(&pkt.pid) {
+            Some(StreamKind::Video(_)) => true,
+            Some(StreamKind::Unknown(stream_type)) => {
+                super::pmt_classify::is_video_stream_type(*stream_type)
+            }
+            _ => false,
+        };
         let outcomes = self.pes.push(
             pkt.pid,
             pkt.payload,

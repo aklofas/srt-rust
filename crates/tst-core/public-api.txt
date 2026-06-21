@@ -2757,6 +2757,26 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::demuxer::Demuxer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
 pub mod tst_core::mpegts::demux::event
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::AdaptationFieldKind
+pub tst_core::mpegts::demux::event::AdaptationFieldKind::BadLengthForControl
+pub tst_core::mpegts::demux::event::AdaptationFieldKind::ReservedControl
+pub tst_core::mpegts::demux::event::AdaptationFieldKind::ShortPcr
+impl core::clone::Clone for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::clone(&self) -> tst_core::mpegts::demux::AdaptationFieldKind
+impl core::cmp::Eq for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::eq(&self, &tst_core::mpegts::demux::AdaptationFieldKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Freeze for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Send for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Sync for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Unpin for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::AdaptationFieldKind
 pub enum tst_core::mpegts::demux::event::AudioCodec
 pub tst_core::mpegts::demux::event::AudioCodec::Aac
 pub tst_core::mpegts::demux::event::AudioCodec::AacLatm
@@ -2986,6 +3006,9 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::event::NonConformantIssue
 pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing
 pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::AdaptationFieldMalformed
+pub tst_core::mpegts::demux::event::NonConformantIssue::AdaptationFieldMalformed::kind: tst_core::mpegts::demux::AdaptationFieldKind
+pub tst_core::mpegts::demux::event::NonConformantIssue::AdaptationFieldMalformed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1MissingTsObuFraming
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1MissingTsObuFraming::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader
@@ -3653,6 +3676,26 @@ impl core::marker::Unpin for tst_core::mpegts::demux::strict::StrictMode
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::strict::StrictMode
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::strict::StrictMode
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::strict::StrictMode
+#[non_exhaustive] pub enum tst_core::mpegts::demux::AdaptationFieldKind
+pub tst_core::mpegts::demux::AdaptationFieldKind::BadLengthForControl
+pub tst_core::mpegts::demux::AdaptationFieldKind::ReservedControl
+pub tst_core::mpegts::demux::AdaptationFieldKind::ShortPcr
+impl core::clone::Clone for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::clone(&self) -> tst_core::mpegts::demux::AdaptationFieldKind
+impl core::cmp::Eq for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::eq(&self, &tst_core::mpegts::demux::AdaptationFieldKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::AdaptationFieldKind
+pub fn tst_core::mpegts::demux::AdaptationFieldKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Freeze for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Send for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Sync for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::Unpin for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::AdaptationFieldKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::AdaptationFieldKind
 pub enum tst_core::mpegts::demux::AudioCodec
 pub tst_core::mpegts::demux::AudioCodec::Aac
 pub tst_core::mpegts::demux::AudioCodec::AacLatm
@@ -3859,6 +3902,9 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::NonConformantIssue
 pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing
 pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::AdaptationFieldMalformed
+pub tst_core::mpegts::demux::NonConformantIssue::AdaptationFieldMalformed::kind: tst_core::mpegts::demux::AdaptationFieldKind
+pub tst_core::mpegts::demux::NonConformantIssue::AdaptationFieldMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1MissingTsObuFraming
 pub tst_core::mpegts::demux::NonConformantIssue::Av1MissingTsObuFraming::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader

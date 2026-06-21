@@ -40,10 +40,10 @@ pub mod payload_test_hooks {
 
 pub use demuxer::Demuxer;
 pub use event::{
-    AudioCodec, Av1ObuHeaderKind, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind,
-    NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, PcrMalformedKind,
-    PesHeaderMalformedKind, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind,
-    StreamKindTag, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
+    AdaptationFieldKind, AudioCodec, Av1ObuHeaderKind, DemuxEvent, DiscontinuityKind, KlvLink,
+    LinkSource, MetadataKind, NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension,
+    PcrMalformedKind, PesHeaderMalformedKind, ProgramMap, SamplePayload, StreamId, StreamInfo,
+    StreamKind, StreamKindTag, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
 pub use payload::{split_video, split_video_strict};
 pub use strict::StrictMode;

@@ -146,8 +146,11 @@
  *   `TstNonConformantCode` values surfaced on `TstEventNonConformant`
  *   (no struct layout change — all reuse existing carriers):
  *   `UnsupportedScrambling` (= 34, REF-TS-01; `pid` = scrambled PID,
- *   `table_id` = 2-bit transport_scrambling_control). Further WP-D codes
- *   (35-37) are added under this same minor as their tasks land.
+ *   `table_id` = 2-bit transport_scrambling_control).
+ *   `AdaptationFieldMalformed` (= 35, REF-TS-02; `table_id` = kind
+ *   discriminator: 0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr,
+ *   0xFF=unknown). Further WP-D codes are added under this same minor as
+ *   their tasks land.
  */
 #define TST_ABI_VERSION_MINOR 16
 
@@ -705,6 +708,12 @@ enum tst_nonconformant_code
    * `pid` = the scrambled PID; `table_id` carries the 2-bit control value.
    */
   TST_NONCONFORMANT_CODE_UNSUPPORTED_SCRAMBLING = 34,
+  /**
+   * REF-TS-02. Adaptation-field control/length violation. `pid` = the PID;
+   * `table_id` carries the AdaptationFieldKind discriminator
+   * (0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr, 0xFF=unknown).
+   */
+  TST_NONCONFORMANT_CODE_ADAPTATION_FIELD_MALFORMED = 35,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

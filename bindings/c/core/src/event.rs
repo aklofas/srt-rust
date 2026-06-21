@@ -207,6 +207,10 @@ pub enum TstNonConformantCode {
     /// REF-TS-01. transport_scrambling_control != 0; payload not routed.
     /// `pid` = the scrambled PID; `table_id` carries the 2-bit control value.
     UnsupportedScrambling = 34,
+    /// REF-TS-02. Adaptation-field control/length violation. `pid` = the PID;
+    /// `table_id` carries the AdaptationFieldKind discriminator
+    /// (0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr, 0xFF=unknown).
+    AdaptationFieldMalformed = 35,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
@@ -1392,6 +1396,17 @@ fn fill_nonconformant(
             body.issue_code = TstNonConformantCode::UnsupportedScrambling as c_int;
             body.pid = *pid;
             body.table_id = *control; // 1, 2, or 3
+        }
+        NonConformantIssue::AdaptationFieldMalformed { pid, kind } => {
+            use tst_core::mpegts::demux::AdaptationFieldKind;
+            body.issue_code = TstNonConformantCode::AdaptationFieldMalformed as c_int;
+            body.pid = *pid;
+            body.table_id = match kind {
+                AdaptationFieldKind::ReservedControl => 0,
+                AdaptationFieldKind::BadLengthForControl => 1,
+                AdaptationFieldKind::ShortPcr => 2,
+                _ => 0xFF,
+            };
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

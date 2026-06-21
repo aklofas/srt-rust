@@ -4,6 +4,27 @@
 
 use crate::mpegts::common::{TS_PACKET_SIZE, TS_SYNC_BYTE};
 
+/// Why a TS packet's adaptation-field control/length combination violated
+/// ITU-T H.222.0 §2.4.3.2 / §2.4.3.5. Surfaced on
+/// `TsPacket::adaptation_malformed` and, by the demuxer, as
+/// [`NonConformantIssue::AdaptationFieldMalformed`](crate::mpegts::demux::NonConformantIssue::AdaptationFieldMalformed).
+/// REF-TS-02.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AdaptationFieldKind {
+    /// `adaptation_field_control == 0b00` — reserved; H.222.0 §2.4.3.2
+    /// requires decoders to discard the packet.
+    ReservedControl,
+    /// `adaptation_field_length` is wrong for the control value: control
+    /// `0b10` (adaptation only) requires exactly `183`; control `0b11`
+    /// (adaptation + payload) requires `0..=182`. Also covers a length
+    /// that runs past the 188-byte packet.
+    BadLengthForControl,
+    /// `pcr_flag = 1` but the adaptation field held fewer than the six
+    /// bytes required for a PCR (H.222.0 §2.4.3.5).
+    ShortPcr,
+}
+
 /// Why a PCR field decoded from the adaptation field violated ITU-T
 /// H.222.0 §2.4.3.5. Surfaced on `TsPacket::pcr_malformed` when the
 /// reserved bits or extension range fail the on-wire conformance checks.
@@ -55,6 +76,11 @@ pub struct TsPacket<'a> {
     /// non-conformant per H.222.0 §2.4.3.5 (validate-1 B12). The demuxer
     /// surfaces this as `NonConformantIssue::PcrMalformed`.
     pub pcr_malformed: Option<PcrMalformedKind>,
+    /// Set when the adaptation field's control/length combination violated
+    /// H.222.0 §2.4.3.2/§2.4.3.5 (see [`AdaptationFieldKind`]). The demuxer
+    /// surfaces this as `NonConformantIssue::AdaptationFieldMalformed`.
+    /// `None` when the adaptation field (if any) is well-formed.
+    pub adaptation_malformed: Option<AdaptationFieldKind>,
     /// Adaptation field's `discontinuity_indicator` flag.
     pub discontinuity_indicator: bool,
     /// Adaptation field's `random_access_indicator` flag, per ISO/IEC
@@ -97,18 +123,35 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     let mut payload_off = 4;
     let mut pcr_27mhz = None;
     let mut pcr_malformed = None;
+    let mut adaptation_malformed = None;
     let mut discontinuity_indicator = false;
     let mut random_access_indicator = false;
+    // H.222.0 §2.4.3.2: adaptation_field_control=00 is reserved; decoders
+    // shall discard the packet. Flag it before entering the af block (which
+    // has_adaptation_field=false bypasses).
+    if adaptation_control == 0b00 {
+        adaptation_malformed = Some(AdaptationFieldKind::ReservedControl);
+    }
     if has_adaptation_field {
         let af_len = buf[4] as usize;
         if 5 + af_len > TS_PACKET_SIZE {
             return Err(TsParseError::BadAdaptationLength);
+        }
+        // H.222.0 §2.4.3.2: control 10 (adaptation only) ⇒ length must be
+        // exactly 183; control 11 (adaptation + payload) ⇒ length 0..=182.
+        if (adaptation_control == 0b10 && af_len != 183)
+            || (adaptation_control == 0b11 && af_len > 182)
+        {
+            adaptation_malformed = Some(AdaptationFieldKind::BadLengthForControl);
         }
         if af_len >= 1 {
             let flags = buf[5];
             discontinuity_indicator = (flags & 0x80) != 0;
             random_access_indicator = (flags & 0x40) != 0;
             let pcr_flag = (flags & 0x10) != 0;
+            if pcr_flag && af_len < 7 && adaptation_malformed.is_none() {
+                adaptation_malformed = Some(AdaptationFieldKind::ShortPcr);
+            }
             if pcr_flag && af_len >= 7 {
                 let b = &buf[6..12];
                 let base = (((b[0] as u64) << 25)
@@ -150,6 +193,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
         has_adaptation_field,
         pcr_27mhz,
         pcr_malformed,
+        adaptation_malformed,
         discontinuity_indicator,
         random_access_indicator,
         payload,
@@ -311,6 +355,50 @@ mod tests {
         let pkt = parse_ts_packet(&buf).unwrap();
         assert_eq!(pkt.pcr_27mhz, Some(0x100 * 300 + 299));
         assert_eq!(pkt.pcr_malformed, None);
+    }
+
+    #[test]
+    fn adaptation_control_00_flagged_reserved() {
+        let mut buf = build_simple_packet(0x100, false, 0);
+        buf[3] &= 0x0F; // adaptation_control=00 (bits 5-4 = 00, already zero)
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert_eq!(
+            pkt.adaptation_malformed,
+            Some(AdaptationFieldKind::ReservedControl)
+        );
+        assert!(!pkt.has_payload && !pkt.has_adaptation_field);
+    }
+
+    #[test]
+    fn adaptation_only_control_10_requires_length_183() {
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x01;
+        buf[2] = 0x00;
+        buf[3] = 0x20; // adaptation_control=10 (adaptation only)
+        buf[4] = 100; // wrong: must be exactly 183 for control 10
+        buf[5] = 0x00; // flags
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert_eq!(
+            pkt.adaptation_malformed,
+            Some(AdaptationFieldKind::BadLengthForControl)
+        );
+    }
+
+    #[test]
+    fn pcr_flag_with_short_field_is_short_pcr() {
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x01;
+        buf[2] = 0x00;
+        buf[3] = 0x30; // adaptation_control=11
+        buf[4] = 1; // af_len=1 (flags only) — too short for the 6 PCR bytes
+        buf[5] = 0x10; // flags: PCR_flag=1
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert_eq!(
+            pkt.adaptation_malformed,
+            Some(AdaptationFieldKind::ShortPcr)
+        );
     }
 
     #[test]

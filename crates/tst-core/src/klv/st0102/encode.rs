@@ -183,7 +183,7 @@ pub fn encode_strict_compliance(record: &SecurityLs) -> Result<Vec<u8>, KlvEncod
         if !present {
             let name: &'static str = match t {
                 1 => "Security Classification",
-                2 => "Country Coding Method",
+                2 => "Classifying Country Coding Method",
                 3 => "Classifying Country",
                 12 => "Object Country Coding Method",
                 13 => "Object Country Codes",

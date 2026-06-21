@@ -5,7 +5,8 @@ import java.util.Optional;
 /**
  * Thrown when typed-KLV encode fails. {@link Kind} mirrors
  * {@code tst_core::error::KlvEncodeError}; {@link #tag()} carries the
- * offending KLV tag for the tag-bearing variants.
+ * offending KLV tag for most tag-bearing variants, or the VTarget Pack
+ * {@code target_id} for {@code VTARGET_PACK_EMPTY} / {@code DUPLICATE_TARGET_ID}.
  */
 public final class KlvEncodeException extends BindingException {
     private static final long serialVersionUID = 1L;
@@ -19,7 +20,7 @@ public final class KlvEncodeException extends BindingException {
     }
 
     private final Kind kind;
-    private final Long tag; // nullable — present only for tag-bearing variants
+    private final Long tag; // nullable — a KLV tag, or a VTarget target_id, depending on kind
 
     /** Construct with no associated tag (e.g. {@code BUFFER_TOO_SMALL}). */
     public KlvEncodeException(Kind kind, String message) {
@@ -38,7 +39,12 @@ public final class KlvEncodeException extends BindingException {
         return kind;
     }
 
-    /** @return the offending KLV tag, or empty for variants that carry none. */
+    /**
+     * @return the numeric identifier the error carries, or empty for variants
+     *     that carry none. For most variants this is the offending KLV tag; for
+     *     {@code VTARGET_PACK_EMPTY} / {@code DUPLICATE_TARGET_ID} it is the
+     *     VTarget Pack {@code target_id}.
+     */
     public Optional<Long> tag() {
         return Optional.ofNullable(tag);
     }

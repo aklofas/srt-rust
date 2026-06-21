@@ -96,9 +96,10 @@ fn main() -> ExitCode {
         for output in pairer.feed(event) {
             match output {
                 PairerOutput::Paired { video, klv } => {
-                    // Real consumer: feed `video.payload` into a
-                    // decoder (Annex-B reconstitute via cookbook
-                    // recipe 18) and `klv.payload` into
+                    // Real consumer: feed `video.raw` (the exact encoded
+                    // access unit — Annex-B for H.26x) straight into a
+                    // decoder, or call `video.split_units()` for parsed
+                    // NAL/OBU units; feed `klv.payload` into
                     // `tst_core::klv::st0601::decode`.
                     let _ = (video, klv);
                 }

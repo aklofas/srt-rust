@@ -79,8 +79,10 @@ impl RawBytes {
         self.shared.len()
     }
 
-    /// Content equality vs another `RawBytes` or a Python `bytes` /
-    /// `bytearray`. Only `==` / `!=` are defined; ordering is `NotImplemented`.
+    /// Content equality vs another `RawBytes` or a Python `bytes`. Only `==` /
+    /// `!=` are defined; ordering is `NotImplemented`. (A `bytearray` argument
+    /// yields `NotImplemented` here; callers compare the materialized `.raw`
+    /// `bytes`, where `bytes == bytearray` works via Python's own protocol.)
     fn __richcmp__(&self, py: Python<'_>, other: &Bound<'_, PyAny>, op: CompareOp) -> PyObject {
         let eq = if let Ok(other_holder) = other.downcast::<RawBytes>() {
             self.shared.as_slice() == other_holder.get().shared.as_slice()

@@ -316,3 +316,223 @@ fn is_reserved_or_typed_tag(tag: u32) -> bool {
     }
     super::tags::lookup(tag as u8).is_some()
 }
+
+// ---------------------------------------------------------------------------
+// Strict-compliance encoders (REF-KLV-03)
+// ---------------------------------------------------------------------------
+
+/// Encode a VMTI Local Set body (embedded mode) with strict conformance
+/// validation per MISB ST 0903.
+///
+/// This is the strict variant of [`encode_to_vec`]. The default lenient
+/// path stays unchanged — this function is opt-in.
+///
+/// # Validation applied (embedded mode)
+///
+/// **Required top-level items** (symmetric with [`super::decode_strict`]):
+/// - Tag 4 `version_number` — "VMTI LS Version Number" (ST 0903.5-99, unconditionally required).
+/// - Tag 6 `num_targets_reported` — "Number of Targets Reported" (ST 0903.4-19).
+///
+/// **Per VTargetPack:**
+/// - Each pack must have ≥1 populated TLV field beyond `target_id`
+///   (ST 0903.4-10); empty packs → [`KlvEncodeError::VTargetPackEmpty`].
+/// - `target_id` values must be unique across `ls.targets`
+///   (ST 0903.6-126); duplicates → [`KlvEncodeError::DuplicateTargetId`].
+///
+/// Parent-relative offset tags (10/11/13/14/15/16) are **allowed** in
+/// embedded mode — they reference the parent ST 0601 telemetry frame. Use
+/// [`encode_standalone_strict_compliance`] for standalone carriage which
+/// forbids them.
+///
+/// # Errors
+///
+/// - [`KlvEncodeError::MissingMandatoryItem`] if `version_number` or
+///   `num_targets_reported` is `None`.
+/// - [`KlvEncodeError::VTargetPackEmpty`] if any pack has no TLV items.
+/// - [`KlvEncodeError::DuplicateTargetId`] if any `target_id` repeats.
+/// - All [`KlvEncodeError`] variants from [`encode_to_vec`] once the
+///   precondition gate passes.
+pub fn encode_strict_compliance(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
+    validate_vtargets(ls)?;
+    encode_to_vec(ls)
+}
+
+/// Encode a VMTI Local Set as a standalone wire record with strict
+/// conformance validation per MISB ST 0903.
+///
+/// This is the strict variant of [`encode_to_vec_standalone`]. The
+/// default lenient path stays unchanged — this function is opt-in.
+///
+/// # Validation applied
+///
+/// All checks from [`encode_strict_compliance`] (embedded mode), plus:
+///
+/// **Additional standalone-required top-level items:**
+/// - Tag 2 `precision_time_stamp` — "Precision Time Stamp" (ST 0903.6-117).
+/// - Tag 11 `horizontal_fov` — "VMTI Horizontal FOV" (ST 0903.6-122).
+/// - Tag 12 `vertical_fov` — "VMTI Vertical FOV" (ST 0903.6-123).
+/// - Tag 13 `miis_id` — "MIIS Core Identifier" (ST 0903.6-125).
+///
+/// **Forbidden per-pack offset tags** (ST 0903.6-116): offset tags
+/// 10/11/13/14/15/16 (parent-relative; meaningless without an ST 0601
+/// parent) must be absent from every [`VTargetPack`] in `ls.targets`.
+/// Tag 12 (`centroid_hae`) is absolute height — not forbidden.
+///
+/// # Errors
+///
+/// All errors from [`encode_strict_compliance`], plus:
+/// - [`KlvEncodeError::MissingMandatoryItem`] for missing standalone
+///   required items (tags 2/11/12/13).
+/// - [`KlvEncodeError::ForbiddenStandaloneOffset`] if any pack carries
+///   an offset tag.
+pub fn encode_standalone_strict_compliance(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
+    validate_vtargets(ls)?;
+    validate_standalone(ls)?;
+    encode_to_vec_standalone(ls)
+}
+
+/// Validate per-target constraints required in BOTH embedded and standalone
+/// VMTI carriage:
+/// - Required top-level items {4, 6} present (symmetric with
+///   `decode_strict`'s required-tag gate).
+/// - Every VTargetPack has ≥1 TLV item (ST 0903.4-10).
+/// - All `target_id` values are unique (ST 0903.6-126).
+fn validate_vtargets(ls: &VmtiLs) -> Result<(), KlvEncodeError> {
+    // Required top-level items: {4, 6} — matches the `required: true`
+    // flags in `tags.rs` (confirmed by `required_tags_match_spec` test).
+    if ls.version_number.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 4,
+            name: "VMTI LS Version Number",
+        });
+    }
+    if ls.num_targets_reported.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 6,
+            name: "Number of Targets Reported",
+        });
+    }
+
+    // Per-pack checks: ≥1 TLV + unique target_id.
+    let mut seen_ids = alloc::collections::BTreeSet::new();
+    for pack in &ls.targets {
+        if !has_any_tlv(pack) {
+            return Err(KlvEncodeError::VTargetPackEmpty {
+                target_id: pack.target_id,
+            });
+        }
+        if !seen_ids.insert(pack.target_id) {
+            return Err(KlvEncodeError::DuplicateTargetId {
+                target_id: pack.target_id,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate constraints that apply only to STANDALONE VMTI carriage.
+/// Called after [`validate_vtargets`] by [`encode_standalone_strict_compliance`].
+fn validate_standalone(ls: &VmtiLs) -> Result<(), KlvEncodeError> {
+    // Standalone-required top-level items: {2, 11, 12, 13}.
+    if ls.precision_time_stamp.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 2,
+            name: "Precision Time Stamp",
+        });
+    }
+    if ls.horizontal_fov.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 11,
+            name: "VMTI Horizontal FOV",
+        });
+    }
+    if ls.vertical_fov.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 12,
+            name: "VMTI Vertical FOV",
+        });
+    }
+    if ls.miis_id.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 13,
+            name: "MIIS Core Identifier",
+        });
+    }
+
+    // Forbidden per-pack offset tags (ST 0903.6-116): parent-relative
+    // offsets require a parent ST 0601 telemetry frame, which standalone
+    // VMTI lacks. Tag 12 (centroid_hae) is ABSOLUTE height — not forbidden.
+    for pack in &ls.targets {
+        if let Some(tag) = first_forbidden_offset(pack) {
+            return Err(KlvEncodeError::ForbiddenStandaloneOffset { tag });
+        }
+    }
+    Ok(())
+}
+
+/// Returns `true` if the pack has at least one TLV item beyond the
+/// leading `target_id` BER-OID. A pack is empty iff ALL typed Option
+/// fields are `None` AND `unknown` is empty.
+///
+/// # keep in sync with VTargetPack fields
+/// Every Option field in VTargetPack (excluding `target_id` and
+/// `field_errors`) must appear in this OR-chain. When a new typed field
+/// is added to VTargetPack, add it here.
+fn has_any_tlv(pack: &crate::klv::st0903::vtarget_pack::VTargetPack) -> bool {
+    pack.centroid_pixel.is_some()
+        || pack.bbox_top_left_pixel.is_some()
+        || pack.bbox_bottom_right_pixel.is_some()
+        || pack.priority.is_some()
+        || pack.confidence_level.is_some()
+        || pack.history.is_some()
+        || pack.percentage_of_target_pixels.is_some()
+        || pack.target_color.is_some()
+        || pack.target_intensity.is_some()
+        || pack.centroid_lat_offset.is_some()
+        || pack.centroid_lon_offset.is_some()
+        || pack.centroid_hae.is_some()
+        || pack.bbox_top_left_lat_offset.is_some()
+        || pack.bbox_top_left_lon_offset.is_some()
+        || pack.bbox_bottom_right_lat_offset.is_some()
+        || pack.bbox_bottom_right_lon_offset.is_some()
+        || pack.target_location.is_some()
+        || pack.geospatial_contour_series.is_some()
+        || pack.centroid_pix_row.is_some()
+        || pack.centroid_pix_col.is_some()
+        || pack.algorithm_id.is_some()
+        || pack.detection_status.is_some()
+        || pack.vmask.is_some()
+        || pack.vtracker.is_some()
+        || pack.vchip.is_some()
+        || pack.vchip_series.is_some()
+        || pack.vobject_series.is_some()
+        || !pack.unknown.is_empty()
+}
+
+/// Returns the tag number of the first forbidden standalone offset tag
+/// found in the pack, or `None` if the pack is clean.
+///
+/// Forbidden tags per ST 0903.6-116: 10/11/13/14/15/16
+/// (parent-relative lat/lon offsets). Tag 12 (centroid_hae) is absolute
+/// height — NOT forbidden.
+fn first_forbidden_offset(pack: &crate::klv::st0903::vtarget_pack::VTargetPack) -> Option<u32> {
+    if pack.centroid_lat_offset.is_some() {
+        return Some(10);
+    }
+    if pack.centroid_lon_offset.is_some() {
+        return Some(11);
+    }
+    if pack.bbox_top_left_lat_offset.is_some() {
+        return Some(13);
+    }
+    if pack.bbox_top_left_lon_offset.is_some() {
+        return Some(14);
+    }
+    if pack.bbox_bottom_right_lat_offset.is_some() {
+        return Some(15);
+    }
+    if pack.bbox_bottom_right_lon_offset.is_some() {
+        return Some(16);
+    }
+    None
+}

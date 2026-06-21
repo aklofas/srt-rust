@@ -3203,4 +3203,61 @@ mod tests {
             "zero-length non-video PES must not emit a Sample; got {events:?}"
         );
     }
+
+    #[test]
+    fn zero_length_unrecognized_video_stream_type_not_flagged() {
+        // REF-PES-01: stream_type 0x02 (ITU-T H.262 / MPEG-2 video) is a VIDEO
+        // elementary stream even though tst-core does not parse it (classified
+        // StreamKind::Unknown(0x02)). A zero PES_packet_length is legal for any
+        // video stream (H.222.0 §2.4.3.7), so it must NOT be flagged as
+        // ZeroLengthPesNonVideo — keying the rule on StreamKind::Video alone
+        // would wrongly flag conformant MPEG-1/2/4 video.
+        const VID_PID: u16 = 0x0201;
+        const PMT_PID: u16 = 0x0100;
+        const PCR_PID: u16 = 0x0200;
+
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, PMT_PID)], 0))
+            .unwrap();
+        // stream_type 0x02 = MPEG-2 video → StreamKind::Unknown(0x02).
+        demuxer
+            .feed(&pmt_packet_for_test(
+                PMT_PID,
+                1,
+                PCR_PID,
+                &[(0x02, VID_PID)],
+                0,
+            ))
+            .unwrap();
+        while demuxer.next_event().is_some() {}
+
+        // Zero-PES_packet_length PUSI packet on the MPEG-2-video PID (stream_id
+        // 0xE0). Legal-for-video, so the demuxer keeps it unbounded (no flag).
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x40 | ((VID_PID >> 8) as u8 & 0x1F); // PUSI + PID hi
+        buf[2] = (VID_PID & 0xFF) as u8;
+        buf[3] = 0x10; // payload-only, CC=0
+        buf[4] = 0x00; // PES start code prefix
+        buf[5] = 0x00;
+        buf[6] = 0x01;
+        buf[7] = 0xE0; // stream_id = video
+        buf[8] = 0x00; // PES_packet_length = 0 (unbounded — legal for video)
+        buf[9] = 0x00;
+        demuxer.feed(&buf).unwrap();
+
+        let events: Vec<_> = core::iter::from_fn(|| demuxer.next_event()).collect();
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::ZeroLengthPesNonVideo { .. },
+                    ..
+                }
+            )),
+            "MPEG-2 video (unrecognized codec) zero-length PES must NOT be \
+             flagged as ZeroLengthPesNonVideo; got {events:?}"
+        );
+    }
 }

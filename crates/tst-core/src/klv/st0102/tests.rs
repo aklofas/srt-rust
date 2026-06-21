@@ -701,3 +701,92 @@ fn security_ls_ul_reexport_matches_universal_label() {
         crate::klv::universal_label::UniversalLabel::SECURITY_LS_UL.0,
     );
 }
+
+// ------------------------------------------------------------------
+// Task 3 (WP-F / REF-KLV-02): encode_strict_compliance tests.
+// ------------------------------------------------------------------
+
+#[test]
+fn st0102_strict_rejects_missing_classification() {
+    use super::encode::encode_strict_compliance;
+    // All fields None — first required tag (1) is absent.
+    let r = SecurityLs::default();
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 1, .. }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn st0102_strict_rejects_in_required_tag_order() {
+    use super::encode::encode_strict_compliance;
+    // Tag 1 present, Tag 2 absent → error on tag 2.
+    let mut r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        ..Default::default()
+    };
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 2, .. }),
+        "got {err:?}"
+    );
+    // Tags 1+2 present, Tag 3 absent → error on tag 3.
+    r.classifying_country_coding_method = Some(ClassifyingCountryCodingMethod::Iso3166TwoLetter);
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 3, .. }),
+        "got {err:?}"
+    );
+    // Tags 1+2+3 present, Tag 12 absent → error on tag 12.
+    r.classifying_country = Some("//US".to_string());
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 12, .. }),
+        "got {err:?}"
+    );
+    // Tags 1+2+3+12 present, Tag 13 absent → error on tag 13.
+    r.object_country_coding_method = Some(ObjectCountryCodingMethod::Iso3166TwoLetter);
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 13, .. }),
+        "got {err:?}"
+    );
+    // Tags 1+2+3+12+13 present, Tag 22 absent → error on tag 22.
+    r.object_country_codes = Some("US".to_string());
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 22, .. }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn st0102_strict_accepts_full_record_and_round_trips() {
+    use super::encode::encode_strict_compliance;
+    // Build a record with all 6 required fields populated.
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        classifying_country_coding_method: Some(ClassifyingCountryCodingMethod::Iso3166TwoLetter),
+        classifying_country: Some("//US".to_string()),
+        object_country_coding_method: Some(ObjectCountryCodingMethod::Iso3166TwoLetter),
+        object_country_codes: Some("US".to_string()),
+        version: Some(12),
+        ..Default::default()
+    };
+    let bytes = encode_strict_compliance(&r).expect("full record must strict-encode");
+    // Strict-encoded bytes must pass decode_strict (symmetric contract).
+    let decoded = decode_strict(&bytes).expect("strict-encoded bytes must pass decode_strict");
+    assert_eq!(decoded, r);
+}
+
+#[test]
+fn st0102_lenient_encode_still_accepts_partial() {
+    // §6.4 partial record: default encode must NOT reject (regression pin).
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        ..Default::default()
+    };
+    let mut buf = [0u8; 256];
+    encode(&r, &mut buf).expect("lenient encode must accept a partial record");
+}

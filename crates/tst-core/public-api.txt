@@ -1771,6 +1771,7 @@ pub const tst_core::klv::st0102::SECURITY_LS_UL: [u8; 16]
 pub fn tst_core::klv::st0102::decode(&[u8]) -> core::result::Result<tst_core::klv::SecurityLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0102::decode_strict(&[u8]) -> core::result::Result<tst_core::klv::SecurityLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0102::encode(&tst_core::klv::SecurityLs, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0102::encode_strict_compliance(&tst_core::klv::SecurityLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0102::encode_to_vec(&tst_core::klv::SecurityLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0102::encoded_len(&tst_core::klv::SecurityLs) -> usize
 pub mod tst_core::klv::st0601

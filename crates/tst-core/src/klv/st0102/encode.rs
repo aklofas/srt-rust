@@ -1,4 +1,4 @@
-//! ST 0102 encode entry points (`encode`, `encode_to_vec`, `encoded_len`).
+//! ST 0102 encode entry points (`encode`, `encode_to_vec`, `encode_strict_compliance`, `encoded_len`).
 
 use crate::error::KlvEncodeError;
 use crate::klv::st0102::model::{SecurityLs, encode_utf16_bom};
@@ -144,6 +144,59 @@ pub fn encode_to_vec(record: &SecurityLs) -> Result<Vec<u8>, KlvEncodeError> {
     let n = encode(record, &mut buf)?;
     buf.truncate(n);
     Ok(buf)
+}
+
+/// Encode with required-field validation per ST 0102.12 §6.7 Table 2.
+///
+/// Mirrors [`crate::klv::st0601::encode_strict_compliance`] in shape.
+/// Rejects any record missing one of the six required tags
+/// (1, 2, 3, 12, 13, 22) before delegating to [`encode_to_vec`].
+/// The default [`encode`] stays lenient — ST 0102.12 §6.4 permits
+/// valid partial Security records; strict-mode is opt-in.
+///
+/// Required-tag order matches `REQUIRED_TAGS` (`[1,2,3,12,13,22]`);
+/// the first absent tag wins so callers get a deterministic error.
+///
+/// Strict-encoded output always passes [`crate::klv::st0102::decode_strict`]
+/// (symmetric contract: required field present on encode ↔ not rejected
+/// by decode).
+///
+/// # Errors
+///
+/// - [`KlvEncodeError::MissingMandatoryItem`] with `tag` and `name` for
+///   the first required tag whose `Option` field is `None`.
+/// - All [`KlvEncodeError`] variants that [`encode_to_vec`] can return,
+///   surfaced verbatim once the strict precondition gate passes.
+pub fn encode_strict_compliance(record: &SecurityLs) -> Result<Vec<u8>, KlvEncodeError> {
+    use super::tags::REQUIRED_TAGS;
+
+    for &t in REQUIRED_TAGS {
+        let present = match t {
+            1 => record.security_classification.is_some(),
+            2 => record.classifying_country_coding_method.is_some(),
+            3 => record.classifying_country.is_some(),
+            12 => record.object_country_coding_method.is_some(),
+            13 => record.object_country_codes.is_some(),
+            22 => record.version.is_some(),
+            _ => true,
+        };
+        if !present {
+            let name: &'static str = match t {
+                1 => "Security Classification",
+                2 => "Country Coding Method",
+                3 => "Classifying Country",
+                12 => "Object Country Coding Method",
+                13 => "Object Country Codes",
+                22 => "Version",
+                _ => "Unknown",
+            };
+            return Err(KlvEncodeError::MissingMandatoryItem {
+                tag: u16::from(t),
+                name,
+            });
+        }
+    }
+    encode_to_vec(record)
 }
 
 /// Pre-compute the encoded length for a given record.

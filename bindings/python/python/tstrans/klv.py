@@ -301,6 +301,7 @@ Klv0102 = SecurityLs
 
 decode_security = _native_mod.decode_security
 encode_security = _native_mod.encode_security
+encode_security_strict_compliance = _native_mod.encode_security_strict_compliance
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +434,8 @@ Klv0903 = VmtiLs
 decode_vmti = _native_mod.decode_vmti
 encode_vmti = _native_mod.encode_vmti
 encode_vmti_standalone = _native_mod.encode_vmti_standalone
+encode_vmti_strict_compliance = _native_mod.encode_vmti_strict_compliance
+encode_vmti_standalone_strict_compliance = _native_mod.encode_vmti_standalone_strict_compliance
 
 
 # ---------------------------------------------------------------------------
@@ -877,12 +880,15 @@ __all__: list[str] = [
     "Klv0102",
     "decode_security",
     "encode_security",
+    "encode_security_strict_compliance",
     "VTargetPack",
     "VmtiLs",
     "Klv0903",
     "decode_vmti",
     "encode_vmti",
     "encode_vmti_standalone",
+    "encode_vmti_strict_compliance",
+    "encode_vmti_standalone_strict_compliance",
     "GeoPoint",
     "Attitude",
     "FieldOfView",

@@ -2,12 +2,15 @@
 
 import pytest
 
+from tstrans.exceptions import KlvEncodeError, KlvEncodeErrorKind
 from tstrans.klv import (
     VmtiLs,
     VTargetPack,
     decode_vmti,
     encode_vmti,
     encode_vmti_standalone,
+    encode_vmti_strict_compliance,
+    encode_vmti_standalone_strict_compliance,
     parse_klv_universal,
 )
 
@@ -57,3 +60,137 @@ def test_encode_vmti_with_targets_round_trip():
     assert len(vmti2.targets) == 1
     assert vmti2.targets[0].target_id == 1
     assert vmti2.targets[0].vmask == b"\xde\xad"
+
+
+# ---------------------------------------------------------------------------
+# encode_vmti_strict_compliance (embedded mode)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_embedded_record() -> VmtiLs:
+    """Minimal VmtiLs satisfying embedded-mode required tags 4+6 with one
+    non-empty VTargetPack."""
+    return VmtiLs(
+        version_number=6,
+        num_targets_reported=1,
+        targets=(VTargetPack(target_id=1, centroid_pixel=100),),
+    )
+
+
+def test_encode_vmti_strict_compliance_missing_version_raises():
+    # Omit version_number (Tag 4) — must raise MISSING_MANDATORY_ITEM.
+    rec = VmtiLs(num_targets_reported=0)
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+    assert ei.value.tag == 4
+
+
+def test_encode_vmti_strict_compliance_missing_num_targets_raises():
+    # Omit num_targets_reported (Tag 6) — must raise MISSING_MANDATORY_ITEM.
+    rec = VmtiLs(version_number=6)
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+    assert ei.value.tag == 6
+
+
+def test_encode_vmti_strict_compliance_empty_vtarget_pack_raises():
+    # A VTargetPack with no typed fields is invalid (ST 0903.4-10).
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=1,
+        targets=(VTargetPack(target_id=42),),  # no fields beyond target_id
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.VTARGET_PACK_EMPTY
+    # .tag carries the target_id for pack-level errors
+    assert ei.value.tag == 42
+
+
+def test_encode_vmti_strict_compliance_duplicate_target_id_raises():
+    # Two packs with the same target_id must raise DUPLICATE_TARGET_ID.
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=2,
+        targets=(
+            VTargetPack(target_id=1, centroid_pixel=100),
+            VTargetPack(target_id=1, centroid_pixel=200),
+        ),
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.DUPLICATE_TARGET_ID
+    assert ei.value.tag == 1
+
+
+def test_encode_vmti_strict_compliance_valid_record_succeeds():
+    rec = _minimal_embedded_record()
+    out = encode_vmti_strict_compliance(rec)
+    assert isinstance(out, bytes)
+    assert len(out) > 0
+    rec2 = decode_vmti(out)
+    assert rec2.version_number == 6
+    assert rec2.num_targets_reported == 1
+
+
+# ---------------------------------------------------------------------------
+# encode_vmti_standalone_strict_compliance
+# ---------------------------------------------------------------------------
+
+
+def _full_standalone_record() -> VmtiLs:
+    """VmtiLs satisfying all standalone required tags (2,4,6,11,12,13)."""
+    return VmtiLs(
+        version_number=6,
+        num_targets_reported=0,
+        precision_time_stamp=1_700_000_000_000_000,
+        horizontal_fov=45.0,
+        vertical_fov=30.0,
+        miis_id=b"\x00" * 16,
+    )
+
+
+def test_encode_vmti_standalone_strict_compliance_missing_pts_raises():
+    # Omit precision_time_stamp (Tag 2) — standalone requires it.
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=0,
+        horizontal_fov=45.0,
+        vertical_fov=30.0,
+        miis_id=b"\x00" * 16,
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_standalone_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+    assert ei.value.tag == 2
+
+
+def test_encode_vmti_standalone_strict_compliance_forbidden_offset_raises():
+    # centroid_lat_offset (Tag 10) is forbidden in standalone mode.
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=1,
+        precision_time_stamp=1_700_000_000_000_000,
+        horizontal_fov=45.0,
+        vertical_fov=30.0,
+        miis_id=b"\x00" * 16,
+        targets=(VTargetPack(target_id=1, centroid_lat_offset=0.001),),
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_standalone_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.FORBIDDEN_STANDALONE_OFFSET
+    assert ei.value.tag == 10
+
+
+def test_encode_vmti_standalone_strict_compliance_valid_record_succeeds():
+    rec = _full_standalone_record()
+    out = encode_vmti_standalone_strict_compliance(rec)
+    assert isinstance(out, bytes)
+    # Standalone wraps in the VMTI UL (starts with 0x06 SMPTE designator)
+    assert len(out) >= 16
+    assert out[0] == 0x06
+    # Parse via the universal dispatcher to confirm structure
+    parsed = parse_klv_universal(out)
+    assert isinstance(parsed, VmtiLs)

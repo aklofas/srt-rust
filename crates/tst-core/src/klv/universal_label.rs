@@ -49,16 +49,17 @@ impl UniversalLabel {
         self.0[6]
     }
 
-    /// ST 0601 document-version convention byte (index 13).
+    /// ST 0601 document-version convention byte (0-based index 13).
     ///
     /// NOTE: this is **not** the SMPTE ST 336 / ST 298 structural "Version
-    /// Number" field, which lives at UL byte 8 (index 7). Index 13 sits in
-    /// the Item Designator region (bytes 9-16) and ST 0601 historically
-    /// repurposed it as a document-version marker. The spec-canonical value
-    /// is `0x00` per ST 0601.19 §6.2 (PDF p.4); some legacy captures ship a
-    /// non-zero byte 13 (e.g. `0x13` = a pre-canonical convention), and
-    /// `is_st0601_family()` is tolerant of it to allow decode interop.
-    /// ST 0601.8-19 forbids non-zero values in new developments.
+    /// Number" field — that lives at 0-based index 7 (spec octet 8). Index 13
+    /// sits in the Item Designator region (0-based indices 8-15, spec octets
+    /// 9-16), which ST 0601 historically repurposed as a document-version
+    /// marker. The spec-canonical value is `0x00` per ST 0601.19 §6.2 (PDF
+    /// p.4); some legacy captures ship a non-zero index-13 byte (e.g. `0x13`
+    /// = a pre-canonical convention), and `is_st0601_family()` is tolerant of
+    /// it to allow decode interop. ST 0601.8-19 forbids non-zero values in
+    /// new developments.
     pub const fn st0601_version_byte(&self) -> u8 {
         self.0[13]
     }

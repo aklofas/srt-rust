@@ -165,6 +165,7 @@ Klv0102 = SecurityLs
 
 def decode_security(buf: _BytesLike, *, strict: bool = ...) -> SecurityLs: ...
 def encode_security(record: SecurityLs) -> bytes: ...
+def encode_security_strict_compliance(record: SecurityLs) -> bytes: ...
 
 # ---------------------------------------------------------------------------
 # ST 0903.6 §10.2 VTargetPack
@@ -235,6 +236,8 @@ Klv0903 = VmtiLs
 def decode_vmti(buf: _BytesLike, *, strict: bool = ...) -> VmtiLs: ...
 def encode_vmti(record: VmtiLs) -> bytes: ...
 def encode_vmti_standalone(record: VmtiLs) -> bytes: ...
+def encode_vmti_strict_compliance(record: VmtiLs) -> bytes: ...
+def encode_vmti_standalone_strict_compliance(record: VmtiLs) -> bytes: ...
 
 # ---------------------------------------------------------------------------
 # ST 0601 composite read-only views
@@ -373,12 +376,15 @@ __all__ = [
     "Klv0102",
     "decode_security",
     "encode_security",
+    "encode_security_strict_compliance",
     "VTargetPack",
     "VmtiLs",
     "Klv0903",
     "decode_vmti",
     "encode_vmti",
     "encode_vmti_standalone",
+    "encode_vmti_strict_compliance",
+    "encode_vmti_standalone_strict_compliance",
     "GeoPoint",
     "Attitude",
     "FieldOfView",

@@ -1,5 +1,8 @@
 """ST 0102 + ST 0605 encode round-trip tests."""
 
+import pytest
+
+from tstrans.exceptions import KlvEncodeError, KlvEncodeErrorKind
 from tstrans.klv import (
     ClassifyingCountryCodingMethod,
     ObjectCountryCodingMethod,
@@ -11,6 +14,7 @@ from tstrans.klv import (
     decode_security,
     encode_precision_timestamp,
     encode_security,
+    encode_security_strict_compliance,
 )
 
 
@@ -72,6 +76,64 @@ def test_encode_security_full_round_trip_preserves_typed_enums_and_strings():
     assert rec2.version == 12
     assert rec2.caveats == "NOFORN"
     assert rec2.classified_by == "OCA: Some Body"
+
+
+# ---------------------------------------------------------------------------
+# ST 0102 — encode_security_strict_compliance
+# ---------------------------------------------------------------------------
+
+
+def _full_security_record() -> SecurityLs:
+    """A record satisfying all 6 ST 0102 required tags (1,2,3,12,13,22)."""
+    return SecurityLs(
+        security_classification=SecurityClassification.UNCLASSIFIED,
+        classifying_country_coding_method=ClassifyingCountryCodingMethod.ISO_3166_TWO_LETTER,
+        classifying_country="//US",
+        object_country_coding_method=ObjectCountryCodingMethod.ISO_3166_NUMERIC,
+        object_country_codes="US",
+        version=12,
+    )
+
+
+def test_encode_security_strict_compliance_missing_tag1_raises():
+    # Omit security_classification (Tag 1) — must raise MISSING_MANDATORY_ITEM.
+    rec = SecurityLs(
+        classifying_country_coding_method=ClassifyingCountryCodingMethod.ISO_3166_TWO_LETTER,
+        classifying_country="//US",
+        object_country_coding_method=ObjectCountryCodingMethod.ISO_3166_NUMERIC,
+        object_country_codes="US",
+        version=12,
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_security_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+    assert ei.value.tag == 1
+
+
+def test_encode_security_strict_compliance_missing_tag22_raises():
+    # Omit version (Tag 22) — must raise MISSING_MANDATORY_ITEM with tag=22.
+    rec = SecurityLs(
+        security_classification=SecurityClassification.UNCLASSIFIED,
+        classifying_country_coding_method=ClassifyingCountryCodingMethod.ISO_3166_TWO_LETTER,
+        classifying_country="//US",
+        object_country_coding_method=ObjectCountryCodingMethod.ISO_3166_NUMERIC,
+        object_country_codes="US",
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_security_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+    assert ei.value.tag == 22
+
+
+def test_encode_security_strict_compliance_full_record_succeeds():
+    rec = _full_security_record()
+    out = encode_security_strict_compliance(rec)
+    assert isinstance(out, bytes)
+    assert len(out) > 0
+    # Round-trip: decoded record preserves required fields.
+    rec2 = decode_security(out)
+    assert rec2.security_classification == SecurityClassification.UNCLASSIFIED
+    assert rec2.version == 12
 
 
 # ---------------------------------------------------------------------------

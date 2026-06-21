@@ -26,7 +26,8 @@ use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
     ClassifyingCountryCodingMethod as RustClsCountry, ObjectCountryCodingMethod as RustObjCountry,
     SecurityClassification as RustSecCls, SecurityLs, decode as decode_st0102_lenient,
-    decode_strict as decode_st0102_strict, encode_to_vec as encode_st0102,
+    decode_strict as decode_st0102_strict, encode_strict_compliance as encode_st0102_strict_compliance,
+    encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
     UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
@@ -40,7 +41,9 @@ use tst_core::klv::st0605::{
 };
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
-    decode_strict as decode_st0903_strict, encode_to_vec as encode_st0903,
+    decode_strict as decode_st0903_strict,
+    encode_standalone_strict_compliance as encode_st0903_standalone_strict_compliance,
+    encode_strict_compliance as encode_st0903_strict_compliance, encode_to_vec as encode_st0903,
     encode_to_vec_standalone as encode_st0903_standalone,
 };
 
@@ -886,6 +889,56 @@ fn encode_vmti_standalone_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyRes
     Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
 }
 
+/// Encode a Python `SecurityLs` to wire bytes with strict compliance per
+/// ST 0102.12 — requires Tags 1 (Security Classification), 2 (Country
+/// Coding Method), 3 (Classifying Country), 12 (Object Country Coding
+/// Method), 13 (Object Country Codes), and 22 (Version). Raises
+/// `KlvEncodeError(MISSING_MANDATORY_ITEM)` if any required tag is absent.
+#[pyfunction]
+#[pyo3(name = "encode_security_strict_compliance")]
+fn encode_security_strict_compliance_py(
+    py: Python<'_>,
+    record: &Bound<'_, PyAny>,
+) -> PyResult<PyObject> {
+    let rust_rec = py_to_security_ls(record)?;
+    let bytes =
+        encode_st0102_strict_compliance(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Encode a Python `VmtiLs` to wire bytes with strict compliance for
+/// **embedded** VMTI carriage — requires Tags 4 (version) and 6
+/// (num_targets_reported); all VTargetPacks must be non-empty and have
+/// unique target_ids. Raises `KlvEncodeError` on validation failure.
+#[pyfunction]
+#[pyo3(name = "encode_vmti_strict_compliance")]
+fn encode_vmti_strict_compliance_py(
+    py: Python<'_>,
+    record: &Bound<'_, PyAny>,
+) -> PyResult<PyObject> {
+    let rust_rec = py_to_vmti_ls(record)?;
+    let bytes =
+        encode_st0903_strict_compliance(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Encode a Python `VmtiLs` as a **standalone** wire record with strict
+/// compliance — all checks from `encode_vmti_strict_compliance` plus
+/// standalone-required Tags 2 (precision_time_stamp), 11 (horizontal_fov),
+/// 12 (vertical_fov), 13 (miis_id), and forbids per-pack offset tags
+/// (10/11/13/14/15/16). Raises `KlvEncodeError` on validation failure.
+#[pyfunction]
+#[pyo3(name = "encode_vmti_standalone_strict_compliance")]
+fn encode_vmti_standalone_strict_compliance_py(
+    py: Python<'_>,
+    record: &Bound<'_, PyAny>,
+) -> PyResult<PyObject> {
+    let rust_rec = py_to_vmti_ls(record)?;
+    let bytes = encode_st0903_standalone_strict_compliance(&rust_rec)
+        .map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
 // ---------------------------------------------------------------------------
 // ST 0601 — UAS Datalink LS
 // ---------------------------------------------------------------------------
@@ -1234,8 +1287,11 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     m.add_function(wrap_pyfunction!(patch_uas_datalink_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_security_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_security_strict_compliance_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_precision_timestamp_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_vmti_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_vmti_standalone_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_vmti_strict_compliance_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_vmti_standalone_strict_compliance_py, m)?)?;
     Ok(())
 }

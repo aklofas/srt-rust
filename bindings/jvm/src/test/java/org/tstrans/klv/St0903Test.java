@@ -338,4 +338,125 @@ class St0903Test {
         assertNull(p.centroidPixel());
         assertTrue(p.unknown().isEmpty());
     }
+
+    // -----------------------------------------------------------------------
+    // encodeVmtiStrictCompliance tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void encodeVmtiStrictComplianceMissingVersionNumberThrows() {
+        // An empty VmtiLs is missing Tag 4 (version_number) — the first required item.
+        VmtiLs rec = new VmtiLs.Builder().build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeVmtiStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.MISSING_MANDATORY_ITEM, ex.kind());
+        assertTrue(ex.tag().isPresent(), "MISSING_MANDATORY_ITEM must carry tag 4");
+        assertEquals(4L, ex.tag().get().longValue());
+    }
+
+    @Test
+    void encodeVmtiStrictComplianceEmptyPackThrows() {
+        // A VTargetPack with no TLV items (only target_id) triggers VTARGET_PACK_EMPTY.
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(1L)
+                .targets(java.util.List.of(new VTargetPack.Builder(1L).build()))
+                .build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeVmtiStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.VTARGET_PACK_EMPTY, ex.kind());
+    }
+
+    @Test
+    void encodeVmtiStrictComplianceDuplicateTargetIdThrows() {
+        // Two VTargetPacks with the same target_id triggers DUPLICATE_TARGET_ID.
+        VTargetPack packA = new VTargetPack.Builder(7L).priority(1).build();
+        VTargetPack packB = new VTargetPack.Builder(7L).priority(2).build();
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(2L)
+                .targets(java.util.List.of(packA, packB))
+                .build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeVmtiStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.DUPLICATE_TARGET_ID, ex.kind());
+    }
+
+    @Test
+    void encodeVmtiStrictComplianceSucceedsWithValidRecord() throws KlvEncodeException, KlvDecodeException {
+        // A valid record with required items (Tags 4 + 6) plus a non-empty pack.
+        VTargetPack pack = new VTargetPack.Builder(1L).priority(5).build();
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(1L)
+                .targets(java.util.List.of(pack))
+                .build();
+        byte[] wire = assertDoesNotThrow(() -> Klv.encodeVmtiStrictCompliance(rec));
+        assertNotNull(wire);
+        assertTrue(wire.length > 0);
+        VmtiLs decoded = Klv.decodeVmti(wire);
+        assertEquals(6, (int) decoded.versionNumber());
+        assertEquals(1, decoded.targets().size());
+    }
+
+    // -----------------------------------------------------------------------
+    // encodeVmtiStandaloneStrictCompliance tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void encodeVmtiStandaloneStrictComplianceMissingPtsThrows() {
+        // Embedded required items present but Tag 2 (precision_time_stamp) absent
+        // — standalone compliance requires it.
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(0L)
+                .horizontalFov(30.0)
+                .verticalFov(20.0)
+                .miisId(java.nio.ByteBuffer.wrap(new byte[]{0x01, 0x02, 0x03, 0x04}))
+                .build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeVmtiStandaloneStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.MISSING_MANDATORY_ITEM, ex.kind());
+        assertTrue(ex.tag().isPresent(), "must carry tag 2 (precision_time_stamp)");
+        assertEquals(2L, ex.tag().get().longValue());
+    }
+
+    @Test
+    void encodeVmtiStandaloneStrictComplianceForbiddenOffsetThrows() {
+        // A VTargetPack with an offset tag (centroid_lat_offset = Tag 10) triggers
+        // FORBIDDEN_STANDALONE_OFFSET.
+        VTargetPack packWithOffset = new VTargetPack.Builder(1L)
+                .priority(5)
+                .centroidLatOffset(0.001)
+                .build();
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(1L)
+                .precisionTimeStamp(1_700_000_000_000_000L)
+                .horizontalFov(30.0)
+                .verticalFov(20.0)
+                .miisId(java.nio.ByteBuffer.wrap(new byte[]{0x01, 0x02, 0x03, 0x04}))
+                .targets(java.util.List.of(packWithOffset))
+                .build();
+        KlvEncodeException ex = assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeVmtiStandaloneStrictCompliance(rec));
+        assertEquals(KlvEncodeException.Kind.FORBIDDEN_STANDALONE_OFFSET, ex.kind());
+    }
+
+    @Test
+    void encodeVmtiStandaloneStrictComplianceSucceedsWithValidRecord() throws KlvDecodeException, KlvEncodeException {
+        // Provide all standalone-required items (Tags 2/4/6/11/12/13) with no offset tags.
+        VmtiLs rec = new VmtiLs.Builder()
+                .versionNumber(6)
+                .numTargetsReported(0L)
+                .precisionTimeStamp(1_700_000_000_000_000L)
+                .horizontalFov(30.0)
+                .verticalFov(20.0)
+                .miisId(java.nio.ByteBuffer.wrap(new byte[]{0x01, 0x02, 0x03, 0x04}))
+                .build();
+        byte[] wire = assertDoesNotThrow(() -> Klv.encodeVmtiStandaloneStrictCompliance(rec));
+        assertNotNull(wire);
+        assertTrue(wire.length >= 16, "Standalone must start with 16-byte UL");
+        assertEquals((byte) 0x06, wire[0], "First byte must be 0x06 (SMPTE designator)");
+    }
 }

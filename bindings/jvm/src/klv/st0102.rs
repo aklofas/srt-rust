@@ -54,7 +54,7 @@ use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::jobject;
 use tst_core::klv::st0102::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification, SecurityLs,
-    decode as decode_lenient, decode_strict, encode_to_vec,
+    decode as decode_lenient, decode_strict, encode_strict_compliance, encode_to_vec,
 };
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
@@ -361,6 +361,51 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeSecurity<'local>(
                     let _ = env.throw_new(
                         "java/lang/RuntimeException",
                         format!("nEncodeSecurity: field read failed: {e}"),
+                    );
+                }
+                JObject::null().into_raw()
+            }
+        }
+    })
+}
+
+/// `org.tstrans.klv.Klv.nEncodeSecurityStrictCompliance(SecurityLs) -> byte[]`
+///
+/// Reads all fields from the Java `SecurityLs` record, builds a Rust `SecurityLs`,
+/// calls `encode_strict_compliance`. Enforces all 6 mandatory-tag presence
+/// (Tags 1, 2, 3, 12, 13, 22) before encoding. Mirrors tst-py's
+/// `encode_security_strict_compliance`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeSecurityStrictCompliance<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    record: JObject<'local>,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        match read_security(env, &record) {
+            Ok(rust_rec) => match encode_strict_compliance(&rust_rec) {
+                Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                    Ok(arr) => arr.into_raw(),
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!(
+                                "nEncodeSecurityStrictCompliance: byte_array_from_slice failed: {e}"
+                            ),
+                        );
+                        JObject::null().into_raw()
+                    }
+                },
+                Err(e) => {
+                    map_klv_encode_error(env, &e);
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                if !env.exception_check().unwrap_or(false) {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("nEncodeSecurityStrictCompliance: field read failed: {e}"),
                     );
                 }
                 JObject::null().into_raw()

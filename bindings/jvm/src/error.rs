@@ -209,18 +209,19 @@ pub fn map_klv_encode_error(env: &mut JNIEnv, e: &KlvEncodeError) {
         KlvEncodeError::VTargetPackEmpty { target_id } => {
             throw_klv_encode(env, "VTARGET_PACK_EMPTY", Some(u64::from(*target_id)), &msg)
         }
-        KlvEncodeError::DuplicateTargetId { target_id } => throw_klv_encode(
-            env,
-            "DUPLICATE_TARGET_ID",
-            Some(u64::from(*target_id)),
-            &msg,
-        ),
-        KlvEncodeError::ForbiddenStandaloneOffset { tag } => throw_klv_encode(
-            env,
-            "FORBIDDEN_STANDALONE_OFFSET",
-            Some(u64::from(*tag)),
-            &msg,
-        ),
+        KlvEncodeError::DuplicateTargetId { target_id } => {
+            // Hoist the boxed tag so the `throw_klv_encode(env, "<CONST>", ...)`
+            // call stays on one line — required by both rustfmt's width and the
+            // error-mapping ratchet's per-constant grep (a brace-less arm with
+            // this longer CONST would otherwise split the call across lines and
+            // hide the constant from the grep).
+            let t = Some(u64::from(*target_id));
+            throw_klv_encode(env, "DUPLICATE_TARGET_ID", t, &msg)
+        }
+        KlvEncodeError::ForbiddenStandaloneOffset { tag } => {
+            let t = Some(u64::from(*tag));
+            throw_klv_encode(env, "FORBIDDEN_STANDALONE_OFFSET", t, &msg)
+        }
         _ => throw_klv_encode(env, "BUFFER_TOO_SMALL", None, &msg),
     }
 }

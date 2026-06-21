@@ -156,10 +156,30 @@ public final class Klv {
         return nEncodeSecurity(record);
     }
 
+    /**
+     * Encode a {@link SecurityLs} with strict ST 0102 compliance validation.
+     *
+     * <p>Enforces mandatory-tag presence (Tags 1, 2, 3, 12, 13, 22 per ST 0102.12
+     * §6.7 Table 2) before encoding. Mirrors tst-py's
+     * {@code encode_security_strict_compliance(record)}.
+     *
+     * @param record the Security LS to encode
+     * @return ST 0102 body bytes
+     * @throws org.tstrans.KlvEncodeException with {@code kind = MISSING_MANDATORY_ITEM}
+     *                                        if a required tag is absent
+     */
+    public static byte[] encodeSecurityStrictCompliance(SecurityLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeSecurityStrictCompliance(record);
+    }
+
     private static native SecurityLs nDecodeSecurity(byte[] buf, boolean strict)
             throws org.tstrans.KlvDecodeException;
 
     private static native byte[] nEncodeSecurity(SecurityLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeSecurityStrictCompliance(SecurityLs record)
             throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------
@@ -234,12 +254,61 @@ public final class Klv {
         return nEncodeVmtiStandalone(record);
     }
 
+    /**
+     * Encode a {@link VmtiLs} to ST 0903 body bytes with strict compliance validation.
+     *
+     * <p>Returns embedded body bytes (no UL, no outer BER length, no Tag 1 checksum).
+     * Enforces mandatory items (Tags 4 and 6), non-empty VTargetPacks, and unique
+     * target IDs before encoding. Mirrors tst-py's
+     * {@code encode_vmti_strict_compliance(record)}.
+     *
+     * @param record the VMTI LS to encode
+     * @return ST 0903 embedded body bytes
+     * @throws org.tstrans.KlvEncodeException with {@code kind = MISSING_MANDATORY_ITEM} if
+     *                                        a required item is absent, or
+     *                                        {@code kind = VTARGET_PACK_EMPTY} if a pack has
+     *                                        no TLV items, or
+     *                                        {@code kind = DUPLICATE_TARGET_ID} if target IDs
+     *                                        are not unique
+     */
+    public static byte[] encodeVmtiStrictCompliance(VmtiLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeVmtiStrictCompliance(record);
+    }
+
+    /**
+     * Encode a {@link VmtiLs} as a standalone VMTI wire record with strict compliance validation.
+     *
+     * <p>Returns the full framing: {@code [VMTI_LS_UL:16][outer BER length][body][Tag1 checksum]}.
+     * In addition to the embedded-mode checks, enforces standalone-required items (Tags 2, 11,
+     * 12, 13) and rejects offset tags 10/11/13/14/15/16 on any VTargetPack
+     * (ST 0903.6-116 forbidden). Mirrors tst-py's
+     * {@code encode_vmti_standalone_strict_compliance(record)}.
+     *
+     * @param record the VMTI LS to encode
+     * @return the full standalone VMTI wire record
+     * @throws org.tstrans.KlvEncodeException with {@code kind = MISSING_MANDATORY_ITEM} if a
+     *                                        required item is absent, or
+     *                                        {@code kind = FORBIDDEN_STANDALONE_OFFSET} if any
+     *                                        pack carries a forbidden offset tag
+     */
+    public static byte[] encodeVmtiStandaloneStrictCompliance(VmtiLs record)
+            throws org.tstrans.KlvEncodeException {
+        return nEncodeVmtiStandaloneStrictCompliance(record);
+    }
+
     private static native VmtiLs nDecodeVmti(byte[] buf, boolean strict)
             throws org.tstrans.KlvDecodeException;
 
     private static native byte[] nEncodeVmti(VmtiLs record) throws org.tstrans.KlvEncodeException;
 
     private static native byte[] nEncodeVmtiStandalone(VmtiLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeVmtiStrictCompliance(VmtiLs record)
+            throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeVmtiStandaloneStrictCompliance(VmtiLs record)
             throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------

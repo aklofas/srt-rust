@@ -6,7 +6,7 @@
 
 use super::types::{KlvSample, PairerOutput, VideoSample};
 use std::collections::VecDeque;
-use tst_core::mpegts::demux::{DemuxEvent, SamplePayload, split_video};
+use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
 
 /// Internal mode shape. The public [`super::PairerMode`]'s `Buffered`
 /// variant carries a `Duration` (max arrival skew); we still pair
@@ -77,20 +77,20 @@ impl NearestState {
                     SamplePayload::Video {
                         codec,
                         raw,
+                        random_access_indicator,
                         av1_carriage,
-                        ..
                     },
             } if stream.pid == self.video_pid => {
-                // Video parsing is now opt-in: the demuxer emits the raw access
-                // unit and the pairing projection splits it into NAL/OBU units
-                // here (issues are not surfaced separately by the pairer).
-                let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
+                // raw-first: carry the encoded AU + RAI; parsing is opt-in via
+                // `VideoSample::split_units`.
                 let v = VideoSample {
                     stream,
                     pts,
                     dts,
                     codec,
-                    payload,
+                    raw,
+                    random_access_indicator,
+                    av1_carriage,
                 };
                 self.handle_video(v)
             }
@@ -655,5 +655,82 @@ mod tests {
         // far exceeds tolerance=100, so UnpairedVideo is emitted.
         let _ = s.feed(video_event(i64::MAX - 100));
         // Surviving this call IS the assertion.
+    }
+
+    // --- PIPE-01: raw-first VideoSample ---
+
+    /// A video event carrying known raw bytes + random_access_indicator=true.
+    fn video_event_with_raw(pts: i64, raw: Vec<u8>, rai: bool) -> DemuxEvent {
+        DemuxEvent::Sample {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
+            },
+            pts: Pts90khz::new(pts),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                raw: SharedBytes::from_vec(raw),
+                random_access_indicator: rai,
+                av1_carriage: None,
+            },
+        }
+    }
+
+    #[test]
+    fn raw_first_video_sample_carries_exact_raw_and_rai() {
+        // Prove that paired VideoSample preserves raw + RAI verbatim, and that
+        // split_units() drives an opt-in parse (PIPE-01 contract).
+        //
+        // Minimal H.264 AU: AUD (nal_type=9) + IDR (nal_type=5), Annex-B.
+        let raw_bytes = vec![
+            0x00, 0x00, 0x00, 0x01, 0x09, 0x10, // AUD
+            0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB, 0xCC, // IDR
+        ];
+        let mut s = nearest_realtime();
+        let _ = s.feed(klv_event(50));
+        // Feed a video event with known raw bytes + RAI=true.
+        let out = s.feed(video_event_with_raw(50, raw_bytes.clone(), true));
+        assert_eq!(out.len(), 1);
+        let vs = match &out[0] {
+            PairerOutput::Paired { video, .. } => video,
+            other => panic!("expected Paired, got {:?}", other),
+        };
+
+        // The raw bytes must be carried verbatim.
+        assert_eq!(
+            vs.raw.as_slice(),
+            raw_bytes.as_slice(),
+            "VideoSample.raw must equal the original encoded AU bytes"
+        );
+
+        // The RAI must be preserved.
+        assert!(
+            vs.random_access_indicator,
+            "VideoSample.random_access_indicator must be preserved from the demux event"
+        );
+
+        // No av1_carriage for H.264.
+        assert_eq!(vs.av1_carriage, None);
+
+        // Opt-in parse: split_units must return a non-empty payload + no issues
+        // for a well-formed H.264 AU.
+        let (payload, issues) = vs.split_units();
+        use tst_core::mpegts::demux::VideoPayload;
+        match &payload {
+            VideoPayload::Nals(nals) => {
+                assert!(
+                    !nals.is_empty(),
+                    "split_units must return at least one NAL unit"
+                );
+            }
+            other => panic!("expected Nals payload for H.264, got {:?}", other),
+        }
+        assert!(
+            issues.is_empty(),
+            "a well-formed AU should produce no issues, got {:?}",
+            issues
+        );
     }
 }

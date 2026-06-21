@@ -7,7 +7,11 @@
 
 use std::time::Duration;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
+use tst_core::mpegts::demux::{
+    DemuxEvent, MetadataKind, NonConformantIssue, StreamId, VideoCodec, VideoPayload,
+};
+use tst_core::mpegts::mux::Av1CarriageMode;
+use tst_core::shared::SharedBytes;
 
 /// Pairer matching mode for [`Pairer::with_config`](super::Pairer::with_config).
 /// `last_before_pts` is past-only by definition and ignores this knob.
@@ -88,15 +92,47 @@ pub enum PairerOutput {
     PassThrough(DemuxEvent),
 }
 
-/// Projection of a `DemuxEvent::Sample { payload: SamplePayload::Video,
-/// .. }` event for downstream consumption.
+/// Projection of a `DemuxEvent::Sample { payload: SamplePayload::Video, .. }`
+/// event for downstream consumption.
+///
+/// Raw-first: the exact encoded access unit (`raw`) and the random-access
+/// indicator (`random_access_indicator`) are carried verbatim from the demuxer.
+/// Parsing into typed NAL/OBU units is **opt-in** via [`VideoSample::split_units`];
+/// this avoids an eager alloc per sample and preserves all bytes for lossless
+/// remux after pairing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoSample {
     pub stream: StreamId,
     pub pts: Pts90khz,
     pub dts: Option<Pts90khz>,
     pub codec: VideoCodec,
-    pub payload: VideoPayload,
+    /// The exact encoded access unit (Annex-B for H.26x; on-wire PES payload
+    /// for AV1). Parse into typed units with [`split_units`](Self::split_units).
+    pub raw: SharedBytes,
+    /// Whether this access unit is a random-access point (IDR for H.264/H.265,
+    /// key frame for AV1). Derived from the PES header's `random_access_indicator`
+    /// flag as set by the upstream encoder.
+    pub random_access_indicator: bool,
+    /// AV1 carriage provenance from the demuxer. `Some(mode)` for AV1 samples;
+    /// `None` for H.264/H.265/H.266. Pass this to [`split_units`](Self::split_units)
+    /// and to `push_video_wire_to` for a faithful round-trip.
+    pub av1_carriage: Option<Av1CarriageMode>,
+}
+
+impl VideoSample {
+    /// Opt-in: split `raw` into typed NAL/OBU units.
+    ///
+    /// Returns `(payload, issues)`. For AV1, `av1_carriage` is forwarded
+    /// automatically so the framing expectation matches the on-wire bytes.
+    /// Use the issue list to surface parse errors that the pairer itself
+    /// does not surface — it carries all bytes intact.
+    pub fn split_units(&self) -> (VideoPayload, Vec<NonConformantIssue>) {
+        tst_core::mpegts::demux::split_video(
+            &self.raw,
+            self.codec,
+            self.av1_carriage.unwrap_or_default(),
+        )
+    }
 }
 
 /// Projection of a `DemuxEvent::Metadata` event for downstream

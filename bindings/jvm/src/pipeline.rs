@@ -276,6 +276,12 @@ fn convert_output<'local>(
 /// Project a `VideoSample` to a `org.tstrans.pipeline.VideoSample` record.
 /// Field order matches the Java canonical ctor:
 /// `(StreamId, long pts, Long dts, VideoCodec, List<VideoUnit>)`.
+///
+/// Forced-minimal raw-first adaptation: the pairing `VideoSample` no longer
+/// carries an eager `payload` field, so the NAL/OBU list is produced here by
+/// `vs.split_units()` internally. The Java surface is unchanged (same 5-arg
+/// record / ctor signature, same `VideoPayload`). JVM `raw`/RAI parity is
+/// deferred to the design §5 fast-follow.
 fn convert_video_sample<'local>(
     env: &mut JNIEnv<'local>,
     vs: &VideoSample,
@@ -283,7 +289,8 @@ fn convert_video_sample<'local>(
     let stream = build_stream_id(env, &vs.stream)?;
     let dts = opt_long(env, vs.dts)?;
     let codec = codec_enum(env, "VideoCodec", video_codec_name(vs.codec))?;
-    let payload = build_video_units(env, &vs.payload)?;
+    let (payload, _issues) = vs.split_units();
+    let payload_list = build_video_units(env, &payload)?;
     env.new_object(
         "org/tstrans/pipeline/VideoSample",
         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;)V",
@@ -292,7 +299,7 @@ fn convert_video_sample<'local>(
             JValue::Long(vs.pts.as_ticks()),
             JValue::Object(&dts),
             JValue::Object(&codec),
-            JValue::Object(&payload),
+            JValue::Object(&payload_list),
         ],
     )
     .map_err(|_| ())

@@ -6,7 +6,7 @@
 //! PTS) cannot satisfy "before."
 
 use super::types::{KlvSample, PairerOutput, VideoSample};
-use tst_core::mpegts::demux::{DemuxEvent, SamplePayload, split_video};
+use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
 
 pub(super) struct LastBeforeState {
     video_pid: u16,
@@ -40,20 +40,20 @@ impl LastBeforeState {
                     SamplePayload::Video {
                         codec,
                         raw,
+                        random_access_indicator,
                         av1_carriage,
-                        ..
                     },
             } if stream.pid == self.video_pid => {
-                // Video parsing is now opt-in: the demuxer emits the raw access
-                // unit and the pairing projection splits it into NAL/OBU units
-                // here (issues are not surfaced separately by the pairer).
-                let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
+                // raw-first: carry the encoded AU + RAI; parsing is opt-in via
+                // `VideoSample::split_units`.
                 let v = VideoSample {
                     stream,
                     pts,
                     dts,
                     codec,
-                    payload,
+                    raw,
+                    random_access_indicator,
+                    av1_carriage,
                 };
                 self.handle_video(v)
             }

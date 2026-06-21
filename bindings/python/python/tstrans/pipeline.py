@@ -22,6 +22,7 @@ from typing import ClassVar, Optional, Union
 
 import tstrans.mpegts as _mpegts
 import tstrans.codec as _codec
+from tstrans import _native
 
 # The native byte-feeding pairer (#[pyclass] in src/pipeline.rs).
 from tstrans._native import Pairer  # noqa: F401  (re-export)
@@ -89,14 +90,123 @@ class PairingDemuxerConfig:
 
 # --- Sample projections -----------------------------------------------------
 
+# `VideoSample` uses the same hand-written frozen-class pattern as
+# `DemuxEvent.Video` in tstrans.mpegts (see `_VideoEvent`): `.raw` is a lazy
+# `_native.RawBytes` holder (no copy until first access), stored as `_raw`.
+# This avoids an eager bytes copy per sample for callers that only use `.pts`
+# or `.codec` without reading the payload.
 
-@dataclass(frozen=True, slots=True)
 class VideoSample:
-    stream: _mpegts.StreamId
-    pts: _mpegts.Pts90khz
-    dts: Optional[_mpegts.Pts90khz]
-    codec: _mpegts.VideoCodec
-    payload: Union[list[_codec.NalUnit], list[_codec.Obu]]
+    """Projection of a paired/unpaired video access unit.
+
+    Raw-first: `.raw` carries the exact encoded access unit bytes (Annex-B for
+    H.26x; on-wire PES payload for AV1), materialized lazily on first access.
+    `.random_access_indicator` reflects the TS-level RA flag. Parsed units are
+    opt-in via `.parse()`.
+    """
+
+    __slots__ = (
+        "stream",
+        "pts",
+        "dts",
+        "codec",
+        "_raw",  # native _native.RawBytes holder; `.raw` materializes lazily
+        "random_access_indicator",
+        "av1_carriage",
+    )
+
+    __match_args__ = (
+        "stream",
+        "pts",
+        "dts",
+        "codec",
+        "raw",
+        "random_access_indicator",
+        "av1_carriage",
+    )
+
+    def __init__(
+        self,
+        *,
+        stream: _mpegts.StreamId,
+        pts: _mpegts.Pts90khz,
+        dts: Optional[_mpegts.Pts90khz],
+        codec: _mpegts.VideoCodec,
+        raw,
+        random_access_indicator: bool,
+        av1_carriage: Optional[_mpegts.Av1CarriageMode] = None,
+    ) -> None:
+        object.__setattr__(self, "stream", stream)
+        object.__setattr__(self, "pts", pts)
+        object.__setattr__(self, "dts", dts)
+        object.__setattr__(self, "codec", codec)
+        # Accept either a pre-built holder (the pairer path) or raw bytes
+        # (direct construction with `raw=b"..."`).
+        object.__setattr__(
+            self,
+            "_raw",
+            raw if isinstance(raw, _native.RawBytes) else _native.RawBytes(raw),
+        )
+        object.__setattr__(self, "random_access_indicator", random_access_indicator)
+        object.__setattr__(self, "av1_carriage", av1_carriage)
+
+    @property
+    def raw(self) -> bytes:
+        """The exact encoded access unit bytes. Materialized on first access and cached."""
+        return self._raw.value
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"cannot delete field {name!r}")
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return (
+            self.stream == other.stream
+            and self.pts == other.pts
+            and self.dts == other.dts
+            and self.codec == other.codec
+            and self._raw == other._raw
+            and self.random_access_indicator == other.random_access_indicator
+            and self.av1_carriage == other.av1_carriage
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.stream,
+                self.pts,
+                self.dts,
+                self.codec,
+                hash(self._raw),
+                self.random_access_indicator,
+                self.av1_carriage,
+            )
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"VideoSample(stream={self.stream!r}, pts={self.pts!r}, "
+            f"dts={self.dts!r}, codec={self.codec!r}, raw={self.raw!r}, "
+            f"random_access_indicator={self.random_access_indicator!r}, "
+            f"av1_carriage={self.av1_carriage!r})"
+        )
+
+    def parse(self, *, strict: bool = False):
+        """Opt-in: split `raw` into typed NAL/OBU units. Lenient drops the issue
+        list (use `tstrans.codec.split_units` if you want the issues).
+
+        For AV1, `av1_carriage` is forwarded automatically so the framing
+        expectation matches the on-wire bytes."""
+        if strict:
+            return _codec.split_units(self.raw, self.codec, strict=True,
+                                      carriage=self.av1_carriage)
+        units, _issues = _codec.split_units(self.raw, self.codec,
+                                            carriage=self.av1_carriage)
+        return units
 
 
 @dataclass(frozen=True, slots=True)

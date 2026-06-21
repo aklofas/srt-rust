@@ -5439,6 +5439,10 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_pipeline::ext::pairing::VideoSample::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+item = "tst_pipeline::ext::pairing::VideoSample::split_units"
+test = "crates/tst-pipeline/src/ext/pairing/nearest.rs::raw_first_video_sample_carries_exact_raw_and_rai"
+
 [[exempt]]
 item = "tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

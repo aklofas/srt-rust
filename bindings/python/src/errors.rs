@@ -649,11 +649,13 @@ pub(crate) fn codec_parse_error_to_pyerr(
 /// future Rust variants introduced through the `#[non_exhaustive]`
 /// hatch — explicit arms get added as new variants surface.
 ///
-/// Where the Rust variant carries a `tag` field (`OutOfRange`,
-/// `StringTooLong`, `MissingMandatoryItem`, `ReservedTagInUnknown`)
-/// it is forwarded to the Python `KlvEncodeError.tag` attribute.
-/// Variants without a tag (`BufferTooSmall`, `RecordTooLarge`,
-/// `UnsupportedImapbLength`, `InvalidImapbParams`) leave `.tag = None`.
+/// Where the Rust variant carries a numeric identifier it is forwarded to
+/// the Python `KlvEncodeError.tag` attribute: a KLV tag for `OutOfRange`,
+/// `StringTooLong`, `MissingMandatoryItem`, `ReservedTagInUnknown`, and
+/// `ForbiddenStandaloneOffset`; the VTarget Pack `target_id` for
+/// `VTargetPackEmpty` and `DuplicateTargetId`. Variants without one
+/// (`BufferTooSmall`, `RecordTooLarge`, `UnsupportedImapbLength`,
+/// `InvalidImapbParams`) leave `.tag = None`.
 ///
 /// Called from KLV `encode_*` wrappers.
 #[allow(dead_code)]

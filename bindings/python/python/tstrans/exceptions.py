@@ -217,12 +217,15 @@ class KlvError(TstError):
 
 class KlvEncodeError(TstError):
     """Raised by `tstrans.klv.encode_*` functions when the typed record
-    cannot be serialized. Carries `.kind` (`KlvEncodeErrorKind`) and
-    optional `.tag` (the ST item code that triggered the rejection,
-    where applicable — e.g. `OUT_OF_RANGE`, `STRING_TOO_LONG`,
-    `MISSING_MANDATORY_ITEM`, `RESERVED_TAG_IN_UNKNOWN`). `BUFFER_TOO_SMALL`,
+    cannot be serialized. Carries `.kind` (`KlvEncodeErrorKind`) and an
+    optional `.tag`. For most tag-bearing variants `.tag` is the offending
+    ST item (KLV tag) code — `OUT_OF_RANGE`, `STRING_TOO_LONG`,
+    `MISSING_MANDATORY_ITEM`, `RESERVED_TAG_IN_UNKNOWN`, and
+    `FORBIDDEN_STANDALONE_OFFSET`. For `VTARGET_PACK_EMPTY` and
+    `DUPLICATE_TARGET_ID`, `.tag` instead carries the VTarget Pack
+    `target_id` (a target identifier, not a KLV tag). `BUFFER_TOO_SMALL`,
     `RECORD_TOO_LARGE`, `UNSUPPORTED_IMAPB_LENGTH`, and
-    `INVALID_IMAPB_PARAMS` have no associated tag — `.tag` is `None`.
+    `INVALID_IMAPB_PARAMS` have no associated value — `.tag` is `None`.
     """
 
     kind: KlvEncodeErrorKind

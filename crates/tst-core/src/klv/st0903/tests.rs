@@ -865,3 +865,86 @@ fn strict_decode_rejects_duplicate_multi_byte_ber_oid_tag() {
         "expected DuplicateTag(200), got {err:?}"
     );
 }
+
+// ------------------------------------------------------------------
+// Task 1 (WP-F / REF-KLV-03): unknown-bucket typed-tag guard tests.
+// ------------------------------------------------------------------
+
+#[test]
+fn encode_rejects_typed_tag_in_vmtils_unknown() {
+    // A caller who places a typed top-level tag (Tag 4 = Version Number)
+    // in `unknown` would make the encoder emit Tag 4 twice — output that
+    // ST 0903 decode_strict rejects as DuplicateTag. Guard it, mirroring
+    // st0601::encode's is_reserved_or_typed_tag (ST 0107.5 §6.3.4 single-use).
+    use crate::error::KlvEncodeError;
+    let ls = VmtiLs {
+        unknown: vec![OwnedRawField {
+            tag: 4,
+            value: vec![0x06],
+        }],
+        ..Default::default()
+    };
+    let err = encode_to_vec(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::ReservedTagInUnknown { tag: 4 }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn encode_allows_truly_unknown_tag_in_vmtils_unknown() {
+    // A forward-compat tag the typed model doesn't know (e.g. 200) must
+    // still pass through. This is the legitimate use of `unknown`.
+    let ls = VmtiLs {
+        unknown: vec![OwnedRawField {
+            tag: 200,
+            value: vec![0xAB, 0xCD],
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).expect("forward-compat unknown tag must encode");
+    assert!(!bytes.is_empty());
+}
+
+#[test]
+fn encode_rejects_typed_tag_in_vtargetpack_unknown() {
+    // A caller who places a typed pack tag (Tag 5 = Confidence Level)
+    // in a VTargetPack's `unknown` would make write_pack emit Tag 5 twice
+    // — output that decode would reject as DuplicateTag. Guard it,
+    // mirroring the same pattern for top-level ST 0903 and ST 0102.
+    use crate::error::KlvEncodeError;
+    let ls = VmtiLs {
+        targets: vec![VTargetPack {
+            target_id: 1,
+            unknown: vec![OwnedRawField {
+                tag: 5,
+                value: vec![0x50],
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let err = encode_to_vec(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::ReservedTagInUnknown { tag: 5 }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn encode_allows_truly_unknown_tag_in_vtargetpack_unknown() {
+    // A forward-compat pack tag (e.g. 200) must still pass through.
+    let ls = VmtiLs {
+        targets: vec![VTargetPack {
+            target_id: 1,
+            unknown: vec![OwnedRawField {
+                tag: 200,
+                value: vec![0xAB, 0xCD],
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).expect("forward-compat unknown pack tag must encode");
+    assert!(!bytes.is_empty());
+}

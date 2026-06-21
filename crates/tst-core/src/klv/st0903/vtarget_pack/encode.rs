@@ -114,6 +114,14 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     // as a single byte, byte-identical to the pre-E5-followup emit.
     // `encoded_len` mirrors this via `ber_oid_len(field.tag)`.
     for field in &pack.unknown {
+        // Reject reserved/typed pack tags before emitting. Without this
+        // guard, a caller-constructed typed tag (e.g. Tag 5 = Confidence
+        // Level) in `unknown` would produce a duplicate. The `unknown`
+        // vec is for forward-compat pass-through only. Mirrors
+        // st0601::encode::write_unknown_fields and st0102/st0903 guards.
+        if pack_is_reserved_or_typed_tag(field.tag) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: field.tag });
+        }
         let mut tag_buf = [0u8; 5]; // u32 fits in at most 5 BER-OID bytes
         let tag_n = write_ber_oid(field.tag, &mut tag_buf)?;
         out.extend_from_slice(&tag_buf[..tag_n]);
@@ -226,4 +234,18 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
         total += ber_oid_len(field.tag) + ber_len(field.value.len()) + field.value.len();
     }
     total
+}
+
+/// True iff `tag` is in the VTargetPack typed tag table. Used by the
+/// `unknown` loop in [`write_pack`] to fail-fast on caller-constructed
+/// `unknown` entries that would produce a duplicate or non-conformant
+/// pack. Mirrors `st0601::encode::is_reserved_or_typed_tag`.
+///
+/// The typed table is u8-keyed; `OwnedRawField.tag` is u32, so any tag
+/// > 255 is by definition not in the typed table.
+fn pack_is_reserved_or_typed_tag(tag: u32) -> bool {
+    if tag > u8::MAX as u32 {
+        return false;
+    }
+    super::model::pack_lookup(tag as u8).is_some()
 }

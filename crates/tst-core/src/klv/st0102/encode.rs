@@ -110,6 +110,14 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
     // `encoded_len` sizes via `ber_oid_len(tag)` to keep the
     // buffer-size precheck consistent.
     for u in record.unknown.iter() {
+        // Reject reserved/typed tags before emitting. Without this guard,
+        // a caller-constructed typed tag (e.g. Tag 3 = Classifying Country)
+        // in `unknown` would produce a duplicate that ST 0102 decode_strict
+        // rejects as DuplicateTag. The `unknown` vec is for forward-compat
+        // pass-through only. Mirrors st0601::encode::write_unknown_fields.
+        if is_reserved_or_typed_tag(u.tag) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: u.tag });
+        }
         let n =
             write_ber_oid(u.tag, &mut out[pos..]).map_err(|_| KlvEncodeError::RecordTooLarge)?;
         pos += n;
@@ -213,4 +221,18 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
     }
 
     total
+}
+
+/// True iff `tag` is in the ST 0102 typed tag table. Used by the
+/// `unknown` loop in [`encode`] to fail-fast on caller-constructed
+/// `unknown` entries that would produce a duplicate or non-conformant
+/// Local Set. Mirrors `st0601::encode::is_reserved_or_typed_tag`.
+///
+/// The typed table is u8-keyed; `OwnedRawField.tag` is u32, so any tag
+/// > 255 is by definition not in the typed table.
+fn is_reserved_or_typed_tag(tag: u32) -> bool {
+    if tag > u8::MAX as u32 {
+        return false;
+    }
+    super::tags::lookup(tag as u8).is_some()
 }

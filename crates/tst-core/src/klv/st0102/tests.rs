@@ -654,6 +654,43 @@ fn unknown_tag_16384_round_trips_three_byte_ber_oid() {
     assert_eq!(decoded.unknown[0].value, b"first-three-byte");
 }
 
+// ------------------------------------------------------------------
+// Task 1 (WP-F / REF-KLV-02): unknown-bucket typed-tag guard tests.
+// ------------------------------------------------------------------
+
+#[test]
+fn encode_rejects_typed_tag_in_unknown() {
+    // A caller who places a typed tag (Tag 3 = Classifying Country) in
+    // `unknown` would make the encoder emit Tag 3 twice — output that the
+    // ST 0102 decode_strict rejects as DuplicateTag. Guard it, mirroring
+    // st0601::encode's is_reserved_or_typed_tag (ST 0107.5 §6.3.4 single-use).
+    let mut r = SecurityLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 3,
+        value: vec![b'/', b'/', b'U', b'S'],
+    });
+    let mut buf = [0u8; 256];
+    let err = encode(&r, &mut buf).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::ReservedTagInUnknown { tag: 3 }),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn encode_allows_truly_unknown_tag_in_unknown() {
+    // A forward-compat tag the typed model doesn't know (e.g. 200) must
+    // still pass through (round-trips). This is the legitimate use of `unknown`.
+    let mut r = SecurityLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 200,
+        value: vec![0xAB, 0xCD],
+    });
+    let mut buf = [0u8; 256];
+    let n = encode(&r, &mut buf).expect("forward-compat unknown tag must encode");
+    assert!(n > 0);
+}
+
 /// `klv::st0102::SECURITY_LS_UL` is a re-export of the
 /// `UniversalLabel`-typed constant — the bytes match the
 /// universal_label.rs canonical form.

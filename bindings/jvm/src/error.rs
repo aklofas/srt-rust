@@ -177,7 +177,7 @@ pub fn map_klv_decode_error(env: &mut JNIEnv, e: &KlvDecodeError) {
     }
 }
 
-/// Map + throw a Rust `KlvEncodeError`. All 8 Kind literals appear inline
+/// Map + throw a Rust `KlvEncodeError`. All 11 Kind literals appear inline
 /// (satisfies the error-mapping ratchet). Used by the per-set JNI fns (Tasks 1–4).
 /// The forward-compat wildcard arm aliases to `BUFFER_TOO_SMALL` (matching
 /// tst-py's `klv_encode_error_to_pyerr`), not `INTERNAL`.
@@ -206,6 +206,21 @@ pub fn map_klv_encode_error(env: &mut JNIEnv, e: &KlvEncodeError) {
         KlvEncodeError::ReservedTagInUnknown { tag } => {
             throw_klv_encode(env, "RESERVED_TAG_IN_UNKNOWN", Some(u64::from(*tag)), &msg)
         }
+        KlvEncodeError::VTargetPackEmpty { target_id } => {
+            throw_klv_encode(env, "VTARGET_PACK_EMPTY", Some(u64::from(*target_id)), &msg)
+        }
+        KlvEncodeError::DuplicateTargetId { target_id } => throw_klv_encode(
+            env,
+            "DUPLICATE_TARGET_ID",
+            Some(u64::from(*target_id)),
+            &msg,
+        ),
+        KlvEncodeError::ForbiddenStandaloneOffset { tag } => throw_klv_encode(
+            env,
+            "FORBIDDEN_STANDALONE_OFFSET",
+            Some(u64::from(*tag)),
+            &msg,
+        ),
         _ => throw_klv_encode(env, "BUFFER_TOO_SMALL", None, &msg),
     }
 }

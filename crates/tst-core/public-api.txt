@@ -1219,6 +1219,10 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvDecodeError
 pub tst_core::error::KlvEncodeError::BufferTooSmall
 pub tst_core::error::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::error::KlvEncodeError::BufferTooSmall::needed: usize
+pub tst_core::error::KlvEncodeError::DuplicateTargetId
+pub tst_core::error::KlvEncodeError::DuplicateTargetId::target_id: u32
+pub tst_core::error::KlvEncodeError::ForbiddenStandaloneOffset
+pub tst_core::error::KlvEncodeError::ForbiddenStandaloneOffset::tag: u32
 pub tst_core::error::KlvEncodeError::InvalidImapbParams
 pub tst_core::error::KlvEncodeError::InvalidImapbParams::length: u8
 pub tst_core::error::KlvEncodeError::InvalidImapbParams::max: f64
@@ -1239,6 +1243,8 @@ pub tst_core::error::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::error::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength::length: usize
+pub tst_core::error::KlvEncodeError::VTargetPackEmpty
+pub tst_core::error::KlvEncodeError::VTargetPackEmpty::target_id: u32
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
 pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError
@@ -5728,6 +5734,10 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvDecodeError
 pub tst_core::KlvEncodeError::BufferTooSmall
 pub tst_core::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::KlvEncodeError::BufferTooSmall::needed: usize
+pub tst_core::KlvEncodeError::DuplicateTargetId
+pub tst_core::KlvEncodeError::DuplicateTargetId::target_id: u32
+pub tst_core::KlvEncodeError::ForbiddenStandaloneOffset
+pub tst_core::KlvEncodeError::ForbiddenStandaloneOffset::tag: u32
 pub tst_core::KlvEncodeError::InvalidImapbParams
 pub tst_core::KlvEncodeError::InvalidImapbParams::length: u8
 pub tst_core::KlvEncodeError::InvalidImapbParams::max: f64
@@ -5748,6 +5758,8 @@ pub tst_core::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::KlvEncodeError::UnsupportedImapbLength::length: usize
+pub tst_core::KlvEncodeError::VTargetPackEmpty
+pub tst_core::KlvEncodeError::VTargetPackEmpty::target_id: u32
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
 pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError

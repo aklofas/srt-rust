@@ -132,6 +132,9 @@ class KlvEncodeErrorKind(enum.IntEnum):
     INVALID_IMAPB_PARAMS = 5
     MISSING_MANDATORY_ITEM = 6
     RESERVED_TAG_IN_UNKNOWN = 7
+    VTARGET_PACK_EMPTY = 8
+    DUPLICATE_TARGET_ID = 9
+    FORBIDDEN_STANDALONE_OFFSET = 10
 
 
 class CodecErrorKind(enum.IntEnum):

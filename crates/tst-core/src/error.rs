@@ -148,21 +148,39 @@ pub enum KlvEncodeError {
     )]
     InvalidImapbParams { min: f64, max: f64, length: u8 },
 
-    /// A mandatory ST 0601 item is missing from a record passed to
-    /// [`crate::klv::st0601::encode_strict_compliance`]. `tag` is the
-    /// numeric item code (e.g. `2` for Precision Time Stamp) and
-    /// `name` is the human-readable item label from ST 0601.13-22 +
-    /// ST 0601.24 §6 for diagnostics. The library's
-    /// `decode_strict_compliance` rejects records missing such tags;
-    /// this variant makes the encoder symmetric.
+    /// A mandatory KLV item is missing from a record passed to a
+    /// strict-compliance encoder. `tag` is the numeric item code and
+    /// `name` is the human-readable item label for diagnostics.
     ///
-    /// Today `encode_strict_compliance` enforces Tag 2 (Precision Time
-    /// Stamp). Tag 1 (Checksum) and Tag 65 (LS Version Number) are
-    /// auto-emitted by the encoder and therefore not flagged here.
-    /// Future strict-compliance items added to `_mandatory_tags` will
-    /// reuse this same variant.
-    #[error("ST 0601 mandatory item missing: tag {tag} ({name})")]
+    /// Used by `st0601::encode_strict_compliance` (Tag 2 Precision
+    /// Time Stamp), `st0102::encode_strict_compliance`, and
+    /// `st0903` strict encoders. Tags that are auto-emitted by the
+    /// encoder (e.g. Checksum, LS Version Number) are never flagged here.
+    #[error("KLV mandatory item missing: tag {tag} ({name})")]
     MissingMandatoryItem { tag: u16, name: &'static str },
+
+    /// A VTarget Pack in an ST 0903 vTargetSeries has no TLV items
+    /// after the targetId (ST 0903.4-10 requires at least one additional
+    /// item). `target_id` is the offending pack's identifier.
+    #[error(
+        "ST 0903 VTarget Pack {target_id} has no TLV items after targetId (ST 0903.4-10 requires at least one)"
+    )]
+    VTargetPackEmpty { target_id: u32 },
+
+    /// An ST 0903 vTargetSeries contains more than one VTarget Pack
+    /// with the same targetId (ST 0903.6-126 requires unique targetIds).
+    #[error(
+        "ST 0903 vTargetSeries contains duplicate targetId {target_id} (ST 0903.6-126 requires unique targetIds)"
+    )]
+    DuplicateTargetId { target_id: u32 },
+
+    /// A standalone ST 0903 VMTI Local Set contains a VTarget Pack
+    /// with a parent-relative offset tag, which is forbidden in the
+    /// standalone form (ST 0903.6-116). `tag` is the offending tag number.
+    #[error(
+        "ST 0903 standalone VMTI VTarget Pack must omit parent-relative offset tag {tag} (ST 0903.6-116)"
+    )]
+    ForbiddenStandaloneOffset { tag: u32 },
 
     /// Caller placed a reserved or typed tag in `UasDatalinkLs.unknown`.
     ///

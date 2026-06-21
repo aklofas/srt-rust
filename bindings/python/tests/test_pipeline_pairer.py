@@ -95,7 +95,11 @@ def test_realtime_pairs_sync_klv():
     assert pairer.stats()["paired"] == 5
     p0 = paired[0]
     assert p0.video.codec == VideoCodec.H264
-    assert isinstance(p0.video.payload, list) and len(p0.video.payload) >= 1
+    # raw-first contract: .raw is the encoded AU bytes; .payload is gone.
+    assert isinstance(p0.video.raw, (bytes, bytearray))
+    assert p0.video.random_access_indicator in (True, False)
+    units = p0.video.parse()
+    assert isinstance(units, list) and len(units) >= 1
     assert isinstance(p0.klv.payload, (bytes, bytearray)) and len(p0.klv.payload) > 0
 
 
@@ -221,3 +225,78 @@ def test_pairer_output_isinstance_hierarchy():
     for p in paired:
         # Every Paired is also a PairerOutput (base class check).
         assert isinstance(p, PairerOutput)
+
+
+# --- PIPE-01: raw-first VideoSample new contract tests ---
+
+def test_video_sample_raw_is_bytes():
+    """Paired video sample carries raw bytes (not a parsed payload list)."""
+    data = _sync_klv_bytes()
+    pairer = Pairer(
+        VIDEO_PID,
+        KLV_PID,
+        PairingDemuxerConfig(
+            pairer=PairerConfig(mode=PairerMode.Realtime, tolerance=timedelta(milliseconds=100))
+        ),
+    )
+    outs = pairer.feed(data) + pairer.flush()
+    paired = [o for o in outs if isinstance(o, PairerOutput.Paired)]
+    assert len(paired) >= 1, "expected at least one Paired output"
+    p0 = paired[0]
+
+    # .raw must be bytes/bytearray (the exact encoded AU).
+    assert isinstance(p0.video.raw, (bytes, bytearray)), (
+        f"expected bytes, got {type(p0.video.raw)}"
+    )
+    assert len(p0.video.raw) > 0, "raw AU must be non-empty"
+
+    # .random_access_indicator must be a bool.
+    assert isinstance(p0.video.random_access_indicator, bool)
+
+    # .parse() opt-in must return a non-empty list of NAL/OBU units.
+    units = p0.video.parse()
+    assert isinstance(units, list) and len(units) >= 1, (
+        f"parse() must return non-empty list, got {units!r}"
+    )
+
+
+def test_video_sample_lazy_no_copy():
+    """Materialization of .raw is lazy: _materialized is False until .raw is accessed."""
+    from tstrans import _native
+
+    data = _sync_klv_bytes()
+    pairer = Pairer(
+        VIDEO_PID,
+        KLV_PID,
+        PairingDemuxerConfig(
+            pairer=PairerConfig(mode=PairerMode.Realtime, tolerance=timedelta(milliseconds=100))
+        ),
+    )
+    outs = pairer.feed(data) + pairer.flush()
+    paired = [o for o in outs if isinstance(o, PairerOutput.Paired)]
+    assert len(paired) >= 1
+    p0 = paired[0]
+
+    # Before any .raw access, the holder must not have materialized.
+    assert not p0.video._raw._materialized, (
+        "_native.RawBytes should not have materialized before .raw is accessed"
+    )
+
+    # After accessing .raw, it must be materialized and cached.
+    _ = p0.video.raw
+    assert p0.video._raw._materialized, (
+        "_native.RawBytes must be materialized after first .raw access"
+    )
+
+
+def test_video_sample_no_payload_attr():
+    """VideoSample no longer has a .payload attribute (raw-first contract)."""
+    data = _sync_klv_bytes()
+    pairer = Pairer(VIDEO_PID, KLV_PID)
+    outs = pairer.feed(data) + pairer.flush()
+    paired = [o for o in outs if isinstance(o, PairerOutput.Paired)]
+    assert len(paired) >= 1
+    p0 = paired[0]
+    assert not hasattr(p0.video, "payload"), (
+        "VideoSample must NOT have a .payload attribute in the raw-first contract"
+    )

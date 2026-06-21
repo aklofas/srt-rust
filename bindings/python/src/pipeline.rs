@@ -11,9 +11,9 @@
 //! `tstrans/pipeline.py`; this module constructs them by name
 //! (`import_bound("tstrans.pipeline")`, `getattr(...)`), and reuses the
 //! `crate::mpegts` projection helpers (`build_stream_id`, `pts_to_py`,
-//! `video_codec_to_py`, `metadata_kind_to_py`, `convert_video_payload`,
-//! `convert_event`) so a `VideoSample`/`KlvSample` is byte-identical to
-//! the corresponding `mpegts.Demuxer` projection.
+//! `video_codec_to_py`, `metadata_kind_to_py`, `convert_event`). The
+//! `VideoSample` projection is raw-first: `vs.raw` is wrapped in a
+//! `_native.RawBytes` holder (Arc clone; no copy at conversion time).
 //!
 //! `#![allow(...)]` mirrors `mpegts.rs` — PyO3 0.22 + Rust 2024 macro
 //! expansions trip these lints. Hand-written code here has no unsafe
@@ -35,8 +35,8 @@ use tst_pipeline::ext::pairing::{
 use tst_core::mpegts::demux::DemuxerConfig;
 
 use crate::mpegts::{
-    build_stream_id, convert_event, convert_video_payload, demux_error_to_pyerr,
-    metadata_kind_to_py, opt_pts_to_py, pts_to_py, video_codec_to_py,
+    build_stream_id, convert_event, demux_error_to_pyerr, metadata_kind_to_py, opt_pts_to_py,
+    pts_to_py, video_codec_to_py,
 };
 
 // ---------------------------------------------------------------------------
@@ -216,15 +216,28 @@ fn convert_output(py: Python<'_>, out: &PairerOutput) -> PyResult<PyObject> {
 }
 
 /// Project a `VideoSample` to a `tstrans.pipeline.VideoSample` instance.
+///
+/// Raw-first: wraps `vs.raw` in a `_native.RawBytes` holder (Arc clone; no
+/// payload copy at conversion time). The Python `.raw` property materializes
+/// the bytes lazily on first access.
 fn convert_video_sample(py: Python<'_>, vs: &VideoSample) -> PyResult<PyObject> {
     let mpegts = py.import_bound("tstrans.mpegts")?;
     let pipeline = py.import_bound("tstrans.pipeline")?;
+    let raw_holder = crate::raw_bytes::RawBytes::from_shared(vs.raw.clone());
+    let av1_carriage_py: PyObject = match vs.av1_carriage {
+        None => py.None(),
+        Some(mode) => crate::mux::av1_carriage_to_py(py, mode)?
+            .into_any()
+            .unbind(),
+    };
     let kwargs = PyDict::new_bound(py);
     kwargs.set_item("stream", build_stream_id(py, &mpegts, &vs.stream)?)?;
     kwargs.set_item("pts", pts_to_py(py, &mpegts, vs.pts)?)?;
     kwargs.set_item("dts", opt_pts_to_py(py, &mpegts, vs.dts)?)?;
     kwargs.set_item("codec", video_codec_to_py(py, &mpegts, &vs.codec)?)?;
-    kwargs.set_item("payload", convert_video_payload(py, &vs.payload)?)?;
+    kwargs.set_item("raw", Py::new(py, raw_holder)?)?;
+    kwargs.set_item("random_access_indicator", vs.random_access_indicator)?;
+    kwargs.set_item("av1_carriage", av1_carriage_py)?;
     Ok(pipeline
         .getattr(intern!(py, "VideoSample"))?
         .call((), Some(&kwargs))?

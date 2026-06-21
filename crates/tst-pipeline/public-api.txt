@@ -265,11 +265,15 @@ impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::PairingDemuxerCon
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::PairingDemuxerConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::PairingDemuxerConfig
 pub struct tst_pipeline::ext::pairing::VideoSample
+pub tst_pipeline::ext::pairing::VideoSample::av1_carriage: core::option::Option<tst_core::mpegts::mux::types::Av1CarriageMode>
 pub tst_pipeline::ext::pairing::VideoSample::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_pipeline::ext::pairing::VideoSample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
-pub tst_pipeline::ext::pairing::VideoSample::payload: tst_core::mpegts::demux::event::VideoPayload
 pub tst_pipeline::ext::pairing::VideoSample::pts: tst_core::mpegts::common::Pts90khz
+pub tst_pipeline::ext::pairing::VideoSample::random_access_indicator: bool
+pub tst_pipeline::ext::pairing::VideoSample::raw: tst_core::shared::SharedBytes
 pub tst_pipeline::ext::pairing::VideoSample::stream: tst_core::mpegts::demux::event::StreamId
+impl tst_pipeline::ext::pairing::VideoSample
+pub fn tst_pipeline::ext::pairing::VideoSample::split_units(&self) -> (tst_core::mpegts::demux::event::VideoPayload, alloc::vec::Vec<tst_core::mpegts::demux::event::NonConformantIssue>)
 impl core::clone::Clone for tst_pipeline::ext::pairing::VideoSample
 pub fn tst_pipeline::ext::pairing::VideoSample::clone(&self) -> tst_pipeline::ext::pairing::VideoSample
 impl core::cmp::Eq for tst_pipeline::ext::pairing::VideoSample

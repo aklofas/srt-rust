@@ -98,12 +98,24 @@ fn main() -> std::io::Result<()> {
     let median = deltas_ms[deltas_ms.len() / 2];
     let p95_idx = (deltas_ms.len() * 95) / 100;
     let p95 = deltas_ms[p95_idx.min(deltas_ms.len() - 1)];
+    let min_delta = deltas_ms[0]; // sorted ascending
 
     println!("PCR samples: {}", pcrs.len());
     println!("Inter-PCR delta median: {:.2} ms", median);
     println!("Inter-PCR delta p95:    {:.2} ms", p95);
 
     let mut failed = false;
+    // `pcr_diff_27mhz` folds a wrap-straddle into a small POSITIVE delta, so a
+    // NEGATIVE delta is a genuine backward PCR jump (PCR must be monotonic
+    // aside from wrap). The upper-threshold median/p95 checks below would let
+    // such a jump pass, so flag it explicitly.
+    if min_delta < 0.0 {
+        eprintln!(
+            "FAIL: backward PCR jump — negative inter-PCR delta {:.2} ms (PCR must be monotonic aside from wrap)",
+            min_delta
+        );
+        failed = true;
+    }
     if median > MEDIAN_THRESHOLD_MS {
         eprintln!(
             "FAIL: median {:.2} ms > threshold {} ms",

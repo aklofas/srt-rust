@@ -12,7 +12,7 @@ use core::time::Duration;
 use crate::shared::SharedBytes;
 
 use crate::mpegts::common::{Pts90khz, StreamTypeCode};
-pub use crate::mpegts::demux::ts::PcrMalformedKind;
+pub use crate::mpegts::demux::ts::{AdaptationFieldKind, PcrMalformedKind};
 
 /// Top-level event emitted by `Demuxer::next_event`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -838,6 +838,16 @@ pub enum NonConformantIssue {
         control: u8,
     },
 
+    /// The adaptation field's control/length combination violated H.222.0
+    /// §2.4.3.2/§2.4.3.5 (reserved control 00, wrong length for the control
+    /// value, or a PCR flag with too few bytes). See [`AdaptationFieldKind`].
+    /// Lenient mode surfaces this and continues best-effort (control 00 routes
+    /// no payload by construction); `StrictMode::Full` rejects. REF-TS-02.
+    AdaptationFieldMalformed {
+        pid: u16,
+        kind: crate::mpegts::demux::ts::AdaptationFieldKind,
+    },
+
     /// Other.
     Other(String),
 }
@@ -1223,6 +1233,20 @@ impl core::fmt::Display for NonConformantIssue {
                     "unsupported transport_scrambling_control=0b{control:02b} on PID 0x{pid:04X} \
                      (H.222.0 §2.4.3.2; payload not routed)"
                 )
+            }
+            NonConformantIssue::AdaptationFieldMalformed { pid, kind } => {
+                let detail = match kind {
+                    AdaptationFieldKind::ReservedControl => {
+                        "adaptation_field_control=00 reserved (H.222.0 §2.4.3.2; discard)"
+                    }
+                    AdaptationFieldKind::BadLengthForControl => {
+                        "adaptation_field_length invalid for control (H.222.0 §2.4.3.2)"
+                    }
+                    AdaptationFieldKind::ShortPcr => {
+                        "pcr_flag set with fewer than 6 PCR bytes (H.222.0 §2.4.3.5)"
+                    }
+                };
+                write!(f, "adaptation field malformed on PID 0x{pid:04X}: {detail}")
             }
             NonConformantIssue::Other(msg) => {
                 write!(f, "{msg}")

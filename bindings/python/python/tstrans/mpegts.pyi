@@ -146,6 +146,7 @@ class NonConformantKind(enum.Enum):
     SUBTITLE_DESCRIPTOR_MALFORMED = "subtitle_descriptor_malformed"
     PMT_PROGRAM_NUMBER_MISMATCH = "pmt_program_number_mismatch"
     UNSUPPORTED_SCRAMBLING = "unsupported_scrambling"
+    ADAPTATION_FIELD_MALFORMED = "adaptation_field_malformed"
     OTHER = "other"
 
 class StrictMode(enum.Enum):

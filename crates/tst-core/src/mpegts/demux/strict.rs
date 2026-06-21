@@ -127,6 +127,19 @@ mod tests {
     }
 
     #[test]
+    fn adaptation_field_malformed_rejected_only_by_full() {
+        use crate::mpegts::demux::ts::AdaptationFieldKind;
+        let issue = NonConformantIssue::AdaptationFieldMalformed {
+            pid: 0x100,
+            kind: AdaptationFieldKind::ReservedControl,
+        };
+        assert!(!StrictMode::Off.rejects(&issue));
+        assert!(!StrictMode::TimingOnly.rejects(&issue));
+        assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
+
+    #[test]
     fn unsupported_scrambling_rejected_only_by_full() {
         let issue = NonConformantIssue::UnsupportedScrambling {
             pid: 0x100,

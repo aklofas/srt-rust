@@ -836,6 +836,7 @@ pub fn nonconformant_issue_code(
         NonConformantIssue::Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
         NonConformantIssue::PmtProgramNumberMismatch { .. } => "PMT_PROGRAM_NUMBER_MISMATCH",
         NonConformantIssue::UnsupportedScrambling { .. } => "UNSUPPORTED_SCRAMBLING",
+        NonConformantIssue::AdaptationFieldMalformed { .. } => "ADAPTATION_FIELD_MALFORMED",
         NonConformantIssue::Other(_) => "OTHER",
     }
     .into()

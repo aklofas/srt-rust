@@ -14,5 +14,7 @@ public enum NonConformantKind {
     PMT_PROGRAM_NUMBER_MISMATCH,
     /** transport_scrambling_control != 0; payload not routed (REF-TS-01). */
     UNSUPPORTED_SCRAMBLING,
+    /** Adaptation-field control/length violation (REF-TS-02). */
+    ADAPTATION_FIELD_MALFORMED,
     OTHER
 }

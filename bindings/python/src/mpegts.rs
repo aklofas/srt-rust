@@ -916,6 +916,7 @@ fn non_conformant_kind_name(issue: &NonConformantIssue) -> &'static str {
         Av1MissingTsObuFraming { .. } => "AV1_MISSING_TS_OBU_FRAMING",
         PmtProgramNumberMismatch { .. } => "PMT_PROGRAM_NUMBER_MISMATCH",
         UnsupportedScrambling { .. } => "UNSUPPORTED_SCRAMBLING",
+        AdaptationFieldMalformed { .. } => "ADAPTATION_FIELD_MALFORMED",
         Other(_) => "OTHER",
     }
 }

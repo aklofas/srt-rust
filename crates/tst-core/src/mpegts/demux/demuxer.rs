@@ -15,7 +15,9 @@
 //! `pub(super)` and live in the sibling submodules per Decision DB2/DB3.
 
 use crate::error::DemuxError;
-use crate::mpegts::demux::event::{DemuxEvent, NonConformantIssue, StreamId, StreamKind};
+use crate::mpegts::demux::event::{
+    AdaptationFieldKind, DemuxEvent, NonConformantIssue, StreamId, StreamKind,
+};
 use crate::mpegts::demux::pes::Reassembler;
 use crate::mpegts::demux::psi_assembler::PsiSectionAssembler;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
@@ -467,9 +469,23 @@ impl Demuxer {
     fn process_packet(&mut self, buf: &[u8; 188]) -> Result<(), DemuxError> {
         let pkt = match parse_ts_packet(buf) {
             Ok(p) => p,
-            Err(TsParseError::NoSyncByte)
-            | Err(TsParseError::Truncated)
-            | Err(TsParseError::BadAdaptationLength) => return Ok(()),
+            Err(TsParseError::BadAdaptationLength) => {
+                let pid = u16::from_be_bytes([buf[1] & 0x1F, buf[2]]);
+                let stream = self.lookup_stream(pid).unwrap_or(StreamId {
+                    pid,
+                    kind: StreamKind::Unknown(0),
+                    program_number: 0,
+                });
+                self.queue_nonconformant(
+                    stream,
+                    NonConformantIssue::AdaptationFieldMalformed {
+                        pid,
+                        kind: AdaptationFieldKind::BadLengthForControl,
+                    },
+                );
+                return Ok(());
+            }
+            Err(TsParseError::NoSyncByte) | Err(TsParseError::Truncated) => return Ok(()),
         };
         // ISO/IEC 13818-1 §2.4.3.2: `transport_error_indicator=1` means an
         // upstream link-layer flagged the packet as known-corrupt. ffmpeg
@@ -511,6 +527,21 @@ impl Demuxer {
                 },
             );
             return Ok(());
+        }
+        // REF-TS-02: surface adaptation-field control/length violations.
+        // ReservedControl (00) routes neither adaptation nor payload by
+        // construction; BadLengthForControl / ShortPcr may still carry a
+        // routable payload — continue best-effort (lenient).
+        if let Some(kind) = pkt.adaptation_malformed {
+            let stream = self.lookup_stream(pkt.pid).unwrap_or(StreamId {
+                pid: pkt.pid,
+                kind: StreamKind::Unknown(0),
+                program_number: 0,
+            });
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::AdaptationFieldMalformed { pid: pkt.pid, kind },
+            );
         }
         self.check_pcr(&pkt);
         let cc_jumped = self.check_continuity(&pkt);
@@ -3007,6 +3038,57 @@ mod tests {
         assert!(
             !demuxer.last_pcr_by_pid.contains_key(&0x1011),
             "malformed PCR must not seed last_pcr_by_pid"
+        );
+    }
+
+    #[test]
+    fn reserved_adaptation_control_emits_nonconformant() {
+        let mut demux = Demuxer::new();
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x01;
+        buf[2] = 0x00;
+        buf[3] = 0x00; // control=00
+        demux.feed(&buf).unwrap();
+        let events: Vec<_> = core::iter::from_fn(|| demux.next_event()).collect();
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::AdaptationFieldMalformed {
+                        kind: crate::mpegts::demux::AdaptationFieldKind::ReservedControl,
+                        ..
+                    },
+                    ..
+                }
+            )),
+            "got {events:?}"
+        );
+    }
+
+    #[test]
+    fn over_long_adaptation_length_emits_nonconformant() {
+        let mut demux = Demuxer::new();
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x01;
+        buf[2] = 0x00;
+        buf[3] = 0x30; // control=11
+        buf[4] = 200; // 5 + 200 > 188 -> BadAdaptationLength (previously swallowed)
+        demux.feed(&buf).unwrap();
+        let events: Vec<_> = core::iter::from_fn(|| demux.next_event()).collect();
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::AdaptationFieldMalformed {
+                        kind: crate::mpegts::demux::AdaptationFieldKind::BadLengthForControl,
+                        ..
+                    },
+                    ..
+                }
+            )),
+            "got {events:?}"
         );
     }
 

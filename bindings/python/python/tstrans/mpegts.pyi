@@ -26,6 +26,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import (
     Any,
+    ClassVar,
     Dict,
     List,
     Optional,
@@ -311,27 +312,54 @@ class DemuxEvent:
     class ProgramMap(DemuxEvent):
         programs: Tuple[_ProgramMapData, ...]
 
-    @dataclass(frozen=True, slots=True)
+    # `Video` / `Audio` are hand-written frozen classes at runtime (NOT
+    # dataclasses) because `.raw` materializes lazily — a value cannot be both
+    # a dataclass field and a same-named property (WP-E PY-01). The stub mirrors
+    # the runtime: a keyword-only `__init__`, `raw` as a read-only `bytes`
+    # property, and explicit `__match_args__`.
     class Video(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
         dts: Optional[Pts90khz]
         codec: VideoCodec
-        raw: bytes
         random_access_indicator: bool
-        av1_carriage: Optional[Av1CarriageMode] = ...
+        av1_carriage: Optional[Av1CarriageMode]
+        __match_args__: ClassVar[Tuple[str, ...]]
+        def __init__(
+            self,
+            *,
+            stream: StreamId,
+            pts: Pts90khz,
+            dts: Optional[Pts90khz],
+            codec: VideoCodec,
+            raw: bytes,
+            random_access_indicator: bool,
+            av1_carriage: Optional[Av1CarriageMode] = ...,
+        ) -> None: ...
+        @property
+        def raw(self) -> bytes: ...
         # Always a flat list of units (NalUnit | Obu); strict=True raises
         # ValueError on the first ES-conformance issue. For (units, issues),
         # call tstrans.codec.split_units(raw, codec) instead.
         def parse(self, *, strict: bool = ...) -> List[Any]: ...
 
-    @dataclass(frozen=True, slots=True)
     class Audio(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
         dts: Optional[Pts90khz]
         codec: AudioCodec
-        raw: bytes
+        __match_args__: ClassVar[Tuple[str, ...]]
+        def __init__(
+            self,
+            *,
+            stream: StreamId,
+            pts: Pts90khz,
+            dts: Optional[Pts90khz],
+            codec: AudioCodec,
+            raw: bytes,
+        ) -> None: ...
+        @property
+        def raw(self) -> bytes: ...
         # List[AdtsFrame] | List[Mpeg2AudioFrame] | [] — element type erased.
         # strict=True raises CodecError on the first malformed frame.
         def parse(self, *, strict: bool = ...) -> List[Any]: ...

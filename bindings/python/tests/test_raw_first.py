@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import tstrans.codec as codec
+from tstrans import _native
 from tstrans import io as tio
 from tstrans.exceptions import CodecError
 from tstrans.mpegts import (
@@ -18,6 +19,8 @@ from tstrans.mpegts import (
     MuxerConfigBuilder,
     MuxerProgramConfigBuilder,
     Pts90khz,
+    StreamId,
+    StreamKindTag,
     VideoCodec,
 )
 
@@ -126,6 +129,107 @@ def test_audio_event_exposes_raw():
             assert isinstance(ev.raw, (bytes, bytearray))
             assert isinstance(ev.parse(), list)
             break
+
+
+# ---------------------------------------------------------------------------
+# WP-E E1 (PY-01) — lazy native `.raw` materialization for Video / Audio
+#
+# The demuxer no longer eagerly copies each media payload into a PyBytes; the
+# `.raw` Python `bytes` is materialized on first access (pay-per-access) and
+# cached, while value-equality + hashability are preserved over the content.
+# ---------------------------------------------------------------------------
+
+def test_demux_does_not_materialize_raw_until_first_access():
+    """Events collected from the demuxer carry an unmaterialized `_raw`
+    holder; the PyBytes copy only happens on the first `.raw` access, and
+    repeated access returns the identical cached object."""
+    saw_video = False
+    saw_audio = False
+
+    with tempfile.TemporaryDirectory() as tmp:
+        events = list(tio.parse_file(_sample_ts_path(Path(tmp))))
+
+    for ev in events:
+        if isinstance(ev, DemuxEvent.Video):
+            # Demuxed but `.raw` untouched → no PyBytes materialized yet.
+            assert ev._raw._materialized is False
+            first = ev.raw
+            assert isinstance(first, (bytes, bytearray))
+            assert ev._raw._materialized is True
+            # Repeated access returns the SAME cached object (identity).
+            assert ev.raw is first
+            saw_video = True
+            break
+
+    for ev in tio.parse_file(_MP2_FIXTURE):
+        if isinstance(ev, DemuxEvent.Audio):
+            assert ev._raw._materialized is False
+            first = ev.raw
+            assert isinstance(first, (bytes, bytearray))
+            assert ev._raw._materialized is True
+            assert ev.raw is first
+            saw_audio = True
+            break
+
+    assert saw_video
+    assert saw_audio
+
+
+def test_video_event_value_equality_and_hash_over_raw_content():
+    """Two Video events built with equal `raw` compare equal and hash equal;
+    a Video built from a `bytes` and one built from the holder are equal."""
+    stream = StreamId(
+        pid=256, kind=StreamKindTag.VIDEO, codec=VideoCodec.H264, program_number=1
+    )
+    pts = Pts90khz.from_ms(100)
+    raw = b"\x00\x00\x00\x01\x65payload"
+
+    def _mk(raw_arg):
+        return DemuxEvent.Video(
+            stream=stream,
+            pts=pts,
+            dts=None,
+            codec=VideoCodec.H264,
+            raw=raw_arg,
+            random_access_indicator=True,
+        )
+
+    a = _mk(raw)
+    b = _mk(bytes(raw))  # distinct bytes object, same content
+    assert a == b
+    assert hash(a) == hash(b)
+
+    # An event built from a holder equals one built from the same bytes.
+    holder = _native.RawBytes(raw)
+    c = _mk(holder)
+    assert a == c
+    assert hash(a) == hash(c)
+    assert isinstance(c.raw, (bytes, bytearray))
+    assert bytes(c.raw) == raw
+
+    # Different raw content → not equal.
+    d = _mk(b"\x00\x00\x00\x01\x65different")
+    assert a != d
+
+
+def test_audio_event_value_equality_and_hash_over_raw_content():
+    """Audio events with equal `raw` compare equal and hash equal."""
+    stream = StreamId(
+        pid=258, kind=StreamKindTag.AUDIO, codec=AudioCodec.AAC, program_number=1
+    )
+    pts = Pts90khz.from_ms(100)
+    raw = b"adts frame bytes"
+
+    def _mk(raw_arg):
+        return DemuxEvent.Audio(
+            stream=stream, pts=pts, dts=None, codec=AudioCodec.AAC, raw=raw_arg
+        )
+
+    a = _mk(raw)
+    b = _mk(bytes(raw))
+    assert a == b
+    assert hash(a) == hash(b)
+    assert a != _mk(b"other frame bytes")
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ mod errors;
 mod klv;
 mod mpegts;
 mod mux;
+mod raw_bytes;
 #[cfg(feature = "rtp")]
 mod rtp;
 #[cfg(feature = "srt")]
@@ -64,6 +65,8 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     mpegts::register(m)?;
     klv::register(m)?;
+    // Lazy `.raw` holder backing DemuxEvent.Video/.Audio (WP-E PY-01).
+    m.add_class::<crate::raw_bytes::RawBytes>()?;
     // Stream handle newtypes. Registered here (not in mux::register)
     // because they were the first mux surface to land in src/mux.rs.
     m.add_class::<crate::mux::PyVideoStreamHandle>()?;

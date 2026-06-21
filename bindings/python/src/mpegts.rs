@@ -707,7 +707,13 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", video_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("raw", PyBytes::new_bound(py, raw))?;
+            // Lazy raw: hand the SharedBytes to the holder (cheap Arc bump, no
+            // payload copy). The PyBytes copy is deferred to first `.raw`
+            // access (WP-E PY-01). `raw.clone()` is the Arc clone.
+            kwargs.set_item(
+                "raw",
+                Py::new(py, crate::raw_bytes::RawBytes::from_shared(raw.clone()))?,
+            )?;
             kwargs.set_item("random_access_indicator", *random_access_indicator)?;
             let av1_carriage_py: pyo3::PyObject = match av1_carriage {
                 Some(mode) => crate::mux::av1_carriage_to_py(py, *mode)?
@@ -728,7 +734,12 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", audio_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("raw", PyBytes::new_bound(py, frames))?;
+            // Lazy raw: defer the PyBytes copy to first `.raw` access (WP-E
+            // PY-01). `frames.clone()` is a cheap Arc bump.
+            kwargs.set_item(
+                "raw",
+                Py::new(py, crate::raw_bytes::RawBytes::from_shared(frames.clone()))?,
+            )?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Subtitle { codec, payload } => {

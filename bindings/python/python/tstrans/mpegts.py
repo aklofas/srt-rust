@@ -23,6 +23,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
+# The compiled extension. Imported at module top (not just at the bottom
+# re-export block) because `_VideoEvent` / `_AudioEvent` wrap their `.raw`
+# in `_native.RawBytes` (WP-E PY-01). `_native` is self-contained and does
+# not import `tstrans.mpegts`, so this is not a circular import.
+from tstrans import _native
+
 
 @dataclass(frozen=True, slots=True)
 class Pts90khz:
@@ -607,29 +613,134 @@ class DemuxEvent:
     ReconnectDiscontinuity: ClassVar[type["_ReconnectDiscontinuityEvent"]]
 
 
-# Subclasses use the `DemuxEvent.X` attribute pattern. Each is a
-# frozen dataclass so it's hashable, equality-by-value, and reads
-# nicely with pattern matching.
+# Subclasses use the `DemuxEvent.X` attribute pattern. Most are
+# frozen dataclasses so they're hashable, equality-by-value, and read
+# nicely with pattern matching. (`_VideoEvent` / `_AudioEvent` are the
+# exception — hand-written frozen classes for lazy `.raw`; see below.)
 
 @dataclass(frozen=True, slots=True)
 class _ProgramMapEvent(DemuxEvent):
     programs: tuple[ProgramMap, ...]
 
 
-@dataclass(frozen=True, slots=True)
+# `_VideoEvent` / `_AudioEvent` are hand-written frozen classes rather than
+# `@dataclass(frozen=True, slots=True)` because their `.raw` is materialized
+# LAZILY (WP-E PY-01): the demuxer hands a native `_native.RawBytes` holder (a
+# cheap Arc clone — no payload copy) and the Python `bytes` is only produced on
+# first `.raw` access, then cached. A value cannot be both a dataclass field
+# (`raw: bytes`, eagerly stored) AND a computed `@property` of the same name, so
+# auto-`__init__` cannot be kept here. The class therefore reproduces the frozen
+# dataclass's value semantics (slots, frozen `__setattr__`, value-eq/hash/repr,
+# `__match_args__`) by hand, storing the holder in `_raw` and exposing `.raw`
+# via a property.
+#
+# Retention tradeoff: holding the event keeps the underlying demux buffer (the
+# Arc inside `RawBytes`) alive until the event is dropped, even if `.raw` is
+# never materialized. The win is pay-per-access (lazy) materialization, not
+# zero-copy at the boundary — abi3 copies the bytes into a fresh `bytes`
+# regardless (see docs/specs/2026-06-08-raw-first-sample-model-design.md §4.1).
+
 class _VideoEvent(DemuxEvent):
-    stream: StreamId
-    pts: Pts90khz
-    dts: Optional[Pts90khz]
-    codec: VideoCodec
-    raw: bytes  # the exact encoded access unit (Annex-B for H.26x; on-wire PES payload for AV1)
-    random_access_indicator: bool
-    # AV1 carriage provenance from the demuxer. `Some(mode)` for AV1 samples;
-    # `None` for H.264/H.265/H.266 (carriage is an AV1-only concept). Pass
-    # this to `split_units(carriage=...)` and to the destination muxer's
-    # `push_video_wire_to` to ensure a faithful round-trip. Default `None` for
-    # backward compatibility with call sites that construct the event directly.
-    av1_carriage: Optional["Av1CarriageMode"] = None
+    __slots__ = (
+        "stream",
+        "pts",
+        "dts",
+        "codec",
+        "_raw",  # native _native.RawBytes holder; `.raw` materializes lazily
+        "random_access_indicator",
+        "av1_carriage",
+    )
+
+    # Positional match binds `raw` (the property), not `_raw` (the holder),
+    # so `case DemuxEvent.Video(s, p, d, c, raw, rai, av1)` sees `bytes`.
+    __match_args__ = (
+        "stream",
+        "pts",
+        "dts",
+        "codec",
+        "raw",
+        "random_access_indicator",
+        "av1_carriage",
+    )
+
+    def __init__(
+        self,
+        *,
+        stream: StreamId,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz],
+        codec: VideoCodec,
+        raw,
+        random_access_indicator: bool,
+        # AV1 carriage provenance from the demuxer. `Some(mode)` for AV1
+        # samples; `None` for H.264/H.265/H.266 (carriage is an AV1-only
+        # concept). Pass this to `split_units(carriage=...)` and to the
+        # destination muxer's `push_video_wire_to` to ensure a faithful
+        # round-trip. Default `None` for backward compatibility with call
+        # sites that construct the event directly.
+        av1_carriage: Optional["Av1CarriageMode"] = None,
+    ) -> None:
+        object.__setattr__(self, "stream", stream)
+        object.__setattr__(self, "pts", pts)
+        object.__setattr__(self, "dts", dts)
+        object.__setattr__(self, "codec", codec)
+        # Accept either a pre-built holder (the demuxer path) or raw bytes
+        # (direct construction with `raw=b"..."`).
+        object.__setattr__(
+            self,
+            "_raw",
+            raw if isinstance(raw, _native.RawBytes) else _native.RawBytes(raw),
+        )
+        object.__setattr__(
+            self, "random_access_indicator", random_access_indicator
+        )
+        object.__setattr__(self, "av1_carriage", av1_carriage)
+
+    @property
+    def raw(self) -> bytes:
+        """The exact encoded access unit (Annex-B for H.26x; on-wire PES
+        payload for AV1). Materialized on first access and cached."""
+        return self._raw.value
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"cannot delete field {name!r}")
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return (
+            self.stream == other.stream
+            and self.pts == other.pts
+            and self.dts == other.dts
+            and self.codec == other.codec
+            and self._raw == other._raw  # content equality
+            and self.random_access_indicator == other.random_access_indicator
+            and self.av1_carriage == other.av1_carriage
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.stream,
+                self.pts,
+                self.dts,
+                self.codec,
+                hash(self._raw),  # content hash
+                self.random_access_indicator,
+                self.av1_carriage,
+            )
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"DemuxEvent.Video(stream={self.stream!r}, pts={self.pts!r}, "
+            f"dts={self.dts!r}, codec={self.codec!r}, raw={self.raw!r}, "
+            f"random_access_indicator={self.random_access_indicator!r}, "
+            f"av1_carriage={self.av1_carriage!r})"
+        )
 
     def parse(self, *, strict: bool = False):
         """Opt-in: split `raw` into typed NAL/OBU units. Lenient drops the issue
@@ -647,13 +758,65 @@ class _VideoEvent(DemuxEvent):
         return units
 
 
-@dataclass(frozen=True, slots=True)
 class _AudioEvent(DemuxEvent):
-    stream: StreamId
-    pts: Pts90khz
-    dts: Optional[Pts90khz]
-    codec: AudioCodec
-    raw: bytes  # raw audio elementary-stream bytes
+    # Hand-written frozen class (see `_VideoEvent` above) so `.raw` can be a
+    # lazily-materialized property rather than an eager dataclass field.
+    __slots__ = ("stream", "pts", "dts", "codec", "_raw")
+
+    __match_args__ = ("stream", "pts", "dts", "codec", "raw")
+
+    def __init__(
+        self,
+        *,
+        stream: StreamId,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz],
+        codec: AudioCodec,
+        raw,
+    ) -> None:
+        object.__setattr__(self, "stream", stream)
+        object.__setattr__(self, "pts", pts)
+        object.__setattr__(self, "dts", dts)
+        object.__setattr__(self, "codec", codec)
+        object.__setattr__(
+            self,
+            "_raw",
+            raw if isinstance(raw, _native.RawBytes) else _native.RawBytes(raw),
+        )
+
+    @property
+    def raw(self) -> bytes:
+        """Raw audio elementary-stream bytes. Materialized on first access and
+        cached."""
+        return self._raw.value
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"cannot delete field {name!r}")
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return (
+            self.stream == other.stream
+            and self.pts == other.pts
+            and self.dts == other.dts
+            and self.codec == other.codec
+            and self._raw == other._raw  # content equality
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.stream, self.pts, self.dts, self.codec, hash(self._raw))
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"DemuxEvent.Audio(stream={self.stream!r}, pts={self.pts!r}, "
+            f"dts={self.dts!r}, codec={self.codec!r}, raw={self.raw!r})"
+        )
 
     def parse(self, *, strict: bool = False):
         """Opt-in: parse `raw` into typed audio frames (empty list for codecs with

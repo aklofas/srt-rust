@@ -490,6 +490,28 @@ impl Demuxer {
             );
             return Ok(());
         }
+        // ISO/IEC 13818-1 §2.4.3.2: a non-zero `transport_scrambling_control`
+        // marks the payload as scrambled. The library does not descramble;
+        // feeding scrambled bytes to PSI/PES reassembly would corrupt parse
+        // state and surface as random malformation. Drop the packet (no
+        // payload routed) and surface UnsupportedScrambling so consumers can
+        // distinguish "unsupported scrambling" from "random corruption".
+        // REF-TS-01.
+        if pkt.transport_scrambling_control != 0 {
+            let stream = self.lookup_stream(pkt.pid).unwrap_or(StreamId {
+                pid: pkt.pid,
+                kind: StreamKind::Unknown(0),
+                program_number: 0,
+            });
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::UnsupportedScrambling {
+                    pid: pkt.pid,
+                    control: pkt.transport_scrambling_control,
+                },
+            );
+            return Ok(());
+        }
         self.check_pcr(&pkt);
         let cc_jumped = self.check_continuity(&pkt);
         if pkt.pid == 0x0000 {
@@ -1735,6 +1757,33 @@ mod tests {
         }
         assert!(saw_tei, "expected TransportErrorPacket on PID 0x100");
         assert!(!saw_psi, "TEI packet should be dropped before PSI parsing");
+    }
+
+    #[test]
+    fn scrambled_packet_emits_nonconformant_and_is_not_routed() {
+        // A PAT packet (PID 0x0000) with transport_scrambling_control != 0 must
+        // NOT be parsed into program topology; it surfaces UnsupportedScrambling.
+        let mut demux = Demuxer::new();
+        let mut pat = pat_packet_with_programs(&[(1, 0x1000)], 0);
+        pat[3] |= 0b0100_0000; // set TSC=01 (byte 3 bits 7-6) on the PAT packet
+        demux.feed(&pat).unwrap();
+        let events: Vec<_> = core::iter::from_fn(|| demux.next_event()).collect();
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::UnsupportedScrambling { control: 1, .. },
+                    ..
+                }
+            )),
+            "expected UnsupportedScrambling, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+            "scrambled PAT must not be adopted"
+        );
     }
 
     /// Per ISO/IEC 13818-1 §2.4.3.5, when adaptation_field.discontinuity_indicator=1

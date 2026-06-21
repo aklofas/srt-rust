@@ -204,6 +204,9 @@ pub enum TstNonConformantCode {
     /// `programs[1]` = `pmt_program` (reuses the two-element `programs_buf`
     /// carrier, same layout as `PidReusedAcrossPrograms`).
     PmtProgramNumberMismatch = 33,
+    /// REF-TS-01. transport_scrambling_control != 0; payload not routed.
+    /// `pid` = the scrambled PID; `table_id` carries the 2-bit control value.
+    UnsupportedScrambling = 34,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
@@ -1384,6 +1387,11 @@ fn fill_nonconformant(
             body.pid = *pid;
             arena.programs_buf = [*pat_program, *pmt_program];
             body.programs = arena.programs_buf.as_ptr();
+        }
+        NonConformantIssue::UnsupportedScrambling { pid, control } => {
+            body.issue_code = TstNonConformantCode::UnsupportedScrambling as c_int;
+            body.pid = *pid;
+            body.table_id = *control; // 1, 2, or 3
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 15` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 16` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -272,7 +272,13 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   `pat_program`, `programs[1]` = `pmt_program` (reuses the two-element
 ///   `programs_buf` carrier, same layout as `PidReusedAcrossPrograms`).
 ///   The mislabeled topology is NOT adopted. No struct layout change.
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 15;
+/// - `16` — WP-D demux trust-boundary diagnostics. New
+///   `TstNonConformantCode` values surfaced on `TstEventNonConformant`
+///   (no struct layout change — all reuse existing carriers):
+///   `UnsupportedScrambling` (= 34, REF-TS-01; `pid` = scrambled PID,
+///   `table_id` = 2-bit transport_scrambling_control). Further WP-D codes
+///   (35-37) are added under this same minor as their tasks land.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 16;
 
 // =========================================================================
 // Runtime version accessors

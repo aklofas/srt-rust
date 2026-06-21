@@ -12,5 +12,7 @@ public enum NonConformantKind {
     MISSING_METADATA_DESCRIPTOR, SUBTITLE_DESCRIPTOR_AMBIGUOUS, SUBTITLE_DESCRIPTOR_MALFORMED,
     /** PMT body {@code program_number} does not match PAT assignment (REF-PSI-01). */
     PMT_PROGRAM_NUMBER_MISMATCH,
+    /** transport_scrambling_control != 0; payload not routed (REF-TS-01). */
+    UNSUPPORTED_SCRAMBLING,
     OTHER
 }

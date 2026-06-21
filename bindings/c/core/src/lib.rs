@@ -279,8 +279,9 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   `table_id` = 2-bit transport_scrambling_control).
 ///   `AdaptationFieldMalformed` (= 35, REF-TS-02; `table_id` = kind
 ///   discriminator: 0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr,
-///   0xFF=unknown). Further WP-D codes are added under this same minor as
-///   their tasks land.
+///   0xFF=unknown).
+///   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
+///   Further WP-D codes are added under this same minor as their tasks land.
 pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 16;
 
 // =========================================================================

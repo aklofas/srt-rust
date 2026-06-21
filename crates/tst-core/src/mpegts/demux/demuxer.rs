@@ -3130,4 +3130,77 @@ mod tests {
             "TimingOnly strict mode must reject malformed PCR, got {result:?}"
         );
     }
+
+    // -------------------------------------------------------------------------
+    // REF-PES-01: zero PES_packet_length on a non-video stream (WP-D Task 3)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn zero_length_non_video_pes_emits_nonconformant_no_sample() {
+        // REF-PES-01: a PES with zero PES_packet_length on an audio PID must
+        // surface NonConformantIssue::ZeroLengthPesNonVideo and must NOT emit
+        // an audio Sample. stream_type 0x04 = MPEG-1 Audio, stream_id 0xC0.
+        const AUDIO_PID: u16 = 0x0101;
+        const PMT_PID: u16 = 0x0100;
+        const PCR_PID: u16 = 0x0200;
+
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, PMT_PID)], 0))
+            .unwrap();
+        // stream_type 0x04 = MPEG-1 Audio; AUDIO_PID is the audio elementary PID.
+        demuxer
+            .feed(&pmt_packet_for_test(
+                PMT_PID,
+                1,
+                PCR_PID,
+                &[(0x04, AUDIO_PID)],
+                0,
+            ))
+            .unwrap();
+        // Drain PAT/PMT events so they don't contaminate the assertion below.
+        while demuxer.next_event().is_some() {}
+
+        // Build a PUSI TS packet carrying a PES with stream_id=0xC0 (audio)
+        // and PES_packet_length=0 (unbounded — illegal for non-video).
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x40 | ((AUDIO_PID >> 8) as u8 & 0x1F); // PUSI + PID hi
+        buf[2] = (AUDIO_PID & 0xFF) as u8;
+        buf[3] = 0x10; // payload-only, CC=0
+        // PES start code + stream_id + zero PES_packet_length
+        buf[4] = 0x00; // PES start code prefix byte 1
+        buf[5] = 0x00; // PES start code prefix byte 2
+        buf[6] = 0x01; // PES start code prefix byte 3
+        buf[7] = 0xC0; // stream_id = audio
+        buf[8] = 0x00; // PES_packet_length hi = 0 (unbounded — REF-PES-01 violation)
+        buf[9] = 0x00; // PES_packet_length lo = 0
+        // remaining bytes are 0xFF (pad)
+        demuxer.feed(&buf).unwrap();
+
+        let events: Vec<_> = core::iter::from_fn(|| demuxer.next_event()).collect();
+
+        // Must surface ZeroLengthPesNonVideo.
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::ZeroLengthPesNonVideo {
+                        pid: AUDIO_PID,
+                        stream_id: 0xC0,
+                    },
+                    ..
+                }
+            )),
+            "expected ZeroLengthPesNonVideo NonConformant event; got {events:?}"
+        );
+
+        // Must NOT emit a Sample — the bogus partial must be dropped, not flushed.
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, DemuxEvent::Sample { .. })),
+            "zero-length non-video PES must not emit a Sample; got {events:?}"
+        );
+    }
 }

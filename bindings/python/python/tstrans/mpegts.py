@@ -475,6 +475,7 @@ class NonConformantKind(enum.Enum):
     PMT_PROGRAM_NUMBER_MISMATCH = "pmt_program_number_mismatch"
     UNSUPPORTED_SCRAMBLING = "unsupported_scrambling"
     ADAPTATION_FIELD_MALFORMED = "adaptation_field_malformed"
+    ZERO_LENGTH_PES_NON_VIDEO = "zero_length_pes_non_video"
     OTHER = "other"
 
 

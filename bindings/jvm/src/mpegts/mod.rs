@@ -554,6 +554,7 @@ fn nonconformant_kind<'local>(
         PmtProgramNumberMismatch { .. } => "PMT_PROGRAM_NUMBER_MISMATCH",
         UnsupportedScrambling { .. } => "UNSUPPORTED_SCRAMBLING",
         AdaptationFieldMalformed { .. } => "ADAPTATION_FIELD_MALFORMED",
+        ZeroLengthPesNonVideo { .. } => "ZERO_LENGTH_PES_NON_VIDEO",
         Other(_) => "OTHER",
     };
     enum_const(env, "NonConformantKind", name)

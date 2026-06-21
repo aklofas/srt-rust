@@ -848,6 +848,14 @@ pub enum NonConformantIssue {
         kind: crate::mpegts::demux::ts::AdaptationFieldKind,
     },
 
+    /// A PES with zero `PES_packet_length` (unbounded) arrived on a
+    /// non-video stream. H.222.0 §2.4.3.7 permits zero only for a video
+    /// elementary stream; on audio/KLV/subtitle/private streams an unbounded
+    /// PES would buffer until the next PUSI / cap and flush a bogus sample.
+    /// The demuxer drops the partial and surfaces this; `StrictMode::Full`
+    /// rejects. `stream_id` is the PES stream_id byte. REF-PES-01.
+    ZeroLengthPesNonVideo { pid: u16, stream_id: u8 },
+
     /// Other.
     Other(String),
 }
@@ -1247,6 +1255,14 @@ impl core::fmt::Display for NonConformantIssue {
                     }
                 };
                 write!(f, "adaptation field malformed on PID 0x{pid:04X}: {detail}")
+            }
+            NonConformantIssue::ZeroLengthPesNonVideo { pid, stream_id } => {
+                write!(
+                    f,
+                    "zero PES_packet_length on non-video PID 0x{pid:04X} \
+                     (stream_id=0x{stream_id:02X}); H.222.0 §2.4.3.7 permits zero \
+                     only for video — packet dropped"
+                )
             }
             NonConformantIssue::Other(msg) => {
                 write!(f, "{msg}")

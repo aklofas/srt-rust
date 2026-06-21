@@ -2124,6 +2124,8 @@ pub fn tst_core::klv::st0903::decode(&[u8]) -> core::result::Result<tst_core::kl
 pub fn tst_core::klv::st0903::decode_strict(&[u8]) -> core::result::Result<tst_core::klv::VmtiLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0903::encode(&tst_core::klv::VmtiLs, &mut alloc::vec::Vec<u8>) -> core::result::Result<(), tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encode_standalone(&tst_core::klv::VmtiLs, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0903::encode_standalone_strict_compliance(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0903::encode_strict_compliance(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encode_to_vec(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encode_to_vec_standalone(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encoded_len(&tst_core::klv::VmtiLs) -> usize

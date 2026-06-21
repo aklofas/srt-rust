@@ -1,8 +1,11 @@
 use super::VMTI_LS_UL;
 use super::decode::{decode, decode_strict};
-use super::encode::{encode_to_vec, encode_to_vec_standalone, encoded_len, encoded_len_standalone};
+use super::encode::{
+    encode_standalone_strict_compliance, encode_strict_compliance, encode_to_vec,
+    encode_to_vec_standalone, encoded_len, encoded_len_standalone,
+};
 use super::model::VmtiLs;
-use crate::error::{KlvDecodeError, KlvFieldError};
+use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
 use crate::klv::st0903::vtarget_pack::VTargetPack;
 
@@ -947,4 +950,197 @@ fn encode_allows_truly_unknown_tag_in_vtargetpack_unknown() {
     };
     let bytes = encode_to_vec(&ls).expect("forward-compat unknown pack tag must encode");
     assert!(!bytes.is_empty());
+}
+
+// ------------------------------------------------------------------
+// Task 4 (WP-F / REF-KLV-03): encode_strict_compliance +
+// encode_standalone_strict_compliance tests.
+// ------------------------------------------------------------------
+
+/// Helper: a VmtiLs satisfying standalone-required fields (tags 2+4+6+11+12+13).
+fn full_standalone_ls() -> VmtiLs {
+    VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(1),
+        horizontal_fov: Some(45.0),
+        vertical_fov: Some(30.0),
+        miis_id: Some(vec![0x11, 0x22, 0x33]),
+        targets: vec![VTargetPack {
+            target_id: 1,
+            centroid_pixel: Some(100),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn st0903_strict_rejects_empty_vtarget_pack() {
+    // A VTargetPack with only target_id set (no TLV items) must be
+    // rejected by both encode_strict_compliance and
+    // encode_standalone_strict_compliance per ST 0903.4-10.
+    let ls = VmtiLs {
+        version_number: Some(6),
+        num_targets_reported: Some(1),
+        targets: vec![VTargetPack {
+            target_id: 1,
+            // all Option fields None, unknown empty — pack is TLV-empty
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let err = encode_strict_compliance(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::VTargetPackEmpty { target_id: 1 }),
+        "expected VTargetPackEmpty{{1}}, got {err:?}"
+    );
+}
+
+#[test]
+fn st0903_strict_rejects_duplicate_target_id() {
+    // Two packs with the same target_id (both non-empty) must be rejected
+    // per ST 0903.6-126.
+    let ls = VmtiLs {
+        version_number: Some(6),
+        num_targets_reported: Some(2),
+        targets: vec![
+            VTargetPack {
+                target_id: 7,
+                centroid_pixel: Some(100),
+                ..Default::default()
+            },
+            VTargetPack {
+                target_id: 7, // duplicate
+                centroid_pixel: Some(200),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let err = encode_strict_compliance(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::DuplicateTargetId { target_id: 7 }),
+        "expected DuplicateTargetId{{7}}, got {err:?}"
+    );
+}
+
+#[test]
+fn st0903_strict_rejects_missing_version() {
+    // Tag 4 (version_number) is unconditionally required per ST 0903.5-99.
+    let ls = VmtiLs {
+        version_number: None, // missing
+        num_targets_reported: Some(0),
+        ..Default::default()
+    };
+    let err = encode_strict_compliance(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 4, .. }),
+        "expected MissingMandatoryItem{{tag:4}}, got {err:?}"
+    );
+}
+
+#[test]
+fn st0903_standalone_strict_rejects_missing_fov() {
+    // Tag 11 (horizontal_fov) is required in standalone carriage per
+    // ST 0903.6-122.
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        horizontal_fov: None, // missing
+        vertical_fov: Some(30.0),
+        miis_id: Some(vec![0x11]),
+        ..Default::default()
+    };
+    let err = encode_standalone_strict_compliance(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::MissingMandatoryItem { tag: 11, .. }),
+        "expected MissingMandatoryItem{{tag:11}}, got {err:?}"
+    );
+}
+
+#[test]
+fn st0903_standalone_strict_rejects_offset_tag() {
+    // VTargetPack with centroid_lat_offset (tag 10) set is forbidden in
+    // standalone VMTI per ST 0903.6-116.
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(1),
+        horizontal_fov: Some(45.0),
+        vertical_fov: Some(30.0),
+        miis_id: Some(vec![0x11]),
+        targets: vec![VTargetPack {
+            target_id: 1,
+            centroid_pixel: Some(100), // gives the pack at least one TLV
+            centroid_lat_offset: Some(1.0), // forbidden in standalone
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let err = encode_standalone_strict_compliance(&ls).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::ForbiddenStandaloneOffset { tag: 10 }),
+        "expected ForbiddenStandaloneOffset{{tag:10}}, got {err:?}"
+    );
+}
+
+#[test]
+fn st0903_embedded_strict_allows_offset_tag() {
+    // In embedded mode, parent-relative offset tags are ALLOWED per ST 0903.
+    // encode_strict_compliance must NOT check for offset tags.
+    let ls = VmtiLs {
+        version_number: Some(6),
+        num_targets_reported: Some(1),
+        targets: vec![VTargetPack {
+            target_id: 1,
+            centroid_lat_offset: Some(1.5), // allowed in embedded
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let result = encode_strict_compliance(&ls);
+    assert!(
+        result.is_ok(),
+        "embedded strict must allow offset tags; got {result:?}"
+    );
+}
+
+#[test]
+fn st0903_standalone_strict_full_round_trips() {
+    // A fully-populated standalone VMTI LS passes strict encode and its
+    // output passes decode_strict.
+    let ls = full_standalone_ls();
+    let bytes = encode_standalone_strict_compliance(&ls)
+        .expect("full standalone ls must encode without error");
+
+    // Peel UL + outer BER length and decode the body.
+    assert_eq!(&bytes[..16], &VMTI_LS_UL);
+    let (outer_len, body) = crate::klv::length::read_ber(&bytes[16..]).unwrap();
+    assert_eq!(outer_len, body.len());
+
+    let decoded = decode_strict(body).expect("decode_strict must accept valid strict-encoded body");
+    assert_eq!(decoded.version_number, Some(6));
+    assert_eq!(decoded.num_targets_reported, Some(1));
+    assert_eq!(decoded.precision_time_stamp, Some(1_700_000_000_000_000));
+}
+
+#[test]
+fn st0903_lenient_encode_still_accepts_partial() {
+    // Regression pin: the default lenient encode/encode_standalone paths must
+    // NOT reject sparse records — strict is opt-in only.
+    let sparse = VmtiLs {
+        version_number: None,       // no version
+        num_targets_reported: None, // no count
+        ..Default::default()
+    };
+    assert!(
+        encode_to_vec(&sparse).is_ok(),
+        "lenient encode must accept sparse records"
+    );
+    assert!(
+        encode_to_vec_standalone(&sparse).is_ok(),
+        "lenient encode_standalone must accept sparse records"
+    );
 }

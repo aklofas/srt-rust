@@ -214,6 +214,12 @@ pub enum TstNonConformantCode {
     /// REF-PES-01. Zero PES_packet_length on a non-video stream; partial
     /// dropped. `pid` = the PID; `table_id` carries the PES stream_id byte.
     ZeroLengthPesNonVideo = 36,
+    /// REF-PSI-03. PAT/PMT fixed/reserved syntax violation. `pid` = the PID;
+    /// `table_id` = the PSI table_id (0x00 PAT, 0x02 PMT); `obu_type` carries
+    /// the PsiSyntaxKind discriminator (0=SectionSyntaxIndicatorUnset,
+    /// 1=SectionNumberNonZero, 2=ReservedBits, 0xFF=unknown); for
+    /// SectionNumberNonZero, `cc_observed` carries the observed section_number.
+    PsiSyntax = 37,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
@@ -1415,6 +1421,24 @@ fn fill_nonconformant(
             body.issue_code = TstNonConformantCode::ZeroLengthPesNonVideo as c_int;
             body.pid = *pid;
             body.table_id = *stream_id; // PES stream_id byte (reuses table_id carrier)
+        }
+        NonConformantIssue::PsiSyntax {
+            pid,
+            table_id,
+            kind,
+        } => {
+            use tst_core::mpegts::demux::PsiSyntaxKind;
+            body.issue_code = TstNonConformantCode::PsiSyntax as c_int;
+            body.pid = *pid;
+            body.table_id = *table_id;
+            let (kind_code, observed) = match kind {
+                PsiSyntaxKind::SectionSyntaxIndicatorUnset => (0u8, 0u8),
+                PsiSyntaxKind::SectionNumberNonZero { observed } => (1u8, *observed),
+                PsiSyntaxKind::ReservedBits => (2u8, 0u8),
+                _ => (0xFFu8, 0u8),
+            };
+            body.obu_type = kind_code;
+            body.cc_observed = observed;
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

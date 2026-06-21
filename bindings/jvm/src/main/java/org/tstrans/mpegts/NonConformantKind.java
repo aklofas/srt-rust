@@ -18,5 +18,7 @@ public enum NonConformantKind {
     ADAPTATION_FIELD_MALFORMED,
     /** Zero PES_packet_length on a non-video stream; partial dropped (REF-PES-01). */
     ZERO_LENGTH_PES_NON_VIDEO,
+    /** PAT/PMT fixed/reserved syntax field violation (REF-PSI-03). */
+    PSI_SYNTAX,
     OTHER
 }

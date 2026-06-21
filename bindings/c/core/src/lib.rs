@@ -281,7 +281,8 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   discriminator: 0=ReservedControl, 1=BadLengthForControl, 2=ShortPcr,
 ///   0xFF=unknown).
 ///   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
-///   Further WP-D codes are added under this same minor as their tasks land.
+///   `PsiSyntax` (= 37, REF-PSI-03; table_id = PSI table_id, obu_type = kind,
+///   cc_observed = section_number for SectionNumberNonZero).
 pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 16;
 
 // =========================================================================

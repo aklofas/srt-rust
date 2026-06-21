@@ -19,11 +19,12 @@
 use crate::error::DemuxError;
 use crate::mpegts::common::StreamTypeCode;
 use crate::mpegts::demux::event::{
-    DemuxEvent, KlvLink, LinkSource, NonConformantIssue, ProgramMap, StreamId, StreamInfo,
-    StreamKind, VideoCodec,
+    DemuxEvent, KlvLink, LinkSource, NonConformantIssue, ProgramMap, PsiSyntaxKind, StreamId,
+    StreamInfo, StreamKind, VideoCodec,
 };
 use crate::mpegts::demux::psi::{Pmt, PsiParseError, parse_pat, parse_pmt};
 use crate::mpegts::demux::psi_assembler::AssemblerError;
+use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::types::ProgramTracker;
 use alloc::vec::Vec;
 use hashbrown::HashSet;
@@ -272,6 +273,8 @@ impl super::demuxer::Demuxer {
             }
             Err(_) => return,
         };
+        // REF-PSI-03: validate fixed/reserved PSI syntax fields.
+        self.check_psi_syntax(0x0000, 0x00, section);
         // Same version — nothing changed, skip the diff.
         if Some(pat.version) == self.pat_version {
             return;
@@ -426,6 +429,8 @@ impl super::demuxer::Demuxer {
             return;
         }
 
+        // REF-PSI-03: validate fixed/reserved PSI syntax fields.
+        self.check_psi_syntax(pmt_pid, 0x02, section);
         // Dedup: re-emit only if version changed or first ever.
         if let Some(tracker) = self.programs.get(&pmt_pid) {
             if Some(pmt.version) == tracker.pmt_version {
@@ -701,6 +706,68 @@ impl super::demuxer::Demuxer {
         }
     }
 
+    /// REF-PSI-03. Validate fixed/reserved PSI syntax fields on a section
+    /// whose CRC already passed. `section_syntax_indicator`/`section_number`
+    /// are checked in every mode; reserved-bit checks are gated behind
+    /// `strict != Off`. `pid` is the PID the section arrived on (0x0000 for
+    /// PAT), `table_id` is 0x00 (PAT) or 0x02 (PMT).
+    fn check_psi_syntax(&mut self, pid: u16, table_id: u8, section: &[u8]) {
+        let stream = || StreamId {
+            pid,
+            kind: StreamKind::Unknown(0),
+            program_number: 0,
+        };
+        // Always: section_syntax_indicator (byte 1 bit 0x80) must be 1.
+        if section[1] & 0x80 == 0 {
+            self.queue_nonconformant(
+                stream(),
+                NonConformantIssue::PsiSyntax {
+                    pid,
+                    table_id,
+                    kind: PsiSyntaxKind::SectionSyntaxIndicatorUnset,
+                },
+            );
+        }
+        // Always: section_number (byte 6) must be 0 on a single-section table
+        // (parse already rejected last_section_number != 0).
+        if section[6] != 0 {
+            self.queue_nonconformant(
+                stream(),
+                NonConformantIssue::PsiSyntax {
+                    pid,
+                    table_id,
+                    kind: PsiSyntaxKind::SectionNumberNonZero {
+                        observed: section[6],
+                    },
+                },
+            );
+        }
+        // Gated: reserved bits (false-positives common in lenient mode).
+        if self.options.strict != StrictMode::Off {
+            // byte 1 bit 0x40 = reserved-zero (must be 0);
+            // byte 1 bits 0x30 = reserved (must be 1);
+            // byte 5 bits 0xC0 = reserved (must be 1).
+            let mut bad = (section[1] & 0x40) != 0
+                || (section[1] & 0x30) != 0x30
+                || (section[5] & 0xC0) != 0xC0;
+            if table_id == 0x02 {
+                // PMT additionally: byte 8 bits 0xE0 = reserved (must be 1);
+                // byte 10 bits 0x30 = reserved (must be 1).
+                bad = bad || (section[8] & 0xE0) != 0xE0 || (section[10] & 0x30) != 0x30;
+            }
+            if bad {
+                self.queue_nonconformant(
+                    stream(),
+                    NonConformantIssue::PsiSyntax {
+                        pid,
+                        table_id,
+                        kind: PsiSyntaxKind::ReservedBits,
+                    },
+                );
+            }
+        }
+    }
+
     pub(super) fn klv_mismatch_insert(&mut self, pid: u16) -> bool {
         // Find the tracker that owns this PID via its streams list.
         for tracker in self.programs.values_mut() {
@@ -710,5 +777,402 @@ impl super::demuxer::Demuxer {
         }
         // No tracker found — no suppression.
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::demuxer::Demuxer;
+    use super::super::event::{DemuxEvent, NonConformantIssue, PsiSyntaxKind};
+    use super::super::strict::StrictMode;
+    use super::super::types::DemuxerConfig;
+    use crate::mpegts::common::crc32::crc32_mpeg2;
+    use alloc::vec::Vec;
+
+    /// Build a minimal valid single-program PAT section (table_id=0x00).
+    /// `programs` is `(program_number, pmt_pid)` tuples.
+    fn build_pat_section(
+        transport_stream_id: u16,
+        version: u8,
+        programs: &[(u16, u16)],
+    ) -> Vec<u8> {
+        let section_length = 5 + 4 * programs.len() + 4;
+        let mut s: Vec<u8> = Vec::with_capacity(3 + section_length);
+        s.push(0x00); // table_id = PAT
+        s.push(0xB0 | ((section_length >> 8) as u8 & 0x0F)); // ssi=1, reserved-zero=0, reserved=11, length hi
+        s.push((section_length & 0xFF) as u8);
+        s.push((transport_stream_id >> 8) as u8);
+        s.push((transport_stream_id & 0xFF) as u8);
+        s.push(0xC1 | ((version & 0x1F) << 1)); // reserved(2)=11 + version(5) + current_next(1)=1
+        s.push(0x00); // section_number
+        s.push(0x00); // last_section_number
+        for &(pn, pid) in programs {
+            s.push((pn >> 8) as u8);
+            s.push((pn & 0xFF) as u8);
+            s.push(0xE0 | ((pid >> 8) as u8 & 0x1F));
+            s.push((pid & 0xFF) as u8);
+        }
+        let total = s.len(); // body before CRC
+        let crc = crc32_mpeg2(&s[..total]);
+        s.push((crc >> 24) as u8);
+        s.push((crc >> 16) as u8);
+        s.push((crc >> 8) as u8);
+        s.push(crc as u8);
+        s
+    }
+
+    /// Build a minimal valid PMT section (table_id=0x02).
+    /// `streams` is `(stream_type, elementary_pid)` tuples.
+    fn build_pmt_section(
+        program_number: u16,
+        pcr_pid: u16,
+        version: u8,
+        streams: &[(u8, u16)],
+    ) -> Vec<u8> {
+        let stream_loop_len = 5 * streams.len();
+        let section_length = 9 + stream_loop_len + 4;
+        let mut s: Vec<u8> = Vec::with_capacity(3 + section_length);
+        s.push(0x02); // table_id = PMT
+        s.push(0xB0 | ((section_length >> 8) as u8 & 0x0F)); // ssi=1, reserved-zero=0, reserved=11, length hi
+        s.push((section_length & 0xFF) as u8);
+        s.push((program_number >> 8) as u8);
+        s.push((program_number & 0xFF) as u8);
+        s.push(0xC1 | ((version & 0x1F) << 1)); // reserved(2)=11 + version(5) + cni=1
+        s.push(0x00); // section_number
+        s.push(0x00); // last_section_number
+        s.push(0xE0 | ((pcr_pid >> 8) as u8 & 0x1F)); // reserved(3)=111 + pcr_pid hi
+        s.push((pcr_pid & 0xFF) as u8);
+        s.push(0xF0); // reserved(4)=1111 + program_info_length hi
+        s.push(0x00); // program_info_length lo (no descriptors)
+        for &(stream_type, pid) in streams {
+            s.push(stream_type);
+            s.push(0xE0 | ((pid >> 8) as u8 & 0x1F)); // reserved(3)=111 + pid hi
+            s.push((pid & 0xFF) as u8);
+            s.push(0xF0); // reserved(4)=1111 + es_info_length hi
+            s.push(0x00); // es_info_length lo
+        }
+        let total = s.len();
+        let crc = crc32_mpeg2(&s[..total]);
+        s.push((crc >> 24) as u8);
+        s.push((crc >> 16) as u8);
+        s.push((crc >> 8) as u8);
+        s.push(crc as u8);
+        s
+    }
+
+    /// Recompute and overwrite the CRC trailer in a section byte vector.
+    /// The CRC covers section[..len-4]; the last 4 bytes are replaced with
+    /// the new CRC in big-endian order.
+    fn fix_crc(section: &mut [u8]) {
+        let n = section.len();
+        assert!(n >= 4, "section too short for CRC trailer");
+        let crc = crc32_mpeg2(&section[..n - 4]);
+        section[n - 4] = (crc >> 24) as u8;
+        section[n - 3] = (crc >> 16) as u8;
+        section[n - 2] = (crc >> 8) as u8;
+        section[n - 1] = crc as u8;
+    }
+
+    /// Wrap a PSI section into a 188-byte TS packet with PUSI set, payload-only.
+    fn wrap_section_in_ts_packet(pid: u16, section: &[u8]) -> Vec<u8> {
+        let mut pkt = vec![0xFFu8; 188];
+        pkt[0] = 0x47; // sync byte
+        pkt[1] = 0x40 | ((pid >> 8) as u8 & 0x1F); // PUSI + PID hi
+        pkt[2] = (pid & 0xFF) as u8; // PID lo
+        pkt[3] = 0x10; // payload-only, CC=0
+        pkt[4] = 0x00; // pointer_field
+        let sec_end = 5 + section.len();
+        assert!(sec_end <= 188, "section too large for one TS packet");
+        pkt[5..sec_end].copy_from_slice(section);
+        pkt
+    }
+
+    /// Drain all queued events from the demuxer.
+    fn drain_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
+        let mut events = Vec::new();
+        while let Some(e) = d.next_event() {
+            events.push(e);
+        }
+        events
+    }
+
+    // REF-PSI-03: section_syntax_indicator=0 flagged on PAT
+    #[test]
+    fn pat_section_syntax_indicator_unset_flagged() {
+        let mut section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        // Clear section_syntax_indicator (bit 0x80 of byte 1)
+        section[1] &= !0x80;
+        fix_crc(&mut section);
+
+        let pkt = wrap_section_in_ts_packet(0x0000, &section);
+        let mut demux = Demuxer::new();
+        demux.feed(&pkt).unwrap();
+        let events = drain_events(&mut demux);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant { issue, .. } => Some(issue.clone()),
+            _ => None,
+        });
+        match nc {
+            Some(NonConformantIssue::PsiSyntax {
+                pid,
+                table_id,
+                kind: PsiSyntaxKind::SectionSyntaxIndicatorUnset,
+            }) => {
+                assert_eq!(pid, 0x0000);
+                assert_eq!(table_id, 0x00);
+            }
+            other => panic!("expected PsiSyntax SectionSyntaxIndicatorUnset on PAT, got {other:?}"),
+        }
+    }
+
+    // REF-PSI-03: section_number != 0 flagged on PAT
+    #[test]
+    fn pat_section_number_nonzero_flagged() {
+        let mut section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        // Set section_number (byte 6) to non-zero — but last_section_number stays 0
+        // so parse_pat accepts this (it only checks last_section_number for multi-section)
+        section[6] = 0x02;
+        fix_crc(&mut section);
+
+        let pkt = wrap_section_in_ts_packet(0x0000, &section);
+        let mut demux = Demuxer::new();
+        demux.feed(&pkt).unwrap();
+        let events = drain_events(&mut demux);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant { issue, .. } => Some(issue.clone()),
+            _ => None,
+        });
+        match nc {
+            Some(NonConformantIssue::PsiSyntax {
+                pid,
+                table_id,
+                kind: PsiSyntaxKind::SectionNumberNonZero { observed },
+            }) => {
+                assert_eq!(pid, 0x0000);
+                assert_eq!(table_id, 0x00);
+                assert_eq!(observed, 0x02);
+            }
+            other => panic!("expected PsiSyntax SectionNumberNonZero on PAT, got {other:?}"),
+        }
+    }
+
+    // REF-PSI-03: reserved-bit violation NOT emitted under StrictMode::Off
+    #[test]
+    fn pat_reserved_bits_not_flagged_in_lenient_mode() {
+        let mut section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        // Corrupt a reserved-zero bit (byte 1 bit 0x40 should be 0; set it)
+        section[1] |= 0x40;
+        fix_crc(&mut section);
+
+        let pkt = wrap_section_in_ts_packet(0x0000, &section);
+        let mut demux = Demuxer::new(); // default = StrictMode::Off
+        demux.feed(&pkt).unwrap();
+        let events = drain_events(&mut demux);
+
+        let psi_syntax_nc = events.iter().any(|e| {
+            matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiSyntax {
+                        kind: PsiSyntaxKind::ReservedBits,
+                        ..
+                    },
+                    ..
+                }
+            )
+        });
+        assert!(
+            !psi_syntax_nc,
+            "StrictMode::Off must NOT surface reserved-bit violations (false-positive guard)"
+        );
+    }
+
+    // REF-PSI-03: reserved-bit violation emitted and rejected under StrictMode::Full
+    #[test]
+    fn pat_reserved_bits_flagged_and_rejected_in_full_mode() {
+        let mut section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        // Corrupt a reserved-zero bit (byte 1 bit 0x40 should be 0; set it)
+        section[1] |= 0x40;
+        fix_crc(&mut section);
+
+        let pkt = wrap_section_in_ts_packet(0x0000, &section);
+        let config = DemuxerConfig {
+            strict: StrictMode::Full,
+            ..DemuxerConfig::default()
+        };
+        let mut demux = Demuxer::with_config(config);
+        // StrictMode::Full converts NonConformant to DemuxError::StrictRejection
+        let result = demux.feed(&pkt);
+        assert!(
+            result.is_err(),
+            "StrictMode::Full must reject reserved-bit PSI violation"
+        );
+        // Prove the rejection was caused by the reserved-bit PsiSyntax issue
+        // specifically — `queue_nonconformant` enqueues the event before
+        // setting the fatal flag, so it remains drainable on a Full rejection.
+        let events = drain_events(&mut demux);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiSyntax {
+                        kind: PsiSyntaxKind::ReservedBits,
+                        ..
+                    },
+                    ..
+                }
+            )),
+            "expected a PsiSyntax{{ReservedBits}} event before the strict rejection; got {events:?}"
+        );
+    }
+
+    // REF-PSI-03: section_syntax_indicator=0 flagged on PMT
+    #[test]
+    fn pmt_section_syntax_indicator_unset_flagged() {
+        // First feed a valid PAT so the demuxer creates a tracker for the PMT PID
+        let pat_section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        let pat_pkt = wrap_section_in_ts_packet(0x0000, &pat_section);
+
+        // Build a PMT with ssi=0
+        let mut pmt_section = build_pmt_section(1, 0x0101, 0, &[(0x1B, 0x0101)]);
+        pmt_section[1] &= !0x80; // clear section_syntax_indicator
+        fix_crc(&mut pmt_section);
+        let pmt_pkt = wrap_section_in_ts_packet(0x1000, &pmt_section);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&pat_pkt).unwrap();
+        demux.feed(&pmt_pkt).unwrap();
+        let events = drain_events(&mut demux);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant {
+                issue:
+                    NonConformantIssue::PsiSyntax {
+                        pid,
+                        table_id,
+                        kind,
+                    },
+                ..
+            } => {
+                if *table_id == 0x02 {
+                    Some((*pid, *table_id, *kind))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        });
+        match nc {
+            Some((pid, table_id, PsiSyntaxKind::SectionSyntaxIndicatorUnset)) => {
+                assert_eq!(pid, 0x1000);
+                assert_eq!(table_id, 0x02);
+            }
+            other => panic!("expected PsiSyntax SectionSyntaxIndicatorUnset on PMT, got {other:?}"),
+        }
+    }
+
+    // REF-PSI-03: PMT-specific reserved-bit violation gated by StrictMode
+    // (NOT emitted under Off; emitted AND rejected under Full).
+    #[test]
+    fn pmt_reserved_bits_flagged_and_rejected_in_full_mode() {
+        let pat_section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        let pat_pkt = wrap_section_in_ts_packet(0x0000, &pat_section);
+
+        // Corrupt a PMT-specific reserved bit: byte 8 high field (0xE0) must be
+        // all-ones; clear its top bit (0x80) — leaves the low 5 pcr_pid bits
+        // intact, so only a reserved bit is wrong.
+        let mut pmt_section = build_pmt_section(1, 0x0101, 0, &[(0x1B, 0x0101)]);
+        pmt_section[8] &= !0x80;
+        fix_crc(&mut pmt_section);
+        let pmt_pkt = wrap_section_in_ts_packet(0x1000, &pmt_section);
+
+        // Off mode: no PsiSyntax event (reserved-bit checks are gated).
+        let mut lenient = Demuxer::new();
+        lenient.feed(&pat_pkt).unwrap();
+        lenient.feed(&pmt_pkt).unwrap();
+        let lenient_events = drain_events(&mut lenient);
+        assert!(
+            !lenient_events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiSyntax {
+                        kind: PsiSyntaxKind::ReservedBits,
+                        ..
+                    },
+                    ..
+                }
+            )),
+            "StrictMode::Off must NOT surface PMT reserved-bit violations; got {lenient_events:?}"
+        );
+
+        // Full mode: reject AND surface PsiSyntax{ReservedBits} on the PMT PID.
+        let config = DemuxerConfig {
+            strict: StrictMode::Full,
+            ..DemuxerConfig::default()
+        };
+        let mut strict = Demuxer::with_config(config);
+        strict.feed(&pat_pkt).unwrap();
+        let result = strict.feed(&pmt_pkt);
+        assert!(
+            result.is_err(),
+            "StrictMode::Full must reject PMT reserved-bit violation"
+        );
+        let events = drain_events(&mut strict);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiSyntax {
+                        table_id: 0x02,
+                        kind: PsiSyntaxKind::ReservedBits,
+                        ..
+                    },
+                    ..
+                }
+            )),
+            "expected a PMT PsiSyntax{{ReservedBits}} event before the strict rejection; got {events:?}"
+        );
+    }
+
+    // REF-PSI-03: section_number != 0 flagged on PMT (fires in all modes).
+    #[test]
+    fn pmt_section_number_non_zero_flagged() {
+        let pat_section = build_pat_section(0x0001, 0, &[(1, 0x1000)]);
+        let pat_pkt = wrap_section_in_ts_packet(0x0000, &pat_section);
+
+        // Set PMT section_number (byte 6) non-zero; last_section_number stays 0
+        // so parse_pmt accepts it.
+        let mut pmt_section = build_pmt_section(1, 0x0101, 0, &[(0x1B, 0x0101)]);
+        pmt_section[6] = 0x03;
+        fix_crc(&mut pmt_section);
+        let pmt_pkt = wrap_section_in_ts_packet(0x1000, &pmt_section);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&pat_pkt).unwrap();
+        demux.feed(&pmt_pkt).unwrap();
+        let events = drain_events(&mut demux);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant {
+                issue:
+                    NonConformantIssue::PsiSyntax {
+                        pid,
+                        table_id,
+                        kind,
+                    },
+                ..
+            } if *table_id == 0x02 => Some((*pid, *table_id, *kind)),
+            _ => None,
+        });
+        match nc {
+            Some((pid, table_id, PsiSyntaxKind::SectionNumberNonZero { observed })) => {
+                assert_eq!(pid, 0x1000);
+                assert_eq!(table_id, 0x02);
+                assert_eq!(observed, 0x03);
+            }
+            other => panic!("expected PsiSyntax SectionNumberNonZero on PMT, got {other:?}"),
+        }
     }
 }

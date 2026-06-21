@@ -375,7 +375,7 @@ pub fn encode_strict_compliance(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> 
 ///
 /// **Forbidden per-pack offset tags** (ST 0903.6-116): offset tags
 /// 10/11/13/14/15/16 (parent-relative; meaningless without an ST 0601
-/// parent) must be absent from every [`VTargetPack`] in `ls.targets`.
+/// parent) must be absent from every [`VTargetPack`](vtarget_pack::VTargetPack) in `ls.targets`.
 /// Tag 12 (`centroid_hae`) is absolute height — not forbidden.
 ///
 /// # Errors

@@ -26,8 +26,8 @@ use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
     ClassifyingCountryCodingMethod as RustClsCountry, ObjectCountryCodingMethod as RustObjCountry,
     SecurityClassification as RustSecCls, SecurityLs, decode as decode_st0102_lenient,
-    decode_strict as decode_st0102_strict, encode_strict_compliance as encode_st0102_strict_compliance,
-    encode_to_vec as encode_st0102,
+    decode_strict as decode_st0102_strict,
+    encode_strict_compliance as encode_st0102_strict_compliance, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
     UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
@@ -1292,6 +1292,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_vmti_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_vmti_standalone_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_vmti_strict_compliance_py, m)?)?;
-    m.add_function(wrap_pyfunction!(encode_vmti_standalone_strict_compliance_py, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        encode_vmti_standalone_strict_compliance_py,
+        m
+    )?)?;
     Ok(())
 }

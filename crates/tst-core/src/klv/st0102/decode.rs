@@ -134,8 +134,9 @@ fn strict_ber_walk(buf: &[u8]) -> Result<(), KlvDecodeError> {
         };
         let consumed_len = after_tag.len() - after_len.len();
         if len > after_len.len() {
-            // Truncated value — let the permissive typed decode produce the
-            // existing InvalidLength diagnostic. Mirror st0903's handling.
+            // Truncated value: stop the strict pre-walk and let the permissive
+            // typed decode below surface it — `Iter::local_set` returns
+            // `KlvDecodeError::Truncated` for a value that overruns the buffer.
             break;
         }
         rest = &after_len[len..];

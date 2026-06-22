@@ -477,8 +477,10 @@ impl<'a> BitReader<'a> {
 
 /// Mirror of `tst_core::codec::validate_bit_depth_minus8` (which is
 /// `pub(crate)`). See note above the inlined `BitReader` for rationale.
+/// Per the normative syntax range (H.265 §7.4.3.2.1), bit_depth_*_minus8
+/// must be in 0..=8; values > 8 indicate a malformed parameter set.
 fn validate_bit_depth_minus8(field: &'static str, value: u32) -> Result<u8, CodecParseError> {
-    if value > 6 {
+    if value > 8 {
         return Err(CodecParseError::ReservedValue { field, value });
     }
     Ok(8 + value as u8)

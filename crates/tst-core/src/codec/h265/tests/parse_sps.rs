@@ -155,13 +155,11 @@ impl BitWriter {
     }
 }
 
-/// Construct a synthetic H.265 SPS prefix that walks correctly up
-/// through `bit_depth_luma_minus8`, then writes the caller-supplied
-/// value at that field. `parse_sps` validates eagerly right after
-/// the read, so the bytes after that field don't need to be valid.
+/// Construct a minimal but complete H.265 SPS RBSP with caller-specified
+/// bit_depth_luma_minus8 value. All other fields use safe defaults that allow
+/// full parsing to complete. Terminates with rbsp_trailing_bits.
 ///
-/// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax with
-/// `max_sub_layers_minus1 = 0` (no sublayer fields).
+/// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax.
 fn h265_sps_with_bit_depth_luma_minus8(bit_depth_luma_minus8: u32) -> Vec<u8> {
     let mut bw = BitWriter::new();
 
@@ -187,15 +185,73 @@ fn h265_sps_with_bit_depth_luma_minus8(bit_depth_luma_minus8: u32) -> Vec<u8> {
     bw.write_ue(240); // pic_height_in_luma_samples
     bw.write(0, 1); // conformance_window_flag = 0
     bw.write_ue(bit_depth_luma_minus8); // bit_depth_luma_minus8
+    bw.write_ue(bit_depth_luma_minus8); // bit_depth_chroma_minus8 (use same value)
+    bw.write_ue(4); // log2_max_pic_order_cnt_lsb_minus4 = 4
+
+    // sub_layer_ordering_info_present_flag = 0, so only one layer
+    bw.write(0, 1); // sub_layer_ordering_info_present_flag = 0
+    // sps_max_dec_pic_buffering_minus1, sps_max_num_reorder_pics, sps_max_latency_increase_plus1 (all ue)
+    bw.write_ue(0);
+    bw.write_ue(0);
+    bw.write_ue(0);
+
+    // Remaining ue values
+    bw.write_ue(0); // log2_min_luma_coding_block_size_minus3
+    bw.write_ue(0); // log2_diff_max_min_luma_coding_block_size
+    bw.write_ue(0); // log2_min_transform_block_size_minus2
+    bw.write_ue(0); // log2_diff_max_min_transform_block_size
+    bw.write_ue(0); // max_transform_hierarchy_depth_inter
+    bw.write_ue(0); // max_transform_hierarchy_depth_intra
+
+    // Remaining flags
+    bw.write(0, 1); // scaling_list_enabled_flag = 0
+    bw.write(0, 1); // amp_enabled_flag = 0
+    bw.write(0, 1); // sample_adaptive_offset_enabled_flag = 0
+    bw.write(0, 1); // pcm_enabled_flag = 0
+    bw.write_ue(0); // num_short_term_ref_pic_sets = 0
+    bw.write(0, 1); // long_term_ref_pics_present_flag = 0
+    bw.write(0, 1); // sps_temporal_mvp_enabled_flag = 0
+    bw.write(0, 1); // strong_intra_smoothing_enabled_flag = 0
+    bw.write(0, 1); // vui_parameters_present_flag = 0
+
+    // rbsp_trailing_bits: one '1' bit + zero padding to byte align
+    bw.write(1, 1);
+    while bw.pos % 8 != 0 {
+        bw.write(0, 1);
+    }
 
     bw.bytes
 }
 
-/// Per H.265 §7.4.3.2.1, `bit_depth_luma_minus8 ∈ 0..=8` (bit_depth
-/// ∈ 8..=16). ffmpeg's `libavcodec/hevc/ps.c:366-369` clamps at 14
-/// (minus8 ≤ 6); we adopt the same threshold. A fuzzed value of 248
-/// would have silently wrapped to `bit_depth_luma = 8` via
-/// `8 + (248 as u8)` — caught now via `validate_bit_depth_minus8`.
+#[test]
+fn h265_sps_accepts_16bit_luma_depth() {
+    // H.265 §7.4.3.2.1: bit_depth_luma_minus8 ∈ 0..=8 (bit_depth 8..=16).
+    // 15- and 16-bit are conformant syntax, not reserved.
+    let rbsp = h265_sps_with_bit_depth_luma_minus8(8);
+    let sps = parse_sps(&rbsp).expect("16-bit luma depth is valid H.265 syntax");
+    assert_eq!(sps.bit_depth_luma, 16);
+}
+
+#[test]
+fn h265_sps_rejects_out_of_spec_bit_depth() {
+    // minus8 = 9 → bit_depth 17, outside the normative 0..=8 range.
+    let rbsp = h265_sps_with_bit_depth_luma_minus8(9);
+    let result = parse_sps(&rbsp);
+    assert!(
+        matches!(
+            result,
+            Err(CodecParseError::ReservedValue {
+                field: "bit_depth_luma_minus8",
+                value: 9
+            })
+        ),
+        "expected ReservedValue for minus8=9, got {result:?}"
+    );
+}
+
+/// Per H.265 §7.4.3.2.1, the normative syntax range is `bit_depth_luma_minus8 ∈ 0..=8`
+/// (bit_depth ∈ 8..=16). A fuzzed value of 248 would have silently wrapped to
+/// `bit_depth_luma = 8` via `8 + (248 as u8)` — caught via `validate_bit_depth_minus8`.
 #[test]
 fn h265_sps_rejects_bit_depth_overflow() {
     let rbsp = h265_sps_with_bit_depth_luma_minus8(248);

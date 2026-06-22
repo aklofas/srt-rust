@@ -4630,6 +4630,8 @@ pub tst_core::mpegts::descriptors::DescriptorError::EmptyEntries::tag: u8
 pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent
 pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent::content: u8
 pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent::ext: u8
+pub tst_core::mpegts::descriptors::DescriptorError::InvalidTag
+pub tst_core::mpegts::descriptors::DescriptorError::InvalidTag::tag: u8
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::len: usize
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::max: usize
@@ -4734,6 +4736,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::descriptors::
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 pub fn tst_core::mpegts::descriptors::ac3_audio_stream_descriptor(u8, u8, u8, u8, u8, u8, bool) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::component(u8, u8, u8, u8, [u8; 3], &str) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
+pub fn tst_core::mpegts::descriptors::descriptor_with_tag_unchecked(u8, &[u8]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::find_descriptor_tag(&[tst_core::mpegts::descriptors::parse::RawDescriptor], u8) -> bool
 pub fn tst_core::mpegts::descriptors::find_format_identifier(&[tst_core::mpegts::descriptors::parse::RawDescriptor], &[u8; 4]) -> bool
 pub fn tst_core::mpegts::descriptors::format_identifier_ac3() -> alloc::vec::Vec<u8>

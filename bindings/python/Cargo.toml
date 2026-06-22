@@ -19,7 +19,7 @@ doctest    = false
 
 [features]
 # `hls` is intentionally NOT in `default`: it is EXPERIMENTAL and is NOT shipped
-# in v0.1.0 published wheels (gated out of python-wheels.yml too). Enable it
+# in published wheels (gated out of python-wheels.yml too). Enable it
 # explicitly with `--features hls` for local/experimental builds.
 # See docs/project/deferred-features.md.
 default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline"]
@@ -34,11 +34,11 @@ rtp     = ["dep:tst-rtp", "dep:tst-pipeline", "dep:secrecy"]
 # to the Rust builder).
 srt     = ["dep:tst-srt", "dep:tst-pipeline", "dep:secrecy"]
 # Plan A5b — udp / tcp / hls / rist transports (default-on, matching rtp/srt;
-# PyPI wheels ship everything). `hls` reuses tst-tcp (HLS lives there) +
+# PyPI wheels ship everything except the experimental `hls`). `hls` reuses tst-tcp (HLS lives there) +
 # tst-pipeline (MuxPublisher shell). `rist` pulls secrecy for AES PSK wrapping.
 udp     = ["dep:tst-udp"]
 tcp     = ["dep:tst-tcp"]
-# hls: EXPERIMENTAL — not shipped in v0.1.0 published wheels/JAR; see
+# hls: EXPERIMENTAL — not shipped in published wheels/JAR; see
 # docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
 # floor + VOD-never-served, all on an unauthenticated all-interfaces server).
 hls     = ["dep:tst-tcp", "tst-tcp?/hls", "dep:tst-pipeline"]

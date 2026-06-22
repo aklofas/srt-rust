@@ -30,4 +30,22 @@ public final class PanicProbe {
     public static native void nMutateMaybePanic(long handle, boolean doPanic);
     /** Close the probe handle; idempotent and safe on a poisoned handle. */
     public static native void nCloseHandle(long handle);
+
+    // --- RTSP-surface panic-routing probes (JNI-01 completion) --------------
+    /**
+     * Force a panic through the REAL {@code REGISTRY_MOUNT.with_poisoning} on a
+     * leased {@code MountHandle} (exactly as a real {@code pushVideo}/{@code flush}
+     * would route), surfacing as {@link RuntimeException}. After this returns the
+     * mount entry is poisoned: a later real mount op throws
+     * {@link IllegalStateException}. Proves the RTSP mount mutators are wired to
+     * the poisoning path.
+     */
+    public static native void nForcePanicThroughMount(long mountHandle);
+    /**
+     * Force a panic through the REAL {@code REGISTRY_SERVER.with_poisoning} on a
+     * leased {@code RtspServer} (as a real {@code stop}/{@code addUnicastMount}
+     * would route), surfacing as {@link RuntimeException} and poisoning the server
+     * entry. Proves the RTSP server mutators are wired to the poisoning path.
+     */
+    public static native void nForcePanicThroughServer(long serverHandle);
 }

@@ -259,6 +259,28 @@ fn with_server<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&ServerInner) 
     }
 }
 
+/// Like [`with_server`] but POISONS the entry if `f` panics (drop the torn
+/// server + remove the entry, re-raising so the outer `jni_catch` still throws;
+/// a later op then leases `None` → `IllegalStateException`). Use ONLY for the
+/// mutating server natives (`stop`, `add_*_mount`); getters stay on the
+/// non-poisoning [`with_server`]. `RtspServer`'s `Drop` is the hard-cancel +
+/// runtime-shutdown path (NOT the graceful `stop()`), so poisoning a torn
+/// mutator drops the server without a double-panic-in-Drop hazard.
+fn with_server_poisoning<R>(
+    env: &mut JNIEnv,
+    handle: jlong,
+    f: impl FnOnce(&ServerInner) -> R,
+) -> Option<R> {
+    // `with_poisoning` takes `&mut T`; the server methods take `&self`, so re-borrow.
+    match REGISTRY_SERVER.with_poisoning(handle as u64, |s| f(s)) {
+        Some(r) => Some(r),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "RtspServer is closed");
+            None
+        }
+    }
+}
+
 /// `RtspServer.nStats(handle)` → ServerStats record, or null on a JNI builder error.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStats<'local>(
@@ -305,7 +327,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStop(
     _drain_ms: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(res) = with_server(env, handle, |server| server.stop()) else {
+        let Some(res) = with_server_poisoning(env, handle, |server| server.stop()) else {
             return;
         };
         if let Err(e) = res {
@@ -373,6 +395,29 @@ static REGISTRY_MOUNT: LazyLock<HandleRegistry<MountInner>> = LazyLock::new(Hand
 /// sound.
 fn with_mount<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&MountInner) -> R) -> Option<R> {
     match REGISTRY_MOUNT.with(handle as u64, |m| f(m)) {
+        Some(r) => Some(r),
+        None => {
+            let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
+            None
+        }
+    }
+}
+
+/// Like [`with_mount`] but POISONS the entry if `f` panics (drop the torn mount
+/// wrapper + remove the entry, re-raising so the outer `jni_catch` still throws;
+/// a later op then leases `None` → `IllegalStateException`). Use ONLY for the
+/// mutating mount natives (the `push*`/`flush`/`reset_stats` family); the
+/// identity/introspection/handle-accessor getters stay on the non-poisoning
+/// [`with_mount`]. `MountHandle`'s `Drop` is benign (the mount persists in the
+/// server until stop()), so poisoning a torn push just invalidates the Java
+/// `MountHandle` wrapper.
+fn with_mount_poisoning<R>(
+    env: &mut JNIEnv,
+    handle: jlong,
+    f: impl FnOnce(&MountInner) -> R,
+) -> Option<R> {
+    // `with_poisoning` takes `&mut T`; every `MountHandle` method takes `&self`.
+    match REGISTRY_MOUNT.with_poisoning(handle as u64, |m| f(m)) {
         Some(r) => Some(r),
         None => {
             let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
@@ -451,7 +496,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddUnicastMount<'local>(
         };
         // add_mount takes &self; lease the server again and run it under the lock. A
         // server closed between the two leases yields None → IllegalStateException.
-        let Some(res) = with_server(env, server_handle, |server| {
+        let Some(res) = with_server_poisoning(env, server_handle, |server| {
             server.add_mount(&path_str, cfg)
         }) else {
             return 0;
@@ -547,7 +592,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nAddMulticastMount<'local
         }
         // add_multicast_mount takes &self; lease the server again and run it under the
         // lock. A server closed between leases yields None → IllegalStateException.
-        let Some(res) = with_server(env, server_handle, |server| {
+        let Some(res) = with_server_poisoning(env, server_handle, |server| {
             server.add_multicast_mount(&path_str, cfg, &url)
         }) else {
             return 0;
@@ -661,7 +706,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideo<'local>(
         let Some(buf) = read_bytes(env, &nal) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
         }) else {
             return;
@@ -690,7 +735,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlv<'local>(
         let Some(buf) = read_bytes(env, &klv) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_klv(&buf, Pts90khz::new(pts), service_id)
         }) else {
             return;
@@ -714,7 +759,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudio<'local>(
         let Some(buf) = read_bytes(env, &frames) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_audio(&buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -738,7 +783,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitle<'local>(
         let Some(buf) = read_bytes(env, &payload) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_subtitle(&buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -762,7 +807,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushData<'local>(
         let Some(buf) = read_bytes(env, &data) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_data(&buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -799,7 +844,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushVideoTo<'local>(
         let Some(buf) = read_bytes(env, &nal) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
         }) else {
             return;
@@ -836,7 +881,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushKlvTo<'local>(
         let Some(buf) = read_bytes(env, &klv) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_klv_to(h, &buf, Pts90khz::new(pts), service_id)
         }) else {
             return;
@@ -868,7 +913,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushAudioTo<'local>(
         let Some(buf) = read_bytes(env, &frames) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_audio_to(h, &buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -900,7 +945,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushSubtitleTo<'local>(
         let Some(buf) = read_bytes(env, &payload) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_subtitle_to(h, &buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -936,7 +981,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nPushDataTo<'local>(
         let Some(buf) = read_bytes(env, &data) else {
             return;
         };
-        let Some(res) = with_mount(env, handle, |inner| {
+        let Some(res) = with_mount_poisoning(env, handle, |inner| {
             inner.push_data_to(h, &buf, Pts90khz::new(pts))
         }) else {
             return;
@@ -1191,7 +1236,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nFlush(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        with_mount(env, handle, |inner| inner.flush());
+        with_mount_poisoning(env, handle, |inner| inner.flush());
     })
 }
 
@@ -1203,7 +1248,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nResetStats(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        with_mount(env, handle, |inner| inner.reset_stats());
+        with_mount_poisoning(env, handle, |inner| inner.reset_stats());
     })
 }
 
@@ -1219,5 +1264,50 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nClose(
     // drop. No cancel hook — the mount persists in the server until stop()/close().
     crate::panic::jni_catch(&mut env, (), |_env| {
         let _ = REGISTRY_MOUNT.close(handle as u64);
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Test-only panic-routing probes (feature = "jni-test-hooks"). These force a
+// panic THROUGH the REAL RTSP registries on a real leased handle to prove the
+// mutating natives' `with_*_poisoning` routing poisons the entry end-to-end
+// (the generic `PanicProbe` proves `with_poisoning` in isolation; these prove
+// THIS surface is actually wired to it). Never compiled into the shipped JAR.
+// ---------------------------------------------------------------------------
+
+/// `org.tstrans.internal.PanicProbe.nForcePanicThroughMount(long)` — run a panic
+/// through `REGISTRY_MOUNT.with_poisoning` on the leased `MountHandle`, exactly
+/// as a real `nPush*`/`nFlush` would. The outer `jni_catch` surfaces the panic
+/// as a `RuntimeException`; the entry is poisoned, so a subsequent real mount op
+/// leases `None` → `IllegalStateException`.
+#[cfg(feature = "jni-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughMount(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        REGISTRY_MOUNT.with_poisoning(handle as u64, |_inner| {
+            panic!("probe: torn mount mutation (jni-test-hooks)");
+        });
+    })
+}
+
+/// `org.tstrans.internal.PanicProbe.nForcePanicThroughServer(long)` — run a
+/// panic through `REGISTRY_SERVER.with_poisoning` on the leased `RtspServer`,
+/// exactly as a real `nStop`/`nAdd*Mount` would. Poisons the server entry; a
+/// later real server op then throws `IllegalStateException`.
+#[cfg(feature = "jni-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughServer(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |_env| {
+        REGISTRY_SERVER.with_poisoning(handle as u64, |_server| {
+            panic!("probe: torn server mutation (jni-test-hooks)");
+        });
     })
 }

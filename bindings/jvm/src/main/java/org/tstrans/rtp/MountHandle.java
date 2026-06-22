@@ -166,6 +166,14 @@ public final class MountHandle implements AutoCloseable {
         if (handle.get() == 0) throw new IllegalStateException("MountHandle is closed");
     }
 
+    /**
+     * Test-only: the raw native handle, for routing a panic through the real
+     * {@code REGISTRY_MOUNT} in {@code PanicIsolationTest} (proves the mount
+     * mutators are wired to {@code with_mount_poisoning}). Package-private,
+     * mirrors the {@code *ForTest} convention in {@code Klv}.
+     */
+    long nativeHandleForTest() { return handle.get(); }
+
     // --- Natives ---
     private static native String nMountPath(long handle);
     private static native long nPeerCount(long handle);

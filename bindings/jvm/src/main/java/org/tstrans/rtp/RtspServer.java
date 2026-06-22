@@ -160,6 +160,14 @@ public final class RtspServer implements AutoCloseable {
         if (handle.get() == 0) throw new IllegalStateException("RtspServer is closed");
     }
 
+    /**
+     * Test-only: the raw native handle, for routing a panic through the real
+     * {@code REGISTRY_SERVER} in {@code PanicIsolationTest} (proves the server
+     * mutators are wired to {@code with_server_poisoning}). Package-private,
+     * mirrors the {@code *ForTest} convention in {@code Klv}.
+     */
+    long nativeHandleForTest() { return handle.get(); }
+
     private static native long nStart(String bindAddr, long maxSessions, long sessionTimeoutSecs,
         long fanoutCapacity, long gracefulShutdownDrainMs, int authScheme, String authRealm,
         String authUser, String authPassword, boolean hasTlsCert, boolean hasTlsKey)

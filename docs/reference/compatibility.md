@@ -173,7 +173,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
 | MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV + ≤16 subtitle PIDs per program), H.264/H.265/H.266/AV1 video + MP2/AAC/AC-3 audio + DVB/teletext/CEA-708/WebVTT subtitles + ST 0601 KLV (sync + async per ST 1402), VBR. |
-| MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
+| MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. Required TS/PSI syntax (scrambling, adaptation-field, zero-length PES, PSI syntax) is validated under the ladder; multi-section PAT is reassembled, multi-section PMT is unsupported. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::MuxerConfig` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `MuxerConfig`. |
 | H.222.0 § 2.12.4.2 sync metadata AU cell wrapping | ✅ Full | `mpegts::au_cell::write_metadata_au_cell` / `read_metadata_au_cell`. Auto-wrapped inside `Muxer::push_klv` for `KlvStreamType::SynchronousMetadata` streams; PTS in PES header per § 2.12.4.1. |
@@ -232,7 +232,7 @@ The generic SMPTE/MISB substrate underneath the typed layers.
 | BER long-form length (1–8 octets) | ✅ Full | Indefinite-length form rejected (not allowed in KLV). |
 | BER-OID length (base-128 self-terminating) | ✅ Full | `length::write_ber_oid` / `read_ber_oid`. |
 | 16-bit running-sum checksum (ST 0601 §6.8) | ✅ Full | `checksum::checksum_running_sum_16`. |
-| **MISB ST 1201.5** — IMAPB integer↔float mapping | ⚙️ Partial | `imapb` matches §7.1.2 / §7.2 forward and inverse; ±∞/±NaN special-value bit (§7.1.3) not modelled — pure additive future work. |
+| **MISB ST 1201.5** — IMAPB integer↔float mapping | ✅ Full | `imapb` matches §7.1.2 / §7.2 forward and inverse; §7.1.3 / §7.2.3 special values (±∞, quiet / signaling NaN, IMAP_BELOW_MINIMUM / IMAP_ABOVE_MAXIMUM, user-defined) modelled both directions via `DecodedImapb::Special(ImapbSpecial)` + `encode_imapb_special`. Typed ST 0903 fields read normal-range values via `DecodedImapb::value()` (specials surface as field-unavailable). |
 | Universal-label introspection | ✅ Full | `UniversalLabel::oid` / `category` / `registry` / `structure` / `version_byte` / `is_st0601_family`. |
 | `Iter::local_set` / `Iter::universal_set` | ✅ Full | Universal-set iterator currently exposes `tag: 0` synthetic ID; UL bytes accessor is a future tightening. |
 | `OwnedRawField` pass-through | ✅ Full | Unknown / non-typed tags preserved verbatim, round-trip safe. |
@@ -378,7 +378,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
 | Subtitle classification on `stream_type 0x06` | ✅ Full | Cascade: subtitling/teletext/`VTTC`/`GA94` descriptors → `Subtitle` payload; KLV cases unchanged when no subtitle descriptor present. |
-| AV1 / H.266 codec variants on `VideoCodec` | ✅ Full | Recognized and tagged on `SamplePayload::Video.codec`. The opt-in `split_video(&raw, codec)` returns `VideoPayload::Nals(_)` for `H266` (`stream_type=0x33`) and `VideoPayload::Obus(_)` for `Av1` (`stream_type=0x06` + AV01 registration). |
+| AV1 / H.266 codec variants on `VideoCodec` | ✅ Full | Recognized and tagged on `SamplePayload::Video.codec`. The opt-in `split_video(&raw, codec, av1_carriage)` returns `VideoPayload::Nals(_)` for `H266` (`stream_type=0x33`) and `VideoPayload::Obus(_)` for `Av1` (`stream_type=0x06` + AV01 registration). |
 | Typed SPS/VPS/PPS payload parser | ✅ Full | `codec::h264` / `codec::h265` / `codec::h266` for NAL-shaped codecs; `codec::av1` for OBU-shaped. See `codec` block below. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |
 
@@ -430,7 +430,7 @@ level, color, frame rate). See [`guide-codec.md`](/docs/guides/codec.md).
 | Codec | Rust core | C ABI |
 | --- | --- | --- |
 | H.264 SPS / PPS (`codec::h264`) | ✅ Full | ❌ Deferred (rides with receiver C ABI) |
-| H.265 VPS / SPS / PPS (`codec::h265`) | ✅ Full | ❌ Deferred |
+| H.265 VPS / SPS / PPS (`codec::h265`) | ⚙️ Partial | ❌ Deferred |
 | H.266 VPS / SPS / PPS (`codec::h266`) | ⚙️ Partial (VPS+SPS+PPS) | ❌ Deferred |
 | AV1 Sequence Header + Frame Header light (`codec::av1`) | ⚙️ Partial | ❌ Deferred |
 
@@ -442,9 +442,14 @@ per-set functions. 13/13 corpus fixtures matched ffprobe.
 `parse_parameter_sets`. Full short-term RPS walker per H.265 §7.3.7 / §7.4.8
 (mirrors ffmpeg's `ff_hevc_decode_short_term_rps`) walks past
 `num_short_term_ref_pic_sets > 0` SPSes; tracks `NumDeltaPocs[]` for
-`inter_ref_pic_set_prediction_flag` inheritance. Known limitation: still
-bails with `UnsupportedProfile` on `scaling_list_data_present_flag = 1`
-SPSes (uncommon; not in x265 default config or current corpus).
+`inter_ref_pic_set_prediction_flag` inheritance. VUI timing (§E.2.1) is
+fully walked — `frame_rate` is recovered from `num_units_in_tick` /
+`time_scale` when `vui_timing_info_present_flag = 1`. Known limitation:
+bails with `CodecParseError::EngineError` on
+`sps_scaling_list_data_present_flag = 1` SPSes — a parser gap (the
+`scaling_list_data()` syntax at H.265 §7.3.4 is not yet walked), not a
+profile-level rejection; conformant Main 10 HDR streams routinely set
+this flag.
 
 **H.266 notes:** hand-rolled per H.266 V4 §7.3 / §7.4; `parse_vps` /
 `parse_sps` / `parse_pps` / `parse_parameter_sets`. Full SPS body walk
@@ -560,7 +565,7 @@ covers.
 | **MISB ST 0807.27** | KLV Metadata Registry | ⚙️ Used as canonical source for UL constants |
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ❌ Out of scope (subset of ST 0601 we already cover) |
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
-| **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
+| **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ✅ §7.1.2 / §7.2 + §7.1.3 / §7.2.3 special values (`ImapbSpecial`, encode + decode); IMAPA form deferred |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
 | **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
@@ -623,6 +628,5 @@ roadmap. They are revisitable on consumer ask — not philosophical refusals.
 - Metadata sets other than the typed MISB family already shipped (ST 1303 MDAP, ST 0902 minimum-set).
 - WebRTC / RTMP transports (SRT, RTP, raw TCP / TLS, UDP, and RIST all ship — see top-of-document scope note).
 - ST 1607 segmented multi-PES KLV reassembly.
-- ST 1201.5 §7.1.3 special-value bit (±∞ / ±NaN passthrough).
 - Async / reactor SRT API.
 - Bonded / grouped sockets.

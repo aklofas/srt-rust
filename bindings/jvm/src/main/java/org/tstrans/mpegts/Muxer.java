@@ -187,6 +187,78 @@ public final class Muxer implements AutoCloseable {
         nPushDataTo(handle.get(), h.raw(), data, pts);
     }
 
+    /** All configured video-stream handles, in {@code addVideo} order.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.List<VideoStreamHandle> videoHandles() {
+        ensureOpen();
+        long[] raws = nVideoHandles(handle.get());
+        java.util.List<VideoStreamHandle> out = new java.util.ArrayList<>(raws.length);
+        for (long r : raws) out.add(VideoStreamHandle.fromRaw(r));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The {@code index}-th video-stream handle, or empty if out of range.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.Optional<VideoStreamHandle> videoStreamHandle(int index) {
+        java.util.List<VideoStreamHandle> hs = videoHandles();
+        return (index >= 0 && index < hs.size())
+            ? java.util.Optional.of(hs.get(index)) : java.util.Optional.empty();
+    }
+
+    /** All configured audio-stream handles, in {@code addAudio} order.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.List<AudioStreamHandle> audioHandles() {
+        ensureOpen();
+        long[] raws = nAudioHandles(handle.get());
+        java.util.List<AudioStreamHandle> out = new java.util.ArrayList<>(raws.length);
+        for (long r : raws) out.add(AudioStreamHandle.fromRaw(r));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The {@code index}-th audio-stream handle, or empty if out of range.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.Optional<AudioStreamHandle> audioStreamHandle(int index) {
+        java.util.List<AudioStreamHandle> hs = audioHandles();
+        return (index >= 0 && index < hs.size())
+            ? java.util.Optional.of(hs.get(index)) : java.util.Optional.empty();
+    }
+
+    /** All configured KLV-stream handles, in {@code addKlv} order.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.List<KlvStreamHandle> klvHandles() {
+        ensureOpen();
+        long[] raws = nKlvHandles(handle.get());
+        java.util.List<KlvStreamHandle> out = new java.util.ArrayList<>(raws.length);
+        for (long r : raws) out.add(KlvStreamHandle.fromRaw(r));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The {@code index}-th KLV-stream handle, or empty if out of range.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.Optional<KlvStreamHandle> klvStreamHandle(int index) {
+        java.util.List<KlvStreamHandle> hs = klvHandles();
+        return (index >= 0 && index < hs.size())
+            ? java.util.Optional.of(hs.get(index)) : java.util.Optional.empty();
+    }
+
+    /** All configured subtitle-stream handles, in {@code addSubtitle} order.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.List<SubtitleStreamHandle> subtitleHandles() {
+        ensureOpen();
+        long[] raws = nSubtitleHandles(handle.get());
+        java.util.List<SubtitleStreamHandle> out = new java.util.ArrayList<>(raws.length);
+        for (long r : raws) out.add(SubtitleStreamHandle.fromRaw(r));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The {@code index}-th subtitle-stream handle, or empty if out of range.
+     *  @throws IllegalStateException if the muxer is closed */
+    public java.util.Optional<SubtitleStreamHandle> subtitleStreamHandle(int index) {
+        java.util.List<SubtitleStreamHandle> hs = subtitleHandles();
+        return (index >= 0 && index < hs.size())
+            ? java.util.Optional.of(hs.get(index)) : java.util.Optional.empty();
+    }
+
     /** All configured data-stream handles, in {@code addData} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<DataStreamHandle> dataHandles() {
@@ -279,6 +351,10 @@ public final class Muxer implements AutoCloseable {
     private static native void nPushData(long handle, byte[] data, long pts) throws MuxException;
     private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data, long pts)
             throws MuxException;
+    private static native long[] nVideoHandles(long handle);
+    private static native long[] nAudioHandles(long handle);
+    private static native long[] nKlvHandles(long handle);
+    private static native long[] nSubtitleHandles(long handle);
     private static native long[] nDataHandles(long handle);
     private static native int nPull(long handle, byte[] out);
     private static native long nPending(long handle);

@@ -33,8 +33,9 @@ use jni::sys::{jboolean, jint, jlong};
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
-    AudioCodec, Av1CarriageMode, DataStreamHandle, KlvStreamType, Muxer, MuxerConfig,
-    MuxerProgramConfigBuilder, StreamKind, SubtitleCodec, VideoCodec,
+    AudioCodec, AudioStreamHandle, Av1CarriageMode, DataStreamHandle, KlvStreamHandle,
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, StreamKind, SubtitleCodec,
+    SubtitleStreamHandle, VideoCodec, VideoStreamHandle,
 };
 
 use crate::error::throw_mux;
@@ -506,6 +507,170 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nDataHandles<'local>(
             mux.data_handles()
                 .into_iter()
                 .map(|h| i64::from(h.raw()))
+                .collect::<Vec<i64>>()
+        }) else {
+            closed(env);
+            return JObject::null().into();
+        };
+        let arr = match env.new_long_array(raws.len() as i32) {
+            Ok(a) => a,
+            Err(_) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "failed to allocate long[] result",
+                );
+                return JObject::null().into();
+            }
+        };
+        if env.set_long_array_region(&arr, 0, &raws).is_err() {
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to write long[] result",
+            );
+            return JObject::null().into();
+        }
+        arr
+    })
+}
+
+/// `nVideoHandles(handle)` → `long[]` of all video stream handles (packed `u32`
+/// raws widened to `jlong`), in declaration order. On a closed/absent handle
+/// throws `IllegalStateException`; on a JNI alloc/write failure throws
+/// `RuntimeException`. Mirrors `nDataHandles`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nVideoHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null().into(), |env| {
+        let Some(raws) = REGISTRY.with(handle as u64, |mux| {
+            mux.video_handles()
+                .into_iter()
+                .map(|h: VideoStreamHandle| i64::from(h.raw()))
+                .collect::<Vec<i64>>()
+        }) else {
+            closed(env);
+            return JObject::null().into();
+        };
+        let arr = match env.new_long_array(raws.len() as i32) {
+            Ok(a) => a,
+            Err(_) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "failed to allocate long[] result",
+                );
+                return JObject::null().into();
+            }
+        };
+        if env.set_long_array_region(&arr, 0, &raws).is_err() {
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to write long[] result",
+            );
+            return JObject::null().into();
+        }
+        arr
+    })
+}
+
+/// `nAudioHandles(handle)` → `long[]` of all audio stream handles (packed `u32`
+/// raws widened to `jlong`), in declaration order. On a closed/absent handle
+/// throws `IllegalStateException`; on a JNI alloc/write failure throws
+/// `RuntimeException`. Mirrors `nDataHandles`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nAudioHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null().into(), |env| {
+        let Some(raws) = REGISTRY.with(handle as u64, |mux| {
+            mux.audio_handles()
+                .into_iter()
+                .map(|h: AudioStreamHandle| i64::from(h.raw()))
+                .collect::<Vec<i64>>()
+        }) else {
+            closed(env);
+            return JObject::null().into();
+        };
+        let arr = match env.new_long_array(raws.len() as i32) {
+            Ok(a) => a,
+            Err(_) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "failed to allocate long[] result",
+                );
+                return JObject::null().into();
+            }
+        };
+        if env.set_long_array_region(&arr, 0, &raws).is_err() {
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to write long[] result",
+            );
+            return JObject::null().into();
+        }
+        arr
+    })
+}
+
+/// `nKlvHandles(handle)` → `long[]` of all KLV stream handles (packed `u32`
+/// raws widened to `jlong`), in declaration order. On a closed/absent handle
+/// throws `IllegalStateException`; on a JNI alloc/write failure throws
+/// `RuntimeException`. Mirrors `nDataHandles`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nKlvHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null().into(), |env| {
+        let Some(raws) = REGISTRY.with(handle as u64, |mux| {
+            mux.klv_handles()
+                .into_iter()
+                .map(|h: KlvStreamHandle| i64::from(h.raw()))
+                .collect::<Vec<i64>>()
+        }) else {
+            closed(env);
+            return JObject::null().into();
+        };
+        let arr = match env.new_long_array(raws.len() as i32) {
+            Ok(a) => a,
+            Err(_) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "failed to allocate long[] result",
+                );
+                return JObject::null().into();
+            }
+        };
+        if env.set_long_array_region(&arr, 0, &raws).is_err() {
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "failed to write long[] result",
+            );
+            return JObject::null().into();
+        }
+        arr
+    })
+}
+
+/// `nSubtitleHandles(handle)` → `long[]` of all subtitle stream handles (packed `u32`
+/// raws widened to `jlong`), in declaration order. On a closed/absent handle
+/// throws `IllegalStateException`; on a JNI alloc/write failure throws
+/// `RuntimeException`. Mirrors `nDataHandles`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nSubtitleHandles<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JLongArray<'local> {
+    crate::panic::jni_catch(&mut env, JObject::null().into(), |env| {
+        let Some(raws) = REGISTRY.with(handle as u64, |mux| {
+            mux.subtitle_handles()
+                .into_iter()
+                .map(|h: SubtitleStreamHandle| i64::from(h.raw()))
                 .collect::<Vec<i64>>()
         }) else {
             closed(env);

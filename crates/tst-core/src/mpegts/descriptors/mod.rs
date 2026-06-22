@@ -9,8 +9,9 @@
 //! - **Caller-sized builders** return `Result<Vec<u8>, DescriptorError>`
 //!   because the body can overflow the 8-bit `descriptor_length` field
 //!   (H.222.0 §2.6: max 255 bytes) — [`registration`], [`user_private`],
-//!   [`user_private_with_tag`], [`component`],
-//!   [`subtitling_descriptor_multi`], [`teletext_descriptor_multi`].
+//!   [`user_private_with_tag`], [`descriptor_with_tag_unchecked`],
+//!   [`component`], [`subtitling_descriptor_multi`],
+//!   [`teletext_descriptor_multi`].
 //!
 //! Hand the result (unwrap or `?`) to
 //! [`crate::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_video`]
@@ -29,7 +30,7 @@ pub use parse::{
 
 /// Errors returned by descriptor builder helpers in this module.
 ///
-/// Three failure modes today:
+/// Four failure modes today:
 ///
 /// - [`DescriptorError::EmptyEntries`] — empty `entries` arguments
 ///   produce a degenerate `tag 0x00` descriptor that the demux parser
@@ -46,6 +47,9 @@ pub use parse::{
 /// - [`DescriptorError::InvalidComponent`] — invalid `stream_content_ext`
 ///   / `stream_content` combination passed to [`component`] per
 ///   EN 300 468 §6.2.8.
+/// - [`DescriptorError::InvalidTag`] — a tag outside the user-private
+///   range `0x40..=0xFF` was passed to [`user_private_with_tag`]. Use
+///   [`descriptor_with_tag_unchecked`] for deliberate out-of-range tags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DescriptorError {
@@ -65,8 +69,9 @@ pub enum DescriptorError {
     ///
     /// Returned by every builder whose payload is caller-supplied and
     /// not statically bounded — [`registration`], [`user_private`],
-    /// [`user_private_with_tag`], [`component`],
-    /// [`subtitling_descriptor_multi`], [`teletext_descriptor_multi`].
+    /// [`user_private_with_tag`], [`descriptor_with_tag_unchecked`],
+    /// [`component`], [`subtitling_descriptor_multi`],
+    /// [`teletext_descriptor_multi`].
     #[error("descriptor tag 0x{tag:02X}: payload length {len} exceeds spec maximum of {max} bytes")]
     TooLarge { tag: u8, len: usize, max: usize },
 
@@ -77,6 +82,12 @@ pub enum DescriptorError {
         "component descriptor: invalid stream_content_ext 0x{ext:X} for stream_content 0x{content:X} (EN 300 468 §6.2.8)"
     )]
     InvalidComponent { ext: u8, content: u8 },
+
+    /// A descriptor tag outside the user-private range `0x40..=0xFF` was
+    /// passed to a validated builder. Use [`descriptor_with_tag_unchecked`]
+    /// for deliberate out-of-range tags.
+    #[error("descriptor tag 0x{tag:02X}: outside the user-private range 0x40..=0xFF")]
+    InvalidTag { tag: u8 },
 }
 
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
@@ -171,20 +182,33 @@ pub fn user_private(payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
 }
 
 /// Same as [`user_private`] but with a caller-chosen tag in the
-/// user-private / reserved range (0x40..=0xFF). Use when emitting
+/// user-private / reserved range `0x40..=0xFF`. Use when emitting
 /// vendor-defined slots that aren't tag 0xFF.
 ///
-/// The `tag >= 0x40` invariant is enforced via `debug_assert!` and
-/// is NOT checked in release builds — callers are responsible for
-/// staying within the user-private range. Passing a reserved-by-spec
-/// tag (e.g. `0x05` for Registration) will produce a malformed
-/// descriptor with no error.
+/// Tags below `0x40` are rejected in all builds — pass a spec-assigned
+/// tag only via [`descriptor_with_tag_unchecked`], which opts out of
+/// the range guard deliberately.
+///
+/// # Errors
+///
+/// - [`DescriptorError::InvalidTag`] when `tag < 0x40`.
+/// - [`DescriptorError::TooLarge`] when `payload.len() > 255`.
+pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
+    if tag < 0x40 {
+        return Err(DescriptorError::InvalidTag { tag });
+    }
+    descriptor_with_tag_unchecked(tag, payload)
+}
+
+/// Build a descriptor with an arbitrary caller-chosen `tag` and NO tag-range
+/// validation. Use only when a descriptor must carry a tag outside the
+/// user-private range `0x40..=0xFF` by deliberate design (e.g. raw
+/// passthrough). Prefer [`user_private_with_tag`] for vendor-defined slots.
 ///
 /// # Errors
 ///
 /// Returns [`DescriptorError::TooLarge`] when `payload.len() > 255`.
-pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
-    debug_assert!(tag >= 0x40, "user-private tags must be in 0x40..=0xFF");
+pub fn descriptor_with_tag_unchecked(tag: u8, payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
     if payload.len() > 255 {
         return Err(DescriptorError::TooLarge {
             tag,
@@ -691,6 +715,23 @@ mod tests {
                 max: 255,
             }
         );
+    }
+
+    #[test]
+    fn user_private_with_tag_rejects_below_range_in_all_builds() {
+        // 0x05 (Registration) is a spec-assigned tag, not user-private.
+        let err = user_private_with_tag(0x05, b"x");
+        assert!(
+            matches!(err, Err(DescriptorError::InvalidTag { tag: 0x05 })),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn descriptor_with_tag_unchecked_allows_any_tag() {
+        let bytes =
+            descriptor_with_tag_unchecked(0x05, b"x").expect("unchecked allows arbitrary tags");
+        assert_eq!(bytes, vec![0x05, 0x01, b'x']);
     }
 
     #[test]

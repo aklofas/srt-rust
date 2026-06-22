@@ -4046,6 +4046,15 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::descriptors::teletext_descriptor_multi"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::descriptors::descriptor_with_tag_unchecked"
+owning_tests = ["crates/tst-core/src/mpegts/descriptors/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::mpegts::descriptors::user_private"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"

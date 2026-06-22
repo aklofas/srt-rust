@@ -39,10 +39,10 @@ use tst_core::mpegts::demux::low_level::{
 #[allow(unused_imports)]
 use tst_core::mpegts::descriptors::{
     DescriptorError, DescriptorParseError, RawDescriptor as DescriptorsRawDescriptor,
-    SubtitlingDescriptorEntry, TeletextDescriptorEntry, find_descriptor_tag,
-    find_format_identifier, format_identifier_ac3, format_identifier_av01, iso_639_language,
-    metadata_klva, parse_subtitling_descriptor, parse_teletext_descriptor, registration,
-    user_private,
+    SubtitlingDescriptorEntry, TeletextDescriptorEntry, descriptor_with_tag_unchecked,
+    find_descriptor_tag, find_format_identifier, format_identifier_ac3, format_identifier_av01,
+    iso_639_language, metadata_klva, parse_subtitling_descriptor, parse_teletext_descriptor,
+    registration, user_private,
 };
 
 // === Mux curated surface ===

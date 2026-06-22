@@ -21,9 +21,9 @@ public record DataStreamHandle(long raw) {
      * Reconstruct a handle from a raw value previously returned by
      * {@link #raw()} (e.g. across a config channel). No validation occurs here
      * (matching the other stream-handle records; unlike tst-py's
-     * {@code DataStreamHandle.from_raw}, which validates) — a forged or
-     * cross-muxer value surfaces as {@code MuxException(INVALID_USAGE)} at
-     * push time.
+     * {@code DataStreamHandle.from_raw}, which validates) — a malformed
+     * (bad bit-layout) or out-of-range handle surfaces as
+     * {@code MuxException(INVALID_USAGE)} at push time.
      *
      * @param raw the packed {@code u32} value, widened to {@code long}
      * @return a {@code DataStreamHandle} wrapping {@code raw}

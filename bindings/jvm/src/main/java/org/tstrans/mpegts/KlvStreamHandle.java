@@ -20,7 +20,7 @@ public record KlvStreamHandle(long raw) {
     /**
      * Reconstruct a handle from a raw value previously returned by
      * {@code MuxSender.klvHandle().raw()}. No validation occurs here —
-     * a forged or cross-muxer value is rejected by the native push path.
+     * a malformed or out-of-range handle is rejected by the native push path.
      *
      * @param raw the packed {@code u32} value, widened to {@code long}
      * @return a {@code KlvStreamHandle} wrapping {@code raw}

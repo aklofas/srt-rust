@@ -456,7 +456,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushData<'local>(
 /// `nPushDataTo(handle, streamHandleRaw, data, pts)` — pass-through push onto a
 /// specific data stream. The raw handle is validated via
 /// `DataStreamHandle::try_from_raw` (Java's `fromRaw` does no validation), so a
-/// forged/cross-muxer value surfaces as `MuxException(INVALID_USAGE)` here.
+/// malformed (bad bit-layout) or out-of-range handle surfaces as `MuxException(INVALID_USAGE)` here.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
     mut env: JNIEnv<'local>,
@@ -495,7 +495,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
 
 /// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)` — targeted
 /// Annex-B AU push. The raw stream handle is validated via
-/// `VideoStreamHandle::try_from_raw`; a forged/cross-muxer value surfaces as
+/// `VideoStreamHandle::try_from_raw`; a malformed (bad bit-layout) or out-of-range handle surfaces as
 /// `MuxException(INVALID_USAGE)` here.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoTo<'local>(
@@ -573,9 +573,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireTo<'local>(
 
 /// `nPushVideoToWithDts(handle, streamHandleRaw, nal, pts, dts, keyFrame)` —
 /// targeted Annex-B AU push with an explicit decode timestamp. The raw stream
-/// handle is validated via `VideoStreamHandle::try_from_raw`; a forged/cross-
-/// muxer value surfaces as `MuxException(INVALID_USAGE)`. The PES header will
-/// carry `PTS_DTS_flags = '11'`, enabling demux of a non-null
+/// handle is validated via `VideoStreamHandle::try_from_raw`; a malformed
+/// (bad bit-layout) or out-of-range handle surfaces as `MuxException(INVALID_USAGE)`.
+/// The PES header will carry `PTS_DTS_flags = '11'`, enabling demux of a non-null
 /// `DemuxEvent.Video.dts`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoToWithDts<'local>(

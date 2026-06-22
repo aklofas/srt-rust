@@ -101,8 +101,26 @@ impl HlsConfig {
         if self.segment_duration.is_zero() {
             return Some("segment_duration must be > 0".into());
         }
-        if matches!(self.mode, HlsMode::Live) && self.playlist_window == 0 {
-            return Some("playlist_window must be > 0 in Live mode".into());
+        if matches!(self.mode, HlsMode::Live) {
+            if self.playlist_window == 0 {
+                return Some("playlist_window must be > 0 in Live mode".into());
+            }
+            // RFC 8216 §6.2.2: a live playlist must be able to hold ≥ 3 target
+            // durations. target = ceil(segment_duration); reject windows too
+            // small to ever reach 3× target with target-sized segments.
+            let target = self.segment_duration.as_secs_f64().ceil().max(1.0);
+            let window_secs = self.playlist_window as f64 * self.segment_duration.as_secs_f64();
+            if window_secs < 3.0 * target {
+                return Some(format!(
+                    "playlist_window ({}) too small: {} × {:.3}s = {:.3}s cannot hold \
+                     3 × target duration ({:.0}s) (RFC 8216 §6.2.2)",
+                    self.playlist_window,
+                    self.playlist_window,
+                    self.segment_duration.as_secs_f64(),
+                    window_secs,
+                    3.0 * target,
+                ));
+            }
         }
         match (&self.tls_cert, &self.tls_key) {
             (Some(_), None) => Some("tls_cert set but tls_key missing".into()),
@@ -138,6 +156,36 @@ mod tests {
             ..HlsConfig::default()
         };
         assert!(cfg.validate().is_some());
+    }
+
+    #[test]
+    fn live_window_too_small_for_3x_target_invalid() {
+        // target = ceil(4) = 4 → need ≥ 12 s; 2 × 4 = 8 s is too small.
+        let cfg = HlsConfig {
+            segment_duration: Duration::from_secs(4),
+            playlist_window: 2,
+            mode: HlsMode::Live,
+            ..HlsConfig::default()
+        };
+        assert!(cfg.validate().is_some());
+    }
+
+    #[test]
+    fn default_live_config_satisfies_3x_target() {
+        // default: window 6 × 4 s = 24 s ≥ 3 × 4 = 12 s.
+        assert_eq!(HlsConfig::default().validate(), None);
+    }
+
+    #[test]
+    fn event_mode_small_window_is_valid() {
+        // The 3×-target rule is Live-only.
+        let cfg = HlsConfig {
+            segment_duration: Duration::from_secs(4),
+            playlist_window: 1,
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        assert_eq!(cfg.validate(), None);
     }
 
     #[test]

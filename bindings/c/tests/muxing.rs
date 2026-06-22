@@ -25,3 +25,5 @@ mod multi_stream;
 mod stats;
 #[path = "muxing/demuxer_offline.rs"]
 mod demuxer_offline;
+#[path = "muxing/muxer_dts.rs"]
+mod muxer_dts;

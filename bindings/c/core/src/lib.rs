@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.14` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.17` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -186,7 +186,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 16` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 17` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -283,7 +283,14 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
 ///   `PsiSyntax` (= 37, REF-PSI-03; table_id = PSI table_id, obu_type = kind,
 ///   cc_observed = section_number for SectionNumberNonZero).
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 16;
+/// - `17` — BIND-01 (WP-I): DTS-aware video push through the C ABI.
+///   `tst_muxer_push_video_to_with_dts` and
+///   `tst_muxer_push_video_wire_to_with_dts` add a `dts_90khz` parameter to
+///   the targeted video push, emitting PES with `PTS_DTS_flags = '11'`
+///   (ISO/IEC 13818-1 §2.4.3.6) for B-frame-reordered streams. Additive —
+///   no symbol removed, no signature or struct layout changed. (AV1 mux
+///   carriage and the targeted `*_to` push family already shipped in ABI 14.)
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 17;
 
 // =========================================================================
 // Runtime version accessors

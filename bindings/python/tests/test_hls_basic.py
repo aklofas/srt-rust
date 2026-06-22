@@ -363,7 +363,7 @@ def test_hls_error_round_trips_from_rust(kind_name: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_extinf_is_media_derived(tmp_path: object) -> None:
+def test_extinf_is_media_derived() -> None:
     """MuxPublisher derives #EXTINF from PTS span, not wall-clock time."""
     with tempfile.TemporaryDirectory() as d:
         pub = (
@@ -378,12 +378,13 @@ def test_extinf_is_media_derived(tmp_path: object) -> None:
         program = _video_program()
         mp = MuxPublisher.with_config_hls(pub, program)
 
-        # PTS 0: first keyframe — opens segment 0.
+        # PTS 0: keyframe — pushed then cut, closing a degenerate segment 0
+        # (span 0 → wall-clock fallback); the next push re-baselines the start.
         mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(0), key_frame=True)
-        # PTS 9000: non-keyframe — stays in segment 0.
+        # PTS 9000: non-keyframe — opens segment 1, baselining its start PTS.
         mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(9000), key_frame=False)
-        # PTS 270000: second keyframe — cuts segment 0, opens segment 1.
-        # Segment 0 spans PTS 9000..270000 = 261000 ticks = 2.9 s at 90 kHz.
+        # PTS 270000: keyframe — cuts segment 1, which spans PTS 9000..270000
+        # = 261000 ticks = 2.9 s at 90 kHz.
         mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(270000), key_frame=True)
 
         hls = mp.finish_into_publisher()
@@ -393,7 +394,7 @@ def test_extinf_is_media_derived(tmp_path: object) -> None:
         assert "#EXTINF:2.900," in pl, pl
 
 
-def test_hls_publisher_cut_with_duration(tmp_path: object) -> None:
+def test_hls_publisher_cut_with_duration() -> None:
     """HlsPublisher.cut_segment_with_duration records the given µs as #EXTINF."""
     with tempfile.TemporaryDirectory() as d:
         pub = (

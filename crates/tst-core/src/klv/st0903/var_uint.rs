@@ -10,9 +10,9 @@
 //! `targetId` of a VTargetPack (§10.2.2.1), VarUint for inline value
 //! bytes elsewhere (§9.1).
 //!
-//! u32 only — V6 is theoretically wider but per the typed layer's
-//! u32 cap (see `VTargetPack` doc), we don't need it. Trivial to
-//! follow up with `read_var_u64` / `write_var_u64` if needed.
+//! u32 and u64 variants — `read_var_u32`/`write_var_u32`/`var_u32_len` for
+//! ST 0601/0102 and smaller fields; `read_var_u64`/`write_var_u64`/`var_u64_len`
+//! for ST 0903 V6 pixel numbers (up to 6 wire bytes) and wide fields.
 //!
 //! The per-tag spec-mandated max width (V2, V3, V4, V6) is enforced
 //! by the decode caller (raises `LengthOverrun` / `InvalidLength`
@@ -53,6 +53,42 @@ pub(crate) fn write_var_u32(value: u32, out: &mut Vec<u8>) -> usize {
     let n = var_u32_len(value);
     let bytes = value.to_be_bytes();
     out.extend_from_slice(&bytes[4 - n..]);
+    n
+}
+
+/// `u64` sibling of [`read_var_u32`] — ST 0903.6 V6 pixel numbers permit up
+/// to 6 wire bytes (§10.2.2.2). Accepts 1..=8 bytes.
+#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
+pub(crate) fn read_var_u64(bytes: &[u8]) -> Result<u64, KlvFieldError> {
+    if bytes.is_empty() || bytes.len() > 8 {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 0, // caller knows the tag; this is a generic helper
+            expected: 8,
+            got: bytes.len(),
+        });
+    }
+    let mut buf = [0u8; 8];
+    buf[8 - bytes.len()..].copy_from_slice(bytes);
+    Ok(u64::from_be_bytes(buf))
+}
+
+/// Number of wire bytes that `value` will encode to (1..=8).
+#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
+pub(crate) fn var_u64_len(value: u64) -> usize {
+    if value == 0 {
+        1
+    } else {
+        let leading_zero_bytes = (value.leading_zeros() / 8) as usize;
+        8 - leading_zero_bytes
+    }
+}
+
+/// `u64` sibling of [`write_var_u32`]. Returns bytes written (1..=8).
+#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
+pub(crate) fn write_var_u64(value: u64, out: &mut Vec<u8>) -> usize {
+    let n = var_u64_len(value);
+    let bytes = value.to_be_bytes();
+    out.extend_from_slice(&bytes[8 - n..]);
     n
 }
 
@@ -128,5 +164,25 @@ mod tests {
         assert_eq!(var_u32_len(0xFFFFFF), 3);
         assert_eq!(var_u32_len(0x1000000), 4);
         assert_eq!(var_u32_len(u32::MAX), 4);
+    }
+
+    // ---------- var-uint u64 ----------
+
+    #[test]
+    fn var_u64_round_trip_above_u32() {
+        for v in [0u64, 0xFF, u32::MAX as u64, (u32::MAX as u64) + 1, 0xFFFF_FFFF_FFFF, u64::MAX] {
+            let mut out = Vec::new();
+            let n = write_var_u64(v, &mut out);
+            assert_eq!(n, var_u64_len(v));
+            assert_eq!(read_var_u64(&out).unwrap(), v, "round trip failed for v={v}");
+        }
+    }
+
+    #[test]
+    fn var_u64_len_boundaries() {
+        assert_eq!(var_u64_len(0), 1);
+        assert_eq!(var_u64_len(0xFF), 1);
+        assert_eq!(var_u64_len(0x1_0000_0000), 5);
+        assert_eq!(var_u64_len(u64::MAX), 8);
     }
 }

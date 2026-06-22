@@ -175,6 +175,67 @@ pub fn write_ber(value: usize, out: &mut [u8]) -> Result<usize, KlvEncodeError> 
     }
 }
 
+/// `u64` sibling of [`read_ber_oid`] — for ST 0903 VMTI `targetId`
+/// (§10.2.2.1 permits up to 9 BER-OID bytes ≈ 63-bit). Accumulates to `u64`
+/// (up to 10 bytes / 64 bits) before [`KlvDecodeError::LengthOverflow`].
+pub fn read_ber_oid_u64(buf: &[u8]) -> Result<(u64, &[u8]), KlvDecodeError> {
+    let mut value: u128 = 0;
+    let mut consumed = 0;
+    loop {
+        let b = buf.get(consumed).ok_or(KlvDecodeError::Truncated {
+            offset: consumed,
+            needed: 1,
+            have: 0,
+        })?;
+        consumed += 1;
+        value = (value << 7) | (*b as u128 & 0x7F);
+        if value > u64::MAX as u128 {
+            return Err(KlvDecodeError::LengthOverflow { value: u64::MAX }); // saturate the report
+        }
+        if b & 0x80 == 0 {
+            return Ok((value as u64, &buf[consumed..]));
+        }
+        if consumed > 10 {
+            // u64 fits in at most 10 BER-OID bytes.
+            return Err(KlvDecodeError::MalformedTag { offset: 0 });
+        }
+    }
+}
+
+/// Number of bytes BER-OID would use to encode `value` as `u64`.
+pub fn ber_oid_len_u64(value: u64) -> usize {
+    if value == 0 {
+        return 1;
+    }
+    let mut bytes = 0usize;
+    let mut v = value;
+    while v > 0 {
+        bytes += 1;
+        v >>= 7;
+    }
+    bytes
+}
+
+/// `u64` sibling of [`write_ber_oid`].
+pub fn write_ber_oid_u64(value: u64, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
+    let needed = ber_oid_len_u64(value);
+    if out.len() < needed {
+        return Err(KlvEncodeError::BufferTooSmall {
+            needed,
+            got: out.len(),
+        });
+    }
+    for (i, slot) in out.iter_mut().enumerate().take(needed) {
+        let shift = 7 * (needed - 1 - i);
+        let mut byte = ((value >> shift) & 0x7F) as u8;
+        if i + 1 < needed {
+            byte |= 0x80;
+        }
+        *slot = byte;
+    }
+    Ok(needed)
+}
+
 /// Write a BER-OID variable-length integer to `out`. Returns bytes written.
 pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
     let needed = ber_oid_len(value);
@@ -420,5 +481,32 @@ mod tests {
         let buf = [0x00];
         let (v, _) = read_ber_oid_strict(&buf).unwrap();
         assert_eq!(v, 0);
+    }
+
+    // ---------- BER-OID u64 ----------
+
+    #[test]
+    fn ber_oid_u64_round_trip_above_u32() {
+        // Values that need > 5 BER-OID bytes (beyond u32 range).
+        for v in [
+            0u64, 0x7F, 0x80, u32::MAX as u64, (u32::MAX as u64) + 1,
+            0x1_0000_0000_0000, u64::MAX >> 1, // up to 63-bit
+        ] {
+            let mut buf = [0u8; 10];
+            let n = write_ber_oid_u64(v, &mut buf).unwrap();
+            assert_eq!(n, ber_oid_len_u64(v));
+            let (parsed, rest) = read_ber_oid_u64(&buf[..n]).unwrap();
+            assert_eq!(parsed, v, "round trip failed for v={v}");
+            assert!(rest.is_empty());
+        }
+    }
+
+    #[test]
+    fn ber_oid_u64_max_round_trip() {
+        let mut buf = [0u8; 10];
+        let n = write_ber_oid_u64(u64::MAX, &mut buf).unwrap();
+        assert_eq!(n, 10, "u64::MAX needs 10 BER-OID bytes (ceil(64/7))");
+        let (parsed, _) = read_ber_oid_u64(&buf[..n]).unwrap();
+        assert_eq!(parsed, u64::MAX);
     }
 }

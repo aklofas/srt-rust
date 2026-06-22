@@ -6,7 +6,7 @@
 //! layers (VMask, VObject, VFeature, VTracker, VChip) will reuse the
 //! same helpers when they land.
 
-use super::var_uint::write_var_u32;
+use super::var_uint::{write_var_u32, write_var_u64};
 use crate::error::KlvEncodeError;
 use crate::klv::imapb::{ImapbParams, encode_imapb};
 use crate::klv::length::write_ber;
@@ -26,6 +26,13 @@ pub(super) fn emit_tlv(out: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), K
 pub(super) fn emit_var(out: &mut Vec<u8>, tag: u8, value: u32) -> Result<(), KlvEncodeError> {
     let mut tmp = Vec::with_capacity(4);
     write_var_u32(value, &mut tmp);
+    emit_tlv(out, tag, &tmp)
+}
+
+/// Emit a VarUint-encoded `u64` value as a TLV (ST 0903.6 V6 pixel numbers).
+pub(super) fn emit_var_u64(out: &mut Vec<u8>, tag: u8, value: u64) -> Result<(), KlvEncodeError> {
+    let mut tmp = Vec::with_capacity(8);
+    write_var_u64(value, &mut tmp);
     emit_tlv(out, tag, &tmp)
 }
 

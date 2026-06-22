@@ -678,12 +678,15 @@ proptest! {
         targets in proptest::collection::vec(
             (
                 (
-                    any::<u32>(),
-                    proptest::option::of(any::<u32>()),
-                    proptest::option::of(any::<u32>()),
-                    proptest::option::of(any::<u32>()),
-                    proptest::option::of(any::<u32>()),
-                    proptest::option::of(any::<u32>()),
+                    // target_id: u64 BER-OID (spec §10.2.2.1: up to 9 bytes ≈ 63-bit)
+                    any::<u64>(),
+                    // V6 pixel fields: up to 6 wire bytes (max 2^48-1)
+                    proptest::option::of(0u64..=(1u64 << 48) - 1),
+                    proptest::option::of(0u64..=(1u64 << 48) - 1),
+                    proptest::option::of(0u64..=(1u64 << 48) - 1),
+                    // V4 row/col fields: up to 4 wire bytes (max u32::MAX)
+                    proptest::option::of(0u64..=u32::MAX as u64),
+                    proptest::option::of(0u64..=u32::MAX as u64),
                 ),
                 (
                     proptest::option::of(1u8..=255),

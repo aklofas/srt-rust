@@ -16,8 +16,8 @@
 //!
 //! The per-tag spec-mandated max width (V2, V3, V4, V6) is enforced
 //! by the decode caller (raises `LengthOverrun` / `InvalidLength`
-//! when the BER outer length exceeds the tag's spec cap). The codec
-//! itself accepts any 1..=4 byte input.
+//! when the BER outer length exceeds the tag's spec cap). The u32
+//! codec accepts 1..=4 byte input; the u64 variants accept 1..=8.
 
 use crate::error::KlvFieldError;
 use alloc::vec::Vec;
@@ -58,7 +58,6 @@ pub(crate) fn write_var_u32(value: u32, out: &mut Vec<u8>) -> usize {
 
 /// `u64` sibling of [`read_var_u32`] — ST 0903.6 V6 pixel numbers permit up
 /// to 6 wire bytes (§10.2.2.2). Accepts 1..=8 bytes.
-#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
 pub(crate) fn read_var_u64(bytes: &[u8]) -> Result<u64, KlvFieldError> {
     if bytes.is_empty() || bytes.len() > 8 {
         return Err(KlvFieldError::InvalidLength {
@@ -73,7 +72,6 @@ pub(crate) fn read_var_u64(bytes: &[u8]) -> Result<u64, KlvFieldError> {
 }
 
 /// Number of wire bytes that `value` will encode to (1..=8).
-#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
 pub(crate) fn var_u64_len(value: u64) -> usize {
     if value == 0 {
         1
@@ -84,7 +82,6 @@ pub(crate) fn var_u64_len(value: u64) -> usize {
 }
 
 /// `u64` sibling of [`write_var_u32`]. Returns bytes written (1..=8).
-#[allow(dead_code)] // used by Task 8 (REF-KLV-04b) model widening
 pub(crate) fn write_var_u64(value: u64, out: &mut Vec<u8>) -> usize {
     let n = var_u64_len(value);
     let bytes = value.to_be_bytes();

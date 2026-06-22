@@ -88,9 +88,6 @@ fn find_pes_start(ts_bytes: &[u8], pid: u16) -> Option<usize> {
 /// ISO/IEC 13818-1 §2.4.3.6: the 5-byte PTS field encodes:
 /// `'00X1'(4) | PTS[32:30](3) | marker(1) | PTS[29:15](15) | marker(1) |
 ///  PTS[14:0](15) | marker(1)`.
-///
-/// `prefix_nibble` is the expected top nibble (`0x2` for PTS-only,
-/// `0x3` for the PTS in a PTS+DTS record, `0x1` for the DTS).
 fn parse_pts_field(bytes: &[u8]) -> i64 {
     assert!(bytes.len() >= 5);
     let p32_30 = ((bytes[0] & 0x0E) as i64) << 29;
@@ -226,6 +223,13 @@ fn push_video_wire_to_with_dts_emits_pts_dts_flags_11() {
         pts_dts_flags, 0b11,
         "expected PTS_DTS_flags=0b11 (both PTS and DTS present), got 0b{:02b}",
         pts_dts_flags
+    );
+
+    // Verify the PES_header_data_length accounts for 10 bytes (5 PTS + 5 DTS).
+    let header_data_len = pes[8] as usize;
+    assert!(
+        header_data_len >= 10,
+        "PES_header_data_length {header_data_len} too small for PTS+DTS (need 10)"
     );
 
     let pts = parse_pts_field(&pes[9..14]);

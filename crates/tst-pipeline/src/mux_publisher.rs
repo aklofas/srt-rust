@@ -2,6 +2,7 @@
 //! output to a [`Publisher`].
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use tracing::info_span;
 use tst_core::error::MuxError;
@@ -28,6 +29,11 @@ struct Inner<P: Publisher> {
     publisher: P,
     stats: MuxPublisherStats,
     closed: bool,
+    /// PTS of the first AU pushed into the segment currently being built;
+    /// `None` immediately after a cut (the next push re-baselines it).
+    segment_start_pts: Option<Pts90khz>,
+    /// PTS of the most recent video AU (drives the explicit `cut_segment`).
+    last_video_pts: Option<Pts90khz>,
 }
 
 /// Shell that owns a [`Muxer`] and pushes its output to a [`Publisher`].
@@ -77,13 +83,16 @@ impl<P: Publisher> MuxPublisher<P> {
                 publisher,
                 stats: MuxPublisherStats::default(),
                 closed: false,
+                segment_start_pts: None,
+                last_video_pts: None,
             }),
             _span: std::panic::AssertUnwindSafe(span),
         })
     }
 
     /// Send one video access unit (Annex-B framing required).  Calls
-    /// [`Publisher::cut_segment`] automatically when `key_frame` is true.
+    /// [`Publisher::cut_segment_with_duration`] automatically when `key_frame` is true,
+    /// passing the PTS span of the segment that just ended.
     pub fn send_video(
         &self,
         nal: &[u8],
@@ -94,17 +103,24 @@ impl<P: Publisher> MuxPublisher<P> {
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
+        if inner.segment_start_pts.is_none() {
+            inner.segment_start_pts = Some(pts);
+        }
         inner
             .muxer
             .push_video(nal, pts, key_frame)
             .map_err(MuxPublisherError::Mux)?;
         Self::drain_locked(&mut inner)?;
+        inner.last_video_pts = Some(pts);
         if key_frame {
+            let start = inner.segment_start_pts.unwrap_or(pts);
+            let media_dur = media_span(start, pts);
             inner
                 .publisher
-                .cut_segment()
+                .cut_segment_with_duration(media_dur)
                 .map_err(MuxPublisherError::Publisher)?;
             inner.stats.cut_calls = inner.stats.cut_calls.saturating_add(1);
+            inner.segment_start_pts = None;
         }
         Ok(())
     }
@@ -188,11 +204,16 @@ impl<P: Publisher> MuxPublisher<P> {
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
+        let media_dur = match (inner.segment_start_pts, inner.last_video_pts) {
+            (Some(start), Some(end)) => media_span(start, end),
+            _ => Duration::ZERO,
+        };
         inner
             .publisher
-            .cut_segment()
+            .cut_segment_with_duration(media_dur)
             .map_err(MuxPublisherError::Publisher)?;
         inner.stats.cut_calls = inner.stats.cut_calls.saturating_add(1);
+        inner.segment_start_pts = None;
         Ok(())
     }
 
@@ -217,6 +238,8 @@ impl<P: Publisher> MuxPublisher<P> {
             publisher,
             stats: _,
             closed: _,
+            segment_start_pts: _,
+            last_video_pts: _,
         } = self.inner.into_inner().expect("MuxPublisher poisoned");
         Ok(publisher)
     }
@@ -266,9 +289,19 @@ impl<E: std::error::Error + Send + Sync + 'static> MuxPublisherError<E> {
     }
 }
 
+/// Media-presentation duration spanned from `start` to `end` PTS (90 kHz).
+///
+/// Saturates to zero on a non-increasing delta. PTS wraparound is out of
+/// scope — a single segment does not span the ~26.5 h 33-bit PTS period.
+fn media_span(start: Pts90khz, end: Pts90khz) -> Duration {
+    let ticks = end.as_ticks().saturating_sub(start.as_ticks()).max(0) as u64;
+    Duration::from_nanos(ticks * 1_000_000_000 / 90_000)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     struct MemoryPublisher {
         buffers: Vec<Vec<u8>>,
@@ -351,5 +384,60 @@ mod tests {
         let p = MemoryPublisher { buffers: vec![] };
         let pub_ = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
         let _ = format!("{:?}", pub_);
+    }
+
+    struct RecordingPublisher {
+        cuts: Vec<Duration>,
+    }
+
+    impl Publisher for RecordingPublisher {
+        type Error = MemErr;
+        fn push_ts(&mut self, _ts: &[u8]) -> Result<(), MemErr> {
+            Ok(())
+        }
+        fn cut_segment(&mut self) -> Result<(), MemErr> {
+            self.cuts.push(Duration::ZERO);
+            Ok(())
+        }
+        fn cut_segment_with_duration(&mut self, d: Duration) -> Result<(), MemErr> {
+            self.cuts.push(d);
+            Ok(())
+        }
+        fn finish(self) -> Result<(), MemErr> {
+            Ok(())
+        }
+        fn stats(&self) -> PublisherStats {
+            PublisherStats::default()
+        }
+    }
+
+    fn h264_au() -> Vec<u8> {
+        // AUD + one slice NAL + filler — the muxer packetizes the bytes; the
+        // key_frame *bool* (not the NAL type) drives the segment cut.
+        let mut v = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
+        v.extend([0x00, 0x00, 0x00, 0x01, 0x65]);
+        v.extend(std::iter::repeat(0xab).take(64));
+        v
+    }
+
+    #[test]
+    fn send_video_derives_media_duration_from_pts() {
+        // Sparse keyframes: IDR@0 closes a degenerate first segment (span 0);
+        // P@9000, P@18000 build segment 1; IDR@270000 closes it with the PTS
+        // span 9000..270000 = 261000 ticks = 2.9 s.
+        let p = RecordingPublisher { cuts: vec![] };
+        let mp = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
+        let au = h264_au();
+        mp.send_video(&au, Pts90khz::new(0), true).unwrap();
+        mp.send_video(&au, Pts90khz::new(9000), false).unwrap();
+        mp.send_video(&au, Pts90khz::new(18000), false).unwrap();
+        mp.send_video(&au, Pts90khz::new(270000), true).unwrap();
+        let p = mp.finish().unwrap();
+        assert_eq!(p.cuts.len(), 2);
+        assert_eq!(p.cuts[0], Duration::ZERO);
+        assert_eq!(
+            p.cuts[1],
+            Duration::from_nanos(261_000 * 1_000_000_000 / 90_000)
+        );
     }
 }

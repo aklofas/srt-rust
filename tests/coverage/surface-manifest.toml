@@ -2412,6 +2412,18 @@ item = "tst_core::klv::length::write_ber_oid"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::klv::length::ber_oid_len_u64"
+reason = "u64 sibling of ber_oid_len; encode-helper sizing (Rust-only, no FFI exposure); added WP-I/PR2 REF-KLV-04"
+
+[[exempt]]
+item = "tst_core::klv::length::read_ber_oid_u64"
+reason = "u64 sibling of read_ber_oid; ST 0903 VMTI targetId; added WP-I/PR2 REF-KLV-04"
+
+[[exempt]]
+item = "tst_core::klv::length::write_ber_oid_u64"
+reason = "u64 sibling of write_ber_oid; ST 0903 VMTI targetId; added WP-I/PR2 REF-KLV-04"
+
+[[exempt]]
 item = "tst_core::klv::pack::OwnedRawField"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

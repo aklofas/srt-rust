@@ -132,3 +132,42 @@ def test_encode_vtarget_pack_color_none_ok():
     out = encode_vmti(rec)
     assert isinstance(out, bytes)
     assert len(out) > 0
+
+
+# ---------------------------------------------------------------------------
+# REF-KLV-04: large-value (>2**32) round-trip for target_id + pixel fields.
+# Python int is unbounded; the PyO3 bridge was extract::<u32> which would
+# silently truncate.  After the fix it's extract::<u64>, so values up to
+# u64::MAX round-trip correctly.
+# ---------------------------------------------------------------------------
+
+
+def test_large_target_id_and_pixels_round_trip():
+    """target_id + Tags 1/2/3 (centroid_pixel, bbox_*_pixel) are V6 (max 6
+    bytes) so values above u32::MAX round-trip. Tags 19/20 (centroid_pix_row /
+    centroid_pix_col) are V4 (max 4 bytes per §10.2.2.20/.21) so they are
+    widened to int in Python but wire values must stay within u32 range."""
+    big_target_id = 2**32 + 1          # 4_294_967_297 — just above u32::MAX
+    big_pixel     = 2**32 + 0x1_FFFF   # comfortably above u32, valid V6
+    u32_max_row   = 2**32 - 1          # u32::MAX — largest valid V4 value
+
+    pack = VTargetPack(
+        target_id=big_target_id,
+        centroid_pixel=big_pixel,
+        bbox_top_left_pixel=big_pixel + 1,
+        bbox_bottom_right_pixel=big_pixel + 2,
+        centroid_pix_row=u32_max_row,       # V4: keep within u32::MAX
+        centroid_pix_col=u32_max_row - 1,   # V4: keep within u32::MAX
+    )
+    vmti = VmtiLs(version_number=6, targets=(pack,))
+    wire = encode_vmti(vmti)
+    decoded = decode_vmti(wire)
+
+    assert len(decoded.targets) == 1
+    p = decoded.targets[0]
+    assert p.target_id == big_target_id, "target_id round-trips above u32::MAX"
+    assert p.centroid_pixel == big_pixel, "centroid_pixel V6 round-trip"
+    assert p.bbox_top_left_pixel == big_pixel + 1
+    assert p.bbox_bottom_right_pixel == big_pixel + 2
+    assert p.centroid_pix_row == u32_max_row
+    assert p.centroid_pix_col == u32_max_row - 1

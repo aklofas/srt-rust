@@ -43,7 +43,7 @@ use tst_core::klv::st0903::{
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_unknown_list, checked_u8, checked_u16, checked_u32,
+    build_field_errors, build_unknown_list, checked_u8, checked_u16, checked_u32, checked_u64,
     read_nullable_byte_buffer, read_nullable_double, read_nullable_int, read_nullable_long,
     read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
@@ -522,36 +522,36 @@ fn build_vtarget(env: &mut JNIEnv<'_>, p: &RustVTargetPack) -> jni::errors::Resu
     let b = env.new_object(
         VTGT_BUILDER_CLASS,
         "(J)V",
-        &[JValue::Long(i64::from(p.target_id))],
+        &[JValue::Long(p.target_id as i64)],
     )?;
 
-    // Tag 1 — centroidPixel (u32 → long)
+    // Tag 1 — centroidPixel (u64 → long)
     if let Some(v) = p.centroid_pixel {
         env.call_method(
             &b,
             "centroidPixel",
             VTGT_BUILDER_SIG_LONG,
-            &[JValue::Long(i64::from(v))],
+            &[JValue::Long(v as i64)],
         )?;
     }
 
-    // Tag 2 — bboxTopLeftPixel (u32 → long)
+    // Tag 2 — bboxTopLeftPixel (u64 → long)
     if let Some(v) = p.bbox_top_left_pixel {
         env.call_method(
             &b,
             "bboxTopLeftPixel",
             VTGT_BUILDER_SIG_LONG,
-            &[JValue::Long(i64::from(v))],
+            &[JValue::Long(v as i64)],
         )?;
     }
 
-    // Tag 3 — bboxBottomRightPixel (u32 → long)
+    // Tag 3 — bboxBottomRightPixel (u64 → long)
     if let Some(v) = p.bbox_bottom_right_pixel {
         env.call_method(
             &b,
             "bboxBottomRightPixel",
             VTGT_BUILDER_SIG_LONG,
-            &[JValue::Long(i64::from(v))],
+            &[JValue::Long(v as i64)],
         )?;
     }
 
@@ -716,23 +716,23 @@ fn build_vtarget(env: &mut JNIEnv<'_>, p: &RustVTargetPack) -> jni::errors::Resu
         )?;
     }
 
-    // Tag 19 — centroidPixRow (u32 → long)
+    // Tag 19 — centroidPixRow (u64 → long)
     if let Some(v) = p.centroid_pix_row {
         env.call_method(
             &b,
             "centroidPixRow",
             VTGT_BUILDER_SIG_LONG,
-            &[JValue::Long(i64::from(v))],
+            &[JValue::Long(v as i64)],
         )?;
     }
 
-    // Tag 20 — centroidPixCol (u32 → long)
+    // Tag 20 — centroidPixCol (u64 → long)
     if let Some(v) = p.centroid_pix_col {
         env.call_method(
             &b,
             "centroidPixCol",
             VTGT_BUILDER_SIG_LONG,
-            &[JValue::Long(i64::from(v))],
+            &[JValue::Long(v as i64)],
         )?;
     }
 
@@ -944,22 +944,22 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
     // BER-OID targetId (primitive long — not nullable)
     {
         let v = env.call_method(rec, "targetId", "()J", &[])?.j()?;
-        p.target_id = checked_u32(env, v, "targetId")?;
+        p.target_id = checked_u64(env, v, "targetId")?;
     }
 
-    // Tag 1 — centroidPixel (nullable Long → Option<u32>)
+    // Tag 1 — centroidPixel (nullable Long → Option<u64>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixel")? {
-        p.centroid_pixel = Some(checked_u32(env, v, "centroidPixel")?);
+        p.centroid_pixel = Some(checked_u64(env, v, "centroidPixel")?);
     }
 
-    // Tag 2 — bboxTopLeftPixel (nullable Long → Option<u32>)
+    // Tag 2 — bboxTopLeftPixel (nullable Long → Option<u64>)
     if let Some(v) = read_nullable_long(env, rec, "bboxTopLeftPixel")? {
-        p.bbox_top_left_pixel = Some(checked_u32(env, v, "bboxTopLeftPixel")?);
+        p.bbox_top_left_pixel = Some(checked_u64(env, v, "bboxTopLeftPixel")?);
     }
 
-    // Tag 3 — bboxBottomRightPixel (nullable Long → Option<u32>)
+    // Tag 3 — bboxBottomRightPixel (nullable Long → Option<u64>)
     if let Some(v) = read_nullable_long(env, rec, "bboxBottomRightPixel")? {
-        p.bbox_bottom_right_pixel = Some(checked_u32(env, v, "bboxBottomRightPixel")?);
+        p.bbox_bottom_right_pixel = Some(checked_u64(env, v, "bboxBottomRightPixel")?);
     }
 
     // Tag 4 — priority (nullable Integer → Option<u8>)
@@ -1050,14 +1050,14 @@ fn read_vtarget(env: &mut JNIEnv<'_>, rec: &JObject<'_>) -> jni::errors::Result<
     // Tag 18 — geospatialContourSeries (nullable ByteBuffer)
     p.geospatial_contour_series = read_nullable_byte_buffer(env, rec, "geospatialContourSeries")?;
 
-    // Tag 19 — centroidPixRow (nullable Long → Option<u32>)
+    // Tag 19 — centroidPixRow (nullable Long → Option<u64>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixRow")? {
-        p.centroid_pix_row = Some(checked_u32(env, v, "centroidPixRow")?);
+        p.centroid_pix_row = Some(checked_u64(env, v, "centroidPixRow")?);
     }
 
-    // Tag 20 — centroidPixCol (nullable Long → Option<u32>)
+    // Tag 20 — centroidPixCol (nullable Long → Option<u64>)
     if let Some(v) = read_nullable_long(env, rec, "centroidPixCol")? {
-        p.centroid_pix_col = Some(checked_u32(env, v, "centroidPixCol")?);
+        p.centroid_pix_col = Some(checked_u64(env, v, "centroidPixCol")?);
     }
 
     // Tag 21 deprecated in ST 0903.6 — skipped

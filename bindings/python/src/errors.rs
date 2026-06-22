@@ -672,8 +672,8 @@ pub(crate) fn klv_encode_error_to_pyerr(py: Python<'_>, e: tst_core::KlvEncodeEr
             ("MISSING_MANDATORY_ITEM", Some(u32::from(*tag)))
         }
         RustE::ReservedTagInUnknown { tag } => ("RESERVED_TAG_IN_UNKNOWN", Some(*tag)),
-        RustE::VTargetPackEmpty { target_id } => ("VTARGET_PACK_EMPTY", Some(*target_id)),
-        RustE::DuplicateTargetId { target_id } => ("DUPLICATE_TARGET_ID", Some(*target_id)),
+        RustE::VTargetPackEmpty { target_id } => ("VTARGET_PACK_EMPTY", Some(*target_id as u32)),
+        RustE::DuplicateTargetId { target_id } => ("DUPLICATE_TARGET_ID", Some(*target_id as u32)),
         RustE::ForbiddenStandaloneOffset { tag } => ("FORBIDDEN_STANDALONE_OFFSET", Some(*tag)),
         _ => ("BUFFER_TOO_SMALL", None),
     };

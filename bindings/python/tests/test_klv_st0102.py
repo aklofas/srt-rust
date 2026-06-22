@@ -128,3 +128,15 @@ def test_decode_invalid_utf16_tag13_lenient():
         f"expected malformed Tag 13 to surface via field_errors or unknown; "
         f"got field_errors={sec.field_errors} unknown_tags={[t for t, _ in sec.unknown]}"
     )
+
+
+def test_decode_security_strict_rejects_non_canonical_length():
+    # ST 0107.5 §6.3: long-form length (0x81 0x05) for a value ≤ 127 bytes is
+    # non-canonical — the canonical encoding is the short form (0x05).
+    # Tag 22 (0x16), long-form length 5, then 5 value bytes.
+    buf = bytes([0x16, 0x81, 0x05, 0x30, 0x31, 0x30, 0x32, 0x2E])
+    with pytest.raises(KlvError) as excinfo:
+        decode_security(buf, strict=True)
+    assert excinfo.value.kind == KlvErrorKind.MALFORMED_BYTES, (
+        f"expected MALFORMED_BYTES, got {excinfo.value.kind}"
+    )

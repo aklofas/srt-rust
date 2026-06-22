@@ -187,6 +187,93 @@ public final class Muxer implements AutoCloseable {
         nPushDataTo(handle.get(), h.raw(), data, pts);
     }
 
+    /**
+     * Push one H.264/H.265/H.266 access unit (Annex-B framing) or AV1 OBU
+     * bitstream onto a specific configured video stream.
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param nal      the access unit bytes (Annex-B start-code prefixed for H.26x)
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param keyFrame whether this AU is a random-access point
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     *     {@code INPUT_MALFORMED} (not Annex-B for H.26x), or {@code BACKPRESSURE}.
+     */
+    public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
+            throws MuxException {
+        ensureOpen();
+        nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
+    }
+
+    /**
+     * Push one already-carried on-wire video access unit onto a specific configured
+     * video stream. Emits {@code wire} verbatim — no Annex-B start-code check, no
+     * AV1 OBU re-wrapping. Use for byte-faithful AV1 transmux targeting a specific
+     * stream; obtain {@code h} from {@link #videoStreamHandle(int)}.
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param wire     the on-wire access unit bytes
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param keyFrame whether this AU is a random-access point
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle) or
+     *     {@code BACKPRESSURE}.
+     */
+    public void pushVideoWireTo(VideoStreamHandle h, byte[] wire, long pts, boolean keyFrame)
+            throws MuxException {
+        ensureOpen();
+        nPushVideoWireTo(handle.get(), h.raw(), wire, pts, keyFrame);
+    }
+
+    /**
+     * Push one KLV local-set onto a specific configured KLV stream. Same
+     * pass-through and AU-cell-wrap semantics as {@link #pushKlv}; obtain {@code h}
+     * from {@link #klvStreamHandle(int)}.
+     *
+     * @param h                 handle of the target KLV stream (from this muxer)
+     * @param klv               raw KLV LS bytes
+     * @param pts               90&nbsp;kHz presentation timestamp
+     * @param metadataServiceId metadata service selector (0 for the common case)
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     *     {@code INPUT_MALFORMED} (too large for one PES), or {@code BACKPRESSURE}.
+     */
+    public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
+            throws MuxException {
+        ensureOpen();
+        nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
+    }
+
+    /**
+     * Push one encoded audio frame buffer onto a specific configured audio stream.
+     * Same semantics as {@link #pushAudio}; obtain {@code h} from
+     * {@link #audioStreamHandle(int)}.
+     *
+     * @param h      handle of the target audio stream (from this muxer)
+     * @param frames codec-native audio frame bytes
+     * @param pts    90&nbsp;kHz presentation timestamp
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     *     {@code INPUT_MALFORMED}, or {@code BACKPRESSURE}.
+     */
+    public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws MuxException {
+        ensureOpen();
+        nPushAudioTo(handle.get(), h.raw(), frames, pts);
+    }
+
+    /**
+     * Push one subtitle PES payload onto a specific configured subtitle stream.
+     * Same semantics as {@link #pushSubtitle}; obtain {@code h} from
+     * {@link #subtitleStreamHandle(int)}.
+     *
+     * @param h       handle of the target subtitle stream (from this muxer)
+     * @param pts     90&nbsp;kHz presentation timestamp
+     * @param payload subtitle PES payload bytes
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     *     {@code INPUT_MALFORMED}, or {@code BACKPRESSURE}.
+     */
+    public void pushSubtitleTo(SubtitleStreamHandle h, long pts, byte[] payload)
+            throws MuxException {
+        ensureOpen();
+        nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
+    }
+
     /** All configured video-stream handles, in {@code addVideo} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<VideoStreamHandle> videoHandles() {
@@ -351,6 +438,16 @@ public final class Muxer implements AutoCloseable {
     private static native void nPushData(long handle, byte[] data, long pts) throws MuxException;
     private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data, long pts)
             throws MuxException;
+    private static native void nPushVideoTo(long handle, long streamHandleRaw, byte[] nal,
+            long pts, boolean keyFrame) throws MuxException;
+    private static native void nPushVideoWireTo(long handle, long streamHandleRaw, byte[] wire,
+            long pts, boolean keyFrame) throws MuxException;
+    private static native void nPushKlvTo(long handle, long streamHandleRaw, byte[] klv,
+            long pts, int metadataServiceId) throws MuxException;
+    private static native void nPushAudioTo(long handle, long streamHandleRaw, byte[] frames,
+            long pts) throws MuxException;
+    private static native void nPushSubtitleTo(long handle, long streamHandleRaw,
+            long pts, byte[] payload) throws MuxException;
     private static native long[] nVideoHandles(long handle);
     private static native long[] nAudioHandles(long handle);
     private static native long[] nKlvHandles(long handle);

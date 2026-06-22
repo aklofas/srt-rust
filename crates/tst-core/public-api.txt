@@ -1600,12 +1600,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::length::LengthEn
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::length::LengthEncoding
 pub fn tst_core::klv::length::ber_len(usize) -> usize
 pub fn tst_core::klv::length::ber_oid_len(u32) -> usize
+pub fn tst_core::klv::length::ber_oid_len_u64(u64) -> usize
 pub fn tst_core::klv::length::read_ber(&[u8]) -> core::result::Result<(usize, &[u8]), tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::length::read_ber_oid(&[u8]) -> core::result::Result<(u32, &[u8]), tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::length::read_ber_oid_strict(&[u8]) -> core::result::Result<(u32, &[u8]), tst_core::error::KlvDecodeError>
+pub fn tst_core::klv::length::read_ber_oid_u64(&[u8]) -> core::result::Result<(u64, &[u8]), tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::length::read_ber_strict(&[u8]) -> core::result::Result<(usize, &[u8]), tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::length::write_ber(usize, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::length::write_ber_oid(u32, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::length::write_ber_oid_u64(u64, &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::pack
 pub struct tst_core::klv::pack::OwnedRawField
 pub tst_core::klv::pack::OwnedRawField::tag: u32

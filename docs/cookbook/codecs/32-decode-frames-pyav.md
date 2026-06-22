@@ -63,6 +63,89 @@ for frame in dec.decode(None):                       # flush the decoder reorder
     img = frame.to_ndarray(format="bgr24")
 ```
 
+## Decode only a time window (gapless)
+
+`tstrans` has no seek — you always demux forward from the start of the file. For a long
+capture that's wasteful if you only want a short window: a naive loop decodes the entire
+leading portion just to reach it. The fix (battle-tested on real captures) is to **buffer
+the current GOP** — reset the buffer on every keyframe — and only start *decoding* once
+you reach the window, replaying the buffered GOP first. The window then begins from a real
+IDR (gapless, no `non-existing PPS`) without decoding everything before it.
+
+```python
+from fractions import Fraction
+import av
+from tstrans import io as tio
+from tstrans.mpegts import DemuxEvent, VideoCodec
+
+_PYAV = {VideoCodec.H264: "h264", VideoCodec.H265: "hevc", VideoCodec.H266: "vvc"}  # H.26x Annex-B
+TB = Fraction(1, 90000)
+
+def decode_window(path, start_s, dur_s):
+    """Yield (t_ms, frame) for frames in [start_s, start_s+dur_s].
+
+    Decoding begins at the keyframe at/before the window, so the slice is gapless.
+    `t_ms` is stream-relative (ms from the first video AU). AV1 (OBU carriage, not
+    Annex-B) is out of scope here — see the straight-decode section above.
+    """
+    start_ms, end_ms = start_s * 1000.0, (start_s + dur_s) * 1000.0
+    first = dec = None
+    gop, decoding = [], False
+
+    def emit(frame):
+        if frame.pts is None:
+            return None
+        rel = (frame.pts - first) * 1000.0 / 90000.0
+        if rel < start_ms:  return None
+        if rel > end_ms:    return "stop"
+        return rel
+
+    def decode_au(ev):
+        pkt = av.Packet(bytes(ev.raw)); pkt.pts = ev.pts.raw; pkt.time_base = TB
+        return dec.decode(pkt)
+
+    for ev in tio.parse_file(path):
+        if not isinstance(ev, DemuxEvent.Video):
+            continue
+        if first is None:
+            first = ev.pts.raw
+        if dec is None:
+            dec = av.codec.CodecContext.create(_PYAV[ev.codec], "r")
+        rel = (ev.pts.raw - first) * 1000.0 / 90000.0
+
+        if not decoding:
+            if ev.random_access_indicator:      # new GOP — restart the buffer here
+                gop = [ev]
+            elif gop:
+                gop.append(ev)
+            if rel >= start_ms and gop:         # reached the window: replay its GOP first
+                decoding = True
+                for buffered in gop:
+                    for frame in decode_au(buffered):
+                        r = emit(frame)
+                        if r == "stop": return
+                        if r is not None: yield r, frame
+                gop = None
+            continue
+
+        if rel > end_ms + 2000:                 # slack for B-frame reorder, then stop demuxing
+            break
+        for frame in decode_au(ev):
+            r = emit(frame)
+            if r == "stop": return
+            if r is not None: yield r, frame
+
+    if dec is not None and decoding:            # flush the reorder buffer at the tail
+        for frame in dec.decode(None):
+            r = emit(frame)
+            if r == "stop": return
+            if r is not None: yield r, frame
+
+# e.g. the 10 s starting at t=30 s, as grayscale ndarrays:
+for t_ms, frame in decode_window("input.ts", start_s=30, dur_s=10):
+    gray = frame.to_ndarray(format="gray")      # HxW uint8 luma plane
+```
+
 ## Process the elementary stream first (parsed NAL units)
 
 To filter or modify the stream before decoding, use the opt-in parse (`ev.parse()`),
@@ -122,6 +205,10 @@ NAL-type cheatsheet (H.264): `1` = non-IDR slice, `5` = IDR, `6` = SEI, `7` = SP
   Use the parsed path only when you need to inspect / modify NAL units first — the
   reconstructed bytes decode identically but are not byte-identical to `ev.raw`
   (start-code widths can differ).
+- **Windowed decode needs the GOP, not just the window.** To render a time slice without
+  decoding everything before it, buffer AUs from each keyframe and replay that GOP when you
+  reach the window (see *Decode only a time window*) — feeding the decoder mid-GOP gives
+  garbage or `non-existing PPS`.
 - **Codec.** Match `ev.codec`: `h264` / `hevc` (H.265) / `av1`; H.266 (`vvc`) decode is
   experimental in current FFmpeg.
 

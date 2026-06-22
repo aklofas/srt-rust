@@ -57,7 +57,7 @@ Recipe numbers are stable across edits — existing inbound links stay valid as 
 - **Recipe 17: Extract video resolution and profile from a demuxed stream** — [17-extract-resolution-profile.md](codecs/17-extract-resolution-profile.md) — You need typed codec information (width, height, profile, level, frame rate, color) and are already demuxing the stream.
 - **Recipe 18: Reconstitute Annex B parameter sets for decoder replay** — [18-reconstitute-annex-b.md](codecs/18-reconstitute-annex-b.md) — You need to hand SPS / PPS bytes to a hardware decoder, encoder re-init, or a library that expects Annex-B-framed codec configuration.
 - **Recipe 29: Pull sample rate and channel count out of an audio stream** — [29-extract-audio-format.md](codecs/29-extract-audio-format.md) — Inspect a `.ts` file and report typed audio metadata (sample rate, channel count, codec layer/profile) per audio PID.
-- **Recipe 32: Decode video frames in-memory with PyAV (Python)** — [32-decode-frames-pyav.md](codecs/32-decode-frames-pyav.md) — Decode frames straight from `DemuxEvent.Video.raw` (or processed `ev.parse()` NAL units) in the same demux pass that yields your KLV — no file re-open, no OpenCV. Python-only (PyAV).
+- **Recipe 32: Decode video frames in-memory with PyAV (Python)** — [32-decode-frames-pyav.md](codecs/32-decode-frames-pyav.md) — Decode frames straight from `DemuxEvent.Video.raw` (or processed `ev.parse()` NAL units) in the same demux pass that yields your KLV — no file re-open, no OpenCV. Includes gapless windowed (time-slice) decode. Python-only (PyAV).
 
 ### ⚙ Operations — lifecycle, stats, shutdown, fixtures
 

@@ -10,6 +10,7 @@ Build a three-stream program where audio PTS-aligns with video for
 synchronized playback, and KLV records emit on the same PCR clock.
 
 ```rust
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer,
     VideoCodec,
@@ -33,10 +34,10 @@ let mut muxer = Muxer::new(cfg)?;
 
 for frame_idx in 0..30 {
     let pts = 90_000 + frame_idx * 3000;
-    muxer.push_video(&video_au_bytes, pts, /*key_frame=*/ frame_idx % 30 == 0)?;
-    muxer.push_audio(&aac_frame_bytes, pts)?;
+    muxer.push_video(&video_au_bytes, Pts90khz::new(pts), /*key_frame=*/ frame_idx % 30 == 0)?;
+    muxer.push_audio(&aac_frame_bytes, Pts90khz::new(pts))?;
     if frame_idx % 30 == 0 {
-        muxer.push_klv(&klv_record, pts, /*metadata_service_id=*/ 0x00)?;
+        muxer.push_klv(&klv_record, Pts90khz::new(pts), /*metadata_service_id=*/ 0x00)?;
     }
     // Drain to your transport.
 }

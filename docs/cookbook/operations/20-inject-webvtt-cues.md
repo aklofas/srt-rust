@@ -11,6 +11,7 @@ in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
 can render them as captions.
 
 ```rust
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     MuxerConfig, MuxerProgramConfigBuilder, Muxer, SubtitleCodec, VideoCodec,
 };
@@ -28,7 +29,7 @@ let h = mux.subtitle_handles()[0];
 
 // Each POI: assemble a WebVTT cue and push at the wall-clock PTS.
 let cue = "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nPOI: target acquired\n";
-mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
+mux.push_subtitle_to(h, Pts90khz::new(90_000), cue.as_bytes())?;
 // Drain TS bytes via `mux.pull(&mut buf)` in a loop until it returns
 // 0 (queue empty); see the runnable example for a `drain_all` helper.
 ```

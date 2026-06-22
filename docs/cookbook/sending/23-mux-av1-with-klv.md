@@ -21,6 +21,7 @@ AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
   AV1 rather than KLV-async on the same stream_type byte.
 
 ```rust,no_run
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The example builds one synthetic Sequence Header + Temporal Delimiter +
     // Frame access unit; real consumers feed the encoder's output verbatim.
     let au_obus: Vec<u8> = vec![/* concatenated OBUs */];
-    mux.push_video(&au_obus, 0, /* key_frame = */ true)?;
+    mux.push_video(&au_obus, Pts90khz::new(0), /* key_frame = */ true)?;
     Ok(())
 }
 ```

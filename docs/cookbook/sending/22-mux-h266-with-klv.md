@@ -18,6 +18,7 @@ The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
 VPS / SPS / PPS).
 
 ```rust,no_run
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer, VideoCodec,
 };
@@ -35,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
     // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
     // metadata_service_id defaults to 0x00 per ST 1402.2 App. B Table 2.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
+    mux.push_klv(&inner_klv, Pts90khz::new(0), /*metadata_service_id=*/ 0x00)?;
     Ok(())
 }
 ```

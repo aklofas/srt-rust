@@ -12,6 +12,7 @@ Reach for this when the encoder produces HEVC, or when the receiver requires str
 **Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer, VideoCodec,
 };
@@ -32,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
     // Muxer auto-prepends the 5-byte AU cell header. metadata_service_id
     // defaults to 0x00 per ST 1402.2 App. B Table 2.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
+    mux.push_klv(&inner_klv, Pts90khz::new(0), /*metadata_service_id=*/ 0x00)?;
     Ok(())
 }
 ```

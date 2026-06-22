@@ -55,6 +55,7 @@ The smallest useful thing: mux one H.264 access unit + one KLV blob into
 188-byte TS packets, entirely in memory — no SRT, no peer, no file.
 
 ```rust
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,8 +63,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut muxer = Muxer::new(MuxerConfig::default())?;
 
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xA5, 0xA5, 0xA5]; // minimal Annex-B IDR
-    muxer.push_video(&nal, /* pts_90khz */ 0, /* key_frame */ true)?;
-    muxer.push_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], 0, 0x00)?;
+    muxer.push_video(&nal, Pts90khz::new(0), /* key_frame */ true)?;
+    muxer.push_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0), 0x00)?;
 
     let mut buf = [0u8; 1316];
     let n = muxer.pull(&mut buf);
@@ -105,8 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Push payloads. Each push muxes into TS packets and ships them.
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xA5, 0xA5, 0xA5];
-    sender.send_video(&nal, Pts90khz::from_raw(0), /* key_frame */ true)?;
-    sender.send_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::from_raw(0))?;
+    sender.send_video(&nal, Pts90khz::new(0), /* key_frame */ true)?;
+    sender.send_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0))?;
 
     sender.close()?;
     Ok(())

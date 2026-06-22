@@ -22,7 +22,8 @@ use crate::mpegts::demux::event::{
     DemuxEvent, KlvLink, LinkSource, NonConformantIssue, ProgramMap, PsiSyntaxKind, StreamId,
     StreamInfo, StreamKind, VideoCodec,
 };
-use crate::mpegts::demux::psi::{Pmt, PsiParseError, parse_pat, parse_pmt};
+use crate::mpegts::demux::pat_reassemble::PatReassemblyOutcome;
+use crate::mpegts::demux::psi::{Pmt, PatEntry, PsiParseError, parse_pat_section, parse_pmt};
 use crate::mpegts::demux::psi_assembler::AssemblerError;
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::types::ProgramTracker;
@@ -238,8 +239,8 @@ impl super::demuxer::Demuxer {
     }
 
     pub(super) fn handle_pat_section(&mut self, section: &[u8]) {
-        let pat = match parse_pat(section) {
-            Ok(p) => p,
+        let parsed = match parse_pat_section(section) {
+            Ok(s) => s,
             Err(PsiParseError::CrcMismatch { .. }) => {
                 self.queue_nonconformant(
                     StreamId {
@@ -252,38 +253,52 @@ impl super::demuxer::Demuxer {
                 );
                 return;
             }
-            Err(PsiParseError::MultiSectionUnsupported {
-                table_id,
-                last_section_number,
-            }) => {
-                self.queue_nonconformant(
-                    StreamId {
-                        pid: 0x0000,
-                        kind: StreamKind::Unknown(0),
-                        // program_number unavailable — PAT PID is not owned by a program
-                        program_number: 0,
-                    },
-                    NonConformantIssue::PsiMultiSectionUnsupported {
-                        pid: 0x0000,
-                        table_id,
-                        last_section_number,
-                    },
-                );
-                return;
-            }
             Err(_) => return,
         };
         // REF-PSI-03: validate fixed/reserved PSI syntax fields.
         self.check_psi_syntax(0x0000, 0x00, section);
+
+        // REF-PSI-02: route multi-section PATs through the reassembler so
+        // the topology diff fires atomically only on a complete section set.
+        // Single-section PATs (last_section_number == 0) bypass the reassembler.
+        let (version, programs) = if parsed.last_section_number == 0 {
+            (parsed.version, parsed.programs)
+        } else {
+            match self.pat_reassembler.accept(&parsed) {
+                PatReassemblyOutcome::Pending => return,
+                PatReassemblyOutcome::Complete(programs) => (parsed.version, programs),
+                PatReassemblyOutcome::Broken => {
+                    self.queue_nonconformant(
+                        StreamId {
+                            pid: 0x0000,
+                            kind: StreamKind::Unknown(0),
+                            // program_number unavailable — PAT PID is not owned by a program
+                            program_number: 0,
+                        },
+                        NonConformantIssue::PsiMultiSectionUnsupported {
+                            pid: 0x0000,
+                            table_id: 0x00,
+                            last_section_number: parsed.last_section_number,
+                        },
+                    );
+                    return;
+                }
+            }
+        };
+
         // Same version — nothing changed, skip the diff.
-        if Some(pat.version) == self.pat_version {
+        if Some(version) == self.pat_version {
             return;
         }
-        self.pat_version = Some(pat.version);
+        self.pat_version = Some(version);
+        self.apply_pat_programs(&programs);
+    }
 
+    /// Apply the program list from a newly-complete PAT version, performing
+    /// the topology diff (remove programs that disappeared, add new programs).
+    pub(super) fn apply_pat_programs(&mut self, programs: &[PatEntry]) {
         // Build the set of PMT PIDs in the new PAT, skipping program 0 (NIT).
-        let new_pmt_pids: HashSet<u16> = pat
-            .programs
+        let new_pmt_pids: HashSet<u16> = programs
             .iter()
             .filter(|e| e.program_number != 0)
             .map(|e| e.pid)
@@ -340,7 +355,7 @@ impl super::demuxer::Demuxer {
 
         // Add empty trackers for programs that are new in this PAT version.
         // PMT contents will populate them when handle_pmt_section fires.
-        for entry in &pat.programs {
+        for entry in programs {
             if entry.program_number == 0 {
                 continue; // program 0 = Network PID, not a real program
             }

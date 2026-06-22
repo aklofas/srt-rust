@@ -74,11 +74,23 @@ pub enum PsiParseError {
     },
 }
 
-/// Parse a fully-assembled PAT section (ISO/IEC 13818-1 §2.4.4.3).
-///
-/// Bytes must include the 4-byte CRC-32/MPEG-2 trailer; the function
-/// verifies the CRC over the section header + payload.
-pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
+/// A single parsed PAT section (ISO/IEC 13818-1 §2.4.4.3), including its
+/// program loop. Unlike [`parse_pat`], this does NOT reject multi-section
+/// tables — the caller reassembles them (REF-PSI-02).
+#[derive(Debug)]
+pub(super) struct PatSection {
+    pub(super) transport_stream_id: u16,
+    pub(super) version: u8,
+    pub(super) current_next_indicator: bool,
+    pub(super) section_number: u8,
+    pub(super) last_section_number: u8,
+    pub(super) programs: Vec<PatEntry>,
+}
+
+/// Parse one PAT section including its program loop. Performs the full
+/// ISO/IEC 13818-1 §2.4.4.3 validation; the multi-section rejection lives
+/// in [`parse_pat`].
+pub(super) fn parse_pat_section(section: &[u8]) -> Result<PatSection, PsiParseError> {
     // Minimum: 8-byte fixed header + 4-byte CRC32 = 12 bytes; add 4 per program.
     if section.len() < 12 {
         return Err(PsiParseError::Truncated {
@@ -136,18 +148,8 @@ pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
     if !current_next_indicator {
         return Err(PsiParseError::FuturePsiSection);
     }
-    // Per ISO/IEC 13818-1 §2.4.4.5, last_section_number > 0 means the
-    // table is split across multiple sections that the caller must
-    // reassemble. Current demuxer scope handles single-section tables
-    // only; reject multi-section so the caller can surface a
-    // NonConformant event. Full §2.4.4.5 reassembly is deferred.
+    let section_number = section[6];
     let last_section_number = section[7];
-    if last_section_number != 0 {
-        return Err(PsiParseError::MultiSectionUnsupported {
-            table_id: 0x00,
-            last_section_number,
-        });
-    }
     // Program loop runs from byte 8 to byte total_len - 4 (exclusive — that's the CRC).
     let mut programs = Vec::new();
     let mut off = 8;
@@ -163,11 +165,36 @@ pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
     if off != total_len - 4 {
         return Err(PsiParseError::MalformedProgramEntry { offset: off });
     }
-    Ok(Pat {
+    Ok(PatSection {
         transport_stream_id,
         version,
         current_next_indicator,
+        section_number,
+        last_section_number,
         programs,
+    })
+}
+
+/// Parse a fully-assembled PAT section (ISO/IEC 13818-1 §2.4.4.3).
+///
+/// Bytes must include the 4-byte CRC-32/MPEG-2 trailer; the function
+/// verifies the CRC over the section header + payload.
+///
+/// This function rejects multi-section tables (`last_section_number != 0`);
+/// multi-section reassembly is handled internally by the `Demuxer` (REF-PSI-02).
+pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
+    let s = parse_pat_section(section)?;
+    if s.last_section_number != 0 {
+        return Err(PsiParseError::MultiSectionUnsupported {
+            table_id: 0x00,
+            last_section_number: s.last_section_number,
+        });
+    }
+    Ok(Pat {
+        transport_stream_id: s.transport_stream_id,
+        version: s.version,
+        current_next_indicator: s.current_next_indicator,
+        programs: s.programs,
     })
 }
 

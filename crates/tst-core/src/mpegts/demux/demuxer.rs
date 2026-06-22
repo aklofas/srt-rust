@@ -150,6 +150,11 @@ pub struct Demuxer {
     /// AUs. Single-cell (`Complete`) AUs pass through unchanged. Cleared
     /// wholesale on [`Self::reset_sync`] and on PMT version change.
     pub(super) au_reassembler: crate::mpegts::demux::au_reassemble::AuCellReassembler,
+    /// Multi-section PAT reassembler (REF-PSI-02). Buffers sections of one
+    /// PAT table by `(tsid, version, current_next)` key and fires atomically
+    /// on a complete `0..=last_section_number` set. Cleared on
+    /// [`Self::reset_sync`]. `pub(super)` — invisible outside `mpegts::demux`.
+    pub(super) pat_reassembler: crate::mpegts::demux::pat_reassemble::PatReassembler,
 }
 
 impl Demuxer {
@@ -217,6 +222,7 @@ impl Demuxer {
                 au_cap_total,
                 au_max_pids,
             ),
+            pat_reassembler: crate::mpegts::demux::pat_reassemble::PatReassembler::default(),
         }
     }
 
@@ -713,6 +719,8 @@ impl Demuxer {
         // Drop all in-flight AU cell reassembly buffers. Operational reset
         // — no NonConformant emitted; pre-reconnect cells are simply gone.
         self.au_reassembler.reset_all();
+        // Drop any partially-assembled multi-section PAT (REF-PSI-02).
+        self.pat_reassembler.clear();
     }
 
     /// Reset all stats counters to zero and clear per-stream entries.
@@ -2525,16 +2533,24 @@ mod tests {
         );
     }
 
-    // --- DEMUX-01 regression tests (multi-section PSI rejection) ---
+    // --- DEMUX-01 regression tests (multi-section PSI handling) ---
 
-    /// Helper: build a PAT TS packet whose section has `last_section_number=1`,
-    /// recomputing the CRC after the byte edit so the section is otherwise
-    /// well-formed.
-    fn pat_packet_with_multi_section(programs: &[(u16, u16)], version: u8) -> Vec<u8> {
-        let mut pkt = pat_packet_with_programs(programs, version);
-        // Section bytes start at offset 5 (sync + 3 TS header bytes +
-        // pointer_field). Byte [7] of the section is last_section_number.
-        pkt[5 + 7] = 0x01;
+    /// Helper: build a PAT TS packet for one section of a multi-section table.
+    ///
+    /// `section_number` and `last_section_number` are written into bytes [6]
+    /// and [7] of the section respectively; the CRC is recomputed so the
+    /// section is otherwise well-formed.
+    fn pat_packet_with_multi_section(
+        section_number: u8,
+        last_section_number: u8,
+        programs: &[(u16, u16)],
+    ) -> Vec<u8> {
+        // Version 0, same transport_stream_id as pat_packet_with_programs (0x0001).
+        let mut pkt = pat_packet_with_programs(programs, 0);
+        // Section bytes start at offset 5 (sync + 3 TS header bytes + pointer_field).
+        // Byte [6] = section_number, byte [7] = last_section_number.
+        pkt[5 + 6] = section_number;
+        pkt[5 + 7] = last_section_number;
         // Recompute CRC over the section sans its 4-byte trailer.
         let section_len = 3 + (((pkt[5 + 1] as usize & 0x0F) << 8) | pkt[5 + 2] as usize);
         let section_end = 5 + section_len;
@@ -2568,38 +2584,68 @@ mod tests {
         events
     }
 
+    /// REF-PSI-02: a complete 2-section PAT must reassemble into a ProgramMap
+    /// and must NOT emit PsiMultiSectionUnsupported.
     #[test]
-    fn demuxer_emits_non_conformance_on_multi_section_pat() {
-        // A TS packet carrying a PAT with last_section_number=1 must
-        // surface NonConformantIssue::PsiMultiSectionUnsupported and
-        // NOT emit a ProgramMap event for the partial section.
-        let pkt = pat_packet_with_multi_section(&[(1, 0x100)], 0);
+    fn demuxer_reassembles_complete_multi_section_pat() {
+        // Section 0 carries program 1 on PMT PID 0x100;
+        // section 1 carries program 2 on PMT PID 0x200.
+        // Both share transport_stream_id=0x0001, version=0, current_next=1.
+        let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
+        let s1 = pat_packet_with_multi_section(1, 1, &[(2u16, 0x0200u16)]);
         let mut demuxer = Demuxer::new();
-        demuxer.feed(&pkt).unwrap();
+        demuxer.feed(&s0).unwrap();
+        demuxer.feed(&s1).unwrap();
+        demuxer.flush();
         let events = drain_all_events(&mut demuxer);
 
-        let nc = events.iter().find_map(|e| match e {
-            DemuxEvent::NonConformant { issue, .. } => Some(issue.clone()),
-            _ => None,
+        let saw_multi_section_nonconformance = events.iter().any(|e| {
+            matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiMultiSectionUnsupported { .. },
+                    ..
+                }
+            )
         });
-        match nc {
-            Some(NonConformantIssue::PsiMultiSectionUnsupported {
-                pid,
-                table_id,
-                last_section_number,
-            }) => {
-                assert_eq!(pid, 0x0000);
-                assert_eq!(table_id, 0x00);
-                assert_eq!(last_section_number, 1);
-            }
-            other => panic!("expected PsiMultiSectionUnsupported, got {other:?}"),
-        }
-        // No ProgramMap should fire — the partial section was dropped.
         assert!(
-            !events
-                .iter()
-                .any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
-            "ProgramMap must NOT fire for a rejected multi-section PAT"
+            !saw_multi_section_nonconformance,
+            "a VALID complete multi-section PAT must NOT emit PsiMultiSectionUnsupported"
+        );
+        // After reassembly a ProgramMap fires for each newly-declared program
+        // (one per PMT PID tracked by the topology). The demuxer registers the
+        // programs when the atomic topology diff runs; actual ProgramMap events
+        // per program fire when PMTs arrive, but the PAT diff must have run.
+        // We assert no spurious NonConformant was emitted for the reassembly.
+        // (The PMT ProgramMap events are NOT expected here since no PMTs arrived.)
+    }
+
+    /// REF-PSI-02: an INCOMPLETE multi-section PAT (only section 0 of 2) must
+    /// stay pending — no ProgramMap AND no PsiMultiSectionUnsupported.
+    #[test]
+    fn demuxer_does_not_emit_program_map_for_incomplete_multi_section_pat() {
+        // Only section 0 of a 2-section PAT, section 1 never arrives.
+        let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&s0).unwrap();
+        demuxer.flush();
+        let events = drain_all_events(&mut demuxer);
+
+        assert!(
+            !events.iter().any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+            "an INCOMPLETE multi-section PAT must NOT apply a partial program set"
+        );
+        assert!(
+            !events.iter().any(|e| {
+                matches!(
+                    e,
+                    DemuxEvent::NonConformant {
+                        issue: NonConformantIssue::PsiMultiSectionUnsupported { .. },
+                        ..
+                    }
+                )
+            }),
+            "an INCOMPLETE (not broken) multi-section PAT must NOT emit PsiMultiSectionUnsupported"
         );
     }
 

@@ -4,8 +4,10 @@
 //! config description (one entry per elementary stream, decoded by Java enum
 //! ORDINAL) into a [`MuxerConfig`] via the `tst_core` builders, boxes the
 //! [`Muxer`], and returns the raw pointer as a `jlong` handle. The push family
-//! (`nPushVideo` / `nPushKlv` / `nPushAudio` / `nPushSubtitle` / `nPushData` /
-//! `nPushDataTo`) reads the Java `byte[]`, calls the matching `Muxer::push_*`,
+//! (`nPushVideo` / `nPushVideoWire` / `nPushKlv` / `nPushAudio` / `nPushSubtitle` /
+//! `nPushData` / `nPushDataTo` / `nPushVideoTo` / `nPushVideoWireTo` /
+//! `nPushKlvTo` / `nPushAudioTo` / `nPushSubtitleTo`) reads the Java `byte[]`,
+//! calls the matching `Muxer::push_*`,
 //! and maps any [`MuxError`] to a thrown `org.tstrans.MuxException` via
 //! [`throw_mux_error`]. `nDataHandles` returns the configured data-stream
 //! handles as a `long[]` of packed raws. `nPull` drains TS
@@ -482,6 +484,200 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
         };
         match REGISTRY.with(handle as u64, |mux| {
             mux.push_data_to(h, &buf, Pts90khz::new(pts))
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)` — targeted
+/// Annex-B AU push. The raw stream handle is validated via
+/// `VideoStreamHandle::try_from_raw`; a forged/cross-muxer value surfaces as
+/// `MuxException(INVALID_USAGE)` here.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&nal) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushVideoWireTo(handle, streamHandleRaw, wire, pts, keyFrame)` — targeted
+/// on-wire AU push (emits `wire` verbatim, no Annex-B validation or AV1
+/// re-wrapping). The raw stream handle is validated via
+/// `VideoStreamHandle::try_from_raw`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    wire: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&wire) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_video_wire_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)` —
+/// targeted KLV push. The raw stream handle is validated via
+/// `KlvStreamHandle::try_from_raw`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlvTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    klv: JByteArray<'local>,
+    pts: jlong,
+    metadata_service_id: jint,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| KlvStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid klv stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&klv) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_klv_to(h, &buf, Pts90khz::new(pts), metadata_service_id as u8)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushAudioTo(handle, streamHandleRaw, frames, pts)` — targeted audio
+/// push. The raw stream handle is validated via
+/// `AudioStreamHandle::try_from_raw`. Note the core's `push_audio_to` takes
+/// `(handle, pts, frames)` — the JNI argument order (frames before pts) matches
+/// the Java-facing API convention; the core call re-orders them.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudioTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    frames: JByteArray<'local>,
+    pts: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| AudioStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid audio stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&frames) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        // Core: push_audio_to(handle, pts, frames) — pts before frames.
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_audio_to(h, Pts90khz::new(pts), &buf)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)` — targeted
+/// subtitle push. The raw stream handle is validated via
+/// `SubtitleStreamHandle::try_from_raw`. Note the `(pts, payload)` arg order
+/// matches the core's `push_subtitle_to`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitleTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    pts: jlong,
+    payload: JByteArray<'local>,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| SubtitleStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid subtitle stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&payload) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_subtitle_to(h, Pts90khz::new(pts), &buf)
         }) {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_mux_error(env, &e),

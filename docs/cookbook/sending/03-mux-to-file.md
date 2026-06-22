@@ -11,6 +11,7 @@ Reach for this when you want the muxer's output without any networking — build
 The drain loop is the standard pattern: push input, then pull until `pull` returns 0. Drain after every push so muxer memory stays bounded.
 
 ```rust,no_run
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 use std::fs::File;
 use std::io::Write;
@@ -23,10 +24,10 @@ fn main() -> std::io::Result<()> {
         let pts = i * 3000; // 30 fps on 90 kHz clock
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![0x06, 0x0E, 0x2B, 0x34, /* ... */];
-        mux.push_video(&nal, pts, i == 0).expect("push_video");
+        mux.push_video(&nal, Pts90khz::new(pts), i == 0).expect("push_video");
         // metadata_service_id=0x00 is the ST 1402.2 App. B Table 2 default;
         // override to mirror a non-default metadata_klva(svc) PMT descriptor.
-        mux.push_klv(&klv, pts, /*metadata_service_id=*/ 0x00).expect("push_klv");
+        mux.push_klv(&klv, Pts90khz::new(pts), /*metadata_service_id=*/ 0x00).expect("push_klv");
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 { break; }

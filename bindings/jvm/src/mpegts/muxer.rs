@@ -6,6 +6,7 @@
 //! [`Muxer`], and returns the raw pointer as a `jlong` handle. The push family
 //! (`nPushVideo` / `nPushVideoWire` / `nPushKlv` / `nPushAudio` / `nPushSubtitle` /
 //! `nPushData` / `nPushDataTo` / `nPushVideoTo` / `nPushVideoWireTo` /
+//! `nPushVideoToWithDts` / `nPushVideoWireToWithDts` /
 //! `nPushKlvTo` / `nPushAudioTo` / `nPushSubtitleTo`) reads the Java `byte[]`,
 //! calls the matching `Muxer::push_*`,
 //! and maps any [`MuxError`] to a thrown `org.tstrans.MuxException` via
@@ -562,6 +563,100 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireTo<'local>(
         };
         match REGISTRY.with(handle as u64, |mux| {
             mux.push_video_wire_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushVideoToWithDts(handle, streamHandleRaw, nal, pts, dts, keyFrame)` —
+/// targeted Annex-B AU push with an explicit decode timestamp. The raw stream
+/// handle is validated via `VideoStreamHandle::try_from_raw`; a forged/cross-
+/// muxer value surfaces as `MuxException(INVALID_USAGE)`. The PES header will
+/// carry `PTS_DTS_flags = '11'`, enabling demux of a non-null
+/// `DemuxEvent.Video.dts`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoToWithDts<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    dts: jlong,
+    key_frame: jboolean,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&nal) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_video_to_with_dts(
+                h,
+                &buf,
+                Pts90khz::new(pts),
+                Pts90khz::new(dts),
+                key_frame != 0,
+            )
+        }) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => throw_mux_error(env, &e),
+            None => closed(env),
+        }
+    })
+}
+
+/// `nPushVideoWireToWithDts(handle, streamHandleRaw, wire, pts, dts, keyFrame)` —
+/// targeted on-wire AU push with an explicit decode timestamp. Emits `wire`
+/// verbatim — no Annex-B validation or AV1 re-wrapping. The raw stream handle is
+/// validated via `VideoStreamHandle::try_from_raw`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    wire: JByteArray<'local>,
+    pts: jlong,
+    dts: jlong,
+    key_frame: jboolean,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = u32::try_from(stream_handle_raw)
+            .ok()
+            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let buf = match env.convert_byte_array(&wire) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+                return;
+            }
+        };
+        match REGISTRY.with(handle as u64, |mux| {
+            mux.push_video_wire_to_with_dts(
+                h,
+                &buf,
+                Pts90khz::new(pts),
+                Pts90khz::new(dts),
+                key_frame != 0,
+            )
         }) {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_mux_error(env, &e),

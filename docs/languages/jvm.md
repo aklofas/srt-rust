@@ -124,6 +124,29 @@ try (Muxer m = new Muxer(cfg);
   variant for multi-data-stream configs; obtain handles from
   `Muxer.dataHandles()` / `dataStreamHandle(int)`.
 
+The full handle-targeted push family for the typed stream kinds:
+
+- `pushVideoTo(VideoStreamHandle handle, byte[] nal, long pts, boolean keyFrame)` — push a NAL to a specific video stream; required when more than one video stream is configured.
+- `pushVideoWireTo(VideoStreamHandle handle, byte[] wire, long pts, boolean keyFrame)` — push an on-wire video AU verbatim (no Annex-B validation; for byte-faithful transmux where `raw()` is fed back directly).
+- `pushKlvTo(KlvStreamHandle handle, byte[] klv, long pts, int metadataServiceId)` — push KLV to a specific stream.
+- `pushAudioTo(AudioStreamHandle handle, byte[] frames, long pts)` — push audio to a specific stream.
+- `pushSubtitleTo(SubtitleStreamHandle handle, long pts, byte[] payload)` — push subtitle to a specific stream (note `(pts, payload)` argument order, matching `pushSubtitle`).
+
+DTS-aware push variants for B-frame-reordered video streams:
+
+- `pushVideoToWithDts(VideoStreamHandle handle, byte[] nal, long pts, long dts, boolean keyFrame)` — Annex-B NAL with explicit DTS; writes `PTS_DTS_flags = '11'` (ISO/IEC 13818-1 §2.4.3.6) in the PES header.
+- `pushVideoWireToWithDts(VideoStreamHandle handle, byte[] wire, long pts, long dts, boolean keyFrame)` — on-wire AU with explicit DTS.
+
+Per-stream handle accessors — obtain handles at mux time and use them with the
+`*To` variants above:
+
+- `List<VideoStreamHandle> videoHandles()` — all configured video stream handles (across all programs).
+- `Optional<VideoStreamHandle> videoStreamHandle(int index)` — get the video handle by zero-based position in the config.
+- `List<AudioStreamHandle> audioHandles()` / `Optional<AudioStreamHandle> audioStreamHandle(int index)` — same shape for audio.
+- `List<KlvStreamHandle> klvHandles()` / `Optional<KlvStreamHandle> klvStreamHandle(int index)` — same shape for KLV.
+- `List<SubtitleStreamHandle> subtitleHandles()` — subtitle handles (no `Optional` single-accessor yet).
+- `List<DataStreamHandle> dataHandles()` / `Optional<DataStreamHandle> dataStreamHandle(int index)` — same shape for data streams.
+
 Each `push*` targets the lone stream of that kind; a muxer configured with
 zero or more than one stream of the kind throws `MuxException(INVALID_USAGE)`.
 Build the `MuxerConfig` with `addVideo` / `addKlv` / `addAudio` / `addSubtitle`
@@ -136,13 +159,10 @@ as a typed kind, …) runs in the native `Muxer` constructor and surfaces as
 `MuxException(CONFIG_INVALID)`.
 
 > **Scope.** This binding's `MuxerConfig` is single-program; multi-program
-> configs are deferred. For the typed kinds (video / KLV / audio / subtitle),
-> per-stream descriptors, the `*To(handle, …)` multi-stream variants, and
-> handle accessors are also deferred on the offline `Muxer` — **data streams
-> are the exception**: they get `streamDescriptorsForData`, `pushDataTo`, and
-> the `dataHandles()` / `dataStreamHandle(int)` accessors today. DVB-subtitle
-> codec configuration is deferred; `addSubtitle` accepts the no-config codecs
-> (`CEA708_STANDALONE` / `WEBVTT_IN_TS`).
+> configs are deferred. DVB-subtitle codec configuration is deferred;
+> `addSubtitle` accepts the no-config codecs (`CEA708_STANDALONE` /
+> `WEBVTT_IN_TS`). Per-stream descriptors for the typed kinds (video / KLV /
+> audio / subtitle) are deferred.
 
 ## First receive
 

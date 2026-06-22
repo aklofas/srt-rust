@@ -121,6 +121,21 @@ impl PyHlsPublisher {
             .map_err(|e| map_hls_error(py, &e))
     }
 
+    /// Hint a new segment, supplying its media-presentation duration in
+    /// microseconds. Records this as `#EXTINF` instead of wall-clock time.
+    fn cut_segment_with_duration(&self, py: Python<'_>, media_duration_us: u64) -> PyResult<()> {
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("HlsPublisher mutex poisoned"))?;
+        let inner = guard
+            .as_mut()
+            .ok_or_else(|| make_hls_error(py, "FINISHED", "HlsPublisher finished"))?;
+        let dur = std::time::Duration::from_micros(media_duration_us);
+        py.allow_threads(|| Publisher::cut_segment_with_duration(inner, dur))
+            .map_err(|e| map_hls_error(py, &e))
+    }
+
     /// Finalize: flush the open segment, write the terminal playlist,
     /// tear down the HTTP server. **Consumes** the inner publisher;
     /// subsequent calls raise `HlsError(FINISHED)`.

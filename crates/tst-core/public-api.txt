@@ -5437,6 +5437,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::publisher::PublisherStat
 pub trait tst_core::publisher::Publisher
 pub type tst_core::publisher::Publisher::Error: core::error::Error + core::marker::Send + core::marker::Sync + 'static
 pub fn tst_core::publisher::Publisher::cut_segment(&mut self) -> core::result::Result<(), Self::Error>
+pub fn tst_core::publisher::Publisher::cut_segment_with_duration(&mut self, core::time::Duration) -> core::result::Result<(), Self::Error>
 pub fn tst_core::publisher::Publisher::finish(self) -> core::result::Result<(), Self::Error> where Self: core::marker::Sized
 pub fn tst_core::publisher::Publisher::push_ts(&mut self, &[u8]) -> core::result::Result<(), Self::Error>
 pub fn tst_core::publisher::Publisher::stats(&self) -> tst_core::publisher::PublisherStats

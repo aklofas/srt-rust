@@ -29,7 +29,7 @@ pub use parse::{
 
 /// Errors returned by descriptor builder helpers in this module.
 ///
-/// Two failure modes today:
+/// Three failure modes today:
 ///
 /// - [`DescriptorError::EmptyEntries`] — empty `entries` arguments
 ///   produce a degenerate `tag 0x00` descriptor that the demux parser
@@ -43,6 +43,9 @@ pub use parse::{
 ///   behavior was changed to a hard error in validate-1 C5 because
 ///   silent truncation produces malformed PSI without surfacing the bug
 ///   to the caller.
+/// - [`DescriptorError::InvalidComponent`] — invalid `stream_content_ext`
+///   / `stream_content` combination passed to [`component`] per
+///   EN 300 468 §6.2.8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DescriptorError {
@@ -66,6 +69,14 @@ pub enum DescriptorError {
     /// [`subtitling_descriptor_multi`], [`teletext_descriptor_multi`].
     #[error("descriptor tag 0x{tag:02X}: payload length {len} exceeds spec maximum of {max} bytes")]
     TooLarge { tag: u8, len: usize, max: usize },
+
+    /// `component()` was given an invalid `stream_content_ext` /
+    /// `stream_content` combination per EN 300 468 §6.2.8 (a nibble > 0xF,
+    /// or `ext != 0xF` for a legacy `stream_content` in `0x1..=0x8`).
+    #[error(
+        "component descriptor: invalid stream_content_ext 0x{ext:X} for stream_content 0x{content:X} (EN 300 468 §6.2.8)"
+    )]
+    InvalidComponent { ext: u8, content: u8 },
 }
 
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
@@ -194,22 +205,44 @@ pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Result<Vec<u8>, Descrip
 /// captures; included because it's the textbook "human label" slot
 /// that [`crate::mpegts::demux::low_level::extract_user_label`] reads first.
 ///
+/// `stream_content_ext` and `stream_content` are 4-bit fields that
+/// together form the first body byte: `(ext << 4) | (content & 0x0F)`.
+/// Per EN 300 468 V1.19.1 §6.2.8, `ext` shall be `0xF` for the legacy
+/// `stream_content` values `0x1..=0x8`; non-legacy content values may
+/// carry a distinct `ext` nibble.
+///
 /// `text` is UTF-8; receivers conventionally treat the body as
 /// language-coded per the descriptor's `iso_639_language_code` field.
 ///
 /// # Errors
 ///
-/// Returns [`DescriptorError::TooLarge`] when `text.len() > 249`
-/// (255-byte `descriptor_length` ceiling minus 6 bytes of leading
-/// fields = 249 bytes of text).
+/// - [`DescriptorError::InvalidComponent`] when either nibble exceeds
+///   `0xF`, or when `stream_content ∈ 0x1..=0x8` and `stream_content_ext
+///   != 0xF` (EN 300 468 §6.2.8 requires `ext=0xF` for legacy content).
+/// - [`DescriptorError::TooLarge`] when `text.len() > 249`
+///   (255-byte `descriptor_length` ceiling minus 6 bytes of leading
+///   fields = 249 bytes of text).
 pub fn component(
+    stream_content_ext: u8,
     stream_content: u8,
     component_type: u8,
     component_tag: u8,
     iso_639_language: [u8; 3],
     text: &str,
 ) -> Result<Vec<u8>, DescriptorError> {
-    // Cap on text: 255 (descriptor_length) - 6 (stream_content +
+    // EN 300 468 V1.19.1 §6.2.8: body byte 0 = stream_content_ext (high
+    // nibble) | stream_content (low nibble); both are 4-bit fields, and
+    // ext shall be 0xF only for the legacy content values 0x1..=0x8.
+    if stream_content_ext > 0x0F
+        || stream_content > 0x0F
+        || ((0x1..=0x8).contains(&stream_content) && stream_content_ext != 0xF)
+    {
+        return Err(DescriptorError::InvalidComponent {
+            ext: stream_content_ext,
+            content: stream_content,
+        });
+    }
+    // Cap on text: 255 (descriptor_length) - 6 (stream_content_ext/content +
     // component_type + component_tag + 3 language bytes) = 249.
     const COMPONENT_TEXT_MAX: usize = 249;
     let text_bytes = text.as_bytes();
@@ -224,7 +257,7 @@ pub fn component(
     let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x50);
     out.push(body_len as u8);
-    out.push(stream_content & 0x0F | 0xF0); // 4 reserved bits = 1, per ETSI EN 300 468 §6.2.8
+    out.push((stream_content_ext << 4) | (stream_content & 0x0F)); // EN 300 468 §6.2.8
     out.push(component_type);
     out.push(component_tag);
     out.extend_from_slice(&iso_639_language);
@@ -671,16 +704,47 @@ mod tests {
 
     #[test]
     fn component_descriptor_textbook_shape() {
-        let bytes = component(0x09, 0x00, 0x42, *b"eng", "EO 1080p").expect("within length cap");
-        // tag(1) + len(1) + (4-bit reserved + 4-bit content)(1) + type(1)
-        // + tag(1) + lang(3) + text("EO 1080p" = 8 bytes) = 16 bytes total.
-        // First body byte = 0xF0 | (0x09 & 0x0F) = 0xF9.
+        // ext=0xF, content=0x09 → first body byte 0xF9 (unchanged wire output).
+        let bytes =
+            component(0xF, 0x09, 0x00, 0x42, *b"eng", "EO 1080p").expect("within length cap");
         assert_eq!(
             bytes,
             vec![
                 0x50, 14, 0xF9, 0x00, 0x42, b'e', b'n', b'g', b'E', b'O', b' ', b'1', b'0', b'8',
-                b'0', b'p',
+                b'0', b'p'
             ]
+        );
+    }
+
+    #[test]
+    fn component_descriptor_encodes_non_legacy_ext() {
+        // EN 300 468 §6.2.8: ext may be non-0xF for content outside 0x1..=0x8.
+        let bytes = component(0x2, 0x09, 0x00, 0x42, *b"eng", "x").expect("valid");
+        assert_eq!(bytes[2], 0x29);
+    }
+
+    #[test]
+    fn component_descriptor_rejects_legacy_content_with_non_f_ext() {
+        // content 0x05 ∈ 0x1..=0x8 ⇒ ext must be 0xF.
+        let err = component(0x3, 0x05, 0x00, 0x42, *b"eng", "x");
+        assert!(
+            matches!(
+                err,
+                Err(DescriptorError::InvalidComponent {
+                    ext: 0x3,
+                    content: 0x05
+                })
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn component_descriptor_rejects_oversized_nibble() {
+        let err = component(0x10, 0x00, 0x00, 0x42, *b"eng", "x");
+        assert!(
+            matches!(err, Err(DescriptorError::InvalidComponent { .. })),
+            "got {err:?}"
         );
     }
 
@@ -689,7 +753,7 @@ mod tests {
         // 250 bytes of text would overflow the 249-byte cap (6 fixed
         // bytes + 250 = 256 body > 255).
         let text: String = "A".repeat(250);
-        let err = component(0x09, 0x00, 0x42, *b"eng", &text).unwrap_err();
+        let err = component(0xF, 0x09, 0x00, 0x42, *b"eng", &text).unwrap_err();
         assert_eq!(
             err,
             DescriptorError::TooLarge {
@@ -703,7 +767,7 @@ mod tests {
     #[test]
     fn component_accepts_max_249_byte_text() {
         let text: String = "A".repeat(249);
-        let bytes = component(0x09, 0x00, 0x42, *b"eng", &text).expect("249 bytes within cap");
+        let bytes = component(0xF, 0x09, 0x00, 0x42, *b"eng", &text).expect("249 bytes within cap");
         assert_eq!(bytes[0], 0x50);
         assert_eq!(bytes[1], 255); // body length at u8 ceiling
         assert_eq!(bytes.len(), 2 + 255);

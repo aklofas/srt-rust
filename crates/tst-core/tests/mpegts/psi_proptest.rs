@@ -190,7 +190,8 @@ proptest! {
     /// (printable subset of UTF-8 — UTF-8 round-trip is identity here).
     #[test]
     fn component_descriptor_roundtrip(
-        stream_content in any::<u8>(),
+        stream_content_ext in 0u8..=0x0F,
+        stream_content in 0u8..=0x0F,
         component_type in any::<u8>(),
         component_tag in any::<u8>(),
         language in any::<[u8; 3]>(),
@@ -198,15 +199,17 @@ proptest! {
         // DescriptorError::TooLarge above 249 (validate-1 C5).
         text in "[ -~]{0,249}",
     ) {
-        let bytes = descriptors::component(stream_content, component_type, component_tag, language, &text)
+        // EN 300 468 §6.2.8: ext must be 0xF for legacy content values 0x1..=0x8.
+        prop_assume!(!(0x1..=0x8).contains(&stream_content) || stream_content_ext == 0xF);
+        let bytes = descriptors::component(stream_content_ext, stream_content, component_type, component_tag, language, &text)
             .expect("text strategy capped at 249 bytes");
         let parsed = walk_descriptors(&bytes).expect("walk");
         prop_assert_eq!(parsed.len(), 1);
         prop_assert_eq!(parsed[0].tag, 0x50);
         prop_assert_eq!(parsed[0].data.len(), 6 + text.len());
-        // First byte: low nibble = stream_content & 0x0F, high nibble = 1111
-        prop_assert_eq!(parsed[0].data[0] & 0xF0, 0xF0);
-        prop_assert_eq!(parsed[0].data[0] & 0x0F, stream_content & 0x0F);
+        // First byte: high nibble = stream_content_ext, low nibble = stream_content
+        prop_assert_eq!(parsed[0].data[0] >> 4, stream_content_ext);
+        prop_assert_eq!(parsed[0].data[0] & 0x0F, stream_content);
         prop_assert_eq!(parsed[0].data[1], component_type);
         prop_assert_eq!(parsed[0].data[2], component_tag);
         prop_assert_eq!(&parsed[0].data[3..6], &language[..]);

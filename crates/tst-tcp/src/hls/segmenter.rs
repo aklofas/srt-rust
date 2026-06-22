@@ -71,7 +71,12 @@ impl Segmenter {
             }
         }
 
-        let target_duration_secs = config.segment_duration.as_secs_f64().ceil().max(1.0) as u64;
+        // Integer ceil-of-seconds: the target is a conformance-critical value
+        // (RFC 8216 §4.3.3.1/§6.2.1), so compute it exactly without f64 rounding
+        // — `subsec_nanos() > 0` rounds a fractional duration up.
+        let target_duration_secs = (config.segment_duration.as_secs()
+            + u64::from(config.segment_duration.subsec_nanos() > 0))
+        .max(1);
 
         Ok(Self {
             config,
@@ -239,10 +244,15 @@ impl Segmenter {
         let now = Instant::now();
         let target = Duration::from_secs(self.target_duration_secs);
         // RFC 8216 §6.2.2: never let the live playlist fall below 3× target.
-        let min_duration = target * 3;
+        // `playlist_window`/`segment_duration` are caller-controlled (settable
+        // via URL), so use clamped/checked arithmetic: an absurd value must
+        // neither truncate the retention window (early grace deletion → 404)
+        // nor overflow `Duration` (debug panic).
+        let min_duration = target.checked_mul(3).unwrap_or(Duration::MAX);
         // Conservative bound on "the longest Playlist file" that referenced a
         // segment: the full window at target duration.
-        let longest_playlist = target * self.config.playlist_window as u32;
+        let window_u32 = u32::try_from(self.config.playlist_window).unwrap_or(u32::MAX);
+        let longest_playlist = target.checked_mul(window_u32).unwrap_or(Duration::MAX);
 
         let mut total: Duration = self.history.iter().map(|s| s.duration).sum();
         while self.history.len() > self.config.playlist_window {

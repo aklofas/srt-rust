@@ -107,18 +107,24 @@ impl HlsConfig {
             }
             // RFC 8216 §6.2.2: a live playlist must be able to hold ≥ 3 target
             // durations. target = ceil(segment_duration); reject windows too
-            // small to ever reach 3× target with target-sized segments.
-            let target = self.segment_duration.as_secs_f64().ceil().max(1.0);
-            let window_secs = self.playlist_window as f64 * self.segment_duration.as_secs_f64();
-            if window_secs < 3.0 * target {
+            // small to ever reach 3× target with target-sized segments. The
+            // comparison is done in integer nanoseconds (u128) so a config
+            // exactly on the boundary classifies exactly — floats are used only
+            // to format the error message.
+            let target_secs = (self.segment_duration.as_secs()
+                + u64::from(self.segment_duration.subsec_nanos() > 0))
+            .max(1);
+            let window_nanos = self.playlist_window as u128 * self.segment_duration.as_nanos();
+            let min_nanos = 3u128 * u128::from(target_secs) * 1_000_000_000u128;
+            if window_nanos < min_nanos {
                 return Some(format!(
                     "playlist_window ({}) too small: {} × {:.3}s = {:.3}s cannot hold \
-                     3 × target duration ({:.0}s) (RFC 8216 §6.2.2)",
+                     3 × target duration ({}s) (RFC 8216 §6.2.2)",
                     self.playlist_window,
                     self.playlist_window,
                     self.segment_duration.as_secs_f64(),
-                    window_secs,
-                    3.0 * target,
+                    self.playlist_window as f64 * self.segment_duration.as_secs_f64(),
+                    3 * target_secs,
                 ));
             }
         }

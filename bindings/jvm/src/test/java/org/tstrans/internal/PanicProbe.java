@@ -33,19 +33,20 @@ public final class PanicProbe {
 
     // --- RTSP-surface panic-routing probes (JNI-01 completion) --------------
     /**
-     * Force a panic through the REAL {@code REGISTRY_MOUNT.with_poisoning} on a
-     * leased {@code MountHandle} (exactly as a real {@code pushVideo}/{@code flush}
-     * would route), surfacing as {@link RuntimeException}. After this returns the
-     * mount entry is poisoned: a later real mount op throws
-     * {@link IllegalStateException}. Proves the RTSP mount mutators are wired to
-     * the poisoning path.
+     * Force a panic through the production {@code with_mount_poisoning} helper (the
+     * one the {@code pushVideo}/{@code flush} family routes through) on a leased
+     * {@code MountHandle}, surfacing as {@link RuntimeException}. After this returns
+     * the mount entry is poisoned: a later real mount op throws
+     * {@link IllegalStateException}. Demonstrates the helper poisoning a real mount
+     * handle; the per-native routing is verified in {@code rtp/server.rs}.
      */
     public static native void nForcePanicThroughMount(long mountHandle);
     /**
-     * Force a panic through the REAL {@code REGISTRY_SERVER.with_poisoning} on a
-     * leased {@code RtspServer} (as a real {@code stop}/{@code addUnicastMount}
-     * would route), surfacing as {@link RuntimeException} and poisoning the server
-     * entry. Proves the RTSP server mutators are wired to the poisoning path.
+     * Force a panic through the production {@code with_server_poisoning} helper (the
+     * one {@code stop}/{@code addUnicastMount} route through) on a leased
+     * {@code RtspServer}, surfacing as {@link RuntimeException} and poisoning the
+     * server entry. Demonstrates the helper poisoning a real server handle; the
+     * per-native routing is verified in {@code rtp/server.rs}.
      */
     public static native void nForcePanicThroughServer(long serverHandle);
 }

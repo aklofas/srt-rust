@@ -1269,17 +1269,20 @@ pub extern "system" fn Java_org_tstrans_rtp_MountHandle_nClose(
 
 // ---------------------------------------------------------------------------
 // Test-only panic-routing probes (feature = "jni-test-hooks"). These force a
-// panic THROUGH the REAL RTSP registries on a real leased handle to prove the
-// mutating natives' `with_*_poisoning` routing poisons the entry end-to-end
-// (the generic `PanicProbe` proves `with_poisoning` in isolation; these prove
-// THIS surface is actually wired to it). Never compiled into the shipped JAR.
+// panic through the production `with_mount_poisoning` / `with_server_poisoning`
+// helpers — the very helpers the RTSP mutating natives route through — on a real
+// leased handle, proving the helper poisons the entry end-to-end so a later real
+// op throws. The generic `PanicProbe` proves `with_poisoning` in isolation; these
+// exercise it on a real RTSP handle via the production helper. (That each native
+// is wired to the helper is a code fact — see the routing above.) Never compiled
+// into the shipped JAR.
 // ---------------------------------------------------------------------------
 
-/// `org.tstrans.internal.PanicProbe.nForcePanicThroughMount(long)` — run a panic
-/// through `REGISTRY_MOUNT.with_poisoning` on the leased `MountHandle`, exactly
-/// as a real `nPush*`/`nFlush` would. The outer `jni_catch` surfaces the panic
-/// as a `RuntimeException`; the entry is poisoned, so a subsequent real mount op
-/// leases `None` → `IllegalStateException`.
+/// `org.tstrans.internal.PanicProbe.nForcePanicThroughMount(long)` — force a
+/// panic through the production `with_mount_poisoning` helper (the one the
+/// `nPush*`/`nFlush` family routes through) on the leased `MountHandle`. The
+/// outer `jni_catch` surfaces the panic as a `RuntimeException`; the entry is
+/// poisoned, so a subsequent real mount op leases `None` → `IllegalStateException`.
 #[cfg(feature = "jni-test-hooks")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughMount(
@@ -1287,17 +1290,17 @@ pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughMo
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    crate::panic::jni_catch(&mut env, (), |_env| {
-        REGISTRY_MOUNT.with_poisoning(handle as u64, |_inner| {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        with_mount_poisoning(env, handle, |_inner| {
             panic!("probe: torn mount mutation (jni-test-hooks)");
         });
     })
 }
 
-/// `org.tstrans.internal.PanicProbe.nForcePanicThroughServer(long)` — run a
-/// panic through `REGISTRY_SERVER.with_poisoning` on the leased `RtspServer`,
-/// exactly as a real `nStop`/`nAdd*Mount` would. Poisons the server entry; a
-/// later real server op then throws `IllegalStateException`.
+/// `org.tstrans.internal.PanicProbe.nForcePanicThroughServer(long)` — force a
+/// panic through the production `with_server_poisoning` helper (the one
+/// `nStop`/`nAdd*Mount` route through) on the leased `RtspServer`. Poisons the
+/// server entry; a later real server op then throws `IllegalStateException`.
 #[cfg(feature = "jni-test-hooks")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughServer(
@@ -1305,8 +1308,8 @@ pub extern "system" fn Java_org_tstrans_internal_PanicProbe_nForcePanicThroughSe
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    crate::panic::jni_catch(&mut env, (), |_env| {
-        REGISTRY_SERVER.with_poisoning(handle as u64, |_server| {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        with_server_poisoning(env, handle, |_server| {
             panic!("probe: torn server mutation (jni-test-hooks)");
         });
     })

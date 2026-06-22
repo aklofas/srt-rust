@@ -162,7 +162,7 @@ public final class RtspServer implements AutoCloseable {
 
     /**
      * Test-only: the raw native handle, for routing a panic through the real
-     * {@code REGISTRY_SERVER} in {@code PanicIsolationTest} (proves the server
+     * {@code REGISTRY_SERVER} in {@code RtspPanicPoisoningTest} (proves the server
      * mutators are wired to {@code with_server_poisoning}). Package-private,
      * mirrors the {@code *ForTest} convention in {@code Klv}.
      */

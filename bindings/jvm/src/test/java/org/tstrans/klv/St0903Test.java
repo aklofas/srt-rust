@@ -459,4 +459,44 @@ class St0903Test {
         assertTrue(wire.length >= 16, "Standalone must start with 16-byte UL");
         assertEquals((byte) 0x06, wire[0], "First byte must be 0x06 (SMPTE designator)");
     }
+
+    // -----------------------------------------------------------------------
+    // REF-KLV-04: large-value (>0xFFFF_FFFF) round-trip for target_id + pixels
+    // -----------------------------------------------------------------------
+
+    @Test
+    void largeTargetIdAndPixelRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        // target_id + Tags 1/2/3 (centroidPixel/bboxTopLeft/bboxBottomRight) are u64 (V6,
+        // max 6 bytes), so values above u32::MAX are wire-valid and round-trip cleanly.
+        // Tags 19/20 (centroidPixRow/Col) are V4 (max 4 bytes per §10.2.2.20/.21), so they
+        // are widened to u64 in the model but wire values must stay within u32 range.
+        long bigTargetId = 0x1_0000_0001L; // 4294967297 — just above u32::MAX
+        long bigPixel    = 0x1_FFFF_FFFFL; // 8589934591 — above u32::MAX, valid V6
+        long u32MaxRow   = 0xFFFF_FFFFL;   // u32::MAX — max valid for V4 fields
+
+        VTargetPack pack = new VTargetPack.Builder(bigTargetId)
+                .centroidPixel(bigPixel)
+                .bboxTopLeftPixel(bigPixel + 1L)
+                .bboxBottomRightPixel(bigPixel + 2L)
+                .centroidPixRow(u32MaxRow)      // V4: max 4 bytes, keep within u32
+                .centroidPixCol(u32MaxRow - 1L) // V4: max 4 bytes, keep within u32
+                .build();
+
+        VmtiLs vmti = new VmtiLs.Builder()
+                .versionNumber(6)
+                .targets(java.util.List.of(pack))
+                .build();
+
+        byte[] encoded = Klv.encodeVmti(vmti);
+        VmtiLs decoded = Klv.decodeVmti(encoded);
+
+        assertEquals(1, decoded.targets().size());
+        VTargetPack p = decoded.targets().get(0);
+        assertEquals(bigTargetId, p.targetId(), "targetId round-trips across u64 boundary");
+        assertEquals(Long.valueOf(bigPixel),       p.centroidPixel(),        "centroidPixel (V6)");
+        assertEquals(Long.valueOf(bigPixel + 1L),  p.bboxTopLeftPixel(),     "bboxTopLeftPixel (V6)");
+        assertEquals(Long.valueOf(bigPixel + 2L),  p.bboxBottomRightPixel(), "bboxBottomRightPixel (V6)");
+        assertEquals(Long.valueOf(u32MaxRow),      p.centroidPixRow(),       "centroidPixRow (V4 max)");
+        assertEquals(Long.valueOf(u32MaxRow - 1L), p.centroidPixCol(),       "centroidPixCol (V4 max-1)");
+    }
 }

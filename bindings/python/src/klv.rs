@@ -715,7 +715,7 @@ fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
     let py = p.py();
 
     // BER-OID `target_id` (mandatory, no Tag).
-    r.target_id = p.getattr(intern!(py, "target_id"))?.extract::<u32>()?;
+    r.target_id = p.getattr(intern!(py, "target_id"))?.extract::<u64>()?;
 
     macro_rules! op {
         ($field:ident, $ty:ty) => {
@@ -738,9 +738,9 @@ fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
         };
     }
 
-    op!(centroid_pixel, u32);
-    op!(bbox_top_left_pixel, u32);
-    op!(bbox_bottom_right_pixel, u32);
+    op!(centroid_pixel, u64);
+    op!(bbox_top_left_pixel, u64);
+    op!(bbox_bottom_right_pixel, u64);
     op!(priority, u8);
     op!(confidence_level, u8);
     op!(history, u16);
@@ -772,8 +772,8 @@ fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
     op!(bbox_bottom_right_lon_offset, f64);
     ob!(target_location);
     ob!(geospatial_contour_series);
-    op!(centroid_pix_row, u32);
-    op!(centroid_pix_col, u32);
+    op!(centroid_pix_row, u64);
+    op!(centroid_pix_col, u64);
     op!(algorithm_id, u32);
     op!(detection_status, u8);
     ob!(vmask);

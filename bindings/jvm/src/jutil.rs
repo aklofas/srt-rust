@@ -236,6 +236,20 @@ pub fn checked_u32(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Re
     Ok(value as u32)
 }
 
+/// Convert a Java `long` (carrying an unsigned ST 0903 u64 value) to `u64`,
+/// rejecting only a negative `i64` (which is a caller bug — Java has no
+/// unsigned primitive, so large values arrive as a bit-pattern `long`).
+pub fn checked_u64(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<u64> {
+    if value < 0 {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be >= 0 (unsigned long), got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as u64)
+}
+
 // -----------------------------------------------------------------------
 // Shared nullable accessor helpers (encode path)
 // -----------------------------------------------------------------------

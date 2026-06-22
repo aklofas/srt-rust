@@ -478,6 +478,15 @@ fn h265_sps_scaling_list_data_returns_engine_error_not_unsupported_profile() {
 /// `vui_timing_info_present_flag=1`, `num_units_in_tick=1001`,
 /// `time_scale=30000` → frame_rate ≈ 29.97 fps.
 fn build_synthetic_sps(write_rps: impl Fn(&mut BitWriter)) -> Vec<u8> {
+    build_synthetic_sps_with_vui_opts(write_rps, None)
+}
+
+/// `chroma_loc = Some((top, bottom))` emits `chroma_loc_info_present_flag = 1`
+/// with the two `ue(v)` fields; `None` keeps the flag at 0 (default fixture).
+fn build_synthetic_sps_with_vui_opts(
+    write_rps: impl Fn(&mut BitWriter),
+    chroma_loc: Option<(u32, u32)>,
+) -> Vec<u8> {
     let mut bw = BitWriter::new();
 
     // §7.3.2.2 SPS header.
@@ -551,7 +560,14 @@ fn build_synthetic_sps(write_rps: impl Fn(&mut BitWriter)) -> Vec<u8> {
     bw.write(1, 8); // colour_primaries = 1 (BT.709)
     bw.write(1, 8); // transfer_characteristics = 1 (BT.709)
     bw.write(1, 8); // matrix_coeffs = 1 (BT.709)
-    bw.write(0, 1); // chroma_loc_info_present_flag = 0
+    match chroma_loc {
+        Some((top, bottom)) => {
+            bw.write(1, 1); // chroma_loc_info_present_flag = 1
+            bw.write_ue(top); // chroma_sample_loc_type_top_field
+            bw.write_ue(bottom); // chroma_sample_loc_type_bottom_field
+        }
+        None => bw.write(0, 1), // chroma_loc_info_present_flag = 0
+    }
     bw.write(0, 1); // neutral_chroma_indication_flag = 0
     bw.write(0, 1); // field_seq_flag = 0
     bw.write(0, 1); // frame_field_info_present_flag = 0
@@ -560,6 +576,7 @@ fn build_synthetic_sps(write_rps: impl Fn(&mut BitWriter)) -> Vec<u8> {
     bw.write(1, 1);
     bw.write(1001, 32); // num_units_in_tick = 1001
     bw.write(30000, 32); // time_scale = 30000 → ~29.97 fps
+    bw.write(0, 1); // vui_poc_proportional_to_timing_flag = 0
 
     bw.bytes
 }
@@ -832,6 +849,29 @@ fn parse_sps_accepts_num_short_term_ref_pic_sets_at_spec_max() {
         result.is_ok(),
         "parse_sps must accept num_short_term_ref_pic_sets=64 (spec max); got {result:?}"
     );
+}
+
+#[test]
+fn h265_sps_rejects_out_of_range_bottom_chroma_loc() {
+    // H.265 Table E.1 bounds both chroma_sample_loc fields at 0..=5.
+    let rbsp = build_synthetic_sps_with_vui_opts(|bw| bw.write_ue(0), Some((0, 6)));
+    let result = parse_sps(&rbsp);
+    assert!(
+        matches!(
+            result,
+            Err(CodecParseError::ReservedValue {
+                field: "chroma_sample_loc_type_bottom_field",
+                value: 6
+            })
+        ),
+        "expected ReservedValue for bottom_field=6, got {result:?}"
+    );
+}
+
+#[test]
+fn h265_sps_accepts_valid_chroma_loc() {
+    let rbsp = build_synthetic_sps_with_vui_opts(|bw| bw.write_ue(0), Some((2, 3)));
+    let _ = parse_sps(&rbsp).expect("chroma_sample_loc within 0..=5 is valid");
 }
 
 /// Full-walk structural-field check: same assertions as the old partial-parse

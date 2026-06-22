@@ -54,7 +54,8 @@ pub(crate) fn parse(
     let mut chroma_loc = None;
     if chroma_loc_info_present_flag {
         let top = super::read_ue_max(br, "chroma_sample_loc_type_top_field", 5)? as u8;
-        let _bottom = br.read_ue()?;
+        // H.265 Table E.1: both fields are bounded 0..=5.
+        let _bottom = super::read_ue_max(br, "chroma_sample_loc_type_bottom_field", 5)?;
         chroma_loc = Some(top);
     }
 
@@ -80,6 +81,15 @@ pub(crate) fn parse(
                 num: time_scale,
                 den: num_units_in_tick,
             });
+        }
+        // H.265 §E.2.1: finish the timing_info walk. The frame-rate ratio
+        // above is governed solely by num_units_in_tick/time_scale; the
+        // proportional flag relates POC to wall-clock time and does NOT
+        // change it, but the syntax must be consumed for bitstream
+        // correctness (the VUI does not end here in a conformant stream).
+        let poc_proportional = br.read_bool()?; // vui_poc_proportional_to_timing_flag
+        if poc_proportional {
+            let _ = br.read_ue()?; // vui_num_ticks_poc_diff_one_minus1
         }
     }
 

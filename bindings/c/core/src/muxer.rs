@@ -309,6 +309,110 @@ pub unsafe extern "C" fn tst_muxer_push_video_wire_to(
     )
 }
 
+/// Push one access unit with explicit composition (PTS) and decode (DTS)
+/// timestamps, targeting a specific video elementary stream. Required for
+/// codecs that emit reordered output (B-frames in H.264/H.265/H.266/AV1).
+///
+/// Emits PES with `PTS_DTS_flags = '11'` per ISO/IEC 13818-1 §2.4.3.6
+/// (10-byte PES header carrying both PTS and DTS). `handle` is obtained
+/// from `tst_mux_config_add_video_stream`. The muxer does not enforce
+/// `dts <= pts`; receivers reject inverted timestamps. There is no
+/// single-stream shorthand — resolve the lone stream's handle from
+/// `tst_mux_config_add_video_stream` when only one video stream exists.
+///
+/// # Errors
+///
+/// - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+/// - `TST_E_INVALID_NAL` — `nal` is not Annex-B framed (H.264/H.265/H.266).
+/// - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+/// - `TST_E_INVALID_CONFIG` — `nal` is null with non-zero `len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_to_with_dts(
+    p: *mut TstMuxer,
+    handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    dts_90khz: i64,
+    key_frame: bool,
+) -> crate::c_types::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    let dts = Pts90khz::new(dts_90khz);
+    h.inner.with_inner_mut(
+        |m| match m.push_video_to_with_dts(stream, slice, pts, dts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        },
+    )
+}
+
+/// PTS+DTS variant of `tst_muxer_push_video_wire_to` — pushes an
+/// already-carried on-wire video AU (verbatim, no framing transform)
+/// targeting a specific video stream, with explicit decode timestamp.
+/// See `tst_muxer_push_video_wire_to` for the byte-faithful transmux
+/// workflow and `tst_muxer_push_video_to_with_dts` for the DTS contract.
+///
+/// # Errors
+///
+/// - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+/// - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+/// - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_wire_to_with_dts(
+    p: *mut TstMuxer,
+    handle: TstVideoStreamHandle,
+    wire: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    dts_90khz: i64,
+    key_frame: bool,
+) -> crate::c_types::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(wire, len, "wire") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    let dts = Pts90khz::new(dts_90khz);
+    h.inner.with_inner_mut(|m| {
+        match m.push_video_wire_to_with_dts(stream, slice, pts, dts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        }
+    })
+}
+
 /// Push one pre-built KLV blob targeting a specific KLV elementary stream.
 ///
 /// `handle` is obtained from `tst_mux_config_add_klv_stream`. Same

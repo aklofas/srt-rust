@@ -197,9 +197,10 @@ impl Muxer {
     ///
     /// # C ABI
     ///
-    /// Not yet exposed via the C ABI; the C surface tracks the PTS-only
-    /// API today. Callers needing B-frame support from C should bridge
-    /// through the Rust API or open an issue requesting the C entry.
+    /// `tst_muxer_push_video_to_with_dts` — see `bindings/c/include/tstrans.h`.
+    /// DTS push is handle-targeted only; there is no single-stream C
+    /// shorthand (resolve the lone stream's handle from
+    /// `tst_mux_config_add_video_stream`).
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
@@ -274,6 +275,11 @@ impl Muxer {
     }
 
     /// PTS+DTS variant of [`Self::push_video_wire_to`] for reordered streams.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video_wire_to_with_dts` — see
+    /// `bindings/c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of range

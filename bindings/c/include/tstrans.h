@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 16` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 17` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -153,8 +153,15 @@
  *   `ZeroLengthPesNonVideo` (= 36, REF-PES-01; `table_id` = PES stream_id).
  *   `PsiSyntax` (= 37, REF-PSI-03; table_id = PSI table_id, obu_type = kind,
  *   cc_observed = section_number for SectionNumberNonZero).
+ * - `17` — BIND-01 (WP-I): DTS-aware video push through the C ABI.
+ *   `tst_muxer_push_video_to_with_dts` and
+ *   `tst_muxer_push_video_wire_to_with_dts` add a `dts_90khz` parameter to
+ *   the targeted video push, emitting PES with `PTS_DTS_flags = '11'`
+ *   (ISO/IEC 13818-1 §2.4.3.6) for B-frame-reordered streams. Additive —
+ *   no symbol removed, no signature or struct layout changed. (AV1 mux
+ *   carriage and the targeted `*_to` push family already shipped in ABI 14.)
  */
-#define TST_ABI_VERSION_MINOR 16
+#define TST_ABI_VERSION_MINOR 17
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -3556,6 +3563,34 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
                             bool key_frame);
 
 /**
+ * Push one access unit with explicit composition (PTS) and decode (DTS)
+ * timestamps, targeting a specific video elementary stream. Required for
+ * codecs that emit reordered output (B-frames in H.264/H.265/H.266/AV1).
+ *
+ * Emits PES with `PTS_DTS_flags = '11'` per ISO/IEC 13818-1 §2.4.3.6
+ * (10-byte PES header carrying both PTS and DTS). `handle` is obtained
+ * from `tst_mux_config_add_video_stream`. The muxer does not enforce
+ * `dts <= pts`; receivers reject inverted timestamps. There is no
+ * single-stream shorthand — resolve the lone stream's handle from
+ * `tst_mux_config_add_video_stream` when only one video stream exists.
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+ * - `TST_E_INVALID_NAL` — `nal` is not Annex-B framed (H.264/H.265/H.266).
+ * - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+ * - `TST_E_INVALID_CONFIG` — `nal` is null with non-zero `len`.
+ */
+
+int tst_muxer_push_video_to_with_dts(struct tst_muxer_t *p,
+                                     tst_video_stream_handle_t handle,
+                                     const uint8_t *nal,
+                                     size_t len,
+                                     int64_t pts_90khz,
+                                     int64_t dts_90khz,
+                                     bool key_frame);
+
+/**
  * Push an already-carried on-wire video access unit onto the muxer's
  * single video stream (single-stream shorthand).
  *
@@ -3611,6 +3646,28 @@ int tst_muxer_push_video_wire_to(struct tst_muxer_t *p,
                                  size_t len,
                                  int64_t pts_90khz,
                                  bool key_frame);
+
+/**
+ * PTS+DTS variant of `tst_muxer_push_video_wire_to` — pushes an
+ * already-carried on-wire video AU (verbatim, no framing transform)
+ * targeting a specific video stream, with explicit decode timestamp.
+ * See `tst_muxer_push_video_wire_to` for the byte-faithful transmux
+ * workflow and `tst_muxer_push_video_to_with_dts` for the DTS contract.
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — `handle` index is out of range for this muxer.
+ * - `TST_E_BUFFER_FULL` — TS-packet output buffer would exceed capacity.
+ * - `TST_E_INVALID_CONFIG` — `wire` is null with non-zero `len`.
+ */
+
+int tst_muxer_push_video_wire_to_with_dts(struct tst_muxer_t *p,
+                                          tst_video_stream_handle_t handle,
+                                          const uint8_t *wire,
+                                          size_t len,
+                                          int64_t pts_90khz,
+                                          int64_t dts_90khz,
+                                          bool key_frame);
 
 /**
  * Reset stats counters for a `tst_muxer_t` to zero.

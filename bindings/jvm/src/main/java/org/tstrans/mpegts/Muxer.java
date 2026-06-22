@@ -224,6 +224,48 @@ public final class Muxer implements AutoCloseable {
     }
 
     /**
+     * Push one H.264/H.265/H.266 access unit (Annex-B framing) or AV1 OBU
+     * bitstream onto a specific configured video stream, with an explicit decode
+     * timestamp for B-frame reordered streams. The PES header will carry
+     * {@code PTS_DTS_flags = '11'}; the demuxed {@link DemuxEvent.Video#dts()}
+     * will be non-null and equal to the {@code dts} value supplied here.
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param nal      the access unit bytes (Annex-B start-code prefixed for H.26x)
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
+     * @param keyFrame whether this AU is a random-access point
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     *     {@code INPUT_MALFORMED} (not Annex-B for H.26x), or {@code BACKPRESSURE}.
+     */
+    public void pushVideoToWithDts(VideoStreamHandle h, byte[] nal, long pts, long dts,
+            boolean keyFrame) throws MuxException {
+        ensureOpen();
+        nPushVideoToWithDts(handle.get(), h.raw(), nal, pts, dts, keyFrame);
+    }
+
+    /**
+     * Push one already-carried on-wire video access unit onto a specific configured
+     * video stream, with an explicit decode timestamp for B-frame reordered streams.
+     * Emits {@code wire} verbatim — no Annex-B start-code check, no AV1 OBU
+     * re-wrapping. Use for byte-faithful AV1 transmux with DTS preservation; obtain
+     * {@code h} from {@link #videoStreamHandle(int)}.
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param wire     the on-wire access unit bytes
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
+     * @param keyFrame whether this AU is a random-access point
+     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle) or
+     *     {@code BACKPRESSURE}.
+     */
+    public void pushVideoWireToWithDts(VideoStreamHandle h, byte[] wire, long pts, long dts,
+            boolean keyFrame) throws MuxException {
+        ensureOpen();
+        nPushVideoWireToWithDts(handle.get(), h.raw(), wire, pts, dts, keyFrame);
+    }
+
+    /**
      * Push one KLV local-set onto a specific configured KLV stream. Same
      * pass-through and AU-cell-wrap semantics as {@link #pushKlv}; obtain {@code h}
      * from {@link #klvStreamHandle(int)}.
@@ -442,6 +484,10 @@ public final class Muxer implements AutoCloseable {
             long pts, boolean keyFrame) throws MuxException;
     private static native void nPushVideoWireTo(long handle, long streamHandleRaw, byte[] wire,
             long pts, boolean keyFrame) throws MuxException;
+    private static native void nPushVideoToWithDts(long handle, long streamHandleRaw, byte[] nal,
+            long pts, long dts, boolean keyFrame) throws MuxException;
+    private static native void nPushVideoWireToWithDts(long handle, long streamHandleRaw,
+            byte[] wire, long pts, long dts, boolean keyFrame) throws MuxException;
     private static native void nPushKlvTo(long handle, long streamHandleRaw, byte[] klv,
             long pts, int metadataServiceId) throws MuxException;
     private static native void nPushAudioTo(long handle, long streamHandleRaw, byte[] frames,

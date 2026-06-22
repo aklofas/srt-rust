@@ -87,11 +87,22 @@ impl Segmenter {
         Ok(())
     }
 
-    /// Explicitly cut the current segment (called on keyframe by MuxPublisher).
-    /// No-op if no segment is currently open.
+    /// Explicitly cut the current segment (called on keyframe by
+    /// MuxPublisher). No-op if no segment is currently open.
     pub(crate) fn cut(&mut self) -> Result<(), HlsError> {
+        self.cut_with_duration(None)
+    }
+
+    /// Cut the current segment, recording `media_duration` (from PTS) as the
+    /// segment's duration. `None`, or a zero media duration (a degenerate
+    /// single-AU segment), falls back to wall-clock elapsed so `#EXTINF` is
+    /// never exactly zero. No-op if no segment is open.
+    pub(crate) fn cut_with_duration(
+        &mut self,
+        media_duration: Option<Duration>,
+    ) -> Result<(), HlsError> {
         if let Some(open) = self.current.take() {
-            self.close_segment(open)?;
+            self.close_segment(open, media_duration)?;
         }
         Ok(())
     }
@@ -192,10 +203,16 @@ impl Segmenter {
         Ok(())
     }
 
-    fn close_segment(&mut self, mut open: OpenSegment) -> Result<(), HlsError> {
+    fn close_segment(
+        &mut self,
+        mut open: OpenSegment,
+        media_duration: Option<Duration>,
+    ) -> Result<(), HlsError> {
         open.file.flush().map_err(HlsError::Io)?;
         drop(open.file);
-        let duration = open.opened_at.elapsed();
+        let duration = media_duration
+            .filter(|d| !d.is_zero())
+            .unwrap_or_else(|| open.opened_at.elapsed());
         let segment = Segment {
             seq: open.seq,
             filename: open.filename.clone(),
@@ -340,5 +357,37 @@ mod tests {
             4,
             "target must be immutable, not max-of-history"
         );
+    }
+
+    #[test]
+    fn media_duration_recorded_verbatim() {
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        s.cut_with_duration(Some(Duration::from_millis(2500)))
+            .unwrap();
+        assert_eq!(
+            s.history.back().unwrap().duration,
+            Duration::from_millis(2500)
+        );
+    }
+
+    #[test]
+    fn zero_media_duration_falls_back_to_wall_clock() {
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        // A degenerate single-AU segment reports zero media duration; the
+        // segmenter must fall back to wall-clock so EXTINF is never 0.000.
+        s.cut_with_duration(Some(Duration::ZERO)).unwrap();
+        assert_eq!(s.history.len(), 1);
     }
 }

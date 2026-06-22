@@ -269,6 +269,7 @@ pub fn tst_tcp::hls::publisher::HlsPublisher::with_config(tst_tcp::hls::config::
 impl tst_core::publisher::Publisher for tst_tcp::hls::publisher::HlsPublisher
 pub type tst_tcp::hls::publisher::HlsPublisher::Error = tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::publisher::HlsPublisher::cut_segment(&mut self) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
+pub fn tst_tcp::hls::publisher::HlsPublisher::cut_segment_with_duration(&mut self, core::time::Duration) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::finish(self) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::push_ts(&mut self, &[u8]) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::stats(&self) -> tst_core::publisher::PublisherStats
@@ -490,6 +491,7 @@ pub fn tst_tcp::hls::publisher::HlsPublisher::with_config(tst_tcp::hls::config::
 impl tst_core::publisher::Publisher for tst_tcp::hls::publisher::HlsPublisher
 pub type tst_tcp::hls::publisher::HlsPublisher::Error = tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::publisher::HlsPublisher::cut_segment(&mut self) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
+pub fn tst_tcp::hls::publisher::HlsPublisher::cut_segment_with_duration(&mut self, core::time::Duration) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::finish(self) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::push_ts(&mut self, &[u8]) -> core::result::Result<(), tst_tcp::hls::error::HlsError>
 pub fn tst_tcp::hls::publisher::HlsPublisher::stats(&self) -> tst_core::publisher::PublisherStats

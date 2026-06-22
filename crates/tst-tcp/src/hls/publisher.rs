@@ -1,6 +1,7 @@
 //! [`HlsPublisher`] — implements [`tst_core::publisher::Publisher`].
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tst_core::publisher::{Publisher, PublisherStats};
 
@@ -110,6 +111,14 @@ impl Publisher for HlsPublisher {
         s.segmenter.cut()
     }
 
+    fn cut_segment_with_duration(&mut self, media_duration: Duration) -> Result<(), HlsError> {
+        if self.finished {
+            return Err(HlsError::Finished);
+        }
+        let mut s = self.state.lock().expect("HlsPublisher poisoned");
+        s.segmenter.cut_with_duration(Some(media_duration))
+    }
+
     fn finish(mut self) -> Result<(), HlsError> {
         if self.finished {
             return Err(HlsError::Finished);
@@ -142,7 +151,9 @@ impl Publisher for HlsPublisher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hls::config::HlsMode;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn tmpdir(label: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -230,6 +241,28 @@ mod tests {
         assert!(s.contains("200 OK"));
         assert!(s.contains("video/mp2t"));
 
+        p.finish().unwrap();
+    }
+
+    #[test]
+    fn cut_with_duration_sets_media_extinf() {
+        let dir = tmpdir("mediadur");
+        let cfg = HlsConfig {
+            output_dir: dir,
+            bind: "127.0.0.1:0".parse().unwrap(),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        let mut p = HlsPublisher::with_config(cfg).unwrap();
+        p.push_ts(&[0x47u8; 188]).unwrap();
+        p.cut_segment_with_duration(Duration::from_millis(3200))
+            .unwrap();
+        p.push_ts(&[0x47u8; 188]).unwrap();
+        p.cut_segment_with_duration(Duration::from_millis(4100))
+            .unwrap();
+        let pl = p.render_playlist(false);
+        assert!(pl.contains("#EXTINF:3.200,"), "playlist:\n{pl}");
+        assert!(pl.contains("#EXTINF:4.100,"), "playlist:\n{pl}");
         p.finish().unwrap();
     }
 

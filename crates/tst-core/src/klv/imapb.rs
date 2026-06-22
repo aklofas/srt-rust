@@ -88,23 +88,14 @@ impl ImapbParams {
 pub enum DecodedImapb {
     /// Normal-range decode succeeded and the result falls within `[min, max]`.
     Value(f64),
-    /// ST 1201.5 §7.2.3 special-value pattern `1100_1000` (byte 0 = `0xC8`).
-    PositiveInfinity,
-    /// ST 1201.5 §7.2.3 special-value pattern `1110_1000` (byte 0 = `0xE8`).
-    NegativeInfinity,
-    /// ST 1201.5 §7.2.3 special-value pattern `1101_0000` (byte 0 = `0xD0`).
-    NaN,
-    /// ST 1201.5 §7.2.3 special-value pattern `1110_0000` (byte 0 = `0xE0`):
-    /// the producer signaled "value below the configured minimum."
-    BelowMin,
-    /// ST 1201.5 §7.2.3 special-value pattern `1110_0001` (byte 0 = `0xE1`):
-    /// the producer signaled "value above the configured maximum."
-    AboveMax,
+    /// An ST 1201.5 §7.2.3 special value (infinity / NaN family / MISB
+    /// overflow signal / user-defined). See [`ImapbSpecial`].
+    Special(ImapbSpecial),
     /// Top-two-bits `0b11` set but the remaining bits do not match a
-    /// pattern this decoder recognizes (reserved / user-defined / future
-    /// MISB-defined per ST 1201.5 §7.2.3 Table 2). `raw` is the L-byte
-    /// integer the producer emitted; callers may map specific bit patterns
-    /// themselves if they have out-of-band knowledge.
+    /// pattern this decoder recognizes (reserved / non-zero-filled /
+    /// future MISB-defined per ST 1201.5 §7.2.3 Table 2). `raw` is the
+    /// L-byte integer the producer emitted; callers may map specific bit
+    /// patterns themselves if they have out-of-band knowledge.
     ReservedSpecial { raw: u64 },
     /// Normal-range decode succeeded but the result falls outside
     /// `[min, max]`. This is the diagnostic for the inter-band reserved
@@ -117,14 +108,17 @@ pub enum DecodedImapb {
 
 impl DecodedImapb {
     /// Convenience accessor: returns `Some(f64)` only for the [`Value`]
-    /// variant. Special values and out-of-range integers return `None`.
+    /// variant. [`Special`], [`ReservedSpecial`], and [`OutOfRange`] all
+    /// return `None`.
     ///
-    /// Use this at call sites that pre-date the special-value-aware API
-    /// and want the legacy "decode to f64" ergonomics. Sites that need to
-    /// distinguish `+∞` / `NaN` / `BelowMin` etc. should pattern-match the
-    /// enum directly.
+    /// Use this at call sites that want the legacy "decode to f64"
+    /// ergonomics. Sites that need to distinguish `+∞` / NaN families /
+    /// `BelowMin` etc. should pattern-match [`Special`] directly.
     ///
     /// [`Value`]: DecodedImapb::Value
+    /// [`Special`]: DecodedImapb::Special
+    /// [`ReservedSpecial`]: DecodedImapb::ReservedSpecial
+    /// [`OutOfRange`]: DecodedImapb::OutOfRange
     #[must_use]
     pub fn value(self) -> Option<f64> {
         match self {
@@ -188,10 +182,10 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 /// Per §7.2.2 step 1, this function first inspects `bit(msb) & bit(msb-1)`
 /// of the L-byte unsigned big-endian integer (the top two bits of byte 0).
 /// When both bits are set, the integer encodes a special value per §7.2.3
-/// Table 2 and is returned as the matching [`DecodedImapb`] variant
-/// ([`PositiveInfinity`], [`NegativeInfinity`], [`NaN`], [`BelowMin`],
-/// [`AboveMax`], or [`ReservedSpecial`] for unrecognized patterns in the
-/// top-two-bits-set space).
+/// Table 2 and is returned as [`DecodedImapb::Special`] (with the
+/// [`ImapbSpecial`] variant) or [`DecodedImapb::ReservedSpecial`] for
+/// patterns that don't match a recognized family or that violate the
+/// §7.2.3 zero-fill rule.
 ///
 /// Otherwise the normal-range reverse map
 /// `value = sR · (y − Zoffset) + min` is applied, and the result is
@@ -214,11 +208,6 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 /// returned [`DecodedImapb`] or chain [`DecodedImapb::value`] +
 /// `.ok_or(...)`.
 ///
-/// [`PositiveInfinity`]: DecodedImapb::PositiveInfinity
-/// [`NegativeInfinity`]: DecodedImapb::NegativeInfinity
-/// [`NaN`]: DecodedImapb::NaN
-/// [`BelowMin`]: DecodedImapb::BelowMin
-/// [`AboveMax`]: DecodedImapb::AboveMax
 /// [`ReservedSpecial`]: DecodedImapb::ReservedSpecial
 /// [`OutOfRange`]: DecodedImapb::OutOfRange
 pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFieldError> {
@@ -254,22 +243,13 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     // ST 1201.5 §7.2.2 step 1: special-value detection. The spec defines
     // `special_value = Bit(msb, y) & Bit(msb-1, y)` over the L-byte
     // integer — i.e., the top two bits of byte 0. When both are set, the
-    // integer is decoded via the §7.2.3 Table 2 pattern map, not the
+    // integer is decoded via the §7.2.3 Table 2/3 pattern map, not the
     // normal reverse arithmetic.
-    //
-    // The §7.2.3 patterns are defined on byte 0 alone (the remaining L-1
-    // bytes are payload-zero / pattern-extension that this substrate
-    // doesn't currently sub-classify beyond ReservedSpecial). We branch
-    // on byte 0 only.
     let top_byte = bytes[0];
     if (top_byte & 0b1100_0000) == 0b1100_0000 {
-        return Ok(match top_byte {
-            0xC8 => DecodedImapb::PositiveInfinity,
-            0xE8 => DecodedImapb::NegativeInfinity,
-            0xD0 => DecodedImapb::NaN,
-            0xE0 => DecodedImapb::BelowMin,
-            0xE1 => DecodedImapb::AboveMax,
-            _ => DecodedImapb::ReservedSpecial { raw: y },
+        return Ok(match classify_imapb_special(bytes, y) {
+            Some(special) => DecodedImapb::Special(special),
+            None => DecodedImapb::ReservedSpecial { raw: y },
         });
     }
 
@@ -306,6 +286,42 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     }
 
     Ok(DecodedImapb::Value(value))
+}
+
+/// Classify a top-two-bits-set IMAPB byte sequence into an [`ImapbSpecial`]
+/// per ST 1201.5 §7.2.3 Tables 2/3, enforcing the "zero filled" rule.
+/// Returns `None` for reserved / non-zero-filled patterns (caller maps
+/// those to [`DecodedImapb::ReservedSpecial`]). `y` is the L-byte big-endian
+/// integer already accumulated by the caller.
+fn classify_imapb_special(bytes: &[u8], y: u64) -> Option<ImapbSpecial> {
+    let len = bytes.len();
+    let top = bytes[0];
+    // Table 3 (MISB Defined): full 8-bit discriminator, remaining bytes zero.
+    if (top & 0b1111_1000) == 0b1110_0000 {
+        let rest_zero = bytes[1..].iter().all(|&b| b == 0);
+        return match (top, rest_zero) {
+            (0xE0, true) => Some(ImapbSpecial::BelowMin),
+            (0xE1, true) => Some(ImapbSpecial::AboveMax),
+            _ => None, // 0xE2..=0xE7 reserved, or non-zero "Other bits"
+        };
+    }
+    // Table 2: 5-bit family prefix (bn..bn-4) + (8L-5)-bit payload.
+    let payload_bits = 8 * len - 5;
+    let payload = if payload_bits >= 64 {
+        y
+    } else {
+        y & ((1u64 << payload_bits) - 1)
+    };
+    match top >> 3 {
+        0b11001 => (payload == 0).then_some(ImapbSpecial::PositiveInfinity),
+        0b11101 => (payload == 0).then_some(ImapbSpecial::NegativeInfinity),
+        0b11010 => Some(ImapbSpecial::PositiveQuietNaN { nan_id: payload }),
+        0b11110 => Some(ImapbSpecial::NegativeQuietNaN { nan_id: payload }),
+        0b11011 => Some(ImapbSpecial::PositiveSignalingNaN { signal: payload }),
+        0b11111 => Some(ImapbSpecial::NegativeSignalingNaN { signal: payload }),
+        0b11000 => Some(ImapbSpecial::UserDefined { signal: payload }),
+        _ => None,
+    }
 }
 
 /// MISB ST 1201.5 §7.2.3 Table 2 + §7.2.3.1 Table 3 special-value families.
@@ -595,63 +611,72 @@ mod tests {
 
     #[test]
     fn imapb_decode_positive_infinity_wire_pattern_returns_special_variant() {
-        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xC8 → +∞.
+        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xC8, zero-filled → +∞.
         let p = ImapbParams {
             min: 0.0,
             max: 100.0,
             length: 3,
         };
         let decoded = decode_imapb(&p, &[0xC8, 0x00, 0x00]).unwrap();
-        assert_eq!(decoded, DecodedImapb::PositiveInfinity);
+        assert_eq!(
+            decoded,
+            DecodedImapb::Special(ImapbSpecial::PositiveInfinity)
+        );
         assert_eq!(decoded.value(), None);
     }
 
     #[test]
     fn imapb_decode_negative_infinity_wire_pattern_returns_special_variant() {
-        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xE8 → -∞.
+        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xE8, zero-filled → -∞.
         let p = ImapbParams {
             min: -100.0,
             max: 100.0,
             length: 3,
         };
         let decoded = decode_imapb(&p, &[0xE8, 0x00, 0x00]).unwrap();
-        assert_eq!(decoded, DecodedImapb::NegativeInfinity);
+        assert_eq!(
+            decoded,
+            DecodedImapb::Special(ImapbSpecial::NegativeInfinity)
+        );
     }
 
     #[test]
     fn imapb_decode_nan_wire_pattern_returns_special_variant() {
-        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xD0 → NaN.
+        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xD0 → positive quiet NaN (id=0).
         let p = ImapbParams {
             min: 0.0,
             max: 100.0,
             length: 3,
         };
         let decoded = decode_imapb(&p, &[0xD0, 0x00, 0x00]).unwrap();
-        assert_eq!(decoded, DecodedImapb::NaN);
+        assert_eq!(
+            decoded,
+            DecodedImapb::Special(ImapbSpecial::PositiveQuietNaN { nan_id: 0 })
+        );
     }
 
     #[test]
     fn imapb_decode_below_min_wire_pattern_returns_special_variant() {
-        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xE0 → IMAP_BELOW_MINIMUM.
+        // ST 1201.5 §7.2.3 Table 3: byte 0 = 0xE0 → IMAP_BELOW_MINIMUM.
         let p = ImapbParams {
             min: 0.0,
             max: 100.0,
             length: 3,
         };
         let decoded = decode_imapb(&p, &[0xE0, 0x00, 0x00]).unwrap();
-        assert_eq!(decoded, DecodedImapb::BelowMin);
+        assert_eq!(decoded, DecodedImapb::Special(ImapbSpecial::BelowMin));
     }
 
     #[test]
     fn imapb_decode_above_max_wire_pattern_returns_special_variant() {
-        // ST 1201.5 §7.2.3 Table 2: byte 0 = 0xE1 → IMAP_ABOVE_MAXIMUM.
+        // ST 1201.5 §7.2.3 Table 3: byte 0 = 0xE1 → IMAP_ABOVE_MAXIMUM.
         let p = ImapbParams {
             min: 0.0,
             max: 100.0,
             length: 3,
         };
         let decoded = decode_imapb(&p, &[0xE1, 0x00, 0x00]).unwrap();
-        assert_eq!(decoded, DecodedImapb::AboveMax);
+        assert_eq!(decoded, DecodedImapb::Special(ImapbSpecial::AboveMax));
     }
 
     #[test]
@@ -937,5 +962,72 @@ mod tests {
             encode_imapb_special(ImapbSpecial::PositiveInfinity, 2, &mut small),
             Err(KlvEncodeError::BufferTooSmall { needed: 2, got: 1 })
         ));
+    }
+
+    // --- REF-KLV-01 Task 4: decode full IMAPB special-value families ---
+
+    #[test]
+    fn decode_recognizes_all_nan_families() {
+        let p = ImapbParams {
+            min: 0.0,
+            max: 1.0,
+            length: 3,
+        };
+        assert_eq!(
+            decode_imapb(&p, &[0xD0, 0, 0]).unwrap(),
+            DecodedImapb::Special(ImapbSpecial::PositiveQuietNaN { nan_id: 0 })
+        );
+        assert_eq!(
+            decode_imapb(&p, &[0xF0, 0, 0]).unwrap(),
+            DecodedImapb::Special(ImapbSpecial::NegativeQuietNaN { nan_id: 0 })
+        );
+        assert_eq!(
+            decode_imapb(&p, &[0xD8, 0, 0]).unwrap(),
+            DecodedImapb::Special(ImapbSpecial::PositiveSignalingNaN { signal: 0 })
+        );
+        assert_eq!(
+            decode_imapb(&p, &[0xF8, 0, 0]).unwrap(),
+            DecodedImapb::Special(ImapbSpecial::NegativeSignalingNaN { signal: 0 })
+        );
+    }
+
+    #[test]
+    fn decode_special_rejects_non_zero_fill() {
+        // §7.2.3: +∞ must be zero-filled in the remaining bits.
+        let p = ImapbParams {
+            min: 0.0,
+            max: 1.0,
+            length: 3,
+        };
+        assert_eq!(
+            decode_imapb(&p, &[0xC8, 0xFF, 0xFF]).unwrap(),
+            DecodedImapb::ReservedSpecial { raw: 0x00C8_FFFF }
+        );
+    }
+
+    #[test]
+    fn special_value_round_trips_through_encode_decode() {
+        let p = ImapbParams {
+            min: 0.0,
+            max: 1.0,
+            length: 4,
+        };
+        for s in [
+            ImapbSpecial::PositiveInfinity,
+            ImapbSpecial::NegativeInfinity,
+            ImapbSpecial::BelowMin,
+            ImapbSpecial::AboveMax,
+            ImapbSpecial::PositiveQuietNaN { nan_id: 0x123 },
+            ImapbSpecial::NegativeSignalingNaN { signal: 0x456 },
+            ImapbSpecial::UserDefined { signal: 0x7 },
+        ] {
+            let mut buf = [0u8; 4];
+            encode_imapb_special(s, 4, &mut buf).unwrap();
+            assert_eq!(
+                decode_imapb(&p, &buf).unwrap(),
+                DecodedImapb::Special(s),
+                "round-trip {s:?}"
+            );
+        }
     }
 }

@@ -14,7 +14,7 @@
 //! [`DecodedImapb`]: tst_core::klv::imapb::DecodedImapb
 
 use tst_core::error::{KlvEncodeError, KlvFieldError};
-use tst_core::klv::imapb::{DecodedImapb, ImapbParams, decode_imapb, encode_imapb};
+use tst_core::klv::imapb::{DecodedImapb, ImapbParams, ImapbSpecial, decode_imapb, encode_imapb};
 
 // ============================================================================
 // Subtask 3a (i) — §7.2.3 Table 2 special-value PATTERNS (decode side)
@@ -40,8 +40,8 @@ use tst_core::klv::imapb::{DecodedImapb, ImapbParams, decode_imapb, encode_imapb
 // (the substrate doesn't sub-classify beyond ReservedSpecial). All
 // 5 named patterns are unit-tested below with payload `[0x00,...]`.
 
-/// ST 1201.5 §7.2.3 Table 2 row "Positive Infinity": byte0 = 0xC8 →
-/// [`DecodedImapb::PositiveInfinity`] regardless of L.
+/// ST 1201.5 §7.2.3 Table 2 row "Positive Infinity": byte0 = 0xC8, zero-filled →
+/// [`DecodedImapb::Special`]`(`[`ImapbSpecial::PositiveInfinity`]`)` regardless of L.
 #[test]
 fn imapb_decodes_positive_infinity_st1201_5_7_2_3_table2() {
     let p = ImapbParams {
@@ -49,16 +49,19 @@ fn imapb_decodes_positive_infinity_st1201_5_7_2_3_table2() {
         max: 100.0,
         length: 3,
     };
-    // L=3, byte0 = 0xC8, payload-zero rest → PositiveInfinity.
+    // L=3, byte0 = 0xC8, payload-zero rest → Special(PositiveInfinity).
     let decoded = decode_imapb(&p, &[0xC8, 0x00, 0x00]).unwrap();
-    assert_eq!(decoded, DecodedImapb::PositiveInfinity);
+    assert_eq!(
+        decoded,
+        DecodedImapb::Special(ImapbSpecial::PositiveInfinity)
+    );
     assert_eq!(decoded.value(), None, "legacy accessor must return None");
 }
 
-/// ST 1201.5 §7.2.3 Table 2 row "Negative Infinity": byte0 = 0xE8 →
-/// [`DecodedImapb::NegativeInfinity`]. The range straddles zero so
-/// Zoffset would be nonzero — verifies §7.2.2 step 1 short-circuits
-/// the normal-range arithmetic.
+/// ST 1201.5 §7.2.3 Table 2 row "Negative Infinity": byte0 = 0xE8, zero-filled →
+/// [`DecodedImapb::Special`]`(`[`ImapbSpecial::NegativeInfinity`]`)`. The range
+/// straddles zero so Zoffset would be nonzero — verifies §7.2.2 step 1
+/// short-circuits the normal-range arithmetic.
 #[test]
 fn imapb_decodes_negative_infinity_st1201_5_7_2_3_table2() {
     let p = ImapbParams {
@@ -67,13 +70,16 @@ fn imapb_decodes_negative_infinity_st1201_5_7_2_3_table2() {
         length: 3,
     };
     let decoded = decode_imapb(&p, &[0xE8, 0x00, 0x00]).unwrap();
-    assert_eq!(decoded, DecodedImapb::NegativeInfinity);
+    assert_eq!(
+        decoded,
+        DecodedImapb::Special(ImapbSpecial::NegativeInfinity)
+    );
 }
 
-/// ST 1201.5 §7.2.3 Table 2 row "NaN": byte0 = 0xD0 → [`DecodedImapb::NaN`].
-/// The substrate currently collapses quiet and signaling NaN signaling
-/// into a single arm — ST 1201.5 §7.2.3 Table 2 only enumerates "NaN"
-/// without distinguishing IEEE 754 categories.
+/// ST 1201.5 §7.2.3 Table 2 row "NaN": byte0 = 0xD0 →
+/// [`DecodedImapb::Special`]`(`[`ImapbSpecial::PositiveQuietNaN`]` { nan_id: 0 })`.
+/// The full NaN-family decode (quiet/signaling, positive/negative, with
+/// nan_id payload) is tested in `decode_recognizes_all_nan_families`.
 #[test]
 fn imapb_decodes_nan_st1201_5_7_2_3_table2() {
     let p = ImapbParams {
@@ -82,13 +88,16 @@ fn imapb_decodes_nan_st1201_5_7_2_3_table2() {
         length: 3,
     };
     let decoded = decode_imapb(&p, &[0xD0, 0x00, 0x00]).unwrap();
-    assert_eq!(decoded, DecodedImapb::NaN);
+    assert_eq!(
+        decoded,
+        DecodedImapb::Special(ImapbSpecial::PositiveQuietNaN { nan_id: 0 })
+    );
 }
 
-/// ST 1201.5 §7.2.3 Table 2 row "IMAP_BELOW_MINIMUM": byte0 = 0xE0 →
-/// [`DecodedImapb::BelowMin`]. Producer signal for "value below the
-/// configured minimum"; the decoder does NOT fabricate a concrete
-/// `min - ε` — the value is structurally unknown.
+/// ST 1201.5 §7.2.3 Table 3 row "IMAP_BELOW_MINIMUM": byte0 = 0xE0 →
+/// [`DecodedImapb::Special`]`(`[`ImapbSpecial::BelowMin`]`)`. Producer signal for
+/// "value below the configured minimum"; the decoder does NOT fabricate a
+/// concrete `min - ε` — the value is structurally unknown.
 #[test]
 fn imapb_decodes_below_min_st1201_5_7_2_3_table2() {
     let p = ImapbParams {
@@ -97,12 +106,12 @@ fn imapb_decodes_below_min_st1201_5_7_2_3_table2() {
         length: 3,
     };
     let decoded = decode_imapb(&p, &[0xE0, 0x00, 0x00]).unwrap();
-    assert_eq!(decoded, DecodedImapb::BelowMin);
+    assert_eq!(decoded, DecodedImapb::Special(ImapbSpecial::BelowMin));
 }
 
-/// ST 1201.5 §7.2.3 Table 2 row "IMAP_ABOVE_MAXIMUM": byte0 = 0xE1 →
-/// [`DecodedImapb::AboveMax`]. Producer signal for "value above the
-/// configured maximum."
+/// ST 1201.5 §7.2.3 Table 3 row "IMAP_ABOVE_MAXIMUM": byte0 = 0xE1 →
+/// [`DecodedImapb::Special`]`(`[`ImapbSpecial::AboveMax`]`)`. Producer signal for
+/// "value above the configured maximum."
 #[test]
 fn imapb_decodes_above_max_st1201_5_7_2_3_table2() {
     let p = ImapbParams {
@@ -111,7 +120,7 @@ fn imapb_decodes_above_max_st1201_5_7_2_3_table2() {
         length: 3,
     };
     let decoded = decode_imapb(&p, &[0xE1, 0x00, 0x00]).unwrap();
-    assert_eq!(decoded, DecodedImapb::AboveMax);
+    assert_eq!(decoded, DecodedImapb::Special(ImapbSpecial::AboveMax));
 }
 
 /// ST 1201.5 §7.2.3 Table 2 reserved/user-defined row: top two bits
@@ -216,12 +225,12 @@ fn imapb_decodes_inter_band_as_out_of_range_st1201_5_8_6_eq12() {
 //   - buffer too small → BufferTooSmall
 //   - non-finite or out-of-range value → OutOfRange { tag, value, min, max }
 //
-// There is no `encode_imapb` API for the 5 named special values — the
-// encoder operates only on finite values inside `[min, max]`. Producers
-// that want to emit +∞ / NaN / BelowMin / AboveMax bytes hand-construct
-// them per Table 2 (`byte0 = 0xC8/0xE8/0xD0/0xE0/0xE1; rest 0x00`).
-// The asymmetry is intentional: ST 1201.5 §7.2.1 only specifies the
-// forward map for normal-range values.
+// `encode_imapb` operates only on finite values inside `[min, max]` and
+// rejects NaN/±∞ with `OutOfRange`. Producers that want to emit ST 1201.5
+// §7.2.3 special values (Table 2/3: +∞, -∞, NaN families, BelowMin,
+// AboveMax, user-defined) must use `encode_imapb_special` instead —
+// it accepts an `ImapbSpecial` variant and writes the correctly
+// zero-filled wire bytes per §7.2.3.
 
 /// ST 1201.5 Appendix A Test 2: IMAPB(0.0, 100.0, 3) value 100.0 →
 /// `0x64 0x00 0x00`. Encoder must NOT emit signed-midpoint-shift

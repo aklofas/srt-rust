@@ -1499,15 +1499,11 @@ pub mod tst_core::klv::checksum
 pub fn tst_core::klv::checksum::checksum_running_sum_16(&[u8]) -> u16
 pub mod tst_core::klv::imapb
 #[non_exhaustive] pub enum tst_core::klv::imapb::DecodedImapb
-pub tst_core::klv::imapb::DecodedImapb::AboveMax
-pub tst_core::klv::imapb::DecodedImapb::BelowMin
-pub tst_core::klv::imapb::DecodedImapb::NaN
-pub tst_core::klv::imapb::DecodedImapb::NegativeInfinity
 pub tst_core::klv::imapb::DecodedImapb::OutOfRange
 pub tst_core::klv::imapb::DecodedImapb::OutOfRange::decoded: f64
-pub tst_core::klv::imapb::DecodedImapb::PositiveInfinity
 pub tst_core::klv::imapb::DecodedImapb::ReservedSpecial
 pub tst_core::klv::imapb::DecodedImapb::ReservedSpecial::raw: u64
+pub tst_core::klv::imapb::DecodedImapb::Special(tst_core::klv::imapb::ImapbSpecial)
 pub tst_core::klv::imapb::DecodedImapb::Value(f64)
 impl tst_core::klv::imapb::DecodedImapb
 pub fn tst_core::klv::imapb::DecodedImapb::value(self) -> core::option::Option<f64>

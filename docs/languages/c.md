@@ -196,10 +196,8 @@ int tst_muxer_push_video_wire_to_with_dts(struct tst_muxer_t *p,
 Both functions emit `PTS_DTS_flags = '11'` (ISO/IEC 13818-1 §2.4.3.6) in the
 PES header, writing DTS as a 33-bit field immediately after the PTS field.
 `handle` is obtained from `tst_mux_config_add_video_stream` at config time —
-the single-stream shorthands (`tst_muxer_push_video`, `tst_muxer_push_video_wire`)
-do not have DTS variants; use these targeted forms even on a single-stream muxer
-(obtain the handle, or use `tst_muxer_push_video_with_dts` via the sender-side
-equivalent).
+there is no single-stream DTS shorthand; use the targeted
+`tst_muxer_push_video_to_with_dts` form even on a single-stream muxer.
 
 > **B-frame note.** Most real-time EO/IR payloads use I/P-frame-only coding
 > (no B frames) and need only PTS. The DTS variants are for sources that

@@ -125,6 +125,15 @@ tier = "A"
 schema_version = 0
 
 [[scenario]]
+id = "video-dts-roundtrip"
+kind = "roundtrip"
+input = "video-dts-roundtrip/output.ts"
+golden = "video-dts-roundtrip/golden.json"
+features = []
+tier = "A"
+schema_version = 0
+
+[[scenario]]
 id = "drop-idempotence"
 kind = "binding_contract"
 input = "drop-idempotence/input.ts"

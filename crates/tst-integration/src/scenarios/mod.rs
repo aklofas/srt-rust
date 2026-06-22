@@ -55,6 +55,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(MalformedPesLenient),
         Box::new(UnknownStreamType),
         Box::new(AudioKlvRoundtrip),
+        Box::new(VideoDtsRoundtrip),
         Box::new(DropIdempotence),
         Box::new(ForgedHandle),
         Box::new(ExceptionKindStability),
@@ -1535,7 +1536,99 @@ impl Scenario for AudioKlvRoundtrip {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scenario 15 — drop-idempotence (binding_contract, lifecycle)
+// Scenario 15 — video-dts-roundtrip (roundtrip)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "roundtrip"`: mux a synthetic H.264 IDR with **distinct PTS and DTS**
+/// (`PTS = 9000`, `DTS = 6000` ticks at 90 kHz) using
+/// `Muxer::push_video_to_with_dts`.  The golden records the whole-stream
+/// SHA-256; all three bindings (Rust, C, JVM) re-mux the identical recipe and
+/// assert the same digest, proving that BIND-01's cross-binding DTS parity
+/// requirement holds.
+///
+/// Using `push_video_to_with_dts` (via the explicit-handle path) forces the
+/// muxer to emit `PTS_DTS_flags = '11'` in the PES header — the DTS appears as
+/// a separate 5-byte field — whereas `push_video` always emits
+/// `PTS_DTS_flags = '10'` (PTS-only).  The difference is visible in the committed
+/// `output.ts` and in every re-mux produced by the three adapters.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct VideoDtsRoundtrip;
+
+impl Scenario for VideoDtsRoundtrip {
+    fn id(&self) -> &'static str {
+        "video-dts-roundtrip"
+    }
+    fn kind(&self) -> &'static str {
+        "roundtrip"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Produced via the shared single-source-of-truth helper so the adapter
+        // test can re-run the identical recipe.
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let ts_bytes = video_dts_roundtrip_ts_bytes();
+        let digest = sha256_hex(&ts_bytes);
+
+        // Write input artifact (the TS output IS the golden artifact for
+        // roundtrip verification).
+        let artifact_rel = PathBuf::from(self.id()).join("output.ts");
+        let artifact_abs = out_dir.join(&artifact_rel);
+        write_file(&artifact_abs, &ts_bytes);
+
+        // Roundtrip carries no media events — the whole-stream byte-identity
+        // digest lives under `extensions.output_sha256` (matching the
+        // `video-roundtrip` convention).
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![],
+            extensions: serde_json::json!({ "output_sha256": digest }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Re-run the `video-dts-roundtrip` mux and return the deterministic TS bytes.
+///
+/// Single source of truth shared by `VideoDtsRoundtrip::generate` and the Rust
+/// adapter test — no hand-retyped mux recipe.
+///
+/// Uses `push_video_to_with_dts` so the PES header carries separate PTS and DTS
+/// fields (`PTS_DTS_flags = '11'`).  Fixed timestamps: `PTS = 9000` ticks,
+/// `DTS = 6000` ticks (90 kHz), representing a reordered B-frame at roughly
+/// 100 ms display time and 66 ms decode time.
+pub fn video_dts_roundtrip_ts_bytes() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let mut mux = Muxer::new(cfg).expect("muxer init");
+    // Fetch the lone video-stream handle so push_video_to_with_dts can target it.
+    let handle = mux.video_stream_handle(0).expect("video handle 0");
+    // PTS 9000 / DTS 6000 ticks (90 kHz) — fixed so the golden is stable.
+    mux.push_video_to_with_dts(
+        handle,
+        &synthetic_h264_idr(),
+        Pts90khz::new(9_000),
+        Pts90khz::new(6_000),
+        /*key_frame=*/ true,
+    )
+    .expect("push_video_to_with_dts");
+    drain_mux(&mut mux)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 16 — drop-idempotence (binding_contract, lifecycle)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// `kind = "binding_contract"`: asserts that closing/dropping a demuxer twice

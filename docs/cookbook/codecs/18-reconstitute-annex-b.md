@@ -13,7 +13,7 @@ don't need this recipe at all under the raw-first model — `SamplePayload::Vide
 already IS the Annex-B AU, start codes intact. This recipe is for isolating the
 parameter sets out of that AU.)
 
-Split the AU into NAL units with `split_video(&raw, codec)`, parse the
+Split the AU into NAL units with `split_video(&raw, codec, av1_carriage.unwrap_or_default())`, parse the
 parameter sets, and rebuild Annex-B framing around each one. The `raw_rbsp` field on
 each parsed struct preserves the NAL's **RBSP body** verbatim (emulation-prevention
 bytes intact) — but the 1-byte NAL header was stripped during the split, so a
@@ -40,11 +40,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ... feed bytes ...
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
+            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, av1_carriage, .. },
             ..
         } = ev
         {
-            let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
                 continue;
             };
             if let Ok(ps) = h264::parse_parameter_sets(&nals) {

@@ -65,10 +65,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("PMT: {} streams", m.streams.len());
             }
             DemuxEvent::Sample { stream, pts, payload, .. } => {
-                if let SamplePayload::Video { codec, raw, .. } = payload {
+                if let SamplePayload::Video { codec, raw, av1_carriage, .. } = payload {
                     // Raw-first: `raw` is the exact encoded access unit.
                     // Splitting it into NAL/OBU units is an opt-in call.
-                    let (payload, _issues) = split_video(&raw, codec);
+                    let (payload, _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default());
                     if let VideoPayload::Nals(nals) = payload {
                         println!("video PID 0x{:04X} pts={pts} nals={}", stream.pid, nals.len());
                     }
@@ -198,7 +198,7 @@ caller draining events alongside the error gets the full narrative —
 `StrictMode` is **TS-layer only**: it gates PSI / PES / timing
 conformance, not the contents of a video elementary stream. Malformed
 NAL/OBU bitstreams are not inspected during demux — that conformance
-check is the opt-in `split_video_strict(&raw, codec)` (or the issue list
+check is the opt-in `split_video_strict(&raw, codec, av1_carriage.unwrap_or_default())` (or the issue list
 returned by `split_video`).
 
 ```rust,no_run
@@ -317,7 +317,7 @@ consumers can apply their own decoders.
 into the exact encoded access unit and hands it back as
 `SamplePayload::Video { codec, raw, .. }` — `raw` is the verbatim AU
 (Annex-B start codes intact). The demuxer does **not** split NAL units;
-that's an opt-in call. Pass the AU to `split_video(&raw, codec)` to get a
+that's an opt-in call. Pass the AU to `split_video(&raw, codec, av1_carriage.unwrap_or_default())` to get a
 `VideoPayload::Nals(Vec<NalUnit>)`: the splitter strips the Annex-B start
 codes (`0x000001` / `0x00000001`), preserves emulation-prevention bytes
 (the consumer's H.264 / H.265 decoder removes them), and returns each NAL
@@ -353,7 +353,7 @@ the latter after wrap-peeling.
 
 **Recognized video stream types.** The demuxer emits each AU's raw bytes
 on `SamplePayload::Video.raw`. The "Split shape" column is what
-`split_video(&raw, codec)` returns for that codec:
+`split_video(&raw, codec, av1_carriage.unwrap_or_default())` returns for that codec:
 
 | PMT `stream_type` byte | `VideoCodec` | `split_video` shape |
 | --- | --- | --- |
@@ -547,7 +547,7 @@ yourself when feeding the demuxer directly.
 
 **Assuming the NAL units from `split_video` are Annex-B framed.** They aren't.
 `SamplePayload::Video.raw` *is* the Annex-B access unit (start codes intact) —
-but once you split it with `split_video(&raw, codec)`, each
+but once you split it with `split_video(&raw, codec, av1_carriage.unwrap_or_default())`, each
 `NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only: the Annex-B
 start codes have been stripped. Re-emit start codes between NALs yourself if
 writing split NALs back to an Annex-B sink (or just forward `raw`, which is

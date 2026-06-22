@@ -10,7 +10,7 @@
 Reach for this when you need typed codec information (width, height, profile,
 level, frame rate, color) and are already demuxing the stream. The demuxer
 surfaces the raw encoded AU on `SamplePayload::Video.raw`; split it into NAL
-units with `split_video(&raw, codec)`, then call the matching `codec::*`
+units with `split_video(&raw, codec, av1_carriage.unwrap_or_default())`, then call the matching `codec::*`
 parser explicitly. `parse_parameter_sets` is safe to call on every
 sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
 maps on P-frames.
@@ -24,11 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ... feed bytes to dx ...
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
+            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, av1_carriage, .. },
             ..
         } = ev
         {
-            let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+            let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
                 continue;
             };
             if let Ok(ps) = h264::parse_parameter_sets(&nals) {

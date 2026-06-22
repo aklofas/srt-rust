@@ -370,9 +370,10 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `StrictMode::Off` (lenient default) | ✅ Full | `NonConformant` events surface as data; receive loop continues. |
 | `StrictMode::TimingOnly` | ✅ Full | Hard-fail on `PcrAnomaly`, `PusiMidPes`, `PsiChecksumMismatch`. |
 | `StrictMode::DescriptorsOnly` | ✅ Full | Hard-fail on `MissingMetadataDescriptor`, `StreamTypeMismatch{Sync,Async}OnPid`. |
-| `StrictMode::Full` | ✅ Full | Hard-fail on every `NonConformantIssue` variant including future-added ones. |
+| `StrictMode::Full` | ✅ Full | Hard-fail on every `NonConformantIssue` variant including future-added ones; except PAT multi-section (table_id 0x00), which degrades to a surface-only event ("don't blame the sender" — REF-PSI-02). |
 | KLV-mismatch event coalescing | ✅ Full | One `StreamTypeMismatch*` event per (PID, PMT version); avoids flooding. |
 | PSI version-bump detection | ✅ Full | Re-emits `ProgramMap` only on PMT/PAT version change. |
+| PSI multi-section PAT (H.222.0 §2.4.4.5) | ⚙️ Partial | Multi-section PAT reassembled per §2.4.4.5; multi-section PMT is not supported (rejected with `PsiMultiSectionUnsupported`). Under `StrictMode::Full` a multi-section PAT degrades to a surface-only event (never a hard fail); PMT still hard-fails. |
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
 | Subtitle classification on `stream_type 0x06` | ✅ Full | Cascade: subtitling/teletext/`VTTC`/`GA94` descriptors → `Subtitle` payload; KLV cases unchanged when no subtitle descriptor present. |

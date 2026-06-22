@@ -47,7 +47,13 @@ impl StrictMode {
                     | NonConformantIssue::SubtitleMissingDescriptor { .. }
                     | NonConformantIssue::SubtitleDescriptorAmbiguous { .. }
             ),
-            StrictMode::Full => true,
+            StrictMode::Full => !matches!(
+                issue,
+                // REF-PSI-02: a multi-section PAT (table_id 0x00) degrades to a
+                // surface-only event — never a hard fail ("don't blame the
+                // sender"). PMT multi-section (table_id 0x02) is still rejected.
+                NonConformantIssue::PsiMultiSectionUnsupported { table_id: 0x00, .. }
+            ),
         }
     }
 }
@@ -191,6 +197,30 @@ mod tests {
         assert!(!StrictMode::Off.rejects(&issue));
         assert!(!StrictMode::TimingOnly.rejects(&issue));
         assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
+
+    #[test]
+    fn full_does_not_reject_multi_section_pat() {
+        // REF-PSI-02: a PAT multi-section diagnostic (table_id 0x00) is a
+        // "don't blame the sender" degradation, never a hard fail — even in Full.
+        let issue = NonConformantIssue::PsiMultiSectionUnsupported {
+            pid: 0x0000,
+            table_id: 0x00,
+            last_section_number: 3,
+        };
+        assert!(!StrictMode::Full.rejects(&issue));
+        assert!(!StrictMode::Off.rejects(&issue));
+    }
+
+    #[test]
+    fn full_still_rejects_multi_section_pmt() {
+        // PMT multi-section stays unsupported AND a hard fail under Full.
+        let issue = NonConformantIssue::PsiMultiSectionUnsupported {
+            pid: 0x0100,
+            table_id: 0x02,
+            last_section_number: 1,
+        };
         assert!(StrictMode::Full.rejects(&issue));
     }
 }

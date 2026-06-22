@@ -724,6 +724,16 @@ pub.finish()
 `with_config_hls`) further calls raise `HlsError(FINISHED)`.
 `HlsMode.LIVE` / `EVENT` / `VOD` selects playlist behavior.
 
+The full `Publisher` ABC surface exposed through `tstrans.hls`:
+
+| Method | Type | Notes |
+|---|---|---|
+| `push_ts(data: bytes) -> None` | `HlsPublisher` | 188-multiple buffer; raises `HlsError(UNALIGNED_PUSH_TS)` otherwise |
+| `cut_segment() -> None` | `HlsPublisher` | Wall-clock segment cut hint; call on keyframe boundaries |
+| `cut_segment_with_duration(media_duration_us: int) -> None` | `HlsPublisher` | Media-presentation-time-derived cut; `media_duration_us` is the PTS span of the completed segment in µs (same unit as `PublisherStats.*_us`); used by `MuxPublisher` internally |
+| `finish() -> None` | `HlsPublisher` | Flush pending segment + write `#EXT-X-ENDLIST`; terminal |
+| `stats() -> PublisherStats` | `HlsPublisher` / `MuxPublisher` | Cross-publisher stats snapshot |
+
 ## Pipeline pairing (`tstrans.pipeline.Pairer`)
 
 MPEG-TS programs that carry synchronized KLV (e.g. MISB ST 0601 UAS

@@ -14,21 +14,24 @@ the trigger that would unblock it.
   JAR (`tst-jni` pulls no HLS dependency). It is no longer in the
   `bindings/python` crate's `default` feature set. You can still enable
   it for local / experimental builds with `--features hls`.
-- **Why deferred:** The built-in HTTP server is not release-ready:
+- **Why deferred:** RFC 8216 stream-conformance is now fixed (PR3, WP-I)
+  — the `#EXT-X-TARGETDURATION` is an immutable ceiling, `#EXTINF` is
+  derived from media-presentation time (PTS) via `MuxPublisher`, live
+  eviction keeps ≥ 3 target durations with a grace queue for
+  removed-segment availability, and live configs that cannot hold 3
+  target durations are rejected. The built-in HTTP server is still not
+  release-ready:
   - **Path traversal (CWE-22)** — segment requests are served from an
     unauthenticated server bound to all interfaces, with no validated
     confinement of the request path to the output directory.
-  - **Spec-violating `TARGETDURATION` floor** — the emitted playlist's
-    `#EXT-X-TARGETDURATION` is clamped to a floor that can understate the
-    true maximum segment duration, contrary to RFC 8216.
   - **VOD never served** — `HlsMode::Vod` segments/playlist are written
     but the built-in server does not serve a completed VOD playlist.
   - The whole unauthenticated, all-interfaces server surface needs a
     dedicated security review before it can be a supported feature.
 - **Trigger to revisit:** HLS is hardened as a real, supported feature —
-  the path-traversal fix, the `TARGETDURATION` correction, VOD serving,
-  and a security review of the unauthenticated server surface all land
-  together. Until then it stays experimental and out of published builds.
+  the path-traversal fix, VOD serving, and a security review of the
+  unauthenticated server surface all land together. Until then it stays
+  experimental and out of published builds.
 
 ## Other PMT entries / auxiliary services
 

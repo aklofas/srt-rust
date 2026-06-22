@@ -255,7 +255,9 @@ impl super::demuxer::Demuxer {
             }
             Err(_) => return,
         };
-        // REF-PSI-03: validate fixed/reserved PSI syntax fields.
+        // REF-PSI-03: validate fixed/reserved PSI syntax fields. This now runs
+        // per-section for multi-section PATs too (intentional — previously
+        // multi-section PATs were rejected by parse_pat before this check ran).
         self.check_psi_syntax(0x0000, 0x00, section);
 
         // REF-PSI-02: route multi-section PATs through the reassembler so

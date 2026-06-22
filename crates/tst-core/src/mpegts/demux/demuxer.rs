@@ -2584,8 +2584,9 @@ mod tests {
         events
     }
 
-    /// REF-PSI-02: a complete 2-section PAT must reassemble into a ProgramMap
-    /// and must NOT emit PsiMultiSectionUnsupported.
+    /// REF-PSI-02: a complete 2-section PAT must reassemble such that BOTH
+    /// declared programs produce trackers end-to-end, and must NOT emit
+    /// PsiMultiSectionUnsupported.
     #[test]
     fn demuxer_reassembles_complete_multi_section_pat() {
         // Section 0 carries program 1 on PMT PID 0x100;
@@ -2596,6 +2597,14 @@ mod tests {
         let mut demuxer = Demuxer::new();
         demuxer.feed(&s0).unwrap();
         demuxer.feed(&s1).unwrap();
+        // Feed PMTs for BOTH reassembled PMT PIDs so each tracker emits a
+        // ProgramMap. If apply_pat_programs silently dropped section 1's
+        // program, no tracker would exist for PMT PID 0x0200 and the PMT
+        // arriving on it would be dropped (no ProgramMap for program 2).
+        let pmt1 = pmt_packet_for_test(0x0100, 1, 0x0101, &[(0x1B, 0x0101)], 0);
+        let pmt2 = pmt_packet_for_test(0x0200, 2, 0x0201, &[(0x1B, 0x0201)], 0);
+        demuxer.feed(&pmt1).unwrap();
+        demuxer.feed(&pmt2).unwrap();
         demuxer.flush();
         let events = drain_all_events(&mut demuxer);
 
@@ -2612,12 +2621,23 @@ mod tests {
             !saw_multi_section_nonconformance,
             "a VALID complete multi-section PAT must NOT emit PsiMultiSectionUnsupported"
         );
-        // After reassembly a ProgramMap fires for each newly-declared program
-        // (one per PMT PID tracked by the topology). The demuxer registers the
-        // programs when the atomic topology diff runs; actual ProgramMap events
-        // per program fire when PMTs arrive, but the PAT diff must have run.
-        // We assert no spurious NonConformant was emitted for the reassembly.
-        // (The PMT ProgramMap events are NOT expected here since no PMTs arrived.)
+        // Both reassembled sections must have produced trackers: assert a
+        // PMT-driven ProgramMap (one with streams) fired for program 1 AND
+        // program 2.
+        let saw_program_1 = events.iter().any(|e| {
+            matches!(e, DemuxEvent::ProgramMap(pm) if pm.program_number == 1 && !pm.streams.is_empty())
+        });
+        let saw_program_2 = events.iter().any(|e| {
+            matches!(e, DemuxEvent::ProgramMap(pm) if pm.program_number == 2 && !pm.streams.is_empty())
+        });
+        assert!(
+            saw_program_1,
+            "program 1 (PAT section 0) must produce a ProgramMap with streams"
+        );
+        assert!(
+            saw_program_2,
+            "program 2 (PAT section 1) must produce a ProgramMap with streams — proves section 1 was not dropped during reassembly"
+        );
     }
 
     /// REF-PSI-02: an INCOMPLETE multi-section PAT (only section 0 of 2) must

@@ -215,7 +215,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        if REGISTRY.with_poisoning(handle as u64, |dx| dx.flush()).is_none() {
+        if REGISTRY
+            .with_poisoning(handle as u64, |dx| dx.flush())
+            .is_none()
+        {
             closed(env);
         }
     })

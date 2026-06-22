@@ -192,7 +192,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nNext<'local>(
         // was already taken by close → clean end of iteration. We clone `sink_error`
         // out so it is drained AFTER the lease releases.
         let leased: Option<(Result<Option<DemuxEvent>, DemuxReceiverError>, _)> = REGISTRY
-            .with(handle as u64, |jdr| {
+            .with_poisoning(handle as u64, |jdr| {
                 (jdr.inner.recv_event(), jdr.sink_error.clone())
             });
         let Some((res, sink_error)) = leased else {

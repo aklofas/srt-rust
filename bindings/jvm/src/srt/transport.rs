@@ -123,7 +123,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSendBytes(
             }
         };
 
-        match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.send_ts(&bytes)) {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => transport_error(env, &t),
@@ -147,7 +147,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nFlush(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.flush()) {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => transport_error(env, &t),
@@ -366,7 +366,9 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nRecvBytes(
         // `next_packet` may park; the closure holds the resource lock for its
         // duration. `cancelHandle().cancel()` / a concurrent `close()` (which fires
         // the cancel hook before taking the lock) wakes a parked recv.
-        let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |inner| inner.next_packet()) else {
+        let Some(res) =
+            REGISTRY_RECEIVER.with_poisoning(handle as u64, |inner| inner.next_packet())
+        else {
             let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
             return std::ptr::null_mut();
         };

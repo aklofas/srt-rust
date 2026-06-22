@@ -402,7 +402,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nResetStats<'local>(
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
         if REGISTRY
-            .with(handle as u64, |pd| pd.reset_stats())
+            .with_poisoning(handle as u64, |pd| pd.reset_stats())
             .is_none()
         {
             closed(env);

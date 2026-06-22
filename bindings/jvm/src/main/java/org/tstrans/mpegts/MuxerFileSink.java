@@ -133,6 +133,48 @@ public final class MuxerFileSink implements AutoCloseable {
         drain();
     }
 
+    /** Push a video AU to a specific configured video stream (see {@link Muxer#pushVideoTo}). Drains after pushing. */
+    public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame) throws MuxException, IOException {
+        muxer.pushVideoTo(h, nal, pts, keyFrame);
+        drain();
+    }
+
+    /** Push an on-wire video AU to a specific video stream (see {@link Muxer#pushVideoWireTo}). Drains after pushing. */
+    public void pushVideoWireTo(VideoStreamHandle h, byte[] wire, long pts, boolean keyFrame) throws MuxException, IOException {
+        muxer.pushVideoWireTo(h, wire, pts, keyFrame);
+        drain();
+    }
+
+    /** Push a KLV payload to a specific KLV stream (see {@link Muxer#pushKlvTo}). Drains after pushing. */
+    public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId) throws MuxException, IOException {
+        muxer.pushKlvTo(h, klv, pts, metadataServiceId);
+        drain();
+    }
+
+    /** Push an audio frame to a specific audio stream (see {@link Muxer#pushAudioTo}). Drains after pushing. */
+    public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws MuxException, IOException {
+        muxer.pushAudioTo(h, frames, pts);
+        drain();
+    }
+
+    /** Push a subtitle PES to a specific subtitle stream; note the {@code (pts, payload)} order (see {@link Muxer#pushSubtitleTo}). Drains after pushing. */
+    public void pushSubtitleTo(SubtitleStreamHandle h, long pts, byte[] payload) throws MuxException, IOException {
+        muxer.pushSubtitleTo(h, pts, payload);
+        drain();
+    }
+
+    /** Push a video AU with explicit decode timestamp to a specific video stream (see {@link Muxer#pushVideoToWithDts}). Drains after pushing. */
+    public void pushVideoToWithDts(VideoStreamHandle h, byte[] nal, long pts, long dts, boolean keyFrame) throws MuxException, IOException {
+        muxer.pushVideoToWithDts(h, nal, pts, dts, keyFrame);
+        drain();
+    }
+
+    /** Push an on-wire video AU with explicit decode timestamp to a specific video stream (see {@link Muxer#pushVideoWireToWithDts}). Drains after pushing. */
+    public void pushVideoWireToWithDts(VideoStreamHandle h, byte[] wire, long pts, long dts, boolean keyFrame) throws MuxException, IOException {
+        muxer.pushVideoWireToWithDts(h, wire, pts, dts, keyFrame);
+        drain();
+    }
+
     /**
      * Mark the write successful. In atomic mode, only a committed sink promotes the
      * {@code *.partial} temp to the destination on {@link #close()}; without it,

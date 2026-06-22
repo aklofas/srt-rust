@@ -144,7 +144,7 @@ Per-stream handle accessors — obtain handles at mux time and use them with the
 - `Optional<VideoStreamHandle> videoStreamHandle(int index)` — get the video handle by zero-based position in the config.
 - `List<AudioStreamHandle> audioHandles()` / `Optional<AudioStreamHandle> audioStreamHandle(int index)` — same shape for audio.
 - `List<KlvStreamHandle> klvHandles()` / `Optional<KlvStreamHandle> klvStreamHandle(int index)` — same shape for KLV.
-- `List<SubtitleStreamHandle> subtitleHandles()` — subtitle handles (no `Optional` single-accessor yet).
+- `List<SubtitleStreamHandle> subtitleHandles()` / `Optional<SubtitleStreamHandle> subtitleStreamHandle(int index)` — same shape for subtitle.
 - `List<DataStreamHandle> dataHandles()` / `Optional<DataStreamHandle> dataStreamHandle(int index)` — same shape for data streams.
 
 Each `push*` targets the lone stream of that kind; a muxer configured with
@@ -756,11 +756,14 @@ explicit `commit()` call on the success path: a committed sink promotes the
 without `commit()` — whether because of an exception or a missing call —
 discards the temp and leaves the destination untouched.
 
-The `MuxerFileSink` push family (`pushVideo`, `pushKlv`, `pushAudio`,
-`pushSubtitle`, `pushData`, `pushDataTo`) mirrors the `Muxer` push family and
-also declares `IOException` (each call drains packets to disk). Argument
-shapes and PTS units (90 kHz) are identical; the `(pts, payload)` argument
-order on `pushSubtitle` matches `Muxer.pushSubtitle`.
+The `MuxerFileSink` push family mirrors the `Muxer` push family exactly —
+`pushVideo`, `pushVideoWire`, `pushKlv`, `pushAudio`, `pushSubtitle`,
+`pushData`, `pushDataTo`, plus all handle-targeted variants (`pushVideoTo`,
+`pushVideoWireTo`, `pushKlvTo`, `pushAudioTo`, `pushSubtitleTo`) and DTS
+variants (`pushVideoToWithDts`, `pushVideoWireToWithDts`) — and also declares
+`IOException` (each call drains packets to disk). Argument shapes and PTS units
+(90 kHz) are identical; the `(pts, payload)` argument order on
+`pushSubtitle`/`pushSubtitleTo` matches `Muxer`.
 
 ## SRT transport (`org.tstrans.srt`)
 

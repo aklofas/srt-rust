@@ -288,7 +288,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
         }) {
             Some(Ok(())) => {}
@@ -320,7 +320,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWire<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             // Single-stream resolution: same ambiguity contract as push_video /
             // C ABI's tst_muxer_push_video_wire.
             let handles = mux.video_handles();
@@ -360,7 +360,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlv<'local>(
             }
         };
         // `metadata_service_id` is `u8` in `Muxer::push_klv` (spec default 0x00).
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_klv(&buf, Pts90khz::new(pts), metadata_service_id as u8)
         }) {
             Some(Ok(())) => {}
@@ -387,7 +387,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudio<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_audio(&buf, Pts90khz::new(pts))
         }) {
             Some(Ok(())) => {}
@@ -415,7 +415,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitle<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_subtitle(Pts90khz::new(pts), &buf)
         }) {
             Some(Ok(())) => {}
@@ -445,7 +445,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushData<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts))) {
+        match REGISTRY.with_poisoning(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts))) {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_mux_error(env, &e),
             None => closed(env),
@@ -483,7 +483,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_data_to(h, &buf, Pts90khz::new(pts))
         }) {
             Some(Ok(())) => {}
@@ -522,7 +522,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoTo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
         }) {
             Some(Ok(())) => {}
@@ -561,7 +561,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireTo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_video_wire_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
         }) {
             Some(Ok(())) => {}
@@ -603,7 +603,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoToWithDts<'local>
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_video_to_with_dts(
                 h,
                 &buf,
@@ -649,7 +649,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'lo
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_video_wire_to_with_dts(
                 h,
                 &buf,
@@ -693,7 +693,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlvTo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_klv_to(h, &buf, Pts90khz::new(pts), metadata_service_id as u8)
         }) {
             Some(Ok(())) => {}
@@ -733,7 +733,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudioTo<'local>(
             }
         };
         // Core: push_audio_to(handle, pts, frames) — pts before frames.
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_audio_to(h, Pts90khz::new(pts), &buf)
         }) {
             Some(Ok(())) => {}
@@ -771,7 +771,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitleTo<'local>(
                 return;
             }
         };
-        match REGISTRY.with(handle as u64, |mux| {
+        match REGISTRY.with_poisoning(handle as u64, |mux| {
             mux.push_subtitle_to(h, Pts90khz::new(pts), &buf)
         }) {
             Some(Ok(())) => {}
@@ -1007,7 +1007,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPull<'local>(
             }
         };
         let mut scratch = vec![0u8; out_len];
-        let Some(n) = REGISTRY.with(handle as u64, |mux| mux.pull(&mut scratch)) else {
+        let Some(n) = REGISTRY.with_poisoning(handle as u64, |mux| mux.pull(&mut scratch)) else {
             closed(env);
             return 0;
         };

@@ -182,7 +182,7 @@ fn with_push(
     handle: jlong,
     op: impl FnOnce(&Inner) -> Result<(), MuxSenderError>,
 ) {
-    match REGISTRY.with(handle as u64, |inner| op(inner)) {
+    match REGISTRY.with_poisoning(handle as u64, |inner| op(inner)) {
         Some(Ok(())) => {}
         Some(Err(e)) => throw_mux_sender_error(env, &e),
         None => {

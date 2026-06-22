@@ -148,7 +148,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFeed<'local>(
 
         // Lease + feed under the resource lock; the owned `PairerOutput`s leave the
         // closure so the Java list is built outside it. `None` → closed handle.
-        let Some(feed_result) = REGISTRY.with(handle as u64, |pd| pd.feed(&buf)) else {
+        let Some(feed_result) = REGISTRY.with_poisoning(handle as u64, |pd| pd.feed(&buf)) else {
             closed(env);
             return JObject::null().into_raw();
         };
@@ -177,7 +177,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nFlush<'local>(
     handle: jlong,
 ) -> jobject {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
-        let Some(outputs) = REGISTRY.with(handle as u64, |pd| pd.flush()) else {
+        let Some(outputs) = REGISTRY.with_poisoning(handle as u64, |pd| pd.flush()) else {
             closed(env);
             return JObject::null().into_raw();
         };

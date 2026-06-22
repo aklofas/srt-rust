@@ -217,7 +217,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nNext<'local>(
         // recv_event runs INSIDE the registry lease (under the resource lock). The
         // byte sinks fire during this call and may stash an exception; we clone the
         // `sink_error` Arc out so we can drain it AFTER the lease releases.
-        let Some((res, sink_error)) = REGISTRY.with(handle as u64, |jdr| {
+        let Some((res, sink_error)) = REGISTRY.with_poisoning(handle as u64, |jdr| {
             (jdr.inner.recv_event(), jdr.sink_error.clone())
         }) else {
             let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
@@ -292,7 +292,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nAddByteSink<'local>(
 
         // Register the sink under the registry lease. The shared sink-error slot is
         // cloned from the leased receiver.
-        let registered = REGISTRY.with(handle as u64, |jdr| {
+        let registered = REGISTRY.with_poisoning(handle as u64, |jdr| {
             let slot = jdr.sink_error.clone();
             jdr.inner.add_byte_sink(Box::new(move |pkt: &[u8]| {
                 // Runs on the receiver's own thread INSIDE recv_event. NO Java monitor

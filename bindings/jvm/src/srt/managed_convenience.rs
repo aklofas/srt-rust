@@ -154,7 +154,7 @@ fn with_mux_push(
     handle: jlong,
     op: impl FnOnce(&RustMuxSender<ManagedTransport<SrtTransport>>) -> Result<(), MuxSenderError>,
 ) {
-    match REGISTRY_MUX.with(handle as u64, |jstruct| op(&jstruct.inner)) {
+    match REGISTRY_MUX.with_poisoning(handle as u64, |jstruct| op(&jstruct.inner)) {
         Some(Ok(())) => {}
         Some(Err(e)) => throw_managed_mux_sender_error(env, &e),
         None => {
@@ -962,7 +962,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nNext<'local>(
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
         // recv_event runs INSIDE the registry lease (under the resource lock,
         // single-threaded per the Receiver model).
-        let Some(res) = REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.recv_event())
+        let Some(res) =
+            REGISTRY_DEMUX.with_poisoning(handle as u64, |jstruct| jstruct.inner.recv_event())
         else {
             let _ = env.throw_new(
                 "java/lang/IllegalStateException",

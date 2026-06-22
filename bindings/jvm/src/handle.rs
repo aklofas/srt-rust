@@ -574,10 +574,17 @@ mod tests {
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             reg.with_poisoning(id, |_v| panic!("torn mutation"))
         }));
-        assert!(caught.is_err(), "panic propagates out for the outer jni_catch to throw");
+        assert!(
+            caught.is_err(),
+            "panic propagates out for the outer jni_catch to throw"
+        );
 
         // The torn resource was dropped exactly once and the entry removed.
-        assert_eq!(drops.load(Ordering::SeqCst), 1, "torn resource dropped exactly once");
+        assert_eq!(
+            drops.load(Ordering::SeqCst),
+            1,
+            "torn resource dropped exactly once"
+        );
         assert!(!reg.contains(id), "poisoned entry removed from the table");
 
         // A later op on the same handle is a deterministic closed-handle None
@@ -587,7 +594,11 @@ mod tests {
 
         // close() on a poisoned handle is a safe no-op (no second drop).
         assert!(reg.close(id).is_none());
-        assert_eq!(drops.load(Ordering::SeqCst), 1, "no double-drop from close-after-poison");
+        assert_eq!(
+            drops.load(Ordering::SeqCst),
+            1,
+            "no double-drop from close-after-poison"
+        );
     }
 
     #[test]

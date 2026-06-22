@@ -137,7 +137,7 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSend(
                 return;
             }
         };
-        match REGISTRY_SENDER.with(handle as u64, |w| w.inner.send_bytes(&bytes)) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |w| w.inner.send_bytes(&bytes)) {
             Some(Ok(())) => {}
             Some(Err(e)) => transport_error_to_rtp(env, &e),
             None => {
@@ -262,7 +262,7 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
         // duration. A concurrent `close()` fires the cancel hook (waking the recv)
         // before taking the lock. We copy the received bytes OUT of `scratch` inside
         // the closure so the Java array is built after the lease releases.
-        let Some(res) = REGISTRY_RECEIVER.with(handle as u64, |w| {
+        let Some(res) = REGISTRY_RECEIVER.with_poisoning(handle as u64, |w| {
             let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
             Ok::<Vec<u8>, _>(w.scratch[..n].to_vec())
         }) else {

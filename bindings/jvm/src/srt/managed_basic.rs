@@ -228,7 +228,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
             }
         };
 
-        match REGISTRY_SENDER.with(handle as u64, |inner| inner.send_ts(&bytes)) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.send_ts(&bytes)) {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
@@ -252,7 +252,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFlush(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        match REGISTRY_SENDER.with(handle as u64, |inner| inner.flush()) {
+        match REGISTRY_SENDER.with_poisoning(handle as u64, |inner| inner.flush()) {
             Some(Ok(())) => {}
             Some(Err(e)) => match e.source {
                 SenderErrorSource::Transport(t) => super::errors::transport_error(env, &t),
@@ -478,7 +478,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nRecvBytes(
 ) -> jbyteArray {
     crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
         let Some(res) =
-            REGISTRY_RECEIVER.with(handle as u64, |jstruct| jstruct.inner.next_packet())
+            REGISTRY_RECEIVER.with_poisoning(handle as u64, |jstruct| jstruct.inner.next_packet())
         else {
             let _ = env.throw_new(
                 "java/lang/IllegalStateException",

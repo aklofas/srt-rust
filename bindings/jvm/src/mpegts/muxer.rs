@@ -445,7 +445,8 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushData<'local>(
                 return;
             }
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts))) {
+        match REGISTRY.with_poisoning(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts)))
+        {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_mux_error(env, &e),
             None => closed(env),

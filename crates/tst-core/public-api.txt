@@ -4627,6 +4627,9 @@ pub fn tst_core::mpegts::descriptors::parse::parse_teletext_descriptor(&[u8]) ->
 #[non_exhaustive] pub enum tst_core::mpegts::descriptors::DescriptorError
 pub tst_core::mpegts::descriptors::DescriptorError::EmptyEntries
 pub tst_core::mpegts::descriptors::DescriptorError::EmptyEntries::tag: u8
+pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent
+pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent::content: u8
+pub tst_core::mpegts::descriptors::DescriptorError::InvalidComponent::ext: u8
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::len: usize
 pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::max: usize
@@ -4730,7 +4733,7 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::descriptors::parse::Teletex
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 pub fn tst_core::mpegts::descriptors::ac3_audio_stream_descriptor(u8, u8, u8, u8, u8, u8, bool) -> alloc::vec::Vec<u8>
-pub fn tst_core::mpegts::descriptors::component(u8, u8, u8, [u8; 3], &str) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
+pub fn tst_core::mpegts::descriptors::component(u8, u8, u8, u8, [u8; 3], &str) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::find_descriptor_tag(&[tst_core::mpegts::descriptors::parse::RawDescriptor], u8) -> bool
 pub fn tst_core::mpegts::descriptors::find_format_identifier(&[tst_core::mpegts::descriptors::parse::RawDescriptor], &[u8; 4]) -> bool
 pub fn tst_core::mpegts::descriptors::format_identifier_ac3() -> alloc::vec::Vec<u8>

@@ -301,17 +301,18 @@ pub enum VTargetPackError {
 #[must_use]
 #[derive(Debug, Clone, Default)]
 pub struct VTargetPack {
-    /// BER-OID `targetId` per §10.2.2.1. Capped at `u32::MAX` —
-    /// see struct doc-comment for the spec-vs-substrate width
-    /// mismatch rationale.
-    pub target_id: u32,
+    /// BER-OID `targetId` per §10.2.2.1. Up to 9 BER-OID wire bytes
+    /// (≈ 63 bits) per ST 0903.6 §10.2.2.1; widened to `u64`.
+    pub target_id: u64,
     /// Tag 1 `targetCentroid` per §10.2.2.2 — pixel number, V6
-    /// truncated big-endian.
-    pub centroid_pixel: Option<u32>,
-    /// Tag 2 `boundingBoxTopLeft` per §10.2.2.3 — pixel number, V6.
-    pub bbox_top_left_pixel: Option<u32>,
-    /// Tag 3 `boundingBoxBottomRight` per §10.2.2.4 — pixel number, V6.
-    pub bbox_bottom_right_pixel: Option<u32>,
+    /// truncated big-endian (up to 6 wire bytes).
+    pub centroid_pixel: Option<u64>,
+    /// Tag 2 `boundingBoxTopLeft` per §10.2.2.3 — pixel number, V6
+    /// (up to 6 wire bytes).
+    pub bbox_top_left_pixel: Option<u64>,
+    /// Tag 3 `boundingBoxBottomRight` per §10.2.2.4 — pixel number, V6
+    /// (up to 6 wire bytes).
+    pub bbox_bottom_right_pixel: Option<u64>,
     /// Tag 4 `targetPriority` per §10.2.2.5 — fixed-length 1, valid 1..=255.
     pub priority: Option<u8>,
     /// Tag 5 `targetConfidenceLevel` per §10.2.2.6 — fixed-length 1,
@@ -350,10 +351,12 @@ pub struct VTargetPack {
     /// Tag 18 `geospatialContourSeries` per §10.2.2.19 — Series of
     /// Location pass-through bytes (typed inner deferred).
     pub geospatial_contour_series: Option<Vec<u8>>,
-    /// Tag 19 `centroidPixRow` per §10.2.2.20 — V4 (1..=2^32-1).
-    pub centroid_pix_row: Option<u32>,
-    /// Tag 20 `centroidPixCol` per §10.2.2.21 — V4 (1..=2^32-1).
-    pub centroid_pix_col: Option<u32>,
+    /// Tag 19 `centroidPixRow` per §10.2.2.20 — V4 (1..=2^32-1);
+    /// widened to `u64` for consistency with other pixel fields.
+    pub centroid_pix_row: Option<u64>,
+    /// Tag 20 `centroidPixCol` per §10.2.2.21 — V4 (1..=2^32-1);
+    /// widened to `u64` for consistency with other pixel fields.
+    pub centroid_pix_col: Option<u64>,
     /// Tag 22 `algorithmId` per §10.2.2.23 — V3 reference into
     /// the parent VMTI LS Algorithm Series.
     pub algorithm_id: Option<u32>,

@@ -305,3 +305,33 @@ fn defined_pack_tags_byte_identical_pre_and_post_e5_followup() {
         "single-byte BER-OID emit drifted from pre-fix byte layout for typed tags"
     );
 }
+
+// -------- REF-KLV-04b: u64 field round-trip tests --------
+
+#[test]
+fn vtarget_pack_target_id_above_u32_round_trips() {
+    let mut p = VTargetPack {
+        target_id: (u32::MAX as u64) + 12345,
+        ..Default::default()
+    };
+    p.centroid_pixel = Some(1); // a pack needs >= 1 TLV item beyond targetId
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.target_id, (u32::MAX as u64) + 12345);
+}
+
+#[test]
+fn vtarget_pack_pixel_above_u32_round_trips() {
+    let big_pixel = (u32::MAX as u64) + 1; // needs a 5-byte var-uint
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pixel: Some(big_pixel),
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, _) = read_pack(&buf).unwrap();
+    assert_eq!(decoded.centroid_pixel, Some(big_pixel));
+}

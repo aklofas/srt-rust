@@ -1220,7 +1220,7 @@ pub tst_core::error::KlvEncodeError::BufferTooSmall
 pub tst_core::error::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::error::KlvEncodeError::BufferTooSmall::needed: usize
 pub tst_core::error::KlvEncodeError::DuplicateTargetId
-pub tst_core::error::KlvEncodeError::DuplicateTargetId::target_id: u32
+pub tst_core::error::KlvEncodeError::DuplicateTargetId::target_id: u64
 pub tst_core::error::KlvEncodeError::ForbiddenStandaloneOffset
 pub tst_core::error::KlvEncodeError::ForbiddenStandaloneOffset::tag: u32
 pub tst_core::error::KlvEncodeError::InvalidImapbParams
@@ -1244,7 +1244,7 @@ pub tst_core::error::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::error::KlvEncodeError::UnsupportedImapbLength::length: usize
 pub tst_core::error::KlvEncodeError::VTargetPackEmpty
-pub tst_core::error::KlvEncodeError::VTargetPackEmpty::target_id: u32
+pub tst_core::error::KlvEncodeError::VTargetPackEmpty::target_id: u64
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
 pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError
@@ -2075,16 +2075,16 @@ pub struct tst_core::klv::st0903::VTargetPack
 pub tst_core::klv::st0903::VTargetPack::algorithm_id: core::option::Option<u32>
 pub tst_core::klv::st0903::VTargetPack::bbox_bottom_right_lat_offset: core::option::Option<f64>
 pub tst_core::klv::st0903::VTargetPack::bbox_bottom_right_lon_offset: core::option::Option<f64>
-pub tst_core::klv::st0903::VTargetPack::bbox_bottom_right_pixel: core::option::Option<u32>
+pub tst_core::klv::st0903::VTargetPack::bbox_bottom_right_pixel: core::option::Option<u64>
 pub tst_core::klv::st0903::VTargetPack::bbox_top_left_lat_offset: core::option::Option<f64>
 pub tst_core::klv::st0903::VTargetPack::bbox_top_left_lon_offset: core::option::Option<f64>
-pub tst_core::klv::st0903::VTargetPack::bbox_top_left_pixel: core::option::Option<u32>
+pub tst_core::klv::st0903::VTargetPack::bbox_top_left_pixel: core::option::Option<u64>
 pub tst_core::klv::st0903::VTargetPack::centroid_hae: core::option::Option<f64>
 pub tst_core::klv::st0903::VTargetPack::centroid_lat_offset: core::option::Option<f64>
 pub tst_core::klv::st0903::VTargetPack::centroid_lon_offset: core::option::Option<f64>
-pub tst_core::klv::st0903::VTargetPack::centroid_pix_col: core::option::Option<u32>
-pub tst_core::klv::st0903::VTargetPack::centroid_pix_row: core::option::Option<u32>
-pub tst_core::klv::st0903::VTargetPack::centroid_pixel: core::option::Option<u32>
+pub tst_core::klv::st0903::VTargetPack::centroid_pix_col: core::option::Option<u64>
+pub tst_core::klv::st0903::VTargetPack::centroid_pix_row: core::option::Option<u64>
+pub tst_core::klv::st0903::VTargetPack::centroid_pixel: core::option::Option<u64>
 pub tst_core::klv::st0903::VTargetPack::confidence_level: core::option::Option<u8>
 pub tst_core::klv::st0903::VTargetPack::detection_status: core::option::Option<u8>
 pub tst_core::klv::st0903::VTargetPack::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
@@ -2093,7 +2093,7 @@ pub tst_core::klv::st0903::VTargetPack::history: core::option::Option<u16>
 pub tst_core::klv::st0903::VTargetPack::percentage_of_target_pixels: core::option::Option<u8>
 pub tst_core::klv::st0903::VTargetPack::priority: core::option::Option<u8>
 pub tst_core::klv::st0903::VTargetPack::target_color: core::option::Option<[u8; 3]>
-pub tst_core::klv::st0903::VTargetPack::target_id: u32
+pub tst_core::klv::st0903::VTargetPack::target_id: u64
 pub tst_core::klv::st0903::VTargetPack::target_intensity: core::option::Option<u32>
 pub tst_core::klv::st0903::VTargetPack::target_location: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0903::VTargetPack::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
@@ -2498,16 +2498,16 @@ pub struct tst_core::klv::VTargetPack
 pub tst_core::klv::VTargetPack::algorithm_id: core::option::Option<u32>
 pub tst_core::klv::VTargetPack::bbox_bottom_right_lat_offset: core::option::Option<f64>
 pub tst_core::klv::VTargetPack::bbox_bottom_right_lon_offset: core::option::Option<f64>
-pub tst_core::klv::VTargetPack::bbox_bottom_right_pixel: core::option::Option<u32>
+pub tst_core::klv::VTargetPack::bbox_bottom_right_pixel: core::option::Option<u64>
 pub tst_core::klv::VTargetPack::bbox_top_left_lat_offset: core::option::Option<f64>
 pub tst_core::klv::VTargetPack::bbox_top_left_lon_offset: core::option::Option<f64>
-pub tst_core::klv::VTargetPack::bbox_top_left_pixel: core::option::Option<u32>
+pub tst_core::klv::VTargetPack::bbox_top_left_pixel: core::option::Option<u64>
 pub tst_core::klv::VTargetPack::centroid_hae: core::option::Option<f64>
 pub tst_core::klv::VTargetPack::centroid_lat_offset: core::option::Option<f64>
 pub tst_core::klv::VTargetPack::centroid_lon_offset: core::option::Option<f64>
-pub tst_core::klv::VTargetPack::centroid_pix_col: core::option::Option<u32>
-pub tst_core::klv::VTargetPack::centroid_pix_row: core::option::Option<u32>
-pub tst_core::klv::VTargetPack::centroid_pixel: core::option::Option<u32>
+pub tst_core::klv::VTargetPack::centroid_pix_col: core::option::Option<u64>
+pub tst_core::klv::VTargetPack::centroid_pix_row: core::option::Option<u64>
+pub tst_core::klv::VTargetPack::centroid_pixel: core::option::Option<u64>
 pub tst_core::klv::VTargetPack::confidence_level: core::option::Option<u8>
 pub tst_core::klv::VTargetPack::detection_status: core::option::Option<u8>
 pub tst_core::klv::VTargetPack::field_errors: alloc::vec::Vec<tst_core::error::KlvFieldError>
@@ -2516,7 +2516,7 @@ pub tst_core::klv::VTargetPack::history: core::option::Option<u16>
 pub tst_core::klv::VTargetPack::percentage_of_target_pixels: core::option::Option<u8>
 pub tst_core::klv::VTargetPack::priority: core::option::Option<u8>
 pub tst_core::klv::VTargetPack::target_color: core::option::Option<[u8; 3]>
-pub tst_core::klv::VTargetPack::target_id: u32
+pub tst_core::klv::VTargetPack::target_id: u64
 pub tst_core::klv::VTargetPack::target_intensity: core::option::Option<u32>
 pub tst_core::klv::VTargetPack::target_location: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::VTargetPack::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
@@ -5775,7 +5775,7 @@ pub tst_core::KlvEncodeError::BufferTooSmall
 pub tst_core::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::KlvEncodeError::BufferTooSmall::needed: usize
 pub tst_core::KlvEncodeError::DuplicateTargetId
-pub tst_core::KlvEncodeError::DuplicateTargetId::target_id: u32
+pub tst_core::KlvEncodeError::DuplicateTargetId::target_id: u64
 pub tst_core::KlvEncodeError::ForbiddenStandaloneOffset
 pub tst_core::KlvEncodeError::ForbiddenStandaloneOffset::tag: u32
 pub tst_core::KlvEncodeError::InvalidImapbParams
@@ -5799,7 +5799,7 @@ pub tst_core::KlvEncodeError::StringTooLong::tag: u32
 pub tst_core::KlvEncodeError::UnsupportedImapbLength
 pub tst_core::KlvEncodeError::UnsupportedImapbLength::length: usize
 pub tst_core::KlvEncodeError::VTargetPackEmpty
-pub tst_core::KlvEncodeError::VTargetPackEmpty::target_id: u32
+pub tst_core::KlvEncodeError::VTargetPackEmpty::target_id: u64
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_core::error::KlvPatchError
 pub fn tst_core::error::KlvPatchError::from(tst_core::error::KlvEncodeError) -> Self
 impl core::error::Error for tst_core::error::KlvEncodeError

@@ -10,24 +10,24 @@ use alloc::vec::Vec;
 /// 104, 105, 106, 107), then any preserved `unknown` tags last per
 /// ST 0107.5 §6.
 pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize, KlvEncodeError> {
-    use crate::klv::length::{write_ber, write_ber_oid};
-    use crate::klv::st0903::emit::{emit_imapb_n, emit_tlv, emit_var};
+    use crate::klv::length::{write_ber, write_ber_oid, write_ber_oid_u64};
+    use crate::klv::st0903::emit::{emit_imapb_n, emit_tlv, emit_var, emit_var_u64};
 
     let start = out.len();
 
-    // 1. BER-OID Target ID (5 bytes covers up to u32::MAX).
-    let mut buf = [0u8; 5];
-    let n = write_ber_oid(pack.target_id, &mut buf)?;
+    // 1. BER-OID Target ID — u64 needs up to 10 BER-OID bytes (ceil(64/7)).
+    let mut buf = [0u8; 10];
+    let n = write_ber_oid_u64(pack.target_id, &mut buf)?;
     out.extend_from_slice(&buf[..n]);
 
     if let Some(v) = pack.centroid_pixel {
-        emit_var(out, 1, v)?;
+        emit_var_u64(out, 1, v)?;
     }
     if let Some(v) = pack.bbox_top_left_pixel {
-        emit_var(out, 2, v)?;
+        emit_var_u64(out, 2, v)?;
     }
     if let Some(v) = pack.bbox_bottom_right_pixel {
-        emit_var(out, 3, v)?;
+        emit_var_u64(out, 3, v)?;
     }
     if let Some(v) = pack.priority {
         emit_tlv(out, 4, &[v])?;
@@ -80,10 +80,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
         emit_tlv(out, 18, bytes)?;
     }
     if let Some(v) = pack.centroid_pix_row {
-        emit_var(out, 19, v)?;
+        emit_var_u64(out, 19, v)?;
     }
     if let Some(v) = pack.centroid_pix_col {
-        emit_var(out, 20, v)?;
+        emit_var_u64(out, 20, v)?;
     }
     if let Some(v) = pack.algorithm_id {
         emit_var(out, 22, v)?;
@@ -137,22 +137,22 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
 /// Number of bytes `pack` would occupy when encoded. Mirrors
 /// `write_pack`'s field-by-field structure.
 pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
-    use crate::klv::length::{ber_len, ber_oid_len};
-    use crate::klv::st0903::var_uint::var_u32_len;
+    use crate::klv::length::{ber_len, ber_oid_len, ber_oid_len_u64};
+    use crate::klv::st0903::var_uint::{var_u32_len, var_u64_len};
 
     fn tlv_len(value_len: usize) -> usize {
         1 /* tag */ + ber_len(value_len) + value_len
     }
 
-    let mut total = ber_oid_len(pack.target_id);
+    let mut total = ber_oid_len_u64(pack.target_id);
     if let Some(v) = pack.centroid_pixel {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_u64_len(v));
     }
     if let Some(v) = pack.bbox_top_left_pixel {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_u64_len(v));
     }
     if let Some(v) = pack.bbox_bottom_right_pixel {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_u64_len(v));
     }
     if pack.priority.is_some() {
         total += tlv_len(1);
@@ -200,10 +200,10 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
         total += tlv_len(b.len());
     }
     if let Some(v) = pack.centroid_pix_row {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_u64_len(v));
     }
     if let Some(v) = pack.centroid_pix_col {
-        total += tlv_len(var_u32_len(v));
+        total += tlv_len(var_u64_len(v));
     }
     if let Some(v) = pack.algorithm_id {
         total += tlv_len(var_u32_len(v));

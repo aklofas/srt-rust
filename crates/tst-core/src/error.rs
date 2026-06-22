@@ -165,14 +165,14 @@ pub enum KlvEncodeError {
     #[error(
         "ST 0903 VTarget Pack {target_id} has no TLV items after targetId (ST 0903.4-10 requires at least one)"
     )]
-    VTargetPackEmpty { target_id: u32 },
+    VTargetPackEmpty { target_id: u64 },
 
     /// An ST 0903 vTargetSeries contains more than one VTarget Pack
     /// with the same targetId (ST 0903.6-126 requires unique targetIds).
     #[error(
         "ST 0903 vTargetSeries contains duplicate targetId {target_id} (ST 0903.6-126 requires unique targetIds)"
     )]
-    DuplicateTargetId { target_id: u32 },
+    DuplicateTargetId { target_id: u64 },
 
     /// A standalone ST 0903 VMTI Local Set contains a VTarget Pack
     /// with a parent-relative offset tag, which is forbidden in the

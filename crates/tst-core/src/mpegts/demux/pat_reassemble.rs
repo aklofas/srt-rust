@@ -32,8 +32,9 @@ pub(super) enum PatReassemblyOutcome {
     Pending,
     /// All sections present and contiguous; here is the merged program list.
     Complete(Vec<PatEntry>),
-    /// Genuinely-broken multi-section input (version flip mid-table or cap
-    /// exceeded). Caller emits PsiMultiSectionUnsupported. Buffer is reset.
+    /// Genuinely-broken multi-section input — the DoS cap was exceeded, or a
+    /// section disagreed on `last_section_number` for the same table. Caller
+    /// emits `PsiMultiSectionUnsupported`. Buffer is reset.
     Broken,
 }
 
@@ -59,7 +60,16 @@ impl PatReassembler {
                 self.start(key, s);
             }
             None => self.start(key, s),
-            Some(_) => {} // same table, continue
+            Some(_) => {
+                // Same (tsid, version, current_next) table: every section MUST
+                // agree on last_section_number. A mismatch is malformed input
+                // (the table size cannot change without a version bump) —
+                // reject rather than risk a premature partial-apply.
+                if s.last_section_number != self.last_section_number {
+                    self.clear();
+                    return PatReassemblyOutcome::Broken;
+                }
+            }
         }
         // Insert (or overwrite a re-sent) section.
         let prev = self.sections.insert(s.section_number, s.programs.clone());
@@ -204,6 +214,27 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    /// A malformed multi-section PAT whose sections disagree on
+    /// last_section_number must NOT complete with a partial set — it returns
+    /// Broken and clears, so a subsequent valid table still completes.
+    #[test]
+    fn inconsistent_last_section_number_returns_broken_and_clears() {
+        let mut r = PatReassembler::default();
+        // Section 0 claims a 2-section table (last=1)...
+        let s0 = make_section(1, 0, 0, 1, &[(1, 0x100)]);
+        assert_eq!(r.accept(&s0), PatReassemblyOutcome::Pending);
+        // ...but section 1 of the SAME (tsid, version, current_next) claims last=3.
+        let s1_bad = make_section(1, 0, 1, 3, &[(2, 0x200)]);
+        assert_eq!(r.accept(&s1_bad), PatReassemblyOutcome::Broken);
+        assert_eq!(r.key, None);
+        assert!(r.sections.is_empty());
+        // A fresh valid table on a new key still completes (not wedged).
+        let v0 = make_section(5, 1, 0, 1, &[(9, 0x900)]);
+        let v1 = make_section(5, 1, 1, 1, &[(10, 0xA00)]);
+        assert_eq!(r.accept(&v0), PatReassemblyOutcome::Pending);
+        assert!(matches!(r.accept(&v1), PatReassemblyOutcome::Complete(p) if p.len() == 2));
     }
 
     /// SECURITY: cumulative entries exceeding MAX_PAT_ENTRIES (8192) across a

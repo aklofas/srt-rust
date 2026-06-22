@@ -308,6 +308,97 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     Ok(DecodedImapb::Value(value))
 }
 
+/// MISB ST 1201.5 §7.2.3 Table 2 + §7.2.3.1 Table 3 special-value families.
+///
+/// IMAPB reserves the top two bits (`11`) of byte 0 to signal a special
+/// value. Bit `bn-2` is the sign, `bn-3` selects NaN, `bn-4` selects
+/// quiet/signaling, and the remaining `8L-5` low bits carry the NaN
+/// identifier / signal payload (zero-filled for the standard families).
+/// The MISB-defined overflow signals (`BelowMin`/`AboveMax`) use the full
+/// 8-bit byte-0 discriminator of Table 3 with all subsequent bytes zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ImapbSpecial {
+    /// `+∞` — byte-0 `0xC8`.
+    PositiveInfinity,
+    /// `−∞` — byte-0 `0xE8`.
+    NegativeInfinity,
+    /// Positive quiet NaN — byte-0 `0xD0` (default `nan_id = 0`).
+    PositiveQuietNaN { nan_id: u64 },
+    /// Negative quiet NaN — byte-0 `0xF0`.
+    NegativeQuietNaN { nan_id: u64 },
+    /// Positive signaling NaN — byte-0 `0xD8` (`signal` in the low bits).
+    PositiveSignalingNaN { signal: u64 },
+    /// Negative signaling NaN — byte-0 `0xF8`.
+    NegativeSignalingNaN { signal: u64 },
+    /// `IMAP_BELOW_MINIMUM` overflow signal — byte-0 `0xE0` (Table 3).
+    BelowMin,
+    /// `IMAP_ABOVE_MAXIMUM` overflow signal — byte-0 `0xE1` (Table 3).
+    AboveMax,
+    /// User-defined special — byte-0 `0xC0` (`signal` in the low bits).
+    UserDefined { signal: u64 },
+}
+
+/// Encode an ST 1201.5 §7.2.3 special value into `length`-byte big-endian
+/// wire form: the family pattern in the top bits, the NaN-Id / signal
+/// payload in the low `8L-5` bits, all remaining bits zero-filled.
+///
+/// # Errors
+/// - [`KlvEncodeError::UnsupportedImapbLength`] when `length ∉ 1..=8`.
+/// - [`KlvEncodeError::BufferTooSmall`] when `out.len() < length`.
+/// - [`KlvEncodeError::OutOfRange`] when a NaN-Id / signal payload does not
+///   fit the `8L-5` available bits for the chosen `length`.
+pub fn encode_imapb_special(
+    special: ImapbSpecial,
+    length: usize,
+    out: &mut [u8],
+) -> Result<(), KlvEncodeError> {
+    if !(1..=8).contains(&length) {
+        return Err(KlvEncodeError::UnsupportedImapbLength { length });
+    }
+    if out.len() < length {
+        return Err(KlvEncodeError::BufferTooSmall {
+            needed: length,
+            got: out.len(),
+        });
+    }
+    let buf = &mut out[..length];
+    buf.fill(0);
+    // Table 3 (MISB Defined): full byte-0 discriminator, remaining bytes zero.
+    let (prefix5, payload): (u8, u64) = match special {
+        ImapbSpecial::BelowMin => {
+            buf[0] = 0xE0;
+            return Ok(());
+        }
+        ImapbSpecial::AboveMax => {
+            buf[0] = 0xE1;
+            return Ok(());
+        }
+        // Table 2: 5-bit family prefix (bn..bn-4) + (8L-5)-bit payload.
+        ImapbSpecial::PositiveInfinity => (0b11001, 0),
+        ImapbSpecial::NegativeInfinity => (0b11101, 0),
+        ImapbSpecial::PositiveQuietNaN { nan_id } => (0b11010, nan_id),
+        ImapbSpecial::NegativeQuietNaN { nan_id } => (0b11110, nan_id),
+        ImapbSpecial::PositiveSignalingNaN { signal } => (0b11011, signal),
+        ImapbSpecial::NegativeSignalingNaN { signal } => (0b11111, signal),
+        ImapbSpecial::UserDefined { signal } => (0b11000, signal),
+    };
+    let payload_bits = 8 * length - 5;
+    if payload_bits < 64 && payload >= (1u64 << payload_bits) {
+        return Err(KlvEncodeError::OutOfRange {
+            tag: 0,
+            value: payload as f64,
+            min: 0.0,
+            max: ((1u64 << payload_bits) - 1) as f64,
+        });
+    }
+    let word = ((prefix5 as u64) << payload_bits) | payload;
+    for (i, slot) in buf.iter_mut().enumerate() {
+        *slot = (word >> (8 * (length - 1 - i))) as u8;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,5 +879,63 @@ mod tests {
             matches!(err, KlvFieldError::UnsupportedImapbLength { length: 9 }),
             "L=9+badrange: expected UnsupportedImapbLength to fire first, got {err:?}"
         );
+    }
+
+    // --- encode_imapb_special tests (REF-KLV-01 Task 3) ---
+
+    #[test]
+    fn encode_special_positive_infinity_zero_filled() {
+        let mut out = [0xFFu8; 3];
+        encode_imapb_special(ImapbSpecial::PositiveInfinity, 3, &mut out).unwrap();
+        assert_eq!(out, [0xC8, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn encode_special_below_above_min_max() {
+        let mut out = [0xFFu8; 2];
+        encode_imapb_special(ImapbSpecial::BelowMin, 2, &mut out).unwrap();
+        assert_eq!(out, [0xE0, 0x00]);
+        encode_imapb_special(ImapbSpecial::AboveMax, 2, &mut out).unwrap();
+        assert_eq!(out, [0xE1, 0x00]);
+    }
+
+    #[test]
+    fn encode_special_negative_signaling_nan_carries_payload() {
+        // L=2 → payload occupies 8*2-5 = 11 bits; prefix 0b11111 in the top 5.
+        let mut out = [0u8; 2];
+        encode_imapb_special(
+            ImapbSpecial::NegativeSignalingNaN { signal: 0x2A },
+            2,
+            &mut out,
+        )
+        .unwrap();
+        // word = (0b11111 << 11) | 0x2A = 0xF82A.
+        assert_eq!(out, [0xF8, 0x2A]);
+    }
+
+    #[test]
+    fn encode_special_payload_too_large_is_rejected() {
+        // L=1 → only 3 payload bits; nan_id 0x10 doesn't fit.
+        let mut out = [0u8; 1];
+        let err =
+            encode_imapb_special(ImapbSpecial::PositiveQuietNaN { nan_id: 0x10 }, 1, &mut out);
+        assert!(
+            matches!(err, Err(KlvEncodeError::OutOfRange { .. })),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn encode_special_bad_length_and_buffer() {
+        let mut out = [0u8; 4];
+        assert!(matches!(
+            encode_imapb_special(ImapbSpecial::PositiveInfinity, 9, &mut out),
+            Err(KlvEncodeError::UnsupportedImapbLength { length: 9 })
+        ));
+        let mut small = [0u8; 1];
+        assert!(matches!(
+            encode_imapb_special(ImapbSpecial::PositiveInfinity, 2, &mut small),
+            Err(KlvEncodeError::BufferTooSmall { needed: 2, got: 1 })
+        ));
     }
 }

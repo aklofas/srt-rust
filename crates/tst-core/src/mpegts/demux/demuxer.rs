@@ -2652,7 +2652,9 @@ mod tests {
         let events = drain_all_events(&mut demuxer);
 
         assert!(
-            !events.iter().any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+            !events
+                .iter()
+                .any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
             "an INCOMPLETE multi-section PAT must NOT apply a partial program set"
         );
         assert!(

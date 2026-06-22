@@ -21,7 +21,11 @@ pub enum StrictMode {
     /// mismatches. Tolerate timing anomalies.
     DescriptorsOnly,
     /// Hard-fail on every `NonConformantIssue` variant including
-    /// future-added ones.
+    /// future-added ones. Exception: a multi-section PAT
+    /// (`PsiMultiSectionUnsupported { table_id: 0x00, .. }`) degrades to a
+    /// surface-only event (REF-PSI-02 — don't blame the sender); a
+    /// multi-section PMT (table_id 0x02) and every other variant are still
+    /// rejected.
     Full,
 }
 

@@ -394,6 +394,40 @@ def _minimal_st0601_ls() -> bytes:
     ])
 
 
+def _video_dts_roundtrip_ts_bytes() -> bytes:
+    """Reproduce the ``video-dts-roundtrip`` mux recipe byte-for-byte.
+
+    Single H.264 video stream (program 1, pmt_pid 0x1000, video pid 0x1011);
+    one IDR pushed via ``push_video_to_with_dts`` with distinct PTS 9000 /
+    DTS 6000 (forces ``PTS_DTS_flags='11'``). The committed ``output_sha256``
+    is shared with the Rust/C/JVM adapters.
+    """
+    prog = (
+        MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+        .add_video(pid=0x1011, codec=VideoCodec.H264)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    mux = Muxer(cfg)
+    handle = mux.video_stream_handle(0)
+    assert handle is not None
+    mux.push_video_to_with_dts(
+        handle,
+        _synthetic_h264_idr(),
+        pts=Pts90khz.from_raw(9000),
+        dts=Pts90khz.from_raw(6000),
+        key_frame=True,
+    )
+    out = bytearray()
+    buf = bytearray(1316)  # 7 × 188
+    while True:
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out.extend(buf[:n])
+    return bytes(out)
+
+
 def _audio_klv_roundtrip_ts_bytes() -> bytes:
     """Python mirror of ``audio_klv_roundtrip_ts_bytes()`` in the Rust crate.
 
@@ -450,6 +484,8 @@ def _run_roundtrip(
         fresh = _video_roundtrip_ts_bytes()
     elif scenario_id == "audio-klv-roundtrip":
         fresh = _audio_klv_roundtrip_ts_bytes()
+    elif scenario_id == "video-dts-roundtrip":
+        fresh = _video_dts_roundtrip_ts_bytes()
     else:
         pytest.fail(f"unknown roundtrip scenario id: {scenario_id!r}")
 

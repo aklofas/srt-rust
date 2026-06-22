@@ -661,20 +661,26 @@ pub(crate) fn codec_parse_error_to_pyerr(
 #[allow(dead_code)]
 pub(crate) fn klv_encode_error_to_pyerr(py: Python<'_>, e: tst_core::KlvEncodeError) -> PyErr {
     use tst_core::error::KlvEncodeError as RustE;
-    let (kind_str, tag): (&str, Option<u32>) = match &e {
+    // `tag` is `Option<u64>` so the VTarget Pack `target_id` (a u64 since
+    // REF-KLV-04) reaches `.tag` losslessly; the KLV-tag-number variants
+    // widen their u16/u32 tag values to u64 (lossless). PyO3 maps `u64` →
+    // Python `int` (unbounded), matching the `.tag: Optional[int]` stub.
+    let (kind_str, tag): (&str, Option<u64>) = match &e {
         RustE::BufferTooSmall { .. } => ("BUFFER_TOO_SMALL", None),
         RustE::RecordTooLarge => ("RECORD_TOO_LARGE", None),
-        RustE::OutOfRange { tag, .. } => ("OUT_OF_RANGE", Some(*tag)),
-        RustE::StringTooLong { tag, .. } => ("STRING_TOO_LONG", Some(*tag)),
+        RustE::OutOfRange { tag, .. } => ("OUT_OF_RANGE", Some(u64::from(*tag))),
+        RustE::StringTooLong { tag, .. } => ("STRING_TOO_LONG", Some(u64::from(*tag))),
         RustE::UnsupportedImapbLength { .. } => ("UNSUPPORTED_IMAPB_LENGTH", None),
         RustE::InvalidImapbParams { .. } => ("INVALID_IMAPB_PARAMS", None),
         RustE::MissingMandatoryItem { tag, .. } => {
-            ("MISSING_MANDATORY_ITEM", Some(u32::from(*tag)))
+            ("MISSING_MANDATORY_ITEM", Some(u64::from(*tag)))
         }
-        RustE::ReservedTagInUnknown { tag } => ("RESERVED_TAG_IN_UNKNOWN", Some(*tag)),
-        RustE::VTargetPackEmpty { target_id } => ("VTARGET_PACK_EMPTY", Some(*target_id as u32)),
-        RustE::DuplicateTargetId { target_id } => ("DUPLICATE_TARGET_ID", Some(*target_id as u32)),
-        RustE::ForbiddenStandaloneOffset { tag } => ("FORBIDDEN_STANDALONE_OFFSET", Some(*tag)),
+        RustE::ReservedTagInUnknown { tag } => ("RESERVED_TAG_IN_UNKNOWN", Some(u64::from(*tag))),
+        RustE::VTargetPackEmpty { target_id } => ("VTARGET_PACK_EMPTY", Some(*target_id)),
+        RustE::DuplicateTargetId { target_id } => ("DUPLICATE_TARGET_ID", Some(*target_id)),
+        RustE::ForbiddenStandaloneOffset { tag } => {
+            ("FORBIDDEN_STANDALONE_OFFSET", Some(u64::from(*tag)))
+        }
         _ => ("BUFFER_TOO_SMALL", None),
     };
     let msg = e.to_string();

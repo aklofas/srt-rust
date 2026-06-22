@@ -39,25 +39,34 @@ if [[ -z "$TRAIT_METHODS" ]]; then
     exit 1
 fi
 
-# Hardcoded map: trait method name -> required C symbol.
+# Hardcoded map: trait method name -> required C symbol, or "SKIP:<reason>" if
+# the method is intentionally not mirrored to the raw-C path.
 # bash 3.2 (the /bin/bash macOS still ships) has no associative arrays, so a
 # `case` lookup stands in for `declare -A`.
 # MAINTAINER NOTE: When a new method is added to the Publisher trait, this
-# ratchet will fail. To fix: add a new C entry point in src/hls/ (and ensure
-# cbindgen regenerates the header), then extend this map.
-expected_sym() { # <trait method> -> required C symbol, or empty if undocumented
+# ratchet will fail. To fix: either add a new C entry point in src/hls/ (and
+# ensure cbindgen regenerates the header) and add it to this map, OR add a
+# "SKIP:<reason>" case documenting why the C raw path does not expose it.
+expected_sym() { # <trait method> -> required C symbol, or "SKIP:<reason>"
     case "$1" in
-        push_ts)     echo "tst_publisher_push_ts" ;;
-        cut_segment) echo "tst_publisher_cut_segment" ;;
-        finish)      echo "tst_publisher_finish" ;;
-        stats)       echo "tst_publisher_get_stats" ;;
-        *)           echo "" ;;
+        push_ts)                    echo "tst_publisher_push_ts" ;;
+        cut_segment)                echo "tst_publisher_cut_segment" ;;
+        finish)                     echo "tst_publisher_finish" ;;
+        stats)                      echo "tst_publisher_get_stats" ;;
+        # Intentionally not mirrored: media-derived cut flows through the
+        # tst_mux_publisher_* path; a raw-C entry point would need an ABI bump
+        # and is deferred until there is a consumer for the raw-push path.
+        cut_segment_with_duration)  echo "SKIP:media-derived cut is MuxPublisher-internal; no raw-C symbol (deferred, needs ABI bump)" ;;
+        *)                          echo "" ;;
     esac
 }
 
 MISSING=""
 for m in $TRAIT_METHODS; do
     sym="$(expected_sym "$m")"
+    if [[ "$sym" == SKIP:* ]]; then
+        continue   # intentionally not mirrored; reason documented in expected_sym
+    fi
     if [[ -z "$sym" ]]; then
         MISSING="${MISSING}  - trait method '${m}' has no documented C mirror in expected_sym"$'\n'
         MISSING="${MISSING}    (add a case to expected_sym in this script AND add the C entry point)"$'\n'

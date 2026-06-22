@@ -17,6 +17,11 @@
 
 ## Install
 
+> **Not yet on PyPI.** `tstrans` has not been published to PyPI yet — the
+> first PyPI release will be **v0.2.0**. Until then, install from source
+> (build the wheel with `maturin`, or `maturin develop` in `bindings/python/`).
+> The `pip install tstrans` commands below work once v0.2.0 is published.
+
 ```bash
 pip install tstrans
 ```
@@ -37,7 +42,7 @@ on `tstrans` and its topic submodules — `tstrans.io`, `tstrans.mpegts`,
 `tstrans.pipeline` pairer, and the optional `tstrans.pandas`. Don't reach
 into `tstrans._native` directly; it may reorganize between versions.
 
-Published wheels ship the SRT, RTP/RTSP, UDP, TCP, and RIST transports
+Wheels (publishing with v0.2.0) ship the SRT, RTP/RTSP, UDP, TCP, and RIST transports
 on by default — with two caveats: **RIST is excluded from the Windows
 wheel** (the Linux and macOS wheels include it), and the **experimental
 HLS publisher (`tstrans.hls`) is not in any published wheel** — it is
@@ -1179,8 +1184,7 @@ See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-
 
 The full surface has shipped — offline file I/O, typed KLV decode /
 encode, codec parsers, pandas / NumPy adapters, the SRT / RTP / RTSP /
-UDP / TCP / RIST transports, and `tstrans.pipeline.Pairer`. Wheels are
-published to PyPI on tagged releases. Remaining items are incremental: a
+UDP / TCP / RIST transports, and `tstrans.pipeline.Pairer`. Wheels publish to PyPI on tagged releases; the first PyPI release is v0.2.0. Remaining items are incremental: a
 zero-copy Python-buffer-protocol path for the NumPy accessors (today each
 access copies once — see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)),
 and graduating the experimental HLS publisher into the published wheels.

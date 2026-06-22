@@ -12,8 +12,8 @@ A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over 
 | Language | Status | Entry point |
 |---|---|---|
 | **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
-| **C** | Shipping (ABI 0.5) | [`docs/languages/c.md`](docs/languages/c.md) |
-| **Python** | Shipping (`tstrans` on PyPI; includes `tstrans.rtp` RTP + RTSP) | [`docs/languages/python.md`](docs/languages/python.md) |
+| **C** | Shipping (ABI 0.17) | [`docs/languages/c.md`](docs/languages/c.md) |
+| **Python** | Shipping (publishing to PyPI as `tstrans` with v0.2.0; includes `tstrans.rtp` RTP + RTSP) | [`docs/languages/python.md`](docs/languages/python.md) |
 | **JVM** | Shipping (`tstrans-jvm` / `org.tstrans` on Maven Central) | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
 
 ## In 30 seconds
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Python equivalent: `pip install tstrans` — see [`docs/languages/python.md`](docs/languages/python.md).
+Python equivalent: `tstrans` (publishing to PyPI with v0.2.0; until then build from source) — see [`docs/languages/python.md`](docs/languages/python.md).
 **Run end-to-end (mux → SRT → demux) in 10 minutes:** [`docs/start/quickstart.md`](docs/start/quickstart.md).
 
 ## What this is — and what it isn't
@@ -73,7 +73,7 @@ Full feature-by-feature matrix in [`docs/reference/compatibility.md`](docs/refer
 ## Install
 
 ```bash
-# Python (PyPI)
+# Python (PyPI — available with the v0.2.0 release; until then, build from source — see below)
 pip install tstrans                   # core
 pip install tstrans[pandas]           # + DataFrame + NumPy adapters
 

@@ -37,7 +37,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 - **Audio codecs** — AAC (ADTS + LATM), MPEG-2 Audio (MP2/MP3), AC-3, EAC-3. Frame-level parsers expose sample rate / channel count.
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
 - **C bindings** (`tst-c`) — `cdylib` + `staticlib`, `tstrans.h` via cbindgen, `tstrans.pc` for pkg-config. Stable ABI versioned `TST_ABI_VERSION_MAJOR/MINOR`.
-- **Python bindings** (`tst-py`, distributed as `tstrans` on PyPI) — file inspection and offline construction of `.ts` files; typed KLV decode/encode; typed `Sample.payload` (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame); optional pandas + NumPy adapters via `pip install tstrans[pandas]`.
+- **Python bindings** (`tst-py`, published to PyPI as `tstrans` starting with v0.2.0) — offline `.ts` inspection/construction plus live SRT / RTP (incl. RTSP) / UDP / TCP / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
 - **JVM bindings** — `tst-jni`, distributed as `tstrans-jvm` (`org.tstrans`) on Maven Central. Package-for-package mirror of the Python surface (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`).
 
 ## What's NOT in the box
@@ -48,7 +48,6 @@ ts-transformer is intentionally narrow. If you need any of these, look elsewhere
 - **Other transports** — **SRT** 1.5 (Haivision libsrt, vendored), **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, and **RIST** (VideoLAN librist) all ship today. An **HLS** publisher exists but is experimental and gated out of the published artifacts (see [`project/deferred-features.md`](/docs/project/deferred-features.md)). **RTMP** and **WebRTC** are not on the roadmap.
 - **Other metadata formats** — MISB KLV only. No arbitrary user data, no raw timestamps, no proprietary metadata schemas. See [`project/deferred-features.md`](/docs/project/deferred-features.md) for what's deferred.
 - **Video encoding / decoding** — wire-format only. You bring the encoded NAL units / OBU frames; the library multiplexes them. Pair with x264 / x265 / FFmpeg / NVENC / GStreamer for the actual encode side; PyAV / FFmpeg / a hardware decoder for display.
-- **Live SRT in Python** — file I/O only in v1. Live SRT lands in `tstrans` v2 (Rust core is ready; Python wrap is the work).
 - **GUI** — no display layer. Pair with VLC, mpv, MPV.js, a custom decoder + framebuffer, or any other player that consumes MPEG-TS.
 
 For the full feature-by-feature support matrix, see [`reference/compatibility.md`](/docs/reference/compatibility.md). For things deferred with a rationale + revisit trigger, see [`project/deferred-features.md`](/docs/project/deferred-features.md).

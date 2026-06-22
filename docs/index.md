@@ -20,7 +20,7 @@
 |---|---|---|
 | **Rust** | Full `Sender` / `Receiver` + low-level primitives | Embedding in a Rust app; want type-level guarantees |
 | **C** | Full sender + receiver surface (`cdylib` + `staticlib` + `tstrans.h`) | Embedded targets; cross-language linkage; maximum ABI stability |
-| **Python** | Inspect + offline build of `.ts` files; typed KLV decode/encode; DataFrame adapters | Notebooks; KLV-to-DataFrame ETL; offline processing. **No live SRT transport in v1** — file I/O only. |
+| **Python** | Offline `.ts` inspect/build, typed KLV decode/encode, DataFrame adapters, **and** live SRT / RTP (incl. RTSP) / UDP / TCP / RIST transports + Pairer | Notebooks; KLV-to-DataFrame ETL; offline processing; live ingest/egress |
 | **JVM** (`tstrans-jvm` / `org.tstrans` on Maven Central) | Mirrors the Python surface: mux + demux, typed KLV, SRT + RTP (incl. RTSP) transports, pairing | JVM backend consumers |
 
 ## What kind of pages live here?

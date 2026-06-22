@@ -92,6 +92,17 @@ class Publisher(abc.ABC):
         """Snapshot of publisher health (segments / bytes / segment ages)."""
         raise NotImplementedError
 
+    def cut_segment_with_duration(self, media_duration_us: int) -> None:
+        """Hint a new segment, supplying its media-presentation duration (µs).
+
+        Mirrors the Rust ``Publisher::cut_segment_with_duration``. The default
+        delegates to :meth:`cut_segment` — a custom publisher only needs to
+        override it to record media-derived ``#EXTINF`` durations instead of
+        wall-clock time. The ``MuxPublisher`` pipeline shell derives this
+        duration from PTS and calls it automatically.
+        """
+        self.cut_segment()
+
 
 # Register the concrete native HlsPublisher as a virtual subclass so
 # `isinstance(pub, Publisher)` holds without native inheritance (the

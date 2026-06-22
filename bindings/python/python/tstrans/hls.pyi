@@ -151,6 +151,8 @@ class Publisher:
         """Hint that the next ``push_ts`` should start a new segment."""
         ...
 
+    def cut_segment_with_duration(self, media_duration_us: int) -> None: ...
+
     def finish(self) -> None:
         """Flush, write the terminal playlist, tear down the sink."""
         ...
@@ -190,6 +192,8 @@ class HlsPublisher:
     def cut_segment(self) -> None:
         """Cut the current segment (IDR boundary)."""
         ...
+
+    def cut_segment_with_duration(self, media_duration_us: int) -> None: ...
 
     def finish(self) -> None:
         """Finalize: flush, write terminal playlist, stop HTTP server. Consumes."""

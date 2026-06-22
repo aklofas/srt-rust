@@ -356,3 +356,61 @@ def test_hls_error_round_trips_from_rust(kind_name: str) -> None:
         _native._raise_hls_error_for_test(kind_name, f"test {kind_name}")
     assert ei.value.kind == getattr(HlsErrorKind, kind_name)
     assert kind_name in ei.value.message
+
+
+# --------------------------------------------------------------------------- #
+# Media-derived EXTINF (T15)                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_extinf_is_media_derived(tmp_path: object) -> None:
+    """MuxPublisher derives #EXTINF from PTS span, not wall-clock time."""
+    with tempfile.TemporaryDirectory() as d:
+        pub = (
+            HlsPublisher.builder()
+            .bind("127.0.0.1:0")
+            .output_dir(d)
+            .segment_duration_ms(1000)
+            .playlist_window(3)
+            .mode(HlsMode.EVENT)
+            .build()
+        )
+        program = _video_program()
+        mp = MuxPublisher.with_config_hls(pub, program)
+
+        # PTS 0: first keyframe — opens segment 0.
+        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(0), key_frame=True)
+        # PTS 9000: non-keyframe — stays in segment 0.
+        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(9000), key_frame=False)
+        # PTS 270000: second keyframe — cuts segment 0, opens segment 1.
+        # Segment 0 spans PTS 9000..270000 = 261000 ticks = 2.9 s at 90 kHz.
+        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(270000), key_frame=True)
+
+        hls = mp.finish_into_publisher()
+        pl = hls.render_playlist(False)
+        hls.finish()
+
+        assert "#EXTINF:2.900," in pl, pl
+
+
+def test_hls_publisher_cut_with_duration(tmp_path: object) -> None:
+    """HlsPublisher.cut_segment_with_duration records the given µs as #EXTINF."""
+    with tempfile.TemporaryDirectory() as d:
+        pub = (
+            HlsPublisher.builder()
+            .bind("127.0.0.1:0")
+            .output_dir(d)
+            .segment_duration_ms(1000)
+            .playlist_window(3)
+            .mode(HlsMode.EVENT)
+            .build()
+        )
+        import tstrans.hls as _hls_mod
+
+        assert isinstance(pub, _hls_mod.Publisher)
+        pub.push_ts(TS_TWO_PACKETS)
+        pub.cut_segment_with_duration(3_200_000)  # 3.2 s in µs
+        pl = pub.render_playlist(False)
+        pub.finish()
+
+        assert "#EXTINF:3.200," in pl, pl

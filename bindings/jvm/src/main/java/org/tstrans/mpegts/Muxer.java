@@ -178,7 +178,7 @@ public final class Muxer implements AutoCloseable {
      * @param data raw payload bytes (caller's framing convention; at most
      *             65527 bytes with PTS, 65532 without)
      * @param pts  90&nbsp;kHz presentation timestamp
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range
      *     handle), {@code INPUT_MALFORMED} (payload over the PES ceiling), or
      *     {@code BACKPRESSURE}.
      */
@@ -195,7 +195,7 @@ public final class Muxer implements AutoCloseable {
      * @param nal      the access unit bytes (Annex-B start-code prefixed for H.26x)
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param keyFrame whether this AU is a random-access point
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle),
      *     {@code INPUT_MALFORMED} (not Annex-B for H.26x), or {@code BACKPRESSURE}.
      */
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
@@ -214,7 +214,7 @@ public final class Muxer implements AutoCloseable {
      * @param wire     the on-wire access unit bytes
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param keyFrame whether this AU is a random-access point
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle) or
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle) or
      *     {@code BACKPRESSURE}.
      */
     public void pushVideoWireTo(VideoStreamHandle h, byte[] wire, long pts, boolean keyFrame)
@@ -235,7 +235,7 @@ public final class Muxer implements AutoCloseable {
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
      * @param keyFrame whether this AU is a random-access point
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle),
      *     {@code INPUT_MALFORMED} (not Annex-B for H.26x), or {@code BACKPRESSURE}.
      */
     public void pushVideoToWithDts(VideoStreamHandle h, byte[] nal, long pts, long dts,
@@ -256,7 +256,7 @@ public final class Muxer implements AutoCloseable {
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
      * @param keyFrame whether this AU is a random-access point
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle) or
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle) or
      *     {@code BACKPRESSURE}.
      */
     public void pushVideoWireToWithDts(VideoStreamHandle h, byte[] wire, long pts, long dts,
@@ -274,7 +274,7 @@ public final class Muxer implements AutoCloseable {
      * @param klv               raw KLV LS bytes
      * @param pts               90&nbsp;kHz presentation timestamp
      * @param metadataServiceId metadata service selector (0 for the common case)
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle),
      *     {@code INPUT_MALFORMED} (too large for one PES), or {@code BACKPRESSURE}.
      */
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
@@ -291,7 +291,7 @@ public final class Muxer implements AutoCloseable {
      * @param h      handle of the target audio stream (from this muxer)
      * @param frames codec-native audio frame bytes
      * @param pts    90&nbsp;kHz presentation timestamp
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle),
      *     {@code INPUT_MALFORMED}, or {@code BACKPRESSURE}.
      */
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws MuxException {
@@ -307,7 +307,7 @@ public final class Muxer implements AutoCloseable {
      * @param h       handle of the target subtitle stream (from this muxer)
      * @param pts     90&nbsp;kHz presentation timestamp
      * @param payload subtitle PES payload bytes
-     * @throws MuxException {@code INVALID_USAGE} (forged or cross-muxer handle),
+     * @throws MuxException {@code INVALID_USAGE} (malformed or out-of-range handle),
      *     {@code INPUT_MALFORMED}, or {@code BACKPRESSURE}.
      */
     public void pushSubtitleTo(SubtitleStreamHandle h, long pts, byte[] payload)

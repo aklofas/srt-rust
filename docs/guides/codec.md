@@ -68,13 +68,13 @@ let mut dx = Demuxer::new();
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, av1_carriage, .. },
         ..
     } = ev
     {
         // Raw-first: split the AU into NAL units (opt-in). The issue list
         // carries any ES-conformance findings; dropped here.
-        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
             continue;
         };
         // parse_parameter_sets is partial-success-tolerant: bad NALs emit
@@ -130,11 +130,11 @@ let mut dx = Demuxer::new();
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: codec @ VideoCodec::H265, raw, .. },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H265, raw, av1_carriage, .. },
         ..
     } = ev
     {
-        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
             continue;
         };
         if let Ok(ps) = h265::parse_parameter_sets(&nals) {
@@ -178,11 +178,11 @@ let mut dx = Demuxer::new();
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: codec @ VideoCodec::H266, raw, .. },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::H266, raw, av1_carriage, .. },
         ..
     } = ev
     {
-        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
             continue;
         };
         if let Ok(ps) = h266::parse_parameter_sets(&nals) {
@@ -243,11 +243,11 @@ let mut dx = Demuxer::new();
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: codec @ VideoCodec::Av1, raw, .. },
+        payload: SamplePayload::Video { codec: codec @ VideoCodec::Av1, raw, av1_carriage, .. },
         ..
     } = ev
     {
-        let (VideoPayload::Obus(obus), _issues) = split_video(&raw, codec) else {
+        let (VideoPayload::Obus(obus), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
             continue;
         };
         let stream = av1::parse_obu_stream(&obus);
@@ -337,13 +337,13 @@ fn drain_events(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
     while let Some(ev) = dx.next_event() {
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, .. },
+            payload: SamplePayload::Video { codec: codec @ VideoCodec::H264, raw, av1_carriage, .. },
             ..
         } = ev
         else {
             continue;
         };
-        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec) else {
+        let (VideoPayload::Nals(nals), _issues) = split_video(&raw, codec, av1_carriage.unwrap_or_default()) else {
             continue;
         };
         if let Ok(ps) = h264::parse_parameter_sets(&nals) {

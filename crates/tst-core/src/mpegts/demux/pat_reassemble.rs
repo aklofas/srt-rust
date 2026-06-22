@@ -178,4 +178,63 @@ mod tests {
         assert_eq!(r.entry_count, 0);
         assert!(r.sections.is_empty());
     }
+
+    /// Build a PatSection with `n` program entries directly (bypass the wire
+    /// format — the cap is on cumulative entry COUNT, not bytes, so the
+    /// section need not be a valid on-wire PAT).
+    fn make_section_n_entries(
+        version: u8,
+        section_number: u8,
+        last_section_number: u8,
+        n: usize,
+    ) -> PatSection {
+        PatSection {
+            transport_stream_id: 1,
+            version,
+            current_next_indicator: true,
+            section_number,
+            last_section_number,
+            programs: (0..n)
+                .map(|i| PatEntry {
+                    // program_number 0 is the NIT; offset so every entry is a
+                    // real program. Values wrap mod 2^16 — irrelevant to the
+                    // cap, which counts entries, not distinct numbers.
+                    program_number: (i as u16).wrapping_add(1),
+                    pid: 0x0100,
+                })
+                .collect(),
+        }
+    }
+
+    /// SECURITY: cumulative entries exceeding MAX_PAT_ENTRIES (8192) across a
+    /// table's sections must trip the DoS cap → `Broken`, and the buffer must
+    /// be cleared so a subsequent valid table on a fresh key still completes.
+    #[test]
+    fn cumulative_entries_over_cap_returns_broken_and_clears() {
+        let mut r = PatReassembler::default();
+        // ~5000 + ~5000 = ~10000 > 8192. Section 0 alone stays under the cap
+        // (Pending); section 1 pushes the cumulative count over → Broken.
+        let s0 = make_section_n_entries(0, 0, 1, 5000);
+        let s1 = make_section_n_entries(0, 1, 1, 5000);
+        assert_eq!(r.accept(&s0), PatReassemblyOutcome::Pending);
+        assert_eq!(r.accept(&s1), PatReassemblyOutcome::Broken);
+        // Buffer must be cleared after Broken.
+        assert_eq!(r.key, None);
+        assert_eq!(r.entry_count, 0);
+        assert!(r.sections.is_empty());
+
+        // A fresh, valid two-section table on a NEW key must still complete —
+        // proving the cap fire didn't wedge the reassembler.
+        let v0 = make_section(2, 1, 0, 1, &[(7, 0x700)]);
+        let v1 = make_section(2, 1, 1, 1, &[(8, 0x800)]);
+        assert_eq!(r.accept(&v0), PatReassemblyOutcome::Pending);
+        match r.accept(&v1) {
+            PatReassemblyOutcome::Complete(programs) => {
+                assert_eq!(programs.len(), 2);
+                assert_eq!(programs[0].program_number, 7);
+                assert_eq!(programs[1].program_number, 8);
+            }
+            other => panic!("expected Complete after cap recovery, got {other:?}"),
+        }
+    }
 }

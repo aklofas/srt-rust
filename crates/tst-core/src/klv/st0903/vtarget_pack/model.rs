@@ -352,10 +352,16 @@ pub struct VTargetPack {
     /// Location pass-through bytes (typed inner deferred).
     pub geospatial_contour_series: Option<Vec<u8>>,
     /// Tag 19 `centroidPixRow` per §10.2.2.20 — V4 (1..=2^32-1);
-    /// widened to `u64` for consistency with other pixel fields.
+    /// widened to `u64` for consistency with other pixel fields. Note:
+    /// the V4 wire format is 4 bytes (max `u32::MAX`); a value above
+    /// `u32::MAX` would encode but fail to decode — callers must keep
+    /// this within the V4 range.
     pub centroid_pix_row: Option<u64>,
     /// Tag 20 `centroidPixCol` per §10.2.2.21 — V4 (1..=2^32-1);
-    /// widened to `u64` for consistency with other pixel fields.
+    /// widened to `u64` for consistency with other pixel fields. Note:
+    /// the V4 wire format is 4 bytes (max `u32::MAX`); a value above
+    /// `u32::MAX` would encode but fail to decode — callers must keep
+    /// this within the V4 range.
     pub centroid_pix_col: Option<u64>,
     /// Tag 22 `algorithmId` per §10.2.2.23 — V3 reference into
     /// the parent VMTI LS Algorithm Series.

@@ -83,11 +83,12 @@ impl RistStats {
 ///
 /// This is the pure, panic-free core of the stats callback — separated from
 /// [`stats_trampoline`] so it can be unit-tested directly against stack-built
-/// `rist_stats` data. The trampoline itself ends by calling `rist_stats_free`,
-/// which `free()`s librist's heap-allocated container, so the trampoline can
-/// only be exercised against a genuine librist-owned container in a live
-/// session — that path is verified by code review against the librist contract,
-/// not a unit test.
+/// `rist_stats` data. The trampoline frees the librist-owned container via an
+/// [`OnDrop`] guard that lives outside `catch_unwind`, covering all exit paths
+/// (normal, early-return, panic). The trampoline can therefore only be
+/// exercised against a genuine librist-owned container in a live session —
+/// that path is verified by code review against the librist contract, not a
+/// unit test.
 ///
 /// Counter semantics (librist contract): the per-packet fields
 /// (`retransmitted` / `lost`) are **per-interval deltas** that librist zeroes
@@ -224,7 +225,11 @@ mod free_guard_tests {
             }
         };
         run(true);
-        assert_eq!(n.load(Ordering::SeqCst), 1, "early return still drops the guard");
+        assert_eq!(
+            n.load(Ordering::SeqCst),
+            1,
+            "early return still drops the guard"
+        );
     }
 
     #[test]
@@ -236,7 +241,11 @@ mod free_guard_tests {
             });
             panic!("boom");
         }));
-        assert_eq!(n.load(Ordering::SeqCst), 1, "panic-unwind still drops the guard exactly once");
+        assert_eq!(
+            n.load(Ordering::SeqCst),
+            1,
+            "panic-unwind still drops the guard exactly once"
+        );
     }
 }
 

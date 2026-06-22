@@ -489,8 +489,13 @@ mod tests {
     fn ber_oid_u64_round_trip_above_u32() {
         // Values that need > 5 BER-OID bytes (beyond u32 range).
         for v in [
-            0u64, 0x7F, 0x80, u32::MAX as u64, (u32::MAX as u64) + 1,
-            0x1_0000_0000_0000, u64::MAX >> 1, // up to 63-bit
+            0u64,
+            0x7F,
+            0x80,
+            u32::MAX as u64,
+            (u32::MAX as u64) + 1,
+            0x1_0000_0000_0000,
+            u64::MAX >> 1, // up to 63-bit
         ] {
             let mut buf = [0u8; 10];
             let n = write_ber_oid_u64(v, &mut buf).unwrap();

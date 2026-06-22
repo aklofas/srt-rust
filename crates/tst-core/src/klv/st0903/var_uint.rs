@@ -167,11 +167,22 @@ mod tests {
 
     #[test]
     fn var_u64_round_trip_above_u32() {
-        for v in [0u64, 0xFF, u32::MAX as u64, (u32::MAX as u64) + 1, 0xFFFF_FFFF_FFFF, u64::MAX] {
+        for v in [
+            0u64,
+            0xFF,
+            u32::MAX as u64,
+            (u32::MAX as u64) + 1,
+            0xFFFF_FFFF_FFFF,
+            u64::MAX,
+        ] {
             let mut out = Vec::new();
             let n = write_var_u64(v, &mut out);
             assert_eq!(n, var_u64_len(v));
-            assert_eq!(read_var_u64(&out).unwrap(), v, "round trip failed for v={v}");
+            assert_eq!(
+                read_var_u64(&out).unwrap(),
+                v,
+                "round trip failed for v={v}"
+            );
         }
     }
 

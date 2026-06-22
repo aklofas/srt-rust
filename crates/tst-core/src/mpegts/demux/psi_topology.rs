@@ -23,7 +23,7 @@ use crate::mpegts::demux::event::{
     StreamInfo, StreamKind, VideoCodec,
 };
 use crate::mpegts::demux::pat_reassemble::PatReassemblyOutcome;
-use crate::mpegts::demux::psi::{Pmt, PatEntry, PsiParseError, parse_pat_section, parse_pmt};
+use crate::mpegts::demux::psi::{PatEntry, Pmt, PsiParseError, parse_pat_section, parse_pmt};
 use crate::mpegts::demux::psi_assembler::AssemblerError;
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::types::ProgramTracker;

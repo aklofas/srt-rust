@@ -5,6 +5,25 @@ use std::sync::{Arc, Mutex};
 
 use tst_core::transport::SocketStats;
 
+/// Run a closure exactly once when dropped — including on unwind. Used to
+/// free the librist stats container on *every* trampoline exit path (normal,
+/// early-return, panic), outside the `catch_unwind` boundary.
+struct OnDrop<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> OnDrop<F> {
+    fn new(f: F) -> Self {
+        OnDrop(Some(f))
+    }
+}
+
+impl<F: FnOnce()> Drop for OnDrop<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
 /// librist stats-callback interval, milliseconds. 1 s matches librist's own
 /// default cadence and is ample for cumulative counters polled on demand.
 pub(crate) const STATS_INTERVAL_MS: i32 = 1000;
@@ -103,36 +122,50 @@ fn accumulate_stats(acc: &mut RistStats, s: &rist_sys::rist_stats) {
 /// `close()` after `rist_destroy`, which joins the protocol thread so no
 /// callback can be in flight). This thin wrapper only BORROWS the Arc (`&*ptr`,
 /// never drops it), folds the sample in via [`accumulate_stats`], then frees the
-/// container: once a callback is registered librist transfers ownership of the
+/// container via an [`OnDrop`] guard that lives **outside** `catch_unwind`:
+/// once a callback is registered librist transfers ownership of the
 /// heap-allocated container to us and skips its own `rist_stats_free`, so we
-/// MUST free it here. `catch_unwind` guards the whole body — unwinding across
-/// the FFI boundary into C is undefined behavior.
+/// MUST free it on every exit path.
+///
+/// Exit paths and free semantics:
+/// 1. Normal completion — guard drops → free.
+/// 2. `stats == null` → no guard created, no free (nothing to free).
+/// 3. `arg == null` early-return inside `catch_unwind` — guard drops after
+///    `catch_unwind` returns → free.
+/// 4. Panic in `accumulate_stats` or lock — caught by `catch_unwind`, guard
+///    drops after → free.
 pub(crate) extern "C" fn stats_trampoline(
     arg: *mut c_void,
     stats: *const rist_sys::rist_stats,
 ) -> c_int {
+    // Free the librist-owned container on EVERY exit path (normal,
+    // null-arg early return, panic), but only when `stats` is non-null.
+    // The guard lives OUTSIDE `catch_unwind` so it drops after the unwind
+    // boundary — the free is the documented librist ownership contract.
+    // SAFETY: librist transferred ownership of the heap container to this
+    // callback; `stats` is `*const`, matching `rist_stats_free`.
+    let _free = if stats.is_null() {
+        None
+    } else {
+        Some(OnDrop::new(move || unsafe {
+            rist_sys::rist_stats_free(stats);
+        }))
+    };
+
     let _ = std::panic::catch_unwind(|| {
         if arg.is_null() || stats.is_null() {
             return;
         }
         // SAFETY: `arg` is the pointer from `Arc::into_raw` at registration,
         // still live (reclaimed only at close, after rist_destroy joins this
-        // thread). Borrow — do NOT reconstruct/drop the Arc, or we'd free the
-        // still-registered allocation.
+        // thread). Borrow — do NOT reconstruct/drop the Arc.
         let lock = unsafe { &*(arg as *const Mutex<RistStats>) };
         // SAFETY: librist passes a valid container for the duration of this call.
         let s = unsafe { &*stats };
         if let Ok(mut acc) = lock.lock() {
             accumulate_stats(&mut acc, s);
         }
-        // Free unconditionally — intentionally OUTSIDE the `if let Ok` above so
-        // librist's container is freed even on a poisoned lock and never leaks.
-        // SAFETY: librist transferred ownership of the heap container to this
-        // callback; freeing it is the documented contract. The `stats` arg is
-        // already `*const`, matching `rist_stats_free`'s signature.
-        unsafe {
-            rist_sys::rist_stats_free(stats);
-        }
+        // NB: NO free here — the `_free` guard above owns the free on all paths.
     });
     0
 }
@@ -159,6 +192,52 @@ pub(crate) fn register_stats_callback(
         rist_sys::rist_stats_callback_set(ctx, STATS_INTERVAL_MS, Some(stats_trampoline), stats_arg)
     };
     (stats, stats_arg)
+}
+
+#[cfg(test)]
+mod free_guard_tests {
+    use super::OnDrop;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn guard_fires_once_on_normal_exit() {
+        let n = AtomicUsize::new(0);
+        {
+            let _g = OnDrop::new(|| {
+                n.fetch_add(1, Ordering::SeqCst);
+            });
+            // normal scope exit
+        }
+        assert_eq!(n.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn guard_fires_once_when_inner_returns_early() {
+        let n = AtomicUsize::new(0);
+        let run = |early: bool| {
+            let _g = OnDrop::new(|| {
+                n.fetch_add(1, Ordering::SeqCst);
+            });
+            if !early {
+                // ... rest of body that we skip
+            }
+        };
+        run(true);
+        assert_eq!(n.load(Ordering::SeqCst), 1, "early return still drops the guard");
+    }
+
+    #[test]
+    fn guard_fires_once_on_panic() {
+        let n = AtomicUsize::new(0);
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _g = OnDrop::new(|| {
+                n.fetch_add(1, Ordering::SeqCst);
+            });
+            panic!("boom");
+        }));
+        assert_eq!(n.load(Ordering::SeqCst), 1, "panic-unwind still drops the guard exactly once");
+    }
 }
 
 #[cfg(test)]

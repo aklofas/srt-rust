@@ -262,7 +262,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nAddByteSink<'local>(
         // Register the sink under the registry lease. If a concurrent `nNext` holds
         // the resource lock, this blocks until it yields (registration is append-only,
         // no re-entry into the JVM here).
-        let registered = REGISTRY.with(handle as u64, |jdr| {
+        let registered = REGISTRY.with_poisoning(handle as u64, |jdr| {
             let slot = jdr.sink_error.clone();
             jdr.inner.add_byte_sink(Box::new(move |pkt: &[u8]| {
                 // Runs on the receiver's own thread inside recv_event. NO Java monitor is

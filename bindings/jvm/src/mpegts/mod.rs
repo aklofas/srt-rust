@@ -180,7 +180,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFeed<'local>(
             }
         };
 
-        match REGISTRY.with(handle as u64, |dx| dx.feed(&buf)) {
+        match REGISTRY.with_poisoning(handle as u64, |dx| dx.feed(&buf)) {
             Some(Ok(())) => {}
             Some(Err(e)) => throw_demux_error(env, &e),
             None => closed(env),
@@ -215,7 +215,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nFlush<'local>(
     handle: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        if REGISTRY.with(handle as u64, |dx| dx.flush()).is_none() {
+        if REGISTRY.with_poisoning(handle as u64, |dx| dx.flush()).is_none() {
             closed(env);
         }
     })
@@ -236,7 +236,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
         // Lease + drive the pull loop under the resource lock. `with` runs the
         // closure synchronously, so capturing `env` (`&mut JNIEnv`) to build the
         // Java record in-place is sound. `None` (closed/absent) → IllegalStateException.
-        let result = REGISTRY.with(handle as u64, |dx| {
+        let result = REGISTRY.with_poisoning(handle as u64, |dx| {
             loop {
                 let Some(ev) = dx.next_event() else {
                     return JObject::null().into_raw();

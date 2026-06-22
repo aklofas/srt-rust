@@ -32,6 +32,27 @@ pub trait Publisher {
     /// [`push_ts`]: Self::push_ts
     fn cut_segment(&mut self) -> Result<(), Self::Error>;
 
+    /// Hint that the next call to [`push_ts`] should start a new segment,
+    /// supplying the media-presentation duration of the segment being
+    /// closed (derived from PTS, not wall-clock).
+    ///
+    /// Publishers that emit per-segment durations (e.g. HLS `#EXTINF`) should
+    /// record `media_duration` rather than measuring wall-clock ingestion
+    /// time — RFC 8216 §4.3.2.1 defines a segment's duration in terms of
+    /// media-presentation time. The `MuxPublisher` pipeline shell derives
+    /// `media_duration` from the PTS span of the segment and calls this
+    /// method; raw `push_ts` callers without PTS keep the wall-clock fallback.
+    ///
+    /// The default implementation ignores `media_duration` and delegates to
+    /// [`cut_segment`], so existing publishers keep compiling unchanged.
+    ///
+    /// [`push_ts`]: Self::push_ts
+    /// [`cut_segment`]: Self::cut_segment
+    fn cut_segment_with_duration(&mut self, media_duration: Duration) -> Result<(), Self::Error> {
+        let _ = media_duration;
+        self.cut_segment()
+    }
+
     /// Cleanly finalize: flush pending segment, write a terminating
     /// playlist tag (e.g., HLS `#EXT-X-ENDLIST`), tear down sinks.
     ///
@@ -100,6 +121,21 @@ mod tests {
                 ..Default::default()
             }
         }
+    }
+
+    #[test]
+    fn default_cut_with_duration_delegates_to_cut_segment() {
+        let mut p = NoopPublisher {
+            segments: 0,
+            bytes: 0,
+        };
+        p.cut_segment_with_duration(core::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            p.stats().segments_written,
+            1,
+            "default impl must delegate to cut_segment"
+        );
     }
 
     #[test]

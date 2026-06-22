@@ -20,6 +20,16 @@ pub(crate) struct Segment {
     pub duration: Duration,
 }
 
+/// A segment evicted from the live playlist but retained on disk until its
+/// RFC 8216 §6.2.2 availability window elapses (so clients mid-download of
+/// an older playlist don't get a 404).
+struct GraceEntry {
+    filename: String,
+    removed_at: Instant,
+    /// Removed-segment duration + the longest playlist that referenced it.
+    availability: Duration,
+}
+
 pub(crate) struct Segmenter {
     config: HlsConfig,
     /// Immutable `#EXT-X-TARGETDURATION` (seconds), chosen once at
@@ -31,6 +41,7 @@ pub(crate) struct Segmenter {
     target_duration_secs: u64,
     next_seq: u64,
     history: VecDeque<Segment>,
+    grace: VecDeque<GraceEntry>,
     current: Option<OpenSegment>,
 }
 
@@ -67,6 +78,7 @@ impl Segmenter {
             target_duration_secs,
             next_seq: 0,
             history: VecDeque::new(),
+            grace: VecDeque::new(),
             current: None,
         })
     }
@@ -120,15 +132,12 @@ impl Segmenter {
         Ok(())
     }
 
-    /// Visible segments for the playlist.
+    /// Visible segments for the playlist. Live history is already pruned by
+    /// eviction (older segments live in the grace queue until their
+    /// availability window elapses); Event/Vod retain everything — so all
+    /// modes render the full history.
     pub(crate) fn visible_segments(&self) -> Vec<Segment> {
-        match self.config.mode {
-            HlsMode::Live => {
-                let n = self.history.len().min(self.config.playlist_window);
-                self.history.iter().rev().take(n).cloned().rev().collect()
-            }
-            HlsMode::Event | HlsMode::Vod => self.history.iter().cloned().collect(),
-        }
+        self.history.iter().cloned().collect()
     }
 
     /// First sequence number in `visible_segments`.
@@ -227,13 +236,49 @@ impl Segmenter {
         if !matches!(self.config.mode, HlsMode::Live) {
             return Ok(());
         }
+        let now = Instant::now();
+        let target = Duration::from_secs(self.target_duration_secs);
+        // RFC 8216 §6.2.2: never let the live playlist fall below 3× target.
+        let min_duration = target * 3;
+        // Conservative bound on "the longest Playlist file" that referenced a
+        // segment: the full window at target duration.
+        let longest_playlist = target * self.config.playlist_window as u32;
+
+        let mut total: Duration = self.history.iter().map(|s| s.duration).sum();
         while self.history.len() > self.config.playlist_window {
+            let front_dur = self.history.front().map(|s| s.duration).unwrap_or_default();
+            // Stop if evicting the oldest would drop the playlist below 3×
+            // target (this is what makes eviction duration-aware, not count-
+            // only).
+            if total.saturating_sub(front_dur) < min_duration {
+                break;
+            }
             if let Some(evict) = self.history.pop_front() {
-                let path = self.config.output_dir.join(&evict.filename);
-                let _ = std::fs::remove_file(&path);
+                total = total.saturating_sub(evict.duration);
+                self.grace.push_back(GraceEntry {
+                    filename: evict.filename,
+                    removed_at: now,
+                    availability: evict.duration + longest_playlist,
+                });
             }
         }
+        self.purge_grace(now);
         Ok(())
+    }
+
+    /// Delete grace-queued files whose RFC 8216 §6.2.2 availability window
+    /// (removed-segment duration + longest referencing playlist) has elapsed.
+    /// `now` is a parameter so tests can advance time deterministically.
+    pub(crate) fn purge_grace(&mut self, now: Instant) {
+        while let Some(front) = self.grace.front() {
+            if now.duration_since(front.removed_at) >= front.availability {
+                let entry = self.grace.pop_front().expect("front exists");
+                let path = self.config.output_dir.join(&entry.filename);
+                let _ = std::fs::remove_file(&path);
+            } else {
+                break;
+            }
+        }
     }
 }
 
@@ -283,25 +328,59 @@ mod tests {
     }
 
     #[test]
-    fn live_window_evicts_old_segments() {
+    fn live_evicts_beyond_window_into_grace_respecting_3x_target() {
         let dir = tmpdir();
         let cfg = HlsConfig {
             output_dir: dir.clone(),
             mode: HlsMode::Live,
-            playlist_window: 2,
+            segment_duration: Duration::from_secs(2), // target 2 → 3× = 6 s
+            playlist_window: 3,
             ..HlsConfig::default()
         };
         let mut s = Segmenter::new(cfg).unwrap();
-        for _ in 0..4 {
+        for _ in 0..6 {
             s.push_ts(&[0x47u8; 188]).unwrap();
-            s.cut().unwrap();
+            s.cut_with_duration(Some(Duration::from_secs(2))).unwrap();
         }
-        assert!(!dir.join("segment_00000.ts").exists());
-        assert!(!dir.join("segment_00001.ts").exists());
-        assert!(dir.join("segment_00002.ts").exists());
-        assert!(dir.join("segment_00003.ts").exists());
-        assert_eq!(s.visible_segments().len(), 2);
-        assert_eq!(s.media_sequence(), 2);
+        // 3 newest visible; 3 oldest moved to grace (files still on disk).
+        assert_eq!(s.visible_segments().len(), 3);
+        assert_eq!(s.media_sequence(), 3);
+        for seq in 0..3u64 {
+            assert!(
+                dir.join(format!("segment_{seq:05}.ts")).exists(),
+                "grace-retained file {seq} must still exist"
+            );
+        }
+        // Advance past the availability window and purge — files deleted.
+        let far_future = Instant::now() + Duration::from_secs(3600);
+        s.purge_grace(far_future);
+        for seq in 0..3u64 {
+            assert!(
+                !dir.join(format!("segment_{seq:05}.ts")).exists(),
+                "file {seq} must be deleted after its availability window"
+            );
+        }
+        assert!(dir.join("segment_00005.ts").exists());
+    }
+
+    #[test]
+    fn live_keeps_more_than_window_to_satisfy_3x_target() {
+        let dir = tmpdir();
+        let cfg = HlsConfig {
+            output_dir: dir,
+            mode: HlsMode::Live,
+            segment_duration: Duration::from_secs(4), // target 4 → 3× = 12 s
+            playlist_window: 3,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        // Actual segments are 1 s each; 5 s total never reaches 12 s, so the
+        // duration floor blocks all eviction even though count > window.
+        for _ in 0..5 {
+            s.push_ts(&[0x47u8; 188]).unwrap();
+            s.cut_with_duration(Some(Duration::from_secs(1))).unwrap();
+        }
+        assert_eq!(s.visible_segments().len(), 5, "duration floor keeps all 5");
     }
 
     #[test]

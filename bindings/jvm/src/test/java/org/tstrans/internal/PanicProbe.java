@@ -17,4 +17,17 @@ public final class PanicProbe {
     static { org.tstrans.NativeLoader.load(); }
 
     public static native long nForcePanic();
+
+    // --- Handle-aware probe (JNI-01b) ---------------------------------------
+    /** Open a registry-backed probe handle; returns a non-zero opaque key. */
+    public static native long nOpenHandle();
+    /**
+     * Mutate the handle through {@code with_poisoning}. When {@code doPanic}
+     * is {@code true}, panics mid-mutation, surfacing as {@link RuntimeException}.
+     * A subsequent call on the (now-poisoned) handle throws
+     * {@link IllegalStateException}.
+     */
+    public static native void nMutateMaybePanic(long handle, boolean doPanic);
+    /** Close the probe handle; idempotent and safe on a poisoned handle. */
+    public static native void nCloseHandle(long handle);
 }

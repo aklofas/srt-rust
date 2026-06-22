@@ -36,7 +36,7 @@ ALLOWLIST_PATTERNS=(
     'pub fn buf_len_bits\(&self\) -> usize'                 # Av1BitReader (#[doc(hidden)])
     'pub type \w+ = usize'                                  # type aliases (rare; documented)
     'pub fn encoded_len(_with|_standalone)?\b'              # encode-helper sizing (Rust-only)
-    'pub fn ber_(oid_)?len\b'                               # BER length helpers (Rust-only)
+    'pub fn ber_(oid_)?len(_u64)?\b'                        # BER length helpers (Rust-only; u64 sibling same rationale)
     'pub fn pull\(&mut self, out: &mut \[u8\]\) -> usize'   # Muxer::pull (bytes-written, Read::read-shaped)
 
     # Tuning-knob fields on pub config structs. Bucket (b) per Phase 1

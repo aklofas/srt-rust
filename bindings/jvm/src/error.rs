@@ -207,7 +207,7 @@ pub fn map_klv_encode_error(env: &mut JNIEnv, e: &KlvEncodeError) {
             throw_klv_encode(env, "RESERVED_TAG_IN_UNKNOWN", Some(u64::from(*tag)), &msg)
         }
         KlvEncodeError::VTargetPackEmpty { target_id } => {
-            throw_klv_encode(env, "VTARGET_PACK_EMPTY", Some(u64::from(*target_id)), &msg)
+            throw_klv_encode(env, "VTARGET_PACK_EMPTY", Some(*target_id), &msg)
         }
         KlvEncodeError::DuplicateTargetId { target_id } => {
             // Hoist the boxed tag so the `throw_klv_encode(env, "<CONST>", ...)`
@@ -215,7 +215,7 @@ pub fn map_klv_encode_error(env: &mut JNIEnv, e: &KlvEncodeError) {
             // error-mapping ratchet's per-constant grep (a brace-less arm with
             // this longer CONST would otherwise split the call across lines and
             // hide the constant from the grep).
-            let t = Some(u64::from(*target_id));
+            let t = Some(*target_id);
             throw_klv_encode(env, "DUPLICATE_TARGET_ID", t, &msg)
         }
         KlvEncodeError::ForbiddenStandaloneOffset { tag } => {

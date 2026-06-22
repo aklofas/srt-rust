@@ -18,7 +18,8 @@ not listed below are intentionally **not yet implemented**.
 The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 / 0903
 KLV** over **SRT, RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST**.
 An HLS publisher exists behind the `hls` Cargo feature but is **experimental and
-gated out of the v0.1.0 published artifacts** — see `deferred-features.md`. Other
+gated out of published artifacts** (RFC 8216 stream conformance fixed in v0.2.0;
+still gated pending path-traversal fix + security review) — see `deferred-features.md`. Other
 containers (MP4 / CMAF), other transports (RTMP / WebRTC), and raw elementary
 streams remain out of scope until a consumer asks. See
 `tests/coverage/TEST_CORPUS.md` for the parsing-side compliance ledger

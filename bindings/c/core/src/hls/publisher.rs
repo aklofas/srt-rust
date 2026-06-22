@@ -9,8 +9,14 @@
 //!
 //! The four universal symbols — `tst_publisher_push_ts`,
 //! `tst_publisher_cut_segment`, `tst_publisher_finish`, and
-//! `tst_publisher_get_stats` — mirror the `Publisher` trait method-for-
-//! method and work against any future publisher kind. `tst_publisher_get_kind`
+//! `tst_publisher_get_stats` — cover the wall-clock-cut path; the raw C
+//! surface intentionally exposes only `tst_publisher_cut_segment` (wall-clock
+//! hint) and not the media-presentation-derived `cut_segment_with_duration`
+//! method added to the `Publisher` trait in v0.2.0. Media-derived `#EXTINF`
+//! durations flow through the `tst_mux_publisher_*` path, which derives them
+//! from PTS span internally. A new `tst_publisher_cut_segment_with_duration`
+//! C symbol would require a C ABI bump and is deferred until there is a
+//! consumer for the raw-push media-accurate path. `tst_publisher_get_kind`
 //! discriminates the concrete kind; the `tst_hls_publisher_*` accessors
 //! reach the HLS-specific surface (richer stats, the bound socket address,
 //! the rendered playlist).

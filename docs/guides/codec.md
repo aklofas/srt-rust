@@ -22,7 +22,7 @@ When `mpegts::demux` surfaces a `DemuxEvent::Sample`, the video payload is
 the exact encoded access unit — `SamplePayload::Video.raw`, with TS framing
 and PES reassembly stripped but the elementary-stream bytes intact. The
 demuxer does **not** split NAL units or parse content; both are opt-in. Split
-the AU into NAL/OBU units with `split_video(&raw, codec)`, then call into the
+the AU into NAL/OBU units with `split_video(&raw, codec, av1_carriage)`, then call into the
 `codec::h264` / `codec::h265` parsers explicitly for typed fields.
 
 This design keeps the demuxer surface minimal and dependency-free. You only
@@ -37,7 +37,7 @@ mpegts::demux::Demuxer
   ↓ raw: SharedBytes   — the exact encoded access unit (Annex-B / OBU framed)
 
 tst_core::mpegts::demux
-  split_video(&raw, codec) → (VideoPayload, Vec<NonConformantIssue>)
+  split_video(&raw, codec, av1_carriage) → (VideoPayload, Vec<NonConformantIssue>)
   ↓ VideoPayload::Nals(nals)   — raw RBSP bytes; NAL type in the header
 
 tst_core::codec::h264
@@ -230,7 +230,7 @@ fields (carried on the VPS for the operating point set).
 AV1 has different bitstream framing — OBU (Open Bitstream Unit)
 length-prefixed via LEB128, no Annex-B start codes. PMT `stream_type = 0x06`
 with auto-emitted AV01 `registration_descriptor` per the AV1-in-MPEG-2-TS
-binding §2.1. For an AV1 AU, `split_video(&raw, codec)` returns
+binding §2.1. For an AV1 AU, `split_video(&raw, codec, av1_carriage)` returns
 `VideoPayload::Obus(Vec<Obu>)` rather than `Nals(_)` (and reverses the
 `ts_open_bitstream_unit()` binding framing along the way).
 
@@ -304,10 +304,11 @@ All parse functions return `Result<T, CodecParseError>`. The two tiers:
   the first parsing failure.
 
 `CodecParseError` carries a human-readable description. The most common variant
-encountered in production is `UnsupportedProfile` (the H.265 SPS parser
-does not yet walk `scaling_list_data` or more than a trivial number of
-short-term reference picture sets — not exercised by x265 default configuration
-or the current corpus). Other variants: `InvalidNalType`, `TruncatedRbsp`,
+encountered for HDR/Main-10 SPSes is `CodecParseError::EngineError` (the
+H.265 SPS parser bails when it reaches `scaling_list_data()`, H.265 §7.3.4,
+which is not yet walked — a parser gap, not a profile-level rejection;
+the short-term reference-picture-set walker does handle
+`num_short_term_ref_pic_sets > 0`). Other variants: `InvalidNalType`, `TruncatedRbsp`,
 `InvalidValue`.
 
 ## Calling on non-IDR samples

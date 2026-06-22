@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(e) = demux.next_event() {
         for o in pairer.feed(e) {
             if let PairerOutput::Paired { video, klv } = o {
-                // video.payload → decoder (Annex-B reconstitute, recipe 18)
+                // video.raw → decoder (Annex-B reconstitute, recipe 18)
                 // klv.payload   → tst_core::klv::st0601::decode
                 let _ = (video, klv);
             }

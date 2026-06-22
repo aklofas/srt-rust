@@ -280,15 +280,12 @@ pub enum VTargetPackError {
 /// per §10.2.2.1 "has no Tag") followed by a Local Set–encoded body
 /// using BER-OID tag + BER short/long length + value tuples.
 ///
-/// `target_id` caps at `u32::MAX`. The spec allows the BER-OID Target
-/// ID up to 9 wire bytes (~63-bit range, V9 in §10.2 Table 10). The
-/// substrate's `read_ber_oid` returns `u32`, so this typed layer
-/// inherits a u32 cap. Real-world streams stay well within u32.
-///
-/// V6 pixel-number fields (`centroid_pixel`, `bbox_top_left_pixel`,
-/// `bbox_bottom_right_pixel`) are spec'd up to 6 wire bytes (~48-bit
-/// range) but capped here at u32 — an 8K (33 MP) frame's pixel count
-/// fits comfortably.
+/// `target_id` is a `u64` decoded from the BER-OID Target ID (≈ 63 bits
+/// per ST 0903.6 §10.2.2.1; spec allows up to 9 wire bytes, V9 in
+/// §10.2 Table 10). V6 pixel-number fields (`centroid_pixel`,
+/// `bbox_top_left_pixel`, `bbox_bottom_right_pixel`) are `u64`; note
+/// their V4 wire format is 4 bytes, so a value above `u32::MAX` encodes
+/// but will not decode (see the per-field notes).
 ///
 /// `detection_status` is the raw §10.2.2.24 / §7.2 Table 5 codepoint:
 /// 0=Inactive, 1=Active-Moving, 2=Dropped, 3=Active-Stopped,

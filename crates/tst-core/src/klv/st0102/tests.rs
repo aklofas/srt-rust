@@ -691,6 +691,34 @@ fn encode_allows_truly_unknown_tag_in_unknown() {
     assert!(n > 0);
 }
 
+// ------------------------------------------------------------------
+// Task 5 (WP-G / REF-KLV-05): decode_strict canonical-BER rejection.
+// ------------------------------------------------------------------
+
+#[test]
+fn decode_strict_rejects_non_canonical_length() {
+    // Tag 22 (0x16), value length 5 encoded in long form (0x81 0x05) — must
+    // be the short form 0x05 per ST 0107.5 §6.3 canonical BER. The strict
+    // pre-walk rejects before typed decode, so the value content is moot.
+    let buf = [0x16, 0x81, 0x05, b'0', b'1', b'0', b'2', b'.'];
+    let result = decode_strict(&buf);
+    assert!(
+        matches!(result, Err(KlvDecodeError::NonCanonicalLength { .. })),
+        "got {result:?}"
+    );
+}
+
+#[test]
+fn decode_strict_rejects_non_canonical_tag() {
+    // BER-OID tag with a leading 0x80 continuation byte (non-canonical zero).
+    let buf = [0x80, 0x01, 0x00];
+    let result = decode_strict(&buf);
+    assert!(
+        matches!(result, Err(KlvDecodeError::NonCanonicalTag { .. })),
+        "got {result:?}"
+    );
+}
+
 /// `klv::st0102::SECURITY_LS_UL` is a re-export of the
 /// `UniversalLabel`-typed constant — the bytes match the
 /// universal_label.rs canonical form.

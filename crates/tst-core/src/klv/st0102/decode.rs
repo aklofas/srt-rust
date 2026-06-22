@@ -80,27 +80,76 @@ pub fn decode(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
 /// Strict decode — rejects spec-violating input (missing required
 /// tags, unknown enum codepoints, [`OmittedValueXX`] reserved
 /// codepoints, malformed UTF-16, duplicate tags, wrong fixed-length
-/// values). Unknown tags are still preserved in `unknown` per ST
+/// values, and non-canonical BER tag/length encodings per ST 0107.5
+/// §6.3). Unknown tags are still preserved in `unknown` per ST
 /// 0107.5 §6 future-proof skip rule (matches
 /// `klv::st0601::decode_strict_compliance` posture).
 ///
-/// Per-tag BER length encoding canonicity (ST 0107.5 §6.3.2) is NOT
-/// currently checked — body iteration uses the permissive
-/// [`length::read_ber`]. A future tightening could route through
-/// [`length::read_ber_strict`] but this is deferred to keep parity with
-/// `klv::st0601`'s permissive iter shape; consumers who need
-/// canonical-BER enforcement can call [`length::read_ber_strict`] on the
-/// buffer themselves.
-///
 /// [`OmittedValueXX`]: ClassifyingCountryCodingMethod::OmittedValue08
-/// [`length::read_ber`]: crate::klv::length::read_ber
-/// [`length::read_ber_strict`]: crate::klv::length::read_ber_strict
 pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
     decode_inner(buf, /* strict = */ true)
 }
 
+/// ST 0107.5 §6.3: reject non-canonical BER tag/length encodings across the
+/// flat ST 0102 local set, preserving buffer-relative offsets. The typed
+/// decode that follows reuses the permissive `Iter` — by this point the
+/// bytes have already cleared the strict-BER gate.
+fn strict_ber_walk(buf: &[u8]) -> Result<(), KlvDecodeError> {
+    use crate::klv::length::{read_ber_oid_strict, read_ber_strict};
+    let mut rest = buf;
+    let mut offset = 0usize;
+    while !rest.is_empty() {
+        let item_start = offset;
+        let (_tag, after_tag) = match read_ber_oid_strict(rest) {
+            Ok(v) => v,
+            Err(mut e) => {
+                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
+                    *o += item_start;
+                }
+                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
+                    *o += item_start;
+                }
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += item_start;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_tag = rest.len() - after_tag.len();
+        let (len, after_len) = match read_ber_strict(after_tag) {
+            Ok(v) => v,
+            Err(mut e) => {
+                let len_start = item_start + consumed_tag;
+                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
+                    *o += len_start;
+                }
+                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
+                    *o += len_start;
+                }
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += len_start;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_len = after_tag.len() - after_len.len();
+        if len > after_len.len() {
+            // Truncated value — let the permissive typed decode produce the
+            // existing InvalidLength diagnostic. Mirror st0903's handling.
+            break;
+        }
+        rest = &after_len[len..];
+        offset = item_start + consumed_tag + consumed_len + len;
+    }
+    Ok(())
+}
+
 fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> {
     use crate::klv::pack::Iter;
+
+    if strict {
+        strict_ber_walk(buf)?;
+    }
 
     let mut record = SecurityLs::default();
     let mut seen: hashbrown::HashSet<u32> = hashbrown::HashSet::new();

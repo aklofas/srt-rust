@@ -109,6 +109,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Arc, Mutex};
 
 /// An optional cross-thread cancel hook fired by [`HandleRegistry::close`] *before*
@@ -264,6 +265,54 @@ impl<T> HandleRegistry<T> {
     /// `IllegalStateException`.
     pub(crate) fn with<R>(&self, id: u64, f: impl FnOnce(&mut T) -> R) -> Option<R> {
         self.lease(id).and_then(|e| e.with(f))
+    }
+
+    /// Lease `id`, run `f` on the resource under its lock, and POISON the entry
+    /// if `f` panics: take + drop the torn resource and remove the entry, then
+    /// re-raise the panic so the outer `jni_catch` still throws. A subsequent
+    /// lease misses the (removed) entry → `None` → the caller throws
+    /// `IllegalStateException`; `close` becomes a safe no-op.
+    ///
+    /// Mirrors the C `Handle::with_inner_mut` policy (`*guard = None` on panic).
+    /// Use ONLY for `&mut`-taking mutating natives (push/send/recv/next/pull/
+    /// flush); getters stay on the non-poisoning [`with`](Self::with).
+    ///
+    /// Returns `None` if `id` is `0`/absent/closed OR the resource was already
+    /// taken by a concurrent `close`; `Some(r)` on success.
+    pub(crate) fn with_poisoning<R>(&self, id: u64, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+        let entry = self.lease(id)?;
+        let mut guard = entry.resource.lock().unwrap_or_else(|e| e.into_inner());
+        // Lost the race to `close` (resource already taken)?
+        guard.as_mut()?;
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let t = guard.as_mut().expect("checked Some above");
+            f(t)
+        }));
+        match result {
+            Ok(r) => Some(r),
+            Err(payload) => {
+                // Drop the torn resource, release the resource lock, then remove
+                // the entry from the table BEFORE re-raising. Ordering matters:
+                // `close` acquires the registry lock then the resource lock and
+                // never holds both at once, so dropping `guard` before `remove`
+                // avoids any lock-order interleaving.
+                guard.take();
+                drop(guard);
+                self.remove(id);
+                resume_unwind(payload);
+            }
+        }
+    }
+
+    /// Remove `id` from the table without firing the cancel hook or returning the
+    /// resource — used by [`with_poisoning`](Self::with_poisoning) after it has
+    /// already taken the resource. Idempotent; `0`/absent → no-op.
+    fn remove(&self, id: u64) {
+        if id == 0 {
+            return;
+        }
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.table.remove(&id);
     }
 
     /// Lease `id` and run `f` without blocking on a parked op — the `isAlive`-style
@@ -500,6 +549,55 @@ mod tests {
         // After close, try_with reports Taken.
         reg.close(id);
         assert!(matches!(entry.try_with(|v| *v), TryWith::Taken));
+    }
+
+    #[test]
+    fn with_poisoning_runs_and_returns_when_live() {
+        let reg: HandleRegistry<u64> = HandleRegistry::new();
+        let id = reg.insert(10);
+        assert_eq!(reg.with_poisoning(id, |v| *v * 2), Some(20));
+        // Still live after a non-panicking op.
+        assert!(reg.contains(id));
+    }
+
+    #[test]
+    fn with_poisoning_on_panic_removes_entry_and_drops_resource() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let reg: HandleRegistry<DropCounter> = HandleRegistry::new();
+        let id = reg.insert(DropCounter {
+            drops: drops.clone(),
+            value: 7,
+        });
+
+        // A panicking mutating op: with_poisoning re-raises, so catch it here
+        // the way the outer jni_catch would.
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            reg.with_poisoning(id, |_v| panic!("torn mutation"))
+        }));
+        assert!(caught.is_err(), "panic propagates out for the outer jni_catch to throw");
+
+        // The torn resource was dropped exactly once and the entry removed.
+        assert_eq!(drops.load(Ordering::SeqCst), 1, "torn resource dropped exactly once");
+        assert!(!reg.contains(id), "poisoned entry removed from the table");
+
+        // A later op on the same handle is a deterministic closed-handle None
+        // (→ IllegalStateException on the Java boundary), never a re-lease.
+        assert_eq!(reg.with_poisoning::<u64>(id, |_| 0), None);
+        assert_eq!(reg.with(id, |_| 0u64), None);
+
+        // close() on a poisoned handle is a safe no-op (no second drop).
+        assert!(reg.close(id).is_none());
+        assert_eq!(drops.load(Ordering::SeqCst), 1, "no double-drop from close-after-poison");
+    }
+
+    #[test]
+    fn with_poisoning_absent_or_closed_returns_none() {
+        let reg: HandleRegistry<u64> = HandleRegistry::new();
+        assert_eq!(reg.with_poisoning::<u64>(0, |_| 0), None);
+        assert_eq!(reg.with_poisoning::<u64>(999, |_| 0), None);
+        let id = reg.insert(3);
+        reg.close(id);
+        assert_eq!(reg.with_poisoning::<u64>(id, |_| 0), None);
     }
 
     /// The headline guarantee: concurrent `lease` while `close` runs never hands out

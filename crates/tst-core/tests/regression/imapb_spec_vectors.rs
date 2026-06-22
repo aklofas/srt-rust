@@ -17,28 +17,32 @@ use tst_core::error::{KlvEncodeError, KlvFieldError};
 use tst_core::klv::imapb::{DecodedImapb, ImapbParams, ImapbSpecial, decode_imapb, encode_imapb};
 
 // ============================================================================
-// Subtask 3a (i) — §7.2.3 Table 2 special-value PATTERNS (decode side)
+// Subtask 3a (i) — §7.2.3 special-value PATTERNS (decode side)
 // ============================================================================
 //
-// ST 1201.5 §7.2.2 step 1 detects special values by testing
-// `bit(msb) & bit(msb-1)` of the L-byte unsigned BE integer (top two
-// bits of byte 0). When both are set, the integer's byte 0 is mapped
-// per §7.2.3 Table 2 to one of 5 named patterns; any other top-two-bits-
-// set byte 0 falls into [`DecodedImapb::ReservedSpecial`] carrying the
-// raw u64. ST 1201.5 (`reference/ST1201.5.pdf`) §7.2.3 Table 2:
+// ST 1201.5 §7.2.2 step 1 detects special values by testing the top two
+// bits of byte 0 of the L-byte unsigned BE integer. When both are set, the
+// byte-0 value is mapped to an [`ImapbSpecial`] family per §7.2.3 Table 2
+// (standard NaN/Inf/UserDefined) and Table 3 (MISB-defined overflow signals):
 //
-//   byte0  binary       meaning
-//   ----   --------     -----------------------------
-//   0xC8   1100_1000    +∞ (Positive Infinity)
-//   0xE8   1110_1000    -∞ (Negative Infinity)
-//   0xD0   1101_0000    NaN (any signaling/quiet)
-//   0xE0   1110_0000    User-defined "below minimum"
-//   0xE1   1110_0001    User-defined "above maximum"
-//   other  11xx_xxxx    ReservedSpecial { raw } per §7.2.3
+//   byte0  5-bit tag  Table  meaning
+//   ----   ---------  -----  -----------------------------------------
+//   0xC8   11001      T2     +∞  PositiveInfinity        (payload must be 0)
+//   0xE8   11101      T2     -∞  NegativeInfinity        (payload must be 0)
+//   0xD0   11010      T2     +QNaN PositiveQuietNaN      (nan_id in low bits)
+//   0xF0   11110      T2     -QNaN NegativeQuietNaN      (nan_id in low bits)
+//   0xD8   11011      T2     +SNaN PositiveSignalingNaN  (signal in low bits)
+//   0xF8   11111      T2     -SNaN NegativeSignalingNaN  (signal in low bits)
+//   0xC0   11000      T2     UserDefined                 (signal in low bits)
+//   0xE0   (full)     T3     BelowMin  (MISB-defined, zero-filled)
+//   0xE1   (full)     T3     AboveMax  (MISB-defined, zero-filled)
+//   other  11xx_xxxx  —      ReservedSpecial { raw }
 //
-// The §7.2.3 trailing bytes are pattern-payload-zero in the spec
-// (the substrate doesn't sub-classify beyond ReservedSpecial). All
-// 5 named patterns are unit-tested below with payload `[0x00,...]`.
+// BelowMin/AboveMax (Table 3) are MISB-defined overflow signals; they are
+// NOT user-defined. The low `8L-5` bits carry NaN-id / signal payloads for
+// the NaN families. Unrecognized patterns and non-zero-filled standard
+// patterns fall to [`DecodedImapb::ReservedSpecial`].
+// All named families are exercised below.
 
 /// ST 1201.5 §7.2.3 Table 2 row "Positive Infinity": byte0 = 0xC8, zero-filled →
 /// [`DecodedImapb::Special`]`(`[`ImapbSpecial::PositiveInfinity`]`)` regardless of L.

@@ -82,11 +82,9 @@ pub(crate) fn parse(
                 den: num_units_in_tick,
             });
         }
-        // H.265 §E.2.1: finish the timing_info walk. The frame-rate ratio
-        // above is governed solely by num_units_in_tick/time_scale; the
-        // proportional flag relates POC to wall-clock time and does NOT
-        // change it, but the syntax must be consumed for bitstream
-        // correctness (the VUI does not end here in a conformant stream).
+        // H.265 §E.2.1: consume the two trailing timing fields for bit-cursor
+        // correctness. vui_poc_proportional_to_timing_flag relates POC to
+        // wall-clock time and does NOT affect the frame-rate ratio above.
         let poc_proportional = br.read_bool()?; // vui_poc_proportional_to_timing_flag
         if poc_proportional {
             let _ = br.read_ue()?; // vui_num_ticks_poc_diff_one_minus1

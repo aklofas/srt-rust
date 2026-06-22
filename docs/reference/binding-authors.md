@@ -265,7 +265,7 @@ baseline (by design)" for the full rationale.
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **6** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **17** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
@@ -310,14 +310,64 @@ baseline (by design)" for the full rationale.
       links two static mbedTLS copies; the cdylib build adds
       `-Wl,--allow-multiple-definition` (Linux) to collapse them onto one —
       see `bindings/c/build.rs`.
+    - `8` — offline `tst_demuxer_*` byte-feeding demuxer surface: wraps
+      `tst_core::Demuxer` directly (no transport URL); callers feed raw TS
+      bytes and pull typed `TstEvent`s. Unconditional (no feature gate).
+    - `9` — offline `tst_muxer_*` surface made unconditional (previously
+      gated on the `srt` cargo feature; now lives alongside `tst_demuxer_*`
+      with no feature gate). Non-SRT / no_std builds gain the offline muxer.
+      Additive — no symbol removed, no signature changed.
+    - `10` — two appended `TstMultiCellAuReason` values: `OverflowTotal`
+      (= 4, aggregate AU-cell byte cap exceeded) and `TooManyPids` (= 5,
+      too many in-flight AU PIDs). Both previously fell through to `Orphan`
+      (0) via the forward-compat default.
+    - `11` — `pmt_pid` field added to `TstEventProgramMap` (immediately after
+      `pcr_pid`; `_pad` shrunk from 4 to 2 bytes to preserve total struct size).
+      Exposes the PID carrying the PMT so C callers can reconstruct a muxer
+      config from a `ProgramMap` event.
+    - `12` — opaque private-data (`StreamSpec::Data`) stream surface:
+      `tst_data_stream_handle_t` typedef plus seven new entry points —
+      `tst_mux_config_add_data_stream`,
+      `tst_mux_config_set_stream_descriptors_for_data`,
+      `tst_mux_config_add_data_descriptor`, the offline muxer pair
+      `tst_muxer_push_data` / `tst_muxer_push_data_to`, and the SRT-gated
+      sender pair `tst_mux_sender_send_data` / `tst_mux_sender_send_data_to`.
+    - `13` — private-data push through managed-sender and RTSP-mount shells:
+      the SRT-gated pair `tst_managed_mux_sender_send_data` /
+      `tst_managed_mux_sender_send_data_to` (`TST_HAS_SRT`) and the
+      RTP-gated pair `tst_rtsp_mount_push_data` / `tst_rtsp_mount_push_data_to`
+      (`TST_HAS_RTP`). Completes data-stream surface parity with the
+      video/klv/audio/subtitle push families on both shells.
+    - `14` — AV1 carriage (WP-B): `TstError::InvalidAv1Obu` (-44) guard
+      error code; `av1_carriage` provenance byte on `TstEventSample`
+      (repurposed pad byte — 0=`MPEG2_TS_BINDING`, 1=`INTEROP_RAW_OBU`,
+      0xFF=N/A for non-AV1); `tst_muxer_push_video_wire` /
+      `tst_muxer_push_video_wire_to` pass-through push for byte-faithful
+      transmux; `tst_mux_config_set_av1_carriage` mux-side carriage setter.
+    - `15` — REF-PSI-01: `TstNonConformantCode::PmtProgramNumberMismatch`
+      (= 33). PMT body `program_number` mismatch vs PAT assignment; `pid` is
+      the PMT PID; `programs[0]` = `pat_program`, `programs[1]` =
+      `pmt_program` (reuses `programs_buf` carrier). No struct layout change.
+    - `16` — WP-D demux trust-boundary diagnostics: four new
+      `TstNonConformantCode` values (no struct layout change — all reuse
+      existing carriers): `UnsupportedScrambling` (= 34, REF-TS-01),
+      `AdaptationFieldMalformed` (= 35, REF-TS-02),
+      `ZeroLengthPesNonVideo` (= 36, REF-PES-01),
+      `PsiSyntax` (= 37, REF-PSI-03).
+    - `17` — BIND-01 (WP-I): DTS-aware video push through the C ABI.
+      `tst_muxer_push_video_to_with_dts` and
+      `tst_muxer_push_video_wire_to_with_dts` add a `dts_90khz` parameter
+      to the targeted video push, emitting PES with `PTS_DTS_flags = '11'`
+      (ISO/IEC 13818-1 §2.4.3.6). Additive — no symbol removed, no
+      signature or struct layout changed.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 
 Bindings should compile-time-assert the minor they require:
 
 ```c
-#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 5
-#  error "this binding requires tst-c ABI ≥ 0.5"
+#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 17
+#  error "this binding requires tst-c ABI ≥ 0.17"
 #endif
 ```
 
@@ -345,3 +395,33 @@ of guessing from the byte stream. The demuxer's `reset_sync()` is
 called transparently before the next packet hits the syncer; reassembly
 tables (PAT/PMT, per-PID CC, last PTS) are preserved across the
 reconnect.
+
+## Muxer push surface parity matrix
+
+The table below captures the full muxer push capability surface across all
+four binding layers as of **v0.2.0 / ABI 17** (after BIND-01, WP-I).
+
+| Capability | Rust core | C (`tst-c`) | Python (`tst-py`) | JVM (`tst-jni`) |
+|---|---|---|---|---|
+| Single-stream push (`push_video` / `push_klv` / `push_audio` / `push_subtitle` / `push_data`) | ✅ | ✅ | ✅ | ✅ |
+| Targeted push (`push_video_to(handle, …)` etc.) | ✅ | ✅ | ✅ | ✅ |
+| PTS + DTS (`push_video_to_with_dts`) | ✅ | ✅ | ✅ | ✅ |
+| On-wire (AV1 carriage-aware) push (`push_video_wire` / `push_video_wire_to`) | ✅ | ✅ | ✅ | ✅ |
+| Per-stream handle accessors (`video_handles()` / `video_stream_handle(i)` etc.) | ✅ | n/a (handles from config-time `add_*_stream`) | ✅ | ✅ |
+
+**Notes on specific cells.**
+
+- **C per-stream handle accessors** — the C ABI does not need runtime
+  `video_handles()` accessors: the config-time `tst_mux_config_add_video_stream`
+  returns the `tst_video_stream_handle_t` directly and the caller retains it.
+  The "n/a" reflects that the accessor pattern is not applicable at the C ABI
+  level, not that the information is unavailable.
+- **AV1 mux carriage and the C targeted `*_to` family** — shipped in ABI 14
+  (WP-B); Python `push_video_to_with_dts` and handle accessors — shipped in
+  prior work. This PR (BIND-01/WP-I) completed DTS in C and targeted-push +
+  handle-accessors + DTS in JVM to reach full parity.
+
+A machine-checked version of this matrix — where a CI rail verifies that each
+cell's claim matches the compiled binding — is a future enhancement noted in the
+2026-06-15 codebase audit's "checked artifact" recommendation; it is deferred
+pending a tooling decision on how to express cross-binding coverage assertions.

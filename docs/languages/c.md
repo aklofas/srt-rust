@@ -60,7 +60,7 @@ Every release exposes two pairs of macros in `tstrans.h` plus matching runtime a
 #define TST_VERSION_MINOR        1
 #define TST_VERSION_PATCH        0
 #define TST_ABI_VERSION_MAJOR    0   // C ABI contract version
-#define TST_ABI_VERSION_MINOR    12
+#define TST_ABI_VERSION_MINOR    17
 ```
 
 The **ABI** pair is what binding consumers should pin against. Minor bumps are additive (new entry points / new enum variants); a future major bump will be breaking (none yet — sitting at `0` pre-1.0). Check at process startup:
@@ -168,6 +168,48 @@ int main(int argc, char **argv) {
 For KLV: **pass raw MISB Local Set bytes** — the muxer auto-wraps the H.222.0 § 2.12.4.2 AU cell header for `SYNCHRONOUS_METADATA` streams. Don't pre-wrap.
 
 Multi-stream variants (`tst_mux_sender_send_video_to(handle, ...)`, `tst_mux_sender_send_klv_to(handle, ...)`) target a specific elementary stream when you have more than one video or KLV stream configured. See [`examples/muxing/mux_dual_camera.c`](../../bindings/c/examples/muxing/mux_dual_camera.c) for the EO + IR + KLV fan-out shape.
+
+### DTS-aware video push (offline muxer)
+
+For B-frame-reordered streams you need to write both a presentation timestamp
+(PTS) and a decode timestamp (DTS) into each PES header. Use the targeted
+`_with_dts` variants on the offline `tst_muxer_t` to pass both:
+
+```c
+// Annex-B NAL with explicit DTS (handle-targeted):
+int tst_muxer_push_video_to_with_dts(struct tst_muxer_t *p,
+                                     tst_video_stream_handle_t handle,
+                                     const uint8_t *nal, size_t len,
+                                     int64_t pts_90khz,
+                                     int64_t dts_90khz,
+                                     bool key_frame);
+
+// On-wire (byte-faithful) video AU with explicit DTS (handle-targeted):
+int tst_muxer_push_video_wire_to_with_dts(struct tst_muxer_t *p,
+                                          tst_video_stream_handle_t handle,
+                                          const uint8_t *wire, size_t len,
+                                          int64_t pts_90khz,
+                                          int64_t dts_90khz,
+                                          bool key_frame);
+```
+
+Both functions emit `PTS_DTS_flags = '11'` (ISO/IEC 13818-1 §2.4.3.6) in the
+PES header, writing DTS as a 33-bit field immediately after the PTS field.
+`handle` is obtained from `tst_mux_config_add_video_stream` at config time —
+the single-stream shorthands (`tst_muxer_push_video`, `tst_muxer_push_video_wire`)
+do not have DTS variants; use these targeted forms even on a single-stream muxer
+(obtain the handle, or use `tst_muxer_push_video_with_dts` via the sender-side
+equivalent).
+
+> **B-frame note.** Most real-time EO/IR payloads use I/P-frame-only coding
+> (no B frames) and need only PTS. The DTS variants are for sources that
+> require a decode ordering different from presentation ordering — typically
+> H.264/H.265 Baseline/Main with B frames, or AV1 with film-grain synthesis.
+> When PTS and DTS are equal, prefer the non-DTS variants for a smaller PES
+> header (4 bytes shorter — no DTS field written).
+
+Both functions are added in **ABI 17** (additive; no existing symbol or struct
+changed).
 
 ### Private/application data streams
 

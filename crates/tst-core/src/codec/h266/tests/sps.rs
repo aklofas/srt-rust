@@ -415,6 +415,13 @@ fn h266_sps_no_conformance_window_zero_crops() {
 }
 
 #[test]
+fn h266_sps_accepts_16bit_depth() {
+    let rbsp = minimal_sps_rbsp_with_bitdepth_minus8(8);
+    let sps = parse_sps(&rbsp).expect("16-bit depth is valid H.266 syntax");
+    assert_eq!(sps.bit_depth_luma, 16);
+}
+
+#[test]
 fn h266_sps_rejects_bit_depth_overflow() {
     let rbsp = minimal_sps_rbsp_with_bitdepth_minus8(248);
     let result = parse_sps(&rbsp);

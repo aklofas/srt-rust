@@ -301,11 +301,9 @@ pub enum CodecParseError {
     UnsupportedFreeFormat { layer: u8 },
 }
 
-/// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: spec range
-/// `0..=8` (bit_depth ∈ 8..=16). ffmpeg clamps at `bit_depth ≤ 14` (i.e.
-/// `minus8 ≤ 6`) per `libavcodec/hevc/ps.c:366-369`; we adopt the same
-/// threshold. A value greater than 6 indicates a malformed or fuzzed
-/// parameter set, not a real codec.
+/// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: the normative
+/// syntax range is `0..=8` (bit_depth ∈ 8..=16). A value greater than 8 is
+/// out-of-spec (a malformed or fuzzed parameter set), not a real codec.
 ///
 /// Returns `8 + value as u8` on success, [`CodecParseError::ReservedValue`]
 /// otherwise. The H.264 path uses `h264-reader` which validates internally.
@@ -315,7 +313,7 @@ pub(crate) fn validate_bit_depth_minus8(
     field: &'static str,
     value: u32,
 ) -> Result<u8, CodecParseError> {
-    if value > 6 {
+    if value > 8 {
         return Err(CodecParseError::ReservedValue { field, value });
     }
     Ok(8 + value as u8)

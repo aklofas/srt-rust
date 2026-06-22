@@ -22,6 +22,13 @@ pub(crate) struct Segment {
 
 pub(crate) struct Segmenter {
     config: HlsConfig,
+    /// Immutable `#EXT-X-TARGETDURATION` (seconds), chosen once at
+    /// construction as the ceiling of the configured segment duration.
+    /// RFC 8216 §6.2.1 forbids the value from changing once the playlist is
+    /// published, and §4.3.3.1 requires every EXTINF (rounded to the nearest
+    /// integer) to be ≤ this value — so we ceil the configured cap, never
+    /// floor it and never recompute it from observed history.
+    target_duration_secs: u64,
     next_seq: u64,
     history: VecDeque<Segment>,
     current: Option<OpenSegment>,
@@ -53,8 +60,11 @@ impl Segmenter {
             }
         }
 
+        let target_duration_secs = config.segment_duration.as_secs_f64().ceil().max(1.0) as u64;
+
         Ok(Self {
             config,
+            target_duration_secs,
             next_seq: 0,
             history: VecDeque::new(),
             current: None,
@@ -152,16 +162,14 @@ impl Segmenter {
         self.config.mode
     }
 
-    /// Target duration for `#EXT-X-TARGETDURATION`.
+    /// Immutable target duration for `#EXT-X-TARGETDURATION` (seconds).
+    ///
+    /// Chosen once at construction (the ceiling of the configured segment
+    /// duration) and never recomputed — RFC 8216 §6.2.1 forbids the value
+    /// from changing once the playlist is published, and §4.3.3.1 requires
+    /// every EXTINF, rounded to the nearest integer, to be ≤ this value.
     pub(crate) fn target_duration_secs(&self) -> u64 {
-        let from_cfg = self.config.segment_duration.as_secs().max(1);
-        let max_observed = self
-            .history
-            .iter()
-            .map(|s| s.duration.as_secs())
-            .max()
-            .unwrap_or(0);
-        from_cfg.max(max_observed)
+        self.target_duration_secs
     }
 
     fn open_new(&mut self) -> Result<(), HlsError> {
@@ -295,5 +303,42 @@ mod tests {
         }
         assert_eq!(s.visible_segments().len(), 4);
         assert!(dir.join("segment_00000.ts").exists());
+    }
+
+    #[test]
+    fn target_duration_is_ceiling_not_floor() {
+        // A 4.6 s cap must advertise target 5 (a 4.6 s EXTINF rounds to 5),
+        // never 4 — RFC 8216 §4.3.3.1.
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            segment_duration: Duration::from_millis(4600),
+            ..HlsConfig::default()
+        };
+        let s = Segmenter::new(cfg).unwrap();
+        assert_eq!(s.target_duration_secs(), 5);
+    }
+
+    #[test]
+    fn target_duration_ignores_long_history_segments() {
+        // RFC 8216 §6.2.1: the target MUST NOT change once published. The old
+        // code recomputed max(config, longest-observed); inject a 9 s segment
+        // and prove the target stays at the ceiling of the config (4).
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            segment_duration: Duration::from_secs(4),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.history.push_back(Segment {
+            seq: 0,
+            filename: "segment_00000.ts".into(),
+            duration: Duration::from_secs(9),
+        });
+        assert_eq!(
+            s.target_duration_secs(),
+            4,
+            "target must be immutable, not max-of-history"
+        );
     }
 }

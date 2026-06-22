@@ -96,12 +96,16 @@ def decode_window(path, start_s, dur_s):
         if frame.pts is None:
             return None
         rel = (frame.pts - first) * 1000.0 / 90000.0
-        if rel < start_ms:  return None
-        if rel > end_ms:    return "stop"
+        if rel < start_ms:
+            return None
+        if rel > end_ms:
+            return "stop"
         return rel
 
     def decode_au(ev):
-        pkt = av.Packet(bytes(ev.raw)); pkt.pts = ev.pts.raw; pkt.time_base = TB
+        pkt = av.Packet(bytes(ev.raw))
+        pkt.pts = ev.pts.raw
+        pkt.time_base = TB
         return dec.decode(pkt)
 
     for ev in tio.parse_file(path):
@@ -123,8 +127,10 @@ def decode_window(path, start_s, dur_s):
                 for buffered in gop:
                     for frame in decode_au(buffered):
                         r = emit(frame)
-                        if r == "stop": return
-                        if r is not None: yield r, frame
+                        if r == "stop":
+                            return
+                        if r is not None:
+                            yield r, frame
                 gop = None
             continue
 
@@ -132,14 +138,18 @@ def decode_window(path, start_s, dur_s):
             break
         for frame in decode_au(ev):
             r = emit(frame)
-            if r == "stop": return
-            if r is not None: yield r, frame
+            if r == "stop":
+                return
+            if r is not None:
+                yield r, frame
 
     if dec is not None and decoding:            # flush the reorder buffer at the tail
         for frame in dec.decode(None):
             r = emit(frame)
-            if r == "stop": return
-            if r is not None: yield r, frame
+            if r == "stop":
+                return
+            if r is not None:
+                yield r, frame
 
 # e.g. the 10 s starting at t=30 s, as grayscale ndarrays:
 for t_ms, frame in decode_window("input.ts", start_s=30, dur_s=10):
@@ -172,7 +182,8 @@ for ev in tio.parse_file("input.ts"):
     nals = ev.parse()
     nals = [n for n in nals if n.nal_type != 6]      # e.g. drop SEI (type 6) before decode
     pkt = av.Packet(au_from_nals(nals))
-    pkt.pts = ev.pts.raw; pkt.time_base = Fraction(1, 90000)
+    pkt.pts = ev.pts.raw
+    pkt.time_base = Fraction(1, 90000)
     for frame in dec.decode(pkt):
         img = frame.to_ndarray(format="bgr24")
 ```
@@ -183,7 +194,9 @@ SPS/PPS, so it decodes standalone):
 ```python
 for ev in tio.parse_file("input.ts"):
     if isinstance(ev, DemuxEvent.Video) and ev.random_access_indicator:
-        pkt = av.Packet(bytes(ev.raw)); pkt.pts = ev.pts.raw; pkt.time_base = Fraction(1, 90000)
+        pkt = av.Packet(bytes(ev.raw))
+        pkt.pts = ev.pts.raw
+        pkt.time_base = Fraction(1, 90000)
         for frame in dec.decode(pkt):
             ...   # one frame per keyframe
 ```

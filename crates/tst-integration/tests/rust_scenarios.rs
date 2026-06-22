@@ -95,12 +95,15 @@ fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
 /// roundtrip scenario to add an explicit recipe binding here.
 fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> {
     use sha2::{Digest, Sha256};
-    use tst_integration::scenarios::{audio_klv_roundtrip_ts_bytes, video_roundtrip_ts_bytes};
+    use tst_integration::scenarios::{
+        audio_klv_roundtrip_ts_bytes, video_dts_roundtrip_ts_bytes, video_roundtrip_ts_bytes,
+    };
 
     // Re-run the generator's exact recipe — no hand-retyped mux.
     let fresh = match id {
         "video-roundtrip" => video_roundtrip_ts_bytes(),
         "audio-klv-roundtrip" => audio_klv_roundtrip_ts_bytes(),
+        "video-dts-roundtrip" => video_dts_roundtrip_ts_bytes(),
         other => panic!("unknown roundtrip scenario: {other}"),
     };
 

@@ -10,20 +10,26 @@ import java.security.MessageDigest;
 import org.junit.jupiter.api.Test;
 
 /**
- * Cross-binding byte-exactness proof for the offline {@link Muxer}: replicate the
- * shared {@code video-roundtrip} mux recipe (single source of truth =
- * {@code crates/tst-integration/src/scenarios/mod.rs::video_roundtrip_ts_bytes()})
- * and assert the SHA-256 of the JNI muxer's TS output equals the committed
- * golden's {@code extensions.output_sha256}. The muxer is integer-only/
- * deterministic, so the digest matches the Rust + Python bindings byte-for-byte.
+ * Cross-binding byte-exactness proofs for the offline {@link Muxer}.
+ *
+ * <p>Each test replicates one of the shared mux recipes (single source of truth =
+ * {@code crates/tst-integration/src/scenarios/mod.rs}) and asserts the SHA-256
+ * of the JNI muxer's TS output equals the committed golden's
+ * {@code extensions.output_sha256}. The muxer is integer-only/deterministic, so
+ * the digest matches the Rust and C bindings byte-for-byte.
+ *
+ * <ul>
+ *   <li>{@code video-roundtrip} — single H.264 IDR at PTS=0, PTS-only PES header.</li>
+ *   <li>{@code video-dts-roundtrip} — single H.264 IDR at PTS=9000/DTS=6000 via
+ *       {@link Muxer#pushVideoToWithDts}, emitting a PES header with both PTS and
+ *       DTS fields (BIND-01 acceptance criterion).</li>
+ * </ul>
  */
 class MuxRoundtripScenarioTest {
 
-    private static final String SCENARIO_ID = "video-roundtrip";
-
-    private static Path scenarioDir() {
+    private static Path scenarioDir(String scenarioId) {
         return Path.of(System.getProperty("user.dir"), "..", "..",
-                "crates/tst-integration/tests/fixtures/scenarios", SCENARIO_ID).normalize();
+                "crates/tst-integration/tests/fixtures/scenarios", scenarioId).normalize();
     }
 
     /** Mirror of the Rust {@code synthetic_h264_idr()}: Annex-B start code + IDR header + filler. */
@@ -37,9 +43,11 @@ class MuxRoundtripScenarioTest {
         return buf;
     }
 
+    // ── video-roundtrip ─────────────────────────────────────────────────────
+
     @Test
     void reproducesVideoRoundtripBytesExactly() throws Exception {
-        Path goldenPath = scenarioDir().resolve("golden.json");
+        Path goldenPath = scenarioDir("video-roundtrip").resolve("golden.json");
         assertTrue(Files.isRegularFile(goldenPath),
             "shared golden missing (expected committed fixture): " + goldenPath);
         String goldenJson = Files.readString(goldenPath, StandardCharsets.UTF_8);
@@ -47,13 +55,13 @@ class MuxRoundtripScenarioTest {
         // (2aa000852931462b875ec9b2548dd8bf5846fef36e5a1084d149cdd636d09a24).
         String expectedSha = extractString(goldenJson, "output_sha256");
 
-        byte[] tsOut = muxAndDrain();
+        byte[] tsOut = videoRoundtripMuxAndDrain();
         assertEquals(expectedSha, sha256Hex(tsOut),
-            "JNI muxer output must be byte-identical to the Rust/Python video-roundtrip golden");
+            "JNI muxer output must be byte-identical to the Rust/C video-roundtrip golden");
     }
 
-    /** Replicate video_roundtrip_ts_bytes(): config + one push_video + drain. */
-    private static byte[] muxAndDrain() throws Exception {
+    /** Replicate {@code video_roundtrip_ts_bytes()}: config + one pushVideo + drain. */
+    private static byte[] videoRoundtripMuxAndDrain() throws Exception {
         MuxerConfig cfg = MuxerConfig.builder()
             .programNumber(1).pmtPid(0x1000)
             .addVideo(0x1011, VideoCodec.H264)
@@ -69,6 +77,60 @@ class MuxRoundtripScenarioTest {
         }
         return acc.toByteArray();
     }
+
+    // ── video-dts-roundtrip (BIND-01) ───────────────────────────────────────
+
+    /**
+     * BIND-01 acceptance criterion: distinct PTS and DTS survive identically
+     * across core, C, and JVM.
+     *
+     * <p>Replicates {@code video_dts_roundtrip_ts_bytes()} from
+     * {@code crates/tst-integration/src/scenarios/mod.rs}: a single-video-stream
+     * muxer pushes one synthetic H.264 IDR at PTS=9000 / DTS=6000 (90 kHz ticks)
+     * via {@link Muxer#pushVideoToWithDts}.  The muxer emits a PES header with
+     * {@code PTS_DTS_flags='11'} (both timestamps present), producing bytes that
+     * are identical to the Rust and C re-muxes and match the committed
+     * {@code video-dts-roundtrip/golden.json} SHA-256.
+     */
+    @Test
+    void reproducesVideoDtsRoundtripBytesExactly() throws Exception {
+        Path goldenPath = scenarioDir("video-dts-roundtrip").resolve("golden.json");
+        assertTrue(Files.isRegularFile(goldenPath),
+            "video-dts-roundtrip golden missing (expected committed fixture): " + goldenPath);
+        String goldenJson = Files.readString(goldenPath, StandardCharsets.UTF_8);
+        String expectedSha = extractString(goldenJson, "output_sha256");
+
+        byte[] tsOut = videoDtsRoundtripMuxAndDrain();
+        assertEquals(expectedSha, sha256Hex(tsOut),
+            "JNI muxer DTS output must be byte-identical to the Rust/C video-dts-roundtrip golden");
+    }
+
+    /**
+     * Replicate {@code video_dts_roundtrip_ts_bytes()}: config + videoStreamHandle(0)
+     * + pushVideoToWithDts(handle, au, pts=9000, dts=6000, keyFrame=true) + drain.
+     */
+    private static byte[] videoDtsRoundtripMuxAndDrain() throws Exception {
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(cfg)) {
+            VideoStreamHandle h = m.videoStreamHandle(0)
+                .orElseThrow(() -> new IllegalStateException("no video handle at index 0"));
+            // PTS=9000 / DTS=6000 ticks (90 kHz) — fixed so golden is stable.
+            m.pushVideoToWithDts(h, syntheticH264Idr(), /*pts=*/ 9000L, /*dts=*/ 6000L,
+                                 /*keyFrame=*/ true);
+            int n;
+            while ((n = m.pull(out)) > 0) {
+                acc.write(out, 0, n);
+            }
+        }
+        return acc.toByteArray();
+    }
+
+    // ── Shared helpers ───────────────────────────────────────────────────────
 
     private static String sha256Hex(byte[] bytes) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);

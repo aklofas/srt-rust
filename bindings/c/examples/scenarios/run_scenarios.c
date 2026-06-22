@@ -1266,6 +1266,49 @@ static uint8_t *remux_audio_klv_roundtrip(size_t *out_len) {
     return produced;
 }
 
+/* Re-mux the `video-dts-roundtrip` recipe in C — single H.264 IDR with
+ * distinct PTS (9000) and DTS (6000) via tst_muxer_push_video_to_with_dts.
+ * Mirrors video_dts_roundtrip_ts_bytes() in tst-integration byte-for-byte:
+ * program_number=1, pmt_pid=0x1000, video pid=0x1011 H264.
+ * The video-stream handle is the value returned by tst_mux_config_add_video_stream
+ * (stable across the config→open boundary per ABI contract).
+ * Returns malloc'd bytes via *out_len, or NULL on failure. */
+static uint8_t *remux_video_dts_roundtrip(size_t *out_len) {
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); return NULL; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    /* The returned vstream handle is stable across config→open (ABI §video-handles). */
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg);
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); return NULL; }
+
+    uint8_t idr[20];
+    size_t idr_len = synth_h264_idr(idr);
+    /* PTS=9000, DTS=6000 ticks (90 kHz) — fixed so the golden is stable. */
+    if (tst_muxer_push_video_to_with_dts(mux, vstream, idr, idr_len,
+                                         /*pts=*/9000, /*dts=*/6000,
+                                         /*key_frame=*/true) != 0) {
+        fprintf(stderr, "ERROR: tst_muxer_push_video_to_with_dts failed\n");
+        tst_muxer_close(mux); return NULL;
+    }
+
+    uint8_t *produced = NULL; size_t produced_len = 0, produced_cap = 0;
+    if (drain_muxer(mux, &produced, &produced_len, &produced_cap) != 0) {
+        fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); return NULL;
+    }
+    tst_muxer_close(mux);
+    *out_len = produced_len;
+    return produced;
+}
+
 /* ── Roundtrip scenario runner ── */
 static int run_roundtrip(const char *scenarios_dir_path,
                          const scenario_entry_t *entry,
@@ -1302,6 +1345,8 @@ static int run_roundtrip(const char *scenarios_dir_path,
         produced = remux_video_roundtrip(&produced_len);
     } else if (strcmp(entry->id, "audio-klv-roundtrip") == 0) {
         produced = remux_audio_klv_roundtrip(&produced_len);
+    } else if (strcmp(entry->id, "video-dts-roundtrip") == 0) {
+        produced = remux_video_dts_roundtrip(&produced_len);
     } else {
         fprintf(stderr, "ERROR: unknown roundtrip scenario id '%s'\n", entry->id);
         free(committed);

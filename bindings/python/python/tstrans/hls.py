@@ -1,8 +1,9 @@
 """tstrans.hls — tst-hls (HLS publisher) bindings.
 
-Available when tstrans was built with the `hls` cargo feature (default-on
-in published wheels). A source build without `--features hls` will fail to
-import this submodule.
+Available only when tstrans was built with the `hls` cargo feature. HLS is
+EXPERIMENTAL and the `hls` feature is **off by default and NOT included in
+the published wheels** — build from source with `--features hls` to enable
+it. A build without `--features hls` will fail to import this submodule.
 
 Surface (Plan A5b Wave C):
 
@@ -41,7 +42,7 @@ try:
 except (ImportError, AttributeError) as exc:  # pragma: no cover
     raise ImportError(
         "tstrans.hls is unavailable. HLS is EXPERIMENTAL and is NOT included "
-        "in the published v0.1.0 wheels (the `hls` cargo feature is off by "
+        "in the published wheels (the `hls` cargo feature is off by "
         "default); build from source with `--features hls` to enable it."
     ) from exc
 

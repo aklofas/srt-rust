@@ -77,6 +77,75 @@ fn hls_pipeline_event_mode_writes_three_segments_locally() {
 }
 
 #[test]
+fn hls_extinf_is_media_derived_and_target_is_immutable() {
+    let dir = tmpdir("media-extinf");
+    let publisher = HlsPublisherBuilder::new()
+        .bind("127.0.0.1:0".parse().unwrap())
+        .output_dir(&dir)
+        .segment_duration(Duration::from_secs(4)) // configured target → ceil(4) = 4
+        .playlist_window(6)
+        .mode(HlsMode::Event)
+        .build()
+        .unwrap();
+
+    let mux_cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.psi_interval_ms(10);
+        b.build().unwrap()
+    };
+
+    let pub_shell = MuxPublisher::with_config(publisher, mux_cfg).unwrap();
+    let au = synthetic_h264_au();
+    // GOP cadence: IDR@0, P@60000, P@120000, IDR@180000, P@240000, P@300000, IDR@360000.
+    //
+    // Segment bookkeeping (segment_start_pts set on first push after a cut,
+    // reset to None immediately after each keyframe cut):
+    //   IDR@0:       start None→0; span(0,0)=0 → seg0 Duration::ZERO; reset.
+    //   P@60000:     start None→60000.
+    //   P@120000:    start stays 60000.
+    //   IDR@180000:  span(60000,180000)=120000 ticks = 120000×1e9/90000 ns
+    //                = 1_333_333_333 ns ≈ 1.333 s; reset.
+    //   P@240000:    start None→240000.
+    //   P@300000:    start stays 240000.
+    //   IDR@360000:  span(240000,360000)=120000 ticks = 1.333 s; reset.
+    let idr_ticks = [0i64, 180_000, 360_000];
+    for (gop, &idr) in idr_ticks.iter().enumerate() {
+        pub_shell.send_video(&au, Pts90khz::new(idr), true).unwrap();
+        if gop + 1 < idr_ticks.len() {
+            pub_shell
+                .send_video(&au, Pts90khz::new(idr + 60_000), false)
+                .unwrap();
+            pub_shell
+                .send_video(&au, Pts90khz::new(idr + 120_000), false)
+                .unwrap();
+        }
+    }
+
+    let _ = pub_shell.publisher_stats(); // touch stats path
+
+    let publisher = pub_shell.finish().unwrap();
+    let rendered = publisher.render_playlist(true);
+    publisher.finish().unwrap();
+
+    // Target duration is the immutable ceiling (4 s), not the actual segment
+    // duration; it must not change across reloads.
+    assert!(
+        rendered.contains("#EXT-X-TARGETDURATION:4"),
+        "playlist:\n{rendered}"
+    );
+    // Each non-degenerate segment carries a media-derived EXTINF of 1.333 s
+    // (120000-tick PTS span).  The old wall-clock code would have produced
+    // ~0.000 for fast ingestion.
+    assert!(
+        rendered.contains("#EXTINF:1.333,"),
+        "expected a media-derived 1.333 s EXTINF, got:\n{rendered}"
+    );
+}
+
+#[test]
 fn hls_pipeline_via_ffmpeg_validates_playlist() {
     if !ffmpeg_available() {
         eprintln!("ffmpeg not on PATH — skipping HLS e2e validation");

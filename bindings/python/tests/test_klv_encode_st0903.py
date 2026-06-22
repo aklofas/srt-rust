@@ -125,6 +125,38 @@ def test_encode_vmti_strict_compliance_duplicate_target_id_raises():
     assert ei.value.tag == 1
 
 
+def test_encode_vmti_strict_compliance_empty_pack_tag_preserves_large_target_id():
+    # REF-KLV-04: target_id is u64; a value above u32::MAX must reach .tag
+    # losslessly (regression for a u64-as-u32 truncation in the error mapper).
+    big_target_id = 2**32 + 7  # 4_294_967_303 — above u32::MAX
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=1,
+        targets=(VTargetPack(target_id=big_target_id),),  # empty pack triggers the error
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.VTARGET_PACK_EMPTY
+    assert ei.value.tag == big_target_id, ".tag must carry the full u64 target_id"
+
+
+def test_encode_vmti_strict_compliance_duplicate_tag_preserves_large_target_id():
+    # REF-KLV-04: the duplicate-id error must also forward the full u64 target_id.
+    big_target_id = 2**32 + 7  # above u32::MAX; truncation to u32 would yield 7
+    rec = VmtiLs(
+        version_number=6,
+        num_targets_reported=2,
+        targets=(
+            VTargetPack(target_id=big_target_id, centroid_pixel=100),
+            VTargetPack(target_id=big_target_id, centroid_pixel=200),
+        ),
+    )
+    with pytest.raises(KlvEncodeError) as ei:
+        encode_vmti_strict_compliance(rec)
+    assert ei.value.kind is KlvEncodeErrorKind.DUPLICATE_TARGET_ID
+    assert ei.value.tag == big_target_id, ".tag must carry the full u64 target_id"
+
+
 def test_encode_vmti_strict_compliance_valid_record_succeeds():
     rec = _minimal_embedded_record()
     out = encode_vmti_strict_compliance(rec)

@@ -16,8 +16,9 @@ crate-type = ["cdylib"]
 doctest    = false
 
 [features]
-# Compiles the test-only panic probe (bindings/jvm/src/test_hooks.rs) used by
-# PanicIsolationTest. Default-OFF; never enabled for the published cdylib.
+# Compiles the test-only panic probes (bindings/jvm/src/test_hooks.rs + the RTSP
+# probes in src/rtp/server.rs) used by PanicIsolationTest + RtspPanicPoisoningTest.
+# Default-OFF; never enabled for the published cdylib.
 jni-test-hooks = []
 
 [dependencies]

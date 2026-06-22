@@ -168,7 +168,7 @@ public final class MountHandle implements AutoCloseable {
 
     /**
      * Test-only: the raw native handle, for routing a panic through the real
-     * {@code REGISTRY_MOUNT} in {@code PanicIsolationTest} (proves the mount
+     * {@code REGISTRY_MOUNT} in {@code RtspPanicPoisoningTest} (proves the mount
      * mutators are wired to {@code with_mount_poisoning}). Package-private,
      * mirrors the {@code *ForTest} convention in {@code Klv}.
      */

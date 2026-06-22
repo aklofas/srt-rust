@@ -282,10 +282,11 @@ pub enum VTargetPackError {
 ///
 /// `target_id` is a `u64` decoded from the BER-OID Target ID (≈ 63 bits
 /// per ST 0903.6 §10.2.2.1; spec allows up to 9 wire bytes, V9 in
-/// §10.2 Table 10). V6 pixel-number fields (`centroid_pixel`,
-/// `bbox_top_left_pixel`, `bbox_bottom_right_pixel`) are `u64`; note
-/// their V4 wire format is 4 bytes, so a value above `u32::MAX` encodes
-/// but will not decode (see the per-field notes).
+/// §10.2 Table 10). The pixel-number fields are `u64`: the V6 fields
+/// (`centroid_pixel`, `bbox_top_left_pixel`, `bbox_bottom_right_pixel`)
+/// carry up to 6 wire bytes; the V4 `centroid_pix_row` /
+/// `centroid_pix_col` are 4 wire bytes (see their per-field notes for the
+/// `u32::MAX` ceiling).
 ///
 /// `detection_status` is the raw §10.2.2.24 / §7.2 Table 5 codepoint:
 /// 0=Inactive, 1=Active-Moving, 2=Dropped, 3=Active-Stopped,

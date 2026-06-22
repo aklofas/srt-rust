@@ -11,17 +11,20 @@ import org.tstrans.mpegts.MuxerConfig;
 import org.tstrans.mpegts.VideoCodec;
 
 /**
- * Proves the RTSP <em>mutating</em> natives (the {@code pushX}/{@code flush}/
- * {@code stop}/{@code addX} family) actually route through
- * {@code with_mount_poisoning}/{@code with_server_poisoning}, so a panic torn
- * mid-mutation POISONS the leased handle and every later op throws
- * {@link IllegalStateException} instead of reusing torn native state (JNI-01).
+ * Exercises the production {@code with_mount_poisoning}/{@code with_server_poisoning}
+ * helpers — the ones the RTSP <em>mutating</em> natives ({@code pushX}/{@code flush}/
+ * {@code stop}/{@code addX}) route through — on a REAL leased {@code RtspServer}/
+ * {@code MountHandle}: a forced panic through the helper POISONS the handle, so
+ * every later real op throws {@link IllegalStateException} instead of reusing torn
+ * native state (JNI-01).
  *
  * <p>The generic {@code PanicProbe} (see {@link org.tstrans.PanicIsolationTest})
- * proves {@code with_poisoning} in isolation; these tests force a panic THROUGH
- * the real {@code REGISTRY_MOUNT}/{@code REGISTRY_SERVER} on a REAL leased handle
- * — the same registry + code path a real {@code pushVideo}/{@code stop} uses —
- * so they pin the wiring of THIS surface, not just the primitive.
+ * proves {@code with_poisoning} on a stand-in {@code u64} registry; these tests
+ * drive the SAME production helper on a REAL RTSP handle. The panic is injected via
+ * dedicated {@code jni-test-hooks} probes (not by making a real {@code pushVideo}/
+ * {@code stop} panic), so this pins the helper's end-to-end poisoning of a real RTSP
+ * handle; that each native is wired to the helper is a code-structure fact verified
+ * in {@code rtp/server.rs}.
  *
  * <p>Runs only when the cdylib was built with the {@code jni-test-hooks} cargo
  * feature (Gradle {@code -PjniTestHooks=true}); the shipped JAR never carries the
@@ -45,10 +48,11 @@ class RtspPanicPoisoningTest {
     }
 
     /**
-     * A panic torn inside a leased {@code MountHandle} mutation poisons the mount:
-     * the panic surfaces as a {@link RuntimeException}, and a subsequent REAL mount
-     * push then throws {@link IllegalStateException} (handle gone), proving the
-     * mount push family routes through {@code with_mount_poisoning}.
+     * A panic driven through the production {@code with_mount_poisoning} helper on a
+     * leased {@code MountHandle} poisons the mount: the panic surfaces as a
+     * {@link RuntimeException}, and a subsequent REAL mount push then throws
+     * {@link IllegalStateException} (handle gone). The mount push family routes
+     * through that helper (see {@code rtp/server.rs}).
      */
     @Test @Timeout(15)
     void mountMutatorPanicPoisonsMountHandle() throws Exception {
@@ -79,11 +83,11 @@ class RtspPanicPoisoningTest {
     }
 
     /**
-     * A panic torn inside a leased {@code RtspServer} mutation poisons the server:
-     * the panic surfaces as a {@link RuntimeException}, and a subsequent REAL
-     * server op then throws {@link IllegalStateException}, proving the server
-     * mutators ({@code stop}/{@code addX}) route through
-     * {@code with_server_poisoning}.
+     * A panic driven through the production {@code with_server_poisoning} helper on
+     * a leased {@code RtspServer} poisons the server: the panic surfaces as a
+     * {@link RuntimeException}, and a subsequent REAL server op then throws
+     * {@link IllegalStateException}. The server mutators ({@code stop}/{@code addX})
+     * route through that helper (see {@code rtp/server.rs}).
      */
     @Test @Timeout(15)
     void serverMutatorPanicPoisonsRtspServer() throws Exception {

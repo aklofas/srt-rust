@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name            = "tstrans"
 version         = "0.2.0"
-description     = "Python bindings for the ts-transformer MPEG-TS + KLV + codec parsers"
+description     = "MPEG-TS video + MISB KLV streaming — mux/demux, typed KLV (ST 0601/0102/0605/0903), codec parsers, and live SRT/RTP/UDP/TCP/RIST transports"
 requires-python = ">=3.10"
 license         = { text = "MIT OR Apache-2.0" }
 authors         = [{ name = "Andrew Klofas", email = "aklofas@gmail.com" }]

@@ -1,6 +1,6 @@
 [package]
 name        = "tst-py"
-description = "Python bindings (PyO3) for the ts-transformer MPEG-TS + KLV + codec parsers"
+description = "MPEG-TS video + MISB KLV streaming via PyO3 — mux/demux, typed KLV, codec parsers, and live SRT/RTP/UDP/TCP/RIST transports"
 # tst-py versions independently from the rest of the workspace
 # (per spec: docs/specs/2026-05-22-tst-py-design.md — "tst-py crate
 # version is independent of the rest of the workspace; v1 starts at

@@ -2,7 +2,7 @@
 
 Python bindings (via PyO3) for the [ts-transformer](https://github.com/aklofas/ts-transformer) Rust workspace.
 
-> **Status:** `tstrans` is feature-complete for v1: file inspection + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, optional pandas DataFrame adapters + NumPy snapshot views via `pip install tstrans[pandas]`, **RTP + RTSP transport** via the `tstrans.rtp` submodule (Sender / Receiver / MuxSender / DemuxReceiver / RtspClient / RtspServer / MountHandle), and **SRT transport** via the `tstrans.srt` submodule (Sender / Receiver / Builder / Socket / Listener / MuxSender / DemuxReceiver + Managed* auto-reconnect wrappers + ReconnectPolicy). ~925+ pytest tests. Minimum Python 3.10.
+> **Status:** `tstrans` covers file inspection + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, optional pandas DataFrame adapters + NumPy snapshot views via `pip install tstrans[pandas]`, and live transports: **SRT** (`tstrans.srt` — Sender / Receiver / Builder / Socket / Listener / MuxSender / DemuxReceiver + Managed* auto-reconnect + ReconnectPolicy), **RTP + RTSP** (`tstrans.rtp` — Sender / Receiver / MuxSender / DemuxReceiver / RtspClient / RtspServer / MountHandle), and raw **UDP / TCP / RIST** (`tstrans.udp` / `tstrans.tcp` / `tstrans.rist`). 1,149 pytest tests. Minimum Python 3.10.
 
 ## Install
 

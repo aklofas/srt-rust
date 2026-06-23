@@ -205,7 +205,7 @@ mavenPublishing {
         name.set("tstrans-jvm")
         description.set(
             "JVM (JDK 17+) bindings for MPEG-TS muxing/demuxing, MISB ST 0601 KLV, " +
-                "codec parsing, and SRT/RTP transport"
+                "codec parsing, and SRT/RTP (incl. RTSP) transport"
         )
         inceptionYear.set("2026")
         url.set("https://github.com/aklofas/ts-transformer")

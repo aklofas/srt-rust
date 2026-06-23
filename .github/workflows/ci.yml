@@ -236,6 +236,11 @@ jobs:
         run: bash scripts/check/c/no-direct-not-available-not-found-cast.sh
 
       - name: Check lifecycle ffi_catch coverage
+        # Linux-only: scans platform-independent Rust source under
+        # bindings/c/core/src/ with GNU-grep `\w`/`\b`. BSD grep on the
+        # macOS runner matches 0 entries and trips the script's own
+        # "pattern drifted" guard — a gating flake, not a real signal.
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/c/lifecycle-ffi-catch-coverage.sh
 
       - name: Check extern C ffi_catch coverage
@@ -245,6 +250,10 @@ jobs:
         # trivially-infallible allowlist. Caught tst_demux_config_free
         # which had bypassed the lifecycle ratchet by being named
         # _free (plan #96 Wave F finding #9).
+        # Linux-only (same rationale as the lifecycle check above):
+        # platform-independent source scan whose ffi_catch guard uses
+        # GNU-grep `\s`, which BSD grep on macOS would mis-match.
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/c/extern-c-ffi-catch-coverage.sh
 
       - name: Check C header mirror-enum export
@@ -282,6 +291,9 @@ jobs:
       - name: Check Publisher trait C mirror
         # Plan A5a — every tst_core::publisher::Publisher trait method has a
         # corresponding tst_publisher_* C entry point in the generated header.
+        # Linux-only: platform-independent source scan whose trait-method
+        # grep uses GNU-grep `\s` (BSD grep on macOS matches 0 methods).
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check/c/publisher-trait-mirror.sh
 
       - name: Check advisory test manifests (existence + format only)

@@ -5,19 +5,15 @@
 publishes automatically (OIDC trusted publishing); Maven uploads to the
 Central Portal in a **staged** state that a maintainer releases manually.
 
-> **v0.2.0 release-state asymmetry — read first.** The two registries are in
-> *different* states, and the procedure must respect both:
-> - **Maven Central already has `org.tstrans:tstrans-jvm:0.1.0`** (published
->   2026-06-08, permanent/immutable). v0.2.0 is a *subsequent* Maven publish.
-> - **PyPI has nothing for `tstrans`.** The v0.1.0 PyPI publish never fired —
->   a best-effort wheel leg sat queued, was auto-cancelled, and a cancelled
->   `needs:` dependency *skips* (does not fail) the OIDC publish job. So
->   **v0.2.0 is the FIRST PyPI release**, and the PyPI OIDC trusted-publisher
->   path has **never successfully run** — treat it as unverified.
->
-> Do **not** advertise PyPI availability in the README / docs until a real
-> `pip install tstrans==0.2.0` resolves. Maven Central is immutable —
-> **never tag a release without explicit maintainer confirmation.**
+> **Release state (updated 2026-06-23 — v0.2.0 shipped).** Both registries are
+> now live at **0.2.0**: `tstrans` on PyPI (the first-ever PyPI publish — the
+> OIDC trusted-publisher path ran successfully) and
+> `org.tstrans:tstrans-jvm:0.2.0` on Maven Central. Future releases are normal
+> *subsequent* publishes on both registries. Two standing cautions remain:
+> Maven Central is immutable — **never tag a release without explicit
+> maintainer confirmation** — and on the tag run **watch the OIDC
+> `publish to PyPI` job**: a *skipped* publish means nothing reached PyPI (the
+> way v0.1.0 silently missed).
 
 ## One-time prerequisites
 

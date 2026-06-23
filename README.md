@@ -16,7 +16,7 @@ encryption, and typed metadata decoding. Rust core; C, Python, and JVM bindings.
 |---|---|---|
 | **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
 | **C** | Shipping · ABI 0.17 | [`docs/languages/c.md`](docs/languages/c.md) |
-| **Python** | Shipping · `tstrans` (first PyPI release lands with v0.2.0) | [`docs/languages/python.md`](docs/languages/python.md) |
+| **Python** | Shipping · `tstrans` on PyPI | [`docs/languages/python.md`](docs/languages/python.md) |
 | **JVM** | Shipping · `org.tstrans:tstrans-jvm` on Maven Central | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
 
 ## See it in 30 seconds
@@ -79,8 +79,8 @@ Full feature-by-feature matrix: [`docs/reference/compatibility.md`](docs/referen
 
 ## Install
 
-Pre-1.0 and not yet on the public package registries, so today you build from source
-(the first `pip install tstrans` lands with the v0.2.0 release):
+`tstrans` is on **PyPI** and `org.tstrans:tstrans-jvm` is on **Maven Central**.
+The Rust core and C bindings build from source:
 
 ```bash
 git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
@@ -94,8 +94,8 @@ The build vendors and compiles libsrt 1.5.5 + mbedTLS 3.6 LTS from submodules �
 cold, seconds warm. Feature flags (`mbedtls`, `file`, per-transport) are documented in
 [`docs/languages/rust.md`](docs/languages/rust.md).
 
-- **Python** — `tstrans` (core) and `tstrans[pandas]` (DataFrame + NumPy adapters), built with `maturin` until the v0.2.0 PyPI release. See [`docs/languages/python.md`](docs/languages/python.md).
-- **JVM** — `org.tstrans:tstrans-jvm` is on Maven Central (v0.1.0; v0.2.0 to follow). See [`docs/languages/jvm.md`](docs/languages/jvm.md).
+- **Python** — `pip install tstrans` (core) or `pip install tstrans[pandas]` (DataFrame + NumPy adapters). See [`docs/languages/python.md`](docs/languages/python.md).
+- **JVM** — `org.tstrans:tstrans-jvm:0.2.0` on Maven Central. See [`docs/languages/jvm.md`](docs/languages/jvm.md).
 - **Rust** — until the first crates.io publish: `cargo add --git https://github.com/aklofas/ts-transformer tst-core`.
 
 ## Documentation

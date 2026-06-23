@@ -37,7 +37,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 - **Audio codecs** — AAC (ADTS full; LATM carriage + sync validation, full decode deferred), MPEG-2 Audio (MP2/MP3), AC-3. Frame-level parsers expose sample rate / channel count.
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
 - **C bindings** (`tst-c`) — `cdylib` + `staticlib`, `tstrans.h` via cbindgen, `tstrans.pc` for pkg-config. Stable ABI versioned `TST_ABI_VERSION_MAJOR/MINOR`.
-- **Python bindings** (`tst-py`, published to PyPI as `tstrans` starting with v0.2.0) — offline `.ts` inspection/construction plus live UDP / TCP / RTP (incl. RTSP) / SRT / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
+- **Python bindings** (`tst-py`, on PyPI as `tstrans`) — offline `.ts` inspection/construction plus live UDP / TCP / RTP (incl. RTSP) / SRT / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
 - **JVM bindings** — `tst-jni`, distributed as `tstrans-jvm` (`org.tstrans`) on Maven Central. Package-for-package mirror of the Python surface (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`).
 
 ## What's NOT in the box

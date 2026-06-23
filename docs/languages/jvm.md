@@ -11,13 +11,13 @@
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
 > - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
 > - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
-> - How to send and receive MPEG-TS over SRT and RTP (`org.tstrans.srt` / `org.tstrans.rtp`) — pre-muxed bytes or the `MuxSender`/`DemuxReceiver` shells — and how to drive RTSP (client + server)
+> - How to send and receive MPEG-TS over RTP and SRT (`org.tstrans.rtp` / `org.tstrans.srt`) — pre-muxed bytes or the `MuxSender`/`DemuxReceiver` shells — and how to drive RTSP (client + server)
 > - How to pair video with KLV metadata by PTS using `org.tstrans.pipeline.Pairer`
 > - The JVM-specific gotchas: heap-copied `ByteBuffer` payloads, nullable `Long` DTS, codec on `StreamId`
 > - How this binding differs from the Rust core
 
 > **Status (mpegts demux + offline mux + typed KLV + codec parsers + file I/O +
-> SRT + RTP transports shipped):** the JVM binding ships the bootstrap
+> RTP + SRT transports shipped):** the JVM binding ships the bootstrap
 > `org.tstrans.Version` hello-world; the complete `org.tstrans.mpegts` **demux**
 > surface (`Demuxer`, `DemuxerConfig`, the sealed `DemuxEvent` hierarchy,
 > `StreamId`, codec / kind enums); the offline **mux** surface (`Muxer`,
@@ -545,10 +545,12 @@ when typed parsing didn't — applies to audio, in two distinct cases:
   stream. `payload()` is empty, `rawPayload()` carries the original bytes as a
   heap `ByteBuffer`, and `codecParseError()` holds the `CodecParseException`
   describing the failure.
-- **Deferred carriage (AAC-LATM, AC-3)** — typed parsing isn't yet
-  implemented, so the binding falls back silently. `payload()` is empty,
-  `rawPayload()` carries the original bytes, but `codecParseError()` is
-  **null** (no error — the bytes simply weren't parsed).
+- **Deferred typed parsing (AAC-LATM, AC-3)** — these codecs are carried
+  (AC-3 is additionally sync-validated by the demuxer), but per-frame typed
+  parsing isn't implemented yet, so the binding falls back silently.
+  `payload()` is empty, `rawPayload()` carries the original bytes, but
+  `codecParseError()` is **null** (no error — the bytes simply weren't
+  parsed into typed frames).
 
 A clean audio parse leaves `payload()` populated with `List<AudioFrame>`,
 `rawPayload()` null, and `codecParseError()` null.

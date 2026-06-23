@@ -80,7 +80,7 @@ the rationale against fusing them.
 
 ```rust,ignore
 impl<T: Transport> MuxSender<T> {
-    pub fn new(config: MuxerConfig, transport: T) -> Result<Self, MuxError>;
+    pub fn new(transport: T, config: MuxerConfig) -> Result<Self, MuxError>;
     pub fn send_video(&self, nal: &[u8], pts: Pts90khz, key_frame: bool)
         -> Result<(), MuxSenderError>;
     pub fn send_klv(&self, klv: &[u8], pts: Pts90khz, metadata_service_id: u8)
@@ -90,10 +90,12 @@ impl<T: Transport> MuxSender<T> {
 }
 ```
 
-`MuxSenderError` is two-variant: `Mux(MuxError)` for muxer-side failures
-(`BufferFull`, `KlvTooLarge`, `InvalidNal`) and
-`Transport(TransportError)` for transport-side failures. Both convert
-in via `#[from]`.
+`MuxSenderError` is a struct — `{ kind: ShellErrorKind, source:
+MuxSenderErrorSource }`. The `source` enum has two variants:
+`Mux(MuxError)` for muxer-side failures (`BufferFull`, `KlvTooLarge`,
+`InvalidNal`) and `Transport(TransportError)` for transport-side
+failures. Both `MuxError` and `TransportError` convert straight into a
+`MuxSenderError` via `#[from]` (the `kind` is derived for you).
 
 An internal `Mutex` wraps the muxer, the transport, and `pending_bytes`.
 Concurrent `send_video` / `send_klv` calls are correct but serialize.
@@ -146,7 +148,7 @@ impl<T: Transport> Sender<T> {
     pub fn new(transport: T, config: SenderConfig) -> Self;
     pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError>;
     pub fn flush(&mut self) -> Result<(), SenderError>;
-    pub fn stats(&self) -> &SenderStats;
+    pub fn stats(&self) -> SenderStats;
     pub fn close(&mut self);
     pub fn is_alive(&self) -> bool;
 }
@@ -176,8 +178,9 @@ best-effort flushes.
   public error type for forward compatibility but is not currently
   emitted by the sender.
 
-`SenderError` is two-variant: `Framing(TsFramingError)` and
-`Transport(TransportError)`.
+`SenderError` is a `{ kind: ShellErrorKind, source: SenderErrorSource }`
+struct; its `source` enum has two variants: `Framing(TsFramingError)`
+and `Transport(TransportError)`.
 
 `SenderStats` fields: `bytes_pushed`, `bytes_skipped_for_sync`
 (bytes discarded while acquiring or re-acquiring sync, RECOVER mode
@@ -215,7 +218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust,ignore
 impl<T: Transport> RawSender<T> {
     pub fn new(transport: T, config: RawSenderConfig) -> Self;
-    pub fn send(&mut self, bytes: &[u8]) -> Result<(), TransportError>;
+    pub fn send(&mut self, bytes: &[u8]) -> Result<(), RawSenderError>;
     pub fn close(&mut self);
     pub fn is_alive(&self) -> bool;
     pub fn transport(&self) -> &T;
@@ -225,8 +228,9 @@ impl<T: Transport> RawSender<T> {
 `RawSenderConfig` is currently empty — reserved as a distinct type so
 future additions are non-breaking. `send` validates
 `bytes.len() <= transport.max_payload()` before delegating; one `send`
-call equals one outbound message and the transport's `TransportError`
-surfaces directly.
+call equals one outbound message. Failures surface as `RawSenderError`,
+which wraps the transport's `TransportError` (`#[from]`) and carries a
+`ShellErrorKind` for binding-crate error mapping.
 
 Use case: custom protocols where you want SRT's reliability and
 encryption but not its TS muxing — control channels, application-level
@@ -247,15 +251,21 @@ The trait is `Send` but not `Sync` — concurrent sends through one
 transport are the caller's responsibility. The shells handle this
 internally where their thread-safety contract requires it.
 
-`TransportError` has four variants:
+`TransportError` has five variants:
 
-- `Backpressure(String)` — transport is alive but momentarily refused
-  the bytes. Retrying the same slice is reasonable.
-- `Broken(String)` — transport is dead; rebuild it (or rely on
-  `ManagedTransport` to do so).
-- `Closed` — transport was already closed.
+- `Backpressure { msg, errno_code }` — transport is alive but momentarily
+  refused the bytes. Retrying the same slice is reasonable. `errno_code`
+  carries the wire-level code (libsrt major category for `SrtTransport`)
+  or `None` for transports that don't expose one.
+- `Broken { msg, errno_code }` — transport is dead; rebuild it (or rely
+  on `ManagedTransport` to do so).
+- `Closed` — peer closed the connection / end-of-stream observed on the
+  wire (bare transports also map a caller-initiated close to `Closed`).
 - `TooLarge { len, max }` — message exceeds `max_payload`. Caller is
   responsible for chunking on their own framing semantics.
+- `ExplicitClose` — caller invoked `close()` / `cancel()`. Today produced
+  only by `ManagedRecvTransport::recv_bytes` when its own cancel signal
+  fires; bare `SrtTransport` maps caller-close to `Closed` instead.
 
 Implement `Transport` for any byte sink that isn't an SRT socket: UDP,
 file, in-memory test harness, named pipe, TCP, your own protocol. The
@@ -453,7 +463,8 @@ Where errors come from:
   `Framing` errors; the `max_unsynced_bytes` threshold is tracked
   for diagnostic accounting only and does not stop the sender.
 - `SenderError::Transport(TransportError)` — transport error (`Sender`).
-- `RawSender::send` returns `TransportError` directly.
+- `RawSender::send` returns `RawSenderError`, which wraps the underlying
+  `TransportError`.
 
 With `ManagedTransport` wrapping the inner transport, transient
 `Broken` errors are absorbed and the caller's `send_*` call appears to
@@ -514,9 +525,10 @@ pattern. Iterator termination (`for` loop simply ends) is the
 clean-EOF signal — `recv_event` returned `Ok(None)` after auto-flushing
 the demuxer.
 
-`DemuxReceiverError` is two-variant: `Transport(TransportError)` for
-transport failures, `Demux(DemuxError)` for strict-mode rejections,
-unrecoverable sync loss, or malformed PES.
+`DemuxReceiverError` is a `{ kind: ShellErrorKind, source:
+DemuxReceiverErrorSource }` struct; its `source` enum has two variants:
+`Transport(TransportError)` for transport failures and `Demux(DemuxError)`
+for strict-mode rejections, unrecoverable sync loss, or malformed PES.
 
 ```rust,no_run
 use tst_core::mpegts::demux::DemuxEvent;
@@ -579,15 +591,15 @@ Mirroring [../examples/operations/tee_disk_and_demux.rs](../examples/operations/
 
 ```rust,ignore
 impl<R: RecvTransport> Receiver<R> {
-    pub fn new(transport: R) -> Self;
-    pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError>;
+    pub fn new(transport: R, config: ReceiverConfig) -> Self;
+    pub fn next_packet(&mut self) -> Result<[u8; 188], ReceiverError>;
     pub fn is_alive(&self) -> bool;
     pub fn close(&mut self);
 }
 
 impl<R: RecvTransport> RawReceiver<R> {
-    pub fn new(transport: R) -> Self;
-    pub fn recv_one(&mut self) -> Result<Vec<u8>, TransportError>;
+    pub fn new(transport: R, config: RawReceiverConfig) -> Self;
+    pub fn recv_one(&mut self) -> Result<Vec<u8>, RawReceiverError>;
     pub fn is_alive(&self) -> bool;
     pub fn close(&mut self);
 }
@@ -691,14 +703,14 @@ The receive surface distinguishes three end-of-stream signals:
   `TransportError::Closed`, which `DemuxReceiver::recv_event` translates
   into `Ok(None)` after first calling `Demuxer::flush()` to recover
   any trailing PES. Loop callers do not see `Closed` as an `Err`.
-- **`Err(DemuxReceiverError::Transport(TransportError::Broken(_)))`.** Peer-
+- **`Err` whose `source` is `DemuxReceiverErrorSource::Transport(TransportError::Broken { .. })`** (`kind = ShellErrorKind::TransportBroken`). Peer-
   initiated cleanup or unrecoverable link. `SrtTransport` collapses
   these into one `Broken` surface by design — it lets a managed-receive
   decorator distinguish a self-initiated close (`Closed`) from a peer-
   initiated break (`Broken`). On `Broken` the demuxer is NOT auto-
   flushed (the receive thread can't tell mid-stream hiccup from a
   clean end).
-- **`Err(DemuxReceiverError::Demux(_))`.** Strict-mode rejection or
+- **`Err` whose `source` is `DemuxReceiverErrorSource::Demux(_)`.** Strict-mode rejection or
   malformed PES. Re-entry into `recv_event` after a `MalformedPes` is
   discouraged — the demuxer's reassembly state is undefined past a bad
   PES header. Treat as stream-fatal until lenient PES recovery lands.

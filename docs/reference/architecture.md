@@ -323,7 +323,7 @@ The summary below points at the canonical list once; each item maps to
 an entry in [`docs/project/deferred-features.md`](/docs/project/deferred-features.md).
 
 - AV1 / H.266 carriage ships; explicit non-goals remain — full AV1 Frame Header (decoder-scope), AV1 multi-OP, `AV1_video_descriptor`, AVIF helper, H.266 APS / Picture Header NAL parsing, multi-layer H.266, `stream_type 0x32`, AV1 on `0x80`.
-- Audio frame parsers — `codec::mpegaudio` (Layer I/II/III) and `codec::aac::adts` ship; LATM (`codec::aac::latm`) and AC-3 (`codec::ac3`) are still deferred.
+- Audio frame parsers — `codec::mpegaudio` (Layer I/II/III), `codec::aac::adts`, and `codec::ac3` (syncframe parser) ship; `codec::aac::latm` is a sync validator only (full `audioMuxElement` decode deferred); E-AC-3 (Annex E) is deferred.
 - Reactor / async / `srt_epoll_*` — see the sync-vs-async section above.
 - Bonding / connection groups (`SRTO_GROUP*`) — no consumer demand.
 - Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.

@@ -432,22 +432,27 @@ the trigger that would unblock it.
 
 ## Audio frame parsers — AAC LATM and AC-3
 
-- **Status:** Deferred. The MP2 (Layer I/II/III) and AAC ADTS frame
-  iterators ship in 2026-05-07 (`codec::mpegaudio` + `codec::aac`).
-  AAC LATM (ISO/IEC 14496-3 §1.7 LOAS/LATM framing) and AC-3 (ATSC
-  A/52) frame parsers are not in scope.
-- **Why deferred:** Neither codec appears in the local capture corpus
-  (zero LATM events, zero AC-3 events across 250 files / 33 GB at plan
-  #21 ship). Synthetic-only fixtures would be the validation path; we
-  defer until a consumer or capture surfaces them so the work is
-  driven by real-world bytes.
-- **Trigger to revisit:** A consumer ships a stream needing LATM or
-  AC-3 typed frame access, or a corpus capture surfaces either codec.
-- **Scope when added:** AAC LATM lands as `codec::aac::latm` sibling
-  module under the existing `aac/` directory (the directory layout was
-  set up at the 2026-05-07 ship for exactly this future). AC-3 lands
-  as a new top-level `codec::ac3` module. Both follow the same
-  iterator-of-`Result<Frame, CodecParseError>` shape as the existing slice.
+- **Status:** Partially shipped. The MP2 (Layer I/II/III) and AAC ADTS
+  frame iterators ship in 2026-05-07 (`codec::mpegaudio` + `codec::aac`).
+  An **AC-3 (ATSC A/52) syncframe parser ships** as `codec::ac3`
+  (`parse_syncframe` / `Ac3SyncInfo`) — used by the muxer to derive the
+  `AC-3_audio_stream_descriptor` and by the demuxer to enforce single-
+  syncframe alignment. A **LOAS/LATM sync validator ships** as
+  `codec::aac::latm` (`validate_latm_sync`). Still deferred: full AAC
+  LATM `audioMuxElement` decode (ISO/IEC 14496-3 §1.7) and a full AC-3
+  block-level frame iterator.
+- **Why deferred (remaining decode):** Neither codec appears in the
+  local capture corpus (zero LATM events, zero AC-3 events across 250
+  files / 33 GB at plan #21 ship). Synthetic-only fixtures would be the
+  validation path; we defer the deeper decode until a consumer or
+  capture surfaces them so the work is driven by real-world bytes.
+- **Trigger to revisit:** A consumer ships a stream needing full LATM
+  `audioMuxElement` decode or AC-3 block-level typed frame access, or a
+  corpus capture surfaces either need.
+- **Scope when added:** the deeper decode extends the existing
+  `codec::aac::latm` / `codec::ac3` modules, following the same
+  iterator-of-`Result<Frame, CodecParseError>` shape as the existing
+  ADTS / MPEG-audio slices.
 
 ## Audio carriage at the `tst-c` C ABI
 
@@ -1308,9 +1313,11 @@ the trigger that would unblock it.
   `payload_length_info` framing per ISO/IEC 14496-3) and AC-3
   (ETSI TS 102 366 §6 syncword + frame-size table) both have
   well-defined per-spec frame boundaries; an iterator implementation
-  is roughly a day of work each. The wider "no LATM/AC-3 frame
-  parsers" entry above tracks the spec-side deferral; this entry is
-  the codec-stats-side mirror.
+  is roughly a day of work each. The "Audio frame parsers — AAC LATM
+  and AC-3" entry above tracks the spec-side decode (AC-3 syncframe
+  parsing and LATM sync validation already ship there; full per-frame
+  decode is the deferred part); this entry is the codec-stats-side
+  mirror — no per-frame *counter* iterator exists for LATM/AC-3 yet.
 - **Trigger to revisit:** A consumer asks for per-frame counters or
   frame-aligned dispatch on LATM/AC-3 audio. Once added, the `Audio`
   variant of `StreamCodecStats` (shipped in plan #68) automatically

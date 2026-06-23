@@ -101,13 +101,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let transport = SrtTransport::new(socket);
 
     // 2. Wrap muxer + transport. Default config = 1 program, H.264 + async KLV.
+    //    Argument order is (transport, config).
     let mut sender: MuxSender<SrtTransport> =
-        MuxSender::new(MuxerConfig::default(), transport)?;
+        MuxSender::new(transport, MuxerConfig::default())?;
 
     // 3. Push payloads. Each push muxes into TS packets and ships them.
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xA5, 0xA5, 0xA5];
     sender.send_video(&nal, Pts90khz::new(0), /* key_frame */ true)?;
-    sender.send_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0))?;
+    // send_klv(klv, pts, metadata_service_id) — 0x00 is the ST 1402.2 default.
+    sender.send_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], Pts90khz::new(0), 0x00)?;
 
     sender.close()?;
     Ok(())
@@ -156,21 +158,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // problem and surfaces what it found as `NonConformant` events. For
     // hard-fail behavior, swap to `DemuxerBuilder::new().strict(...).build()`.
     let mut d = Demuxer::new();
-    d.push(&bytes);
+    d.feed(&bytes)?;  // `feed` accepts unaligned slices and re-syncs internally
+    d.flush();        // end-of-stream: commits the trailing PES-length-0 AU
 
-    while let Some(event) = d.poll_event() {
+    while let Some(event) = d.next_event() {
         match event {
-            DemuxEvent::ProgramMap { programs, .. } => {
-                println!("PSI: {} programs", programs.len());
+            // ProgramMap wraps a single `ProgramMap` struct (one per PMT seen).
+            DemuxEvent::ProgramMap(m) => {
+                println!("PSI: program {} ({} streams)", m.program_number, m.streams.len());
             }
-            DemuxEvent::Sample(s) => {
-                println!("Sample pid=0x{:04X} pts={:?}", s.pid, s.pts);
+            // Sample / Metadata / Discontinuity / NonConformant are STRUCT
+            // variants — `pid` lives on the `stream` field, not the event.
+            DemuxEvent::Sample { stream, pts, .. } => {
+                println!("Sample pid=0x{:04X} pts={}", stream.pid, pts.as_ticks());
             }
-            DemuxEvent::Metadata(m) => {
-                println!("Metadata pid=0x{:04X} kind={:?}", m.pid, m.kind);
+            DemuxEvent::Metadata { stream, kind, .. } => {
+                println!("Metadata pid=0x{:04X} kind={:?}", stream.pid, kind);
             }
-            DemuxEvent::Discontinuity(d) => eprintln!("Discontinuity: {d:?}"),
-            DemuxEvent::NonConformant(nc) => eprintln!("NonConformant: {nc:?}"),
+            DemuxEvent::Discontinuity { stream, kind } => {
+                eprintln!("Discontinuity pid=0x{:04X} {kind:?}", stream.pid);
+            }
+            DemuxEvent::NonConformant { stream, issue } => {
+                eprintln!("NonConformant pid=0x{:04X} {issue:?}", stream.pid);
+            }
             // #[non_exhaustive] enum — wildcard arm required.
             _ => {}
         }
@@ -202,8 +212,8 @@ unwrap behavior, decoupled-pairing rationale — is in
 enums in this workspace are marked `#[non_exhaustive]` so new variants
 land without a major version bump. Your `match` arms must include a
 `_ => { ... }` catch-all; the compiler error is explicit when you
-forget. The current variant count is ratcheted in CI (see
-`BASELINE=162` in `.github/workflows/ci.yml`).
+forget. The current `#[non_exhaustive]` count is ratcheted in CI (see
+`BASELINE=269` in `.github/workflows/ci.yml`).
 
 **SRT initialization is automatic.** `srt-sys` calls `srt_startup` /
 `srt_cleanup` on your behalf — don't call them manually. Cleanup runs
@@ -263,9 +273,9 @@ out each binding's deviations relative to this surface:
   handles, libsrt-style negative error codes + thread-local last-error,
   ABI versioning.
 - **Python:** [`/docs/languages/python.md`](/docs/languages/python.md) —
-  file-I/O-only v1 surface (no live transport yet), `match`-friendly
-  `DemuxEvent` subclasses, pandas / NumPy adapters, GIL release on long
-  calls.
+  offline file I/O plus the full live-transport surface (UDP / TCP / RTP+RTSP /
+  SRT / RIST), `match`-friendly `DemuxEvent` subclasses, pandas /
+  NumPy adapters, GIL release on long calls.
 
 The "Where this binding differs" section on each of those pages is the
 authoritative gap list. Anything not called out there matches Rust 1:1.

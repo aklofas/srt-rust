@@ -2,14 +2,14 @@
 
 > **Who this is for:** You write Python and want to inspect, build,
 > stream, or receive MPEG-TS + KLV — offline files *and* live transports
-> (SRT, RTP/RTSP, UDP, TCP, RIST).
+> (UDP, TCP, RTP/RTSP, SRT, RIST).
 
 > **You will learn:**
 > - How to install `tstrans` (with or without the pandas extra)
 > - How to read a `.ts` file and inspect typed `DemuxEvent` items in ~5 lines
 > - How to build a `.ts` file by pushing video + KLV through the `Muxer`
 > - How to encode and decode all 4 MISB KLV sets (ST 0601 / 0102 / 0605 / 0903)
-> - How to send and receive live MPEG-TS over SRT, RTP/RTSP, UDP, TCP, and RIST
+> - How to send and receive live MPEG-TS over UDP, TCP, RTP/RTSP, SRT, and RIST
 > - How to pair video with synchronized KLV via `tstrans.pipeline.Pairer`
 > - How to drive bulk KLV → pandas DataFrame ETL with the optional `[pandas]` extra
 > - The Python-specific gotchas: GIL release, dataclass strictness, optional extras
@@ -42,7 +42,7 @@ on `tstrans` and its topic submodules — `tstrans.io`, `tstrans.mpegts`,
 `tstrans.pipeline` pairer, and the optional `tstrans.pandas`. Don't reach
 into `tstrans._native` directly; it may reorganize between versions.
 
-Wheels (publishing with v0.2.0) ship the SRT, RTP/RTSP, UDP, TCP, and RIST transports
+Wheels (publishing with v0.2.0) ship the UDP, TCP, RTP/RTSP, SRT, and RIST transports
 on by default — with two caveats: **RIST is excluded from the Windows
 wheel** (the Linux and macOS wheels include it), and the **experimental
 HLS publisher (`tstrans.hls`) is not in any published wheel** — it is
@@ -826,7 +826,8 @@ counters without touching demuxer stats.
   bytes). Call `ev.parse()` to get typed units: for H.264 / H.265 / H.266
   video it's `list[NalUnit]`; for AV1 it's `list[Obu]`; for AAC ADTS it's
   `list[AdtsFrame]`; for MPEG-2 Audio it's `list[Mpeg2AudioFrame]`. For
-  subtitles + AAC-LATM there's no typed parser — use `.raw` directly. The
+  subtitles + AAC-LATM + AC-3 there's no typed frame parser yet — use `.raw`
+  directly (AC-3 carriage is still sync-validated on demux). The
   free functions `tstrans.codec.split_units(raw, codec)` and
   `tstrans.codec.parse_audio(raw, codec)` do the same split and additionally
   return the conformance-issue list.
@@ -1151,7 +1152,7 @@ output directly when absolute byte offsets matter.
   imports only in a source build compiled with `--features hls`; from a
   PyPI wheel `import tstrans.hls` raises `ImportError`.
 - **RIST is excluded from the Windows wheel.** The Linux and macOS wheels
-  bundle librist; the Windows wheel does not. (SRT / RTP / UDP / TCP ship
+  bundle librist; the Windows wheel does not. (UDP / TCP / RTP / SRT ship
   on every platform.)
 - **RTSP passwords never round-trip to Python.** `BasicAuth` /
   `DigestAuth` hold the password in Rust memory; only `user` / `realm`
@@ -1183,8 +1184,8 @@ See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-
 ## Roadmap
 
 The full surface has shipped — offline file I/O, typed KLV decode /
-encode, codec parsers, pandas / NumPy adapters, the SRT / RTP / RTSP /
-UDP / TCP / RIST transports, and `tstrans.pipeline.Pairer`. Wheels publish to PyPI on tagged releases; the first PyPI release is v0.2.0. Remaining items are incremental: a
+encode, codec parsers, pandas / NumPy adapters, the UDP / TCP / RTP / RTSP /
+SRT / RIST transports, and `tstrans.pipeline.Pairer`. Wheels publish to PyPI on tagged releases; the first PyPI release is v0.2.0. Remaining items are incremental: a
 zero-copy Python-buffer-protocol path for the NumPy accessors (today each
 access copies once — see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)),
 and graduating the experimental HLS publisher into the published wheels.

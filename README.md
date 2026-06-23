@@ -1,24 +1,27 @@
 # ts-transformer
 
-A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over SRT, RTP, TCP, UDP, and RIST — with C, Python, and JVM bindings.
+**Carry live video and MISB KLV telemetry across an unreliable link** — muxed into
+MPEG-TS, streamed over UDP / TCP / RTP / SRT / RIST, with built-in reconnect,
+encryption, and typed metadata decoding. Rust core; C, Python, and JVM bindings.
 
-*The Swiss Army Knife for MPEG-TS streams.*
+*The Swiss-Army knife for MPEG-TS + KLV streams.*
 
 [![CI](https://github.com/aklofas/ts-transformer/actions/workflows/ci.yml/badge.svg)](https://github.com/aklofas/ts-transformer/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/tstrans.svg)](https://pypi.org/project/tstrans/)
+[![Maven Central](https://img.shields.io/maven-central/v/org.tstrans/tstrans-jvm.svg)](https://central.sonatype.com/artifact/org.tstrans/tstrans-jvm)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![MSRV: 1.85](https://img.shields.io/badge/MSRV-1.85-blue.svg)](rust-toolchain.toml)
 
-| Language | Status | Entry point |
+| Language | Status | Start here |
 |---|---|---|
 | **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
-| **C** | Shipping (ABI 0.17) | [`docs/languages/c.md`](docs/languages/c.md) |
-| **Python** | Shipping (publishing to PyPI as `tstrans` with v0.2.0; includes `tstrans.rtp` RTP + RTSP) | [`docs/languages/python.md`](docs/languages/python.md) |
-| **JVM** | Shipping (`tstrans-jvm` / `org.tstrans` on Maven Central) | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
+| **C** | Shipping · ABI 0.17 | [`docs/languages/c.md`](docs/languages/c.md) |
+| **Python** | Shipping · `tstrans` (first PyPI release lands with v0.2.0) | [`docs/languages/python.md`](docs/languages/python.md) |
+| **JVM** | Shipping · `org.tstrans:tstrans-jvm` on Maven Central | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
 
-## In 30 seconds
+## See it in 30 seconds
 
-Mux one H.264 access unit + one KLV blob into 188-byte MPEG-TS packets — no SRT peer, no file:
+Mux one H.264 access unit + one KLV blob into 188-byte MPEG-TS packets — no network, no files:
 
 ```rust
 use tst_core::mpegts::common::Pts90khz;
@@ -39,94 +42,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Python equivalent: `tstrans` (publishing to PyPI with v0.2.0; until then build from source) — see [`docs/languages/python.md`](docs/languages/python.md).
-**Run end-to-end (mux → SRT → demux) in 10 minutes:** [`docs/start/quickstart.md`](docs/start/quickstart.md).
+Swap `Muxer` for `MuxSender` to push those packets straight onto an RTP / SRT / RIST link,
+or `Demuxer` to pull typed events back out. The same surface ships in Python (`tstrans`),
+C (`tstrans.h`), and the JVM (`org.tstrans`).
 
-## What this is — and what it isn't
+**Want the full mux → SRT → demux round-trip?** [`docs/start/quickstart.md`](docs/start/quickstart.md) gets you there in 10 minutes.
 
-**Use ts-transformer when you need to:**
-- Stream live H.264 / H.265 / H.266 / AV1 video over an unreliable network with reconnect, encryption, and stats.
-- Carry typed MISB ST 0601 / 0102 / 0605 / 0903 KLV metadata in the same transport stream as the video.
-- Decode an existing `.ts` file or live stream into typed `DemuxEvent` items (KLV records, NAL units, audio frames, subtitles).
-- Embed all of the above in a Rust, C, or Python app via a stable surface.
+## What it's for — and what it isn't
+
+**Reach for ts-transformer when you need to:**
+- Stream live H.264 / H.265 / H.266 / AV1 over a lossy network with reconnect, encryption, and live stats.
+- Carry typed MISB ST 0601 / 0102 / 0605 / 0903 KLV metadata in the *same* transport stream as the video.
+- Decode a `.ts` file or live feed into typed `DemuxEvent` items — KLV records, NAL units, audio frames, subtitles.
+- Embed any of the above in a Rust, C, Python, or JVM app behind a stable surface.
 
 **Look elsewhere if you need:**
-- **RTMP** or **WebRTC** transports — not on the roadmap. (**SRT**, **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, and **RIST** all ship today.)
-- A different container — we are **MPEG-TS only** (no MP4, fMP4, HLS, DASH; pair us with FFmpeg for repackaging).
-- Arbitrary metadata schemas — we are **MISB KLV only**.
-- Video encoders or decoders — we mux + demux the wire format; pair with x264 / x265 / FFmpeg / NVENC / PyAV / a hardware codec for the actual codec work.
-- A turnkey server — we are a **library**, not MediaMTX / Nimble / Wowza.
+- **RTMP** or **WebRTC** — not on the roadmap. (UDP, raw TCP / TLS, RTP incl. RTSP client + server, SRT, and RIST all ship today.)
+- A different container — we're **MPEG-TS only** (no MP4 / fMP4 / DASH; pair with FFmpeg to repackage).
+- Arbitrary metadata schemas — we're **MISB KLV only**.
+- An encoder or decoder — we handle the *wire format*; pair with x264 / x265 / FFmpeg / NVENC / PyAV for the codec work.
+- A turnkey server — we're a **library**, not MediaMTX / Nimble / Wowza.
 
 ## Scope
 
 | | |
 |---|---|
-| **Container** | MPEG-TS (single-program, multi-program; PAT / PMT / PCR auto-generated) |
+| **Container** | MPEG-TS (single- and multi-program; PAT / PMT / PCR auto-generated) |
 | **Video** | H.264, H.265, H.266 / VVC, AV1 |
-| **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3, EAC-3 |
+| **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3 |
 | **Subtitles** | DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS |
 | **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI); ST 1402 carriage + H.222.0 §2.12.4.2 Metadata AU cells |
-| **Transport** | SRT 1.5 (Haivision libsrt, vendored), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist) — all shipping. HLS publisher is experimental, not in published artifacts (see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). |
+| **Transport** | UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT 1.5 (Haivision libsrt, vendored), RIST (VideoLAN librist) — all shipping. HLS publisher is experimental and excluded from published artifacts (see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). |
 | **Encryption** | AES-128 / 192 / 256 over SRT via vendored mbedTLS 3.6 LTS, on by default |
 
-Full feature-by-feature matrix in [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
+Full feature-by-feature matrix: [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
 
 ## Install
 
-```bash
-# Python (PyPI — available with the v0.2.0 release; until then, build from source — see below)
-pip install tstrans                   # core
-pip install tstrans[pandas]           # + DataFrame + NumPy adapters
-
-# Rust (git, until first crates.io publish)
-cargo add --git https://github.com/aklofas/ts-transformer tst-core
-```
-
-<details>
-<summary>From source (Rust + C + vendored libsrt / mbedTLS)</summary>
+Pre-1.0 and not yet on the public package registries, so today you build from source
+(the first `pip install tstrans` lands with the v0.2.0 release):
 
 ```bash
 git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
 cd ts-transformer/ts-transformer
 
-# Rust workspace
-SRT_FORCE_VENDORED=1 cargo build --release
-
-# C bindings (cdylib + staticlib + tstrans.h + tstrans.pc)
-SRT_FORCE_VENDORED=1 cargo build --release -p tst-c
+SRT_FORCE_VENDORED=1 cargo build --release            # Rust workspace
+SRT_FORCE_VENDORED=1 cargo build --release -p tst-c   # C bindings → cdylib + staticlib + tstrans.h + tstrans.pc
 ```
 
-The build script compiles libsrt 1.5.5 and mbedTLS 3.6.x from vendored submodules — expect 3–5 minutes on cold cache, seconds when warm. See [`docs/languages/rust.md`](docs/languages/rust.md) for feature flags (`mbedtls`, `file`, etc.).
+The build vendors and compiles libsrt 1.5.5 + mbedTLS 3.6 LTS from submodules — ~3–5 minutes
+cold, seconds warm. Feature flags (`mbedtls`, `file`, per-transport) are documented in
+[`docs/languages/rust.md`](docs/languages/rust.md).
 
-</details>
+- **Python** — `tstrans` (core) and `tstrans[pandas]` (DataFrame + NumPy adapters), built with `maturin` until the v0.2.0 PyPI release. See [`docs/languages/python.md`](docs/languages/python.md).
+- **JVM** — `org.tstrans:tstrans-jvm` is on Maven Central (v0.1.0; v0.2.0 to follow). See [`docs/languages/jvm.md`](docs/languages/jvm.md).
+- **Rust** — until the first crates.io publish: `cargo add --git https://github.com/aklofas/ts-transformer tst-core`.
 
 ## Documentation
 
-→ **[`docs/index.md`](docs/index.md)** — the docs landing page routes 5 reader audiences (cold-domain reader, evaluator, language integrator, domain expert, binding author).
+→ **[`docs/index.md`](docs/index.md)** routes five reader audiences (cold-domain reader, evaluator,
+language integrator, domain expert, binding author). Or jump straight in:
 
 | If you are… | Start here |
 |---|---|
 | New to MPEG-TS / KLV / SRT | [`docs/start/concepts.md`](docs/start/concepts.md) — plain-language explainers |
 | Evaluating the library | [`docs/start/overview.md`](docs/start/overview.md) — what it does, what's in the box, what's not |
 | Writing your first code | [`docs/start/quickstart.md`](docs/start/quickstart.md) — working mux + demux in 10 minutes |
-| Building something real | [`docs/cookbook/index.md`](docs/cookbook/index.md) — 33 task-oriented recipes |
+| Building something real | [`docs/cookbook/index.md`](docs/cookbook/index.md) — 40+ task-oriented recipes |
 | Looking up a type or error | [`docs/reference/`](docs/reference/) — architecture, conventions, public-API policy |
 | Wrapping for a new language | [`docs/reference/binding-authors.md`](docs/reference/binding-authors.md) — ABI, error mapping, stability tiers |
 
-## Interoperates with
+## Validated against
 
-The wire format is standards-conformant; outputs are validated against **FFmpeg / ffprobe**, **TSDuck**, **GStreamer**, **VLC**, **mpv**, and reference MISB tooling. Use any of them as the encoder, decoder, validator, or display layer on either side of a ts-transformer pipeline.
+The wire format is standards-conformant, and outputs are checked against **FFmpeg / ffprobe**,
+**TSDuck**, **GStreamer**, **VLC**, **mpv**, and reference MISB tooling. Use any of them as the
+encoder, decoder, validator, or viewer on either side of a ts-transformer pipeline.
 
 ## Status
 
-Pre-1.0. Sender + receiver pipelines complete; **Linux x86_64, Linux aarch64, macOS arm64, and Windows MSVC are all CI-gating** (the RIST runtime test stays gated on Windows — see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). Hundreds of tests across both feature modes; bash ratchets + `cargo public-api` baselines guard the surface on every commit.
+Pre-1.0. Sender + receiver pipelines are complete, and **all four Tier-1 targets gate CI** —
+Linux x86_64, Linux aarch64, macOS arm64, and Windows MSVC (the RIST runtime test stays gated
+on Windows; see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)).
+Hundreds of tests run across both feature modes, with bash ratchets and `cargo public-api`
+baselines guarding the surface on every commit.
 
-Public API may change between pre-1.0 releases; all changes recorded in [`CHANGELOG.md`](CHANGELOG.md).
+Public API may change between pre-1.0 releases; everything is recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 
-Issues and PRs welcome. See [`docs/reference/conventions.md`](docs/reference/conventions.md) for code style, commit message rules, and the public-API workflow.
+Issues and PRs welcome — see [`docs/reference/conventions.md`](docs/reference/conventions.md)
+for code style, commit-message rules, and the public-API workflow.
 
 ## License
 
-Licensed under **MIT** ([`LICENSE-MIT`](LICENSE-MIT)) or **Apache-2.0** ([`LICENSE-APACHE`](LICENSE-APACHE)) at your option.
+Licensed under **MIT** ([`LICENSE-MIT`](LICENSE-MIT)) or **Apache-2.0** ([`LICENSE-APACHE`](LICENSE-APACHE)),
+at your option.

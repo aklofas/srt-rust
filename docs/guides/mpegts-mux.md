@@ -70,6 +70,7 @@ pub struct MuxerConfig {
     pub pcr_interval_ms: u32,
     pub psi_interval_ms: u32,
     pub buffer_packets: usize,
+    pub av1_carriage: Av1CarriageMode,
 }
 ```
 
@@ -636,7 +637,7 @@ for h in mux.klv_handles()   { /* ... */ }
 ```rust
 mux.push_video_to(eo, &eo_nal, pts, key_frame)?;
 mux.push_video_to(ir, &ir_nal, pts, key_frame)?;
-mux.push_klv_to(klv, &klv_blob, pts)?;
+mux.push_klv_to(klv, &klv_blob, pts, /*metadata_service_id=*/ 0x00)?;
 ```
 
 Each push is independent — no cross-stream synchronization is

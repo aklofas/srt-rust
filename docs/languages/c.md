@@ -18,7 +18,7 @@ The C ABI ships as the `tst-c` crate in the workspace; its build emits the artif
 |---|---|---|
 | `libtstrans.so` (Linux) / `libtstrans.dylib` (macOS) / `tstrans.dll` (Windows-MSVC) | `target/debug/` or `target/release/` | Shared library |
 | `libtstrans.a` (`tstrans.lib` on MSVC) | same | Static library — libsrt + mbedTLS + libstdc++ statically embedded |
-| `tstrans.h` | `bindings/c/include/` | Single-file C header (~135 KB), `cbindgen`-generated |
+| `tstrans.h` | `bindings/c/include/` | Single-file C header (~350 KB), `cbindgen`-generated |
 | `tstrans.pc` | `target/<profile>/` | pkg-config file (substituted by `build.rs` from `tstrans.pc.in`) |
 
 ### From source

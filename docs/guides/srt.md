@@ -289,8 +289,8 @@ see [guides/pipeline.md](/docs/guides/pipeline.md) for the full breakdown.
 ## Bandwidth and packet handling
 
 - `MaxBandwidth` (`SRTO_MAXBW`): `Unlimited` (the default — libsrt
-  derives the cap from input rate plus overhead percent), `Auto`,
-  `Infinite`, or `Limited(bps)`. Most deployments leave `Unlimited`
+  derives the cap from input rate plus overhead percent), `Auto`, or
+  `Limited(bps)`. Most deployments leave `Unlimited`
   and shape via `input_bandwidth` + `overhead_bandwidth_pct`.
 - `Congestion::Live` vs. `Congestion::File`: `Live` drops late packets
   (TLPKTDROP) so the decoder isn't blocked on stale bytes — the right

@@ -16,7 +16,7 @@ not listed below are intentionally **not yet implemented**.
 | ❌ Out of scope | Deferred indefinitely. |
 
 The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 / 0903
-KLV** over **SRT, RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST**.
+KLV** over **UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT, and RIST**.
 An HLS publisher exists behind the `hls` Cargo feature but is **experimental and
 gated out of published artifacts** (RFC 8216 stream conformance fixed in v0.2.0;
 still gated pending path-traversal fix + security review) — see `deferred-features.md`. Other
@@ -479,8 +479,8 @@ as `Obu { obu_type, payload, .. }` without further parsing.
 |---|---|---|
 | MPEG-1/2/2.5 Layer I/II/III | ✅ Full (Rust core) | `codec::mpegaudio` |
 | AAC ADTS | ✅ Full (Rust core) | `codec::aac` |
-| AAC LATM | ⏳ Deferred | (planned `codec::aac::latm`) |
-| AC-3 | ⏳ Deferred | (planned `codec::ac3`) |
+| AAC LATM | ⚙️ Partial | `codec::aac::latm` — LOAS/LATM sync validator (`validate_latm_sync`); full `audioMuxElement` decode deferred. |
+| AC-3 | ✅ Full (Rust core) | `codec::ac3` — syncframe parser (`parse_syncframe` / `Ac3SyncInfo`). E-AC-3 (Annex E, `bsid ≥ 11`) rejected as unsupported. |
 
 The frame parsers surface header-level metadata (sample rate, channel
 count, layer/profile, frame length, samples per frame, has-CRC). They
@@ -592,8 +592,8 @@ covers.
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.17** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
-| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** starting with v0.2.0 (not yet on PyPI; build from source until then). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live SRT / RTP (incl. RTSP) / UDP / TCP / RIST transports + Pairer; optional `[pandas]` extra for DataFrame + NumPy adapters. (HLS publisher experimental, not in wheels; RIST excluded from the Windows wheel.) |
-| `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); SRT + RTP (incl. RTSP client + server) transports. |
+| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** starting with v0.2.0 (not yet on PyPI; build from source until then). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / RIST transports + Pairer; optional `[pandas]` extra for DataFrame + NumPy adapters. (HLS publisher experimental, not in wheels; RIST excluded from the Windows wheel.) |
+| `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 
 For full build-target / CI gating coverage see "Build targets" at the top of this document.
@@ -626,7 +626,7 @@ roadmap. They are revisitable on consumer ask — not philosophical refusals.
 
 - Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM).
 - Metadata sets other than the typed MISB family already shipped (ST 1303 MDAP, ST 0902 minimum-set).
-- WebRTC / RTMP transports (SRT, RTP, raw TCP / TLS, UDP, and RIST all ship — see top-of-document scope note).
+- WebRTC / RTMP transports (UDP, raw TCP / TLS, RTP, SRT, and RIST all ship — see top-of-document scope note).
 - ST 1607 segmented multi-PES KLV reassembly.
 - Async / reactor SRT API.
 - Bonded / grouped sockets.

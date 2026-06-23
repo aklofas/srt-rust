@@ -81,7 +81,7 @@ referenced as MISB ST 0107). Each byte has a documented role:
 - byte 13: `0x00` per ST 0601.19 §6.2 canonical registration. Some
   legacy captures ship a non-zero byte 13 reflecting the older
   "document version" convention (e.g. `0x13` = ST 0601.19); the
-  accessor `version_byte()` returns the raw byte for legacy interop.
+  accessor `st0601_version_byte()` returns the raw byte for legacy interop.
   ST 0601.8-19 forbids non-zero values in new developments.
 
 The `klv::universal_label` module exposes well-known constants —
@@ -104,10 +104,10 @@ fn inspect(buf: &[u8; 16]) {
     println!("oid={:02X?} category={:02X} registry={:02X}",
              ul.oid(), ul.category(), ul.registry());
     println!("structure={:02X} byte_13={:02X}",
-             ul.structure(), ul.version_byte());
+             ul.structure(), ul.st0601_version_byte());
     if ul.is_st0601_family() {
         println!("ST 0601 family — byte_13={:02X} (canonical 0x00)",
-                 ul.version_byte());
+                 ul.st0601_version_byte());
     } else {
         println!("not ST 0601 family — got {ul}");
     }
@@ -226,8 +226,9 @@ box.
 is the in-place form for callers who want to control the output buffer
 or override the Universal Label or version byte. `EncodeConfig` carries
 two fields: `universal_label: UniversalLabel` (defaults to
-`UniversalLabel::ST_0601_LS`) and `version: u8` (defaults to the version
-byte of the default UL, `0x13` = ST 0601.19). Pre-size the output buffer
+`UniversalLabel::ST_0601_LS`) and `version: u8` (the Tag 65 value, default
+`19` = ST 0601.19; decoupled from the UL's byte 13, which is `0x00` on the
+canonical label per §6.2). Pre-size the output buffer
 with `encoded_len(&record)` if you want to allocate exactly.
 
 ```rust,no_run
@@ -254,7 +255,7 @@ explicit `LinearRange` step-size calculations for each ranged tag, see
 `encode_strict_compliance(&record) -> Result<Vec<u8>, KlvEncodeError>`
 is the mirror of `decode_strict_compliance` on the encode side. It runs
 the same ST 0601.8 §10.3 mandatory-structure checks *before* serialising,
-returning `KlvEncodeError::MissingMandatoryItem { tag, reason }` rather
+returning `KlvEncodeError::MissingMandatoryItem { tag, name }` rather
 than silently producing wire bytes a strict decoder would reject. Use
 this when you want a single round-trip invariant — "if it encodes,
 `decode_strict_compliance` will accept it." Auto-emission of Tag 1

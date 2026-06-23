@@ -34,10 +34,10 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 - **Transports** — SRT (vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist). An HLS publisher exists but is experimental and not in the published artifacts — see [`project/deferred-features.md`](/docs/project/deferred-features.md).
 - **MISB KLV** — typed encode + decode for ST 0601 (Full Motion Video FMV), ST 0102 (Security Metadata), ST 0605 (Amend Tags), ST 0903 (VMTI per-target detections). H.222.0 §2.12.4.2 Metadata AU cell wrapping for synchronous KLV streams.
 - **Video codecs** — H.264, H.265, H.266/VVC, AV1. NAL/OBU parsers; SPS/PPS/VPS extraction; slice-header-light parsers for resolution + profile.
-- **Audio codecs** — AAC (ADTS + LATM), MPEG-2 Audio (MP2/MP3), AC-3, EAC-3. Frame-level parsers expose sample rate / channel count.
+- **Audio codecs** — AAC (ADTS full; LATM carriage + sync validation, full decode deferred), MPEG-2 Audio (MP2/MP3), AC-3. Frame-level parsers expose sample rate / channel count.
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
 - **C bindings** (`tst-c`) — `cdylib` + `staticlib`, `tstrans.h` via cbindgen, `tstrans.pc` for pkg-config. Stable ABI versioned `TST_ABI_VERSION_MAJOR/MINOR`.
-- **Python bindings** (`tst-py`, published to PyPI as `tstrans` starting with v0.2.0) — offline `.ts` inspection/construction plus live SRT / RTP (incl. RTSP) / UDP / TCP / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
+- **Python bindings** (`tst-py`, published to PyPI as `tstrans` starting with v0.2.0) — offline `.ts` inspection/construction plus live UDP / TCP / RTP (incl. RTSP) / SRT / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
 - **JVM bindings** — `tst-jni`, distributed as `tstrans-jvm` (`org.tstrans`) on Maven Central. Package-for-package mirror of the Python surface (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`).
 
 ## What's NOT in the box

@@ -308,8 +308,8 @@ encountered for HDR/Main-10 SPSes is `CodecParseError::EngineError` (the
 H.265 SPS parser bails when it reaches `scaling_list_data()`, H.265 §7.3.4,
 which is not yet walked — a parser gap, not a profile-level rejection;
 the short-term reference-picture-set walker does handle
-`num_short_term_ref_pic_sets > 0`). Other variants: `InvalidNalType`, `TruncatedRbsp`,
-`InvalidValue`.
+`num_short_term_ref_pic_sets > 0`). Other variants: `TruncatedRbsp`,
+`InvalidGolomb`, `ReservedValue`, `Forbidden`.
 
 ## Calling on non-IDR samples
 
@@ -437,9 +437,9 @@ asks):
   decoder-scope expansion.
 - **SEI parsing** for H.264 and H.265 — HDR mastering display info, content
   light level, picture timing, etc.
-- **Audio framing parsers** (`codec::aac::latm`, `codec::ac3`) — AAC LATM
-  and AC-3 frame parsing; MP2 and AAC ADTS ship today (see "Audio frame
-  parsing" section below).
+- **AAC-LATM full decode** (`codec::aac::latm`) — the LOAS sync + length
+  validator ships today (see "AAC LATM + AC-3" below); typed per-frame
+  decode is deferred. (MP2, AAC ADTS, and AC-3 frame parsing all ship.)
 - **Heuristic payload-kind detection** (`codec::detect`) — looks-like-ADTS /
   looks-like-UL+BER / looks-like-H.264 helpers for `Unknown` / private streams.
 

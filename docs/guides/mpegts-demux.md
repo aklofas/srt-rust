@@ -103,7 +103,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `split_video` / `split_video_strict` | `split_video(raw: &SharedBytes, codec: VideoCodec, av1_carriage: Av1CarriageMode) -> (VideoPayload, Vec<NonConformantIssue>)` — opt-in split of a raw video AU into NAL/OBU units (lenient; ES-conformance findings come back in the issue list). `split_video_strict` returns `Err(NonConformantIssue)` on the first issue. |
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }` / `H266 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `Obu` | AV1 OBU: `{ obu_type, extension: Option<ObuExtension>, payload }`. Header byte + optional extension byte + LEB128 `obu_size` consumed; `payload` is OBU body bytes. `obu_type` = 1 SequenceHeader / 2 TemporalDelimiter / 3 FrameHeader / 6 Frame / etc. (AV1 §5.3.2). |
-| `MetadataKind` | `KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156, AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
+| `MetadataKind` | `KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator, was_reassembled, cell_count }` (first 5 fields per H.222.0 § 2.12.4.2 Table 2-156, AU cell unwrapped; `was_reassembled` / `cell_count` describe multi-cell reassembly), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `ProgramMap` | `{ program_number, pcr_pid, pmt_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. `pmt_pid` is the PAT-declared PID carrying this program's PMT; needed to reconstruct a muxer config via `MuxerConfig::from_program_map`. |
 | `StreamInfo` | `{ pid, stream_type, kind, program_number, raw_descriptors: Vec<RawDescriptor> }` — one row per declared stream in the PMT. `raw_descriptors` carries the raw PMT per-stream descriptor TLVs (tag + data bytes), in PMT loop order. |
 | `KlvLink` | `{ klv_pid, video_pid, source: LinkSource }`. |
@@ -238,9 +238,9 @@ once and pass it around:
 
 ```rust,no_run
 use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StreamKind, VideoCodec};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
-let mut overrides = HashMap::new();
+let mut overrides = BTreeMap::new();
 overrides.insert(0x1011u16, StreamKind::Video(VideoCodec::H265));
 let mut config = DemuxerConfig::default();
 config.stream_kind_overrides = overrides;
@@ -612,16 +612,17 @@ MP3 audio on user-private stream_type `0xF1` alongside KLV. The
 demuxer's default classification surfaces these PIDs as
 `StreamKind::Unknown(0xF1)`.
 
-To route them to typed audio, use `DemuxerConfig::treat_as`:
+To route them to typed audio, set `DemuxerConfig::stream_kind_overrides`
+(or use the `DemuxerBuilder::treat_as` one-liner):
 
 ```rust
 let mut config = DemuxerConfig::default();
-config.treat_as.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
+config.stream_kind_overrides.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
 let demuxer = Demuxer::with_config(config);
 ```
 
-The override fires before the PMT-driven classification, so PIDs
-listed in `treat_as` always get the caller-specified `StreamKind`.
+The override fires before the PMT-driven classification, so overridden
+PIDs always get the caller-specified `StreamKind`.
 The bitstream-vs-stream_type mismatch isn't validated at the
 carriage layer — caller's decoder handles whatever bytes come
 through.
@@ -685,7 +686,7 @@ while let Some(e) = demux.next_event() {
 
 ### Treating non-conformant captures
 
-`DemuxerConfig::stream_kind_overrides: HashMap<u16, StreamKind>`
+`DemuxerConfig::stream_kind_overrides: BTreeMap<u16, StreamKind>`
 lets you force a specific PID to a specific subtitle codec when an
 upstream encoder emits WebVTT-shaped (or other subtitle-shaped)
 bytes without the disambiguating descriptor:

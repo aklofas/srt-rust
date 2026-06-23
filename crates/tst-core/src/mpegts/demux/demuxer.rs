@@ -2896,6 +2896,143 @@ mod tests {
         );
     }
 
+    /// F-01: a PMT version change that drops an elementary PID must clear that
+    /// PID's per-PID routing state, exactly as PAT program removal does. Before
+    /// the fix, `stream_kind_by_pid` retained the removed PID so later packets
+    /// on it were still routed as PES (stale-sample emission).
+    #[test]
+    fn pmt_version_change_clears_removed_stream_pid_state() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        // PMT v0: video PID 0x1011.
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        assert!(demuxer.stream_kind_by_pid.contains_key(&0x1011));
+        // PMT v1 (same program 1): replaces 0x1011 with 0x1012.
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1012,
+                &[(0x1B, 0x1012)],
+                1,
+            ))
+            .unwrap();
+        assert!(
+            !demuxer.stream_kind_by_pid.contains_key(&0x1011),
+            "removed PID 0x1011 must no longer route as a stream"
+        );
+        assert!(
+            !demuxer.pid_to_program.contains_key(&0x1011),
+            "removed PID 0x1011 must be gone from pid_to_program"
+        );
+        assert!(
+            demuxer.stream_kind_by_pid.contains_key(&0x1012),
+            "the surviving new PID 0x1012 must route"
+        );
+    }
+
+    /// F-02 (lenient): a valid multi-section PAT must NOT surface a false
+    /// `PsiSyntax(SectionNumberNonZero)` for its section_number>0 sections.
+    #[test]
+    fn valid_multi_section_pat_emits_no_psi_syntax_event() {
+        let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
+        let s1 = pat_packet_with_multi_section(1, 1, &[(2u16, 0x0200u16)]);
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&s0).unwrap();
+        demuxer.feed(&s1).unwrap();
+        demuxer.flush();
+        let events = drain_all_events(&mut demuxer);
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiSyntax { .. },
+                    ..
+                }
+            )),
+            "a valid multi-section PAT must not emit PsiSyntax"
+        );
+    }
+
+    /// F-02 (strict): `StrictMode::Full` must accept a valid multi-section PAT —
+    /// the section_number>0 of section 1 is conformant, not a hard failure.
+    #[test]
+    fn strict_full_accepts_valid_multi_section_pat() {
+        let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
+        let s1 = pat_packet_with_multi_section(1, 1, &[(2u16, 0x0200u16)]);
+        let mut demuxer = DemuxerBuilder::new()
+            .strict(crate::mpegts::demux::StrictMode::Full)
+            .build();
+        demuxer.feed(&s0).unwrap();
+        let r = demuxer.feed(&s1);
+        assert!(
+            r.is_ok(),
+            "StrictMode::Full must not reject a valid multi-section PAT (err = {:?})",
+            r.err()
+        );
+    }
+
+    /// F-03: a PAT version that reassigns an existing PMT PID to a different
+    /// program_number must adopt the new program — its PMT must be accepted,
+    /// not rejected as `PmtProgramNumberMismatch` against the stale identity.
+    #[test]
+    fn pat_reuse_of_pmt_pid_for_new_program_accepts_new_pmt() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        // PAT v1: program 2 reuses the same PMT PID 0x1000.
+        demuxer
+            .feed(&pat_packet_with_programs(&[(2, 0x1000)], 1))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                2,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                1,
+            ))
+            .unwrap();
+        demuxer.flush();
+        let events = drain_all_events(&mut demuxer);
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PmtProgramNumberMismatch { .. },
+                    ..
+                }
+            )),
+            "reused PMT PID with a new program must not raise PmtProgramNumberMismatch"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, DemuxEvent::ProgramMap(pm) if pm.program_number == 2)),
+            "the new program 2 must produce a ProgramMap"
+        );
+    }
+
     #[test]
     fn pat_removed_program_clears_pes_reassembler_state() {
         // Drive the Reassembler to buffer a partial PES on program 2's PID,

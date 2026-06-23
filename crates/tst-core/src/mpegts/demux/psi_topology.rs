@@ -28,7 +28,7 @@ use crate::mpegts::demux::psi_assembler::AssemblerError;
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::types::ProgramTracker;
 use alloc::vec::Vec;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 
 /// Three-state outcome from `Demuxer::dispatch_psi_result`. Replaces the
 /// earlier two-state `bool` return that conflated "section incomplete /
@@ -299,58 +299,43 @@ impl super::demuxer::Demuxer {
     /// Apply the program list from a newly-complete PAT version, performing
     /// the topology diff (remove programs that disappeared, add new programs).
     pub(super) fn apply_pat_programs(&mut self, programs: &[PatEntry]) {
-        // Build the set of PMT PIDs in the new PAT, skipping program 0 (NIT).
-        let new_pmt_pids: HashSet<u16> = programs
+        // Map each PMT PID in the new PAT to its program_number (skip program 0).
+        let new_pmt: HashMap<u16, u16> = programs
             .iter()
             .filter(|e| e.program_number != 0)
-            .map(|e| e.pid)
+            .map(|e| (e.pid, e.program_number))
             .collect();
 
-        // Drop trackers for programs that disappeared from this PAT version.
+        // Drop trackers whose PMT PID disappeared from this PAT version, OR
+        // whose PMT PID was reassigned to a different program_number (F-03 —
+        // PID reuse across programs). A reassigned PMT PID must tear down the
+        // stale program so the new program's PMT is adopted cleanly instead of
+        // being rejected as PmtProgramNumberMismatch against the old identity.
+        // Per-PID cleanup (validate-1 B8) is shared with the PMT-version path
+        // via `drop_elementary_pid_state`: every per-PID map keyed by an
+        // elementary PID of the dropped program is otherwise unreachable and
+        // would leak under PAT rotation.
         let removed: Vec<u16> = self
             .programs
-            .keys()
-            .copied()
-            .filter(|pid| !new_pmt_pids.contains(pid))
+            .iter()
+            .filter(|(pmt_pid, tracker)| {
+                // Remove if the PMT PID is gone OR now maps to a different program.
+                new_pmt.get(*pmt_pid).copied() != Some(tracker.program_number)
+            })
+            .map(|(pmt_pid, _)| *pmt_pid)
             .collect();
         for pmt_pid in removed {
             if let Some(tracker) = self.programs.remove(&pmt_pid) {
-                // Per-PID state cleanup (validate-1 B8). When PAT removes a
-                // program, every per-PID map keyed by an elementary PID of
-                // that program is unreachable (no PSI binding connects it to
-                // a stream) and would leak under PAT rotation. Clean:
-                //  - stream_kind_by_pid + pid_to_program (PMT classification)
-                //  - cc_by_pid (continuity-counter tracker)
-                //  - last_pcr_by_pid + last_pts_by_pid (timing trackers)
-                //  - pes (PES reassembly partial buffer)
-                //  - stats_per_stream + stream_codec_counters
-                //  - subtitle_*_emitted / av1_*_emitted / subtitle_pids_seen
-                //    (per-PMT-version emission guards)
-                // The PCR PID for this program is also cleaned — it lives
-                // outside `tracker.streams` when it's a PCR-only PID, so
-                // handle it explicitly.
                 for stream in &tracker.streams {
-                    let pid = stream.pid;
-                    self.stream_kind_by_pid.remove(&pid);
-                    self.pid_to_program.remove(&pid);
-                    self.cc_by_pid.remove(&pid);
-                    self.last_pcr_by_pid.remove(&pid);
-                    self.last_pts_by_pid.remove(&pid);
-                    self.pes.remove_pid(pid);
-                    self.stats_per_stream.remove(&pid);
-                    self.stream_codec_counters.remove(&pid);
-                    self.subtitle_missing_descriptor_emitted.remove(&pid);
-                    self.av1_registration_malformed_emitted.remove(&pid);
-                    self.subtitle_descriptor_ambiguous_emitted.remove(&pid);
-                    self.subtitle_pids_seen.remove(&pid);
+                    self.drop_elementary_pid_state(stream.pid);
                 }
+                // The PCR PID lives outside `tracker.streams` when it's a
+                // PCR-only PID, so clean it explicitly.
                 if let Some(pcr_pid) = tracker.pcr_pid {
                     self.last_pcr_by_pid.remove(&pcr_pid);
                 }
-                // Free the PSI assembly buffer for this PMT PID.
+                // Free the PSI assembly buffer + PMT-PID continuity state.
                 self.psi_assemblers.remove(&pmt_pid);
-                // Continuity-counter state on the PMT PID itself is also
-                // unreachable now that the program is gone.
                 self.cc_by_pid.remove(&pmt_pid);
             }
         }
@@ -375,6 +360,25 @@ impl super::demuxer::Demuxer {
             // accumulate bytes without a separate "first packet" init step.
             self.psi_assemblers.entry(entry.pid).or_default();
         }
+    }
+
+    /// Remove every per-PID demuxer cache entry for an elementary `pid` that is
+    /// no longer reachable — its program left the PAT, or its stream was dropped
+    /// by a PMT version change. Sharing this between PAT removal and the
+    /// PMT-version path keeps topology cleanup consistent (validate-1 B8 + F-01).
+    pub(super) fn drop_elementary_pid_state(&mut self, pid: u16) {
+        self.stream_kind_by_pid.remove(&pid);
+        self.pid_to_program.remove(&pid);
+        self.cc_by_pid.remove(&pid);
+        self.last_pcr_by_pid.remove(&pid);
+        self.last_pts_by_pid.remove(&pid);
+        self.pes.remove_pid(pid);
+        self.stats_per_stream.remove(&pid);
+        self.stream_codec_counters.remove(&pid);
+        self.subtitle_missing_descriptor_emitted.remove(&pid);
+        self.av1_registration_malformed_emitted.remove(&pid);
+        self.subtitle_descriptor_ambiguous_emitted.remove(&pid);
+        self.subtitle_pids_seen.remove(&pid);
     }
 
     pub(super) fn handle_pmt_section(&mut self, pmt_pid: u16, section: &[u8]) {
@@ -621,23 +625,42 @@ impl super::demuxer::Demuxer {
             self.stream_kind_by_pid.insert(pid, kind);
         }
 
+        // F-01: a PMT version bump may drop or reassign elementary PIDs. Clear
+        // the full per-PID state for any PID the prior version owned that is
+        // gone from the new stream set — the same cleanup PAT program removal
+        // performs — so a removed PID can no longer route stale PES, timing, or
+        // stats. Persisting PIDs were just re-inserted above; new PIDs are added
+        // below.
+        let new_pids: HashSet<u16> = stream_infos.iter().map(|s| s.pid).collect();
+        let removed_pids: Vec<u16> = self
+            .programs
+            .get(&pmt_pid)
+            .map(|t| {
+                t.streams
+                    .iter()
+                    .map(|s| s.pid)
+                    .filter(|pid| !new_pids.contains(pid))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for pid in removed_pids {
+            self.drop_elementary_pid_state(pid);
+        }
+
         // Build klv_links from the accepted streams.
         let prog_map = self.build_program_map(pmt_pid, &pmt, program_number, &stream_infos);
+
+        // Populate pid_to_program for the accepted (new + persisting) streams;
+        // removed PIDs were already dropped above.
+        for s in &stream_infos {
+            self.pid_to_program.insert(s.pid, program_number);
+        }
 
         // Update tracker.
         let tracker = self.programs.get_mut(&pmt_pid).expect("checked above");
         tracker.pmt_version = Some(pmt.version);
         tracker.pcr_pid = Some(pmt.pcr_pid);
-        // Remove stale pid_to_program entries for PIDs previously owned by
-        // this program (version bump may have removed or reassigned streams).
-        for s in &tracker.streams {
-            self.pid_to_program.remove(&s.pid);
-        }
         tracker.streams = stream_infos;
-        // Populate pid_to_program for the newly accepted streams.
-        for s in &tracker.streams {
-            self.pid_to_program.insert(s.pid, program_number);
-        }
         tracker.klv_mismatch_coalesce.clear();
 
         // Emit ProgramMap event.
@@ -745,9 +768,11 @@ impl super::demuxer::Demuxer {
                 },
             );
         }
-        // Always: section_number (byte 6) must be 0 on a single-section table
-        // (parse already rejected last_section_number != 0).
-        if section[6] != 0 {
+        // section_number (byte 6) must be 0 only on a single-section table
+        // (last_section_number, byte 7, == 0). Multi-section PATs (REF-PSI-02)
+        // legitimately carry section_number 1..=last_section_number, so a
+        // non-zero section_number there is valid, not a syntax violation (F-02).
+        if section[7] == 0 && section[6] != 0 {
             self.queue_nonconformant(
                 stream(),
                 NonConformantIssue::PsiSyntax {

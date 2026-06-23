@@ -608,3 +608,17 @@ fn num_units_in_tick_overflow_no_panic() {
         "frame_rate must be None when 2 * num_units_in_tick saturates u32"
     );
 }
+
+/// F-01 (codec): a non-conformant scaling-list `delta_scale` (outside the
+/// H.264 §7.4.2.1.1.1 [-128,127] range) must not panic. Before the fix, the
+/// `last_scale + delta_scale + 256` i32 add in `skip_scaling_list` overflowed
+/// on this crafted ~14-byte High-profile SPS (panic in overflow-checked builds,
+/// silent wrap + cursor desync in release).
+#[test]
+fn parse_sps_scaling_list_large_delta_does_not_panic() {
+    let rbsp = [
+        0x64, 0x00, 0x28, 0xad, 0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe, 0x00, 0x00,
+    ];
+    // Must return a Result (Ok or Err) — never panic.
+    let _ = parse_sps(&rbsp);
+}

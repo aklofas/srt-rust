@@ -195,10 +195,21 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramC
                 // wins (see mux/mod.rs AC-3 arm). Hence the predicate is
                 // `caller_has_ac3`, not `caller_has_other_registration`.
                 let ac3_bytes = if *codec == AudioCodec::Ac3 {
+                    // AC-3 Registration descriptor (6 B) — suppressed by a
+                    // caller-supplied AC-3 Registration.
                     let caller_has_ac3 = caller_descs
                         .iter()
                         .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");
-                    if caller_has_ac3 { 0 } else { 6 }
+                    let registration = if caller_has_ac3 { 0 } else { 6 };
+                    // AC-3 audio_stream_descriptor (tag 0x81, 5 B) — auto-emitted
+                    // by build_pmt_descriptor_cache unless the caller supplied a
+                    // tag-0x81 descriptor. MUST be counted to match the emitter;
+                    // omitting it under-estimates the PMT and lets a valid-looking
+                    // config PmtTooLarge-panic on the first push.
+                    let caller_has_ac3_audio_desc =
+                        caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x81);
+                    let audio_stream_desc = if caller_has_ac3_audio_desc { 0 } else { 5 };
+                    registration + audio_stream_desc
                 } else {
                     0
                 };

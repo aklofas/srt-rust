@@ -239,3 +239,45 @@ fn cache_async_klv_does_not_emit_metadata_descriptors() {
     assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 6); // KLVA only
     assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x05);
 }
+
+/// F-01 (mux): the PMT size estimator must count the auto-emitted 5-byte AC-3
+/// `audio_stream_descriptor` (tag 0x81). Before the fix, a config with enough
+/// AC-3 streams passed `validate()` but produced an over-large PMT that
+/// `PmtTooLarge`-panicked on the first push (`scheduling.rs:199`).
+#[test]
+fn validate_counts_ac3_audio_stream_descriptor_and_rejects_oversized_pmt() {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    for i in 0..15u16 {
+        prog.add_audio(0x0100 + i, AudioCodec::Ac3);
+    }
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog.build());
+    assert!(
+        matches!(b.build(), Err(MuxError::PmtTooLarge { .. })),
+        "15 AC-3 streams (entry 5 + Registration 6 + audio_stream_descriptor 5 = 16 B each) \
+         overflow the single-packet PMT; validate() must reject, not accept-then-panic"
+    );
+}
+
+/// Guard against over-counting: an AC-3 config that genuinely fits the
+/// single-packet PMT must still build and push without panicking.
+#[test]
+fn ac3_pmt_within_budget_builds_and_pushes() {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    for i in 0..10u16 {
+        prog.add_audio(0x0100 + i, AudioCodec::Ac3);
+    }
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog.build());
+    let config = b
+        .build()
+        .expect("10 AC-3 streams fit the single-packet PMT");
+    let mut mux = Muxer::new(config).expect("Muxer::new");
+    let handle = mux.audio_handles()[0];
+    // The first push triggers PSI emission; must not panic.
+    let _ = mux.push_audio_to(
+        handle,
+        crate::mpegts::common::Pts90khz::new(9000),
+        &[0x0B, 0x77, 0, 0, 0, 0],
+    );
+}

@@ -381,7 +381,12 @@ fn skip_scaling_list(br: &mut BitReader<'_>, size: u32) -> Result<(), CodecParse
     for _ in 0..size {
         if next_scale != 0 {
             let delta_scale = br.read_se()?;
-            next_scale = (last_scale + delta_scale + 256) % 256;
+            // delta_scale is se(v) — attacker-controlled (up to ~±2^31). H.264
+            // §7.4.2.1.1.1 bounds it to [-128,127] (where this is exact); the
+            // i64 intermediate keeps a non-conformant SPS from overflowing the
+            // i32 add. The skipped scaling-list result only drives loop
+            // continuation, so a non-conformant value is tolerated, not fatal.
+            next_scale = (((last_scale as i64) + (delta_scale as i64) + 256) % 256) as i32;
         }
         if next_scale != 0 {
             last_scale = next_scale;

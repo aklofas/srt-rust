@@ -48,7 +48,7 @@ optional = true
 
 [dependencies.tokio]
 version  = "1"
-features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros", "fs"]
+features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"]
 optional = true
 
 [dependencies.tokio-util]

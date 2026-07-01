@@ -52,8 +52,8 @@ pub enum RtspError {
     #[error("RTSP auth scheme not supported: {scheme}")]
     AuthUnsupported { scheme: String },
 
-    /// Server response couldn't be parsed by `rtsp-types`. `detail` is a
-    /// short reason ("missing CSeq header", "truncated body").
+    /// Server response couldn't be parsed. `detail` is a short reason
+    /// ("missing CSeq header", "truncated body").
     #[error("malformed RTSP response: {detail}")]
     BadResponse { detail: &'static str },
 

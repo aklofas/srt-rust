@@ -17,7 +17,6 @@ std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:t
 file = ["std"]  # std::fs-using helpers in io_file (must imply std)
 
 [dependencies]
-log          = { workspace = true }
 thiserror    = { workspace = true }
 libc         = { workspace = true }  # raw setsockopt in net::udp_socket (cfg(unix) helpers)
 tracing      = { version = "0.1", default-features = false }

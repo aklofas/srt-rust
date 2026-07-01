@@ -1,13 +1,10 @@
-//! Wrapper around the `rtsp-types` crate for RTSP wire format
-//! parse/serialize, scoped to the subset we use:
-//! OPTIONS / DESCRIBE / SETUP / PLAY / PAUSE / TEARDOWN.
+//! Hand-rolled RTSP wire-format parse/serialize, scoped to the subset we
+//! use: OPTIONS / DESCRIBE / SETUP / PLAY / PAUSE / TEARDOWN.
 //!
-//! Note: we use the `rtsp-types` crate for fuzz-harness reference parsing
-//! (Task 24) and as a sanity-check oracle in unit tests. Production parse
-//! is the hand-rolled [`RtspResponse::parse`] below, which is simpler and
-//! has fewer transitive deps. If real-camera quirks surface that our
-//! parser doesn't handle, swap to `rtsp_types::Parser::next_message()`
-//! per the comment in [`RtspResponse::parse`].
+//! The parser is intentionally minimal — it handles the response shape that
+//! real RTSP cameras send, without pulling in a general-purpose RTSP library.
+//! If real-camera quirks surface that require broader spec coverage, extend
+//! [`RtspResponse::parse`] in place.
 
 use std::collections::HashMap;
 
@@ -393,7 +390,7 @@ impl RtspResponse {
     ///
     /// Hand-rolled parser, scoped to the OPTIONS / DESCRIBE / SETUP /
     /// PLAY / PAUSE / TEARDOWN subset. If real-camera quirks surface,
-    /// swap to `rtsp_types::Parser::next_message()`.
+    /// extend this parser.
     pub fn parse(input: &[u8]) -> Result<(Self, usize), RtspError> {
         // Find end of status line + headers (CRLFCRLF).
         let header_end =

@@ -20,7 +20,6 @@ bytes      = "1"
 # getrandom is the minimal dep — sized for one-shot construction-time use.
 getrandom  = "0.2"
 md-5       = { version = "0.10", default-features = false }
-rtsp-types = "0.1"
 sdp-types  = "0.1"
 secrecy    = { workspace = true }
 sha2       = { version = "0.10", default-features = false }

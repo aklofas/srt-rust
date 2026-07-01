@@ -49,7 +49,6 @@ tst-c-core = { path = "core", default-features = false, features = ["std"] }
 cbindgen = { workspace = true }
 
 [dev-dependencies]
-cc               = { workspace = true }
 cbindgen         = { workspace = true }
 tst-test-helpers = { path = "../../crates/tst-test-helpers" }
 tempfile         = "3"

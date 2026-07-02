@@ -82,6 +82,15 @@ pub struct Demuxer {
     /// (PIDs must be unique cross-program per ISO 13818-1).
     pub(super) stream_kind_by_pid: HashMap<u16, StreamKind>,
     pub(super) cc_by_pid: HashMap<u16, u8>,
+    /// Per-PID duplicate-packet tracking for the spec-legal one-extra rule
+    /// (H.222.0 §2.4.3.3: a packet may be transmitted exactly twice with the
+    /// same continuity_counter). A PID in this set had its immediately
+    /// preceding payload-bearing packet classified as a spec-legal duplicate
+    /// (same CC, no discontinuity_indicator). If the SAME CC appears a
+    /// THIRD time on that PID, that IS a discontinuity. The set is cleared
+    /// per-PID whenever the PID advances its CC normally, or when per-PID
+    /// state is dropped (PAT/PMT topology teardown, `reset_sync`).
+    pub(super) dup_by_pid: HashSet<u16>,
     /// Captured (expected, observed) CC pair when `check_continuity`
     /// flagged a real jump on the packet currently being routed. Drained
     /// by `handle_psi` when it consumes the strict-mode drop arm; cleared
@@ -197,6 +206,7 @@ impl Demuxer {
             pat_version: None,
             stream_kind_by_pid: HashMap::new(),
             cc_by_pid: HashMap::new(),
+            dup_by_pid: HashSet::new(),
             last_psi_cc_jump: None,
             last_pcr_by_pid: HashMap::new(),
             last_pts_by_pid: HashMap::new(),
@@ -541,7 +551,13 @@ impl Demuxer {
             );
         }
         self.check_pcr(&pkt);
-        let cc_jumped = self.check_continuity(&pkt);
+        let (cc_jumped, is_duplicate) = self.check_continuity(&pkt);
+        // H.222.0 §2.4.3.3: a spec-legal duplicate (same CC, no
+        // discontinuity_indicator) carries no new payload data. Suppress all
+        // routing to avoid replaying bytes into PSI or PES reassemblers.
+        if is_duplicate {
+            return Ok(());
+        }
         if pkt.pid == 0x0000 {
             self.handle_psi(
                 pkt.pid,
@@ -680,6 +696,7 @@ impl Demuxer {
         self.pat_version = None;
         self.stream_kind_by_pid.clear();
         self.cc_by_pid.clear();
+        self.dup_by_pid.clear();
         self.last_psi_cc_jump = None;
         self.last_pcr_by_pid.clear();
         self.last_pts_by_pid.clear();

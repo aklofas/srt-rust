@@ -85,12 +85,8 @@ impl super::demuxer::Demuxer {
                     return Ok(());
                 }
             };
-            let stream = self.lookup_stream(pid).unwrap_or(StreamId {
-                pid,
-                kind: StreamKind::Unknown(0),
-                // program_number unavailable — PSI PID (PAT/PMT) is not owned by a program
-                program_number: 0,
-            });
+            let stream = self.lookup_stream(pid)
+                .unwrap_or_else(|| StreamId::anonymous(pid, 0));
             self.queue_nonconformant(
                 stream,
                 NonConformantIssue::PsiCcDiscontinuity {
@@ -217,12 +213,8 @@ impl super::demuxer::Demuxer {
                 declared_len: observed_len,
             }) => {
                 // Cap fired — partial section discarded by the assembler.
-                let stream = self.lookup_stream(pid).unwrap_or(StreamId {
-                    pid,
-                    kind: StreamKind::Unknown(0),
-                    // program_number unavailable — PSI PID (PAT/PMT) is not owned by a program
-                    program_number: 0,
-                });
+                let stream = self.lookup_stream(pid)
+                    .unwrap_or_else(|| StreamId::anonymous(pid, 0));
                 self.queue_nonconformant(
                     stream,
                     NonConformantIssue::PsiOverlongSection { pid, observed_len },
@@ -243,12 +235,7 @@ impl super::demuxer::Demuxer {
             Ok(s) => s,
             Err(PsiParseError::CrcMismatch { .. }) => {
                 self.queue_nonconformant(
-                    StreamId {
-                        pid: 0x0000,
-                        kind: StreamKind::Unknown(0),
-                        // program_number unavailable — PAT PID is not owned by a program
-                        program_number: 0,
-                    },
+                    StreamId::anonymous(0x0000, 0),
                     NonConformantIssue::PsiChecksumMismatch { pid: 0x0000 },
                 );
                 return;
@@ -271,12 +258,7 @@ impl super::demuxer::Demuxer {
                 PatReassemblyOutcome::Complete(programs) => (parsed.version, programs),
                 PatReassemblyOutcome::Broken => {
                     self.queue_nonconformant(
-                        StreamId {
-                            pid: 0x0000,
-                            kind: StreamKind::Unknown(0),
-                            // program_number unavailable — PAT PID is not owned by a program
-                            program_number: 0,
-                        },
+                        StreamId::anonymous(0x0000, 0),
                         NonConformantIssue::PsiMultiSectionUnsupported {
                             pid: 0x0000,
                             table_id: 0x00,
@@ -394,11 +376,7 @@ impl super::demuxer::Demuxer {
             Ok(p) => p,
             Err(PsiParseError::CrcMismatch { .. }) => {
                 self.queue_nonconformant(
-                    StreamId {
-                        pid: pmt_pid,
-                        kind: StreamKind::Unknown(0),
-                        program_number: pmt_program_number,
-                    },
+                    StreamId::anonymous(pmt_pid, pmt_program_number),
                     NonConformantIssue::PsiChecksumMismatch { pid: pmt_pid },
                 );
                 return;
@@ -408,11 +386,7 @@ impl super::demuxer::Demuxer {
                 last_section_number,
             }) => {
                 self.queue_nonconformant(
-                    StreamId {
-                        pid: pmt_pid,
-                        kind: StreamKind::Unknown(0),
-                        program_number: pmt_program_number,
-                    },
+                    StreamId::anonymous(pmt_pid, pmt_program_number),
                     NonConformantIssue::PsiMultiSectionUnsupported {
                         pid: pmt_pid,
                         table_id,
@@ -436,11 +410,7 @@ impl super::demuxer::Demuxer {
         // topology; emit a NonConformant diagnostic.
         if pmt.program_number != program_number {
             self.queue_nonconformant(
-                StreamId {
-                    pid: pmt_pid,
-                    kind: StreamKind::Unknown(0),
-                    program_number,
-                },
+                StreamId::anonymous(pmt_pid, program_number),
                 NonConformantIssue::PmtProgramNumberMismatch {
                     pid: pmt_pid,
                     pat_program: program_number,
@@ -506,15 +476,10 @@ impl super::demuxer::Demuxer {
 
             if let Some(other_program_number) = other_prog {
                 collision_issues.push((
-                    StreamId {
-                        pid: s.elementary_pid,
-                        kind: StreamKind::Unknown(0),
-                        // The PID is first-program-wins owned by `other_program_number`
-                        // (the existing binding); this StreamId surfaces the collision
-                        // attempted by *this* PMT (`program_number`), so we tag it
-                        // with the attempting program.
-                        program_number,
-                    },
+                    // `kind: Unknown(0)`: the PID is first-program-wins owned
+                    // by `other_program_number`; this StreamId surfaces the
+                    // collision attempted by *this* PMT (`program_number`).
+                    StreamId::anonymous(s.elementary_pid, program_number),
                     NonConformantIssue::PidReusedAcrossPrograms {
                         pid: s.elementary_pid,
                         programs: [other_program_number, program_number],
@@ -752,11 +717,7 @@ impl super::demuxer::Demuxer {
     /// `strict != Off`. `pid` is the PID the section arrived on (0x0000 for
     /// PAT), `table_id` is 0x00 (PAT) or 0x02 (PMT).
     fn check_psi_syntax(&mut self, pid: u16, table_id: u8, section: &[u8]) {
-        let stream = || StreamId {
-            pid,
-            kind: StreamKind::Unknown(0),
-            program_number: 0,
-        };
+        let stream = || StreamId::anonymous(pid, 0);
         // Always: section_syntax_indicator (byte 1 bit 0x80) must be 1.
         if section[1] & 0x80 == 0 {
             self.queue_nonconformant(

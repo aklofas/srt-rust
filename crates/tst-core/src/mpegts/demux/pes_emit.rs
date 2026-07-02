@@ -103,52 +103,17 @@ impl super::demuxer::Demuxer {
                 }
                 ReassemblyOutcome::Overflow { pid } => {
                     if let Some(stream) = self.lookup_stream(pid) {
-                        self.discontinuities_count += 1;
-                        let program_number = self.program_number_for_pid(stream.pid);
-                        self.stats_per_stream
-                            .entry(stream.pid)
-                            .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                                pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                    &stream.kind,
-                                )),
-                                program_number,
-                                ..Default::default()
-                            })
-                            .discontinuities += 1;
-                        self.queue.push_back(DemuxEvent::Discontinuity {
-                            stream,
-                            kind: DiscontinuityKind::PesOversize { pid },
-                        });
+                        self.record_discontinuity(stream, DiscontinuityKind::PesOversize { pid });
                     }
                 }
                 ReassemblyOutcome::OverflowTotal => {
                     if let Some(stream) = self.lookup_stream(pkt.pid) {
-                        self.discontinuities_count += 1;
-                        let program_number = self.program_number_for_pid(stream.pid);
-                        self.stats_per_stream
-                            .entry(stream.pid)
-                            .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                                pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                    &stream.kind,
-                                )),
-                                program_number,
-                                ..Default::default()
-                            })
-                            .discontinuities += 1;
-                        self.queue.push_back(DemuxEvent::Discontinuity {
-                            stream,
-                            kind: DiscontinuityKind::PesTotalOversize,
-                        });
+                        self.record_discontinuity(stream, DiscontinuityKind::PesTotalOversize);
                     }
                 }
                 ReassemblyOutcome::ZeroLengthNonVideo { pid, stream_id } => {
-                    let stream = self.lookup_stream(pid).unwrap_or(StreamId {
-                        pid,
-                        kind: StreamKind::Unknown(0),
-                        program_number: self.program_number_for_pid(pid),
-                    });
+                    let stream = self.lookup_stream(pid)
+                        .unwrap_or_else(|| StreamId::anonymous(pid, self.program_number_for_pid(pid)));
                     self.queue_nonconformant(
                         stream,
                         NonConformantIssue::ZeroLengthPesNonVideo { pid, stream_id },
@@ -245,16 +210,13 @@ impl super::demuxer::Demuxer {
                 let raw = SharedBytes::from_vec(pes.payload);
                 let raw_len = raw.len();
 
-                self.stats_per_stream
-                    .entry(stream.pid)
-                    .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
-                        program_number,
-                        ..Default::default()
-                    })
-                    .items += 1;
-                self.stats_per_stream.get_mut(&stream.pid).unwrap().bytes += raw_len as u64;
+                let entry = self.stream_stats_entry(
+                    stream.pid,
+                    stream_type_from_kind(&stream.kind),
+                    program_number,
+                );
+                entry.items += 1;
+                entry.bytes += raw_len as u64;
                 // `nals_or_obus` is no longer counted here (it required the
                 // split the demuxer no longer performs). The `random_access_aus`
                 // counter still increments from the PES_start RAI bit.
@@ -294,16 +256,11 @@ impl super::demuxer::Demuxer {
                         );
                     }
                     let meta_len = klv.len();
-                    let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                        crate::mpegts::stats::StreamStats {
-                            pid: stream.pid,
-                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                &stream.kind,
-                            )),
-                            program_number,
-                            ..Default::default()
-                        }
-                    });
+                    let entry = self.stream_stats_entry(
+                        stream.pid,
+                        stream_type_from_kind(&stream.kind),
+                        program_number,
+                    );
                     entry.items += 1;
                     entry.bytes += meta_len as u64;
                     self.bump_klv_counters(stream.pid, 1);
@@ -321,16 +278,11 @@ impl super::demuxer::Demuxer {
                 if matches!(shape, KlvShape::Other) {
                     let payload_len = pes.payload.len();
                     let raw = pes.payload;
-                    let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                        crate::mpegts::stats::StreamStats {
-                            pid: stream.pid,
-                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                &stream.kind,
-                            )),
-                            program_number,
-                            ..Default::default()
-                        }
-                    });
+                    let entry = self.stream_stats_entry(
+                        stream.pid,
+                        stream_type_from_kind(&stream.kind),
+                        program_number,
+                    );
                     entry.items += 1;
                     entry.bytes += payload_len as u64;
                     self.queue.push_back(DemuxEvent::Sample {
@@ -405,17 +357,11 @@ impl super::demuxer::Demuxer {
                                     self.au_reassembler.clear_after_emit(pes.pid);
                                 }
                                 let meta_len = payload_vec.len();
-                                let entry =
-                                    self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                                        crate::mpegts::stats::StreamStats {
-                                            pid: stream.pid,
-                                            stream_type: StreamTypeCode::from_byte(
-                                                stream_type_from_kind(&stream.kind),
-                                            ),
-                                            program_number,
-                                            ..Default::default()
-                                        }
-                                    });
+                                let entry = self.stream_stats_entry(
+                                    stream.pid,
+                                    stream_type_from_kind(&stream.kind),
+                                    program_number,
+                                );
                                 entry.items += 1;
                                 entry.bytes += meta_len as u64;
                                 self.bump_klv_counters(stream.pid, 1);
@@ -478,17 +424,11 @@ impl super::demuxer::Demuxer {
                                 if tolerated {
                                     let payload_vec = current_inner.to_vec();
                                     let meta_len = payload_vec.len();
-                                    let entry = self
-                                        .stats_per_stream
-                                        .entry(stream.pid)
-                                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                                            pid: stream.pid,
-                                            stream_type: StreamTypeCode::from_byte(
-                                                stream_type_from_kind(&stream.kind),
-                                            ),
-                                            program_number,
-                                            ..Default::default()
-                                        });
+                                    let entry = self.stream_stats_entry(
+                                        stream.pid,
+                                        stream_type_from_kind(&stream.kind),
+                                        program_number,
+                                    );
                                     entry.items += 1;
                                     entry.bytes += meta_len as u64;
                                     self.bump_klv_counters(stream.pid, 1);
@@ -549,14 +489,7 @@ impl super::demuxer::Demuxer {
             }
             StreamKind::Unknown(stream_type) => {
                 let payload_len = pes.payload.len();
-                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                    crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type),
-                        program_number,
-                        ..Default::default()
-                    }
-                });
+                let entry = self.stream_stats_entry(stream.pid, stream_type, program_number);
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
                 self.queue.push_back(DemuxEvent::Sample {
@@ -571,14 +504,11 @@ impl super::demuxer::Demuxer {
             }
             StreamKind::Audio(codec) => {
                 let payload_len = pes.payload.len();
-                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                    crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
-                        program_number,
-                        ..Default::default()
-                    }
-                });
+                let entry = self.stream_stats_entry(
+                    stream.pid,
+                    stream_type_from_kind(&stream.kind),
+                    program_number,
+                );
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
                 // C11 — for AAC-LATM (stream_type 0x11) validate the LOAS
@@ -667,16 +597,13 @@ impl super::demuxer::Demuxer {
                 if self.subtitle_pids_seen.insert(stream.pid) {
                     self.subtitle_streams_seen_count += 1;
                 }
-                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                    crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
-                        program_number,
-                        label: Some(
-                            crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string(),
-                        ),
-                        ..Default::default()
-                    }
+                let entry = self.stream_stats_entry(
+                    stream.pid,
+                    stream_type_from_kind(&stream.kind),
+                    program_number,
+                );
+                entry.label.get_or_insert_with(|| {
+                    crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string()
                 });
                 entry.items += 1;
                 entry.bytes += payload_len as u64;

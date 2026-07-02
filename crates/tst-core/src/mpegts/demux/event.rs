@@ -83,6 +83,18 @@ pub struct StreamId {
     pub program_number: u16,
 }
 
+impl StreamId {
+    /// Fallback `StreamId` for a PID whose kind is not (yet) known to the
+    /// demuxer — used when `lookup_stream(pid)` returns `None` (pre-PMT
+    /// context or a PSI PID not owned by any program).
+    ///
+    /// `pub(crate)`: keeps the tst-core public-api baseline stable; consumers
+    /// that need to construct a `StreamId` should fill in the real `kind`.
+    pub(crate) fn anonymous(pid: u16, program_number: u16) -> Self {
+        Self { pid, kind: StreamKind::Unknown(0), program_number }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StreamKind {
     Video(VideoCodec),

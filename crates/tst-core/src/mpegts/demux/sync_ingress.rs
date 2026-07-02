@@ -12,10 +12,8 @@
 //! can call them; the module itself is private (`mod sync_ingress` in
 //! `mpegts/demux/mod.rs`).
 
-use crate::mpegts::common::{StreamTypeCode, pcr_diff_27mhz, pid};
-use crate::mpegts::demux::event::{
-    DemuxEvent, DiscontinuityKind, NonConformantIssue, StreamId, StreamKind,
-};
+use crate::mpegts::common::{pcr_diff_27mhz, pid};
+use crate::mpegts::demux::event::{DiscontinuityKind, NonConformantIssue, StreamId, StreamKind};
 
 /// Maximum bytes the demuxer scans during sync recovery before declaring
 /// the stream unrecoverable.
@@ -201,48 +199,19 @@ impl super::demuxer::Demuxer {
                 real_jump = true;
                 self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
                 if let Some(stream) = self.lookup_stream(pkt.pid) {
-                    self.discontinuities_count += 1;
-                    let program_number = self.program_number_for_pid(stream.pid);
-                    self.stats_per_stream
-                        .entry(stream.pid)
-                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                            pid: stream.pid,
-                            stream_type: StreamTypeCode::from_byte(
-                                super::pmt_classify::stream_type_from_kind(&stream.kind),
-                            ),
-                            program_number,
-                            ..Default::default()
-                        })
-                        .discontinuities += 1;
-                    self.queue.push_back(DemuxEvent::Discontinuity {
+                    self.record_discontinuity(
                         stream,
-                        kind: DiscontinuityKind::ContinuityJump {
+                        DiscontinuityKind::ContinuityJump {
                             expected,
                             observed: pkt.continuity_counter,
                         },
-                    });
+                    );
                 }
             }
         }
         if pkt.discontinuity_indicator {
             if let Some(stream) = self.lookup_stream(pkt.pid) {
-                self.discontinuities_count += 1;
-                let program_number = self.program_number_for_pid(stream.pid);
-                self.stats_per_stream
-                    .entry(stream.pid)
-                    .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(
-                            super::pmt_classify::stream_type_from_kind(&stream.kind),
-                        ),
-                        program_number,
-                        ..Default::default()
-                    })
-                    .discontinuities += 1;
-                self.queue.push_back(DemuxEvent::Discontinuity {
-                    stream,
-                    kind: DiscontinuityKind::AdaptationFieldFlag,
-                });
+                self.record_discontinuity(stream, DiscontinuityKind::AdaptationFieldFlag);
             }
         }
         self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);

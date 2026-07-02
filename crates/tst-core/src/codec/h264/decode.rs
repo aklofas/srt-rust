@@ -126,6 +126,10 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
     // u8::try_from; the SPS ID bound is tighter than u8 and must be
     // checked explicitly. Accepting sps_id ∈ [32, 255] would silently
     // create a PPS that can never match any spec-conformant SPS map.
+    // NOTE: deliberately NOT `read_ue_max` — the range checks here run
+    // after all three header reads (parse errors first, then pic-id range,
+    // then sps-id range); fusing the sps check into its read would reorder
+    // error precedence on doubly-invalid inputs.
     let pic_parameter_set_id =
         u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
             field: "pic_parameter_set_id",
@@ -207,14 +211,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     // surfaced as the full byte per H.264 §7.3.2.1.1.
     let constraint_set_flags = br.read_u(8)? as u8;
     let level_idc = br.read_u(8)? as u8;
-    let seq_parameter_set_id = br.read_ue()?;
-    if seq_parameter_set_id > 31 {
-        return Err(CodecParseError::ReservedValue {
-            field: "seq_parameter_set_id",
-            value: seq_parameter_set_id,
-        });
-    }
-    let seq_parameter_set_id = seq_parameter_set_id as u8;
+    let seq_parameter_set_id = br.read_ue_max("seq_parameter_set_id", 31)? as u8;
 
     // High-profile family: chroma_format_idc + bit depths. Otherwise the
     // spec defaults apply (chroma 4:2:0, 8-bit luma/chroma).

@@ -98,7 +98,7 @@ fn build_stream_with_malformed_pes() -> (Vec<u8>, Vec<[u8; 188]>) {
             continue;
         }
         // PES start code prefix is `00 00 01` at the payload start. Flip
-        // the third byte so `parse_complete` (pes.rs:183-188) returns
+        // the third byte so `parse_complete` in pes.rs returns
         // `DemuxError::MalformedPes { reason: "missing 0x000001 PES start
         // code prefix", ... }`.
         chunk[payload_off + 2] = 0xFF;

@@ -680,7 +680,7 @@ impl MuxError {
     /// categories) corresponding to this variant. Use this when
     /// writing a generic binding that maps muxer failures to a
     /// language-native exception hierarchy without enumerating the
-    /// 36-variant inner set.
+    /// full inner variant set.
     ///
     /// For spec-aware diagnostic code (KLV-handling, DVB-subtitling,
     /// descriptor validation), match on the full [`MuxError`] variant
@@ -688,7 +688,7 @@ impl MuxError {
     /// re-export (the same enum; the re-export signals intent at the
     /// import site).
     ///
-    /// The 36-variant routing is enforced by the CI ratchet
+    /// Per-variant routing is enforced by the CI ratchet
     /// `scripts/check/rust/mux-error-kind-coverage.sh` — every variant of
     /// the upstream [`MuxError`] enum must be matched explicitly in
     /// this function's body before the `#[non_exhaustive]` wildcard.

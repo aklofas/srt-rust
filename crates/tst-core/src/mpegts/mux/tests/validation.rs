@@ -243,7 +243,7 @@ fn cache_async_klv_does_not_emit_metadata_descriptors() {
 /// F-01 (mux): the PMT size estimator must count the auto-emitted 5-byte AC-3
 /// `audio_stream_descriptor` (tag 0x81). Before the fix, a config with enough
 /// AC-3 streams passed `validate()` but produced an over-large PMT that
-/// `PmtTooLarge`-panicked on the first push (`scheduling.rs:199`).
+/// `PmtTooLarge` from `MuxerConfig::validate` (now in `config.rs`).
 #[test]
 fn validate_counts_ac3_audio_stream_descriptor_and_rejects_oversized_pmt() {
     let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

@@ -1,7 +1,7 @@
 //! Verify every `MuxError` variant routes to the expected
 //! `MuxSenderErrorKind` via the `MuxError::kind()` method.
 //!
-//! 32 (variant, expected kind) rows. Maintained as a flat table; if
+//! One (variant, expected kind) row per MuxError variant. Maintained as a flat table; if
 //! a new variant is added upstream the CI ratchet
 //! `scripts/check/rust/mux-error-kind-coverage.sh` catches the missing
 //! match arm before this test runs. This test is the per-variant

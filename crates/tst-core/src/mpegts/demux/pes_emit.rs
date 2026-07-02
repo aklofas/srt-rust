@@ -241,7 +241,7 @@ impl super::demuxer::Demuxer {
                 }
 
                 // Wrap the AU once and emit it. The owned PES payload moves
-                // into the SharedBytes (zero copy of the bytes themselves).
+                // into the SharedBytes (one Arc allocation + copy of the bytes).
                 let raw = SharedBytes::from_vec(pes.payload);
                 let raw_len = raw.len();
 

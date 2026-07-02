@@ -362,7 +362,7 @@ fn h265_sps_with_log2_max_pic_order_cnt_lsb_minus4(
 }
 
 /// Per H.265 §7.4.3.2.1, `log2_max_pic_order_cnt_lsb_minus4 ∈ 0..=12`
-/// (valid bit widths 4..=16). Code at `sps.rs:184` used the field as
+/// (valid bit widths 4..=16). The old `parse_sps` used the field as
 /// a bit width via `read_u(log2_max + 4)` without bounds-checking — a
 /// hostile value of 248 (or anywhere near `u32::MAX`) overflowed the
 /// `+ 4` addition. Caught now via the eager range check right after

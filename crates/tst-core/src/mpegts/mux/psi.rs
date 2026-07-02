@@ -179,7 +179,7 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramC
                 ..
             } => {
                 // AV01 Registration suppressed only on caller-supplied AV01 (mirrors
-                // the precise suppression in mux/mod.rs:1349-1366).
+                // the precise suppression in `build_pmt_descriptor_cache`).
                 let caller_has_av01 = caller_descs
                     .iter()
                     .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AV01");
@@ -192,7 +192,7 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramC
                 // an AC-3-flavored Registration. Non-AC-3 Registrations on an
                 // AC-3 PID trigger a warn in the PMT writer but do NOT suppress
                 // auto-emit — caller intent on a different format_identifier
-                // wins (see mux/mod.rs AC-3 arm). Hence the predicate is
+                // wins (see the AC-3 arm in `build_pmt_descriptor_cache`). Hence the predicate is
                 // `caller_has_ac3`, not `caller_has_other_registration`.
                 let ac3_bytes = if *codec == AudioCodec::Ac3 {
                     // AC-3 Registration descriptor (6 B) — suppressed by a

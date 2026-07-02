@@ -91,6 +91,14 @@ pub struct Demuxer {
     /// per-PID whenever the PID advances its CC normally, or when per-PID
     /// state is dropped (PAT/PMT topology teardown, `reset_sync`).
     pub(super) dup_by_pid: HashSet<u16>,
+    /// Raw bytes of the last routed payload-bearing packet per PID, retained
+    /// so duplicate detection can byte-compare a same-CC packet against its
+    /// predecessor (H.222.0 §2.4.3.3 requires duplicates to be bit-identical
+    /// apart from a refreshed PCR — see `pcr_masked_identical`). Lifecycle
+    /// mirrors `cc_by_pid` exactly: inserted on every routed payload packet,
+    /// removed/cleared wherever `cc_by_pid` is. Bounded like the sibling
+    /// per-PID maps (worst case 8191 PIDs × 188 B ≈ 1.5 MB on hostile input).
+    pub(super) last_pkt_raw_by_pid: HashMap<u16, [u8; 188]>,
     /// Captured (expected, observed) CC pair when `check_continuity`
     /// flagged a real jump on the packet currently being routed. Drained
     /// by `handle_psi` when it consumes the strict-mode drop arm; cleared
@@ -207,6 +215,7 @@ impl Demuxer {
             stream_kind_by_pid: HashMap::new(),
             cc_by_pid: HashMap::new(),
             dup_by_pid: HashSet::new(),
+            last_pkt_raw_by_pid: HashMap::new(),
             last_psi_cc_jump: None,
             last_pcr_by_pid: HashMap::new(),
             last_pts_by_pid: HashMap::new(),
@@ -697,6 +706,7 @@ impl Demuxer {
         self.stream_kind_by_pid.clear();
         self.cc_by_pid.clear();
         self.dup_by_pid.clear();
+        self.last_pkt_raw_by_pid.clear();
         self.last_psi_cc_jump = None;
         self.last_pcr_by_pid.clear();
         self.last_pts_by_pid.clear();

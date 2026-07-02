@@ -372,7 +372,7 @@ sha256 = "9db980ce60d106fa216aa8dccf6db037e656453d7b5619e4d582a5edf1374b02"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/golden.json"
-sha256 = "5c8f8dc9d8e02025853cc4ac82537f6aa362fcdb0030f67da3e2b6ac0e36bdde"
+sha256 = "954a4345df8c56ec3401f3ece39955fb6616d89e48b7923a2308b7006bea2664"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/input.ts"

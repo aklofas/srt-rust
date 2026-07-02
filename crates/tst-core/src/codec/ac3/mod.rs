@@ -27,9 +27,11 @@
 //!   num_channels) are all available from the syncinfo + first few bsi
 //!   bits.
 //! - audblk / auxdata / errorcheck — block-level audio data and CRCs.
-//! - E-AC-3 (Annex E) — extension to AC-3 with bsid in 11..=16.
-//!   `parse_syncframe` rejects bsid >= 9 as unsupported; if E-AC-3
-//!   support is needed, add a separate parser keyed on bsid.
+//! - E-AC-3 (Annex E) — extension to AC-3, signalled by bsid 16
+//!   (E-AC-3 decoders accept the 11..=16 compatibility range; 9/10 are
+//!   alternative bitstreams). `parse_syncframe` rejects bsid >= 9 as
+//!   unsupported; if E-AC-3 support is needed, add a separate parser
+//!   keyed on bsid.
 
 mod decode;
 #[cfg(test)]

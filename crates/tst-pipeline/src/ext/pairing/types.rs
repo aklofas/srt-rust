@@ -49,7 +49,8 @@ pub struct PairerConfig {
     /// `Duration::ZERO` means exact-PTS.
     pub tolerance: Duration,
     /// Cap on KLV records buffered awaiting a video match.
-    /// Must be greater than zero; `Pairer::new` panics otherwise.
+    /// Must be greater than zero; `Pairer::with_config` panics otherwise
+    /// (`Pairer::new` uses the nonzero default and cannot hit the panic).
     pub max_buffered_klv: u64,
     /// Cap on video AUs buffered awaiting a KLV match.
     /// Must be greater than zero when using [`PairerMode::Buffered`].

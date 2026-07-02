@@ -10,6 +10,10 @@
 //! - `stats`, `local_addr_port`, `close` → fast read-only / atomic ops; no
 //!   GIL release needed.
 //!
+//! Cancel gap: neither `Transport` nor `RecvTransport` exposes a cancel handle.
+//! Use a finite `timeout_ms` in `recv()` and check a stop flag between calls
+//! rather than blocking with `timeout_ms=None` if cooperative shutdown is needed.
+//!
 //! Bytes-like extraction in `Transport.send(payload)` follows the abi3-py310
 //! two-path pattern from rtp/transport.rs: fast zero-copy `&[u8]` extract
 //! for `bytes`, fallback through Python `bytes()` builtin for
@@ -351,6 +355,13 @@ impl PyUdpRecvTransport {
     ///
     /// Note: `sender_addr_str` is currently always an empty string; the
     /// underlying `recv_bytes` API does not expose the sender address.
+    ///
+    /// **Cancel gap:** `RecvTransport` does not expose a `cancel_handle`.
+    /// To interrupt a blocked `recv()` from another thread, call `close()` —
+    /// but only after the ongoing `recv()` returns (there is no race-free way
+    /// to cancel a live UDP recvfrom). The recommended pattern for cooperative
+    /// shutdown is always to pass a finite `timeout_ms` and check a stop flag
+    /// between calls rather than blocking indefinitely with `timeout_ms=None`.
     ///
     /// Releases the GIL while waiting on the kernel.
     #[pyo3(signature = (timeout_ms = None))]

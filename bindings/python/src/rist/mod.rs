@@ -527,6 +527,13 @@ impl PyRistRecvTransport {
     /// retries on `Backpressure` until the deadline passes. Actual timeout
     /// latency may exceed `timeout_ms` by up to ~100 ms.
     ///
+    /// **Cancel gap:** `RecvTransport` does not expose a `cancel_handle`.
+    /// There is no race-free way to interrupt a live `recv()` from another
+    /// thread; `close()` is only safe to call after `recv()` returns.
+    /// The recommended shutdown pattern is to pass a finite `timeout_ms`
+    /// and check a stop flag between calls rather than blocking indefinitely
+    /// with `timeout_ms=None`.
+    ///
     /// Releases the GIL while waiting on the kernel.
     #[pyo3(signature = (timeout_ms = None))]
     fn recv(&mut self, py: Python<'_>, timeout_ms: Option<u64>) -> PyResult<Py<PyBytes>> {

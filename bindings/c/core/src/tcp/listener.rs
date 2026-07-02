@@ -283,8 +283,8 @@ mod tests {
     #[test]
     fn from_url_missing_listen_flag_returns_null_with_tcp_family_code() {
         // from_url requires ?listen=1 — omitting it should fail. The precise
-        // error code is TcpConfig (-31), but `tcp_error_to_code` is a stub
-        // (Wave B T10 fills it in) so we accept any TCP-family negative code.
+        // error code is TcpConfig (-31); accept any TCP-family negative code
+        // to stay resilient if the error mapping evolves.
         let url = std::ffi::CString::new("tcp://127.0.0.1:0").unwrap();
         let p = unsafe { tst_tcp_listener_from_url(url.as_ptr()) };
         assert!(p.is_null());

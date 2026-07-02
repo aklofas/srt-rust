@@ -6,23 +6,13 @@
 //! the inner runs Drop, which closes the underlying transport / muxer.
 
 use crate::error::{TstError, record_internal, record_panic_caught, set_last_error};
+#[cfg(feature = "std")]
+use crate::panic::panic_payload_message;
 
 #[cfg(not(feature = "std"))]
 use crate::nostd_mutex::Mutex;
 #[cfg(feature = "std")]
 use std::sync::Mutex;
-
-/// Best-effort detail string from a `catch_unwind` payload (std only).
-#[cfg(feature = "std")]
-fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> alloc::string::String {
-    if let Some(s) = payload.downcast_ref::<&'static str>() {
-        alloc::string::String::from(*s)
-    } else if let Some(s) = payload.downcast_ref::<alloc::string::String>() {
-        s.clone()
-    } else {
-        alloc::string::String::from("non-string panic payload")
-    }
-}
 
 /// Run `f` catching any panic (std). Returns `Ok(result)` or `Err(detail)`.
 #[cfg(feature = "std")]
@@ -145,8 +135,8 @@ impl<T> Handle<T> {
 /// directly because `RtspClientBuilder` uses consuming `mut self -> Self`
 /// chain setters, making in-place C mutation cumbersome.  Task 6's connect
 /// path constructs the final `RtspClientBuilder` from these fields.
-// Allow dead_code: url + all other fields are read by Task 6's connect path
-// which lands in a subsequent Wave B commit. The allow is removed at that time.
+// `#[allow(dead_code)]`: fields are read by the RTSP connect path which is
+// gated behind the `rtp` feature; they appear unused in minimal builds.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)]
 pub struct TstRtspClientBuilder {
@@ -221,10 +211,10 @@ impl TstRtspClientBuilder {
 /// directly.  Even though `RtspServerBuilder` uses `&mut self -> &mut Self`
 /// chain setters (which are in-place friendly), storing fields independently
 /// keeps the opaque struct layout stable across future Rust API changes and
-/// matches the T5 `TstRtspClientBuilder` pattern.  Task 8's start path
+/// matches the `TstRtspClientBuilder` pattern.  The server-start path
 /// constructs the final `RtspServerBuilder` from these fields.
-// Allow dead_code: all fields are read by Task 8's start path which lands
-// in a subsequent Wave B commit. The allow is removed at that time.
+// `#[allow(dead_code)]`: fields are read by the RTSP server-start path which
+// is gated behind the `rtp` feature; they appear unused in minimal builds.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)]
 pub struct TstRtspServerBuilder {

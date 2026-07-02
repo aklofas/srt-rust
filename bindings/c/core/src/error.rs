@@ -598,7 +598,7 @@ pub(crate) fn record_not_found(msg: &str) -> i32 {
 /// CI ratchet `scripts/check/rust/rtsp-error-mapping-coverage.sh` verifies every
 /// known variant has an explicit arm.
 #[cfg(feature = "rtp")]
-#[allow(dead_code)] // used by Phase 4 Wave B RTSP entry points (Tasks 5–8)
+#[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
     use tst_rtp::RtspError::*;
     match e {
@@ -632,7 +632,7 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
 /// Map a [`tst_rtp::MountError`] to the appropriate `TstError` variant.
 /// All three variants collapse to `TstError::RtspMount`.
 #[cfg(feature = "rtp")]
-#[allow(dead_code)] // used by Phase 4 Wave B mount entry points (Tasks 7–8)
+#[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
     use tst_rtp::MountError::*;
     match e {
@@ -647,7 +647,7 @@ pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
 /// Map a [`tst_rtp::RtspServerError`] to the appropriate `TstError` variant.
 /// All 11 variants collapse to `TstError::RtspServer`.
 #[cfg(feature = "rtp")]
-#[allow(dead_code)] // used by Phase 4 Wave B server entry points (Tasks 6–8)
+#[allow(dead_code)] // RTSP-feature-gated callers; unused in minimal builds
 pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstError {
     use tst_rtp::RtspServerError::*;
     match e {

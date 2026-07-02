@@ -85,11 +85,10 @@ where
     f()
 }
 
-/// Best-effort detail string from a `catch_unwind` payload. Mirrors
-/// the helper in `handle.rs` to keep both panic-isolation paths
-/// surfacing the same detail format.
+/// Best-effort detail string from a `catch_unwind` payload.
+/// Used by both the `handle` module and `jni_catch` panic-isolation paths.
 #[cfg(feature = "std")]
-fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> alloc::string::String {
+pub(crate) fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> alloc::string::String {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
         alloc::string::String::from(*s)
     } else if let Some(s) = payload.downcast_ref::<alloc::string::String>() {

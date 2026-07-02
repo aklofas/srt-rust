@@ -8144,8 +8144,8 @@ item = "tst_srt::builder::ListenerBuilder::payload_size"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::builder::ListenerBuilder::recv_buf_packets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+item = "tst_srt::builder::ListenerBuilder::recv_buf_bytes"
+reason = "renamed from recv_buf_packets (DA-SRT-1); bulk bootstrap 2026-06-03"
 
 [[exempt]]
 item = "tst_srt::builder::ListenerBuilder::recv_latency"
@@ -8260,8 +8260,8 @@ item = "tst_srt::builder::SocketBuilder::receiver_defaults"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::builder::SocketBuilder::recv_buf_packets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+item = "tst_srt::builder::SocketBuilder::recv_buf_bytes"
+reason = "renamed from recv_buf_packets (DA-SRT-1); bulk bootstrap 2026-06-03"
 
 [[exempt]]
 item = "tst_srt::builder::SocketBuilder::recv_latency"
@@ -8276,8 +8276,8 @@ item = "tst_srt::builder::SocketBuilder::role"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::builder::SocketBuilder::send_buf_packets"
-reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+item = "tst_srt::builder::SocketBuilder::send_buf_bytes"
+reason = "renamed from send_buf_packets (DA-SRT-1); bulk bootstrap 2026-06-03"
 
 [[exempt]]
 item = "tst_srt::builder::SocketBuilder::send_timeout"

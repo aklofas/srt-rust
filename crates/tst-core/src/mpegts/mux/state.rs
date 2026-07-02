@@ -629,8 +629,9 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
         // "AC-3" per ATSC A/52:2018 §A.3. Receivers use this to distinguish
         // AC-3 from other private-stream-1 (PES stream_id 0xBD) audio.
         // Suppression: caller-supplied AC-3 Registration suppresses auto-emit;
-        // a non-AC-3 Registration does NOT suppress (caller intent wins, but we
-        // skip auto-emit). Conflict warning emitted by `warn_on_descriptor_conflicts`.
+        // a non-AC-3 Registration does NOT suppress (the AC-3 Registration is
+        // still auto-emitted alongside it). Conflict warning emitted by
+        // `warn_on_descriptor_conflicts`.
         if let StreamSpec::Audio {
             codec: AudioCodec::Ac3,
             ..

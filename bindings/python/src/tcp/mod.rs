@@ -20,8 +20,10 @@
 //! GIL boundaries:
 //! - `send`, `recv`, `build()` (both builders), `accept_blocking` ->
 //!   `py.allow_threads(...)` so concurrent Python threads remain live.
-//! - `close`, `stats`, `local_port`, `peer_addr` -> fast read-only ops;
-//!   no GIL release needed.
+//! - `close`, `stats`, `peer_addr`, `repr` -> also release the GIL during
+//!   mutex acquisition; `close` fires the cancel handle first so a parked
+//!   `recv` unblocks within ≤100 ms, making the lock promptly available.
+//! - `local_port` (Listener) -> fast read, no GIL release needed.
 //!
 //! Bytes-like extraction in `Transport.send(payload)` follows the abi3-py310
 //! two-path pattern from udp/mod.rs: fast zero-copy `&[u8]` for `bytes`,
@@ -42,9 +44,9 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportError};
+use tst_core::transport::{RecvTransport, Transport, TransportError};
 use tst_tcp::error::{TcpError, TcpErrorKind};
-use tst_tcp::{TcpListener, TcpStats, TcpTransport};
+use tst_tcp::{TcpCancelHandle, TcpListener, TcpStats, TcpTransport};
 
 use crate::errors::make_tcp_error;
 
@@ -156,20 +158,6 @@ impl From<TcpStats> for PyTcpStats {
     }
 }
 
-#[allow(dead_code)]
-impl PyTcpStats {
-    fn from_core(s: SocketStats) -> Self {
-        Self {
-            bytes_sent: s.bytes_sent,
-            bytes_received: s.bytes_received,
-            send_calls: s.packets_sent,
-            recv_calls: s.packets_received,
-            send_errors: s.packets_dropped_send,
-            recv_errors: s.packets_dropped_recv,
-        }
-    }
-}
-
 #[pymethods]
 impl PyTcpStats {
     fn __repr__(&self) -> String {
@@ -197,16 +185,17 @@ impl PyTcpStats {
 /// transport = tcp.Transport.builder().url("tcp://host:port").build()
 /// ```
 ///
-/// GIL is released during `send` and `recv` so other Python threads
-/// remain live while the kernel I/O blocks.
+/// GIL is released during `send`, `recv`, `stats`, `peer_addr`, `close`,
+/// and `repr` so other Python threads remain live during I/O and mutex
+/// acquisition. `close()` fires the cancel handle BEFORE acquiring the
+/// inner mutex, so a thread parked in `recv()` unblocks promptly (within
+/// ≤100 ms) and the lock becomes available without holding the GIL.
 #[pyclass(name = "Transport", module = "tstrans.tcp")]
 pub(crate) struct PyTcpTransport {
     inner: Mutex<Option<TcpTransport>>,
-    /// Per-recv scratch buffer. Resized to `max_payload()` bytes at
-    /// construction time. Unused by send but allocated so recv doesn't need
-    /// a per-call allocation.
-    #[allow(dead_code)]
-    scratch: Vec<u8>,
+    /// Cancel handle obtained at construction. `close()` fires it before
+    /// acquiring `inner`'s lock so a concurrent `recv()` unblocks promptly.
+    cancel: TcpCancelHandle,
 }
 
 #[pymethods]
@@ -286,34 +275,51 @@ impl PyTcpTransport {
 
     /// Peer address as a `"host:port"` string. Returns `""` if the transport
     /// has been closed.
-    fn peer_addr(&self) -> String {
-        let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-        match guard.as_ref() {
-            Some(t) => t.peer().to_string(),
-            None => String::new(),
-        }
+    ///
+    /// Releases the GIL during mutex acquisition so a concurrent `recv()`
+    /// parked in another thread cannot freeze the interpreter.
+    fn peer_addr(&self, py: Python<'_>) -> String {
+        py.allow_threads(|| {
+            let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+            match guard.as_ref() {
+                Some(t) => t.peer().to_string(),
+                None => String::new(),
+            }
+        })
     }
 
     /// Close the transport. Idempotent -- further `.send()` / `.recv()` calls
     /// raise `TcpError(kind=CLOSED)`.
-    fn close(&self) {
-        let mut guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(mut t) = guard.take() {
-            Transport::close(&mut t);
-        }
+    ///
+    /// Fires the cancel handle BEFORE acquiring the inner mutex so any thread
+    /// parked in `recv()` unblocks within ≤100 ms, making the lock available
+    /// without holding the GIL.
+    fn close(&self, py: Python<'_>) {
+        // Cancel first: the recv loop checks alive at its next ~100 ms poll
+        // boundary and returns Closed, releasing the inner lock promptly.
+        self.cancel.cancel();
+        py.allow_threads(|| {
+            let mut guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(mut t) = guard.take() {
+                Transport::close(&mut t);
+            }
+        });
     }
 
     /// Snapshot of wire-level statistics. Counters are cumulative and never
     /// wrap (saturating add).
+    ///
+    /// Releases the GIL during mutex acquisition so a concurrent `recv()`
+    /// parked in another thread cannot freeze the interpreter.
     fn stats(&self, py: Python<'_>) -> PyResult<Py<PyTcpStats>> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| PyRuntimeError::new_err("tcp transport mutex poisoned"))?;
-        let inner = guard
-            .as_ref()
-            .ok_or_else(|| make_tcp_error(py, "CLOSED", "transport closed"))?;
-        Py::new(py, PyTcpStats::from(inner.stats()))
+        // Two-step: extract inside allow_threads, build Python object after.
+        let result: Result<TcpStats, TcpTransportErr> = py.allow_threads(|| {
+            let guard = self.inner.lock().map_err(|_| TcpTransportErr::Mutex)?;
+            let inner = guard.as_ref().ok_or(TcpTransportErr::Closed2)?;
+            Ok(inner.stats())
+        });
+        let s = result.map_err(|e| e.into_pyerr(py))?;
+        Py::new(py, PyTcpStats::from(s))
     }
 
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -322,30 +328,33 @@ impl PyTcpTransport {
 
     fn __exit__(
         &self,
+        py: Python<'_>,
         _exc_type: &Bound<'_, PyAny>,
         _exc_value: &Bound<'_, PyAny>,
         _traceback: &Bound<'_, PyAny>,
     ) -> bool {
-        self.close();
+        self.close(py);
         false
     }
 
-    fn __repr__(&self) -> String {
-        let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-        match guard.as_ref() {
-            Some(t) => format!("Transport(peer={})", t.peer()),
-            None => "Transport(closed)".to_string(),
-        }
+    fn __repr__(&self, py: Python<'_>) -> String {
+        py.allow_threads(|| {
+            let guard = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+            match guard.as_ref() {
+                Some(t) => format!("Transport(peer={})", t.peer()),
+                None => "Transport(closed)".to_string(),
+            }
+        })
     }
 }
 
 /// Construct a `PyTcpTransport` from an already-connected `TcpTransport`.
 /// Used internally by `PyTcpListenerBuilder::build()` / `accept_blocking`.
 fn make_py_tcp_transport(t: TcpTransport) -> PyTcpTransport {
-    let scratch_len = Transport::max_payload(&t).max(65_536);
+    let cancel = t.cancel_handle();
     PyTcpTransport {
         inner: Mutex::new(Some(t)),
-        scratch: vec![0u8; scratch_len],
+        cancel,
     }
 }
 

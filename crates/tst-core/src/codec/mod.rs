@@ -328,6 +328,23 @@ pub enum CodecParseError {
     UnsupportedFreeFormat { layer: u8 },
 }
 
+/// Read the ITU-T H.273 colour_primaries / transfer_characteristics /
+/// matrix_coefficients triplet common to H.264 §E.2.1, H.265 §E.2.1,
+/// and H.266 §7.3.2.5 / H.274 §7.2 VUI colour-description blocks.
+///
+/// All three fields are one byte wide (`u(8)`) and decoded via the shared
+/// H.273 registry tables in this module. Callers read this helper inside
+/// their `colour_description_present_flag` / `vui_colour_description_present_flag`
+/// guard, then destructure the returned tuple into their local variables.
+pub(crate) fn read_h273_colour(
+    br: &mut bitreader::BitReader<'_>,
+) -> Result<(ColourPrimaries, TransferCharacteristics, MatrixCoefficients), CodecParseError> {
+    let primaries = ColourPrimaries::from_h273(br.read_u(8)? as u8);
+    let transfer = TransferCharacteristics::from_h273(br.read_u(8)? as u8);
+    let matrix = MatrixCoefficients::from_h273(br.read_u(8)? as u8);
+    Ok((primaries, transfer, matrix))
+}
+
 /// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: the normative
 /// syntax range is `0..=8` (bit_depth ∈ 8..=16). A value greater than 8 is
 /// out-of-spec (a malformed or fuzzed parameter set), not a real codec.

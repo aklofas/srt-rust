@@ -203,7 +203,7 @@ impl Muxer {
         let total = header_len + data.len();
         let data_packets = ts_packets_for(total);
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
-        // Validate-1 C3: see push_video for the rationale. Like KLV, data
+        // See push_video for the rationale. Like KLV, data
         // streams typically ride a non-PCR PID with an independent (often
         // low) push cadence, so PSI/PCR-only emissions frequently piggyback
         // on data pushes and must be budgeted in the BufferFull pre-check.

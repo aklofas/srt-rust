@@ -94,6 +94,10 @@ pub struct TsPacket<'a> {
     /// post-pointer-field if PSI). Empty if `has_payload=false`.
     pub payload: &'a [u8],
     pub has_payload: bool,
+    /// The full 188-byte packet this struct was parsed from. Retained so
+    /// duplicate detection (H.222.0 §2.4.3.3) can byte-compare a same-CC
+    /// packet against its predecessor without re-deriving the raw bytes.
+    pub raw: &'a [u8; 188],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,9 +110,10 @@ pub enum TsParseError {
 }
 
 pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
-    if buf.len() != TS_PACKET_SIZE {
-        return Err(TsParseError::Truncated);
-    }
+    let raw: &[u8; TS_PACKET_SIZE] = match buf.try_into() {
+        Ok(raw) => raw,
+        Err(_) => return Err(TsParseError::Truncated),
+    };
     if buf[0] != TS_SYNC_BYTE {
         return Err(TsParseError::NoSyncByte);
     }
@@ -198,6 +203,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
         random_access_indicator,
         payload,
         has_payload,
+        raw,
     })
 }
 

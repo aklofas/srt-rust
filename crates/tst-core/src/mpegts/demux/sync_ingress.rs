@@ -202,18 +202,30 @@ impl super::demuxer::Demuxer {
         if let Some(prev_cc) = self.cc_by_pid.get(&pkt.pid).copied() {
             let expected = (prev_cc + 1) & 0x0F;
 
-            // Spec-legal duplicate: same CC, no discontinuity_indicator.
-            // H.222.0 §2.4.3.3 — "a packet may be sent exactly twice with
-            // the same continuity_counter value; such a duplicate shall not
-            // cause discontinuity." Only one duplicate is allowed ("only-two"
-            // rule). A third packet with the same CC IS a real discontinuity
-            // — treat it like a CC jump. Payload comparison is not performed
-            // (the spec says the dup must be bit-identical, but we accept the
-            // relaxed interpretation used by ffmpeg and tsduck: same CC is
-            // sufficient to suppress the event).
-            if pkt.continuity_counter == prev_cc && !pkt.discontinuity_indicator {
+            // Spec-legal duplicate: same CC, no discontinuity_indicator, AND
+            // byte-identical content. H.222.0 §2.4.3.3 — "a packet may be
+            // sent exactly twice with the same continuity_counter value; such
+            // a duplicate shall not cause discontinuity", and "each byte of
+            // the original packet shall be duplicated" with the sole
+            // exception of the PCR field, which a duplicate may refresh —
+            // `pcr_masked_identical` implements exactly that compare. A
+            // same-CC packet whose OTHER bytes differ is NOT a duplicate
+            // (non-conformant input, e.g. an encoder that forgot to advance
+            // the counter): it falls through to the ordinary CC-jump path and
+            // its payload IS routed, so differing data is never swallowed.
+            // (`check_pcr` runs before this fn, so a suppressed duplicate's
+            // refreshed PCR is still tracked.) Only one duplicate is allowed
+            // ("only-two" rule). A third identical packet with the same CC IS
+            // a real discontinuity — treat it like a CC jump.
+            let is_identical_dup = pkt.continuity_counter == prev_cc
+                && !pkt.discontinuity_indicator
+                && self
+                    .last_pkt_raw_by_pid
+                    .get(&pkt.pid)
+                    .is_some_and(|prev| pcr_masked_identical(prev, pkt.raw));
+            if is_identical_dup {
                 if self.dup_by_pid.contains(&pkt.pid) {
-                    // Third packet with the same CC → real discontinuity.
+                    // Third identical packet with the same CC → real discontinuity.
                     self.dup_by_pid.remove(&pkt.pid);
                     real_jump = true;
                     self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
@@ -230,13 +242,16 @@ impl super::demuxer::Demuxer {
                 } else {
                     // First duplicate — suppress and mark.
                     self.dup_by_pid.insert(pkt.pid);
-                    // Do NOT update cc_by_pid — the next non-duplicate packet
-                    // on this PID must still expect prev_cc + 1.
+                    // Do NOT update cc_by_pid / last_pkt_raw_by_pid — the next
+                    // non-duplicate packet on this PID must still expect
+                    // prev_cc + 1, and a second duplicate must compare against
+                    // the ORIGINAL packet's bytes.
                     return (false, true);
                 }
             } else {
-                // Normal advance or discontinuity_indicator — clear any pending
-                // duplicate state for this PID.
+                // Normal advance, discontinuity_indicator, or a same-CC packet
+                // with differing bytes (routed as an ordinary CC jump below) —
+                // clear any pending duplicate state for this PID.
                 self.dup_by_pid.remove(&pkt.pid);
             }
 
@@ -272,8 +287,31 @@ impl super::demuxer::Demuxer {
             }
         }
         self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);
+        self.last_pkt_raw_by_pid.insert(pkt.pid, *pkt.raw);
         (real_jump, false)
     }
+}
+
+/// Byte-compare two 188-byte TS packets for the H.222.0 §2.4.3.3 duplicate
+/// rule: every byte must match EXCEPT the 6-byte `program_clock_reference`
+/// field, which a legal duplicate may refresh ("each byte of the original
+/// packet shall be duplicated, with the exception that in the program clock
+/// reference fields, if present, a valid value shall be encoded"). The PCR
+/// bytes (offsets 6..12) are masked only when BOTH packets carry adaptation
+/// fields with `PCR_flag = 1` and room for the field; any other divergence
+/// (header flags, adaptation length, payload bytes) means "not a duplicate".
+fn pcr_masked_identical(a: &[u8; 188], b: &[u8; 188]) -> bool {
+    if a == b {
+        return true;
+    }
+    let has_pcr = |p: &[u8; 188]| {
+        let afc = (p[3] >> 4) & 0b11;
+        afc & 0b10 != 0 && p[4] >= 7 && (p[5] & 0x10) != 0
+    };
+    if !(has_pcr(a) && has_pcr(b)) {
+        return false;
+    }
+    a[..6] == b[..6] && a[12..] == b[12..]
 }
 
 #[cfg(test)]
@@ -308,5 +346,61 @@ mod tests {
             0,
             "null PID packets must not populate cc_by_pid"
         );
+    }
+
+    /// Build a packet with adaptation field + PCR (afc='11') on `pid`.
+    /// PCR bytes 6..12 carry `pcr_seed`; payload follows the 8-byte AF.
+    fn pcr_packet(pid: u16, cc: u8, pcr_seed: u8) -> [u8; 188] {
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (pid >> 8) as u8 & 0x1F;
+        buf[2] = (pid & 0xFF) as u8;
+        buf[3] = 0x30 | (cc & 0x0F); // AF + payload
+        buf[4] = 7; // adaptation_field_length: flags + 6 PCR bytes
+        buf[5] = 0x10; // PCR_flag
+        for b in &mut buf[6..12] {
+            *b = pcr_seed;
+        }
+        buf
+    }
+
+    #[test]
+    fn pcr_masked_identical_exact_match() {
+        let a = payload_packet(0x0100, 3);
+        assert!(super::pcr_masked_identical(&a, &a));
+    }
+
+    #[test]
+    fn pcr_masked_identical_rejects_payload_difference() {
+        let a = payload_packet(0x0100, 3);
+        let mut b = a;
+        b[100] ^= 0x01;
+        assert!(!super::pcr_masked_identical(&a, &b));
+    }
+
+    #[test]
+    fn pcr_masked_identical_allows_refreshed_pcr() {
+        // H.222.0 §2.4.3.3: a legal duplicate may carry an updated PCR.
+        let a = pcr_packet(0x0100, 3, 0xAA);
+        let b = pcr_packet(0x0100, 3, 0xBB);
+        assert!(super::pcr_masked_identical(&a, &b));
+    }
+
+    #[test]
+    fn pcr_masked_identical_rejects_pcr_asymmetry() {
+        // One packet has a PCR, the other does not → header/AF bytes differ
+        // and the mask must NOT apply.
+        let a = pcr_packet(0x0100, 3, 0xAA);
+        let b = payload_packet(0x0100, 3);
+        assert!(!super::pcr_masked_identical(&a, &b));
+    }
+
+    #[test]
+    fn pcr_masked_identical_rejects_header_flag_difference() {
+        // Same payload but PUSI flipped → not a duplicate.
+        let a = payload_packet(0x0100, 3);
+        let mut b = a;
+        b[1] |= 0x40; // set payload_unit_start
+        assert!(!super::pcr_masked_identical(&a, &b));
     }
 }

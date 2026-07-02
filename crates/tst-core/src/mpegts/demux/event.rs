@@ -495,7 +495,7 @@ pub enum NonConformantIssue {
     /// **Vestigial — never emitted by [`Demuxer`](crate::mpegts::demux::Demuxer).**
     /// The PES reassembler silently discards any in-flight partial PES when a
     /// new PUSI arrives; this is the normal start-of-PES path, not a separate
-    /// diagnostic event. The variant is preserved for `#[non_exhaustive]`
+    /// diagnostic event. The variant is preserved for non-exhaustive-enum
     /// binary-compatibility parity only (same zero-emit-site status as
     /// `DemuxException.Kind::UNEXPECTED_EOF` in the Python binding).
     PusiMidPes,

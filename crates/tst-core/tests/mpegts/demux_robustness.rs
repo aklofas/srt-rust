@@ -746,3 +746,87 @@ fn cc_third_same_cc_fires_discontinuity() {
         "third packet with same CC must emit ContinuityJump (only-two rule)"
     );
 }
+
+/// Find the Nth video TS packet (PID 0x100) in `stream` and insert one copy
+/// with the SAME header (incl. CC) but a corrupted final payload byte.
+/// Models the non-conformant same-CC-different-bytes case that must NOT be
+/// classified as a duplicate.
+fn insert_video_packet_same_cc_different_payload(stream: &[u8], nth: usize) -> Vec<u8> {
+    let mut seen = 0usize;
+    let mut out = Vec::with_capacity(stream.len() + 188);
+    let mut i = 0;
+    while i + 188 <= stream.len() {
+        let pkt = &stream[i..i + 188];
+        out.extend_from_slice(pkt);
+        if pkt[0] == 0x47 {
+            let pid = ((u16::from(pkt[1] & 0x1F)) << 8) | u16::from(pkt[2]);
+            if pid == 0x0100 {
+                seen += 1;
+                if seen == nth {
+                    let mut modified = [0u8; 188];
+                    modified.copy_from_slice(pkt);
+                    modified[187] ^= 0xFF; // corrupt one payload byte
+                    out.extend_from_slice(&modified);
+                }
+            }
+        }
+        i += 188;
+    }
+    out.extend_from_slice(&stream[i..]);
+    out
+}
+
+/// DA-DEMUX-1 (e): a same-CC packet whose bytes DIFFER from its predecessor
+/// is NOT a spec-legal duplicate (H.222.0 §2.4.3.3 requires duplicates to be
+/// bit-identical apart from a refreshed PCR). It must be routed like any
+/// other packet — surfacing a `ContinuityJump` — so differing data is never
+/// silently swallowed. Regression test for the fix-round on the original
+/// CC-only detection, which mis-suppressed the malformed-pes-lenient
+/// scenario's deliberately-different packet.
+#[test]
+fn cc_same_cc_different_payload_not_suppressed() {
+    let clean = build_clean_stream();
+
+    let mut d_clean = Demuxer::new();
+    d_clean.feed(&clean).unwrap();
+    d_clean.flush();
+    let expected_aus = collect_video_raw_bytes(&mut d_clean);
+    let expected_total: usize = expected_aus.iter().map(Vec::len).sum();
+
+    let patched = insert_video_packet_same_cc_different_payload(&clean, 2);
+    let mut d = Demuxer::new();
+    d.feed(&patched).unwrap();
+    d.flush();
+
+    let mut saw_jump = false;
+    let mut aus = Vec::new();
+    while let Some(ev) = d.next_event() {
+        if matches!(
+            ev,
+            DemuxEvent::Discontinuity {
+                kind: DiscontinuityKind::ContinuityJump { .. },
+                ..
+            }
+        ) {
+            saw_jump = true;
+        }
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { raw, .. },
+            ..
+        } = ev
+        {
+            aus.push(raw.as_slice().to_vec());
+        }
+    }
+
+    assert!(
+        saw_jump,
+        "same-CC different-payload packet must surface ContinuityJump, not be suppressed"
+    );
+    let total: usize = aus.iter().map(Vec::len).sum();
+    assert!(
+        total > expected_total,
+        "the differing packet's payload must be routed (old lenient behavior), \
+         got {total} bytes vs clean {expected_total}"
+    );
+}

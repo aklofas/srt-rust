@@ -332,7 +332,7 @@ pub(crate) fn convert_event<'local>(
                     let (video_payload, _issues) =
                         split_video(raw, *codec, av1_carriage.unwrap_or_default());
                     let units = build_video_units(env, &video_payload)?;
-                    let codec_obj = codec_enum(env, "VideoCodec", video_codec_name(*codec))?;
+                    let codec_obj = enum_const(env, "VideoCodec", video_codec_name(*codec))?;
                     // `raw` parity with tst-py: the exact encoded AU as a heap
                     // (JVM-owned) copy — JDK < 22 forbids direct buffers over
                     // Rust memory.
@@ -365,7 +365,7 @@ pub(crate) fn convert_event<'local>(
                 SamplePayload::Audio { codec, frames } => {
                     let (typed_list, raw_buf, parse_err) =
                         build_audio_payload(env, *codec, frames.as_slice())?;
-                    let codec_obj = codec_enum(env, "AudioCodec", audio_codec_name(*codec))?;
+                    let codec_obj = enum_const(env, "AudioCodec", audio_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Audio",
                         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/AudioCodec;Ljava/util/List;Ljava/nio/ByteBuffer;Lorg/tstrans/CodecParseException;)V",
@@ -383,7 +383,7 @@ pub(crate) fn convert_event<'local>(
                 }
                 SamplePayload::Subtitle { codec, payload } => {
                     let buf = wrap_heap_byte_buffer(env, payload.as_slice())?;
-                    let codec_obj = codec_enum(env, "SubtitleCodec", subtitle_codec_name(*codec))?;
+                    let codec_obj = enum_const(env, "SubtitleCodec", subtitle_codec_name(*codec))?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Subtitle",
                         "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/SubtitleCodec;Ljava/nio/ByteBuffer;)V",
@@ -624,8 +624,8 @@ fn cfi_const<'local>(
 }
 
 /// Fetch an `org.tstrans.mpegts.{class}.{name}` enum constant via
-/// `get_static_field`. The `mpegts`-package twin of [`codec_enum`].
-fn enum_const<'local>(
+/// `get_static_field`. Also used by `pipeline` for mpegts-package codec enums.
+pub(crate) fn enum_const<'local>(
     env: &mut JNIEnv<'local>,
     class: &str,
     name: &str,
@@ -944,7 +944,7 @@ fn build_stream_kind<'local>(
 ) -> Result<JObject<'local>, ()> {
     match kind {
         StreamKind::Video(c) => {
-            let codec = codec_enum(env, "VideoCodec", video_codec_name(*c))?;
+            let codec = enum_const(env, "VideoCodec", video_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Video",
                 "(Lorg/tstrans/mpegts/VideoCodec;)V",
@@ -953,7 +953,7 @@ fn build_stream_kind<'local>(
             .map_err(|_| ())
         }
         StreamKind::Audio(c) => {
-            let codec = codec_enum(env, "AudioCodec", audio_codec_name(*c))?;
+            let codec = enum_const(env, "AudioCodec", audio_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Audio",
                 "(Lorg/tstrans/mpegts/AudioCodec;)V",
@@ -962,7 +962,7 @@ fn build_stream_kind<'local>(
             .map_err(|_| ())
         }
         StreamKind::Subtitle(c) => {
-            let codec = codec_enum(env, "SubtitleCodec", subtitle_codec_name(*c))?;
+            let codec = enum_const(env, "SubtitleCodec", subtitle_codec_name(*c))?;
             env.new_object(
                 "org/tstrans/mpegts/StreamKind$Subtitle",
                 "(Lorg/tstrans/mpegts/SubtitleCodec;)V",
@@ -990,16 +990,6 @@ fn build_stream_kind<'local>(
             )
             .map_err(|_| ()),
     }
-}
-
-/// Fetch a codec enum constant: `org.tstrans.mpegts.{class}.{name}` via
-/// `get_static_field`.
-pub(crate) fn codec_enum<'local>(
-    env: &mut JNIEnv<'local>,
-    class: &str,
-    name: &str,
-) -> Result<JObject<'local>, ()> {
-    enum_const(env, class, name)
 }
 
 /// Box an `Option<u16>` as a `java.lang.Integer` (`Integer.valueOf`) or Java

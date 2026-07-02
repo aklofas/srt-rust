@@ -176,6 +176,19 @@ enum BackpressureState {
     Overflow,
 }
 
+/// Build the poisoned-lock error for a named `send_*` site.
+///
+/// Called when `self.inner.lock()` returns `Err` (the Mutex is poisoned
+/// because a previous `send_*` call panicked mid-mutation). Routes to
+/// `MuxSenderError` with kind `TransportBroken` and a site-specific message
+/// so the C ABI surfaces a useful diagnostic via `tst_get_last_error_str()`.
+fn lock_poisoned(site: &'static str) -> MuxSenderError {
+    MuxSenderError::from(TransportError::Broken {
+        msg: alloc::format!("mux_sender: inner lock poisoned during {site}"),
+        errno_code: None,
+    })
+}
+
 impl<T: Transport> MuxSender<T> {
     pub fn new(transport: T, config: MuxerConfig) -> Result<Self, MuxError> {
         let span = info_span!(
@@ -277,17 +290,12 @@ impl<T: Transport> MuxSender<T> {
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy (recoverable path): poisoned inner lock means a
-        // previous panic happened mid-mutation. Route to MuxSenderError whose
-        // kind is TransportBroken with a site-specific message so the C ABI
-        // surfaces a useful diagnostic via tst_get_last_error_str().
-        // Precedent: the gap-buffer policy in `ManagedTransport::send_managed` /
-        // `drain_gap_if_alive` in reconnect/mod.rs.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_video".into(),
-                errno_code: None,
-            })
-        })?;
+        // previous panic happened mid-mutation. `lock_poisoned` routes to
+        // `MuxSenderError` with kind `TransportBroken` and a site-specific
+        // message so the C ABI surfaces a useful diagnostic via
+        // `tst_get_last_error_str()`. Precedent: the gap-buffer policy in
+        // `ManagedTransport::send_managed` / `drain_gap_if_alive` in reconnect/mod.rs.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_video"))?;
         inner.send_video(nal, pts.as_ticks(), key_frame)
     }
 
@@ -321,13 +329,8 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_klv".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_klv"))?;
         inner.send_klv(klv, pts.as_ticks(), metadata_service_id)
     }
 
@@ -358,13 +361,8 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_video_to".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_video_to"))?;
         inner.send_video_to(handle, nal, pts.as_ticks(), key_frame)
     }
 
@@ -399,12 +397,7 @@ impl<T: Transport> MuxSender<T> {
         dts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_video_to_with_dts".into(),
-                errno_code: None,
-            })
-        })?;
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_video_to_with_dts"))?;
         inner.send_video_to_with_dts(handle, nal, pts.as_ticks(), dts.as_ticks(), key_frame)
     }
 
@@ -438,13 +431,8 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_klv_to".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_klv_to"))?;
         inner.send_klv_to(handle, klv, pts.as_ticks(), metadata_service_id)
     }
 
@@ -472,13 +460,8 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_audio".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_audio"))?;
         inner.send_audio(frames, pts.as_ticks())
     }
 
@@ -507,13 +490,8 @@ impl<T: Transport> MuxSender<T> {
         frames: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_audio_to".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_audio_to"))?;
         inner.send_audio_to(handle, frames, pts.as_ticks())
     }
 
@@ -543,13 +521,8 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_subtitle".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_subtitle"))?;
         inner.send_subtitle(payload, pts.as_ticks())
     }
 
@@ -578,13 +551,8 @@ impl<T: Transport> MuxSender<T> {
         payload: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_subtitle_to".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_subtitle_to"))?;
         inner.send_subtitle_to(handle, payload, pts.as_ticks())
     }
 
@@ -615,13 +583,8 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_data".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_data"))?;
         inner.send_data(data, pts.as_ticks())
     }
 
@@ -656,13 +619,8 @@ impl<T: Transport> MuxSender<T> {
         data: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| {
-            MuxSenderError::from(TransportError::Broken {
-                msg: "mux_sender: inner lock poisoned during send_data_to".into(),
-                errno_code: None,
-            })
-        })?;
+        // Mutex-poisoning policy — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_data_to"))?;
         inner.send_data_to(handle, data, pts.as_ticks())
     }
 
@@ -947,25 +905,34 @@ impl<T: Transport> Drop for MuxSender<T> {
 pub type BoxedMuxSender = MuxSender<Box<dyn crate::Transport>>;
 
 impl<T: Transport> Inner<T> {
-    fn send_video(
+    /// Shared body for every `send_*` path: closed-check → drain pending →
+    /// push (via the caller-supplied closure) → back-pressure sample →
+    /// drain muxer. Called with a closure so the push arguments (handles,
+    /// PTS, data slices) don't need to be marshalled into a common enum.
+    fn push_then_drain(
         &mut self,
-        nal: &[u8],
-        pts_90khz: i64,
-        key_frame: bool,
+        push: impl FnOnce(&mut Muxer) -> Result<(), MuxError>,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
             return Err(TransportError::Closed.into());
         }
         // Drain any leftover from a previous failed call first.
         self.drain_pending()?;
-        // Push and drain new content. Sample back-pressure between the
-        // push (queue at peak) and the drain (queue back to zero).
-        let push_result = self
-            .muxer
-            .push_video(nal, Pts90khz::new(pts_90khz), key_frame);
+        // Push new content. Sample back-pressure between the push (queue at
+        // peak) and the drain (queue back to zero).
+        let push_result = push(&mut self.muxer);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
+    }
+
+    fn send_video(
+        &mut self,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), MuxSenderError> {
+        self.push_then_drain(|m| m.push_video(nal, Pts90khz::new(pts_90khz), key_frame))
     }
 
     fn send_klv(
@@ -974,16 +941,7 @@ impl<T: Transport> Inner<T> {
         pts_90khz: i64,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self
-            .muxer
-            .push_klv(klv, Pts90khz::new(pts_90khz), metadata_service_id);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_klv(klv, Pts90khz::new(pts_90khz), metadata_service_id))
     }
 
     fn send_video_to(
@@ -993,16 +951,7 @@ impl<T: Transport> Inner<T> {
         pts_90khz: i64,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result =
-            self.muxer
-                .push_video_to(handle, nal, Pts90khz::new(pts_90khz), key_frame);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_video_to(handle, nal, Pts90khz::new(pts_90khz), key_frame))
     }
 
     fn send_video_to_with_dts(
@@ -1013,20 +962,15 @@ impl<T: Transport> Inner<T> {
         dts_90khz: i64,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self.muxer.push_video_to_with_dts(
-            handle,
-            nal,
-            Pts90khz::new(pts_90khz),
-            Pts90khz::new(dts_90khz),
-            key_frame,
-        );
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| {
+            m.push_video_to_with_dts(
+                handle,
+                nal,
+                Pts90khz::new(pts_90khz),
+                Pts90khz::new(dts_90khz),
+                key_frame,
+            )
+        })
     }
 
     fn send_klv_to(
@@ -1036,27 +980,13 @@ impl<T: Transport> Inner<T> {
         pts_90khz: i64,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result =
-            self.muxer
-                .push_klv_to(handle, klv, Pts90khz::new(pts_90khz), metadata_service_id);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| {
+            m.push_klv_to(handle, klv, Pts90khz::new(pts_90khz), metadata_service_id)
+        })
     }
 
     fn send_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self.muxer.push_audio(frames, Pts90khz::new(pts_90khz));
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_audio(frames, Pts90khz::new(pts_90khz)))
     }
 
     fn send_audio_to(
@@ -1065,31 +995,15 @@ impl<T: Transport> Inner<T> {
         frames: &[u8],
         pts_90khz: i64,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
         // Muxer parameter order is `(handle, pts, frames)`; the public
         // pipeline API mirrors `send_video` / `send_klv` (data first).
-        let push_result = self
-            .muxer
-            .push_audio_to(handle, Pts90khz::new(pts_90khz), frames);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_audio_to(handle, Pts90khz::new(pts_90khz), frames))
     }
 
     fn send_subtitle(&mut self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
         // Muxer parameter order is `(pts, payload)`; we present
         // `(payload, pts)` for symmetry with `send_video` / `send_klv`.
-        let push_result = self.muxer.push_subtitle(Pts90khz::new(pts_90khz), payload);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_subtitle(Pts90khz::new(pts_90khz), payload))
     }
 
     fn send_subtitle_to(
@@ -1098,27 +1012,11 @@ impl<T: Transport> Inner<T> {
         payload: &[u8],
         pts_90khz: i64,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self
-            .muxer
-            .push_subtitle_to(handle, Pts90khz::new(pts_90khz), payload);
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_subtitle_to(handle, Pts90khz::new(pts_90khz), payload))
     }
 
     fn send_data(&mut self, data: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self.muxer.push_data(data, Pts90khz::new(pts_90khz));
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_data(data, Pts90khz::new(pts_90khz)))
     }
 
     fn send_data_to(
@@ -1127,16 +1025,7 @@ impl<T: Transport> Inner<T> {
         data: &[u8],
         pts_90khz: i64,
     ) -> Result<(), MuxSenderError> {
-        if self.closed {
-            return Err(TransportError::Closed.into());
-        }
-        self.drain_pending()?;
-        let push_result = self
-            .muxer
-            .push_data_to(handle, data, Pts90khz::new(pts_90khz));
-        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
-        push_result?;
-        self.drain_muxer()
+        self.push_then_drain(|m| m.push_data_to(handle, data, Pts90khz::new(pts_90khz)))
     }
 
     /// Sample muxer queue depth and emit `tracing::warn!` once when the

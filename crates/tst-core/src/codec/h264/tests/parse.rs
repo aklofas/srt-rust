@@ -706,6 +706,75 @@ fn chroma_sample_loc_type_256_rejected_not_silently_truncated() {
     }
 }
 
+/// Craft a Baseline SPS with configurable `log2_max_frame_num_minus4` and
+/// `log2_max_pic_order_cnt_lsb_minus4` (pic_order_cnt_type = 0), no VUI.
+fn craft_sps_with_log2_fields(frame_num_minus4: u32, poc_lsb_minus4: u32) -> Vec<u8> {
+    use crate::codec::test_util::BitWriter;
+    let mut bw = BitWriter::new();
+    bw.write(66, 8); // profile_idc = 66 (Baseline)
+    bw.write(0, 8); // constraint_set_flags
+    bw.write(30, 8); // level_idc
+    bw.write_ue(0); // seq_parameter_set_id = 0
+    bw.write_ue(frame_num_minus4); // log2_max_frame_num_minus4
+    bw.write_ue(0); // pic_order_cnt_type = 0
+    bw.write_ue(poc_lsb_minus4); // log2_max_pic_order_cnt_lsb_minus4
+    bw.write_ue(1); // max_num_ref_frames = 1
+    bw.write(0, 1); // gaps_in_frame_num_value_allowed_flag
+    bw.write_ue(9); // pic_width_in_mbs_minus1
+    bw.write_ue(7); // pic_height_in_map_units_minus1
+    bw.write(1, 1); // frame_mbs_only_flag
+    bw.write(0, 1); // direct_8x8_inference_flag
+    bw.write(0, 1); // frame_cropping_flag
+    bw.write(0, 1); // vui_parameters_present_flag
+    bw.end_rbsp();
+    bw.bytes
+}
+
+/// DA-H26X-4: H.264 §7.4.2.1.1 specifies log2_max_frame_num_minus4 ∈ [0, 12].
+/// Value 12 (the spec maximum) must be accepted.
+#[test]
+fn log2_max_frame_num_minus4_12_accepted() {
+    let rbsp = craft_sps_with_log2_fields(12, 0);
+    let _sps = parse_sps(&rbsp).expect("log2_max_frame_num_minus4=12 is in-spec");
+}
+
+/// DA-H26X-4: value 13 is beyond the [0,12] spec range and must be rejected.
+/// The previous u8::try_from pattern accepted 13 (it fits in u8), silently
+/// enabling malformed streams.
+#[test]
+fn log2_max_frame_num_minus4_13_rejected() {
+    let rbsp = craft_sps_with_log2_fields(13, 0);
+    match parse_sps(&rbsp) {
+        Err(CodecParseError::ReservedValue { field, value }) => {
+            assert_eq!(field, "log2_max_frame_num_minus4");
+            assert_eq!(value, 13);
+        }
+        other => panic!("expected ReservedValue(13), got {other:?}"),
+    }
+}
+
+/// DA-H26X-4: H.264 §7.4.2.1.1 specifies log2_max_pic_order_cnt_lsb_minus4 ∈ [0, 12].
+/// Value 12 must be accepted (pic_order_cnt_type = 0 path).
+#[test]
+fn log2_max_pic_order_cnt_lsb_minus4_12_accepted() {
+    let rbsp = craft_sps_with_log2_fields(0, 12);
+    let _sps = parse_sps(&rbsp).expect("log2_max_pic_order_cnt_lsb_minus4=12 is in-spec");
+}
+
+/// DA-H26X-4: value 13 is beyond the [0,12] spec range and must be rejected.
+/// Previously unchecked — any u32 was silently accepted.
+#[test]
+fn log2_max_pic_order_cnt_lsb_minus4_13_rejected() {
+    let rbsp = craft_sps_with_log2_fields(0, 13);
+    match parse_sps(&rbsp) {
+        Err(CodecParseError::ReservedValue { field, value }) => {
+            assert_eq!(field, "log2_max_pic_order_cnt_lsb_minus4");
+            assert_eq!(value, 13);
+        }
+        other => panic!("expected ReservedValue(13), got {other:?}"),
+    }
+}
+
 /// F-01 (codec): a non-conformant scaling-list `delta_scale` (outside the
 /// H.264 §7.4.2.1.1.1 [-128,127] range) must not panic. Before the fix, the
 /// `last_scale + delta_scale + 256` i32 add in `skip_scaling_list` overflowed

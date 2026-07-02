@@ -241,18 +241,18 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     // bits as a valid one would (keeps the error site spec-accurate).
     let chroma_format = chroma_format_from(chroma_format_idc)?;
 
-    let log2_max_frame_num_minus4_raw = br.read_ue()?;
-    let log2_max_frame_num_minus4 = u8::try_from(log2_max_frame_num_minus4_raw).map_err(|_| {
-        CodecParseError::ReservedValue {
-            field: "log2_max_frame_num_minus4",
-            value: log2_max_frame_num_minus4_raw,
-        }
-    })?;
+    // H.264 §7.4.2.1.1: log2_max_frame_num_minus4 ∈ [0, 12].
+    // The old u8::try_from only caught values > 255; values 13–255 were
+    // accepted as in-spec.  Use read_ue_max to enforce the tighter bound.
+    let log2_max_frame_num_minus4 =
+        br.read_ue_max("log2_max_frame_num_minus4", 12)? as u8;
 
     let pic_order_cnt_type = br.read_ue()?;
     match pic_order_cnt_type {
         0 => {
-            let _log2_max_pic_order_cnt_lsb_minus4 = br.read_ue()?;
+            // H.264 §7.4.2.1.1: log2_max_pic_order_cnt_lsb_minus4 ∈ [0, 12].
+            let _log2_max_pic_order_cnt_lsb_minus4 =
+                br.read_ue_max("log2_max_pic_order_cnt_lsb_minus4", 12)?;
         }
         1 => {
             let _delta_pic_order_always_zero_flag = br.read_bool()?;

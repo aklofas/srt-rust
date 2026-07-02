@@ -10,8 +10,8 @@
 //! returns false until the next interval boundary.
 
 use super::psi::{PmtStreamEntry, write_pat_packet, write_pmt_packet};
-use super::ts::write_pcr_only_packet;
 use super::state::{audio_stream_type_byte, klv_stream_type_byte, video_stream_type_byte};
+use super::ts::write_pcr_only_packet;
 use super::{Muxer, StreamSpec};
 use crate::mpegts::common::{Pcr27mhz, Pts90khz};
 use alloc::vec::Vec;

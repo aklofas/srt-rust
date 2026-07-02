@@ -342,7 +342,7 @@ impl Muxer {
     ///
     /// The split borrows (`&self.pes_scratch[cursor..]` + `&mut self.counters`
     /// + `self.queue`) are on disjoint fields; NLL handles this correctly
-    /// within the method body.
+    ///   within the method body.
     pub(super) fn drain_pes_scratch(&mut self, pid: u16, first_af: self::ts::AdaptationField) {
         let mut cursor = 0;
         let mut first = true;
@@ -378,7 +378,7 @@ impl Muxer {
 ///
 /// All five `push_*.rs` files expose a `*_handles(&self)` method with an
 /// identical flat_map body; routing them here eliminates the duplication.
-pub(self) fn all_handles<T, H>(streams: &[Vec<T>], pack: fn(usize, usize) -> H) -> Vec<H> {
+fn all_handles<T, H>(streams: &[Vec<T>], pack: fn(usize, usize) -> H) -> Vec<H> {
     streams
         .iter()
         .enumerate()
@@ -395,7 +395,7 @@ pub(self) fn all_handles<T, H>(streams: &[Vec<T>], pack: fn(usize, usize) -> H) 
 /// Replaces identical `.iter().enumerate().find(…).map(…).expect(…)` blocks
 /// in `single_video_handle`, `single_klv_handle`, `single_data_handle`, and
 /// the inline finds in `push_audio` / `push_subtitle`.
-pub(self) fn locate_lone_program<T>(streams: &[Vec<T>]) -> usize {
+fn locate_lone_program<T>(streams: &[Vec<T>]) -> usize {
     streams
         .iter()
         .enumerate()

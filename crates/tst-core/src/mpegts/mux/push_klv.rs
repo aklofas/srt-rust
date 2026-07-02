@@ -249,18 +249,17 @@ impl Muxer {
         // the PCR PID's own (zero, here) push cadence.
         self.reserve_preamble(prog_idx, pts, klv_pid, klv_packets)?;
 
-        let first_af = if self.pcr_pids[prog_idx] == klv_pid
-            && self.pcr_due(prog_idx, pts.as_ticks())
-        {
-            let pcr = Pcr27mhz::from_pts(pts);
-            self.pcr_last[prog_idx] = Some(pcr.as_ticks());
-            AdaptationField {
-                pcr: Some(pcr),
-                random_access: false,
-            }
-        } else {
-            AdaptationField::default()
-        };
+        let first_af =
+            if self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts.as_ticks()) {
+                let pcr = Pcr27mhz::from_pts(pts);
+                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
+                AdaptationField {
+                    pcr: Some(pcr),
+                    random_access: false,
+                }
+            } else {
+                AdaptationField::default()
+            };
         self.drain_pes_scratch(klv_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above. Stats

@@ -480,7 +480,11 @@ pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SubtitleStreamHandle(pub(super) u32);
 
-impl_stream_handle!(SubtitleStreamHandle, StreamKind::Subtitle, "SubtitleStreamHandle");
+impl_stream_handle!(
+    SubtitleStreamHandle,
+    StreamKind::Subtitle,
+    "SubtitleStreamHandle"
+);
 
 /// Opaque handle to a configured data stream on a `Muxer`.
 ///

@@ -4,7 +4,7 @@ use super::model::{EntropyCodingMode, H264ParameterSets, H264Pps, H264Sps};
 use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ChromaFormat, CodecParseError, ColorInfo, ColourPrimaries, MatrixCoefficients, Rational,
-    TransferCharacteristics, aspect_ratio_idc_to_sar, validate_bit_depth_minus8,
+    TransferCharacteristics, aspect_ratio_idc_to_sar, read_h273_colour, validate_bit_depth_minus8,
 };
 use crate::mpegts::demux::event::NalUnit;
 
@@ -432,9 +432,7 @@ fn parse_vui(br: &mut BitReader<'_>) -> Result<VuiOut, CodecParseError> {
         full_range = br.read_bool()?;
         let colour_description_present_flag = br.read_bool()?;
         if colour_description_present_flag {
-            primaries = ColourPrimaries::from_h273(br.read_u(8)? as u8);
-            transfer = TransferCharacteristics::from_h273(br.read_u(8)? as u8);
-            matrix = MatrixCoefficients::from_h273(br.read_u(8)? as u8);
+            (primaries, transfer, matrix) = read_h273_colour(br)?;
         }
     }
 

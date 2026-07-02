@@ -6,7 +6,7 @@ use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
-    aspect_ratio_idc_to_sar,
+    aspect_ratio_idc_to_sar, read_h273_colour,
 };
 
 pub(crate) struct VuiOut {
@@ -45,9 +45,7 @@ pub(crate) fn parse(
         full_range = br.read_bool()?;
         let colour_description_present_flag = br.read_bool()?;
         if colour_description_present_flag {
-            primaries = ColourPrimaries::from_h273(br.read_u(8)? as u8);
-            transfer = TransferCharacteristics::from_h273(br.read_u(8)? as u8);
-            matrix = MatrixCoefficients::from_h273(br.read_u(8)? as u8);
+            (primaries, transfer, matrix) = read_h273_colour(br)?;
         }
     }
 

@@ -10,7 +10,7 @@ use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
-    aspect_ratio_idc_to_sar,
+    aspect_ratio_idc_to_sar, read_h273_colour,
 };
 
 /// Parse H.274 V4 §7.2 `vui_parameters( payloadSize )`, returning `ColorInfo`
@@ -58,9 +58,7 @@ pub(super) fn parse_h266_vui(br: &mut BitReader<'_>) -> Result<Option<ColorInfo>
     let mut transfer = TransferCharacteristics::Unspecified;
     let mut matrix = MatrixCoefficients::Unspecified;
     if vui_colour_description_present_flag {
-        primaries = ColourPrimaries::from_h273(br.read_u(8)? as u8); // u(8)
-        transfer = TransferCharacteristics::from_h273(br.read_u(8)? as u8); // u(8)
-        matrix = MatrixCoefficients::from_h273(br.read_u(8)? as u8); // u(8)
+        (primaries, transfer, matrix) = read_h273_colour(br)?;
         full_range = br.read_bool()?; // u(1) vui_full_range_flag
     }
 

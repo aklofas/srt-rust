@@ -1,11 +1,11 @@
 //! `RawBytes` — a lazy, content-comparable holder for a demuxed payload.
 //!
-//! WP-E E1 (PY-01). The demuxer no longer copies each video/audio payload into
-//! a Python `bytes` at demux time. Instead it hands the underlying
-//! [`SharedBytes`] (a cheap `Arc` bump — no payload copy) to a `RawBytes`
-//! holder. The Python `bytes` is materialized on first `.raw` access and cached
-//! thereafter, so a caller that filters the stream or reads only PMT/KLV never
-//! pays for the media-payload copy.
+//! The demuxer no longer copies each video/audio payload into a Python `bytes`
+//! at demux time. Instead it hands the underlying [`SharedBytes`] (a cheap
+//! `Arc` bump — no payload copy) to a `RawBytes` holder. The Python `bytes`
+//! is materialized on first `.raw` access and cached thereafter, so a caller
+//! that filters the stream or reads only PMT/KLV never pays for the
+//! media-payload copy.
 //!
 //! Retention tradeoff: holding the event keeps the underlying demux buffer
 //! (the `Arc`) alive until the event is dropped, even if `.raw` is never
@@ -14,8 +14,8 @@
 //! regardless (see `docs/specs/2026-06-08-raw-first-sample-model-design.md`
 //! §4.1).
 //!
-//! Task 2 of WP-E reuses this holder from `src/pipeline.rs`, hence the
-//! standalone module.
+//! This holder is shared by `src/pipeline.rs` and the demux event types,
+//! hence the standalone module.
 
 // PyO3 0.22 + Rust 2024 edition: the #[pymethods] macro generates calls to
 // internal unsafe functions inside unsafe fn bodies. The `unsafe_op_in_unsafe_fn`

@@ -1,6 +1,6 @@
 //! Python bindings for tst-tcp (`tstrans.tcp`). Gated on `feature = "tcp"`.
 //!
-//! Populated by Plan A5b Wave B (Tasks 6-9). Mirrors the udp/ module
+//! Mirrors the udp/ module
 //! structure but wraps a single dual-trait `TcpTransport` that implements
 //! both `Transport` (sender) and `RecvTransport` (receiver).
 //!
@@ -28,9 +28,9 @@
 //! fallback through Python `bytes()` builtin for `bytearray`/`memoryview`.
 //!
 //! Error mapping: `tst_tcp::error::TcpError` -> `tstrans.exceptions.TcpError`
-//! with `.kind` set to one of the eight `TcpErrorKind` variants. The 28th
-//! bash ratchet `scripts/check-py-tcp-error-mapping-coverage.sh` enforces
-//! that every `TcpErrorKind` variant has at least one literal
+//! with `.kind` set to one of the eight `TcpErrorKind` variants.
+//! `scripts/check/python/error-mapping-coverage.sh` enforces that every
+//! `TcpErrorKind` variant has at least one literal
 //! `make_tcp_error(py, "<VARIANT>", ...)` call site in this crate.
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]

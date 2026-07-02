@@ -17,7 +17,7 @@ mod raw_bytes;
 mod rtp;
 #[cfg(feature = "srt")]
 mod srt;
-// Plan A5b — udp / tcp / hls / rist transport bindings (default-on).
+// udp / tcp / hls / rist transport bindings (default-on).
 #[cfg(feature = "udp")]
 mod udp;
 #[cfg(feature = "tcp")]
@@ -65,7 +65,7 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     mpegts::register(m)?;
     klv::register(m)?;
-    // Lazy `.raw` holder backing DemuxEvent.Video/.Audio (WP-E PY-01).
+    // Lazy `.raw` holder backing DemuxEvent.Video/.Audio.
     m.add_class::<crate::raw_bytes::RawBytes>()?;
     // Stream handle newtypes. Registered here (not in mux::register)
     // because they were the first mux surface to land in src/mux.rs.
@@ -88,15 +88,13 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // codec submodule — shared types, NalUnit, Obu, and per-codec
     // PyClasses.
     codec::register(m)?;
-    // rtp submodule — RTP + RTSP bindings (Wave A populates the
-    // contents).
+    // rtp submodule — RTP + RTSP bindings.
     #[cfg(feature = "rtp")]
     rtp::register(m)?;
-    // srt submodule — SRT transport bindings (Wave A populates the
-    // contents).
+    // srt submodule — SRT transport bindings.
     #[cfg(feature = "srt")]
     srt::register(m)?;
-    // Plan A5b — udp / tcp / hls / rist submodules (waves populate contents).
+    // udp / tcp / hls / rist submodules.
     #[cfg(feature = "udp")]
     udp::register(m)?;
     #[cfg(feature = "tcp")]

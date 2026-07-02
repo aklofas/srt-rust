@@ -1,4 +1,4 @@
-//! Wave A Task 22 — `RtspServer`, `MountHandle`, `RtspServerConfig`.
+//! `RtspServer`, `MountHandle`, `RtspServerConfig` for RTP/RTSP.
 //!
 //! Bindings for `tst_rtp::rtsp::server::RtspServer` + `MountHandle`.
 //! Construction goes through the pure-Python `RtspServerConfig`
@@ -34,14 +34,14 @@ use crate::mux::{
 };
 
 // ---------------------------------------------------------------------------
-// Bytes-like extraction (audit #10 pattern from plan #96).
+// Bytes-like extraction.
 // ---------------------------------------------------------------------------
 
 /// Coerce a Python bytes-like argument (`bytes`, `bytearray`,
 /// `memoryview`, NumPy `uint8`) to an owned `Py<PyBytes>` strong
 /// reference whose `.as_bytes()` borrows live across a subsequent
 /// `py.allow_threads()` call. Same pattern as
-/// `bindings/python/src/mpegts.rs::PyDemuxer::feed` (audit #10).
+/// `bindings/python/src/mpegts.rs::PyDemuxer::feed`.
 ///
 /// Fast path: a real `bytes` value already satisfies the buffer
 /// requirement and is returned as-is (no copy).
@@ -130,10 +130,9 @@ fn mount_error_to_pyerr(py: Python<'_>, e: tst_rtp::error::MountError) -> PyErr 
 /// (idempotent). Calling `.cancel()` aborts every in-flight session at
 /// its next poll boundary, bypassing the graceful Notice-5402 path.
 ///
-/// Note: this is the server-flavoured cancel handle. T20 (Wave A
-/// transport) may introduce a separate `CancelHandle` for `Sender` /
-/// `Receiver`; they are distinct types (the server token is tokio-aware,
-/// the transport one is thread-only).
+/// Note: this is the server-flavoured cancel handle. The `CancelHandle` for
+/// `Sender` / `Receiver` is a distinct type (the server token is
+/// tokio-aware; the transport one is thread-only).
 #[pyclass(name = "RtspServerCancelHandle", module = "tstrans.rtp", frozen)]
 #[derive(Clone)]
 pub struct PyRtspServerCancelHandle {
@@ -308,8 +307,7 @@ impl PyMountHandle {
 
     // ── Push surface — single stream variants ──────────────────────────────
     //
-    // `pts` is keyword-only on every push method per plan #96 Wave C
-    // normalization. Each method wraps the Rust call in
+    // `pts` is keyword-only on every push method. Each method wraps the Rust call in
     // `py.allow_threads(|| ...)` so other Python threads can run while
     // the muxer + broadcast fanout proceed.
 

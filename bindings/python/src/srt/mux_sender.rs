@@ -1,4 +1,4 @@
-//! Wave B Task 5 — `MuxSender` convenience wrapper for SRT.
+//! `MuxSender` convenience wrapper for SRT.
 //!
 //! Wraps `tst_pipeline::MuxSender<tst_srt::SrtTransport>`: build a libsrt
 //! caller-mode `MuxSender` from a URL and a `MuxerProgramConfig` in a
@@ -28,8 +28,8 @@
 //!   internally serialise via a `Mutex<Inner>`.
 //! - `Option` so `close()` / `__exit__` can drop the inner sender while
 //!   keeping the PyClass instance addressable for idempotent closes.
-//! - Bytes-like extraction: the audit-#10 two-path pattern (fast `bytes`
-//!   downcast, fallback through Python's `bytes()` builtin coercion).
+//! - Bytes-like extraction: fast `bytes` downcast, fallback through
+//!   Python's `bytes()` builtin coercion (abi3-py310 two-path pattern).
 //! - GIL release: every push method + `from_url` runs the underlying I/O
 //!   under `py.allow_threads`. The `Py<PyBytes>` ref pinning the slice
 //!   lives on the caller's Python frame, so GC can't collect it while we

@@ -4,13 +4,11 @@
 //!
 //! State machine: Idle → Described (after DESCRIBE) → SettingUp (after
 //! SETUP) → Playing (after PLAY) → TornDown (after TEARDOWN or
-//! disconnect). v1 keeps state in [`ServerSessionState`]; Wave D extends
-//! with fan-out subscription handle and transport choice
-//! (Udp/TcpInterleaved).
+//! disconnect). State lives in [`ServerSessionState`] with fan-out
+//! subscription handle and transport choice (Udp/TcpInterleaved).
 //!
-//! A TLS variant `handle_connection_tls` is gated on `feature = "tls"`
-//! AND `TokioTlsServerStream` existing — T11 lands the `tokio-rustls`
-//! integration; until then the TLS path is unimplemented here.
+//! A TLS variant `handle_connection_tls` is gated on `feature = "tls"`.
+//! Without `tokio-rustls`, the TLS path is not implemented.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -61,8 +59,8 @@ impl Drop for SessionSlot {
 const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Per-session state. Lives for the duration of one client's TCP
-/// connection. Wave D (T16) extends with transport choice + allocated
-/// UDP sockets / interleaved channels.
+/// connection. Tracks transport choice and allocated UDP sockets /
+/// interleaved channels.
 pub struct ServerSessionState {
     /// RTSP session ID — None pre-SETUP, Some after SETUP returns 200.
     pub session_id: Option<String>,
@@ -70,8 +68,8 @@ pub struct ServerSessionState {
     /// pre-SETUP.
     pub mount_path: Option<String>,
     /// Stable nonce for Digest auth — generated once per connection and
-    /// emitted in every WWW-Authenticate. Wave D may rotate per
-    /// stale=true.
+    /// emitted in every WWW-Authenticate (rotation via stale=true is
+    /// not yet implemented).
     pub auth_nonce: String,
     /// Count of consecutive 401-bounced requests. After 3 in a row the
     /// session closes (basic DoS guard).
@@ -89,9 +87,9 @@ pub struct ServerSessionState {
     /// Interleaved RTP+RTCP channel pair (for TCP-interleaved sessions).
     /// `None` for UDP sessions or pre-SETUP.
     pub interleaved_channels: Option<(u8, u8)>,
-    /// JoinHandle for the per-peer fanout subscriber task (Wave C T13's
-    /// `spawn_peer_fanout`). `Some` after PLAY, `None` after PAUSE or
-    /// TEARDOWN. PAUSE may re-spawn on a subsequent PLAY.
+    /// JoinHandle for the per-peer fanout subscriber task (`spawn_peer_fanout`).
+    /// `Some` after PLAY, `None` after PAUSE or TEARDOWN.
+    /// PAUSE may re-spawn on a subsequent PLAY.
     pub fanout_handle: Option<tokio::task::JoinHandle<()>>,
     /// CancellationToken for the per-peer task. PAUSE cancels + replaces
     /// with a fresh token so a subsequent PLAY can re-spawn; TEARDOWN

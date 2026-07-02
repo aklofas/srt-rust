@@ -5,9 +5,8 @@
 //! `Authorization` are direct mirrors. Server emits challenges; client
 //! emits responses; server verifies by recomputing the same Digest math.
 //!
-//! The `dead_code` allow at module level is scoped to this submodule:
-//! Wave A ships the primitives; Wave B's `handlers.rs` (Task 10) is the
-//! first consumer. The allow comes off when Wave B lands.
+//! The `dead_code` allow at module level is scoped to this submodule
+//! (consumed by `handlers.rs`).
 
 #![allow(dead_code)]
 

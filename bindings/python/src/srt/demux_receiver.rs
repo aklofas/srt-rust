@@ -1,4 +1,4 @@
-//! Wave B Task 5 — `DemuxReceiver` convenience wrapper for SRT.
+//! `DemuxReceiver` convenience wrapper for SRT.
 //!
 //! Wraps `tst_pipeline::DemuxReceiver<tst_srt::SrtTransport>`: bind a
 //! libsrt listener-mode receiver on a URL, accept one peer, demux the

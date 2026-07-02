@@ -1,4 +1,4 @@
-//! Wave B Task 6 — `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`.
+//! `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`.
 //!
 //! Frozen PyClasses + IntEnum mirror of `tst_pipeline::reconnect` types.
 //! Construct via classmethods (`BackoffStrategy`) or kwargs
@@ -6,8 +6,8 @@
 //! interactions, no GIL release boundaries, no error mapping
 //! involvement.
 //!
-//! Inner Rust types are exposed via `pub(crate)` fields so Wave C T7/T8
-//! (`ManagedSender` etc.) can lift them into
+//! Inner Rust types are exposed via `pub(crate)` fields so
+//! `ManagedSender` etc. can lift them into
 //! `ManagedTransport::new(.., factory, policy)` without re-translation.
 //!
 //! ## Drift from plan sketch

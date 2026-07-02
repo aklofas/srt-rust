@@ -1,4 +1,4 @@
-//! Wave B Task 23 — `DemuxReceiver` convenience wrapper.
+//! `DemuxReceiver` convenience wrapper for RTP.
 //!
 //! Wraps `tst_pipeline::DemuxReceiver<tst_rtp::RtpRecvTransport>`:
 //! bind a UDP RTP receiver to a URL, demux the resulting MPEG-TS

@@ -7,9 +7,7 @@
 //! - `client`      — `RtspClient` + `RtspSession` + auth dataclasses
 //! - `server`      — `RtspServer` + `MountHandle` (16 push methods)
 //!
-//! Stage 2 Wave A populates `transport`, `client`, `server` in parallel;
-//! Wave B fills `mux_sender` + `demux_receiver` + type stubs; Wave C does
-//! integration tests + README. Bootstrap (T19) lands the scaffold.
+//! All submodules are fully implemented.
 
 use pyo3::prelude::*;
 

@@ -1,6 +1,6 @@
 //! Python bindings for tst-rist (`tstrans.rist`). Gated on `feature = "rist"`.
 //!
-//! Populated by Plan A5b Wave D (Tasks 15-18). Provides:
+//! Provides:
 //! - `Transport` / `RecvTransport` — send/recv RIST datagrams.
 //! - `TransportBuilder` / `RecvTransportBuilder` — fluent builders.
 //! - `EncryptionKey` — AES-128/192/256 PSK with SecretString discipline

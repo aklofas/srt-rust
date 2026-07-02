@@ -93,7 +93,7 @@ impl RistTransport {
         }
 
         // Apply cfg overlays. apply_peer_overrides is pub(crate) so recv.rs
-        // (Wave D) can reuse it.
+        // can reuse it.
         if let Err(e) = apply_peer_overrides(peer_config, cfg) {
             unsafe {
                 rist_sys::rist_peer_config_free2(&mut peer_config);

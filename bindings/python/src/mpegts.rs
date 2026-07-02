@@ -180,10 +180,9 @@ fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<
 }
 
 /// Translate a Python `DemuxerConfig` dataclass instance to a Rust
-/// `DemuxerConfig`. Crate-public so the `tstrans.rtp.DemuxReceiver`
-/// wrapper (Wave B Task 23) can share the same field-extraction
-/// logic — both surfaces accept the same dataclass and must produce
-/// identical Rust configurations.
+/// `DemuxerConfig`. Crate-public so `tstrans.rtp.DemuxReceiver` can
+/// share the same field-extraction logic — both surfaces accept the
+/// same dataclass and must produce identical Rust configurations.
 pub(crate) fn build_demuxer_config(
     py: Python<'_>,
     cfg: &Bound<'_, PyAny>,
@@ -709,7 +708,7 @@ fn convert_sample_event(
             kwargs.set_item("codec", video_codec_to_py(py, mpegts, codec)?)?;
             // Lazy raw: hand the SharedBytes to the holder (cheap Arc bump, no
             // payload copy). The PyBytes copy is deferred to first `.raw`
-            // access (WP-E PY-01). `raw.clone()` is the Arc clone.
+            // access. `raw.clone()` is the Arc clone.
             kwargs.set_item(
                 "raw",
                 Py::new(py, crate::raw_bytes::RawBytes::from_shared(raw.clone()))?,
@@ -734,8 +733,8 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", audio_codec_to_py(py, mpegts, codec)?)?;
-            // Lazy raw: defer the PyBytes copy to first `.raw` access (WP-E
-            // PY-01). `frames.clone()` is a cheap Arc bump.
+            // Lazy raw: defer the PyBytes copy to first `.raw` access.
+            // `frames.clone()` is a cheap Arc bump.
             kwargs.set_item(
                 "raw",
                 Py::new(py, crate::raw_bytes::RawBytes::from_shared(frames.clone()))?,

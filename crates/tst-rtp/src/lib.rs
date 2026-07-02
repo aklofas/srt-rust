@@ -27,7 +27,7 @@ pub mod sdp;
 pub mod transport;
 pub mod url;
 
-// Phase 1 (unchanged).
+// RTP transport.
 pub use builder::{RtpRecvSocketBuilder, RtpSocketBuilder};
 pub use cancel::RtpCancelHandle;
 pub use clock::RtpClock;
@@ -35,7 +35,7 @@ pub use packet::{Parsed, RTP_HEADER_LEN, RTP_PT_MP2T, RTP_VERSION, RtpHeader, Rt
 pub use transport::{ConnectError, RtpRecvTransport, RtpStats, RtpTransport};
 pub use url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
-// Phase 2 — populated by subsequent tasks as items become real.
+// RTSP client.
 pub use builder::RtspClientBuilder;
 pub use error::RtspError;
 pub use rtcp::ingest::{SrAnchor, compute_rtt_us, ingest_rr, ingest_sr, system_time_to_ntp_mid};
@@ -54,7 +54,7 @@ pub use sdp::pick::pick_mp2t;
 pub use sdp::{Sdp, SdpMedia};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
 
-// Phase 3 — RTSP server. Populated incrementally across Waves A-G.
+// RTSP server.
 pub use builder::RtspServerBuilder;
 pub use cancel::RtspServerCancelHandle;
 pub use error::{MountError, RtspServerError};

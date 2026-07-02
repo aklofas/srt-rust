@@ -1,4 +1,4 @@
-//! Wave A Task 20 — `Sender`, `Receiver`, `SocketStats`, `CancelHandle`.
+//! `Sender`, `Receiver`, `SocketStats`, `CancelHandle` for RTP.
 //!
 //! PyO3 wrappers for `tst_rtp::RtpTransport` (send) and
 //! `tst_rtp::RtpRecvTransport` (recv).  Each PyClass wraps a single

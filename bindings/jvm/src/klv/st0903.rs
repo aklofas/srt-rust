@@ -313,9 +313,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeVmtiStandaloneStrictCompl
 /// Build a `org.tstrans.klv.VmtiLs` Java record from a Rust `VmtiLs`
 /// via the public mutable `Builder`. Mirrors `convert_vmti_ls` in tst-py.
 ///
-/// The targets list is built by iterating `v.targets`, building each
-/// `VTargetPack` inside its own `with_local_frame` so per-target JNI refs
-/// are reclaimed before the next iteration — bounded live-ref count.
+/// Each `VTargetPack` in the targets list is built AND added to the list
+/// inside its own `with_local_frame` so per-target JNI refs are reclaimed
+/// before the next iteration — the live local-ref count stays bounded
+/// regardless of the target count in the VMTI.
 fn build_vmti(env: &mut JNIEnv<'_>, v: &RustVmtiLs) -> jni::errors::Result<jobject> {
     // Reserve enough table slots for the outer frame: ~16 scalars + builder
     // + lists + targets list + scratch.
@@ -443,20 +444,24 @@ fn build_vmti(env: &mut JNIEnv<'_>, v: &RustVmtiLs) -> jni::errors::Result<jobje
     }
 
     // Tag 101 — VTargetSeries: build targets list.
-    // Each VTargetPack is built inside its own with_local_frame so per-target
-    // refs are reclaimed before the next target.
+    // Each VTargetPack is built AND added to the list inside its own local
+    // frame so per-target refs are reclaimed before the next iteration — only
+    // targets_list (outer frame) survives the loop. This bounds the live
+    // local-ref count to O(1) per iteration regardless of target count.
     let targets_list = env.new_object("java/util/ArrayList", "()V", &[])?;
     for t in &v.targets {
         // 64 slots covers VTargetPack's ~30 fields + builder + lists + scratch.
-        let pack_obj = env.with_local_frame_returning_local(64, |inner_env| {
-            build_vtarget(inner_env, t).map(|raw| unsafe { JObject::from_raw(raw) })
+        env.with_local_frame(64, |inner_env| {
+            let pack_raw = build_vtarget(inner_env, t)?;
+            let pack_obj = unsafe { JObject::from_raw(pack_raw) };
+            inner_env.call_method(
+                &targets_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&pack_obj)],
+            )?;
+            Ok::<_, jni::errors::Error>(())
         })?;
-        env.call_method(
-            &targets_list,
-            "add",
-            "(Ljava/lang/Object;)Z",
-            &[JValue::Object(&pack_obj)],
-        )?;
     }
     env.call_method(
         &b,

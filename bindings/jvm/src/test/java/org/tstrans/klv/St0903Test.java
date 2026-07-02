@@ -461,6 +461,45 @@ class St0903Test {
     }
 
     // -----------------------------------------------------------------------
+    // DA-JVM-1: regression coverage for many-target local-ref reclamation
+    // -----------------------------------------------------------------------
+
+    /**
+     * Regression test for DA-JVM-1: {@code nDecodeVmti} leaked one JNI local
+     * ref per VTarget into the outer native frame, causing HotSpot to grow the
+     * local-ref table (or crash on constrained VMs) when the target count is
+     * large. The fix builds and adds each VTargetPack inside its own
+     * {@code PushLocalFrame}/{@code PopLocalFrame} pair, keeping the live count
+     * O(1) regardless of target count.
+     *
+     * <p>Uses encode→decode round-trip: encode 500 targets, then decode. The
+     * decode path exercises the fixed {@code build_vmti} loop. The test asserts
+     * functional correctness; the absence of local-ref-table-overflow is the
+     * implicit guarantee of the fix.
+     */
+    @Test
+    void decodeVmtiManyTargetsRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        int count = 500;
+        java.util.List<VTargetPack> targets = new java.util.ArrayList<>(count);
+        for (long id = 1; id <= count; id++) {
+            // Each pack must have at least one field; priority is the smallest.
+            targets.add(new VTargetPack.Builder(id).priority(1).build());
+        }
+        VmtiLs vmti = new VmtiLs.Builder()
+                .versionNumber(6)
+                .targets(targets)
+                .build();
+        byte[] encoded = Klv.encodeVmti(vmti);
+        VmtiLs decoded = Klv.decodeVmti(encoded);
+
+        assertEquals(count, decoded.targets().size(), "All 500 targets must survive the round-trip");
+        for (int i = 0; i < count; i++) {
+            assertEquals((long) (i + 1), decoded.targets().get(i).targetId(),
+                    "Target id " + (i + 1) + " must match");
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // REF-KLV-04: large-value (>0xFFFF_FFFF) round-trip for target_id + pixels
     // -----------------------------------------------------------------------
 

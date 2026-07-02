@@ -102,11 +102,6 @@
 //! still benefit from the registry (it kills their own UAF/double-free on `close`),
 //! and they simply register with `cancel = None`.
 
-// A1 ships this primitive ahead of its first caller; Task A2 migrates the ~20
-// handle types above onto it, at which point these items become live. The tests in
-// this module exercise every item, but dead-code analysis runs on the non-test
-// build, so allow it crate-locally until A2 lands. Remove once A2 wires callers.
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};

@@ -34,7 +34,7 @@ pub use stats_accounting::MuxerStats;
 
 /// Spec-domain tier of muxer errors.
 ///
-/// The 36-variant [`crate::error::MuxError`] enum (canonical home at
+/// The [`crate::error::MuxError`] enum (canonical home at
 /// [`crate::error::MuxError`]) is re-exported here under the `_detail`
 /// convention to signal "spec-knowledge tier; production binding code
 /// should prefer [`crate::error::MuxError::kind()`] for
@@ -70,7 +70,7 @@ pub use stats_accounting::MuxerStats;
 /// coarse-tier [`crate::error::MuxSenderErrorKind`] enum via
 /// [`crate::error::MuxError::kind()`].
 pub mod _detail {
-    /// The canonical 36-variant [`crate::error::MuxError`].
+    /// The canonical [`crate::error::MuxError`].
     pub use crate::error::MuxError;
 }
 

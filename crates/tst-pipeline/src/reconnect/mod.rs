@@ -129,7 +129,7 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 ///     panic.
 ///   - `cancel_handle`: clones `Arc`s only — no `inner` lock taken,
 ///     poison-immune by construction.
-///   - `socket_stats`: returns `None` on poison (pre-existing Wave 4.B
+///   - `socket_stats`: returns `None` on poison (pre-existing
 ///     shape; `lock().ok()` silently swallows the error the same way
 ///     `None` inner is handled).
 /// - **Gap-accumulator lock** (poisoned mid-mutation): `send_managed` /
@@ -186,9 +186,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // Pre-check size against inner before queuing — oversized messages
         // would otherwise sit in the gap buffer and fail every drain.
         //
-        // Plan F mutex sweep (recoverable path): poisoned inner lock during the
+        // Mutex-poisoning policy (recoverable path): poisoned inner lock during the
         // size pre-check routes to TransportError::Broken with a site-specific
-        // diagnostic. Wave 4.B's send_managed lines 225/288/365 use the same shape.
+        // diagnostic. The `send_managed` poison checks use the same shape.
         let max = self
             .inner
             .lock()
@@ -440,7 +440,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     }
 
     fn max_payload(&self) -> usize {
-        // Plan F mutex sweep (safe-default on poison): SRT_TS_BUNDLE_BYTES is
+        // Mutex-poisoning policy (safe-default on poison): SRT_TS_BUNDLE_BYTES is
         // already the "no live inner transport" default; poison falls through to
         // the same default. Matches socket_stats (lines 419-422) shape.
         self.inner
@@ -451,7 +451,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     }
 
     fn is_alive(&self) -> bool {
-        // Plan F mutex sweep (safe-default on poison): false matches the
+        // Mutex-poisoning policy (safe-default on poison): false matches the
         // "no live inner transport" answer (already the unwrap_or default).
         self.inner
             .lock()
@@ -463,7 +463,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     fn close(&mut self) {
         self.closed
             .store(true, std::sync::atomic::Ordering::Release);
-        // Plan F mutex sweep (silent no-op on poison): close on a poisoned
+        // Mutex-poisoning policy (silent no-op on poison): close on a poisoned
         // state is naturally a no-op — the inner transport is already in an
         // unknown state and close-attempt would compound the problem. The
         // closed flag is already latched above so subsequent operations exit

@@ -8,8 +8,8 @@
 //! correctness check (the ratchet guarantees coverage; this test
 //! guarantees correctness of the mapping).
 //!
-//! See `docs/plans/2026-05-19-wave-6-muxerror-reshape.md` Pre-flight
-//! Fact D4 for the canonical routing table.
+//! The canonical routing table is the `MuxError::kind()` match in
+//! `crates/tst-core/src/error.rs`.
 
 use tst_core::error::{MuxError, MuxSenderErrorKind};
 use tst_core::mpegts::mux::{StreamKind, TeletextField};

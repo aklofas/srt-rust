@@ -91,7 +91,11 @@ impl StreamId {
     /// `pub(crate)`: keeps the tst-core public-api baseline stable; consumers
     /// that need to construct a `StreamId` should fill in the real `kind`.
     pub(crate) fn anonymous(pid: u16, program_number: u16) -> Self {
-        Self { pid, kind: StreamKind::Unknown(0), program_number }
+        Self {
+            pid,
+            kind: StreamKind::Unknown(0),
+            program_number,
+        }
     }
 }
 

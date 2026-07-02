@@ -112,8 +112,9 @@ impl super::demuxer::Demuxer {
                     }
                 }
                 ReassemblyOutcome::ZeroLengthNonVideo { pid, stream_id } => {
-                    let stream = self.lookup_stream(pid)
-                        .unwrap_or_else(|| StreamId::anonymous(pid, self.program_number_for_pid(pid)));
+                    let stream = self.lookup_stream(pid).unwrap_or_else(|| {
+                        StreamId::anonymous(pid, self.program_number_for_pid(pid))
+                    });
                     self.queue_nonconformant(
                         stream,
                         NonConformantIssue::ZeroLengthPesNonVideo { pid, stream_id },

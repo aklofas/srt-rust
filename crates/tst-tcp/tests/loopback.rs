@@ -117,12 +117,17 @@ fn cancel_handle_unblocks_parked_recv() {
     handle.cancel();
 
     // Recv thread must unblock within 3 s (≤100 ms + scheduling slack).
-    let result = rx.recv_timeout(Duration::from_secs(3))
+    let result = rx
+        .recv_timeout(Duration::from_secs(3))
         .expect("recv_bytes did not unblock within watchdog period after cancel");
 
     // The transport must report it is no longer alive.
     assert!(
-        matches!(result, Err(TransportError::Closed) | Err(TransportError::ExplicitClose)),
-        "expected Closed/ExplicitClose after cancel, got {:?}", result
+        matches!(
+            result,
+            Err(TransportError::Closed) | Err(TransportError::ExplicitClose)
+        ),
+        "expected Closed/ExplicitClose after cancel, got {:?}",
+        result
     );
 }

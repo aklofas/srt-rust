@@ -609,6 +609,43 @@ fn num_units_in_tick_overflow_no_panic() {
     );
 }
 
+/// Craft a Baseline (profile_idc=66) SPS with VUI chroma_loc_info set to
+/// `top_loc` for exercising the chroma_sample_loc_type_* range check.
+fn craft_sps_with_chroma_loc(top_loc_ue: u32) -> Vec<u8> {
+    use crate::codec::test_util::BitWriter;
+    let mut bw = BitWriter::new();
+    bw.write(66, 8); // profile_idc = 66 (Baseline — no chroma/depth block)
+    bw.write(0, 8); // constraint_set_flags
+    bw.write(30, 8); // level_idc
+    bw.write_ue(0); // seq_parameter_set_id = 0
+    bw.write_ue(0); // log2_max_frame_num_minus4 = 0
+    bw.write_ue(0); // pic_order_cnt_type = 0
+    bw.write_ue(0); // log2_max_pic_order_cnt_lsb_minus4 = 0
+    bw.write_ue(1); // max_num_ref_frames = 1
+    bw.write(0, 1); // gaps_in_frame_num_value_allowed_flag = 0
+    bw.write_ue(9); // pic_width_in_mbs_minus1 = 9 (160px / 16)
+    bw.write_ue(7); // pic_height_in_map_units_minus1 = 7 (128px / 16)
+    bw.write(1, 1); // frame_mbs_only_flag = 1
+    bw.write(0, 1); // direct_8x8_inference_flag = 0
+    bw.write(0, 1); // frame_cropping_flag = 0
+    // VUI: vui_parameters_present_flag = 1
+    bw.write(1, 1);
+    bw.write(0, 1); // aspect_ratio_info_present_flag = 0
+    bw.write(0, 1); // overscan_info_present_flag = 0
+    bw.write(0, 1); // video_signal_type_present_flag = 0
+    // chroma_loc_info_present_flag = 1
+    bw.write(1, 1);
+    bw.write_ue(top_loc_ue); // chroma_sample_loc_type_top_field (CALLER-SUPPLIED)
+    bw.write_ue(0); // chroma_sample_loc_type_bottom_field = 0
+    bw.write(0, 1); // timing_info_present_flag = 0
+    bw.write(0, 1); // nal_hrd_parameters_present_flag = 0
+    bw.write(0, 1); // vcl_hrd_parameters_present_flag = 0
+    bw.write(0, 1); // pic_struct_present_flag = 0
+    bw.write(0, 1); // bitstream_restriction_flag = 0
+    bw.end_rbsp();
+    bw.bytes
+}
+
 /// DA-H26X-2: `num_units_in_tick == 0` must not produce a zero denominator
 /// in the frame_rate ratio. H.265 VUI already guards this (`if num_units_in_tick > 0`);
 /// H.264 VUI had a gap where `0 * 2 = 0 != u32::MAX` flowed to
@@ -622,6 +659,51 @@ fn num_units_in_tick_zero_yields_none_not_den0() {
         sps.frame_rate.is_none(),
         "frame_rate must be None when num_units_in_tick == 0 (den=0 is a ÷0 hazard)"
     );
+}
+
+/// DA-H26X-3: chroma_sample_loc_type_top_field ∈ [0,5] per H.264 §E.2.1.
+/// Value 5 (at the boundary) must be accepted.
+#[test]
+fn chroma_sample_loc_type_5_accepted() {
+    let rbsp = craft_sps_with_chroma_loc(5);
+    let sps = parse_sps(&rbsp).expect("chroma_loc=5 is in-spec and must parse");
+    let color = sps.color.expect("VUI color present");
+    assert_eq!(color.chroma_loc, Some(5));
+}
+
+/// DA-H26X-3: value 6 is out of the H.264 §E.2.1 [0,5] range and must
+/// be rejected as ReservedValue rather than silently passing.
+#[test]
+fn chroma_sample_loc_type_6_rejected() {
+    let rbsp = craft_sps_with_chroma_loc(6);
+    match parse_sps(&rbsp) {
+        Err(CodecParseError::ReservedValue { field, value }) => {
+            assert!(
+                field.contains("chroma_sample_loc_type"),
+                "unexpected field: {field}"
+            );
+            assert_eq!(value, 6);
+        }
+        other => panic!("expected ReservedValue, got {other:?}"),
+    }
+}
+
+/// DA-H26X-3: adversarial value 256 truncates to 0 via `as u8` without the
+/// guard — a valid value that hides the malformed input. Post-fix it must
+/// be rejected before any narrowing cast.
+#[test]
+fn chroma_sample_loc_type_256_rejected_not_silently_truncated() {
+    let rbsp = craft_sps_with_chroma_loc(256);
+    match parse_sps(&rbsp) {
+        Err(CodecParseError::ReservedValue { field, value }) => {
+            assert!(
+                field.contains("chroma_sample_loc_type"),
+                "unexpected field: {field}"
+            );
+            assert_eq!(value, 256);
+        }
+        other => panic!("expected ReservedValue(256), got {other:?}"),
+    }
 }
 
 /// F-01 (codec): a non-conformant scaling-list `delta_scale` (outside the

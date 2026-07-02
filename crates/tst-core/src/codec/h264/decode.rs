@@ -439,9 +439,12 @@ fn parse_vui(br: &mut BitReader<'_>) -> Result<VuiOut, CodecParseError> {
     let chroma_loc_info_present_flag = br.read_bool()?;
     let mut chroma_loc = None;
     if chroma_loc_info_present_flag {
-        let top = br.read_ue()?;
-        let _bottom = br.read_ue()?;
-        chroma_loc = Some(top as u8);
+        // H.264 §E.2.1 Table E-1: chroma_sample_loc_type_* ∈ [0, 5].
+        // Without the bound check, a crafted ue(v)=256 silently truncates
+        // to 0 via `as u8` — a valid value that hides the malformed input.
+        let top = br.read_ue_max("chroma_sample_loc_type_top_field", 5)? as u8;
+        let _bottom = br.read_ue_max("chroma_sample_loc_type_bottom_field", 5)?;
+        chroma_loc = Some(top);
     }
 
     let timing_info_present_flag = br.read_bool()?;

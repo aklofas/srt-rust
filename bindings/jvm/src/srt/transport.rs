@@ -133,7 +133,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nSendBytes(
                 _ => super::errors::throw_srt(env, "IO", &e.to_string()),
             },
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
+                crate::error::throw_closed(env, "Sender");
             }
         }
     })
@@ -157,7 +157,7 @@ pub extern "system" fn Java_org_tstrans_srt_Sender_nFlush(
                 _ => super::errors::throw_srt(env, "IO", &e.to_string()),
             },
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
+                crate::error::throw_closed(env, "Sender");
             }
         }
     })
@@ -369,7 +369,7 @@ pub extern "system" fn Java_org_tstrans_srt_Receiver_nRecvBytes(
         let Some(res) =
             REGISTRY_RECEIVER.with_poisoning(handle as u64, |inner| inner.next_packet())
         else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
+            crate::error::throw_closed(env, "Receiver");
             return std::ptr::null_mut();
         };
         match res {

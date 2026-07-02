@@ -1088,7 +1088,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nClose<'local>(
 /// closed/absent handle — the native-side enforcement of the Java
 /// `ensureOpen()` contract.
 fn closed(env: &mut JNIEnv) {
-    let _ = env.throw_new("java/lang/IllegalStateException", "Muxer is closed");
+    crate::error::throw_closed(env, "Muxer");
 }
 
 /// Map a `MuxError` to a thrown `org.tstrans.MuxException`, mirroring tst-py's

@@ -91,7 +91,7 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nCancel(
             c.inner.cancel();
         });
         if ran.is_none() {
-            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+            crate::error::throw_closed(env, "CancelHandle");
         }
     })
 }
@@ -109,7 +109,7 @@ pub extern "system" fn Java_org_tstrans_srt_CancelHandle_nIsCancelled(
         {
             TryWith::Ran(v) => v,
             _ => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+                crate::error::throw_closed(env, "CancelHandle");
                 0
             }
         }

@@ -572,7 +572,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoSender(
         // Take the Socket out of its registry (atomic; idempotent). `None` = already
         // closed/consumed → the Java caller zeroed its field, so this is a stale call.
         let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            crate::error::throw_closed(env, "Socket");
             return 0;
         };
         let transport = SrtTransport::new(socket);
@@ -594,7 +594,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoReceiver(
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let Some(socket) = REGISTRY_SOCKET.close(handle as u64) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            crate::error::throw_closed(env, "Socket");
             return 0;
         };
         let transport = SrtTransport::new(socket);
@@ -617,7 +617,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nLocalAddr<'local>(
         let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.local_addr()) {
             Some(r) => r,
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+                crate::error::throw_closed(env, "Socket");
                 return std::ptr::null_mut();
             }
         };
@@ -644,7 +644,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nPeerAddr<'local>(
         let addr = match REGISTRY_SOCKET.with(handle as u64, |s| s.peer_addr()) {
             Some(r) => r,
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+                crate::error::throw_closed(env, "Socket");
                 return std::ptr::null_mut();
             }
         };
@@ -727,7 +727,7 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nAccept(
                 0
             }
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
+                crate::error::throw_closed(env, "Listener");
                 0
             }
         }
@@ -781,7 +781,7 @@ pub extern "system" fn Java_org_tstrans_srt_Listener_nLocalAddr<'local>(
             match REGISTRY_LISTENER.with(handle as u64, |listener| listener.local_addr()) {
                 Some(r) => r,
                 None => {
-                    let _ = env.throw_new("java/lang/IllegalStateException", "Listener is closed");
+                    crate::error::throw_closed(env, "Listener");
                     return std::ptr::null_mut();
                 }
             };

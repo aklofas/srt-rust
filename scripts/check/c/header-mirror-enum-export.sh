@@ -51,7 +51,9 @@ INCLUDE_BLOCK=$(awk '
 
 MISSING=()
 while IFS= read -r enum; do
-    if ! printf '%s\n' "$INCLUDE_BLOCK" | grep -qE "\"${enum}\""; then
+    # herestring, not printf|grep -q: grep -q exits on first match and can
+    # SIGPIPE the printf, which pipefail turns into a false "missing" verdict
+    if ! grep -qE "\"${enum}\"" <<< "$INCLUDE_BLOCK"; then
         MISSING+=("$enum")
     fi
 done <<< "$ENUMS"

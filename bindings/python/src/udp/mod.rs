@@ -32,7 +32,7 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportError};
+use tst_core::transport::{RecvTransport, Transport, TransportError};
 use tst_udp::{UdpError, UdpErrorKind, UdpRecvTransport, UdpTransport};
 
 use crate::errors::make_udp_error;
@@ -121,20 +121,6 @@ impl From<tst_udp::UdpStats> for PyUdpStats {
             bytes_received: s.bytes_received,
             send_errors: s.send_errors,
             recv_errors: s.recv_errors,
-        }
-    }
-}
-
-#[allow(dead_code)]
-impl PyUdpStats {
-    fn from_core(s: SocketStats) -> Self {
-        Self {
-            datagrams_sent: s.packets_sent,
-            bytes_sent: s.bytes_sent,
-            datagrams_received: s.packets_received,
-            bytes_received: s.bytes_received,
-            send_errors: s.packets_dropped_send,
-            recv_errors: s.packets_dropped_recv,
         }
     }
 }

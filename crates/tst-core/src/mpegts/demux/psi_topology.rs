@@ -321,6 +321,7 @@ impl super::demuxer::Demuxer {
                 // Free the PSI assembly buffer + PMT-PID continuity state.
                 self.psi_assemblers.remove(&pmt_pid);
                 self.cc_by_pid.remove(&pmt_pid);
+                self.dup_by_pid.remove(&pmt_pid);
                 self.last_pkt_raw_by_pid.remove(&pmt_pid);
             }
         }

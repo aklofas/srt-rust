@@ -75,9 +75,6 @@ impl UdpUrl {
         let recv_bind = parsed.username.is_some();
         let host_str = parsed.host;
 
-        // Strip IPv6 brackets if present.
-        let host_str = host_str.trim_start_matches('[').trim_end_matches(']');
-
         let addr: IpAddr = host_str
             .parse()
             .map_err(|_| UdpUrlError::BadHost(host_str.to_string()))?;

@@ -27,7 +27,7 @@ fn close_unblocks_libsrt_parked_send() {
     // Bind a listener with very small recv buffer.
     let mut builder = ListenerBuilder::new();
     builder
-        .recv_buf_packets(8) // tiny — back-pressure kicks in fast
+        .recv_buf_bytes(8 * 1500) // tiny — back-pressure kicks in fast
         .latency(Duration::from_millis(120));
     let lb = crate::common::Loopback::bind_with(builder);
     let port = lb.port;
@@ -41,7 +41,7 @@ fn close_unblocks_libsrt_parked_send() {
     // Connect the sender side. This drives the SRT handshake, which
     // unblocks `accept()` on the listener side.
     let socket = SocketBuilder::new()
-        .send_buf_packets(8) // tiny — sender's outgoing queue saturates fast
+        .send_buf_bytes(8 * 1500) // tiny — sender's outgoing queue saturates fast
         // (no send_timeout — defaults to -1 = block forever)
         .latency(Duration::from_millis(120))
         .connect(format!("127.0.0.1:{port}"))

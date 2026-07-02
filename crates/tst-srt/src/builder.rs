@@ -135,12 +135,20 @@ impl SocketBuilder {
         self.config.overhead_bandwidth_pct = Some(pct);
         self
     }
-    pub fn recv_buf_packets(&mut self, n: u32) -> &mut Self {
-        self.config.recv_buf_packets = Some(n);
+    /// Set the SRT receive buffer size in **bytes** (`SRTO_RCVBUF`).
+    ///
+    /// Passed verbatim to libsrt, which converts to internal buffers via
+    /// `(MSS - 28)` division with a 32-buffer floor.
+    /// For high-latency links, size as `RCVBUF ≥ latency × bitrate`.
+    pub fn recv_buf_bytes(&mut self, n: u32) -> &mut Self {
+        self.config.recv_buf_bytes = Some(n);
         self
     }
-    pub fn send_buf_packets(&mut self, n: u32) -> &mut Self {
-        self.config.send_buf_packets = Some(n);
+    /// Set the SRT send buffer size in **bytes** (`SRTO_SNDBUF`).
+    ///
+    /// Same internal conversion as [`Self::recv_buf_bytes`].
+    pub fn send_buf_bytes(&mut self, n: u32) -> &mut Self {
+        self.config.send_buf_bytes = Some(n);
         self
     }
     pub fn stream_id(&mut self, id: StreamId) -> &mut Self {
@@ -308,8 +316,12 @@ impl ListenerBuilder {
         self.config.overhead_bandwidth_pct = Some(pct);
         self
     }
-    pub fn recv_buf_packets(&mut self, n: u32) -> &mut Self {
-        self.config.recv_buf_packets = Some(n);
+    /// Set the SRT receive buffer size in **bytes** (`SRTO_RCVBUF`).
+    ///
+    /// Passed verbatim to libsrt. See [`SocketBuilder::recv_buf_bytes`] for
+    /// sizing guidance.
+    pub fn recv_buf_bytes(&mut self, n: u32) -> &mut Self {
+        self.config.recv_buf_bytes = Some(n);
         self
     }
     pub fn loss_max_ttl(&mut self, n: u32) -> &mut Self {

@@ -265,7 +265,11 @@ impl Listener {
         unsafe { srt_sys::srt_epoll_release(eid) };
 
         if n == 0 {
-            // epoll_wait returns 0 when msTimeOut elapses with no event.
+            // Unreachable per libsrt's contract: srt_epoll_wait returns
+            // either > 0 (event ready) or -1 with SRT_ETIMEOUT on timeout.
+            // The n == 0 case cannot arise from a blocking epoll_wait call.
+            // Treated as timeout defensively: if libsrt ever changes its
+            // contract, falling through to srt_accept would block forever.
             return Err(AcceptError::TimedOut);
         }
         if n < 0 {

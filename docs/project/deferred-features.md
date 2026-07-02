@@ -606,19 +606,20 @@ the trigger that would unblock it.
 - **Status:** Listed in the URL parser as Group 3 (rejected). Separate
   entry from the rest because the blocker is units, not "no setter
   yet."
-- **Why deferred:** libsrt's `SRTO_RCVBUF` / `SRTO_SNDBUF` are byte
-  counts; this library's `recv_buf_packets` / `send_buf_packets`
-  builder setters are packet counts. Exposing `?rcvbuf=1048576` would
-  silently mean different things in libsrt-tools vs. our parser.
+- **Why deferred:** The URL parser currently rejects `rcvbuf`/`sndbuf`
+  to avoid a foot-gun: libsrt's `SRTO_RCVBUF` / `SRTO_SNDBUF` are
+  byte counts, and earlier builder setters were misleadingly named
+  `recv_buf_packets` / `send_buf_packets`. The units confusion is now
+  resolved: the builder setters were renamed to `recv_buf_bytes` /
+  `send_buf_bytes` (DA-SRT-1, v0.3). Wiring the URL keys is now
+  mechanical — the only remaining work is adding the parser arms.
 - **Note:** distinct from `udprcvbuf` / `udpsndbuf` (kernel UDP socket
   buffer sizes via `SRTO_UDP_RCVBUF` / `SRTO_UDP_SNDBUF`), which **are**
   exposed as URL keys (and as `recv_buffer_size` / `send_buffer_size`
-  ffmpeg aliases). The unresolved unit-mismatch is for the
-  SRT-internal packet queue setters.
-- **Trigger to revisit:** Resolve the byte-vs-packets question on the
-  builder side first (either rename to `_bytes`, add a `_bytes`
-  variant, or document the unit conversion). Then the URL key can
-  expose the chosen semantic without the foot-gun.
+  ffmpeg aliases).
+- **Trigger to revisit:** A consumer asks for URL-driven buffer sizing.
+  Add the parser arms in `url.rs` (move `rcvbuf`/`sndbuf` from
+  `GROUP3_REJECTED` to the mapped set) and remove from this list.
 
 ## URL-vs-builder conflict warning channel
 

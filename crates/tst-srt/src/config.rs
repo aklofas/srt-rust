@@ -55,8 +55,21 @@ pub struct SocketConfig {
     pub latency: Option<Duration>,
     pub peer_latency: Option<Duration>,
     pub recv_latency: Option<Duration>,
-    pub recv_buf_packets: Option<u32>,
-    pub send_buf_packets: Option<u32>,
+    /// Receive buffer size in **bytes**, passed verbatim to `SRTO_RCVBUF`.
+    ///
+    /// libsrt converts the byte value to an internal buffer count by dividing
+    /// by `(MSS - 28)` (header overhead) with a floor of 32 buffers.
+    /// For high-latency links, size as `RCVBUF ≥ latency × bitrate`.
+    ///
+    /// `None` leaves the libsrt default.
+    pub recv_buf_bytes: Option<u32>,
+    /// Send buffer size in **bytes**, passed verbatim to `SRTO_SNDBUF`.
+    ///
+    /// Same internal conversion as [`Self::recv_buf_bytes`]: libsrt divides
+    /// by `(MSS - 28)` with a 32-buffer floor.
+    ///
+    /// `None` leaves the libsrt default.
+    pub send_buf_bytes: Option<u32>,
 
     // Bandwidth
     pub max_bandwidth: Option<MaxBandwidth>,
@@ -192,7 +205,10 @@ pub struct ListenerConfig {
     // Latency / buffering (listener-side)
     pub latency: Option<Duration>,
     pub recv_latency: Option<Duration>,
-    pub recv_buf_packets: Option<u32>,
+    /// Receive buffer size in **bytes**, passed verbatim to `SRTO_RCVBUF`.
+    ///
+    /// See [`SocketConfig::recv_buf_bytes`] for sizing guidance.
+    pub recv_buf_bytes: Option<u32>,
 
     // Bandwidth
     pub max_bandwidth: Option<MaxBandwidth>,
@@ -237,7 +253,7 @@ impl Default for ListenerConfig {
             key_length: KeyLength::default(),
             latency: None,
             recv_latency: None,
-            recv_buf_packets: None,
+            recv_buf_bytes: None,
             max_bandwidth: None,
             overhead_bandwidth_pct: None,
             mss: None,
@@ -293,8 +309,8 @@ mod tests {
         assert!(cfg.latency.is_none());
         assert!(cfg.peer_latency.is_none());
         assert!(cfg.recv_latency.is_none());
-        assert!(cfg.recv_buf_packets.is_none());
-        assert!(cfg.send_buf_packets.is_none());
+        assert!(cfg.recv_buf_bytes.is_none());
+        assert!(cfg.send_buf_bytes.is_none());
         assert!(cfg.max_bandwidth.is_none());
         assert!(cfg.input_bandwidth.is_none());
         assert!(cfg.overhead_bandwidth_pct.is_none());

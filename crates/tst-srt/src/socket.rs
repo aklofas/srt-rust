@@ -630,10 +630,10 @@ pub(crate) fn apply_socket_config(
             duration_to_ms(d),
         )?;
     }
-    if let Some(n) = cfg.recv_buf_packets {
+    if let Some(n) = cfg.recv_buf_bytes {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
     }
-    if let Some(n) = cfg.send_buf_packets {
+    if let Some(n) = cfg.send_buf_bytes {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF, n as i32)?;
     }
     if let Some(bw) = cfg.max_bandwidth {
@@ -708,7 +708,7 @@ pub(crate) fn apply_listener_config(
             duration_to_ms(d),
         )?;
     }
-    if let Some(n) = cfg.recv_buf_packets {
+    if let Some(n) = cfg.recv_buf_bytes {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
     }
     if let Some(bw) = cfg.max_bandwidth {

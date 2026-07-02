@@ -714,22 +714,9 @@ fn cc_single_duplicate_accepted_by_strict_full() {
     );
 }
 
-/// DA-DEMUX-1 (d): a THIRD packet with the same CC (the "only-two" rule
-/// violation per H.222.0 §2.4.3.3) is treated as a real discontinuity and
-/// surfaces a `ContinuityJump` event.
-#[test]
-fn cc_third_same_cc_fires_discontinuity() {
-    let clean = build_clean_stream();
-    // Insert TWO extra copies of the 2nd video packet → three total with the
-    // original. First extra = allowed duplicate (suppressed). Second extra =
-    // third occurrence of the same CC → real discontinuity.
-    let patched = insert_video_packet_duplicates(&clean, 2, 2);
-
-    let mut d = Demuxer::new();
-    d.feed(&patched).unwrap();
-    d.flush();
-
-    let mut saw_jump = false;
+/// Count `ContinuityJump` discontinuity events in the demuxer's queue.
+fn count_continuity_jumps(d: &mut Demuxer) -> usize {
+    let mut jumps = 0;
     while let Some(ev) = d.next_event() {
         if matches!(
             ev,
@@ -738,12 +725,55 @@ fn cc_third_same_cc_fires_discontinuity() {
                 ..
             }
         ) {
-            saw_jump = true;
+            jumps += 1;
         }
     }
-    assert!(
-        saw_jump,
-        "third packet with same CC must emit ContinuityJump (only-two rule)"
+    jumps
+}
+
+/// DA-DEMUX-1 (d): a THIRD packet with the same CC (the "only-two" rule
+/// violation per H.222.0 §2.4.3.3) is treated as a real discontinuity and
+/// surfaces EXACTLY ONE `ContinuityJump` event (regression: an earlier
+/// draft recorded the jump twice — once in the only-two branch and again
+/// in the generic CC-jump check).
+#[test]
+fn cc_third_same_cc_fires_discontinuity_exactly_once() {
+    let clean = build_clean_stream();
+    // Insert TWO extra copies of the 2nd video packet → three total with the
+    // original. First extra = allowed duplicate (suppressed). Second extra =
+    // third occurrence of the same CC → exactly one real discontinuity.
+    let patched = insert_video_packet_duplicates(&clean, 2, 2);
+
+    let mut d = Demuxer::new();
+    d.feed(&patched).unwrap();
+    d.flush();
+
+    assert_eq!(
+        count_continuity_jumps(&mut d),
+        1,
+        "third packet with same CC must emit exactly one ContinuityJump"
+    );
+}
+
+/// DA-DEMUX-1 (f): the only-two enforcement does not reset mid-run — in a
+/// FOUR-in-a-row identical same-CC run, the 3rd and 4th packets each fire
+/// one `ContinuityJump` (the 4th must NOT be silently re-suppressed as a
+/// fresh "first duplicate").
+#[test]
+fn cc_fourth_same_cc_keeps_firing_discontinuities() {
+    let clean = build_clean_stream();
+    // THREE extra copies → four total: original routed, 1st extra suppressed,
+    // 2nd + 3rd extras each surface one discontinuity.
+    let patched = insert_video_packet_duplicates(&clean, 2, 3);
+
+    let mut d = Demuxer::new();
+    d.feed(&patched).unwrap();
+    d.flush();
+
+    assert_eq!(
+        count_continuity_jumps(&mut d),
+        2,
+        "3rd and 4th identical same-CC packets must each fire one ContinuityJump"
     );
 }
 

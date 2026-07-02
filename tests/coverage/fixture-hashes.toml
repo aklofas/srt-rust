@@ -372,7 +372,7 @@ sha256 = "9db980ce60d106fa216aa8dccf6db037e656453d7b5619e4d582a5edf1374b02"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/golden.json"
-sha256 = "954a4345df8c56ec3401f3ece39955fb6616d89e48b7923a2308b7006bea2664"
+sha256 = "5c8f8dc9d8e02025853cc4ac82537f6aa362fcdb0030f67da3e2b6ac0e36bdde"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/malformed-pes-lenient/input.ts"
@@ -400,7 +400,7 @@ sha256 = "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/golden.json"
-sha256 = "e4a3318936b57cc299fdb528e057f96210a1e7ae4124fe25021e9ad8c862e1a6"
+sha256 = "d286c668ca0d58516305ec9d175caefd600939d2dfebbdee378203bf4dd98823"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/input.ts"

@@ -2314,7 +2314,11 @@ mod tests {
         assert_eq!(demuxer.programs_for_test().len(), 1);
 
         demuxer
-            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000), (2, 0x1100)], 1, 1))
+            .feed(&pat_packet_with_programs_cc(
+                &[(1, 0x1000), (2, 0x1100)],
+                1,
+                1,
+            ))
             .unwrap();
         let progs = demuxer.programs_for_test();
         assert_eq!(
@@ -2459,7 +2463,11 @@ mod tests {
         assert_eq!(progs[&0x1000].streams[0].pid, 0x1011);
 
         demuxer
-            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000), (2, 0x1100)], 1, 1))
+            .feed(&pat_packet_with_programs_cc(
+                &[(1, 0x1000), (2, 0x1100)],
+                1,
+                1,
+            ))
             .unwrap();
         demuxer
             .feed(&pmt_packet_for_test(

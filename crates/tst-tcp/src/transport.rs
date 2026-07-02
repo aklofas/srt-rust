@@ -53,6 +53,36 @@ impl InnerStream {
     }
 }
 
+/// Cheap cloneable handle that unblocks a parked [`TcpTransport::recv_bytes`]
+/// from another thread.
+///
+/// Obtained via [`TcpTransport::cancel_handle`]. Cancelling does **not** shut
+/// down the underlying socket — [`tst_core::transport::Transport::close`] still
+/// does. After `cancel()` the transport is unusable: both `send_bytes` and
+/// `recv_bytes` return [`tst_core::transport::TransportError::Closed`] within
+/// ≤1 poll interval (~100 ms).
+///
+/// `TcpCancelHandle` is `Clone + Send + Sync`; multiple holders can race
+/// `cancel()` safely (the flag is an `Arc<AtomicBool>`, idempotent).
+#[derive(Clone, Debug)]
+pub struct TcpCancelHandle {
+    alive: Arc<AtomicBool>,
+}
+
+impl TcpCancelHandle {
+    /// Signal any parked `recv_bytes` (or subsequent `send_bytes`/`recv_bytes`)
+    /// to return [`tst_core::transport::TransportError::Closed`] at its next
+    /// ~100 ms poll boundary. Idempotent — repeated calls are a no-op.
+    pub fn cancel(&self) {
+        self.alive.store(false, Ordering::Release);
+    }
+
+    /// `true` if [`Self::cancel`] has been called on any clone of this handle.
+    pub fn is_cancelled(&self) -> bool {
+        !self.alive.load(Ordering::Acquire)
+    }
+}
+
 /// TCP transport. Implements both Transport (sender) and RecvTransport (receiver).
 ///
 /// Build via [`TcpTransport::connect`] (caller) or via
@@ -155,6 +185,14 @@ impl TcpTransport {
     /// Snapshot stats.
     pub fn stats(&self) -> TcpStats {
         self.stats
+    }
+
+    /// Return a cloneable handle that can cancel a `recv_bytes` parked in
+    /// another thread. See [`TcpCancelHandle`] for the full contract.
+    pub fn cancel_handle(&self) -> TcpCancelHandle {
+        TcpCancelHandle {
+            alive: self.alive.clone(),
+        }
     }
 }
 

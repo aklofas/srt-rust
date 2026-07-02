@@ -782,6 +782,37 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
     cache
 }
 
+/// PMT `stream_type` byte for a video codec.
+///
+/// AV1 uses the PrivateData byte (`0x06`) — the AV01 Registration descriptor
+/// in the PMT stream-info loop is what receivers use to identify AV1 streams.
+pub(super) fn video_stream_type_byte(codec: VideoCodec) -> u8 {
+    match codec {
+        VideoCodec::H264 => StreamType::H264.as_u8(),
+        VideoCodec::H265 => StreamType::H265.as_u8(),
+        VideoCodec::H266 => StreamType::H266.as_u8(),
+        VideoCodec::Av1 => StreamType::KlvPrivate.as_u8(),
+    }
+}
+
+/// PMT `stream_type` byte for a KLV stream type.
+pub(super) fn klv_stream_type_byte(stream_type: KlvStreamType) -> u8 {
+    match stream_type {
+        KlvStreamType::PrivateData => StreamType::KlvPrivate.as_u8(),
+        KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata.as_u8(),
+    }
+}
+
+/// PMT `stream_type` byte for an audio codec.
+pub(super) fn audio_stream_type_byte(codec: AudioCodec) -> u8 {
+    match codec {
+        AudioCodec::Mp2 => StreamType::AudioMp2.as_u8(),
+        AudioCodec::Aac => StreamType::AudioAac.as_u8(),
+        AudioCodec::AacLatm => StreamType::AudioAacLatm.as_u8(),
+        AudioCodec::Ac3 => StreamType::AudioAc3.as_u8(),
+    }
+}
+
 /// Initialize per-stream stats entries for one program. Mutates `into` rather
 /// than returning a fresh BTreeMap so the caller can accumulate across
 /// programs in one shared map without an extra allocation+merge pass.
@@ -795,15 +826,7 @@ pub(super) fn initialize_stats(
     into: &mut BTreeMap<u16, StreamStats>,
 ) {
     for v in video {
-        let stream_type_byte = match v.codec {
-            VideoCodec::H264 => StreamType::H264.as_u8(),
-            VideoCodec::H265 => StreamType::H265.as_u8(),
-            VideoCodec::H266 => StreamType::H266.as_u8(),
-            // AV1 rides PMT stream_type 0x06; the AV01
-            // registration_descriptor disambiguates on the receiver
-            // (auto-emitted in the per-stream descriptor cache).
-            VideoCodec::Av1 => StreamType::KlvPrivate.as_u8(),
-        };
+        let stream_type_byte = video_stream_type_byte(v.codec);
         into.insert(
             v.pid,
             StreamStats {
@@ -815,10 +838,7 @@ pub(super) fn initialize_stats(
         );
     }
     for k in klv {
-        let stream_type_byte = match k.stream_type {
-            KlvStreamType::PrivateData => StreamType::KlvPrivate.as_u8(),
-            KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata.as_u8(),
-        };
+        let stream_type_byte = klv_stream_type_byte(k.stream_type);
         into.insert(
             k.pid,
             StreamStats {
@@ -830,12 +850,7 @@ pub(super) fn initialize_stats(
         );
     }
     for a in audio {
-        let stream_type_byte = match a.codec {
-            AudioCodec::Mp2 => StreamType::AudioMp2.as_u8(),
-            AudioCodec::Aac => StreamType::AudioAac.as_u8(),
-            AudioCodec::AacLatm => StreamType::AudioAacLatm.as_u8(),
-            AudioCodec::Ac3 => StreamType::AudioAc3.as_u8(),
-        };
+        let stream_type_byte = audio_stream_type_byte(a.codec);
         into.insert(
             a.pid,
             StreamStats {

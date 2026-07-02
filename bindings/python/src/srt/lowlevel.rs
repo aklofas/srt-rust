@@ -1,5 +1,4 @@
-//! Wave A T3 — `Builder`, `Socket`, `Listener` (the low-level SRT
-//! primitives).
+//! `Builder`, `Socket`, `Listener` (the low-level SRT primitives).
 //!
 //! Layered atop T2:
 //! - `Builder` is a hybrid fluent + kwargs SRT URL constructor (Q3).

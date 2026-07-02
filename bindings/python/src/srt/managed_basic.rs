@@ -1,4 +1,4 @@
-//! Wave C Task 7 — `ManagedSender` + `ManagedReceiver`.
+//! `ManagedSender` + `ManagedReceiver` for SRT.
 //!
 //! Auto-reconnect ergonomics on top of `tst_pipeline::ManagedTransport
 //! <SrtTransport>` (send side) and `ManagedRecvTransport<SrtTransport>`

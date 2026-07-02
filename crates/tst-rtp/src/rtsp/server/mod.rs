@@ -35,8 +35,7 @@ use crate::error::RtspServerError;
 /// tasks, and mount handles. `Arc<ServerState>` lives as long as any
 /// task references it; cloning is cheap.
 ///
-/// `dead_code` allowed on several fields: Wave C wires the mounts
-/// hashmap; Tasks 8 + 9 wire `active_sessions` / `total_rtp_*`.
+/// `dead_code` allowed on several fields (all are live in the fully-wired server).
 #[allow(dead_code)]
 pub(crate) struct ServerState {
     pub(crate) builder: RtspServerBuilder,
@@ -46,8 +45,7 @@ pub(crate) struct ServerState {
     /// Hard-cancel signal (independent from graceful). Exposed publicly
     /// via [`RtspServer::cancel_handle`].
     pub(crate) hard_cancel: RtspServerCancelHandle,
-    /// Mount path → mount state. Wave C populates this via
-    /// `RtspServer::add_mount`.
+    /// Mount path → mount state; populated via `RtspServer::add_mount`.
     pub(crate) mounts: std::sync::Mutex<
         std::collections::HashMap<String, Arc<crate::rtsp::server::mount::MountState>>,
     >,
@@ -189,8 +187,8 @@ impl std::fmt::Debug for RtspServer {
 /// Random 32-bit SSRC seed for multicast mounts. Uses `getrandom`;
 /// falls back to zero on the (impossible-in-practice) error path.
 ///
-/// `pub(crate)` so that Wave D Task 17's `handle_play` can seed a fresh
-/// per-peer SSRC for each unicast subscriber.
+/// `pub(crate)` so that `handle_play` can seed a fresh per-peer SSRC
+/// for each unicast subscriber.
 pub(crate) fn rand_ssrc() -> u32 {
     let mut buf = [0u8; 4];
     let _ = getrandom::getrandom(&mut buf);
@@ -199,8 +197,8 @@ pub(crate) fn rand_ssrc() -> u32 {
 
 /// Random initial RTP sequence per RFC 3550 §5.1.
 ///
-/// `pub(crate)` so that Wave D Task 17's `handle_play` can seed a fresh
-/// per-peer initial sequence number for each unicast subscriber.
+/// `pub(crate)` so that `handle_play` can seed a fresh per-peer initial
+/// sequence number for each unicast subscriber.
 pub(crate) fn rand_seq() -> u16 {
     let mut buf = [0u8; 2];
     let _ = getrandom::getrandom(&mut buf);

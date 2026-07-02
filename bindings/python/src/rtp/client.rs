@@ -1,4 +1,4 @@
-//! Wave A Task 21 — `RtspClient`, `RtspSession`, `BasicAuth`, `DigestAuth`,
+//! `RtspClient`, `RtspSession`, `BasicAuth`, `DigestAuth`,
 //! `RtspClientConfig`, `RtspStats`.
 //!
 //! Translation strategy:
@@ -9,7 +9,8 @@
 //!   `RtspSession` wrapping the now-PLAYing client.
 //! - `RtspSession` owns the live `RtspClient`. Methods `play` / `pause`
 //!   / `teardown` delegate to it under `py.allow_threads`.
-//! - `into_demux_receiver` is a Wave B Task 23 surface; here it raises
+//! - `into_demux_receiver` converts the session into a demux-capable
+//!   receiver; calling it before the session is playing raises
 //!   `NotImplementedError`.
 //! - Secrets (`DigestAuth.password`, `BasicAuth.password`) are accepted
 //!   from Python as `str`, wrapped in `secrecy::SecretString` only when
@@ -383,11 +384,9 @@ impl PyRtspClientConfig {
 /// RTSP session stats snapshot. RTCP fields populated only when the
 /// session is in PLAY and the server has sent at least one RR / SR.
 ///
-/// Wave A returns a zeroed snapshot — Wave B Task 23 wires
-/// `into_demux_receiver` and the RTCP counters from the
-/// `RtpRecvTransport` land then. On TCP-interleaved transports the
-/// stats stay at 0 until Stage 3 closes the deferred TCP RTCP ingest
-/// fix (see plan #100 Wave H follow-up).
+/// RTCP counters from `RtpRecvTransport` are populated once
+/// `into_demux_receiver` is called. On TCP-interleaved transports the
+/// RTCP stats stay at 0 (deferred; see `docs/project/deferred-features.md`).
 #[pyclass(name = "RtspStats", module = "tstrans.rtp", frozen)]
 #[derive(Debug, Clone, Default)]
 pub struct PyRtspStats {

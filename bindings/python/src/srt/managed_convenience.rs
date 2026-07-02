@@ -1,6 +1,6 @@
-//! Wave C Task 8 — `ManagedMuxSender` + `ManagedDemuxReceiver` for SRT.
+//! `ManagedMuxSender` + `ManagedDemuxReceiver` for SRT.
 //!
-//! Auto-reconnect convenience wrappers paralleling T5's
+//! Auto-reconnect convenience wrappers paralleling
 //! [`crate::srt::mux_sender::PyMuxSender`] +
 //! [`crate::srt::demux_receiver::PyDemuxReceiver`] one-for-one, but with
 //! a [`tst_pipeline::reconnect::ManagedTransport`] (sender) or a

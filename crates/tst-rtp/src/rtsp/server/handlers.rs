@@ -1,17 +1,10 @@
 //! RTSP request handlers — dispatched from `session.rs`'s per-session
-//! state machine. Task 10 ships:
-//! - Shared helpers: `server_header`, `error_response`, `challenge_response`.
-//! - OPTIONS handler (200 + Public + Server).
-//! - DESCRIBE handler (auth-gated, returns SDP body for the matching
-//!   mount, or 404 if mount path not registered).
+//! state machine. Shared helpers (`server_header`, `error_response`,
+//! `challenge_response`), OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE,
+//! TEARDOWN, and GET_PARAMETER are all fully implemented.
 //!
-//! Stubs for SETUP/PLAY/PAUSE/TEARDOWN remain at 501 — Wave D
-//! (Tasks 16-17) wires those. GET_PARAMETER ships fully (used by
-//! client-initiated keepalive pings).
-//!
-//! Module-level `dead_code` allow: Task 10 ships these handler functions;
-//! the per-session dispatcher in Task 9 (parallel sibling) is what calls
-//! them. The allow comes off when T9 merges.
+//! Module-level `dead_code` allow: some handler functions are only
+//! called from the per-session dispatcher in `session.rs`.
 
 #![allow(dead_code)]
 
@@ -153,8 +146,7 @@ pub(crate) fn handle_describe(
     let mount = match mounts.get(&mount_path) {
         Some(m) => m.clone(),
         None => {
-            // Wave C populates mounts. Pre-Wave-C, every DESCRIBE returns
-            // 404 — that's fine for the initial integration test setup.
+            // Mount not found: return 404.
             return error_response(req, 404, "Not Found");
         }
     };
@@ -508,10 +500,7 @@ fn bind_server_udp_pair(
 ///
 /// Subscribes the session to the mount's broadcast fanout channel and
 /// spawns the per-peer fanout task with the SETUP-allocated transport.
-/// This is the explicit "wire fan-out to per-peer task" call site per
-/// [[feedback-wire-primitives-at-call-site-as-explicit-task]] — Wave C
-/// Task 13 shipped `spawn_peer_fanout` as a primitive; here it gets
-/// invoked.
+/// Invokes `spawn_peer_fanout` to wire the fan-out to the per-peer task.
 ///
 /// Rejection codes:
 /// - 401 Unauthorized — auth check fails.
@@ -716,7 +705,7 @@ pub(crate) fn handle_pause(
 /// TEARDOWN handler — RFC 7826 §10.7 / RFC 2326 §11.4.
 ///
 /// Cancels the fanout task and clears all session state. The per-session
-/// task (Wave B Task 9 dispatcher) observes the 200 OK + TEARDOWN method
+/// dispatcher in `session.rs` observes the 200 OK + TEARDOWN method
 /// and closes the TCP cleanly. Always returns 200 OK after auth so the
 /// client gets a clean ack — even if no SETUP ever happened, TEARDOWN is
 /// idempotent in the sense that "session is gone" is the same observable
@@ -910,10 +899,10 @@ mod tests {
 
     #[test]
     fn extract_mount_path_strips_trackid_segment() {
-        // Wave F (T23 + T25) caught the bug where RtspClient::setup_mp2t_auto
-        // appends /trackID=0 from the SDP a=control: attribute, so the
-        // SETUP URI is /live/trackID=0 but only /live is registered as
-        // a mount. The fix strips the per-media control segment.
+        // RtspClient::setup_mp2t_auto appends /trackID=0 from the SDP
+        // a=control: attribute, so the SETUP URI is /live/trackID=0 but
+        // only /live is registered as a mount. The fix strips the per-media
+        // control segment.
         assert_eq!(
             extract_mount_path("rtsp://host:8554/live/trackID=0"),
             "/live"

@@ -1,7 +1,7 @@
-//! Wave A T2 — `Sender`, `Receiver`, `SocketStats`, `SrtStats`,
-//! `CancelHandle` (the smallest user-visible loop for `tstrans.srt`).
+//! `Sender`, `Receiver`, `SocketStats`, `SrtStats`, `CancelHandle`
+//! (the basic user-visible transports for `tstrans.srt`).
 //!
-//! Mirrors the `tstrans.rtp` Phase 4 Stage 2 binding shape:
+//! Mirrors the `tstrans.rtp` binding shape:
 //! - Per-direction concrete PyClass (not generic over `T: Transport`).
 //! - GIL released around `connect`/`bind+accept`/`send`/`recv`.
 //! - Bytes-like extraction follows audit-backlog #10's two-path pattern:

@@ -137,7 +137,8 @@ pub enum SubtitleCodec {
         /// ISO 639-2 language code, lowercase ASCII.
         language: [u8; 3],
         /// 5-bit teletext_type. Common values: 0x01 (initial page),
-        /// 0x02 (subtitle page), 0x05 (programme schedule).
+        /// 0x02 (subtitle page), 0x04 (programme schedule),
+        /// 0x05 (hearing-impaired subtitle).
         teletext_type: u8,
         /// Magazine number, 0..=7. (3-bit field.)
         magazine_number: u8,

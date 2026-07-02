@@ -28,7 +28,7 @@
 //!   bits.
 //! - audblk / auxdata / errorcheck — block-level audio data and CRCs.
 //! - E-AC-3 (Annex E) — extension to AC-3 with bsid in 11..=16.
-//!   `parse_syncframe` rejects bsid >= 11 as unsupported; if E-AC-3
+//!   `parse_syncframe` rejects bsid >= 9 as unsupported; if E-AC-3
 //!   support is needed, add a separate parser keyed on bsid.
 
 mod decode;

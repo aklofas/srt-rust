@@ -20,9 +20,12 @@
 //! body. Reserved-bit validation is caller-opt-in via
 //! [`TimeStatus::reserved_bits_valid`].
 //!
-//! **Deferred:** nothing — ST 0605 §7 is a single fixed-layout pack
-//! with no tag-based key/value structure; the typed model covers
-//! 100% of the spec scope.
+//! **Deferred:** the ST 0605.7 Nano Precision Time Stamp Pack
+//! (tag 0x06 0x0E…0x0F, nanosecond resolution, 10-byte body) is not
+//! yet implemented. The current decoder handles only the standard
+//! 9-byte Precision Time Stamp Pack. See
+//! `docs/project/deferred-features.md` → "ST 0605 Nano Precision
+//! Time Stamp Pack".
 
 pub(crate) mod decode;
 pub(crate) mod encode;

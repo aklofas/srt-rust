@@ -1479,3 +1479,17 @@ the trigger that would unblock it.
   statistics or RR feedback — for example, for congestion control, QoS
   monitoring, or interoperability with an endpoint that acts on received
   SR/RR values.
+
+## ST 0605 Nano Precision Time Stamp Pack
+
+- **Status:** Not implemented. The `tst_core::klv::st0605` module
+  decodes the standard 9-byte Precision Time Stamp Pack (the only
+  mandatory pack in ST 0605.7). The Nano Precision Time Stamp Pack
+  (10-byte body, nanosecond resolution, distinct UL) defined in the
+  same standard is not yet handled — decoding it returns an unknown-key
+  error.
+- **Why deferred:** No capture in the test corpus uses nanosecond-
+  resolution timestamps; the standard Precision Time Stamp Pack
+  (microsecond resolution) covers all observed real-world payloads.
+- **Trigger to revisit:** A consumer produces or ingests ST 0605 Nano
+  Precision Time Stamp packs and needs sub-microsecond timestamp fidelity.

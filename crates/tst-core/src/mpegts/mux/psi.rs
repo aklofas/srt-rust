@@ -73,10 +73,7 @@ pub(crate) fn write_pat_packet(
 
     // CRC over section body: from table_id through last program entry byte.
     let crc = crc32_mpeg2(&payload[body_start..idx]);
-    payload[idx] = (crc >> 24) as u8;
-    payload[idx + 1] = (crc >> 16) as u8;
-    payload[idx + 2] = (crc >> 8) as u8;
-    payload[idx + 3] = crc as u8;
+    payload[idx..idx + 4].copy_from_slice(&crc.to_be_bytes());
     // Bytes after CRC remain 0xFF from the initialiser.
 
     write_packet(
@@ -246,10 +243,7 @@ pub(crate) fn write_pmt_packet(
 
     // CRC over body (table_id through last ES descriptor byte).
     let crc = crc32_mpeg2(&payload[body_start..idx]);
-    payload[idx] = (crc >> 24) as u8;
-    payload[idx + 1] = (crc >> 16) as u8;
-    payload[idx + 2] = (crc >> 8) as u8;
-    payload[idx + 3] = crc as u8;
+    payload[idx..idx + 4].copy_from_slice(&crc.to_be_bytes());
     // Bytes after the CRC remain 0xFF from the initialiser.
 
     // Emit on prog.pmt_pid — the PAT entry points receivers to this PID.

@@ -60,8 +60,9 @@ mod tests {
     #[test]
     fn scan_start_past_candidate_returns_none() {
         let buf = [0xFF, 0xE0, 0x00];
-        // Start at index 1 — no room for a two-byte candidate at index 1 (buf[2] exists
-        // but buf.len()-1 = 2, so i < 2 fails immediately for i=1).
+        // The only candidate is at index 0. Start at index 2 — past it, and
+        // with no room left for a two-byte candidate (the scan needs
+        // i < buf.len()-1 = 2, which fails immediately for i=2).
         assert_eq!(
             scan_for_sync(&buf, 2, |b0, b1| b0 == 0xFF && (b1 & 0xE0) == 0xE0),
             None

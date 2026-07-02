@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — `Demuxer`, `DemuxEvent`, and `SamplePayload::Subtitle`
-> - [Example: `demux_subtitle_file`](/examples/receiving/demux_subtitle_file.rs)
+> - [Example: `demux_subtitle_file`](/examples/codec-parsing/demux_subtitle_file.rs)
 
 Use case: receive-side inspection — what subtitle codecs are in a
 capture, and what's the cue text?

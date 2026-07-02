@@ -175,8 +175,9 @@ All 4 MISB typed sets (ST 0601 UAS Datalink, ST 0102 Security,
 ST 0605 Precision Time Stamp, ST 0903 VMTI) decode with the same
 semantics as the Rust crate: lenient mode tolerates broken input and
 accumulates per-field errors on `.field_errors`; strict mode raises
-`tstrans.exceptions.KlvError`. Symmetric encoders (`encode_*_lenient`
-/ `encode_*_strict`) round-trip parsed records back to wire bytes.
+`tstrans.exceptions.KlvError`. Symmetric encoders (`encode_*` (lenient default) /
+`encode_*_strict_compliance` (opt-in strict)) round-trip parsed records
+back to wire bytes.
 See the `tstrans.klv` module docstring for the full type listing.
 
 ## Transmux: edit metadata, copy everything else
@@ -776,7 +777,7 @@ outputs += pairer.flush()              # drain end-of-stream (trailing UnpairedK
 for out in outputs:
     match out:
         case PairerOutput.Paired(video=v, klv=k):
-            # v.codec, v.payload (list[NalUnit] | list[Obu]); k.payload (bytes)
+            # v.codec, v.raw (bytes); v.parse() returns list[NalUnit] | list[Obu]; k.payload (bytes)
             ...
         case PairerOutput.UnpairedVideo(video=v):
             ...

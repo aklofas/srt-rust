@@ -425,3 +425,11 @@ A machine-checked version of this matrix — where a CI rail verifies that each
 cell's claim matches the compiled binding — is a future enhancement noted in the
 2026-06-15 codebase audit's "checked artifact" recommendation; it is deferred
 pending a tooling decision on how to express cross-binding coverage assertions.
+
+## C stats-getter naming
+
+The C ABI stats getter symbols (`tst_mux_sender_get_stats`,
+`tst_demux_receiver_get_stats`, etc.) keep the `get_` prefix as a frozen
+ABI-stable convention. New bindings targeting the Rust API directly should
+follow each language's idiomatic convention (no `get_` prefix in Rust/Kotlin;
+`get` prefix in Java).

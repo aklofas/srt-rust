@@ -105,43 +105,23 @@ public final class MuxerConfig {
         return streamPids.length;
     }
 
-    // Accessors the Muxer ctor + the srt MuxSender/Socket marshalling read to
-    // build the nOpen parallel-array contract. Exposed as public for the
-    // cross-package {@code org.tstrans.srt} callers; the parallel-array shape is
-    // not a stable user API.
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
+    // Accessors read by the Muxer ctor and the srt MuxSender/Socket marshalling to
+    // build the nOpen parallel-array contract. Public for cross-package
+    // org.tstrans.srt callers; the parallel-array shape is not a stable user API.
     public int pmtPid() { return pmtPid; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int pcrPid() { return pcrPid; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int pcrIntervalMs() { return pcrIntervalMs; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int psiIntervalMs() { return psiIntervalMs; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int bufferPackets() { return bufferPackets; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public Av1CarriageMode av1Carriage() { return av1Carriage; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int[] streamPids() { return streamPids; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int[] streamKinds() { return streamKinds; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int[] streamCodecs() { return streamCodecs; }
-    /**
-     * KlvStreamType ordinal for KLV streams; raw PMT stream_type byte for DATA
-     * streams; -1 otherwise. Exposed for the srt MuxSender/Socket marshalling;
-     * the parallel-array shape is not a stable user API.
-     */
+    /** KlvStreamType ordinal for KLV streams; raw PMT stream_type byte for DATA streams; -1 otherwise. */
     public int[] streamTypeCodes() { return streamTypeCodes; }
-    /**
-     * carriesPts flag for KLV + DATA streams; false otherwise. Exposed for the
-     * srt MuxSender/Socket marshalling; the parallel-array shape is not a
-     * stable user API.
-     */
+    /** {@code true} if this stream carries PTS (KLV + DATA streams); {@code false} otherwise. */
     public boolean[] streamCarriesPts() { return streamCarriesPts; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public byte[] dataDescBytes() { return dataDescBytes; }
-    /** Exposed for the srt MuxSender/Socket marshalling; the parallel-array shape is not a stable user API. */
     public int[] dataDescLens() { return dataDescLens; }
 
     /**

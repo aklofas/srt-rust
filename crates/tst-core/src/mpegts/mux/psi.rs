@@ -122,132 +122,19 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 /// Estimate the PMT section body size (bytes) for a `MuxerProgramConfig`.
 ///
 /// Used by `MuxerConfig::validate()` to reject configurations that would
-/// produce a PMT section too large for one TS packet. Counts:
-/// * fixed header bytes (16 = 3 + 9 + CRC4)
-/// * program-level descriptor bytes (caller-supplied)
-/// * per-stream entry overhead (5 bytes each)
-/// * caller-supplied per-stream descriptor TLV bytes
-/// * per-stream auto-emit bytes — KLVA Registration (6 B) on PrivateData KLV
-///   without a caller Registration; AV01 Registration (6 B) on AV1 video
-///   without a caller AV01; AC-3 Registration (6 B) on AC-3 audio without a
-///   caller AC-3 Registration; ISO 639 language descriptor (6 B) on audio with
-///   `language: Some(_)` without a caller tag-0x0A; subtitling_descriptor
-///   (10 B), teletext_descriptor (7 B), VTTC Registration (6 B), or GA94
-///   Registration (6 B) on subtitle streams (always — the auto-emit IS the
-///   codec marker); nothing (0 B) on data streams (the muxer never
-///   auto-emits a descriptor on a `StreamSpec::Data` stream).
+/// produce a PMT section too large for one TS packet.
+///
+/// Derived directly from `build_pmt_descriptor_cache` so the estimator and
+/// the emitter are structurally identical — any suppression rule added or
+/// changed in the cache builder is automatically reflected here (DA-MUX-2).
+/// The only overhead vs. real construction is an extra `Vec` allocation at
+/// validation time; this is construction-time cost, not per-push.
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramConfig) -> usize {
-    use crate::mpegts::mux::{AudioCodec, KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
-
-    let mut es_loop_size: usize = 0;
-    for (i, spec) in prog.streams.iter().enumerate() {
-        let caller_descs = &prog.stream_descriptors[i];
-        let caller_descs_len: usize = caller_descs.iter().map(|d| d.len()).sum();
-        let caller_has_registration = caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x05);
-
-        let auto_emit_len = match spec {
-            StreamSpec::Klv { stream_type, .. } => {
-                // KLVA Registration (6 B) auto-emits on both PrivateData
-                // (0x06) and SynchronousMetadata (0x15) per ffmpeg
-                // mpegtsenc.c. Suppressed when caller supplies any
-                // Registration descriptor.
-                let klva = if caller_has_registration { 0 } else { 6 };
-                // Sync KLV (0x15) additionally auto-emits metadata_descriptor
-                // (0x26, 11 B) + metadata_std_descriptor (0x27, 11 B) per MISB
-                // ST 1402.2 ST 1402-15/-16/-17, each suppressed by a
-                // caller-supplied tag-0x26 / tag-0x27. Mirrors the auto-emit
-                // in mux/state.rs build_pmt_descriptor_cache.
-                let sync = if matches!(stream_type, KlvStreamType::SynchronousMetadata) {
-                    let m = if caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x26) {
-                        0
-                    } else {
-                        11
-                    };
-                    let s = if caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x27) {
-                        0
-                    } else {
-                        11
-                    };
-                    m + s
-                } else {
-                    0
-                };
-                klva + sync
-            }
-            StreamSpec::Video {
-                codec: VideoCodec::Av1,
-                ..
-            } => {
-                // AV01 Registration suppressed only on caller-supplied AV01 (mirrors
-                // the precise suppression in `build_pmt_descriptor_cache`).
-                let caller_has_av01 = caller_descs
-                    .iter()
-                    .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AV01");
-                if caller_has_av01 { 0 } else { 6 }
-            }
-            StreamSpec::Audio {
-                codec, language, ..
-            } => {
-                // AC-3 Registration (6 B): suppressed only when caller supplies
-                // an AC-3-flavored Registration. Non-AC-3 Registrations on an
-                // AC-3 PID trigger a warn in the PMT writer but do NOT suppress
-                // auto-emit — caller intent on a different format_identifier
-                // wins (see the AC-3 arm in `build_pmt_descriptor_cache`). Hence the predicate is
-                // `caller_has_ac3`, not `caller_has_other_registration`.
-                let ac3_bytes = if *codec == AudioCodec::Ac3 {
-                    // AC-3 Registration descriptor (6 B) — suppressed by a
-                    // caller-supplied AC-3 Registration.
-                    let caller_has_ac3 = caller_descs
-                        .iter()
-                        .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");
-                    let registration = if caller_has_ac3 { 0 } else { 6 };
-                    // AC-3 audio_stream_descriptor (tag 0x81, 5 B) — auto-emitted
-                    // by build_pmt_descriptor_cache unless the caller supplied a
-                    // tag-0x81 descriptor. MUST be counted to match the emitter;
-                    // omitting it under-estimates the PMT and lets a valid-looking
-                    // config PmtTooLarge-panic on the first push.
-                    let caller_has_ac3_audio_desc =
-                        caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x81);
-                    let audio_stream_desc = if caller_has_ac3_audio_desc { 0 } else { 5 };
-                    registration + audio_stream_desc
-                } else {
-                    0
-                };
-                // ISO 639 language descriptor (6 B): emitted when language is
-                // Some and caller hasn't pre-supplied a tag-0x0A descriptor.
-                let lang_bytes = if language.is_some() {
-                    let caller_has_lang =
-                        caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x0A);
-                    if caller_has_lang { 0 } else { 6 }
-                } else {
-                    0
-                };
-                ac3_bytes + lang_bytes
-            }
-            // Subtitle auto-emit always fires — codec marker for stream_type 0x06.
-            StreamSpec::Subtitle {
-                codec: SubtitleCodec::DvbSubtitling { .. },
-                ..
-            } => 10, // tag(1) + length(1) + 8-byte single entry
-            StreamSpec::Subtitle {
-                codec: SubtitleCodec::DvbTeletext { .. },
-                ..
-            } => 7, // tag(1) + length(1) + 5-byte single entry
-            StreamSpec::Subtitle {
-                codec: SubtitleCodec::Cea708Standalone,
-                ..
-            } => 6, // GA94 Registration
-            StreamSpec::Subtitle {
-                codec: SubtitleCodec::WebVttInTs,
-                ..
-            } => 6, // VTTC Registration
-            // Data streams never auto-emit — caller descriptors only.
-            StreamSpec::Data { .. } => 0,
-            _ => 0,
-        };
-        // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptor bytes.
-        es_loop_size += 5 + caller_descs_len + auto_emit_len;
-    }
+    let cache = super::state::build_pmt_descriptor_cache(prog);
+    // Each cache entry contains the full descriptor-loop bytes for one ES
+    // (auto-emitted + caller-supplied). The PMT ES entry overhead is 5 bytes:
+    // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2).
+    let es_loop_size: usize = cache.iter().map(|d| 5 + d.len()).sum();
     let program_info_len: usize = prog.program_descriptors.iter().map(|d| d.len()).sum();
     // table_id(1) + section_syntax+length(2) + program_number(2) +
     // ver+curr(1) + section_number(1) + last_section_number(1) +

@@ -487,7 +487,7 @@ impl MuxerConfig {
                 });
             }
 
-            // Per-program stream cap (mirrors plan #14).
+            // Per-program stream cap.
             const VIDEO_CAP: usize = 16;
             const KLV_CAP: usize = 16;
             const AUDIO_CAP: usize = 16;

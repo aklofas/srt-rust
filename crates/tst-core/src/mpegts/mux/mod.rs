@@ -77,7 +77,7 @@ pub mod _detail {
 // Re-exported through `super::` / `super::*` by sibling modules (scheduling.rs
 // uses `super::StreamType`; the tests/ files use `super::*` glob). Keep here
 // even though mod.rs itself no longer references these directly — the
-// `Muxer::new` body that did was extracted into `state.rs` (Wave 6 fix).
+// `Muxer::new` body that did was extracted into `state.rs`.
 #[allow(unused_imports)]
 use crate::mpegts::common::{StreamType, StreamTypeCode};
 use alloc::collections::{BTreeMap, VecDeque};

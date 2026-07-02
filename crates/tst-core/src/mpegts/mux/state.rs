@@ -457,7 +457,7 @@ pub(super) fn collect_stream_states(
 /// sparse for ETSI TR 101 290 §5.6.1's 100 ms ceiling, subtitles must not
 /// carry PCR per ETSI EN 300 472 §4.0, and data has no cadence guarantee.
 /// Selection (here) and validation (`MuxerConfig::validate`) share this so
-/// they can never disagree (MUX-02).
+/// they can never disagree.
 pub(super) fn default_pcr_pid(prog: &MuxerProgramConfig) -> Option<u16> {
     prog.first_video_pid().or_else(|| prog.first_audio_pid())
 }
@@ -617,7 +617,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             if !caller_has_ac3 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_ac3());
             }
-            // C6 — AC-3 audio descriptor auto-emit (tag 0x81).
+            // AC-3 audio descriptor auto-emit (tag 0x81).
             //
             // ATSC A/52:2018 §A.4.3 mandates this descriptor on every
             // System A (ATSC) AC-3 PMT entry; without it strict

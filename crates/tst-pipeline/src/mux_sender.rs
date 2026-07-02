@@ -280,8 +280,8 @@ impl<T: Transport> MuxSender<T> {
         // previous panic happened mid-mutation. Route to MuxSenderError whose
         // kind is TransportBroken with a site-specific message so the C ABI
         // surfaces a useful diagnostic via tst_get_last_error_str().
-        // Precedent: Wave 4.B plan #79 + the gap-buffer policy at
-        // reconnect/mod.rs:218,281,358.
+        // Precedent: the gap-buffer policy in `ManagedTransport::send_managed` /
+        // `drain_gap_if_alive` in reconnect/mod.rs.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_video".into(),
@@ -670,10 +670,9 @@ impl<T: Transport> MuxSender<T> {
     /// declaration order. Allocates an owned Vec so callers don't need
     /// to hold the lock.
     pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
-        // Plan F mutex sweep (safe-default on poison): poisoned inner lock
-        // returns empty handle list — matches the "no live muxer state" answer.
-        // Precedent: reconnect/mod.rs:419-422 (socket_stats → None on poison).
-        // Per Plan F Decision F2.
+        // Safe-default on poison: a poisoned inner lock returns an empty
+        // handle list — matches the "no live muxer state" answer.
+        // Precedent: `ManagedTransport::socket_stats` → None on poison (reconnect/mod.rs).
         if let Ok(inner) = self.inner.lock() {
             inner.muxer.video_handles()
         } else {

@@ -219,12 +219,19 @@ impl Reassembler {
         let mut completed_rai = false;
         if let Some(total) = part.declared_total_len {
             if part.buf.len() >= total {
-                let body: Vec<u8> = part.buf.drain(..total).collect();
+                // DA-PERF-14: avoid the intermediate Vec allocation from
+                // `drain(..total).collect()`. Capture the residual count
+                // before truncating so the total_buffered accounting is
+                // correct, then take ownership of the (now-truncated) buf
+                // via mem::take — the buf becomes an empty Vec in-place,
+                // which is free to drop. NLL ends the borrow on `part` at
+                // the mem::take call, allowing the remove below to proceed.
+                let residual = part.buf.len() - total;
+                part.buf.truncate(total);
                 completed_rai = part.random_access_indicator;
-                // Decrement by exactly `total` (= body.len()); any residual
-                // bytes left in `part.buf` are dropped along with the
-                // per-PID state below.
-                self.total_buffered = self.total_buffered.saturating_sub(total + part.buf.len());
+                // Decrement by `total` (body) + `residual` (discarded tail).
+                self.total_buffered = self.total_buffered.saturating_sub(total + residual);
+                let body = core::mem::take(&mut part.buf);
                 completed_now = Some(body);
                 self.by_pid.remove(&pid);
             }

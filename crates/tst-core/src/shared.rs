@@ -29,6 +29,20 @@ impl SharedBytes {
         }
     }
 
+    /// Build a `SharedBytes` directly from a borrowed byte slice (one copy
+    /// into a fresh `Arc<[u8]>`). Prefer this over `from_vec` when the
+    /// caller has a `&[u8]` and does not need to consume an owned `Vec` — it
+    /// avoids an extra Box intermediary that `from_vec` would otherwise
+    /// produce when the Vec is not at capacity.
+    pub fn from_slice(s: &[u8]) -> Self {
+        let len = s.len();
+        Self {
+            buf: Arc::from(s),
+            off: 0,
+            len,
+        }
+    }
+
     /// A zero-copy sub-window sharing the same allocation.
     ///
     /// Panics if `range` is outside the current window (mirrors slice indexing).

@@ -206,9 +206,9 @@ impl super::demuxer::Demuxer {
                     }
                 }
 
-                // Wrap the AU once and emit it. The owned PES payload moves
-                // into the SharedBytes (one Arc allocation + copy of the bytes).
-                let raw = SharedBytes::from_vec(pes.payload);
+                // Wrap the AU once and emit it. One Arc allocation + one copy
+                // of the bytes from the PES payload buffer into the Arc.
+                let raw = SharedBytes::from_slice(&pes.payload);
                 let raw_len = raw.len();
 
                 let entry = self.stream_stats_entry(
@@ -292,7 +292,7 @@ impl super::demuxer::Demuxer {
                         dts: pes.dts,
                         payload: SamplePayload::Unknown {
                             stream_type: StreamTypeCode::from_byte(0x15),
-                            raw: SharedBytes::from_vec(raw),
+                            raw: SharedBytes::from_slice(&raw),
                         },
                     });
                     return;
@@ -499,7 +499,7 @@ impl super::demuxer::Demuxer {
                     dts: pes.dts,
                     payload: SamplePayload::Unknown {
                         stream_type: StreamTypeCode::from_byte(stream_type),
-                        raw: SharedBytes::from_vec(pes.payload),
+                        raw: SharedBytes::from_slice(&pes.payload),
                     },
                 });
             }
@@ -588,7 +588,7 @@ impl super::demuxer::Demuxer {
                         dts: None,
                         payload: SamplePayload::Audio {
                             codec,
-                            frames: SharedBytes::from_vec(pes.payload),
+                            frames: SharedBytes::from_slice(&pes.payload),
                         },
                     });
                 }
@@ -671,7 +671,7 @@ impl super::demuxer::Demuxer {
                         dts: None,
                         payload: SamplePayload::Subtitle {
                             codec,
-                            payload: SharedBytes::from_vec(surfaced_payload),
+                            payload: SharedBytes::from_slice(&surfaced_payload),
                         },
                     });
                 }

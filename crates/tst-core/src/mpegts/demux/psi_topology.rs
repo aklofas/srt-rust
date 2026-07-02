@@ -614,6 +614,33 @@ impl super::demuxer::Demuxer {
             self.drop_elementary_pid_state(pid);
         }
 
+        // DA-DEMUX-3: flush PES / CC / PTS state for PIDs that persist across
+        // this PMT version bump but whose stream kind changed. A partial video PES
+        // buffered before the bump must not be emitted under the new kind (e.g.
+        // audio), and the stale CC / PTS baselines would produce false anomaly
+        // events on the first post-bump packet.
+        let kind_changed_pids: Vec<u16> = self
+            .programs
+            .get(&pmt_pid)
+            .map(|t| {
+                t.streams
+                    .iter()
+                    .filter_map(|old| {
+                        let new_kind = stream_infos.iter().find(|s| s.pid == old.pid).map(|s| s.kind);
+                        match new_kind {
+                            Some(nk) if nk != old.kind => Some(old.pid),
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for pid in kind_changed_pids {
+            self.pes.remove_pid(pid);
+            self.cc_by_pid.remove(&pid);
+            self.last_pts_by_pid.remove(&pid);
+        }
+
         // DA-DEMUX-2: capture the old PCR PID before the mutable tracker borrow.
         // If the PCR PID changed and the old PID was PCR-only (not in the new
         // stream set), its `last_pcr_by_pid` entry would otherwise leak — the PAT
@@ -1241,6 +1268,84 @@ mod tests {
         assert!(
             !demux.last_pcr_by_pid.contains_key(&0x0100),
             "stale last_pcr_by_pid entry for old PCR-only PID 0x0100 must be removed on PCR-PID change"
+        );
+    }
+
+    // DA-DEMUX-3: a PID that persists across a PMT version bump but changes
+    // stream kind must have its PES / CC / PTS state flushed so stale reassembly
+    // state from the old kind can't pollute events under the new kind.
+    #[test]
+    fn pmt_persisting_pid_with_kind_change_flushes_pes_cc_pts_state() {
+        use super::super::demuxer::Demuxer;
+
+        let pat = build_pat_section(1, 0, &[(1, 0x1000)]);
+        let pat_pkt = wrap_section_in_ts_packet(0x0000, &pat);
+
+        // First PMT v0: PID 0x0101 as video (stream_type 0x1B).
+        let pmt_v0 = build_pmt_section(1, 0x0101, 0, &[(0x1B, 0x0101)]);
+        let pmt_v0_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v0);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&pat_pkt).unwrap();
+        demux.feed(&pmt_v0_pkt).unwrap();
+
+        // Feed a PES start on PID 0x0101 (video) so the reassembler has
+        // in-flight state and cc_by_pid / last_pts_by_pid are populated.
+        // TS payload-only packet with PUSI, PES header for video.
+        let mut pes_pkt = [0xFFu8; 188];
+        pes_pkt[0] = 0x47;
+        pes_pkt[1] = 0x40 | 0x01; // PUSI + PID hi
+        pes_pkt[2] = 0x01;         // PID lo → PID = 0x0101
+        pes_pkt[3] = 0x10;         // payload-only, CC=0
+        // pointer_field = 0 (required for PSI, but handled as PES by demuxer
+        // since this PID is now a stream PID). PES start bytes follow.
+        // PES: 0x000001 start code + stream_id=0xE0 + length=0 + optional hdr
+        pes_pkt[4] = 0x00;
+        pes_pkt[5] = 0x00;
+        pes_pkt[6] = 0x01;
+        pes_pkt[7] = 0xE0; // stream_id video
+        pes_pkt[8] = 0x00; // PES_packet_length hi (unbounded)
+        pes_pkt[9] = 0x00; // PES_packet_length lo
+        pes_pkt[10] = 0x80; // flags1: marker=10
+        pes_pkt[11] = 0x80; // PTS_DTS_flags=10 (PTS only)
+        pes_pkt[12] = 0x05; // header_data_length = 5 (PTS)
+        // PTS = 900_000 ticks (3 × 33-bit PTS encoding)
+        let pts: u64 = 900_000;
+        pes_pkt[13] = 0x21 | (((pts >> 30) as u8) & 0x0E);
+        pes_pkt[14] = ((pts >> 22) & 0xFF) as u8;
+        pes_pkt[15] = (((pts >> 14) & 0xFE) as u8) | 0x01;
+        pes_pkt[16] = ((pts >> 7) & 0xFF) as u8;
+        pes_pkt[17] = (((pts << 1) & 0xFE) as u8) | 0x01;
+        // payload bytes (don't matter for this test)
+        demux.feed(&pes_pkt).unwrap();
+
+        // Verify state is populated before the PMT bump.
+        assert!(
+            demux.cc_by_pid.contains_key(&0x0101),
+            "cc_by_pid should have an entry for PID 0x0101 after PES packet"
+        );
+        // Note: last_pts_by_pid is only populated on a *completed* PES —
+        // the unbounded video PES above isn't complete yet. The PES reassembler
+        // state (partial buffer) is the primary thing to check for flush.
+        assert!(
+            demux.pes.buffered_bytes() > 0,
+            "PES reassembler should have buffered bytes from the in-flight PES"
+        );
+
+        // Second PMT v1: same PID 0x0101 but now audio (stream_type 0x03).
+        let pmt_v1 = build_pmt_section(1, 0x0101, 1, &[(0x03, 0x0101)]);
+        let pmt_v1_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v1);
+        demux.feed(&pmt_v1_pkt).unwrap();
+
+        // After the PMT bump, PES/CC/PTS state for PID 0x0101 must be flushed.
+        assert_eq!(
+            demux.pes.buffered_bytes(),
+            0,
+            "in-flight PES must be dropped when PID kind changes (video→audio)"
+        );
+        assert!(
+            !demux.cc_by_pid.contains_key(&0x0101),
+            "cc_by_pid entry for PID 0x0101 must be removed on kind change"
         );
     }
 }

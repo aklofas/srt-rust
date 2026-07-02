@@ -58,9 +58,15 @@ impl InnerStream {
 ///
 /// Obtained via [`TcpTransport::cancel_handle`]. Cancelling does **not** shut
 /// down the underlying socket — [`tst_core::transport::Transport::close`] still
-/// does. After `cancel()` the transport is unusable: both `send_bytes` and
-/// `recv_bytes` return [`tst_core::transport::TransportError::Closed`] within
-/// ≤1 poll interval (~100 ms).
+/// does. Cancellation is cooperative:
+///
+/// - a parked `recv_bytes` observes the flag at its next poll boundary
+///   (~100 ms) and returns [`tst_core::transport::TransportError::Closed`];
+/// - calls started after `cancel()` return `Closed` on their entry check;
+/// - a call already past its entry check may still complete its current I/O
+///   first (a recv that receives data in that window returns it; a send
+///   finishes its bounded ≤~100 ms write attempt) — the *next* call then
+///   returns `Closed`.
 ///
 /// `TcpCancelHandle` is `Clone + Send + Sync`; multiple holders can race
 /// `cancel()` safely (the flag is an `Arc<AtomicBool>`, idempotent).

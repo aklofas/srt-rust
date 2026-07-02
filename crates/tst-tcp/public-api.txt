@@ -72,7 +72,7 @@ pub tst_tcp::error::TcpError::Closed
 pub tst_tcp::error::TcpError::ConnectTimeout
 pub tst_tcp::error::TcpError::ConnectTimeout::seconds: u64
 pub tst_tcp::error::TcpError::InvalidConfig(alloc::string::String)
-pub tst_tcp::error::TcpError::Io(std::io::error::Error)
+pub tst_tcp::error::TcpError::Io(core::io::error::Error)
 pub tst_tcp::error::TcpError::PayloadTooLarge
 pub tst_tcp::error::TcpError::PayloadTooLarge::len: usize
 pub tst_tcp::error::TcpError::PayloadTooLarge::max: usize
@@ -81,8 +81,8 @@ pub tst_tcp::error::TcpError::TlsDisabled
 pub tst_tcp::error::TcpError::Url(tst_tcp::url::TcpUrlError)
 impl tst_tcp::error::TcpError
 pub fn tst_tcp::error::TcpError::kind(&self) -> tst_tcp::error::TcpErrorKind
-impl core::convert::From<std::io::error::Error> for tst_tcp::error::TcpError
-pub fn tst_tcp::error::TcpError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_tcp::error::TcpError
+pub fn tst_tcp::error::TcpError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_tcp::url::TcpUrlError> for tst_tcp::error::TcpError
 pub fn tst_tcp::error::TcpError::from(tst_tcp::url::TcpUrlError) -> Self
 impl core::error::Error for tst_tcp::error::TcpError
@@ -206,7 +206,7 @@ pub tst_tcp::hls::error::HlsError::BindFailed(alloc::string::String)
 pub tst_tcp::hls::error::HlsError::Finished
 pub tst_tcp::hls::error::HlsError::Internal(alloc::string::String)
 pub tst_tcp::hls::error::HlsError::InvalidConfig(alloc::string::String)
-pub tst_tcp::hls::error::HlsError::Io(std::io::error::Error)
+pub tst_tcp::hls::error::HlsError::Io(core::io::error::Error)
 pub tst_tcp::hls::error::HlsError::Tls(alloc::string::String)
 pub tst_tcp::hls::error::HlsError::TlsDisabled
 pub tst_tcp::hls::error::HlsError::UnalignedPushTs
@@ -214,8 +214,8 @@ pub tst_tcp::hls::error::HlsError::UnalignedPushTs::len: usize
 pub tst_tcp::hls::error::HlsError::Url(tst_tcp::hls::url::HlsUrlError)
 impl tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::error::HlsError::kind(&self) -> tst_tcp::hls::error::HlsErrorKind
-impl core::convert::From<std::io::error::Error> for tst_tcp::hls::error::HlsError
-pub fn tst_tcp::hls::error::HlsError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_tcp::hls::error::HlsError
+pub fn tst_tcp::hls::error::HlsError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_tcp::hls::url::HlsUrlError> for tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::error::HlsError::from(tst_tcp::hls::url::HlsUrlError) -> Self
 impl core::error::Error for tst_tcp::hls::error::HlsError
@@ -356,7 +356,7 @@ pub tst_tcp::hls::HlsError::BindFailed(alloc::string::String)
 pub tst_tcp::hls::HlsError::Finished
 pub tst_tcp::hls::HlsError::Internal(alloc::string::String)
 pub tst_tcp::hls::HlsError::InvalidConfig(alloc::string::String)
-pub tst_tcp::hls::HlsError::Io(std::io::error::Error)
+pub tst_tcp::hls::HlsError::Io(core::io::error::Error)
 pub tst_tcp::hls::HlsError::Tls(alloc::string::String)
 pub tst_tcp::hls::HlsError::TlsDisabled
 pub tst_tcp::hls::HlsError::UnalignedPushTs
@@ -364,8 +364,8 @@ pub tst_tcp::hls::HlsError::UnalignedPushTs::len: usize
 pub tst_tcp::hls::HlsError::Url(tst_tcp::hls::url::HlsUrlError)
 impl tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::error::HlsError::kind(&self) -> tst_tcp::hls::error::HlsErrorKind
-impl core::convert::From<std::io::error::Error> for tst_tcp::hls::error::HlsError
-pub fn tst_tcp::hls::error::HlsError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_tcp::hls::error::HlsError
+pub fn tst_tcp::hls::error::HlsError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_tcp::hls::url::HlsUrlError> for tst_tcp::hls::error::HlsError
 pub fn tst_tcp::hls::error::HlsError::from(tst_tcp::hls::url::HlsUrlError) -> Self
 impl core::error::Error for tst_tcp::hls::error::HlsError
@@ -577,7 +577,7 @@ pub fn tst_tcp::listener::TcpListener::accept_blocking(&self) -> core::result::R
 pub fn tst_tcp::listener::TcpListener::bind(core::net::socket_addr::SocketAddr) -> core::result::Result<Self, tst_tcp::error::TcpError>
 pub fn tst_tcp::listener::TcpListener::config_mut(&mut self) -> &mut tst_tcp::config::SocketConfig
 pub fn tst_tcp::listener::TcpListener::from_url(&str) -> core::result::Result<Self, tst_tcp::error::TcpError>
-pub fn tst_tcp::listener::TcpListener::local_addr(&self) -> std::io::error::Result<core::net::socket_addr::SocketAddr>
+pub fn tst_tcp::listener::TcpListener::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 impl core::marker::Freeze for tst_tcp::listener::TcpListener
 impl core::marker::Send for tst_tcp::listener::TcpListener
 impl core::marker::Sync for tst_tcp::listener::TcpListener
@@ -614,8 +614,8 @@ pub enum tst_tcp::tls::TlsStream
 pub tst_tcp::tls::TlsStream::Client(rustls::stream::StreamOwned<rustls::client::client_conn::connection::ClientConnection, std::net::tcp::TcpStream>)
 pub tst_tcp::tls::TlsStream::Server(rustls::stream::StreamOwned<rustls::server::server_conn::connection::ServerConnection, std::net::tcp::TcpStream>)
 impl tst_tcp::tls::TlsStream
-pub fn tst_tcp::tls::TlsStream::read(&mut self, &mut [u8]) -> std::io::error::Result<usize>
-pub fn tst_tcp::tls::TlsStream::write(&mut self, &[u8]) -> std::io::error::Result<usize>
+pub fn tst_tcp::tls::TlsStream::read(&mut self, &mut [u8]) -> core::io::error::Result<usize>
+pub fn tst_tcp::tls::TlsStream::write(&mut self, &[u8]) -> core::io::error::Result<usize>
 impl core::marker::Freeze for tst_tcp::tls::TlsStream
 impl core::marker::Send for tst_tcp::tls::TlsStream
 impl core::marker::Sync for tst_tcp::tls::TlsStream
@@ -736,7 +736,7 @@ pub fn tst_tcp::listener::TcpListener::accept_blocking(&self) -> core::result::R
 pub fn tst_tcp::listener::TcpListener::bind(core::net::socket_addr::SocketAddr) -> core::result::Result<Self, tst_tcp::error::TcpError>
 pub fn tst_tcp::listener::TcpListener::config_mut(&mut self) -> &mut tst_tcp::config::SocketConfig
 pub fn tst_tcp::listener::TcpListener::from_url(&str) -> core::result::Result<Self, tst_tcp::error::TcpError>
-pub fn tst_tcp::listener::TcpListener::local_addr(&self) -> std::io::error::Result<core::net::socket_addr::SocketAddr>
+pub fn tst_tcp::listener::TcpListener::local_addr(&self) -> core::io::error::Result<core::net::socket_addr::SocketAddr>
 impl core::marker::Freeze for tst_tcp::listener::TcpListener
 impl core::marker::Send for tst_tcp::listener::TcpListener
 impl core::marker::Sync for tst_tcp::listener::TcpListener

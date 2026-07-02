@@ -1464,8 +1464,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxSenderErrorKin
 pub mod tst_core::io_file
 pub struct tst_core::io_file::DemuxFromFile
 impl tst_core::io_file::DemuxFromFile
-pub fn tst_core::io_file::DemuxFromFile::open(impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<Self>
-pub fn tst_core::io_file::DemuxFromFile::open_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<Self>
+pub fn tst_core::io_file::DemuxFromFile::open(impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<Self>
+pub fn tst_core::io_file::DemuxFromFile::open_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> core::io::error::Result<Self>
 impl core::iter::traits::iterator::Iterator for tst_core::io_file::DemuxFromFile
 pub type tst_core::io_file::DemuxFromFile::Item = tst_core::mpegts::demux::event::DemuxEvent
 pub fn tst_core::io_file::DemuxFromFile::next(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
@@ -1478,11 +1478,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::io_file::DemuxFromFil
 impl core::panic::unwind_safe::UnwindSafe for tst_core::io_file::DemuxFromFile
 pub struct tst_core::io_file::TryDemuxFromFile
 impl tst_core::io_file::TryDemuxFromFile
-pub fn tst_core::io_file::TryDemuxFromFile::open(impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<Self>
-pub fn tst_core::io_file::TryDemuxFromFile::open_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<Self>
+pub fn tst_core::io_file::TryDemuxFromFile::open(impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<Self>
+pub fn tst_core::io_file::TryDemuxFromFile::open_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> core::io::error::Result<Self>
 impl core::iter::traits::iterator::Iterator for tst_core::io_file::TryDemuxFromFile
-pub type tst_core::io_file::TryDemuxFromFile::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, std::io::error::Error>
-pub fn tst_core::io_file::TryDemuxFromFile::next(&mut self) -> core::option::Option<std::io::error::Result<tst_core::mpegts::demux::event::DemuxEvent>>
+pub type tst_core::io_file::TryDemuxFromFile::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, core::io::error::Error>
+pub fn tst_core::io_file::TryDemuxFromFile::next(&mut self) -> core::option::Option<core::io::error::Result<tst_core::mpegts::demux::event::DemuxEvent>>
 impl core::marker::Freeze for tst_core::io_file::TryDemuxFromFile
 impl core::marker::Send for tst_core::io_file::TryDemuxFromFile
 impl core::marker::Sync for tst_core::io_file::TryDemuxFromFile
@@ -1490,10 +1490,10 @@ impl core::marker::Unpin for tst_core::io_file::TryDemuxFromFile
 impl core::marker::UnsafeUnpin for tst_core::io_file::TryDemuxFromFile
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::io_file::TryDemuxFromFile
 impl !core::panic::unwind_safe::UnwindSafe for tst_core::io_file::TryDemuxFromFile
-pub fn tst_core::io_file::demux_file(impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
-pub fn tst_core::io_file::demux_file_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
-pub fn tst_core::io_file::try_demux_from_file_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<tst_core::io_file::TryDemuxFromFile>
-pub fn tst_core::io_file::write_mux_to_file(&mut tst_core::mpegts::mux::Muxer, impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<()>
+pub fn tst_core::io_file::demux_file(impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
+pub fn tst_core::io_file::demux_file_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> core::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
+pub fn tst_core::io_file::try_demux_from_file_with_config(impl core::convert::AsRef<std::path::Path>, tst_core::mpegts::demux::DemuxerConfig) -> core::io::error::Result<tst_core::io_file::TryDemuxFromFile>
+pub fn tst_core::io_file::write_mux_to_file(&mut tst_core::mpegts::mux::Muxer, impl core::convert::AsRef<std::path::Path>) -> core::io::error::Result<()>
 pub mod tst_core::klv
 pub mod tst_core::klv::checksum
 pub fn tst_core::klv::checksum::checksum_running_sum_16(&[u8]) -> u16
@@ -5409,12 +5409,12 @@ pub mod tst_core::net
 pub mod tst_core::net::udp_socket
 pub const tst_core::net::udp_socket::CANCEL_POLL_INTERVAL: core::time::Duration
 pub const tst_core::net::udp_socket::MCAST_DEFAULT_TTL: u8
-pub fn tst_core::net::udp_socket::apply_multicast_iface(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, &str) -> std::io::error::Result<()>
-pub fn tst_core::net::udp_socket::apply_multicast_recv_join(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<&str>) -> std::io::error::Result<()>
-pub fn tst_core::net::udp_socket::apply_multicast_send_knobs(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<u8>, core::option::Option<&str>) -> std::io::error::Result<()>
-pub fn tst_core::net::udp_socket::bind_udp_socket(core::net::socket_addr::SocketAddr) -> std::io::error::Result<std::net::udp::UdpSocket>
-pub fn tst_core::net::udp_socket::set_multicast_hops_v6(&std::net::udp::UdpSocket, u8) -> std::io::error::Result<()>
-pub fn tst_core::net::udp_socket::set_multicast_if_v4(&std::net::udp::UdpSocket, core::net::ip_addr::Ipv4Addr) -> std::io::error::Result<()>
+pub fn tst_core::net::udp_socket::apply_multicast_iface(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, &str) -> core::io::error::Result<()>
+pub fn tst_core::net::udp_socket::apply_multicast_recv_join(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<&str>) -> core::io::error::Result<()>
+pub fn tst_core::net::udp_socket::apply_multicast_send_knobs(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<u8>, core::option::Option<&str>) -> core::io::error::Result<()>
+pub fn tst_core::net::udp_socket::bind_udp_socket(core::net::socket_addr::SocketAddr) -> core::io::error::Result<std::net::udp::UdpSocket>
+pub fn tst_core::net::udp_socket::set_multicast_hops_v6(&std::net::udp::UdpSocket, u8) -> core::io::error::Result<()>
+pub fn tst_core::net::udp_socket::set_multicast_if_v4(&std::net::udp::UdpSocket, core::net::ip_addr::Ipv4Addr) -> core::io::error::Result<()>
 pub mod tst_core::publisher
 #[non_exhaustive] pub struct tst_core::publisher::PublisherStats
 pub tst_core::publisher::PublisherStats::bytes_written: u64

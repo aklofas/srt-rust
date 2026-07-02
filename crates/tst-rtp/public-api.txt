@@ -177,8 +177,8 @@ pub tst_rtp::error::RtspError::Timeout
 pub tst_rtp::error::RtspError::Tls(alloc::string::String)
 pub tst_rtp::error::RtspError::UnsupportedTransport
 pub tst_rtp::error::RtspError::Url(tst_rtp::url::UrlError)
-impl core::convert::From<std::io::error::Error> for tst_rtp::error::RtspError
-pub fn tst_rtp::error::RtspError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_rtp::error::RtspError
+pub fn tst_rtp::error::RtspError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspError
 pub fn tst_rtp::error::RtspError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::error::RtspError
@@ -1033,10 +1033,10 @@ pub tst_rtp::transport::ConnectError::HostNotLiteral::host: alloc::string::Strin
 pub tst_rtp::transport::ConnectError::IfaceUnsupported
 pub tst_rtp::transport::ConnectError::IfaceUnsupported::detail: alloc::string::String
 pub tst_rtp::transport::ConnectError::IfaceUnsupported::iface: alloc::string::String
-pub tst_rtp::transport::ConnectError::Io(std::io::error::Error)
+pub tst_rtp::transport::ConnectError::Io(core::io::error::Error)
 pub tst_rtp::transport::ConnectError::Url(tst_rtp::url::UrlError)
-impl core::convert::From<std::io::error::Error> for tst_rtp::transport::ConnectError
-pub fn tst_rtp::transport::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::transport::ConnectError
@@ -1325,10 +1325,10 @@ pub tst_rtp::ConnectError::HostNotLiteral::host: alloc::string::String
 pub tst_rtp::ConnectError::IfaceUnsupported
 pub tst_rtp::ConnectError::IfaceUnsupported::detail: alloc::string::String
 pub tst_rtp::ConnectError::IfaceUnsupported::iface: alloc::string::String
-pub tst_rtp::ConnectError::Io(std::io::error::Error)
+pub tst_rtp::ConnectError::Io(core::io::error::Error)
 pub tst_rtp::ConnectError::Url(tst_rtp::url::UrlError)
-impl core::convert::From<std::io::error::Error> for tst_rtp::transport::ConnectError
-pub fn tst_rtp::transport::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::transport::ConnectError
@@ -1567,8 +1567,8 @@ pub tst_rtp::RtspError::Timeout
 pub tst_rtp::RtspError::Tls(alloc::string::String)
 pub tst_rtp::RtspError::UnsupportedTransport
 pub tst_rtp::RtspError::Url(tst_rtp::url::UrlError)
-impl core::convert::From<std::io::error::Error> for tst_rtp::error::RtspError
-pub fn tst_rtp::error::RtspError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_rtp::error::RtspError
+pub fn tst_rtp::error::RtspError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspError
 pub fn tst_rtp::error::RtspError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::error::RtspError

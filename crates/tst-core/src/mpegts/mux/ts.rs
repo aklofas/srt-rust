@@ -220,11 +220,17 @@ pub(crate) fn write_pcr_only_packet(
     out[2] = (pid & 0xFF) as u8;
 
     // adaptation_field_control = 0b10 (AF only, no payload).
-    // continuity_counter: repeat current value without incrementing
-    // (H.222.0 §2.4.3.3). We read the per-PID counter directly here
-    // because `write_pcr_only_packet` lives in the same module as
-    // `ContinuityCounters` and the field is private to the module.
-    let cc = counters.counters[(pid & 0x1FFF) as usize] & 0x0F;
+    // continuity_counter: repeat the last payload CC without incrementing
+    // (H.222.0 §2.4.3.3 — afc='10' packets do not increment the counter).
+    // `ContinuityCounters::next` increments AFTER returning the emitted
+    // value, so `counters.counters[idx]` holds the NEXT value to emit on a
+    // payload packet; `wrapping_sub(1)` recovers the last emitted payload
+    // CC. Consecutive heartbeats correctly repeat the same value because
+    // this function is non-mutating. The pre-first-payload edge (counters
+    // slot == 0 → wrapping_sub gives 15) is benign — the receiver doesn't
+    // validate CC on adaptation-only packets before first PUSI.
+    let idx = (pid & 0x1FFF) as usize;
+    let cc = counters.counters[idx].wrapping_sub(1) & 0x0F;
     out[3] = (0b10 << 4) | cc;
 
     // adaptation_field_length: 188 - 4 (header) - 1 (length byte itself) = 183.
@@ -463,5 +469,48 @@ mod tests {
         for &b in &buf[5..] {
             assert_eq!(b, 0xAA);
         }
+    }
+
+    /// DA-MUX-1 — PCR-only heartbeat must repeat the last payload CC.
+    ///
+    /// H.222.0 §2.4.3.3: the continuity_counter is NOT incremented on
+    /// adaptation-field-only packets (afc='10'). The heartbeat must carry the
+    /// same CC as the previous payload packet on the same PID.
+    #[test]
+    fn pcr_only_heartbeat_repeats_last_payload_cc() {
+        let mut cc = ContinuityCounters::new();
+        let payload = [0xBBu8; 50];
+        let mut buf = [0u8; 188];
+        let pcr = Pcr27mhz::new(27_000_000);
+
+        // Emit 3 payload packets on PID 0x200 so the CC cycles to 2.
+        for _ in 0..3 {
+            write_packet(
+                &mut buf,
+                0x200,
+                false,
+                AdaptationField::default(),
+                &payload,
+                &mut cc,
+            );
+        }
+        // The last emitted payload CC was 2 (0, 1, 2 in order).
+        assert_eq!(buf[3] & 0x0F, 2, "last payload CC should be 2");
+
+        // A PCR-only heartbeat on the same PID must repeat CC = 2.
+        let mut hb = [0u8; 188];
+        write_pcr_only_packet(&mut hb, 0x200, pcr, &cc);
+        // afc = 0b10 (adaptation-only, no payload)
+        assert_eq!(hb[3] >> 4, 0b10, "afc must be adaptation-only (0b10)");
+        assert_eq!(
+            hb[3] & 0x0F,
+            2,
+            "heartbeat must repeat the last payload CC (2), not the next (3)"
+        );
+
+        // A second consecutive heartbeat must also repeat CC = 2 (non-mutating).
+        let mut hb2 = [0u8; 188];
+        write_pcr_only_packet(&mut hb2, 0x200, pcr, &cc);
+        assert_eq!(hb2[3] & 0x0F, 2, "consecutive heartbeats must all repeat same CC");
     }
 }

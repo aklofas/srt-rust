@@ -195,7 +195,8 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// - [`ShellErrorKind::InputMalformed`] — demuxer rejected a packet
     ///   (strict-mode violation, unrecoverable malformation, or malformed PES).
     /// - [`ShellErrorKind::TransportBroken`] — transport socket is broken.
-    /// - [`ShellErrorKind::Closed`] — caller invoked `close()`.
+    /// - [`ShellErrorKind::Closed`] — caller invoked `close()` or the
+    ///   cancel signal fired (`ExplicitClose` path).
     /// - [`ShellErrorKind::EndOfStream`] — peer closed the connection cleanly
     ///   (`TransportError::Closed`), but only surfaced here if a partial PES
     ///   flush fails; the normal EOF path returns `Ok(None)`.

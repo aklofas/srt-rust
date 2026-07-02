@@ -60,6 +60,7 @@ pub struct SocketConfig {
     /// libsrt converts the byte value to an internal buffer count by dividing
     /// by `(MSS - 28)` (header overhead) with a floor of 32 buffers.
     /// For high-latency links, size as `RCVBUF ≥ latency × bitrate`.
+    /// Values above `i32::MAX` are rejected (`OptionError::OutOfRange`).
     ///
     /// `None` leaves the libsrt default.
     pub recv_buf_bytes: Option<u32>,
@@ -67,6 +68,7 @@ pub struct SocketConfig {
     ///
     /// Same internal conversion as [`Self::recv_buf_bytes`]: libsrt divides
     /// by `(MSS - 28)` with a 32-buffer floor.
+    /// Values above `i32::MAX` are rejected (`OptionError::OutOfRange`).
     ///
     /// `None` leaves the libsrt default.
     pub send_buf_bytes: Option<u32>,

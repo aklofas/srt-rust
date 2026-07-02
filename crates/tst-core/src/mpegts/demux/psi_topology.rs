@@ -614,6 +614,12 @@ impl super::demuxer::Demuxer {
             self.drop_elementary_pid_state(pid);
         }
 
+        // DA-DEMUX-2: capture the old PCR PID before the mutable tracker borrow.
+        // If the PCR PID changed and the old PID was PCR-only (not in the new
+        // stream set), its `last_pcr_by_pid` entry would otherwise leak — the PAT
+        // removal path cleans it up (`:319`) but the PMT-version path did not.
+        let old_pcr_pid = self.programs.get(&pmt_pid).and_then(|t| t.pcr_pid);
+
         // Build klv_links from the accepted streams.
         let prog_map = self.build_program_map(pmt_pid, &pmt, program_number, &stream_infos);
 
@@ -629,6 +635,16 @@ impl super::demuxer::Demuxer {
         tracker.pcr_pid = Some(pmt.pcr_pid);
         tracker.streams = stream_infos;
         tracker.klv_mismatch_coalesce.clear();
+
+        // DA-DEMUX-2: remove the stale PCR timing entry when the PCR PID changed
+        // and the old PID was not in the new stream set (PCR-only PID dropped).
+        // The != guard avoids dropping a live baseline when the PCR PID is
+        // unchanged (a PMT re-emit with same pcr_pid must not lose timing history).
+        if let Some(old_pid) = old_pcr_pid {
+            if old_pid != pmt.pcr_pid && !new_pids.contains(&old_pid) {
+                self.last_pcr_by_pid.remove(&old_pid);
+            }
+        }
 
         // Emit ProgramMap event.
         self.queue.push_back(DemuxEvent::ProgramMap(prog_map));
@@ -1179,5 +1195,52 @@ mod tests {
             }
             other => panic!("expected PsiSyntax SectionNumberNonZero on PMT, got {other:?}"),
         }
+    }
+
+    // DA-DEMUX-2: PMT PCR-PID change must remove the stale last_pcr_by_pid entry
+    // when the old PCR PID was a PCR-only PID not present in the new stream set.
+    #[test]
+    fn pmt_pcr_pid_change_removes_stale_pcr_entry() {
+        let pat = build_pat_section(1, 0, &[(1, 0x1000)]);
+        let pat_pkt = wrap_section_in_ts_packet(0x0000, &pat);
+
+        // First PMT: video on 0x0101, PCR on 0x0100 (PCR-only PID).
+        let pmt_v0 = build_pmt_section(1, 0x0100, 0, &[(0x1B, 0x0101)]);
+        let pmt_v0_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v0);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&pat_pkt).unwrap();
+        demux.feed(&pmt_v0_pkt).unwrap();
+        // Seed last_pcr_by_pid for PID 0x0100 by calling check_pcr via
+        // process_packet. Build a minimal TS packet with a PCR on PID 0x0100.
+        let mut pcr_pkt = [0xFFu8; 188];
+        pcr_pkt[0] = 0x47;
+        pcr_pkt[1] = 0x01; // PID hi = 0x0100
+        pcr_pkt[2] = 0x00; // PID lo
+        // afc=10, CC=0, AF with PCR flag
+        pcr_pkt[3] = 0b10 << 4; // afc=10, CC=0
+        pcr_pkt[4] = 183; // af_length
+        pcr_pkt[5] = 0x10; // PCR_flag=1
+        // PCR value = 0 (bytes 6..12 already 0xFF → set to 0x00 with reserved bits)
+        for b in pcr_pkt[6..12].iter_mut() {
+            *b = 0x00;
+        }
+        pcr_pkt[10] = 0x7E; // reserved bits per §2.4.3.5
+        demux.feed(&pcr_pkt).unwrap();
+        assert!(
+            demux.last_pcr_by_pid.contains_key(&0x0100),
+            "PCR PID 0x0100 should be in last_pcr_by_pid after first PMT"
+        );
+
+        // Second PMT (version bump): PCR PID moves to 0x0101 (the video PID).
+        // Old PCR PID 0x0100 is no longer in the stream set.
+        let pmt_v1 = build_pmt_section(1, 0x0101, 1, &[(0x1B, 0x0101)]);
+        let pmt_v1_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v1);
+        demux.feed(&pmt_v1_pkt).unwrap();
+
+        assert!(
+            !demux.last_pcr_by_pid.contains_key(&0x0100),
+            "stale last_pcr_by_pid entry for old PCR-only PID 0x0100 must be removed on PCR-PID change"
+        );
     }
 }

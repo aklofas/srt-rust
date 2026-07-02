@@ -34,23 +34,15 @@ public final class DemuxerConfig {
 
     public static Builder builder() { return new Builder(); }
 
-    // Accessors the Demuxer ctor + the srt DemuxReceiver/Socket marshalling read
-    // to push primitives across the JNI boundary. Public so the cross-package
-    // org.tstrans.srt wrappers can read them; the ordinal/sentinel marshalling
-    // shape is not a stable user API.
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
+    // Accessors read by the Demuxer ctor and the srt DemuxReceiver/Socket marshalling
+    // to push primitives across the JNI boundary. Public for cross-package
+    // org.tstrans.srt callers; the ordinal/sentinel shape is not a stable user API.
     public StrictMode strictMode() { return strictMode; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public long pesCapPerPid() { return pesCapPerPid; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public long pesCapTotal() { return pesCapTotal; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public boolean cfiTolerance() { return cfiTolerance; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public Av1CarriageMode av1Carriage() { return av1Carriage; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public long auCellCapPerPid() { return auCellCapPerPid; }
-    /** Exposed for the srt DemuxReceiver/Socket marshalling; not a stable user API. */
     public boolean lenientPsiReassembly() { return lenientPsiReassembly; }
 
     /** Fluent builder for {@link DemuxerConfig}. Defaults match {@code tst_core}'s. */

@@ -490,7 +490,14 @@ pub enum NonConformantIssue {
     /// previous PSI version; strict mode converts to error.
     PsiChecksumMismatch { pid: u16 },
     /// PUSI mid-PES — a new PUSI packet arrived before the previous PES
-    /// completed. Lenient mode discards the partial PES and starts fresh.
+    /// completed.
+    ///
+    /// **Vestigial — never emitted by [`Demuxer`](crate::mpegts::demux::Demuxer).**
+    /// The PES reassembler silently discards any in-flight partial PES when a
+    /// new PUSI arrives; this is the normal start-of-PES path, not a separate
+    /// diagnostic event. The variant is preserved for `#[non_exhaustive]`
+    /// binary-compatibility parity only (same zero-emit-site status as
+    /// `DemuxException.Kind::UNEXPECTED_EOF` in the Python binding).
     PusiMidPes,
     /// PES header parse failed. Lenient mode: receiver continues parsing
     /// subsequent packets. Strict modes: escalates to `DemuxError`.

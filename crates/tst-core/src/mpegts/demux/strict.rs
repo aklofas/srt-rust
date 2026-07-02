@@ -14,8 +14,13 @@ pub enum StrictMode {
     /// continues. This is the default.
     #[default]
     Off,
-    /// Hard-fail on timing anomalies (`PcrAnomaly`, `PusiMidPes`).
+    /// Hard-fail on timing anomalies (`PcrAnomaly`, `PtsAnomaly`,
+    /// `MissingRequiredPts`, `PcrMalformed`, `PsiChecksumMismatch`).
     /// Tolerate descriptor and stream-type issues.
+    ///
+    /// Note: `PusiMidPes` appears in this mode's reject set for
+    /// `#[non_exhaustive]` parity but is never emitted by the demuxer —
+    /// see that variant's documentation.
     TimingOnly,
     /// Hard-fail on missing `metadata_descriptor` and on stream-type
     /// mismatches. Tolerate timing anomalies.

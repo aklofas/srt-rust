@@ -937,6 +937,17 @@ mod tests {
         pkt
     }
 
+    /// Like `wrap_section_in_ts_packet` but sets the 4-bit CC field to `cc`.
+    ///
+    /// Use this in tests that feed two PSI packets on the same PID: the second
+    /// must use `cc=1` so that DA-DEMUX-1's duplicate-suppression does not
+    /// swallow it.
+    fn wrap_section_in_ts_packet_cc(pid: u16, section: &[u8], cc: u8) -> Vec<u8> {
+        let mut pkt = wrap_section_in_ts_packet(pid, section);
+        pkt[3] = 0x10 | (cc & 0x0F); // payload-only, CC=cc
+        pkt
+    }
+
     /// Drain all queued events from the demuxer.
     fn drain_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
         let mut events = Vec::new();
@@ -1263,8 +1274,9 @@ mod tests {
 
         // Second PMT (version bump): PCR PID moves to 0x0101 (the video PID).
         // Old PCR PID 0x0100 is no longer in the stream set.
+        // CC=1 so this isn't swallowed as a duplicate of the v0 PMT on this PID.
         let pmt_v1 = build_pmt_section(1, 0x0101, 1, &[(0x1B, 0x0101)]);
-        let pmt_v1_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v1);
+        let pmt_v1_pkt = wrap_section_in_ts_packet_cc(0x1000, &pmt_v1, 1);
         demux.feed(&pmt_v1_pkt).unwrap();
 
         assert!(
@@ -1335,8 +1347,9 @@ mod tests {
         );
 
         // Second PMT v1: same PID 0x0101 but now audio (stream_type 0x03).
+        // CC=1 so this isn't swallowed as a duplicate of the v0 PMT on this PID.
         let pmt_v1 = build_pmt_section(1, 0x0101, 1, &[(0x03, 0x0101)]);
-        let pmt_v1_pkt = wrap_section_in_ts_packet(0x1000, &pmt_v1);
+        let pmt_v1_pkt = wrap_section_in_ts_packet_cc(0x1000, &pmt_v1, 1);
         demux.feed(&pmt_v1_pkt).unwrap();
 
         // After the PMT bump, PES/CC/PTS state for PID 0x0101 must be flushed.

@@ -2314,7 +2314,7 @@ mod tests {
         assert_eq!(demuxer.programs_for_test().len(), 1);
 
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000), (2, 0x1100)], 1, 1))
             .unwrap();
         let progs = demuxer.programs_for_test();
         assert_eq!(
@@ -2334,7 +2334,7 @@ mod tests {
             .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
             .unwrap();
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         let progs = demuxer.programs_for_test();
@@ -2459,7 +2459,7 @@ mod tests {
         assert_eq!(progs[&0x1000].streams[0].pid, 0x1011);
 
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000), (2, 0x1100)], 1, 1))
             .unwrap();
         demuxer
             .feed(&pmt_packet_for_test(
@@ -2520,7 +2520,7 @@ mod tests {
         );
 
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         let progs = demuxer.programs_for_test();
@@ -2582,6 +2582,47 @@ mod tests {
         pkt
     }
 
+    /// Like `pat_packet_with_programs` but sets the 4-bit CC field to `cc`.
+    ///
+    /// Use this in tests that feed two PAT packets on the same PID: the second
+    /// packet must use `cc=1` (or any value != the first) so that DA-DEMUX-1's
+    /// spec-legal duplicate suppression does not swallow it.
+    fn pat_packet_with_programs_cc(programs: &[(u16, u16)], version: u8, cc: u8) -> Vec<u8> {
+        let mut pkt = pat_packet_with_programs(programs, version);
+        pkt[3] = 0x10 | (cc & 0x0F); // payload-only, CC=cc
+        pkt
+    }
+
+    /// Like `pmt_packet_for_test` but sets the 4-bit CC field to `cc`.
+    ///
+    /// Use this in tests that feed two PMT packets on the same PID.
+    fn pmt_packet_for_test_cc(
+        pmt_pid: u16,
+        program_number: u16,
+        pcr_pid: u16,
+        streams: &[(u8, u16)],
+        version: u8,
+        cc: u8,
+    ) -> Vec<u8> {
+        let mut pkt = pmt_packet_for_test(pmt_pid, program_number, pcr_pid, streams, version);
+        pkt[3] = 0x10 | (cc & 0x0F); // payload-only, CC=cc
+        pkt
+    }
+
+    /// Like `pat_packet_with_multi_section` but sets the 4-bit CC field to `cc`.
+    ///
+    /// Use this when feeding multiple sections on PID 0x0000 in the same test.
+    fn pat_packet_with_multi_section_cc(
+        section_number: u8,
+        last_section_number: u8,
+        programs: &[(u16, u16)],
+        cc: u8,
+    ) -> Vec<u8> {
+        let mut pkt = pat_packet_with_multi_section(section_number, last_section_number, programs);
+        pkt[3] = 0x10 | (cc & 0x0F); // payload-only, CC=cc
+        pkt
+    }
+
     fn drain_all_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
         let mut events = Vec::new();
         while let Some(e) = d.next_event() {
@@ -2599,7 +2640,9 @@ mod tests {
         // section 1 carries program 2 on PMT PID 0x200.
         // Both share transport_stream_id=0x0001, version=0, current_next=1.
         let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
-        let s1 = pat_packet_with_multi_section(1, 1, &[(2u16, 0x0200u16)]);
+        // Section 1 arrives as a separate TS packet on the same PID, so its CC
+        // must differ from section 0's (CC=0) to avoid duplicate suppression.
+        let s1 = pat_packet_with_multi_section_cc(1, 1, &[(2u16, 0x0200u16)], 1);
         let mut demuxer = Demuxer::new();
         demuxer.feed(&s0).unwrap();
         demuxer.feed(&s1).unwrap();
@@ -2791,9 +2834,9 @@ mod tests {
         assert!(demuxer.cc_by_pid.contains_key(&0x1111));
         assert!(demuxer.cc_by_pid.contains_key(&0x1100)); // PMT PID
 
-        // PAT v1 drops program 2.
+        // PAT v1 drops program 2 (CC=1 so it isn't swallowed as a duplicate of v0).
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         assert!(
@@ -2843,9 +2886,9 @@ mod tests {
         assert!(demuxer.last_pcr_by_pid.contains_key(&0x1011));
         assert!(demuxer.last_pcr_by_pid.contains_key(&0x1111));
 
-        // PAT v1 drops program 2.
+        // PAT v1 drops program 2 (CC=1 so it isn't swallowed as a duplicate of v0).
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         assert!(
@@ -2885,9 +2928,9 @@ mod tests {
         assert!(demuxer.stream_kind_by_pid.contains_key(&0x1111));
         assert!(demuxer.pid_to_program.contains_key(&0x1111));
 
-        // PAT v1 drops program 2.
+        // PAT v1 drops program 2 (CC=1 so it isn't swallowed as a duplicate of v0).
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         // Pre-existing behavior (already in place before B8) — sanity that
@@ -2924,12 +2967,14 @@ mod tests {
             .unwrap();
         assert!(demuxer.stream_kind_by_pid.contains_key(&0x1011));
         // PMT v1 (same program 1): replaces 0x1011 with 0x1012.
+        // CC=1 so it isn't swallowed as a duplicate of the v0 PMT on this PID.
         demuxer
-            .feed(&pmt_packet_for_test(
+            .feed(&pmt_packet_for_test_cc(
                 0x1000,
                 1,
                 0x1012,
                 &[(0x1B, 0x1012)],
+                1,
                 1,
             ))
             .unwrap();
@@ -3007,15 +3052,17 @@ mod tests {
             ))
             .unwrap();
         // PAT v1: program 2 reuses the same PMT PID 0x1000.
+        // Both PAT and PMT need CC=1 — they arrive on PIDs already seen at CC=0.
         demuxer
-            .feed(&pat_packet_with_programs(&[(2, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(2, 0x1000)], 1, 1))
             .unwrap();
         demuxer
-            .feed(&pmt_packet_for_test(
+            .feed(&pmt_packet_for_test_cc(
                 0x1000,
                 2,
                 0x1011,
                 &[(0x1B, 0x1011)],
+                1,
                 1,
             ))
             .unwrap();
@@ -3081,9 +3128,9 @@ mod tests {
             "PES reassembler must have buffered bytes for PID 0x1111"
         );
 
-        // PAT v1 drops program 2.
+        // PAT v1 drops program 2 (CC=1 so it isn't swallowed as a duplicate of v0).
         demuxer
-            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
             .unwrap();
 
         // The PID's partial-PES buffer must be cleaned; total_buffered drops

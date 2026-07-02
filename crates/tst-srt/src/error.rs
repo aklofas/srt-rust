@@ -407,6 +407,14 @@ pub(crate) fn last_reject(sock: srt_sys::SRTSOCKET) -> RejectReason {
 /// categories must be checked for a typed reject reason.
 pub(crate) fn classify_connect_error(raw: RawError, reason: RejectReason) -> ConnectError {
     if matches!(raw.kind, SrtErrno::Connection | SrtErrno::Setup) {
+        // SRT_REJ_TIMEOUT (16): the peer set RejectReason::Timeout on a
+        // connect that exhausted SRTO_CONNTIMEO (raises SRT_ENOSERVER /
+        // SrtErrno::Setup). Must map to TimedOut BEFORE the generic
+        // `reason != Unknown` branch, which would otherwise produce a
+        // misleading Rejected{Timeout} ("peer rejected" — no peer answered).
+        if reason == RejectReason::Timeout {
+            return ConnectError::TimedOut;
+        }
         // `reason != Unknown` means libsrt recorded a typed handshake reject.
         if reason != RejectReason::Unknown {
             return ConnectError::Rejected {

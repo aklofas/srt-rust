@@ -21,7 +21,7 @@ pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, u8) 
 pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, u16) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, bool) -> &mut Self
@@ -59,11 +59,11 @@ pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, tst_srt::options::
 pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::role(&mut self, tst_srt::options::Role) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, tst_srt::options::StreamId) -> &mut Self
@@ -95,7 +95,7 @@ pub tst_srt::config::ListenerConfig::overhead_bandwidth_pct: core::option::Optio
 pub tst_srt::config::ListenerConfig::packet_filter: core::option::Option<tst_srt::options::PacketFilter>
 pub tst_srt::config::ListenerConfig::passphrase: core::option::Option<tst_srt::options::Passphrase>
 pub tst_srt::config::ListenerConfig::payload_size: core::option::Option<u16>
-pub tst_srt::config::ListenerConfig::recv_buf_packets: core::option::Option<u32>
+pub tst_srt::config::ListenerConfig::recv_buf_bytes: core::option::Option<u32>
 pub tst_srt::config::ListenerConfig::recv_latency: core::option::Option<core::time::Duration>
 pub tst_srt::config::ListenerConfig::recv_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::config::ListenerConfig::reuse_addr: bool
@@ -131,11 +131,11 @@ pub tst_srt::config::SocketConfig::packet_filter: core::option::Option<tst_srt::
 pub tst_srt::config::SocketConfig::passphrase: core::option::Option<tst_srt::options::Passphrase>
 pub tst_srt::config::SocketConfig::payload_size: core::option::Option<u16>
 pub tst_srt::config::SocketConfig::peer_latency: core::option::Option<core::time::Duration>
-pub tst_srt::config::SocketConfig::recv_buf_packets: core::option::Option<u32>
+pub tst_srt::config::SocketConfig::recv_buf_bytes: core::option::Option<u32>
 pub tst_srt::config::SocketConfig::recv_latency: core::option::Option<core::time::Duration>
 pub tst_srt::config::SocketConfig::recv_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::config::SocketConfig::role: tst_srt::options::Role
-pub tst_srt::config::SocketConfig::send_buf_packets: core::option::Option<u32>
+pub tst_srt::config::SocketConfig::send_buf_bytes: core::option::Option<u32>
 pub tst_srt::config::SocketConfig::send_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::config::SocketConfig::stream_id: core::option::Option<tst_srt::options::StreamId>
 pub tst_srt::config::SocketConfig::too_late_packet_drop: core::option::Option<bool>
@@ -1316,7 +1316,7 @@ pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, u8) 
 pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, u16) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, bool) -> &mut Self
@@ -1346,7 +1346,7 @@ pub tst_srt::ListenerConfig::overhead_bandwidth_pct: core::option::Option<u8>
 pub tst_srt::ListenerConfig::packet_filter: core::option::Option<tst_srt::options::PacketFilter>
 pub tst_srt::ListenerConfig::passphrase: core::option::Option<tst_srt::options::Passphrase>
 pub tst_srt::ListenerConfig::payload_size: core::option::Option<u16>
-pub tst_srt::ListenerConfig::recv_buf_packets: core::option::Option<u32>
+pub tst_srt::ListenerConfig::recv_buf_bytes: core::option::Option<u32>
 pub tst_srt::ListenerConfig::recv_latency: core::option::Option<core::time::Duration>
 pub tst_srt::ListenerConfig::recv_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::ListenerConfig::reuse_addr: bool
@@ -1448,11 +1448,11 @@ pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, tst_srt::options::
 pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::role(&mut self, tst_srt::options::Role) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_bytes(&mut self, u32) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, tst_srt::options::StreamId) -> &mut Self
@@ -1485,11 +1485,11 @@ pub tst_srt::SocketConfig::packet_filter: core::option::Option<tst_srt::options:
 pub tst_srt::SocketConfig::passphrase: core::option::Option<tst_srt::options::Passphrase>
 pub tst_srt::SocketConfig::payload_size: core::option::Option<u16>
 pub tst_srt::SocketConfig::peer_latency: core::option::Option<core::time::Duration>
-pub tst_srt::SocketConfig::recv_buf_packets: core::option::Option<u32>
+pub tst_srt::SocketConfig::recv_buf_bytes: core::option::Option<u32>
 pub tst_srt::SocketConfig::recv_latency: core::option::Option<core::time::Duration>
 pub tst_srt::SocketConfig::recv_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::SocketConfig::role: tst_srt::options::Role
-pub tst_srt::SocketConfig::send_buf_packets: core::option::Option<u32>
+pub tst_srt::SocketConfig::send_buf_bytes: core::option::Option<u32>
 pub tst_srt::SocketConfig::send_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::SocketConfig::stream_id: core::option::Option<tst_srt::options::StreamId>
 pub tst_srt::SocketConfig::too_late_packet_drop: core::option::Option<bool>

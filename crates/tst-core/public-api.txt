@@ -5445,6 +5445,7 @@ pub mod tst_core::shared
 pub struct tst_core::shared::SharedBytes
 impl tst_core::shared::SharedBytes
 pub fn tst_core::shared::SharedBytes::as_slice(&self) -> &[u8]
+pub fn tst_core::shared::SharedBytes::from_slice(&[u8]) -> Self
 pub fn tst_core::shared::SharedBytes::from_vec(alloc::vec::Vec<u8>) -> Self
 pub fn tst_core::shared::SharedBytes::slice(&self, core::ops::range::Range<usize>) -> Self
 impl core::clone::Clone for tst_core::shared::SharedBytes

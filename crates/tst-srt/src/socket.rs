@@ -816,7 +816,7 @@ pub(crate) fn perf_to_stats(p: &srt_sys::CBytePerfMon) -> Stats {
         packets_retransmitted: p.pktRetransTotal as u64,
         packets_dropped_recv_side: p.pktRcvDropTotal as u64,
         packets_dropped_send_side: p.pktSndDropTotal as u64,
-        rtt: Duration::from_millis(p.msRTT.max(0.0) as u64),
+        rtt: Duration::from_micros((p.msRTT.max(0.0) * 1000.0) as u64),
         send_bandwidth_bps: (p.mbpsSendRate * 1_000_000.0).max(0.0) as u64,
         recv_bandwidth_bps: (p.mbpsRecvRate * 1_000_000.0).max(0.0) as u64,
         mbps_estimated_bandwidth: p.mbpsBandwidth,
@@ -1137,5 +1137,33 @@ mod tests {
         cancel.cancel();
         drop(cancel);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    // DA-SRT-4: perf_to_stats must preserve sub-millisecond RTT precision.
+    // libsrt's CBytePerfMon.msRTT is a float in milliseconds (e.g. 1.5 ms).
+    // The old code used Duration::from_millis(1.5 as u64) = 1ms (truncated).
+    // The fix uses Duration::from_micros((1.5 * 1000.0) as u64) = 1500µs.
+    #[test]
+    fn perf_to_stats_preserves_sub_ms_rtt() {
+        let mut p: srt_sys::CBytePerfMon = unsafe { std::mem::zeroed() };
+        p.msRTT = 1.5; // 1.5 ms — has a sub-millisecond component
+        let stats = super::perf_to_stats(&p);
+        assert_eq!(
+            stats.rtt,
+            std::time::Duration::from_micros(1500),
+            "1.5 ms should map to 1500µs; got {:?}",
+            stats.rtt
+        );
+
+        // Edge case: exactly 2 ms should also be exact.
+        p.msRTT = 2.0;
+        let stats2 = super::perf_to_stats(&p);
+        assert_eq!(stats2.rtt, std::time::Duration::from_millis(2));
+
+        // Negative values (should not happen but libsrt docs say > 0 on connected
+        // socket) clamp to zero via max(0.0).
+        p.msRTT = -1.0;
+        let stats3 = super::perf_to_stats(&p);
+        assert_eq!(stats3.rtt, std::time::Duration::ZERO);
     }
 }

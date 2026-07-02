@@ -563,8 +563,7 @@ fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
     })
 }
 
-/// B-frame presence heuristic, matching the prior `h264-reader`-backed
-/// logic exactly.
+/// B-frame presence heuristic.
 fn compute_has_b_frames(profile_idc: u8, constraint_set_flags: u8, vui: &VuiOut) -> bool {
     // Prefer the explicit VUI bitstream_restriction field when present.
     if let Some(reorder) = vui.max_num_reorder_frames {

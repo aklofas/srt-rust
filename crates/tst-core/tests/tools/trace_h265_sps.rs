@@ -112,7 +112,7 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
     snap!("bit_depth_chroma_minus8 (ue)", bit_depth_chroma_minus8);
     let _ = validate_bit_depth_minus8("bit_depth_chroma_minus8", bit_depth_chroma_minus8)?;
 
-    // Tracer omits production's `> 12` reject (see `sps.rs:141-146`) —
+    // Tracer omits production's `> 12` reject (see `parse_sps` in `sps.rs`) —
     // diagnostic should keep tracing past hostile/malformed values to
     // surface where the misalignment lands.
     let log2_max_pic_order_cnt_lsb_minus4 = br.read_ue()?;
@@ -251,7 +251,7 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
             num_delta_pocs.push(new_num_delta);
         } else {
             // Tracer omits production's `MAX_PICS_PER_SET = 32` cap (see
-            // `short_term_rps.rs:86-91`) — diagnostic intentionally keeps
+            // `walk_one_short_term_rps` in `short_term_rps.rs`) — diagnostic intentionally keeps
             // walking past spec-violating values.
             let num_negative = br.read_ue()?;
             snap!(
@@ -293,7 +293,7 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
 
     // Stop here: the bug under investigation lives in the RPS region.
     // Production `parse_sps` continues into `long_term_ref_pics_present_flag`,
-    // `sps_temporal_mvp_enabled_flag`, and the VUI (`sps.rs:191-211`); extend
+    // `sps_temporal_mvp_enabled_flag`, and the VUI; extend
     // the tracer if a future bug surfaces past `num_short_term_ref_pic_sets`.
     Ok(())
 }

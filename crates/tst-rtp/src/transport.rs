@@ -211,7 +211,7 @@ impl RtpTransport {
                 let stats_clone = rtcp_stats.clone();
                 // Guard: port 65535 has no valid RTCP companion port
                 // (65536 overflows u16). Skip the reporter in that case,
-                // mirroring the guard in rtsp/server/handlers.rs:444.
+                // mirroring the guard in `bind_server_udp_pair` in rtsp/server/handlers.rs.
                 let Some(rtcp_companion_port) = peer.port().checked_add(1) else {
                     tracing::warn!("peer port 65535 has no RTCP companion; skipping SR reporter");
                     return Self {
@@ -560,7 +560,7 @@ impl RtpRecvTransport {
             // Guard: if the kernel handed us port 65535 (or the caller
             // requested it explicitly), there is no valid RTCP companion
             // port. Skip the RTCP socket rather than wrapping to 0.
-            // Mirrors the guard in rtsp/server/handlers.rs:444.
+            // Mirrors the guard in `bind_server_udp_pair` in rtsp/server/handlers.rs.
             if let Some(rtcp_port) = actual_rtp_port.checked_add(1) {
                 let rtcp_local: SocketAddr = if is_multicast {
                     match ip {

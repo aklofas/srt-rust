@@ -30,6 +30,18 @@ pub struct CodecErrFields {
     pub layer: Option<i32>,
 }
 
+/// Throw `java.lang.IllegalStateException("{what} is closed")`.
+///
+/// Shared helper for the ~42 JNI sites that guard a closed/consumed handle.
+/// The exception class and message text are identical to what the inline sites
+/// used to emit; Java tests that assert on the message will see no difference.
+pub fn throw_closed(env: &mut JNIEnv, what: &str) {
+    let _ = env.throw_new(
+        "java/lang/IllegalStateException",
+        format!("{what} is closed"),
+    );
+}
+
 /// Construct + throw `org.tstrans.DemuxException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `DemuxException.Kind` enum constant names
 /// (SCREAMING_SNAKE_CASE), matching the Rust `DemuxError` variants 1:1.

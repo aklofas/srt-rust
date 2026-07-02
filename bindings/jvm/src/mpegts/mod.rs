@@ -272,7 +272,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
 /// Java `ensureOpen()` already checks, so the JNI boundary fails closed even if a
 /// private native method is reached by reflection.
 fn closed(env: &mut JNIEnv) {
-    let _ = env.throw_new("java/lang/IllegalStateException", "Demuxer is closed");
+    crate::error::throw_closed(env, "Demuxer");
 }
 
 /// Convert one `DemuxEvent` to a Java `DemuxEvent` record.

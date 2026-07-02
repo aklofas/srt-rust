@@ -220,7 +220,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nNext<'local>(
         let Some((res, sink_error)) = REGISTRY.with_poisoning(handle as u64, |jdr| {
             (jdr.inner.recv_event(), jdr.sink_error.clone())
         }) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
             return JObject::null().into_raw();
         };
 
@@ -336,7 +336,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nAddByteSink<'local>(
             }));
         });
         if registered.is_none() {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
         }
     })
 }
@@ -352,7 +352,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nCancelHandle(
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let Some(maybe_arc) = REGISTRY.with(handle as u64, |jdr| jdr.inner.cancel_handle()) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
             return 0;
         };
         match maybe_arc {
@@ -384,7 +384,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nSocketStats<'local>(
         let Some(stats) = REGISTRY.with(handle as u64, |jdr| {
             jdr.inner.socket_stats().unwrap_or_default()
         }) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
             return JObject::null();
         };
         match build_socket_stats(env, &stats) {
@@ -407,7 +407,7 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nStats<'local>(
 ) -> JObject<'local> {
     crate::panic::jni_catch(&mut env, JObject::null(), |env| {
         let Some(combined) = REGISTRY.with(handle as u64, |jdr| jdr.inner.stats()) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
             return JObject::null();
         };
 
@@ -491,7 +491,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoDemuxReceiver(
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let Some(socket) = super::lowlevel::REGISTRY_SOCKET.close(handle as u64) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            crate::error::throw_closed(env, "Socket");
             return 0;
         };
         REGISTRY.insert(make_receiver(socket, None)) as jlong
@@ -516,7 +516,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoDemuxReceiverWithConfig(
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let Some(socket) = super::lowlevel::REGISTRY_SOCKET.close(handle as u64) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            crate::error::throw_closed(env, "Socket");
             return 0;
         };
         let opts = build_demux_config_from_args(

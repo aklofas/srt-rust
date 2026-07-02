@@ -430,5 +430,5 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nClose<'local>(
 /// Throw `IllegalStateException` for a leased call that found a closed/absent
 /// handle — the native-side mirror of the Java `ensureOpen()` check.
 fn closed(env: &mut JNIEnv) {
-    let _ = env.throw_new("java/lang/IllegalStateException", "Pairer is closed");
+    crate::error::throw_closed(env, "Pairer");
 }

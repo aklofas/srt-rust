@@ -186,7 +186,7 @@ fn with_push(
         Some(Ok(())) => {}
         Some(Err(e)) => throw_mux_sender_error(env, &e),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
         }
     }
 }
@@ -202,7 +202,7 @@ fn first_handle(
         Some(Some(raw)) => i64::from(raw),
         Some(None) => -1,
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
             -1
         }
     }
@@ -602,7 +602,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nStats<'local>(
         let Some((sock, pipe)) = REGISTRY.with(handle as u64, |inner| {
             (inner.socket_stats().unwrap_or_default(), inner.stats())
         }) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
             return JObject::null();
         };
 
@@ -691,7 +691,7 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoMuxSender<'local>(
     crate::panic::jni_catch(&mut env, 0, |env| {
         // Take the Socket out of its registry (atomic; idempotent).
         let Some(socket) = super::lowlevel::REGISTRY_SOCKET.close(handle as u64) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Socket is closed");
+            crate::error::throw_closed(env, "Socket");
             return 0;
         };
 

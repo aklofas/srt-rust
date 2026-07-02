@@ -158,10 +158,7 @@ fn with_mux_push(
         Some(Ok(())) => {}
         Some(Err(e)) => throw_managed_mux_sender_error(env, &e),
         None => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedMuxSender is closed",
-            );
+            crate::error::throw_closed(env, "ManagedMuxSender");
         }
     }
 }
@@ -177,10 +174,7 @@ fn mux_first_handle(
         Some(Some(raw)) => i64::from(raw),
         Some(None) => -1,
         None => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedMuxSender is closed",
-            );
+            crate::error::throw_closed(env, "ManagedMuxSender");
             -1
         }
     }
@@ -668,10 +662,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nStats<'local>(
                 jstruct.inner.stats(),
             )
         }) else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedMuxSender is closed",
-            );
+            crate::error::throw_closed(env, "ManagedMuxSender");
             return JObject::null();
         };
 
@@ -708,10 +699,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nReconnectAttempts(
                 jstruct.factory_attempts.load(Ordering::Acquire) as jlong
             })
             .unwrap_or_else(|| {
-                let _ = env.throw_new(
-                    "java/lang/IllegalStateException",
-                    "ManagedMuxSender is closed",
-                );
+                crate::error::throw_closed(env, "ManagedMuxSender");
                 0
             })
     })
@@ -965,10 +953,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nNext<'local>(
         let Some(res) =
             REGISTRY_DEMUX.with_poisoning(handle as u64, |jstruct| jstruct.inner.recv_event())
         else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver is closed",
-            );
+            crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return JObject::null().into_raw();
         };
         match res {
@@ -1007,10 +992,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nCancelHandle(
         let Some(maybe_arc) =
             REGISTRY_DEMUX.with(handle as u64, |jstruct| jstruct.inner.cancel_handle())
         else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver is closed",
-            );
+            crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return 0;
         };
         match maybe_arc {
@@ -1043,10 +1025,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSocketStats<'l
         let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
             jstruct.inner.socket_stats().unwrap_or_default()
         }) else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver is closed",
-            );
+            crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return JObject::null();
         };
         match build_socket_stats(env, &stats) {
@@ -1069,10 +1048,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nSrtStats<'loca
         let Some(stats) = REGISTRY_DEMUX.with(handle as u64, |jstruct| {
             jstruct.inner.socket_stats().unwrap_or_default()
         }) else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedDemuxReceiver is closed",
-            );
+            crate::error::throw_closed(env, "ManagedDemuxReceiver");
             return JObject::null();
         };
         match build_socket_stats(env, &stats) {
@@ -1095,10 +1071,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedDemuxReceiver_nReconnectAttem
                 jstruct.factory_attempts.load(Ordering::Acquire) as jlong
             })
             .unwrap_or_else(|| {
-                let _ = env.throw_new(
-                    "java/lang/IllegalStateException",
-                    "ManagedDemuxReceiver is closed",
-                );
+                crate::error::throw_closed(env, "ManagedDemuxReceiver");
                 0
             })
     })

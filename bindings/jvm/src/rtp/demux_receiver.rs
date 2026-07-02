@@ -302,7 +302,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nAddByteSink<'local>(
             }));
         });
         if registered.is_none() {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
         }
     })
 }
@@ -317,7 +317,7 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nStats<'local>(
 ) -> JObject<'local> {
     crate::panic::jni_catch(&mut env, JObject::null(), |env| {
         let Some(combined) = REGISTRY.with(handle as u64, |jdr| jdr.inner.stats()) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "DemuxReceiver is closed");
+            crate::error::throw_closed(env, "DemuxReceiver");
             return JObject::null();
         };
 

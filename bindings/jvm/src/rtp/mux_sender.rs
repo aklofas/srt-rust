@@ -159,7 +159,7 @@ fn with_push(
         Some(Ok(())) => {}
         Some(Err(e)) => throw_mux_sender_error(env, &e),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
         }
     }
 }
@@ -175,7 +175,7 @@ fn first_handle(
         Some(Some(raw)) => i64::from(raw),
         Some(None) => -1,
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
             -1
         }
     }
@@ -568,7 +568,7 @@ pub extern "system" fn Java_org_tstrans_rtp_MuxSender_nStats<'local>(
         let Some((sock, pipe)) = REGISTRY.with(handle as u64, |inner| {
             (inner.socket_stats().unwrap_or_default(), inner.stats())
         }) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MuxSender is closed");
+            crate::error::throw_closed(env, "MuxSender");
             return JObject::null();
         };
 

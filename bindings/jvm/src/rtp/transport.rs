@@ -141,7 +141,7 @@ pub extern "system" fn Java_org_tstrans_rtp_Sender_nSend(
             Some(Ok(())) => {}
             Some(Err(e)) => transport_error_to_rtp(env, &e),
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "Sender is closed");
+                crate::error::throw_closed(env, "Sender");
             }
         }
     })
@@ -266,7 +266,7 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nRecv(
             let n = w.inner.recv_bytes(w.scratch.as_mut_slice())?;
             Ok::<Vec<u8>, _>(w.scratch[..n].to_vec())
         }) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "Receiver is closed");
+            crate::error::throw_closed(env, "Receiver");
             return std::ptr::null_mut();
         };
         match res {

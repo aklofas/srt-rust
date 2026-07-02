@@ -60,10 +60,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nCancel(
             .with(handle as u64, |c| c.inner.cancel())
             .is_none()
         {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "RtspCancelHandle is closed",
-            );
+            crate::error::throw_closed(env, "RtspCancelHandle");
         }
     })
 }
@@ -80,10 +77,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nIsCancelled(
         match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_canceled())) {
             TryWith::Ran(v) => v,
             _ => {
-                let _ = env.throw_new(
-                    "java/lang/IllegalStateException",
-                    "RtspCancelHandle is closed",
-                );
+                crate::error::throw_closed(env, "RtspCancelHandle");
                 0
             }
         }
@@ -243,7 +237,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nTeardown(
         let Some((client, torn)) =
             REGISTRY_SESSION.with(handle as u64, |s| (s.client.clone(), s.torn_down.clone()))
         else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
+            crate::error::throw_closed(env, "RtspSession");
             return;
         };
         if torn.load(Ordering::Relaxed) {
@@ -272,7 +266,7 @@ fn session_control(
     op: impl FnOnce(&mut RustRtspClient) -> Result<(), RtspError>,
 ) {
     let Some(client) = REGISTRY_SESSION.with(handle as u64, |s| s.client.clone()) else {
-        let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
+        crate::error::throw_closed(env, "RtspSession");
         return;
     };
     let res = (|| -> Result<(), RtspError> {
@@ -339,7 +333,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
         // Lease the session and clone the data-plane `session` Arc out. `None`
         // (absent/closed) → IllegalStateException.
         let Some(session_slot) = REGISTRY_SESSION.with(handle as u64, |s| s.session.clone()) else {
-            let _ = env.throw_new("java/lang/IllegalStateException", "RtspSession is closed");
+            crate::error::throw_closed(env, "RtspSession");
             return 0;
         };
         // Take the data-plane RtspSession; double-consume = protocol error.

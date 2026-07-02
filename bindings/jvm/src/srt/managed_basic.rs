@@ -238,7 +238,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nSendBytes(
                 _ => super::errors::throw_srt(env, "IO", &e.to_string()),
             },
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
+                crate::error::throw_closed(env, "ManagedSender");
             }
         }
     })
@@ -262,7 +262,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFlush(
                 _ => super::errors::throw_srt(env, "IO", &e.to_string()),
             },
             None => {
-                let _ = env.throw_new("java/lang/IllegalStateException", "ManagedSender is closed");
+                crate::error::throw_closed(env, "ManagedSender");
             }
         }
     })
@@ -480,10 +480,7 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nRecvBytes(
         let Some(res) =
             REGISTRY_RECEIVER.with_poisoning(handle as u64, |jstruct| jstruct.inner.next_packet())
         else {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "ManagedReceiver is closed",
-            );
+            crate::error::throw_closed(env, "ManagedReceiver");
             return std::ptr::null_mut();
         };
         match res {

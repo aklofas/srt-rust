@@ -49,7 +49,7 @@ pub extern "system" fn Java_org_tstrans_rtp_CancelHandle_nCancel(
             .with(handle as u64, |c| c.inner.cancel())
             .is_none()
         {
-            let _ = env.throw_new("java/lang/IllegalStateException", "CancelHandle is closed");
+            crate::error::throw_closed(env, "CancelHandle");
         }
     })
 }

@@ -61,10 +61,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nCancel(
             .with(handle as u64, |c| c.inner.cancel())
             .is_none()
         {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "RtspServerCancelHandle is closed",
-            );
+            crate::error::throw_closed(env, "RtspServerCancelHandle");
         }
     })
 }
@@ -83,10 +80,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nIsCancelled(
         match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_canceled())) {
             crate::handle::TryWith::Ran(v) => v,
             _ => {
-                let _ = env.throw_new(
-                    "java/lang/IllegalStateException",
-                    "RtspServerCancelHandle is closed",
-                );
+                crate::error::throw_closed(env, "RtspServerCancelHandle");
                 0
             }
         }
@@ -253,7 +247,7 @@ fn with_server<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&ServerInner) 
     match REGISTRY_SERVER.with(handle as u64, |s| f(s)) {
         Some(r) => Some(r),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "RtspServer is closed");
+            crate::error::throw_closed(env, "RtspServer");
             None
         }
     }
@@ -275,7 +269,7 @@ fn with_server_poisoning<R>(
     match REGISTRY_SERVER.with_poisoning(handle as u64, |s| f(s)) {
         Some(r) => Some(r),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "RtspServer is closed");
+            crate::error::throw_closed(env, "RtspServer");
             None
         }
     }
@@ -397,7 +391,7 @@ fn with_mount<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&MountInner) ->
     match REGISTRY_MOUNT.with(handle as u64, |m| f(m)) {
         Some(r) => Some(r),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
+            crate::error::throw_closed(env, "MountHandle");
             None
         }
     }
@@ -420,7 +414,7 @@ fn with_mount_poisoning<R>(
     match REGISTRY_MOUNT.with_poisoning(handle as u64, |m| f(m)) {
         Some(r) => Some(r),
         None => {
-            let _ = env.throw_new("java/lang/IllegalStateException", "MountHandle is closed");
+            crate::error::throw_closed(env, "MountHandle");
             None
         }
     }

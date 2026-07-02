@@ -244,8 +244,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     // H.264 §7.4.2.1.1: log2_max_frame_num_minus4 ∈ [0, 12].
     // The old u8::try_from only caught values > 255; values 13–255 were
     // accepted as in-spec.  Use read_ue_max to enforce the tighter bound.
-    let log2_max_frame_num_minus4 =
-        br.read_ue_max("log2_max_frame_num_minus4", 12)? as u8;
+    let log2_max_frame_num_minus4 = br.read_ue_max("log2_max_frame_num_minus4", 12)? as u8;
 
     let pic_order_cnt_type = br.read_ue()?;
     match pic_order_cnt_type {

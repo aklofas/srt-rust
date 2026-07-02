@@ -23,10 +23,8 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H265Pps, CodecParseError> {
         });
     }
     let mut br = BitReader::new(rbsp);
-    let pps_pic_parameter_set_id =
-        br.read_ue_max("pps_pic_parameter_set_id", 63)? as u8;
-    let pps_seq_parameter_set_id =
-        br.read_ue_max("pps_seq_parameter_set_id", 15)? as u8;
+    let pps_pic_parameter_set_id = br.read_ue_max("pps_pic_parameter_set_id", 63)? as u8;
+    let pps_seq_parameter_set_id = br.read_ue_max("pps_seq_parameter_set_id", 15)? as u8;
     Ok(H265Pps {
         pps_pic_parameter_set_id,
         pps_seq_parameter_set_id,

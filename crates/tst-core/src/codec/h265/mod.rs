@@ -54,7 +54,6 @@ use crate::codec::CodecParseError;
 use crate::mpegts::demux::event::NalUnit;
 use alloc::collections::BTreeMap;
 
-
 /// All VPS, SPS, and PPS NAL units parsed from a slice.
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -125,4 +124,3 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Codec
     }
     Ok(out)
 }
-

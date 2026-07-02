@@ -124,18 +124,17 @@ impl Muxer {
         // language tracks, sign-language audio) could still drift.
         self.reserve_preamble(prog_idx, pts, audio_pid, audio_packets)?;
 
-        let first_af = if self.pcr_pids[prog_idx] == audio_pid
-            && self.pcr_due(prog_idx, pts.as_ticks())
-        {
-            let pcr = Pcr27mhz::from_pts(pts);
-            self.pcr_last[prog_idx] = Some(pcr.as_ticks());
-            AdaptationField {
-                pcr: Some(pcr),
-                random_access: false,
-            }
-        } else {
-            AdaptationField::default()
-        };
+        let first_af =
+            if self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts.as_ticks()) {
+                let pcr = Pcr27mhz::from_pts(pts);
+                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
+                AdaptationField {
+                    pcr: Some(pcr),
+                    random_access: false,
+                }
+            } else {
+                AdaptationField::default()
+            };
         self.drain_pes_scratch(audio_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above.

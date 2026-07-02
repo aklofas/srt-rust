@@ -279,12 +279,10 @@ fn validate_counts_ac3_audio_stream_descriptor_and_rejects_oversized_pmt() {
 #[test]
 fn da_mux_2_recognized_subtitle_descriptor_suppresses_estimator_auto_emit() {
     // Caller-supplied recognized subtitle descriptor (tag 0x59, 10 bytes).
-    let sub_desc_0x59 = crate::mpegts::descriptors::subtitling_descriptor(
-        *b"eng", 0x10, 1, 1,
-    ); // tag(1)+len(1)+lang(3)+type(1)+comp_id(2)+anc_id(2) = 10 bytes
+    let sub_desc_0x59 = crate::mpegts::descriptors::subtitling_descriptor(*b"eng", 0x10, 1, 1); // tag(1)+len(1)+lang(3)+type(1)+comp_id(2)+anc_id(2) = 10 bytes
     // Padding: 145-byte body → TLV is tag(1)+len(1)+body(145) = 147 bytes.
-    let padding = crate::mpegts::descriptors::user_private(&[0u8; 145])
-        .expect("145 B within descriptor cap");
+    let padding =
+        crate::mpegts::descriptors::user_private(&[0u8; 145]).expect("145 B within descriptor cap");
     // caller_descs_len for subtitle = 10 + 147 = 157 bytes.
     // PMT: 16 (fixed) + 5 (video) + 5 + 157 (subtitle) = 183 B = MAX_PMT_SECTION_BYTES.
     let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

@@ -11,7 +11,8 @@
 
 use super::psi::{PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use super::ts::write_pcr_only_packet;
-use super::{AudioCodec, KlvStreamType, Muxer, StreamSpec, StreamType, VideoCodec};
+use super::state::{audio_stream_type_byte, klv_stream_type_byte, video_stream_type_byte};
+use super::{Muxer, StreamSpec};
 use crate::mpegts::common::{Pcr27mhz, Pts90khz};
 use alloc::vec::Vec;
 
@@ -128,50 +129,9 @@ impl Muxer {
             let mut entries: Vec<PmtStreamEntry> = Vec::with_capacity(prog.streams.len());
             for (i, spec) in prog.streams.iter().enumerate() {
                 let stream_type = match spec {
-                    StreamSpec::Video {
-                        codec: VideoCodec::H264,
-                        ..
-                    } => StreamType::H264.as_u8(),
-                    StreamSpec::Video {
-                        codec: VideoCodec::H265,
-                        ..
-                    } => StreamType::H265.as_u8(),
-                    StreamSpec::Video {
-                        codec: VideoCodec::H266,
-                        ..
-                    } => StreamType::H266.as_u8(),
-                    // AV1 rides PMT stream_type 0x06; the AV01
-                    // registration_descriptor (auto-emitted at the top of the
-                    // PMT descriptor loop, suppressed when caller supplies
-                    // their own) disambiguates the codec at the wire level.
-                    StreamSpec::Video {
-                        codec: VideoCodec::Av1,
-                        ..
-                    } => StreamType::KlvPrivate.as_u8(),
-                    StreamSpec::Klv {
-                        stream_type: KlvStreamType::PrivateData,
-                        ..
-                    } => StreamType::KlvPrivate.as_u8(),
-                    StreamSpec::Klv {
-                        stream_type: KlvStreamType::SynchronousMetadata,
-                        ..
-                    } => StreamType::KlvSyncMetadata.as_u8(),
-                    StreamSpec::Audio {
-                        codec: AudioCodec::Mp2,
-                        ..
-                    } => StreamType::AudioMp2.as_u8(),
-                    StreamSpec::Audio {
-                        codec: AudioCodec::Aac,
-                        ..
-                    } => StreamType::AudioAac.as_u8(),
-                    StreamSpec::Audio {
-                        codec: AudioCodec::AacLatm,
-                        ..
-                    } => StreamType::AudioAacLatm.as_u8(),
-                    StreamSpec::Audio {
-                        codec: AudioCodec::Ac3,
-                        ..
-                    } => StreamType::AudioAc3.as_u8(),
+                    StreamSpec::Video { codec, .. } => video_stream_type_byte(*codec),
+                    StreamSpec::Klv { stream_type, .. } => klv_stream_type_byte(*stream_type),
+                    StreamSpec::Audio { codec, .. } => audio_stream_type_byte(*codec),
                     // Caller-chosen byte; validate() guarantees the demux
                     // classifier maps it (with its descriptors) to Unknown.
                     StreamSpec::Data { stream_type, .. } => *stream_type,
@@ -179,7 +139,7 @@ impl Muxer {
                     // (PrivateData); the per-stream descriptor cache carries
                     // the codec-specific disambiguator (subtitling_descriptor /
                     // teletext_descriptor / Registration "GA94" / "VTTC").
-                    StreamSpec::Subtitle { .. } => StreamType::KlvPrivate.as_u8(),
+                    StreamSpec::Subtitle { .. } => super::StreamType::KlvPrivate.as_u8(),
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,

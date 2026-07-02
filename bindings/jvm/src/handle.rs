@@ -102,7 +102,6 @@
 //! still benefit from the registry (it kills their own UAF/double-free on `close`),
 //! and they simply register with `cancel = None`.
 
-
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Arc, Mutex};

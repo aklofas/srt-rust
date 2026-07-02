@@ -32,7 +32,7 @@ use tst_pipeline::ext::pairing::{
 use crate::error::throw_demux;
 use crate::handle::HandleRegistry;
 use crate::mpegts::{
-    build_demux_config_from_args, build_stream_id, build_video_units, enum_const, convert_event,
+    build_demux_config_from_args, build_stream_id, build_video_units, convert_event, enum_const,
     metadata_kind, opt_long, throw_demux_error, video_codec_name, wrap_heap_byte_buffer,
 };
 

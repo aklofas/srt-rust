@@ -17,7 +17,7 @@ use super::pes::{
     write_pes_header,
 };
 use super::state::{ts_packets_for, validate_annex_b, wrap_av1_obus_binding};
-use super::ts::{AdaptationField, write_packet};
+use super::ts::AdaptationField;
 use super::types::{Av1CarriageMode, StreamKind, VideoCodec, VideoStreamHandle};
 
 /// Whether the caller-supplied bytes are elementary (need binding
@@ -399,67 +399,39 @@ impl Muxer {
         };
         let payload_bytes: &[u8] = if do_wrap { &wrapped_scratch } else { nal };
 
-        let total = header_len + payload_bytes.len();
-        let video_packets = ts_packets_for(total);
-        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        self.pes_scratch.clear();
+        self.pes_scratch.extend_from_slice(&header[..header_len]);
+        self.pes_scratch.extend_from_slice(payload_bytes);
+
+        let video_packets = ts_packets_for(self.pes_scratch.len());
         // Validate-1 C3: when the PCR PID hasn't received payload within
         // `pcr_interval_ms`, the muxer injects a standalone PCR-only
         // adaptation-only packet on it. Reserve one packet for that.
         // Returns 0 when the current push lands on the PCR PID (the
         // in-band PCR-on-push path below handles emission instead).
-        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), video_pid);
+        self.reserve_preamble(prog_idx, pts, video_pid, video_packets)?;
 
-        if self.queue.len() + psi_packets + pcr_only_packets + video_packets
-            > self.config.buffer_packets
-        {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets as u64,
-            });
-        }
-
-        self.maybe_emit_psi(prog_idx, pts.as_ticks());
-        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), video_pid);
-
-        self.pes_scratch.clear();
-        self.pes_scratch.extend_from_slice(&header[..header_len]);
-        self.pes_scratch.extend_from_slice(payload_bytes);
-
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < self.pes_scratch.len() {
-            let mut adaptation = AdaptationField::default();
-            if first {
-                if key_frame {
-                    adaptation.random_access = true;
-                }
-                if self.pcr_pids[prog_idx] == video_pid {
-                    // Per H.222.0 V9 §2.4.3.5: random_access_indicator may
-                    // only be set on PCR_PID packets that also carry the PCR
-                    // fields. Force PCR emission when key-frame coincides
-                    // with this PID even if pcr_due() would otherwise return
-                    // false — matches TSDuck / ffmpeg behavior. Random-access
-                    // point + PCR coincide; downstream seekers benefit.
-                    if self.pcr_due(prog_idx, pts.as_ticks()) || key_frame {
-                        let pcr = Pcr27mhz::from_pts(pts);
-                        adaptation.pcr = Some(pcr);
-                        self.pcr_last[prog_idx] = Some(pcr.as_ticks());
-                    }
+        let first_af = {
+            let mut af = AdaptationField::default();
+            if key_frame {
+                af.random_access = true;
+            }
+            if self.pcr_pids[prog_idx] == video_pid {
+                // Per H.222.0 V9 §2.4.3.5: random_access_indicator may
+                // only be set on PCR_PID packets that also carry the PCR
+                // fields. Force PCR emission when key-frame coincides
+                // with this PID even if pcr_due() would otherwise return
+                // false — matches TSDuck / ffmpeg behavior. Random-access
+                // point + PCR coincide; downstream seekers benefit.
+                if self.pcr_due(prog_idx, pts.as_ticks()) || key_frame {
+                    let pcr = Pcr27mhz::from_pts(pts);
+                    af.pcr = Some(pcr);
+                    self.pcr_last[prog_idx] = Some(pcr.as_ticks());
                 }
             }
-            let mut pkt = [0u8; 188];
-            let payload_start = cursor;
-            let result = write_packet(
-                &mut pkt,
-                video_pid,
-                first,
-                adaptation,
-                &self.pes_scratch[payload_start..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
+            af
+        };
+        self.drain_pes_scratch(video_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above.
         // Stats track *caller-supplied* AU bytes — binding-mode framing

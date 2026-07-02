@@ -301,6 +301,71 @@ impl Muxer {
     pub(crate) fn pcr_pid_for_program(&self, prog_idx: usize) -> Option<u16> {
         self.pcr_pids.get(prog_idx).copied()
     }
+
+    // ── Shared push-path helpers ─────────────────────────────────────────────
+
+    /// Check buffer headroom, then emit any pending PSI and PCR-only packets.
+    ///
+    /// All five `push_*` paths repeat the same three-step preamble:
+    /// 1. Count packets needed for this push (PSI + PCR-only + payload).
+    /// 2. Reject early with `BufferFull` if they don't fit.
+    /// 3. Emit the PSI and PCR-only packets that are due.
+    ///
+    /// `pid` is the elementary-stream PID being pushed; `payload_pkts` is
+    /// the TS-packet count for the PES payload (from `ts_packets_for`).
+    pub(super) fn reserve_preamble(
+        &mut self,
+        prog_idx: usize,
+        pts: crate::mpegts::common::Pts90khz,
+        pid: u16,
+        payload_pkts: usize,
+    ) -> Result<(), MuxError> {
+        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), pid);
+        if self.queue.len() + psi_packets + pcr_only_packets + payload_pkts
+            > self.config.buffer_packets
+        {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets as u64,
+            });
+        }
+        self.maybe_emit_psi(prog_idx, pts.as_ticks());
+        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), pid);
+        Ok(())
+    }
+
+    /// Packetize `self.pes_scratch` into 188-byte TS packets on `pid`.
+    ///
+    /// `first_af` is the caller-computed `AdaptationField` for the FIRST
+    /// packet — it may carry PCR, `random_access_indicator`, or both.
+    /// All subsequent packets use `AdaptationField::default()`.
+    ///
+    /// The split borrows (`&self.pes_scratch[cursor..]` + `&mut self.counters`
+    /// + `self.queue`) are on disjoint fields; NLL handles this correctly
+    /// within the method body.
+    pub(super) fn drain_pes_scratch(&mut self, pid: u16, first_af: self::ts::AdaptationField) {
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < self.pes_scratch.len() {
+            let adaptation = if first {
+                first_af
+            } else {
+                self::ts::AdaptationField::default()
+            };
+            let mut pkt = [0u8; 188];
+            let result = self::ts::write_packet(
+                &mut pkt,
+                pid,
+                first,
+                adaptation,
+                &self.pes_scratch[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

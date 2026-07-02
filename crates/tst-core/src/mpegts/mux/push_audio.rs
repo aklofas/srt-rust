@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use super::Muxer;
 use super::pes::{PesPtsField, write_audio_pes};
 use super::state::ts_packets_for;
-use super::ts::{AdaptationField, write_packet};
+use super::ts::AdaptationField;
 use super::types::{AudioStreamHandle, StreamKind};
 
 impl Muxer {
@@ -125,51 +125,25 @@ impl Muxer {
             frames,
         );
 
-        let total = self.pes_scratch.len();
-        let audio_packets = ts_packets_for(total);
-        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        let audio_packets = ts_packets_for(self.pes_scratch.len());
         // Validate-1 C3: see push_video for the rationale. Audio is
         // typically high-cadence, but a low-frame-rate stream (sparse
         // language tracks, sign-language audio) could still drift.
-        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), audio_pid);
+        self.reserve_preamble(prog_idx, pts, audio_pid, audio_packets)?;
 
-        if self.queue.len() + psi_packets + pcr_only_packets + audio_packets
-            > self.config.buffer_packets
+        let first_af = if self.pcr_pids[prog_idx] == audio_pid
+            && self.pcr_due(prog_idx, pts.as_ticks())
         {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets as u64,
-            });
-        }
-
-        self.maybe_emit_psi(prog_idx, pts.as_ticks());
-        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), audio_pid);
-
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < self.pes_scratch.len() {
-            let mut adaptation = AdaptationField::default();
-            if first
-                && self.pcr_pids[prog_idx] == audio_pid
-                && self.pcr_due(prog_idx, pts.as_ticks())
-            {
-                let pcr = Pcr27mhz::from_pts(pts);
-                adaptation.pcr = Some(pcr);
-                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
+            let pcr = Pcr27mhz::from_pts(pts);
+            self.pcr_last[prog_idx] = Some(pcr.as_ticks());
+            AdaptationField {
+                pcr: Some(pcr),
+                random_access: false,
             }
-            let mut pkt = [0u8; 188];
-            let payload_start = cursor;
-            let result = write_packet(
-                &mut pkt,
-                audio_pid,
-                first,
-                adaptation,
-                &self.pes_scratch[payload_start..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
+        } else {
+            AdaptationField::default()
+        };
+        self.drain_pes_scratch(audio_pid, first_af);
 
         // Count on the Ok path only — after all early-returns above.
         if let Some(s) = self.per_stream.get_mut(&audio_pid) {

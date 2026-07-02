@@ -15,7 +15,7 @@ use super::pes::{
     write_subtitle_pes,
 };
 use super::state::ts_packets_for;
-use super::ts::{AdaptationField, write_packet};
+use super::ts::AdaptationField;
 use super::types::{StreamKind, SubtitleCodec, SubtitleStreamHandle};
 
 impl Muxer {
@@ -175,47 +175,18 @@ impl Muxer {
         write_subtitle_pes(&mut self.pes_scratch, pts.as_ticks(), pes_shape, payload);
 
         let subtitle_packets = ts_packets_for(self.pes_scratch.len());
-        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
         // Validate-1 C3: validate() bans subtitle PIDs as PCR PIDs, so
         // current_pid here will never equal self.pcr_pids[prog_idx] and
         // pcr_only_packets_due reduces to the pure pcr_due predicate.
         // Subtitle pushes are sparse; this is the prototypical case where
         // PCR injection is needed.
-        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), subtitle_pid);
-
-        if self.queue.len() + psi_packets + pcr_only_packets + subtitle_packets
-            > self.config.buffer_packets
-        {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets as u64,
-            });
-        }
-
-        self.maybe_emit_psi(prog_idx, pts.as_ticks());
-        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), subtitle_pid);
+        self.reserve_preamble(prog_idx, pts, subtitle_pid, subtitle_packets)?;
 
         // Subtitles do NOT extend the PCR fallback chain — they are sparse
         // and event-driven, and the validate path rejects them as PCR PIDs
         // outright (SubtitlePidUsedAsPcrPid). The first packet here will
         // never carry PCR.
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < self.pes_scratch.len() {
-            let adaptation = AdaptationField::default();
-            let mut pkt = [0u8; 188];
-            let payload_start = cursor;
-            let result = write_packet(
-                &mut pkt,
-                subtitle_pid,
-                first,
-                adaptation,
-                &self.pes_scratch[payload_start..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
+        self.drain_pes_scratch(subtitle_pid, AdaptationField::default());
 
         // Per-stream stats — Ok-path only.
         if let Some(s) = self.per_stream.get_mut(&subtitle_pid) {

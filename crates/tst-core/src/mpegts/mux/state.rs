@@ -327,6 +327,19 @@ pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> Av1W
 /// but operates on raw TLV bytes (the form held in `prog.stream_descriptors`)
 /// rather than on parsed `RawDescriptor`.
 ///
+/// Return `true` when any descriptor in `descs` carries `tag` as its first byte.
+pub(super) fn has_descriptor_tag(descs: &[Vec<u8>], tag: u8) -> bool {
+    descs.iter().any(|d| !d.is_empty() && d[0] == tag)
+}
+
+/// Return `true` when any descriptor in `descs` is a Registration descriptor
+/// (tag 0x05, TLV ≥ 6 bytes) whose 4-byte `format_identifier` equals `fid`.
+pub(super) fn has_registration_fid(descs: &[Vec<u8>], fid: &[u8; 4]) -> bool {
+    descs
+        .iter()
+        .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == fid)
+}
+
 /// Used to suppress the subtitle auto-emit when the caller has already
 /// supplied one of:
 ///   * `subtitling_descriptor`   (tag 0x59)
@@ -510,12 +523,10 @@ pub(super) fn warn_on_descriptor_conflicts(prog: &MuxerProgramConfig) {
             ..
         } = spec
         {
-            let caller_has_av01 = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
+            let caller_has_av01 = has_registration_fid(caller_descs, b"AV01");
             let caller_has_other_registration = caller_descs
                 .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AV01");
+                .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] != b"AV01");
             if caller_has_other_registration && !caller_has_av01 {
                 tracing::warn!(
                     "caller-supplied Registration descriptor on AV1 PID has \
@@ -530,12 +541,10 @@ pub(super) fn warn_on_descriptor_conflicts(prog: &MuxerProgramConfig) {
             ..
         } = spec
         {
-            let caller_has_ac3 = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AC-3");
+            let caller_has_ac3 = has_registration_fid(caller_descs, b"AC-3");
             let caller_has_other_registration = caller_descs
                 .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AC-3");
+                .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] != b"AC-3");
             if caller_has_other_registration && !caller_has_ac3 {
                 tracing::warn!(
                     "caller-supplied Registration descriptor on AC-3 PID has \
@@ -551,9 +560,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
     let mut cache: Vec<Vec<u8>> = Vec::with_capacity(prog.streams.len());
     for (i, spec) in prog.streams.iter().enumerate() {
         let caller_descs = &prog.stream_descriptors[i];
-        let caller_has_registration = caller_descs
-            .iter()
-            .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
+        let caller_has_registration = has_descriptor_tag(caller_descs, 0x05);
 
         let mut bytes = Vec::new();
         // KLVA Registration auto-emit on KLV streams (both
@@ -592,12 +599,8 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
                 ..
             }
         ) {
-            let caller_has_metadata_descriptor = caller_descs
-                .iter()
-                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x26);
-            let caller_has_metadata_std = caller_descs
-                .iter()
-                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x27);
+            let caller_has_metadata_descriptor = has_descriptor_tag(caller_descs, 0x26);
+            let caller_has_metadata_std = has_descriptor_tag(caller_descs, 0x27);
             if !caller_has_metadata_descriptor {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::metadata_klva(0));
             }
@@ -617,9 +620,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             ..
         } = spec
         {
-            let caller_has_av01 = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
+            let caller_has_av01 = has_registration_fid(caller_descs, b"AV01");
             if !caller_has_av01 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_av01());
             }
@@ -635,9 +636,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             ..
         } = spec
         {
-            let caller_has_ac3 = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AC-3");
+            let caller_has_ac3 = has_registration_fid(caller_descs, b"AC-3");
             if !caller_has_ac3 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_ac3());
             }
@@ -669,9 +668,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             // syncframe (via codec::ac3::parse_syncframe) can build
             // their own with descriptors::ac3_audio_stream_descriptor
             // and pass it through stream_descriptors_for_audio.
-            let caller_has_ac3_audio_desc = caller_descs
-                .iter()
-                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x81);
+            let caller_has_ac3_audio_desc = has_descriptor_tag(caller_descs, 0x81);
             if !caller_has_ac3_audio_desc {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::ac3_audio_stream_descriptor(
                     0b111,    // sample_rate_code: any
@@ -697,9 +694,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             ..
         } = spec
         {
-            let caller_has_lang = caller_descs
-                .iter()
-                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x0A);
+            let caller_has_lang = has_descriptor_tag(caller_descs, 0x0A);
             if !caller_has_lang {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::iso_639_language(*lang, 0x00));
             }

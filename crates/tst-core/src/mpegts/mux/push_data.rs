@@ -20,7 +20,7 @@ use super::pes::{
     MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_PRIVATE_STREAM_1, write_pes_header,
 };
 use super::state::ts_packets_for;
-use super::ts::{AdaptationField, write_packet};
+use super::ts::AdaptationField;
 use super::types::{DataStreamHandle, StreamKind};
 
 impl Muxer {
@@ -200,52 +200,22 @@ impl Muxer {
             },
         );
 
-        let total = header_len + data.len();
-        let data_packets = ts_packets_for(total);
-        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
-        // See push_video for the rationale. Like KLV, data
-        // streams typically ride a non-PCR PID with an independent (often
-        // low) push cadence, so PSI/PCR-only emissions frequently piggyback
-        // on data pushes and must be budgeted in the BufferFull pre-check.
-        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), data_pid);
-
-        if self.queue.len() + psi_packets + pcr_only_packets + data_packets
-            > self.config.buffer_packets
-        {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets as u64,
-            });
-        }
-
-        self.maybe_emit_psi(prog_idx, pts.as_ticks());
-        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), data_pid);
-
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);
         self.pes_scratch.extend_from_slice(data);
 
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < self.pes_scratch.len() {
-            // No PCR-on-first-packet branch here (unlike push_klv):
-            // validate() rejects PCR pinned on a data PID and the
-            // effective-PCR fallback chain never lands on one, so
-            // `self.pcr_pids[prog_idx] == data_pid` is unreachable.
-            let adaptation = AdaptationField::default();
-            let mut pkt = [0u8; 188];
-            let payload_start = cursor;
-            let result = write_packet(
-                &mut pkt,
-                data_pid,
-                first,
-                adaptation,
-                &self.pes_scratch[payload_start..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
+        let data_packets = ts_packets_for(self.pes_scratch.len());
+        // See push_video for the rationale. Like KLV, data
+        // streams typically ride a non-PCR PID with an independent (often
+        // low) push cadence, so PSI/PCR-only emissions frequently piggyback
+        // on data pushes and must be budgeted in the BufferFull pre-check.
+        self.reserve_preamble(prog_idx, pts, data_pid, data_packets)?;
+
+        // No PCR-on-first-packet branch here (unlike push_klv):
+        // validate() rejects PCR pinned on a data PID and the
+        // effective-PCR fallback chain never lands on one, so
+        // `self.pcr_pids[prog_idx] == data_pid` is unreachable.
+        self.drain_pes_scratch(data_pid, AdaptationField::default());
 
         // Count on the Ok path only — after all early-returns above.
         // Data PIDs get per_stream items/bytes but no stream_codec_counters

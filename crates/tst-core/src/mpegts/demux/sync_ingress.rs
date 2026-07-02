@@ -160,9 +160,18 @@ impl super::demuxer::Demuxer {
         }
     }
 
-    /// Returns `true` if a CC jump was observed AND not suppressed by
+    /// Returns `(cc_jumped, is_duplicate)`.
+    ///
+    /// `cc_jumped` is `true` when a CC gap was observed AND not suppressed by
     /// `discontinuity_indicator`. The caller (`process_packet`) uses this
     /// signal to gate strict-mode PSI reassembly drops in `handle_psi`.
+    ///
+    /// `is_duplicate` is `true` when the packet is a spec-legal duplicate per
+    /// H.222.0 §2.4.3.3 (same CC as the preceding payload packet, no
+    /// `discontinuity_indicator`). The caller MUST suppress all payload
+    /// routing for such packets — they carry no new data. A THIRD packet with
+    /// the same CC on the same PID IS a discontinuity (the "only-two" rule is
+    /// enforced via `self.dup_by_pid`).
     ///
     /// Side effect: clears `self.last_psi_cc_jump` at entry, sets it to
     /// `Some((expected, observed))` when a real jump fires. `handle_psi`
@@ -170,7 +179,7 @@ impl super::demuxer::Demuxer {
     pub(super) fn check_continuity(
         &mut self,
         pkt: &crate::mpegts::demux::ts::TsPacket<'_>,
-    ) -> bool {
+    ) -> (bool, bool) {
         self.last_psi_cc_jump = None;
         // Per ITU-T H.222.0 §2.4.3.3, the continuity_counter field on null
         // PID (0x1FFF) packets is undefined and MUST NOT be validated. Null
@@ -181,14 +190,56 @@ impl super::demuxer::Demuxer {
         // legitimately ride null packets per §2.4.3.5 — that path lives in
         // `check_pcr` and is keyed on `pcr_27mhz.is_some()`.
         if pkt.pid == pid::NULL {
-            return false;
+            return (false, false);
         }
+        // Adaptation-field-only packets (afc='10') do not carry a payload and
+        // do not increment the continuity_counter — they are neither duplicates
+        // nor CC advances. Skip CC validation entirely to avoid misclassification.
         if !pkt.has_payload {
-            return false;
+            return (false, false);
         }
         let mut real_jump = false;
         if let Some(prev_cc) = self.cc_by_pid.get(&pkt.pid).copied() {
             let expected = (prev_cc + 1) & 0x0F;
+
+            // Spec-legal duplicate: same CC, no discontinuity_indicator.
+            // H.222.0 §2.4.3.3 — "a packet may be sent exactly twice with
+            // the same continuity_counter value; such a duplicate shall not
+            // cause discontinuity." Only one duplicate is allowed ("only-two"
+            // rule). A third packet with the same CC IS a real discontinuity
+            // — treat it like a CC jump. Payload comparison is not performed
+            // (the spec says the dup must be bit-identical, but we accept the
+            // relaxed interpretation used by ffmpeg and tsduck: same CC is
+            // sufficient to suppress the event).
+            if pkt.continuity_counter == prev_cc && !pkt.discontinuity_indicator {
+                if self.dup_by_pid.contains(&pkt.pid) {
+                    // Third packet with the same CC → real discontinuity.
+                    self.dup_by_pid.remove(&pkt.pid);
+                    real_jump = true;
+                    self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
+                    if let Some(stream) = self.lookup_stream(pkt.pid) {
+                        self.record_discontinuity(
+                            stream,
+                            DiscontinuityKind::ContinuityJump {
+                                expected,
+                                observed: pkt.continuity_counter,
+                            },
+                        );
+                    }
+                    // Fall through to cc_by_pid update below.
+                } else {
+                    // First duplicate — suppress and mark.
+                    self.dup_by_pid.insert(pkt.pid);
+                    // Do NOT update cc_by_pid — the next non-duplicate packet
+                    // on this PID must still expect prev_cc + 1.
+                    return (false, true);
+                }
+            } else {
+                // Normal advance or discontinuity_indicator — clear any pending
+                // duplicate state for this PID.
+                self.dup_by_pid.remove(&pkt.pid);
+            }
+
             // Per ISO/IEC 13818-1 §2.4.3.5, when discontinuity_indicator=1
             // the CC is explicitly permitted to be discontinuous on this
             // packet. Suppress the ContinuityJump (matches ffmpeg
@@ -208,6 +259,12 @@ impl super::demuxer::Demuxer {
                     );
                 }
             }
+        } else {
+            // First packet ever seen on this PID — no prev state, no duplicate
+            // check possible. Clear dup state defensively (shouldn't be set
+            // since cc_by_pid and dup_by_pid are always cleared together, but
+            // this keeps invariants tight).
+            self.dup_by_pid.remove(&pkt.pid);
         }
         if pkt.discontinuity_indicator {
             if let Some(stream) = self.lookup_stream(pkt.pid) {
@@ -215,7 +272,7 @@ impl super::demuxer::Demuxer {
             }
         }
         self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);
-        real_jump
+        (real_jump, false)
     }
 }
 

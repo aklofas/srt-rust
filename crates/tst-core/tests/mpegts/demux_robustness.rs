@@ -14,7 +14,10 @@
 //! `mpegts_demux_strict.rs`; here we only assert the lenient-mode contract.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DiscontinuityKind};
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, NonConformantIssue, SamplePayload,
+    StrictMode,
+};
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -518,5 +521,225 @@ fn cc_jump_emits_discontinuity() {
     assert!(
         saw_jump,
         "expected ContinuityJump discontinuity from CC bump"
+    );
+}
+
+// ---- DA-DEMUX-1 regression tests (H.222.0 §2.4.3.3 spec-legal duplicates) ----
+
+/// Collect per-AU raw bytes from all video Sample events in the demuxer's
+/// event queue. The demuxer surfaces video as raw-first `SamplePayload::Video
+/// { raw, .. }` (WP-E raw-first model). Used to byte-compare two demux runs.
+fn collect_video_raw_bytes(d: &mut Demuxer) -> Vec<Vec<u8>> {
+    let mut aus = Vec::new();
+    while let Some(ev) = d.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { raw, .. },
+            ..
+        } = ev
+        {
+            aus.push(raw.as_slice().to_vec());
+        }
+    }
+    aus
+}
+
+/// Find the Nth video TS packet (PID 0x100) in `stream` and insert `count`
+/// additional copies directly after it. Returns the patched stream.
+///
+/// The video PID 0x100 is hard-coded to match `build_clean_stream`'s config.
+fn insert_video_packet_duplicates(stream: &[u8], nth: usize, count: usize) -> Vec<u8> {
+    let mut seen = 0usize;
+    let mut out = Vec::with_capacity(stream.len() + count * 188);
+    let mut i = 0;
+    while i + 188 <= stream.len() {
+        let pkt = &stream[i..i + 188];
+        out.extend_from_slice(pkt);
+        if pkt[0] == 0x47 {
+            let pid = ((u16::from(pkt[1] & 0x1F)) << 8) | u16::from(pkt[2]);
+            if pid == 0x0100 {
+                seen += 1;
+                if seen == nth {
+                    for _ in 0..count {
+                        out.extend_from_slice(pkt);
+                    }
+                }
+            }
+        }
+        i += 188;
+    }
+    out.extend_from_slice(&stream[i..]);
+    out
+}
+
+/// Find the first PMT TS packet (PID 0x1000) in `stream` and insert one copy
+/// directly after it. Returns the patched stream.
+fn insert_pmt_packet_duplicate(stream: &[u8]) -> Vec<u8> {
+    let mut inserted = false;
+    let mut out = Vec::with_capacity(stream.len() + 188);
+    let mut i = 0;
+    while i + 188 <= stream.len() {
+        let pkt = &stream[i..i + 188];
+        out.extend_from_slice(pkt);
+        if !inserted && pkt[0] == 0x47 {
+            let pid = ((u16::from(pkt[1] & 0x1F)) << 8) | u16::from(pkt[2]);
+            if pid == 0x1000 {
+                out.extend_from_slice(pkt);
+                inserted = true;
+            }
+        }
+        i += 188;
+    }
+    out.extend_from_slice(&stream[i..]);
+    out
+}
+
+/// DA-DEMUX-1 (a): a spec-legal duplicate TS packet (same CC, no
+/// `discontinuity_indicator`) is suppressed — the reassembled ES byte
+/// content is identical to a clean stream without the duplicate.
+#[test]
+fn cc_duplicate_suppressed_es_bytes_identical() {
+    let clean = build_clean_stream();
+
+    // Collect ES content from the clean stream as the expected reference.
+    let mut d_clean = Demuxer::new();
+    d_clean.feed(&clean).unwrap();
+    d_clean.flush();
+    let expected_aus = collect_video_raw_bytes(&mut d_clean);
+    assert!(!expected_aus.is_empty(), "clean stream must yield video AUs");
+
+    // Patch: insert one duplicate of the 2nd video packet (2nd so cc_by_pid
+    // already has a prior value, matching the live-stream duplicate case).
+    let patched = insert_video_packet_duplicates(&clean, 2, 1);
+    assert!(
+        patched.len() > clean.len(),
+        "patched stream must be longer by one packet"
+    );
+
+    let mut d_dup = Demuxer::new();
+    d_dup.feed(&patched).unwrap();
+    d_dup.flush();
+
+    // No ContinuityJump — the duplicate must be silently suppressed.
+    let mut saw_jump = false;
+    let mut dup_aus = Vec::new();
+    while let Some(ev) = d_dup.next_event() {
+        if matches!(
+            ev,
+            DemuxEvent::Discontinuity {
+                kind: DiscontinuityKind::ContinuityJump { .. },
+                ..
+            }
+        ) {
+            saw_jump = true;
+        }
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { raw, .. },
+            ..
+        } = ev
+        {
+            dup_aus.push(raw.as_slice().to_vec());
+        }
+    }
+
+    assert!(
+        !saw_jump,
+        "spec-legal first duplicate must not emit ContinuityJump"
+    );
+    assert_eq!(
+        expected_aus, dup_aus,
+        "spec-legal CC duplicate changed the reassembled ES output"
+    );
+}
+
+/// DA-DEMUX-1 (b): a spec-legal duplicate PMT packet is suppressed — the PSI
+/// reassembler receives the section exactly once and delivers a `ProgramMap`.
+/// No `PsiCcDiscontinuity` event is emitted.
+#[test]
+fn cc_duplicate_on_pmt_psi_survives() {
+    let clean = build_clean_stream();
+    let patched = insert_pmt_packet_duplicate(&clean);
+
+    let mut d = Demuxer::new();
+    d.feed(&patched).unwrap();
+    d.flush();
+
+    let mut saw_program_map = false;
+    let mut saw_psi_cc_discontinuity = false;
+    while let Some(ev) = d.next_event() {
+        if matches!(ev, DemuxEvent::ProgramMap(_)) {
+            saw_program_map = true;
+        }
+        // A PSI CC jump surfaces as NonConformant::PsiCcDiscontinuity, not as
+        // a Discontinuity event (PSI PIDs are not registered in stream_kind_by_pid
+        // so lookup_stream returns None for them, routing through psi_topology
+        // instead of record_discontinuity).
+        if matches!(
+            ev,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::PsiCcDiscontinuity { .. },
+                ..
+            }
+        ) {
+            saw_psi_cc_discontinuity = true;
+        }
+    }
+
+    assert!(
+        saw_program_map,
+        "PMT duplicate must not prevent ProgramMap delivery"
+    );
+    assert!(
+        !saw_psi_cc_discontinuity,
+        "PMT spec-legal duplicate must not emit PsiCcDiscontinuity"
+    );
+}
+
+/// DA-DEMUX-1 (c): `StrictMode::Full` does not reject a stream that contains
+/// exactly one spec-legal duplicate. Duplicates are suppressed before any
+/// strict evaluation path.
+#[test]
+fn cc_single_duplicate_accepted_by_strict_full() {
+    let clean = build_clean_stream();
+    let patched = insert_video_packet_duplicates(&clean, 2, 1);
+
+    let mut d = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    // With one conformant duplicate, no StrictRejection should be returned.
+    let res = d.feed(&patched);
+    assert!(
+        res.is_ok(),
+        "StrictMode::Full must accept a stream with one spec-legal CC duplicate, got: {res:?}"
+    );
+}
+
+/// DA-DEMUX-1 (d): a THIRD packet with the same CC (the "only-two" rule
+/// violation per H.222.0 §2.4.3.3) is treated as a real discontinuity and
+/// surfaces a `ContinuityJump` event.
+#[test]
+fn cc_third_same_cc_fires_discontinuity() {
+    let clean = build_clean_stream();
+    // Insert TWO extra copies of the 2nd video packet → three total with the
+    // original. First extra = allowed duplicate (suppressed). Second extra =
+    // third occurrence of the same CC → real discontinuity.
+    let patched = insert_video_packet_duplicates(&clean, 2, 2);
+
+    let mut d = Demuxer::new();
+    d.feed(&patched).unwrap();
+    d.flush();
+
+    let mut saw_jump = false;
+    while let Some(ev) = d.next_event() {
+        if matches!(
+            ev,
+            DemuxEvent::Discontinuity {
+                kind: DiscontinuityKind::ContinuityJump { .. },
+                ..
+            }
+        ) {
+            saw_jump = true;
+        }
+    }
+    assert!(
+        saw_jump,
+        "third packet with same CC must emit ContinuityJump (only-two rule)"
     );
 }

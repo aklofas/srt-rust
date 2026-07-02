@@ -354,6 +354,7 @@ impl super::demuxer::Demuxer {
         self.stream_kind_by_pid.remove(&pid);
         self.pid_to_program.remove(&pid);
         self.cc_by_pid.remove(&pid);
+        self.dup_by_pid.remove(&pid);
         self.last_pcr_by_pid.remove(&pid);
         self.last_pts_by_pid.remove(&pid);
         self.pes.remove_pid(pid);
@@ -638,6 +639,7 @@ impl super::demuxer::Demuxer {
         for pid in kind_changed_pids {
             self.pes.remove_pid(pid);
             self.cc_by_pid.remove(&pid);
+            self.dup_by_pid.remove(&pid);
             self.last_pts_by_pid.remove(&pid);
         }
 

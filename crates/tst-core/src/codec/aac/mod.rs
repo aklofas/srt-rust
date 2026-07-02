@@ -255,17 +255,9 @@ pub struct AdtsFrames<'a> {
 /// absolute position of the first candidate, or `None` if no candidate
 /// exists before `buf.len() - 1`.
 fn find_next_adts_sync(buf: &[u8], start: usize) -> Option<usize> {
-    if buf.len() < 2 || start >= buf.len() - 1 {
-        return None;
-    }
-    let mut i = start;
-    while i < buf.len() - 1 {
-        if buf[i] == 0xFF && (buf[i + 1] & 0xF0) == 0xF0 {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
+    crate::codec::framing::scan_for_sync(buf, start, |b0, b1| {
+        b0 == 0xFF && (b1 & 0xF0) == 0xF0
+    })
 }
 
 impl<'a> Iterator for AdtsFrames<'a> {

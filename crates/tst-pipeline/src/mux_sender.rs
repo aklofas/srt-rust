@@ -362,7 +362,10 @@ impl<T: Transport> MuxSender<T> {
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_video_to"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_video_to"))?;
         inner.send_video_to(handle, nal, pts.as_ticks(), key_frame)
     }
 
@@ -397,7 +400,10 @@ impl<T: Transport> MuxSender<T> {
         dts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_video_to_with_dts"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_video_to_with_dts"))?;
         inner.send_video_to_with_dts(handle, nal, pts.as_ticks(), dts.as_ticks(), key_frame)
     }
 
@@ -432,7 +438,10 @@ impl<T: Transport> MuxSender<T> {
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_klv_to"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_klv_to"))?;
         inner.send_klv_to(handle, klv, pts.as_ticks(), metadata_service_id)
     }
 
@@ -491,7 +500,10 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_audio_to"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_audio_to"))?;
         inner.send_audio_to(handle, frames, pts.as_ticks())
     }
 
@@ -522,7 +534,10 @@ impl<T: Transport> MuxSender<T> {
     ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_subtitle"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_subtitle"))?;
         inner.send_subtitle(payload, pts.as_ticks())
     }
 
@@ -552,7 +567,10 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_subtitle_to"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_subtitle_to"))?;
         inner.send_subtitle_to(handle, payload, pts.as_ticks())
     }
 
@@ -620,7 +638,10 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_data_to"))?;
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_data_to"))?;
         inner.send_data_to(handle, data, pts.as_ticks())
     }
 

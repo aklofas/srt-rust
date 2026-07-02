@@ -554,7 +554,10 @@ pub(crate) mod test_util {
 
     impl BitWriter {
         pub(crate) fn new() -> Self {
-            Self { bytes: Vec::new(), pos: 0 }
+            Self {
+                bytes: Vec::new(),
+                pos: 0,
+            }
         }
 
         /// Write the lowest `n` bits of `value`, MSB first.

@@ -85,7 +85,8 @@ impl super::demuxer::Demuxer {
                     return Ok(());
                 }
             };
-            let stream = self.lookup_stream(pid)
+            let stream = self
+                .lookup_stream(pid)
                 .unwrap_or_else(|| StreamId::anonymous(pid, 0));
             self.queue_nonconformant(
                 stream,
@@ -213,7 +214,8 @@ impl super::demuxer::Demuxer {
                 declared_len: observed_len,
             }) => {
                 // Cap fired — partial section discarded by the assembler.
-                let stream = self.lookup_stream(pid)
+                let stream = self
+                    .lookup_stream(pid)
                     .unwrap_or_else(|| StreamId::anonymous(pid, 0));
                 self.queue_nonconformant(
                     stream,

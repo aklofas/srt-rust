@@ -43,6 +43,32 @@ pub struct Rational {
     pub den: u32,
 }
 
+/// H.264 §E.2.1 / H.265 §E.3.1 / H.266 §7.7.3.1 `aspect_ratio_idc`→SAR
+/// table (ITU-T T.832 Table E-1 / HEVC Table E-1). Returns `None` for
+/// idc=0 (unspecified) and idc=255 (Extended_SAR; the extended-SAR width
+/// and height are signalled separately by the caller).
+pub(crate) fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
+    Some(match idc {
+        1 => Rational { num: 1, den: 1 },
+        2 => Rational { num: 12, den: 11 },
+        3 => Rational { num: 10, den: 11 },
+        4 => Rational { num: 16, den: 11 },
+        5 => Rational { num: 40, den: 33 },
+        6 => Rational { num: 24, den: 11 },
+        7 => Rational { num: 20, den: 11 },
+        8 => Rational { num: 32, den: 11 },
+        9 => Rational { num: 80, den: 33 },
+        10 => Rational { num: 18, den: 11 },
+        11 => Rational { num: 15, den: 11 },
+        12 => Rational { num: 64, den: 33 },
+        13 => Rational { num: 160, den: 99 },
+        14 => Rational { num: 4, den: 3 },
+        15 => Rational { num: 3, den: 2 },
+        16 => Rational { num: 2, den: 1 },
+        _ => return None,
+    })
+}
+
 /// VUI / video signal type metadata. All fields decoded per
 /// ITU-T H.273 / ISO/IEC 23091-2 (the codec-independent registry
 /// referenced by both H.264 §E.2.1 and H.265 §E.2.1).
@@ -504,5 +530,63 @@ mod tests {
             CodecParseError::Forbidden { field: "layer" }.to_string(),
             "forbidden value in field 'layer'"
         );
+    }
+}
+
+/// Shared bit-building helpers for codec parser tests.
+///
+/// `pub(crate)` so that in-crate `#[cfg(test)]` modules in
+/// `h264`, `h265`, `h266`, and `av1` submodules can share one
+/// definition without each carrying a private copy.
+#[cfg(test)]
+pub(crate) mod test_util {
+    extern crate alloc;
+    use alloc::vec::Vec;
+
+    /// MSB-first bit writer for constructing synthetic codec bitstreams
+    /// in parser tests. Writes up to 64 bits per call; all `bw.write(N, k)`
+    /// calls where `N` is an integer literal compile without cast since
+    /// literals infer to `u64`.
+    pub(crate) struct BitWriter {
+        pub bytes: Vec<u8>,
+        pub pos: u32,
+    }
+
+    impl BitWriter {
+        pub(crate) fn new() -> Self {
+            Self { bytes: Vec::new(), pos: 0 }
+        }
+
+        /// Write the lowest `n` bits of `value`, MSB first.
+        pub(crate) fn write(&mut self, value: u64, n: u32) {
+            for i in (0..n).rev() {
+                let bit = ((value >> i) & 1) as u8;
+                let byte_idx = (self.pos / 8) as usize;
+                let bit_in_byte = 7 - (self.pos % 8);
+                if byte_idx == self.bytes.len() {
+                    self.bytes.push(0);
+                }
+                self.bytes[byte_idx] |= bit << bit_in_byte;
+                self.pos += 1;
+            }
+        }
+
+        /// Exp-Golomb ue(v) per H.264/H.265/H.266 §9.x.
+        pub(crate) fn write_ue(&mut self, value: u32) {
+            let v = value + 1;
+            let leading_zeros = 31 - v.leading_zeros();
+            for _ in 0..leading_zeros {
+                self.write(0, 1);
+            }
+            self.write(v as u64, leading_zeros + 1);
+        }
+
+        /// rbsp_trailing_bits(): one '1' bit + zero-pad to byte boundary.
+        pub(crate) fn end_rbsp(&mut self) {
+            self.write(1, 1);
+            while self.pos % 8 != 0 {
+                self.write(0, 1);
+            }
+        }
     }
 }

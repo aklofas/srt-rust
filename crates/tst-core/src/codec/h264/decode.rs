@@ -4,7 +4,7 @@ use super::model::{EntropyCodingMode, H264ParameterSets, H264Pps, H264Sps};
 use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ChromaFormat, CodecParseError, ColorInfo, ColourPrimaries, MatrixCoefficients, Rational,
-    TransferCharacteristics, validate_bit_depth_minus8,
+    TransferCharacteristics, aspect_ratio_idc_to_sar, validate_bit_depth_minus8,
 };
 use crate::mpegts::demux::event::NalUnit;
 
@@ -536,31 +536,6 @@ fn skip_hrd_parameters(br: &mut BitReader<'_>) -> Result<(), CodecParseError> {
     br.skip(5)?; // dpb_output_delay_length_minus1
     br.skip(5)?; // time_offset_length
     Ok(())
-}
-
-/// `sample_aspect_ratio` lookup for the non-extended `aspect_ratio_idc`
-/// codes per H.264 §E.2.1 Table E-1. Unspecified (0) and reserved codes
-/// map to `None`.
-fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
-    Some(match idc {
-        1 => Rational { num: 1, den: 1 },
-        2 => Rational { num: 12, den: 11 },
-        3 => Rational { num: 10, den: 11 },
-        4 => Rational { num: 16, den: 11 },
-        5 => Rational { num: 40, den: 33 },
-        6 => Rational { num: 24, den: 11 },
-        7 => Rational { num: 20, den: 11 },
-        8 => Rational { num: 32, den: 11 },
-        9 => Rational { num: 80, den: 33 },
-        10 => Rational { num: 18, den: 11 },
-        11 => Rational { num: 15, den: 11 },
-        12 => Rational { num: 64, den: 33 },
-        13 => Rational { num: 160, den: 99 },
-        14 => Rational { num: 4, den: 3 },
-        15 => Rational { num: 3, den: 2 },
-        16 => Rational { num: 2, den: 1 },
-        _ => return None,
-    })
 }
 
 /// B-frame presence heuristic.

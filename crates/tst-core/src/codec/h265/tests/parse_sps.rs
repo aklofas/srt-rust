@@ -120,40 +120,7 @@ fn parse_sps_returns_err_on_garbage() {
 /// Inline bit-builder. Mirrors the parser's expected reads exactly,
 /// keeping the test bytes debuggable by reading the field-write
 /// sequence top-to-bottom.
-struct BitWriter {
-    bytes: Vec<u8>,
-    pos: u32,
-}
-
-impl BitWriter {
-    fn new() -> Self {
-        Self {
-            bytes: Vec::new(),
-            pos: 0,
-        }
-    }
-    fn write(&mut self, value: u32, n: u32) {
-        for i in (0..n).rev() {
-            let bit = ((value >> i) & 1) as u8;
-            let byte_idx = (self.pos / 8) as usize;
-            let bit_in_byte = 7 - (self.pos % 8);
-            if byte_idx == self.bytes.len() {
-                self.bytes.push(0);
-            }
-            self.bytes[byte_idx] |= bit << bit_in_byte;
-            self.pos += 1;
-        }
-    }
-    /// Exp-Golomb ue(v) per H.265 §9.2.2.
-    fn write_ue(&mut self, value: u32) {
-        let v = value + 1;
-        let leading_zeros = 31 - v.leading_zeros();
-        for _ in 0..leading_zeros {
-            self.write(0, 1);
-        }
-        self.write(v, leading_zeros + 1);
-    }
-}
+use crate::codec::test_util::BitWriter;
 
 /// Construct a minimal but complete H.265 SPS RBSP with caller-specified
 /// bit_depth_luma_minus8 value. All other fields use safe defaults that allow

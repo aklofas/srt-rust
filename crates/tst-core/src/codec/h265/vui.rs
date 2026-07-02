@@ -81,9 +81,20 @@ pub(crate) fn parse(
                 den: num_units_in_tick,
             });
         }
-        // H.265 §E.2.1: consume the two trailing timing fields for bit-cursor
-        // correctness. vui_poc_proportional_to_timing_flag relates POC to
-        // wall-clock time and does NOT affect the frame-rate ratio above.
+        // PARTIAL-PARSE NOTE: this function does NOT read beyond the
+        // vui_timing_info block (no vui_hrd_parameters, no bitstream_restriction).
+        // That is intentional — only frame-rate and color metadata are surfaced.
+        // This is safe because vui_parameters() is the last read in parse_sps
+        // (h265/sps.rs); nothing follows it that depends on a correctly advanced
+        // bit cursor. If a future change adds post-VUI reads to parse_sps, this
+        // parser must be extended to consume the skipped fields first.
+        //
+        // Within the timing block, consume the two trailing fields
+        // (vui_poc_proportional_to_timing_flag and the conditional
+        // vui_num_ticks_poc_diff_one_minus1) for consistency with the
+        // spec layout — omitting them would leave the cursor inside the
+        // timing block, which is relevant if the partial-parse scope above
+        // is ever widened.
         let poc_proportional = br.read_bool()?; // vui_poc_proportional_to_timing_flag
         if poc_proportional {
             let _ = br.read_ue()?; // vui_num_ticks_poc_diff_one_minus1

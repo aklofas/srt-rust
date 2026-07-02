@@ -611,7 +611,7 @@ the trigger that would unblock it.
   byte counts, and earlier builder setters were misleadingly named
   `recv_buf_packets` / `send_buf_packets`. The units confusion is now
   resolved: the builder setters were renamed to `recv_buf_bytes` /
-  `send_buf_bytes` (DA-SRT-1, v0.3). Wiring the URL keys is now
+  `send_buf_bytes` (DA-SRT-1). Wiring the URL keys is now
   mechanical — the only remaining work is adding the parser arms.
 - **Note:** distinct from `udprcvbuf` / `udpsndbuf` (kernel UDP socket
   buffer sizes via `SRTO_UDP_RCVBUF` / `SRTO_UDP_SNDBUF`), which **are**

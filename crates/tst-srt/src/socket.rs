@@ -414,6 +414,14 @@ pub(crate) fn duration_to_ms(d: Duration) -> i32 {
     d.as_millis().min(i32::MAX as u128) as i32
 }
 
+/// `SRTO_RCVBUF`/`SRTO_SNDBUF` take an `i32`; a `u32` above `i32::MAX` would
+/// wrap negative through `as` and misconfigure libsrt, so reject it instead.
+fn buf_bytes_to_i32(name: &str, n: u32) -> Result<i32, OptionError> {
+    i32::try_from(n).map_err(|_| {
+        OptionError::OutOfRange(format!("{name} must be at most {}, got {n}", i32::MAX))
+    })
+}
+
 pub(crate) fn set_int(
     handle: srt_sys::SRTSOCKET,
     opt: srt_sys::SRT_SOCKOPT,
@@ -631,10 +639,12 @@ pub(crate) fn apply_socket_config(
         )?;
     }
     if let Some(n) = cfg.recv_buf_bytes {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
+        let bytes = buf_bytes_to_i32("recv_buf_bytes", n)?;
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
     }
     if let Some(n) = cfg.send_buf_bytes {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF, n as i32)?;
+        let bytes = buf_bytes_to_i32("send_buf_bytes", n)?;
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF, bytes)?;
     }
     if let Some(bw) = cfg.max_bandwidth {
         set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
@@ -709,7 +719,8 @@ pub(crate) fn apply_listener_config(
         )?;
     }
     if let Some(n) = cfg.recv_buf_bytes {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
+        let bytes = buf_bytes_to_i32("recv_buf_bytes", n)?;
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, bytes)?;
     }
     if let Some(bw) = cfg.max_bandwidth {
         set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
@@ -1165,5 +1176,26 @@ mod tests {
         p.msRTT = -1.0;
         let stats3 = super::perf_to_stats(&p);
         assert_eq!(stats3.rtt, std::time::Duration::ZERO);
+    }
+
+    // SRTO_RCVBUF/SNDBUF take an i32: a byte count above i32::MAX must be
+    // rejected as OutOfRange, not wrapped negative by an `as` cast.
+    #[test]
+    fn buf_bytes_above_i32_max_is_out_of_range() {
+        assert_eq!(super::buf_bytes_to_i32("recv_buf_bytes", 0).unwrap(), 0);
+        assert_eq!(
+            super::buf_bytes_to_i32("recv_buf_bytes", i32::MAX as u32).unwrap(),
+            i32::MAX
+        );
+        let err = super::buf_bytes_to_i32("send_buf_bytes", i32::MAX as u32 + 1).unwrap_err();
+        match err {
+            crate::error::OptionError::OutOfRange(msg) => {
+                assert!(
+                    msg.contains("send_buf_bytes"),
+                    "message names the field: {msg}"
+                );
+            }
+            other => panic!("expected OutOfRange, got {other:?}"),
+        }
     }
 }

@@ -1118,25 +1118,12 @@ impl MuxerProgramConfigBuilder {
         video_idx: usize,
         descs: Vec<Vec<u8>>,
     ) -> Result<&mut Self, MuxError> {
-        let abs_idx = self
-            .program
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
-            .nth(video_idx)
-            .map(|(i, _)| i);
-        match abs_idx {
-            Some(i) => {
-                self.program.stream_descriptors[i] = descs;
-                Ok(self)
-            }
-            None => Err(MuxError::DescriptorIndexOutOfRange {
-                kind: StreamKind::Video,
-                index: video_idx as u32,
-                program_number: self.program.program_number,
-            }),
-        }
+        self.set_descriptors_for_kind(
+            StreamKind::Video,
+            |s| matches!(s, StreamSpec::Video { .. }),
+            video_idx,
+            descs,
+        )
     }
 
     /// Set the descriptor list for the `klv_idx`-th KLV stream in this
@@ -1151,25 +1138,12 @@ impl MuxerProgramConfigBuilder {
         klv_idx: usize,
         descs: Vec<Vec<u8>>,
     ) -> Result<&mut Self, MuxError> {
-        let abs_idx = self
-            .program
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
-            .nth(klv_idx)
-            .map(|(i, _)| i);
-        match abs_idx {
-            Some(i) => {
-                self.program.stream_descriptors[i] = descs;
-                Ok(self)
-            }
-            None => Err(MuxError::DescriptorIndexOutOfRange {
-                kind: StreamKind::Klv,
-                index: klv_idx as u32,
-                program_number: self.program.program_number,
-            }),
-        }
+        self.set_descriptors_for_kind(
+            StreamKind::Klv,
+            |s| matches!(s, StreamSpec::Klv { .. }),
+            klv_idx,
+            descs,
+        )
     }
 
     /// Set the descriptor list for the `audio_idx`-th audio stream in this
@@ -1184,25 +1158,12 @@ impl MuxerProgramConfigBuilder {
         audio_idx: usize,
         descs: Vec<Vec<u8>>,
     ) -> Result<&mut Self, MuxError> {
-        let abs_idx = self
-            .program
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Audio { .. }))
-            .nth(audio_idx)
-            .map(|(i, _)| i);
-        match abs_idx {
-            Some(i) => {
-                self.program.stream_descriptors[i] = descs;
-                Ok(self)
-            }
-            None => Err(MuxError::DescriptorIndexOutOfRange {
-                kind: StreamKind::Audio,
-                index: audio_idx as u32,
-                program_number: self.program.program_number,
-            }),
-        }
+        self.set_descriptors_for_kind(
+            StreamKind::Audio,
+            |s| matches!(s, StreamSpec::Audio { .. }),
+            audio_idx,
+            descs,
+        )
     }
 
     /// Set the descriptor list for the `subtitle_idx`-th subtitle stream in
@@ -1224,25 +1185,12 @@ impl MuxerProgramConfigBuilder {
         subtitle_idx: usize,
         descs: Vec<Vec<u8>>,
     ) -> Result<&mut Self, MuxError> {
-        let abs_idx = self
-            .program
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Subtitle { .. }))
-            .nth(subtitle_idx)
-            .map(|(i, _)| i);
-        match abs_idx {
-            Some(i) => {
-                self.program.stream_descriptors[i] = descs;
-                Ok(self)
-            }
-            None => Err(MuxError::DescriptorIndexOutOfRange {
-                kind: StreamKind::Subtitle,
-                index: subtitle_idx as u32,
-                program_number: self.program.program_number,
-            }),
-        }
+        self.set_descriptors_for_kind(
+            StreamKind::Subtitle,
+            |s| matches!(s, StreamSpec::Subtitle { .. }),
+            subtitle_idx,
+            descs,
+        )
     }
 
     /// Set the descriptor list for the `data_idx`-th data stream in this
@@ -1260,13 +1208,34 @@ impl MuxerProgramConfigBuilder {
         data_idx: usize,
         descs: Vec<Vec<u8>>,
     ) -> Result<&mut Self, MuxError> {
+        self.set_descriptors_for_kind(
+            StreamKind::Data,
+            |s| matches!(s, StreamSpec::Data { .. }),
+            data_idx,
+            descs,
+        )
+    }
+
+    /// Shared body for the five `stream_descriptors_for_*` public methods.
+    ///
+    /// Walks `self.program.streams` to find the `kind_idx`-th entry where
+    /// `is_kind` returns `true`, then installs `descs` at that absolute
+    /// index. Returns `DescriptorIndexOutOfRange` when fewer than
+    /// `kind_idx + 1` matching streams have been added.
+    fn set_descriptors_for_kind(
+        &mut self,
+        kind: StreamKind,
+        is_kind: impl Fn(&StreamSpec) -> bool,
+        kind_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> Result<&mut Self, MuxError> {
         let abs_idx = self
             .program
             .streams
             .iter()
             .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
-            .nth(data_idx)
+            .filter(|(_, s)| is_kind(s))
+            .nth(kind_idx)
             .map(|(i, _)| i);
         match abs_idx {
             Some(i) => {
@@ -1274,8 +1243,8 @@ impl MuxerProgramConfigBuilder {
                 Ok(self)
             }
             None => Err(MuxError::DescriptorIndexOutOfRange {
-                kind: StreamKind::Data,
-                index: data_idx as u32,
+                kind,
+                index: kind_idx as u32,
                 program_number: self.program.program_number,
             }),
         }

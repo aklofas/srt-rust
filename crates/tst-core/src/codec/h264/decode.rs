@@ -454,10 +454,11 @@ fn parse_vui(br: &mut BitReader<'_>) -> Result<VuiOut, CodecParseError> {
         // H.264 §E.2.1: frame_rate = time_scale / (2 * num_units_in_tick).
         // `2 * num_units_in_tick` can overflow u32; saturate and treat
         // saturation to u32::MAX as "unknowable" (None) rather than emit a
-        // nonsense ratio — CodecParseError rustdoc promises non-panicking
-        // parse.
+        // nonsense ratio. Also guard num_units_in_tick == 0: that would
+        // produce den == 0, a ÷0 hazard for consumers. Mirrors H.265 §E.2.1
+        // (h265/vui.rs: `if num_units_in_tick > 0`).
         let den = num_units_in_tick.saturating_mul(2);
-        if den != u32::MAX {
+        if num_units_in_tick > 0 && den != u32::MAX {
             frame_rate = Some(Rational {
                 num: time_scale,
                 den,

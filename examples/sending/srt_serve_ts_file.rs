@@ -148,7 +148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Listener config:
     //  - `latency()` advertises the TSBPD budget at handshake; both
     //    ends negotiate the max of caller's and listener's value.
-    //  - We don't crank `recv_buf_packets` here — listener-as-sender
+    //  - We don't crank `recv_buf_bytes` here — listener-as-sender
     //    doesn't really receive payloads, just SRT control packets.
     //
     // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`):

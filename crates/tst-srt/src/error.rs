@@ -1228,4 +1228,55 @@ mod tests {
             other => panic!("expected Other, got {other:?}"),
         }
     }
+
+    // DA-SRT-2: a blocking connect that exhausts SRTO_CONNTIMEO raises
+    // SRT_ENOSERVER (major Setup) and sets RejectReason::Timeout.  The
+    // documented ConnectError::TimedOut must be returned, not Rejected.
+    #[test]
+    fn setup_category_reject_timeout_maps_to_timed_out() {
+        let raw = RawError {
+            kind: SrtErrno::Setup,
+            message: "Connection setup failure: connection timeout".into(),
+        };
+        let reason = RejectReason::Timeout;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::TimedOut => {}
+            other => panic!("expected TimedOut, got {other:?}"),
+        }
+    }
+
+    // A typed reject that is NOT a timeout must still produce Rejected, even
+    // when the category is Setup (e.g. SRT_ECONNREJ with a BadSecret reason).
+    #[test]
+    fn setup_category_reject_badsecret_still_maps_to_rejected() {
+        let raw = RawError {
+            kind: SrtErrno::Setup,
+            message: "Connection rejected".into(),
+        };
+        let reason = RejectReason::BadSecret;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::Rejected {
+                reason: RejectReason::BadSecret,
+                ..
+            } => {}
+            other => panic!("expected Rejected(BadSecret), got {other:?}"),
+        }
+    }
+
+    // The Async+timeout-message path (existing behaviour) must remain TimedOut.
+    #[test]
+    fn async_timeout_message_maps_to_timed_out() {
+        let raw = RawError {
+            kind: SrtErrno::Async,
+            message: "Timeout occurred".into(),
+        };
+        let reason = RejectReason::Unknown;
+        let err = classify_connect_error(raw, reason);
+        match err {
+            ConnectError::TimedOut => {}
+            other => panic!("expected TimedOut, got {other:?}"),
+        }
+    }
 }

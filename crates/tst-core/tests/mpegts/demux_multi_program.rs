@@ -71,6 +71,16 @@ fn pat_packet_with_programs(programs: &[(u16, u16)], version: u8) -> Vec<u8> {
     pkt
 }
 
+/// Like `pat_packet_with_programs` but with a custom continuity counter.
+///
+/// Use this when a test feeds two PAT packets on the same PID: the second
+/// must use `cc=1` so DA-DEMUX-1's duplicate-suppression does not swallow it.
+fn pat_packet_with_programs_cc(programs: &[(u16, u16)], version: u8, cc: u8) -> Vec<u8> {
+    let mut pkt = pat_packet_with_programs(programs, version);
+    pkt[3] = 0x10 | (cc & 0x0F);
+    pkt
+}
+
 /// Minimal CRC-32/MPEG-2 used by the PAT section builder above.
 /// Polynomial 0x04C11DB7, initial value 0xFFFFFFFF, no final XOR.
 fn crc32_mpeg2(data: &[u8]) -> u32 {
@@ -284,9 +294,9 @@ fn demuxer_stats_programs_seen_reflects_pat_size() {
         "after 2-program PAT, programs_seen must be 2"
     );
 
-    // Feed a new PAT version that drops program 2.
+    // Feed a new PAT version that drops program 2 (CC=1 to avoid duplicate suppression).
     demuxer
-        .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+        .feed(&pat_packet_with_programs_cc(&[(1, 0x1000)], 1, 1))
         .unwrap();
     assert_eq!(
         demuxer.stats().programs_seen,

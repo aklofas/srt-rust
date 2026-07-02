@@ -1,10 +1,16 @@
 //! Stats accounting + nonconformant event queueing.
 //!
-//! Hosts 4 helper methods on `Demuxer`:
+//! Hosts 6 helper methods on `Demuxer`:
 //!
 //! - `queue_nonconformant(stream, issue)` — pushes a `NonConformant`
 //!   event onto the queue and captures the first strict-rejected issue
 //!   per `feed` call (the `fatal` field on `Demuxer`).
+//! - `stream_stats_entry(pid, stream_type, program_number)` — lazily
+//!   creates a `StreamStats` entry for a PID; returns `&mut StreamStats`
+//!   so the caller can increment `items`, `bytes`, or `discontinuities`.
+//! - `record_discontinuity(stream, kind)` — bumps `discontinuities_count`,
+//!   increments the per-PID `StreamStats::discontinuities` counter via
+//!   `stream_stats_entry`, and pushes a `Discontinuity` event.
 //! - `bump_video_counters(pid, nals_or_obus_delta, ra_delta)` — lazily
 //!   creates a video `StreamCodecCounters` entry for a PID on first
 //!   event, accumulates delta counters.
@@ -18,9 +24,44 @@
 //! Per Wave 6.B Decision DB3, no new struct wrapper — the audit's
 //! `DemuxStatsRecorder` proposal is deferred to a future ergonomics pass.
 
-use crate::mpegts::demux::event::{DemuxEvent, NonConformantIssue, StreamId};
+use crate::mpegts::demux::event::{DemuxEvent, DiscontinuityKind, NonConformantIssue, StreamId};
 
 impl super::demuxer::Demuxer {
+    /// Lazily creates a `StreamStats` entry for `pid` and returns a mutable
+    /// reference to it. The caller is responsible for incrementing `items`,
+    /// `bytes`, `discontinuities`, or any other field after this call.
+    pub(super) fn stream_stats_entry(
+        &mut self,
+        pid: u16,
+        stream_type: u8,
+        program_number: u16,
+    ) -> &mut crate::mpegts::stats::StreamStats {
+        use crate::mpegts::common::StreamTypeCode;
+        self.stats_per_stream
+            .entry(pid)
+            .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                pid,
+                stream_type: StreamTypeCode::from_byte(stream_type),
+                program_number,
+                ..Default::default()
+            })
+    }
+
+    /// Bumps `discontinuities_count`, increments the per-PID
+    /// `StreamStats::discontinuities` counter, and pushes a
+    /// `DemuxEvent::Discontinuity` event for `stream`/`kind`.
+    pub(super) fn record_discontinuity(&mut self, stream: StreamId, kind: DiscontinuityKind) {
+        self.discontinuities_count += 1;
+        self.stream_stats_entry(
+            stream.pid,
+            super::pmt_classify::stream_type_from_kind(&stream.kind),
+            stream.program_number,
+        )
+        .discontinuities += 1;
+        self.queue
+            .push_back(DemuxEvent::Discontinuity { stream, kind });
+    }
+
     pub(super) fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {
         // Capture the first strict-rejected issue per `feed` call. The
         // event itself is still queued so a caller draining events

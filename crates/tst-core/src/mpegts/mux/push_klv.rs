@@ -76,26 +76,13 @@ impl Muxer {
     /// `total_klv == 1` guarantees exactly one program has a non-empty
     /// KLV stream list.
     fn single_klv_handle(&self) -> KlvStreamHandle {
-        let (prog_idx, _within_idx) = self
-            .klv_streams
-            .iter()
-            .enumerate()
-            .find(|(_p, k)| !k.is_empty())
-            .map(|(p, _)| (p, 0))
-            .expect("total_klv == 1 guarantees one non-empty program");
-        KlvStreamHandle::pack(prog_idx, 0)
+        KlvStreamHandle::pack(super::locate_lone_program(&self.klv_streams), 0)
     }
 
     /// All `KlvStreamHandle`s for this muxer, in `(program, within-program)`
     /// declaration order. One handle per `StreamSpec::Klv` across all programs.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
-        self.klv_streams
-            .iter()
-            .enumerate()
-            .flat_map(|(p_idx, prog)| {
-                (0..prog.len()).map(move |s_idx| KlvStreamHandle::pack(p_idx, s_idx))
-            })
-            .collect()
+        super::all_handles(&self.klv_streams, KlvStreamHandle::pack)
     }
 
     /// Handle for the i-th KLV stream in `programs[0]`, or `None` if out of

@@ -55,14 +55,7 @@ impl Muxer {
         // audio stream is in program 1 (prog_idx=1 in config), audio_streams[1]
         // is non-empty and audio_streams[0] is empty; pack(0,0) would resolve
         // to the wrong slot. Iterate to find the actual location.
-        let (prog_idx, _within_idx) = self
-            .audio_streams
-            .iter()
-            .enumerate()
-            .find(|(_p, a)| !a.is_empty())
-            .map(|(p, _)| (p, 0))
-            .expect("total_audio == 1 guarantees one non-empty program");
-        let handle = AudioStreamHandle::pack(prog_idx, 0);
+        let handle = AudioStreamHandle::pack(super::locate_lone_program(&self.audio_streams), 0);
         self.push_audio_to(handle, pts, frames)
     }
 
@@ -181,13 +174,7 @@ impl Muxer {
     /// All `AudioStreamHandle`s for this muxer, in `(program, within-program)`
     /// declaration order. One handle per `StreamSpec::Audio` across all programs.
     pub fn audio_handles(&self) -> Vec<AudioStreamHandle> {
-        self.audio_streams
-            .iter()
-            .enumerate()
-            .flat_map(|(p_idx, prog)| {
-                (0..prog.len()).map(move |s_idx| AudioStreamHandle::pack(p_idx, s_idx))
-            })
-            .collect()
+        super::all_handles(&self.audio_streams, AudioStreamHandle::pack)
     }
 
     /// Audio stream handles for the named program, in declaration order.

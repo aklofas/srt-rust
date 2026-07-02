@@ -368,6 +368,42 @@ impl Muxer {
     }
 }
 
+// ── Free helpers shared by push_*.rs submodules ───────────────────────────
+
+/// Collect all stream handles across every program, in `(program, within-program)`
+/// declaration order.
+///
+/// `streams` is the per-program, per-stream-kind field (e.g. `self.audio_streams`).
+/// `pack` is the handle constructor (e.g. `AudioStreamHandle::pack`).
+///
+/// All five `push_*.rs` files expose a `*_handles(&self)` method with an
+/// identical flat_map body; routing them here eliminates the duplication.
+pub(self) fn all_handles<T, H>(streams: &[Vec<T>], pack: fn(usize, usize) -> H) -> Vec<H> {
+    streams
+        .iter()
+        .enumerate()
+        .flat_map(|(p_idx, prog)| (0..prog.len()).map(move |s_idx| pack(p_idx, s_idx)))
+        .collect()
+}
+
+/// Return the program index of the sole non-empty stream list in `streams`.
+///
+/// Precondition: caller has verified that exactly one program has a non-empty
+/// list for this stream kind. The `expect` is safe under that invariant and
+/// will only fire if the caller's precondition check was wrong.
+///
+/// Replaces identical `.iter().enumerate().find(…).map(…).expect(…)` blocks
+/// in `single_video_handle`, `single_klv_handle`, `single_data_handle`, and
+/// the inline finds in `push_audio` / `push_subtitle`.
+pub(self) fn locate_lone_program<T>(streams: &[Vec<T>]) -> usize {
+    streams
+        .iter()
+        .enumerate()
+        .find(|(_, s)| !s.is_empty())
+        .map(|(p, _)| p)
+        .expect("caller verified exactly one non-empty program for this stream kind")
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 //
 // The 2500+ LoC of inline test code is split into focused files under

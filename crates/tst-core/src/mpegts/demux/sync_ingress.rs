@@ -225,9 +225,17 @@ impl super::demuxer::Demuxer {
                     .is_some_and(|prev| pcr_masked_identical(prev, pkt.raw));
             if is_identical_dup {
                 if self.dup_by_pid.contains(&pkt.pid) {
-                    // Third identical packet with the same CC → real discontinuity.
-                    self.dup_by_pid.remove(&pkt.pid);
-                    real_jump = true;
+                    // Third (or later) identical packet with the same CC —
+                    // beyond the spec's only-two allowance. Surface exactly
+                    // ONE discontinuity for this packet and route its payload
+                    // (the pre-duplicate-support behavior). `dup_by_pid`
+                    // stays SET and the stored original bytes stay in place,
+                    // so EVERY further identical packet in the run lands here
+                    // too — the only-two enforcement does not reset mid-run.
+                    // Early return keeps the generic CC-jump block below from
+                    // recording the same jump a second time. (cc_by_pid would
+                    // be re-inserted with the identical value — skipping the
+                    // tail is a no-op for it.)
                     self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
                     if let Some(stream) = self.lookup_stream(pkt.pid) {
                         self.record_discontinuity(
@@ -238,22 +246,20 @@ impl super::demuxer::Demuxer {
                             },
                         );
                     }
-                    // Fall through to cc_by_pid update below.
-                } else {
-                    // First duplicate — suppress and mark.
-                    self.dup_by_pid.insert(pkt.pid);
-                    // Do NOT update cc_by_pid / last_pkt_raw_by_pid — the next
-                    // non-duplicate packet on this PID must still expect
-                    // prev_cc + 1, and a second duplicate must compare against
-                    // the ORIGINAL packet's bytes.
-                    return (false, true);
+                    return (true, false);
                 }
-            } else {
-                // Normal advance, discontinuity_indicator, or a same-CC packet
-                // with differing bytes (routed as an ordinary CC jump below) —
-                // clear any pending duplicate state for this PID.
-                self.dup_by_pid.remove(&pkt.pid);
+                // First duplicate — suppress and mark.
+                self.dup_by_pid.insert(pkt.pid);
+                // Do NOT update cc_by_pid / last_pkt_raw_by_pid — the next
+                // non-duplicate packet on this PID must still expect
+                // prev_cc + 1, and a second duplicate must compare against
+                // the ORIGINAL packet's bytes.
+                return (false, true);
             }
+            // Normal advance, discontinuity_indicator, or a same-CC packet
+            // with differing bytes (routed as an ordinary CC jump below) —
+            // clear any pending duplicate state for this PID.
+            self.dup_by_pid.remove(&pkt.pid);
 
             // Per ISO/IEC 13818-1 §2.4.3.5, when discontinuity_indicator=1
             // the CC is explicitly permitted to be discontinuous on this

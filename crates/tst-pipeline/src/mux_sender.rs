@@ -276,7 +276,7 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path): poisoned inner lock means a
+        // Mutex-poisoning policy (recoverable path): poisoned inner lock means a
         // previous panic happened mid-mutation. Route to MuxSenderError whose
         // kind is TransportBroken with a site-specific message so the C ABI
         // surfaces a useful diagnostic via tst_get_last_error_str().
@@ -321,7 +321,7 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_klv".into(),
@@ -358,7 +358,7 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_video_to".into(),
@@ -438,7 +438,7 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_klv_to".into(),
@@ -472,7 +472,7 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_audio".into(),
@@ -507,7 +507,7 @@ impl<T: Transport> MuxSender<T> {
         frames: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_audio_to".into(),
@@ -543,7 +543,7 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_subtitle".into(),
@@ -578,7 +578,7 @@ impl<T: Transport> MuxSender<T> {
         payload: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_subtitle_to".into(),
@@ -615,7 +615,7 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_data".into(),
@@ -656,7 +656,7 @@ impl<T: Transport> MuxSender<T> {
         data: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        // Mutex-poisoning policy (recoverable path) — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| {
             MuxSenderError::from(TransportError::Broken {
                 msg: "mux_sender: inner lock poisoned during send_data_to".into(),
@@ -682,7 +682,7 @@ impl<T: Transport> MuxSender<T> {
 
     /// Snapshot all KLV stream handles for this sender's muxer.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
-        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        // Mutex-poisoning policy (safe-default on poison) — see video_handles for rationale.
         if let Ok(inner) = self.inner.lock() {
             inner.muxer.klv_handles()
         } else {
@@ -693,7 +693,7 @@ impl<T: Transport> MuxSender<T> {
     /// Snapshot all audio stream handles for this sender's muxer, in
     /// declaration order.
     pub fn audio_handles(&self) -> Vec<AudioStreamHandle> {
-        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        // Mutex-poisoning policy (safe-default on poison) — see video_handles for rationale.
         if let Ok(inner) = self.inner.lock() {
             inner.muxer.audio_handles()
         } else {
@@ -708,12 +708,12 @@ impl<T: Transport> MuxSender<T> {
         &self,
         program_number: u16,
     ) -> Result<Vec<AudioStreamHandle>, MuxError> {
-        // Plan F mutex sweep (recoverable path / closest-semantic mapping):
+        // Mutex-poisoning policy (recoverable path / closest-semantic mapping):
         // poisoned inner lock returns ProgramNotFound since the muxer state is
         // unreachable — the closest existing semantic for "no programs available"
-        // given the function's narrow MuxError surface. Per Decision F2:
-        // alternative would be a new MuxError::LockPoisoned variant, rejected
-        // due to BASELINE bump + binding-surface ripple.
+        // given the function's narrow MuxError surface. The alternative — a new
+        // MuxError::LockPoisoned variant — was rejected due to the public-api
+        // baseline bump + binding-surface ripple.
         self.inner
             .lock()
             .map_err(|_| MuxError::ProgramNotFound { program_number })?
@@ -723,7 +723,7 @@ impl<T: Transport> MuxSender<T> {
 
     /// Snapshot all subtitle stream handles for this sender's muxer.
     pub fn subtitle_handles(&self) -> Vec<SubtitleStreamHandle> {
-        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        // Mutex-poisoning policy (safe-default on poison) — see video_handles for rationale.
         if let Ok(inner) = self.inner.lock() {
             inner.muxer.subtitle_handles()
         } else {
@@ -739,7 +739,7 @@ impl<T: Transport> MuxSender<T> {
         &self,
         program_number: u16,
     ) -> Result<Vec<SubtitleStreamHandle>, MuxError> {
-        // Plan F mutex sweep (recoverable path / closest-semantic mapping) —
+        // Mutex-poisoning policy (recoverable path / closest-semantic mapping) —
         // see audio_handles_for_program for rationale.
         self.inner
             .lock()
@@ -750,7 +750,7 @@ impl<T: Transport> MuxSender<T> {
 
     /// Snapshot all data stream handles for this sender's muxer.
     pub fn data_handles(&self) -> Vec<DataStreamHandle> {
-        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        // Mutex-poisoning policy (safe-default on poison) — see video_handles for rationale.
         if let Ok(inner) = self.inner.lock() {
             inner.muxer.data_handles()
         } else {
@@ -761,8 +761,8 @@ impl<T: Transport> MuxSender<T> {
     /// Return a point-in-time stats snapshot. `per_stream` is delegated from
     /// the inner `Muxer`; `pending_*` fields are live gauges.
     pub fn stats(&self) -> MuxSenderStats {
-        // Plan F mutex sweep (safe-default on poison): zeroed stats matches
-        // "no live state available." Per Plan F Decision F2.
+        // Mutex-poisoning policy (safe-default on poison): zeroed stats matches
+        // "no live state available."
         let Ok(inner) = self.inner.lock() else {
             return MuxSenderStats::default();
         };
@@ -790,7 +790,7 @@ impl<T: Transport> MuxSender<T> {
     /// `tst_mux_sender_get_socket_stats` — see
     /// `bindings/c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
-        // Plan F mutex sweep (safe-default on poison): mirrors reconnect/mod.rs
+        // Mutex-poisoning policy (safe-default on poison): mirrors reconnect/mod.rs
         // verbatim — None on poison, indistinguishable from "no live socket."
         // C ABI surfaces this as TST_E_NOT_AVAILABLE (-13).
         self.inner
@@ -822,8 +822,8 @@ impl<T: Transport> MuxSender<T> {
         &self,
         pid: u16,
     ) -> Option<tst_core::mpegts::stats::StreamCodecStats> {
-        // Plan F mutex sweep (safe-default on poison): None on poison —
-        // same shape as socket_stats. Per Plan F Decision F2.
+        // Mutex-poisoning policy (safe-default on poison): None on poison —
+        // same shape as socket_stats.
         self.inner
             .lock()
             .ok()
@@ -834,7 +834,7 @@ impl<T: Transport> MuxSender<T> {
     /// `pending_bytes_queued` / `pending_chunks_queued` are live gauges and
     /// are NOT cleared.
     pub fn reset_stats(&self) {
-        // Plan F mutex sweep (silent no-op on poison): reset_stats on a
+        // Mutex-poisoning policy (silent no-op on poison): reset_stats on a
         // poisoned state is naturally a no-op since the stats are already
         // lost. Matches close() + Drop shape verbatim.
         if let Ok(mut inner) = self.inner.lock() {
@@ -900,8 +900,8 @@ impl<T: Transport> MuxSender<T> {
 
     #[must_use]
     pub fn is_alive(&self) -> bool {
-        // Plan F mutex sweep (safe-default on poison): poisoned state is not
-        // alive. False matches the "wrapper unusable" answer. Per Decision F2.
+        // Mutex-poisoning policy (safe-default on poison): poisoned state is not
+        // alive. False matches the "wrapper unusable" answer.
         if let Ok(inner) = self.inner.lock() {
             !inner.closed && inner.transport.is_alive()
         } else {
@@ -1873,7 +1873,7 @@ mod cancel_tests {
         poison_sender().close();
     }
 
-    /// Wave 6.F Task 2 regression: every fallible-return method on
+    /// Regression: every fallible-return method on
     /// `MuxSender` converts a poisoned inner lock to a typed error instead
     /// of panicking. The 10 `send_*` methods must return a `MuxSenderError`
     /// whose kind is `ShellErrorKind::TransportBroken`; the 2
@@ -1997,13 +1997,12 @@ mod cancel_tests {
         );
     }
 
-    /// Wave 6.F Task 3 regression: every infallible-return method on a
-    /// `MuxSender` with a poisoned inner mutex returns a safe default instead
-    /// of panicking. Safe defaults match the "no live muxer state" answer per
-    /// Plan F Decision F2.
+    /// Regression: every infallible-return method on a `MuxSender` with a
+    /// poisoned inner mutex returns a safe default instead of panicking.
+    /// Safe defaults match the "no live muxer state" answer.
     ///
-    /// Uses the same `poison_sender()` helper as Task 2 — same poison
-    /// mechanism, same config layout.
+    /// Uses the same `poison_sender()` helper as the recoverable-path test —
+    /// same poison mechanism, same config layout.
     #[test]
     fn mux_sender_inner_lock_poisoned_returns_safe_default() {
         let sender = poison_sender();

@@ -558,9 +558,8 @@ impl PyManagedMuxSender {
         // closure). Both calls acquire the MuxSender's internal mutex, which
         // push_* methods also hold inside allow_threads — holding the GIL while
         // waiting for that mutex would freeze the interpreter.
-        let (sock, pipe) = py.allow_threads(|| {
-            (inner.socket_stats().unwrap_or_default(), inner.stats())
-        });
+        let (sock, pipe) =
+            py.allow_threads(|| (inner.socket_stats().unwrap_or_default(), inner.stats()));
         let mux_stats = tst_core::mpegts::mux::MuxerStats {
             ts_packets_emitted: pipe.packets_sent,
             ts_bytes_emitted: pipe.bytes_sent,
@@ -857,12 +856,8 @@ impl PyManagedDemuxReceiver {
             Ok(inner.socket_stats().unwrap_or_default())
         });
         let core = result.map_err(|e| match e {
-            StatsErr::Poisoned => {
-                make_srt_error(py, "IO", "ManagedDemuxReceiver lock poisoned")
-            }
-            StatsErr::Closed => {
-                make_srt_error(py, "CLOSED", "ManagedDemuxReceiver is closed")
-            }
+            StatsErr::Poisoned => make_srt_error(py, "IO", "ManagedDemuxReceiver lock poisoned"),
+            StatsErr::Closed => make_srt_error(py, "CLOSED", "ManagedDemuxReceiver is closed"),
         })?;
         Py::new(py, PySocketStats::from_core(core))
     }

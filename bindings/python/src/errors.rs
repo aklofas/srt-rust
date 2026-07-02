@@ -166,7 +166,6 @@ pub fn raise_srt_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_srt_error(py, kind, message))
 }
 
-
 /// Test helper: forces a `UdpError` raise from Rust, exposed as
 /// `_native._raise_udp_error_for_test` so the
 /// `check-py-udp-error-mapping-coverage.sh` ratchet sees at least one
@@ -177,7 +176,6 @@ pub fn raise_srt_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 pub fn raise_udp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
     Err(make_udp_error(py, kind, message))
 }
-
 
 /// Test helper: forces a `TcpError` raise from Rust, exposed as
 /// `_native._raise_tcp_error_for_test` so the
@@ -190,7 +188,6 @@ pub fn raise_tcp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_tcp_error(py, kind, message))
 }
 
-
 /// Test helper: forces an `HlsError` raise from Rust, exposed as
 /// `_native._raise_hls_error_for_test` so the
 /// `check-py-hls-error-mapping-coverage.sh` ratchet sees at least one
@@ -201,7 +198,6 @@ pub fn raise_tcp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
 pub fn raise_hls_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
     Err(make_hls_error(py, kind, message))
 }
-
 
 /// Test helper: forces a `RistError` raise from Rust, exposed as
 /// `_native._raise_rist_error_for_test` so the

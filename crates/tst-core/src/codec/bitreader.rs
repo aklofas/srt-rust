@@ -123,6 +123,26 @@ impl<'a> BitReader<'a> {
         })
     }
 
+    /// Read an Exp-Golomb `ue(v)` and reject values above `max` (a
+    /// spec-defined upper bound) as [`CodecParseError::ReservedValue`].
+    ///
+    /// Used for fields such as `sps_seq_parameter_set_id`, `chroma_sample_loc_type_*`,
+    /// and `log2_max_frame_num_minus4` across H.264 / H.265 / H.266 parameter sets.
+    /// The range check fires BEFORE any narrowing cast, preventing silent
+    /// wrap-around of adversarial input (e.g. a crafted ue(v)=256 that would
+    /// `as u8`-truncate to 0 — a valid value that aliases a different record).
+    pub(crate) fn read_ue_max(
+        &mut self,
+        field: &'static str,
+        max: u32,
+    ) -> Result<u32, CodecParseError> {
+        let v = self.read_ue()?;
+        if v > max {
+            return Err(CodecParseError::ReservedValue { field, value: v });
+        }
+        Ok(v)
+    }
+
     pub fn skip(&mut self, n: u32) -> Result<(), CodecParseError> {
         for _ in 0..n {
             self.read_one_bit()?;
@@ -196,6 +216,26 @@ mod tests {
             br.read_ue(),
             Err(CodecParseError::InvalidGolomb { .. })
         ));
+    }
+
+    #[test]
+    fn read_ue_max_rejects_above_max() {
+        // ue(6) = "00111" → 0x38; rejecting at max=5 gives ReservedValue.
+        let mut br = BitReader::new(&[0x38]);
+        assert!(matches!(
+            br.read_ue_max("f", 5),
+            Err(CodecParseError::ReservedValue {
+                field: "f",
+                value: 6
+            })
+        ));
+    }
+
+    #[test]
+    fn read_ue_max_accepts_at_max() {
+        // ue(6) = "00111" → 0x38; max=6 is exactly at the bound.
+        let mut br = BitReader::new(&[0x38]);
+        assert_eq!(br.read_ue_max("f", 6).unwrap(), 6);
     }
 
     #[test]

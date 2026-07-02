@@ -71,35 +71,17 @@ pub(super) fn parse_h266_vui(br: &mut BitReader<'_>) -> Result<Option<ColorInfo>
         if vui_progressive_source_flag && !vui_interlaced_source_flag {
             // Progressive: single chroma_sample_loc_type_frame ue(v).
             // H.274 §7.3 (p. 20): shall be in range 0..=6 inclusive.
-            let v = br.read_ue()?; // ue(v)
-            if v > 6 {
-                return Err(CodecParseError::ReservedValue {
-                    field: "vui_chroma_sample_loc_type_frame",
-                    value: v,
-                });
-            }
+            let v = br.read_ue_max("vui_chroma_sample_loc_type_frame", 6)?;
             chroma_loc = Some(v as u8);
         } else {
             // Interlaced (or unspecified): top_field + bottom_field.
             // H.274 §7.3 (p. 20): both shall be in range 0..=6 inclusive.
-            let top = br.read_ue()?; // ue(v)
-            if top > 6 {
-                return Err(CodecParseError::ReservedValue {
-                    field: "vui_chroma_sample_loc_type_top_field",
-                    value: top,
-                });
-            }
-            let bottom = br.read_ue()?; // ue(v)
-            if bottom > 6 {
-                return Err(CodecParseError::ReservedValue {
-                    field: "vui_chroma_sample_loc_type_bottom_field",
-                    value: bottom,
-                });
-            }
+            let top = br.read_ue_max("vui_chroma_sample_loc_type_top_field", 6)?;
             // ColorInfo::chroma_loc surfaces the top-field value (per the
             // type's single-byte design); bottom_field is consumed for
             // bit-stream correctness but currently not surfaced. See
             // H264-04 / H274-04 for the data-model gap.
+            let _bottom = br.read_ue_max("vui_chroma_sample_loc_type_bottom_field", 6)?;
             chroma_loc = Some(top as u8);
         }
     }

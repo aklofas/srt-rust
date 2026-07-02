@@ -545,13 +545,22 @@ impl PyManagedMuxSender {
     /// `(SocketStats, MuxerStats)` snapshot. Same shape as T5's
     /// `MuxSender.stats()`. `SocketStats` may report zeros while the
     /// transport is mid-reconnect (the inner socket is `None`).
+    ///
+    /// Releases the GIL while acquiring the internal `MuxSender` mutex so
+    /// a concurrent `push_*` call running in another thread (which also
+    /// holds that mutex inside `allow_threads`) cannot freeze the interpreter.
     fn stats(&self, py: Python<'_>) -> PyResult<(Py<PySocketStats>, Py<PyMuxerStats>)> {
         let inner = self
             .inner
             .as_ref()
             .ok_or_else(|| make_srt_error(py, "CLOSED", "ManagedMuxSender is closed"))?;
-        let sock = inner.socket_stats().unwrap_or_default();
-        let pipe = inner.stats();
+        // Two-step: extract stats inside allow_threads (no Python types inside
+        // closure). Both calls acquire the MuxSender's internal mutex, which
+        // push_* methods also hold inside allow_threads — holding the GIL while
+        // waiting for that mutex would freeze the interpreter.
+        let (sock, pipe) = py.allow_threads(|| {
+            (inner.socket_stats().unwrap_or_default(), inner.stats())
+        });
         let mux_stats = tst_core::mpegts::mux::MuxerStats {
             ts_packets_emitted: pipe.packets_sent,
             ts_bytes_emitted: pipe.bytes_sent,
@@ -830,15 +839,31 @@ impl PyManagedDemuxReceiver {
     /// from the underlying `ManagedRecvTransport::socket_stats`. Returns
     /// `SrtError(CLOSED)` if the receiver has been closed, or all-zero
     /// stats if the wrapper is mid-reconnect.
+    ///
+    /// Releases the GIL while acquiring the outer `Arc<Mutex<Option<...>>>`
+    /// so a concurrent `__next__` parked in `recv_event` (which holds that
+    /// same mutex inside `allow_threads`) cannot freeze the interpreter.
     fn socket_stats(&self, py: Python<'_>) -> PyResult<Py<PySocketStats>> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| make_srt_error(py, "IO", "ManagedDemuxReceiver lock poisoned"))?;
-        let inner = guard
-            .as_ref()
-            .ok_or_else(|| make_srt_error(py, "CLOSED", "ManagedDemuxReceiver is closed"))?;
-        let core = inner.socket_stats().unwrap_or_default();
+        // Two-step: acquire the outer mutex inside allow_threads so the GIL
+        // is free while waiting. Without this, a parked __next__ holding the
+        // mutex inside allow_threads would freeze all Python threads.
+        enum StatsErr {
+            Poisoned,
+            Closed,
+        }
+        let result: Result<tst_core::transport::SocketStats, StatsErr> = py.allow_threads(|| {
+            let guard = self.inner.lock().map_err(|_| StatsErr::Poisoned)?;
+            let inner = guard.as_ref().ok_or(StatsErr::Closed)?;
+            Ok(inner.socket_stats().unwrap_or_default())
+        });
+        let core = result.map_err(|e| match e {
+            StatsErr::Poisoned => {
+                make_srt_error(py, "IO", "ManagedDemuxReceiver lock poisoned")
+            }
+            StatsErr::Closed => {
+                make_srt_error(py, "CLOSED", "ManagedDemuxReceiver is closed")
+            }
+        })?;
         Py::new(py, PySocketStats::from_core(core))
     }
 

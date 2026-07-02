@@ -66,26 +66,13 @@ impl Muxer {
     /// `total_data == 1` guarantees exactly one program has a non-empty
     /// data stream list.
     fn single_data_handle(&self) -> DataStreamHandle {
-        let (prog_idx, _within_idx) = self
-            .data_streams
-            .iter()
-            .enumerate()
-            .find(|(_p, d)| !d.is_empty())
-            .map(|(p, _)| (p, 0))
-            .expect("total_data == 1 guarantees one non-empty program");
-        DataStreamHandle::pack(prog_idx, 0)
+        DataStreamHandle::pack(super::locate_lone_program(&self.data_streams), 0)
     }
 
     /// All `DataStreamHandle`s for this muxer, in `(program, within-program)`
     /// declaration order. One handle per `StreamSpec::Data` across all programs.
     pub fn data_handles(&self) -> Vec<DataStreamHandle> {
-        self.data_streams
-            .iter()
-            .enumerate()
-            .flat_map(|(p_idx, prog)| {
-                (0..prog.len()).map(move |s_idx| DataStreamHandle::pack(p_idx, s_idx))
-            })
-            .collect()
+        super::all_handles(&self.data_streams, DataStreamHandle::pack)
     }
 
     /// Handle for the i-th data stream in `programs[0]`, or `None` if out of

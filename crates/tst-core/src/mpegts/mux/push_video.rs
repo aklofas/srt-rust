@@ -76,26 +76,13 @@ impl Muxer {
     /// `total_video == 1` guarantees exactly one program has a non-empty
     /// video stream list.
     fn single_video_handle(&self) -> VideoStreamHandle {
-        let (prog_idx, _within_idx) = self
-            .video_streams
-            .iter()
-            .enumerate()
-            .find(|(_p, v)| !v.is_empty())
-            .map(|(p, _)| (p, 0))
-            .expect("total_video == 1 guarantees one non-empty program");
-        VideoStreamHandle::pack(prog_idx, 0)
+        VideoStreamHandle::pack(super::locate_lone_program(&self.video_streams), 0)
     }
 
     /// All `VideoStreamHandle`s for this muxer, in `(program, within-program)`
     /// declaration order. One handle per `StreamSpec::Video` across all programs.
     pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
-        self.video_streams
-            .iter()
-            .enumerate()
-            .flat_map(|(p_idx, prog)| {
-                (0..prog.len()).map(move |s_idx| VideoStreamHandle::pack(p_idx, s_idx))
-            })
-            .collect()
+        super::all_handles(&self.video_streams, VideoStreamHandle::pack)
     }
 
     /// Handle for the i-th video stream in `programs[0]`, or `None` if out of

@@ -59,14 +59,8 @@ impl Muxer {
         // Locate the program with the lone subtitle stream — same iterate-to-find
         // pattern as `push_audio` / `push_klv` (the lone stream may not be in
         // program 0).
-        let (prog_idx, _within_idx) = self
-            .subtitle_streams
-            .iter()
-            .enumerate()
-            .find(|(_p, s)| !s.is_empty())
-            .map(|(p, _)| (p, 0))
-            .expect("total_subtitle == 1 guarantees one non-empty program");
-        let handle = SubtitleStreamHandle::pack(prog_idx, 0);
+        let handle =
+            SubtitleStreamHandle::pack(super::locate_lone_program(&self.subtitle_streams), 0);
         self.push_subtitle_to(handle, pts, payload)
     }
 
@@ -201,13 +195,7 @@ impl Muxer {
     /// `(program, within-program)` declaration order. One handle per
     /// `StreamSpec::Subtitle` across all programs.
     pub fn subtitle_handles(&self) -> Vec<SubtitleStreamHandle> {
-        self.subtitle_streams
-            .iter()
-            .enumerate()
-            .flat_map(|(p_idx, prog)| {
-                (0..prog.len()).map(move |s_idx| SubtitleStreamHandle::pack(p_idx, s_idx))
-            })
-            .collect()
+        super::all_handles(&self.subtitle_streams, SubtitleStreamHandle::pack)
     }
 
     /// Subtitle stream handles for the named program, in declaration order.

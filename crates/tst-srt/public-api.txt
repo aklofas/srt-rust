@@ -168,10 +168,10 @@ pub tst_srt::error::AcceptError::Other::message: alloc::string::String
 pub tst_srt::error::AcceptError::PeerRejected
 pub tst_srt::error::AcceptError::PeerRejected::detail: alloc::string::String
 pub tst_srt::error::AcceptError::PeerRejected::reason: tst_srt::error::RejectReason
-pub tst_srt::error::AcceptError::System(std::io::error::Error)
+pub tst_srt::error::AcceptError::System(core::io::error::Error)
 pub tst_srt::error::AcceptError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::AcceptError
+pub fn tst_srt::error::AcceptError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
@@ -188,10 +188,10 @@ impl core::marker::UnsafeUnpin for tst_srt::error::AcceptError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::AcceptError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::AcceptError
 #[non_exhaustive] pub enum tst_srt::error::AddrError
-pub tst_srt::error::AddrError::Io(std::io::error::Error)
+pub tst_srt::error::AddrError::Io(core::io::error::Error)
 pub tst_srt::error::AddrError::Resolve(alloc::string::String)
-impl core::convert::From<std::io::error::Error> for tst_srt::error::AddrError
-pub fn tst_srt::error::AddrError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::AddrError
+pub fn tst_srt::error::AddrError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
@@ -217,9 +217,9 @@ pub tst_srt::error::BindError::Other
 pub tst_srt::error::BindError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::error::BindError::Other::message: alloc::string::String
 pub tst_srt::error::BindError::PermissionDenied
-pub tst_srt::error::BindError::System(std::io::error::Error)
-impl core::convert::From<std::io::error::Error> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(std::io::error::Error) -> Self
+pub tst_srt::error::BindError::System(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tst_srt::error::BindError
+pub fn tst_srt::error::BindError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
@@ -251,10 +251,10 @@ pub tst_srt::error::ConnectError::Refused
 pub tst_srt::error::ConnectError::Rejected
 pub tst_srt::error::ConnectError::Rejected::detail: alloc::string::String
 pub tst_srt::error::ConnectError::Rejected::reason: tst_srt::error::RejectReason
-pub tst_srt::error::ConnectError::System(std::io::error::Error)
+pub tst_srt::error::ConnectError::System(core::io::error::Error)
 pub tst_srt::error::ConnectError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::ConnectError
+pub fn tst_srt::error::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
@@ -332,9 +332,9 @@ pub tst_srt::error::IoError::Other
 pub tst_srt::error::IoError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::error::IoError::Other::message: alloc::string::String
 pub tst_srt::error::IoError::SocketClosed
-pub tst_srt::error::IoError::System(std::io::error::Error)
-impl core::convert::From<std::io::error::Error> for tst_srt::error::IoError
-pub fn tst_srt::error::IoError::from(std::io::error::Error) -> Self
+pub tst_srt::error::IoError::System(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tst_srt::error::IoError
+pub fn tst_srt::error::IoError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
 impl core::error::Error for tst_srt::error::IoError
@@ -405,9 +405,9 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::error::PacketFilterError
 pub tst_srt::error::PassphraseError::EnvUnset(alloc::string::String)
 pub tst_srt::error::PassphraseError::InvalidCharset
 pub tst_srt::error::PassphraseError::InvalidLength(usize)
-pub tst_srt::error::PassphraseError::Io(std::io::error::Error)
-impl core::convert::From<std::io::error::Error> for tst_srt::error::PassphraseError
-pub fn tst_srt::error::PassphraseError::from(std::io::error::Error) -> Self
+pub tst_srt::error::PassphraseError::Io(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tst_srt::error::PassphraseError
+pub fn tst_srt::error::PassphraseError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::PassphraseError> for tst_srt::error::OptionError
 pub fn tst_srt::error::OptionError::from(tst_srt::error::PassphraseError) -> Self
 impl core::error::Error for tst_srt::error::PassphraseError
@@ -431,10 +431,10 @@ pub tst_srt::error::RecvError::ConnectionBroken
 pub tst_srt::error::RecvError::Other
 pub tst_srt::error::RecvError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::error::RecvError::Other::message: alloc::string::String
-pub tst_srt::error::RecvError::System(std::io::error::Error)
+pub tst_srt::error::RecvError::System(core::io::error::Error)
 pub tst_srt::error::RecvError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::RecvError
+pub fn tst_srt::error::RecvError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
@@ -516,10 +516,10 @@ pub tst_srt::error::SendError::PayloadTooLarge
 pub tst_srt::error::SendError::PayloadTooLarge::actual: usize
 pub tst_srt::error::SendError::PayloadTooLarge::limit: usize
 pub tst_srt::error::SendError::QueueFull
-pub tst_srt::error::SendError::System(std::io::error::Error)
+pub tst_srt::error::SendError::System(core::io::error::Error)
 pub tst_srt::error::SendError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::SendError
+pub fn tst_srt::error::SendError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError
@@ -958,10 +958,10 @@ pub tst_srt::AcceptError::Other::message: alloc::string::String
 pub tst_srt::AcceptError::PeerRejected
 pub tst_srt::AcceptError::PeerRejected::detail: alloc::string::String
 pub tst_srt::AcceptError::PeerRejected::reason: tst_srt::error::RejectReason
-pub tst_srt::AcceptError::System(std::io::error::Error)
+pub tst_srt::AcceptError::System(core::io::error::Error)
 pub tst_srt::AcceptError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::AcceptError
+pub fn tst_srt::error::AcceptError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
@@ -985,9 +985,9 @@ pub tst_srt::BindError::Other
 pub tst_srt::BindError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::BindError::Other::message: alloc::string::String
 pub tst_srt::BindError::PermissionDenied
-pub tst_srt::BindError::System(std::io::error::Error)
-impl core::convert::From<std::io::error::Error> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(std::io::error::Error) -> Self
+pub tst_srt::BindError::System(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tst_srt::error::BindError
+pub fn tst_srt::error::BindError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
@@ -1042,10 +1042,10 @@ pub tst_srt::ConnectError::Refused
 pub tst_srt::ConnectError::Rejected
 pub tst_srt::ConnectError::Rejected::detail: alloc::string::String
 pub tst_srt::ConnectError::Rejected::reason: tst_srt::error::RejectReason
-pub tst_srt::ConnectError::System(std::io::error::Error)
+pub tst_srt::ConnectError::System(core::io::error::Error)
 pub tst_srt::ConnectError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::ConnectError
+pub fn tst_srt::error::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
@@ -1170,10 +1170,10 @@ pub tst_srt::RecvError::ConnectionBroken
 pub tst_srt::RecvError::Other
 pub tst_srt::RecvError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::RecvError::Other::message: alloc::string::String
-pub tst_srt::RecvError::System(std::io::error::Error)
+pub tst_srt::RecvError::System(core::io::error::Error)
 pub tst_srt::RecvError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::RecvError
+pub fn tst_srt::error::RecvError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
@@ -1219,10 +1219,10 @@ pub tst_srt::SendError::PayloadTooLarge
 pub tst_srt::SendError::PayloadTooLarge::actual: usize
 pub tst_srt::SendError::PayloadTooLarge::limit: usize
 pub tst_srt::SendError::QueueFull
-pub tst_srt::SendError::System(std::io::error::Error)
+pub tst_srt::SendError::System(core::io::error::Error)
 pub tst_srt::SendError::TimedOut
-impl core::convert::From<std::io::error::Error> for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_srt::error::SendError
+pub fn tst_srt::error::SendError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
 pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError

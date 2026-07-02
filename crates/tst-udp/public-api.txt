@@ -75,15 +75,15 @@ pub tst_udp::error::UdpError::IfaceUnsupported
 pub tst_udp::error::UdpError::IfaceUnsupported::detail: alloc::string::String
 pub tst_udp::error::UdpError::IfaceUnsupported::iface: alloc::string::String
 pub tst_udp::error::UdpError::InvalidConfig(alloc::string::String)
-pub tst_udp::error::UdpError::Io(std::io::error::Error)
+pub tst_udp::error::UdpError::Io(core::io::error::Error)
 pub tst_udp::error::UdpError::PayloadTooLarge
 pub tst_udp::error::UdpError::PayloadTooLarge::len: usize
 pub tst_udp::error::UdpError::PayloadTooLarge::max: usize
 pub tst_udp::error::UdpError::Url(tst_udp::url::UdpUrlError)
 impl tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::kind(&self) -> tst_udp::error::UdpErrorKind
-impl core::convert::From<std::io::error::Error> for tst_udp::error::UdpError
-pub fn tst_udp::error::UdpError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_udp::error::UdpError
+pub fn tst_udp::error::UdpError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_udp::url::UdpUrlError> for tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::from(tst_udp::url::UdpUrlError) -> Self
 impl core::error::Error for tst_udp::error::UdpError
@@ -251,15 +251,15 @@ pub tst_udp::UdpError::IfaceUnsupported
 pub tst_udp::UdpError::IfaceUnsupported::detail: alloc::string::String
 pub tst_udp::UdpError::IfaceUnsupported::iface: alloc::string::String
 pub tst_udp::UdpError::InvalidConfig(alloc::string::String)
-pub tst_udp::UdpError::Io(std::io::error::Error)
+pub tst_udp::UdpError::Io(core::io::error::Error)
 pub tst_udp::UdpError::PayloadTooLarge
 pub tst_udp::UdpError::PayloadTooLarge::len: usize
 pub tst_udp::UdpError::PayloadTooLarge::max: usize
 pub tst_udp::UdpError::Url(tst_udp::url::UdpUrlError)
 impl tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::kind(&self) -> tst_udp::error::UdpErrorKind
-impl core::convert::From<std::io::error::Error> for tst_udp::error::UdpError
-pub fn tst_udp::error::UdpError::from(std::io::error::Error) -> Self
+impl core::convert::From<core::io::error::Error> for tst_udp::error::UdpError
+pub fn tst_udp::error::UdpError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_udp::url::UdpUrlError> for tst_udp::error::UdpError
 pub fn tst_udp::error::UdpError::from(tst_udp::url::UdpUrlError) -> Self
 impl core::error::Error for tst_udp::error::UdpError

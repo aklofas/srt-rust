@@ -24,3 +24,5 @@ mod options;
 mod stream_id;
 #[path = "builder/udp_buffer.rs"]
 mod udp_buffer;
+#[path = "builder/srt_buf_bytes.rs"]
+mod srt_buf_bytes;

@@ -135,8 +135,8 @@ aren't yet wrapped are reachable via `srt-sys`.
 | `SRTO_LATENCY` | `latency: Option<Duration>` | ✅ Full |
 | `SRTO_PEERLATENCY` | `peer_latency` (caller) | ✅ Full |
 | `SRTO_RCVLATENCY` | `recv_latency` | ✅ Full |
-| `SRTO_RCVBUF` (packets) | `recv_buf_packets` | ✅ Full |
-| `SRTO_SNDBUF` (packets) | `send_buf_packets` (caller) | ✅ Full |
+| `SRTO_RCVBUF` (bytes) | `recv_buf_bytes` | ✅ Full |
+| `SRTO_SNDBUF` (bytes) | `send_buf_bytes` (caller) | ✅ Full |
 | `SRTO_MAXBW` | `max_bandwidth: MaxBandwidth` | ✅ Full |
 | `SRTO_INPUTBW` | `input_bandwidth` (caller) | ✅ Full |
 | `SRTO_OHEADBW` | `overhead_bandwidth_pct` | ✅ Full |

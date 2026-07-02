@@ -32,7 +32,7 @@ pub struct CodecErrFields {
 
 /// Throw `java.lang.IllegalStateException("{what} is closed")`.
 ///
-/// Shared helper for the ~42 JNI sites that guard a closed/consumed handle.
+/// Shared helper for every JNI site that guards a closed/consumed handle.
 /// The exception class and message text are identical to what the inline sites
 /// used to emit; Java tests that assert on the message will see no difference.
 pub fn throw_closed(env: &mut JNIEnv, what: &str) {

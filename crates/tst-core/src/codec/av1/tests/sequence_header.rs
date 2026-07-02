@@ -75,31 +75,7 @@ fn write_timing_suffix(bw: &mut BitWriter) {
 }
 
 /// Append-only bit writer for hand-crafting AV1 OBU payloads.
-struct BitWriter {
-    bytes: Vec<u8>,
-    pos: u32,
-}
-
-impl BitWriter {
-    fn new() -> Self {
-        Self {
-            bytes: Vec::new(),
-            pos: 0,
-        }
-    }
-    fn write(&mut self, value: u64, n: u32) {
-        for i in (0..n).rev() {
-            let bit = ((value >> i) & 1) as u8;
-            let byte_idx = (self.pos / 8) as usize;
-            let bit_in_byte = 7 - (self.pos % 8);
-            if byte_idx == self.bytes.len() {
-                self.bytes.push(0);
-            }
-            self.bytes[byte_idx] |= bit << bit_in_byte;
-            self.pos += 1;
-        }
-    }
-}
+use crate::codec::test_util::BitWriter;
 
 /// Build a minimal Sequence Header OBU body.
 /// Main profile, non-still-picture, level 2.0 tier 0, 320x240,

@@ -10,6 +10,7 @@ use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
+    aspect_ratio_idc_to_sar,
 };
 
 /// Parse H.274 V4 §7.2 `vui_parameters( payloadSize )`, returning `ColorInfo`
@@ -121,30 +122,6 @@ pub(super) fn parse_h266_vui(br: &mut BitReader<'_>) -> Result<Option<ColorInfo>
     };
 
     Ok(color)
-}
-
-/// Map H.265/H.266 `aspect_ratio_idc` (Table E-1) to a `Rational` SAR.
-/// Returns `None` for unspecified (0) and extended-SAR (255, handled by caller).
-fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
-    Some(match idc {
-        1 => Rational { num: 1, den: 1 },
-        2 => Rational { num: 12, den: 11 },
-        3 => Rational { num: 10, den: 11 },
-        4 => Rational { num: 16, den: 11 },
-        5 => Rational { num: 40, den: 33 },
-        6 => Rational { num: 24, den: 11 },
-        7 => Rational { num: 20, den: 11 },
-        8 => Rational { num: 32, den: 11 },
-        9 => Rational { num: 80, den: 33 },
-        10 => Rational { num: 18, den: 11 },
-        11 => Rational { num: 15, den: 11 },
-        12 => Rational { num: 64, den: 33 },
-        13 => Rational { num: 160, den: 99 },
-        14 => Rational { num: 4, den: 3 },
-        15 => Rational { num: 3, den: 2 },
-        16 => Rational { num: 2, den: 1 },
-        _ => return None,
-    })
 }
 
 #[cfg(test)]

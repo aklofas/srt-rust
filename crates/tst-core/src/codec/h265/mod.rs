@@ -51,29 +51,9 @@ pub use sps::{H265Sps, parse_sps};
 pub use vps::{H265Vps, parse_vps};
 
 use crate::codec::CodecParseError;
-use crate::codec::bitreader::BitReader;
 use crate::mpegts::demux::event::NalUnit;
 use alloc::collections::BTreeMap;
 
-/// Read an Exp-Golomb `ue(v)` and reject values above `max` (a spec upper
-/// bound) as [`CodecParseError::ReservedValue`].
-///
-/// The raw `ue(v)` decode is a `u32`; several H.265 parameter-set IDs are
-/// stored in `u8`. An unchecked `as u8` would silently wrap an out-of-range
-/// (malformed-stream) value, and for the map-key IDs would *alias* a
-/// different parameter set. Mirrors the explicit range checks H.264 already
-/// performs (see `codec/h264/decode.rs`).
-pub(crate) fn read_ue_max(
-    br: &mut BitReader,
-    field: &'static str,
-    max: u32,
-) -> Result<u32, CodecParseError> {
-    let v = br.read_ue()?;
-    if v > max {
-        return Err(CodecParseError::ReservedValue { field, value: v });
-    }
-    Ok(v)
-}
 
 /// All VPS, SPS, and PPS NAL units parsed from a slice.
 #[must_use]
@@ -146,28 +126,3 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Codec
     Ok(out)
 }
 
-#[cfg(test)]
-mod read_ue_max_tests {
-    use super::read_ue_max;
-    use crate::codec::CodecParseError;
-    use crate::codec::bitreader::BitReader;
-
-    // ue(6) Exp-Golomb = bits "00111" → 0b0011_1000 = 0x38.
-    #[test]
-    fn rejects_above_max() {
-        let mut br = BitReader::new(&[0x38]);
-        let err = read_ue_max(&mut br, "f", 5).unwrap_err();
-        assert!(matches!(
-            err,
-            CodecParseError::ReservedValue {
-                field: "f",
-                value: 6
-            }
-        ));
-    }
-    #[test]
-    fn accepts_at_max() {
-        let mut br = BitReader::new(&[0x38]); // ue(6)
-        assert_eq!(read_ue_max(&mut br, "f", 6).unwrap(), 6);
-    }
-}

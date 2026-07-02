@@ -54,9 +54,9 @@ pub(crate) fn parse(
     let chroma_loc_info_present_flag = br.read_bool()?;
     let mut chroma_loc = None;
     if chroma_loc_info_present_flag {
-        let top = super::read_ue_max(br, "chroma_sample_loc_type_top_field", 5)? as u8;
+        let top = br.read_ue_max("chroma_sample_loc_type_top_field", 5)? as u8;
         // H.265 Table E.1: both fields are bounded 0..=5.
-        let _bottom = super::read_ue_max(br, "chroma_sample_loc_type_bottom_field", 5)?;
+        let _bottom = br.read_ue_max("chroma_sample_loc_type_bottom_field", 5)?;
         chroma_loc = Some(top);
     }
 

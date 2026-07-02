@@ -71,8 +71,7 @@ impl TcpUrl {
         };
         let port = parsed.port.ok_or(TcpUrlError::MissingPort)?;
 
-        // Strip IPv6 brackets if present.
-        let host_str = parsed.host.trim_start_matches('[').trim_end_matches(']');
+        let host_str = parsed.host;
         let addr: IpAddr = host_str
             .parse()
             .map_err(|_| TcpUrlError::BadHost(host_str.to_string()))?;

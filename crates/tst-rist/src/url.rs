@@ -76,7 +76,7 @@ impl RistUrl {
         // the `@` chunk in the username slot; same trick as tst-udp / tst-tcp.
         let is_recv_bind = parsed.username.is_some();
 
-        let host_str = parsed.host.trim_start_matches('[').trim_end_matches(']');
+        let host_str = parsed.host;
         let addr: IpAddr = host_str
             .parse()
             .map_err(|_| RistUrlError::BadHost(host_str.to_string()))?;

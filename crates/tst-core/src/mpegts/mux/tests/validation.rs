@@ -259,6 +259,57 @@ fn validate_counts_ac3_audio_stream_descriptor_and_rejects_oversized_pmt() {
     );
 }
 
+/// DA-MUX-2 regression: the PMT size estimator must NOT add subtitle
+/// auto-emit bytes when the caller has already supplied a recognized
+/// subtitle descriptor (tag 0x59 / 0x56 / 0x46, or GA94 / VTTC
+/// registration). The old estimator always added the subtitle auto-emit
+/// size regardless, causing `PmtTooLarge` for configs the emitter accepted.
+///
+/// Budget proof (MAX_PMT_SECTION_BYTES = 183):
+///   fixed header      = 16 B (3 + 9 + CRC 4)
+///   1 video ES (H264) =  5 B (stream overhead only; no auto-emit for H264)
+///   1 subtitle ES     =  5 B stream overhead
+///                      + 10 B caller-supplied 0x59 subtitling_descriptor
+///                      + 147 B user-private padding (tag 1 + len 1 + body 145)
+///                      = 162 B
+///   total             = 16 + 5 + 162 = 183 B — exactly at the limit.
+///
+/// Old estimator: 183 + 10 (spurious DvbSubtitling auto-emit) = 193 → REJECTED.
+/// New estimator: 183 (auto-emit suppressed via cache) → ACCEPTED.
+#[test]
+fn da_mux_2_recognized_subtitle_descriptor_suppresses_estimator_auto_emit() {
+    // Caller-supplied recognized subtitle descriptor (tag 0x59, 10 bytes).
+    let sub_desc_0x59 = crate::mpegts::descriptors::subtitling_descriptor(
+        *b"eng", 0x10, 1, 1,
+    ); // tag(1)+len(1)+lang(3)+type(1)+comp_id(2)+anc_id(2) = 10 bytes
+    // Padding: 145-byte body → TLV is tag(1)+len(1)+body(145) = 147 bytes.
+    let padding = crate::mpegts::descriptors::user_private(&[0u8; 145])
+        .expect("145 B within descriptor cap");
+    // caller_descs_len for subtitle = 10 + 147 = 157 bytes.
+    // PMT: 16 (fixed) + 5 (video) + 5 + 157 (subtitle) = 183 B = MAX_PMT_SECTION_BYTES.
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    prog.add_video(0x100, VideoCodec::H264); // PCR-eligible; no descriptor auto-emit
+    prog.add_subtitle(
+        0x200,
+        SubtitleCodec::DvbSubtitling {
+            language: *b"eng",
+            subtitling_type: 0x10,
+            composition_page_id: 1,
+            ancillary_page_id: 1,
+        },
+    );
+    prog.stream_descriptors_for_subtitle(0, vec![sub_desc_0x59, padding])
+        .unwrap();
+    let mut builder = MuxerConfig::builder();
+    builder.add_program(prog.build());
+    let config = builder
+        .build()
+        .expect("recognized subtitle descriptor suppresses auto-emit; config must fit budget");
+    // Muxer::new must also succeed — the emitter validates the same budget.
+    Muxer::new(config)
+        .expect("Muxer::new must accept a near-budget config with suppressed subtitle auto-emit");
+}
+
 /// Guard against over-counting: an AC-3 config that genuinely fits the
 /// single-packet PMT must still build and push without panicking.
 #[test]

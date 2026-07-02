@@ -484,13 +484,13 @@ pub(super) fn resolve_pcr_pid(prog: &MuxerProgramConfig) -> u16 {
 /// pre-refactor inline version. See history pre-Wave 6 for the per-codec
 /// suppression rationale (KLVA / AV01 / AC-3 mirror each other; subtitle
 /// suppression matches the demux-side classifier).
-pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u8>> {
-    let mut cache: Vec<Vec<u8>> = Vec::with_capacity(prog.streams.len());
+/// Emit tracing warnings for caller-supplied descriptor conflicts on KLV, AV1,
+/// and AC-3 streams. Hoisted out of `build_pmt_descriptor_cache` so that
+/// function is pure (no side effects), and called once from `Muxer::new` —
+/// construction-time, after `validate()`, at most ≤16 programs × ≤16 streams.
+pub(super) fn warn_on_descriptor_conflicts(prog: &MuxerProgramConfig) {
     for (i, spec) in prog.streams.iter().enumerate() {
         let caller_descs = &prog.stream_descriptors[i];
-        let caller_has_registration = caller_descs
-            .iter()
-            .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
 
         if matches!(spec, StreamSpec::Klv { .. }) {
             for tlv in caller_descs {
@@ -504,6 +504,56 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
                 }
             }
         }
+
+        if let StreamSpec::Video {
+            codec: VideoCodec::Av1,
+            ..
+        } = spec
+        {
+            let caller_has_av01 = caller_descs
+                .iter()
+                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
+            let caller_has_other_registration = caller_descs
+                .iter()
+                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AV01");
+            if caller_has_other_registration && !caller_has_av01 {
+                tracing::warn!(
+                    "caller-supplied Registration descriptor on AV1 PID has \
+                     non-AV01 format_identifier; receivers may not recognize \
+                     the stream as AV1"
+                );
+            }
+        }
+
+        if let StreamSpec::Audio {
+            codec: AudioCodec::Ac3,
+            ..
+        } = spec
+        {
+            let caller_has_ac3 = caller_descs
+                .iter()
+                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AC-3");
+            let caller_has_other_registration = caller_descs
+                .iter()
+                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AC-3");
+            if caller_has_other_registration && !caller_has_ac3 {
+                tracing::warn!(
+                    "caller-supplied Registration descriptor on AC-3 PID has \
+                     non-AC-3 format_identifier; receivers may not recognize \
+                     the stream as AC-3"
+                );
+            }
+        }
+    }
+}
+
+pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u8>> {
+    let mut cache: Vec<Vec<u8>> = Vec::with_capacity(prog.streams.len());
+    for (i, spec) in prog.streams.iter().enumerate() {
+        let caller_descs = &prog.stream_descriptors[i];
+        let caller_has_registration = caller_descs
+            .iter()
+            .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
 
         let mut bytes = Vec::new();
         // KLVA Registration auto-emit on KLV streams (both
@@ -560,11 +610,8 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
         // receivers gate AV1 classification on stream_type 0x06 +
         // first-position AV01 Registration. Suppress when the caller
         // has already supplied an AV01 Registration (mirrors KLVA
-        // suppression). If the caller supplied a Registration with a
-        // non-AV01 format_identifier, log warn but still auto-emit so
-        // the stream stays classifiable as AV1 — we don't silently
-        // override caller intent, but we don't let a stray non-AV01
-        // Registration silently break receiver classification either.
+        // suppression). A conflict warning for a non-AV01 format_identifier
+        // is emitted by `warn_on_descriptor_conflicts`.
         if let StreamSpec::Video {
             codec: VideoCodec::Av1,
             ..
@@ -573,16 +620,6 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             let caller_has_av01 = caller_descs
                 .iter()
                 .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
-            let caller_has_other_registration = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AV01");
-            if caller_has_other_registration && !caller_has_av01 {
-                tracing::warn!(
-                    "caller-supplied Registration descriptor on AV1 PID has \
-                     non-AV01 format_identifier; receivers may not recognize \
-                     the stream as AV1"
-                );
-            }
             if !caller_has_av01 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_av01());
             }
@@ -590,12 +627,9 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
         // AC-3 auto-emit: Registration descriptor with format_identifier
         // "AC-3" per ATSC A/52:2018 §A.3. Receivers use this to distinguish
         // AC-3 from other private-stream-1 (PES stream_id 0xBD) audio.
-        // Suppression mirrors the KLVA / AV01 rules: suppress when the
-        // caller has already supplied an AC-3 Registration (tag 0x05 with
-        // format_identifier == b"AC-3"). If the caller supplied a
-        // Registration with a different format_identifier, log warn but
-        // do NOT auto-emit — caller intent takes precedence and we don't
-        // silently override it.
+        // Suppression: caller-supplied AC-3 Registration suppresses auto-emit;
+        // a non-AC-3 Registration does NOT suppress (caller intent wins, but we
+        // skip auto-emit). Conflict warning emitted by `warn_on_descriptor_conflicts`.
         if let StreamSpec::Audio {
             codec: AudioCodec::Ac3,
             ..
@@ -604,16 +638,6 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             let caller_has_ac3 = caller_descs
                 .iter()
                 .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AC-3");
-            let caller_has_other_registration = caller_descs
-                .iter()
-                .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AC-3");
-            if caller_has_other_registration && !caller_has_ac3 {
-                tracing::warn!(
-                    "caller-supplied Registration descriptor on AC-3 PID has \
-                     non-AC-3 format_identifier; receivers may not recognize \
-                     the stream as AC-3"
-                );
-            }
             if !caller_has_ac3 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_ac3());
             }

@@ -204,6 +204,7 @@ impl Muxer {
         let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
 
         for prog in &config.programs {
+            state::warn_on_descriptor_conflicts(prog);
             let (video, klv, audio, subtitle, data) = state::collect_stream_states(prog);
             let pcr_pid = state::resolve_pcr_pid(prog);
             let cache = state::build_pmt_descriptor_cache(prog);

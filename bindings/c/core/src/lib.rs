@@ -134,10 +134,9 @@ pub use rtsp::server::builder::tst_rtsp_server_builder_new;
 #[cfg(feature = "srt")]
 pub use sender::ts_sender::tst_sender_open;
 
-// Plan A5a — feature_matrix_compile re-exports. Each Wave uncomments its
-// line once the corresponding open function lands (Wave A: udp, Wave B:
-// tcp, Wave C: hls, Wave D: rist). Bootstrap keeps them commented so the
-// canonical feature-mode builds succeed against the empty stub modules.
+// Feature-gated transport re-exports. One line per transport; all now shipped
+// (udp, tcp, hls, rist). Gated so a minimal `--no-default-features` build
+// with no transport feature selected links without any transport symbols.
 #[cfg(feature = "hls")]
 pub use hls::builder::tst_hls_publisher_builder_new;
 #[cfg(feature = "rist")]
@@ -191,34 +190,34 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
 /// - `1` (plan #62): receiver-surface initial drop.
-/// - `2` (validate-1 Phase 2 wrap-up `d711ecb`): TS-bytes raw-receiver
+/// - `2` (raw-receiver hardening, `d711ecb`): TS-bytes raw-receiver
 ///   pull-loop hardening + F2 C-ABI shape additions.
-/// - `3` (AU cell reassembly `5527a9e`): `TstMultiCellAuReason` +
+/// - `3` (AU cell reassembly, `5527a9e`): `TstMultiCellAuReason` +
 ///   `multi_cell_au_reason` field on `TstEventNonConformant`.
 /// - `4` (AU cell CFI tolerance): `TstNonConformantCode::CfiTolerated`
 ///   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_cfi_tolerance`
 ///   setter. The new variant reuses the existing `cc_expected` + `cc_observed`
 ///   field carriers to surface `observed_cfi` + `treated_as` without growing
 ///   the struct.
-/// - `5` (plan #96 demuxer-config parity, 2026-05-25):
+/// - `5` (demuxer-config parity, 2026-05-25):
 ///   `TstAv1CarriageMode` enum (mux side already had a mirror;
 ///   demux side reuses it) + three new C entry points —
 ///   `tst_demux_config_set_av1_carriage`,
 ///   `tst_demux_config_set_au_cell_cap_per_pid`, and
 ///   `tst_demux_config_set_lenient_psi_reassembly`. Bridges
 ///   Rust-only demux knobs through the C builder.
-/// - `6` (Phase 4 tst-rtp binding exposure, 2026-05-26):
+/// - `6` (tst-rtp C binding exposure, 2026-05-26):
 ///   Introduces `srt` + `rtp` cargo features in `tst-c` with
 ///   cbindgen `TST_HAS_SRT` / `TST_HAS_RTP` conditional emission.
 ///   Existing SRT surface now gated on `feature = "srt"` (default-on
 ///   through 2026-06-06; opt-in / default-off thereafter, like every
 ///   other transport).
-///   New RTP/RTSP entry points land in Tasks 2-16 behind `feature = "rtp"`.
-/// - `7` (Plan A5a, 2026-05-27): UDP + TCP + HLS + RIST entry points
-///   plus cargo feature flags `udp`/`tcp`/`hls`/`rist` (all default-OFF
-///   per the network-protocol-stack-expansion design — embedded
-///   `libtstrans.so` size stays unchanged for existing consumers).
-///   Adds 4 new `TST_HAS_*` defines and ~95 new `tst_*` entry points.
+///   New RTP/RTSP entry points land behind `feature = "rtp"`.
+/// - `7` (network-protocol-stack expansion, 2026-05-27): UDP + TCP + HLS +
+///   RIST entry points plus cargo feature flags `udp`/`tcp`/`hls`/`rist`
+///   (all default-OFF — embedded `libtstrans.so` size stays unchanged for
+///   existing consumers). Adds 4 new `TST_HAS_*` defines and ~95 new entry
+///   points.
 /// - `8` — added the offline `tst_demuxer_*` byte-feeding demuxer surface.
 ///   Wraps `tst_core::Demuxer` directly (no transport URL); callers feed
 ///   raw TS bytes and pull typed `TstEvent`s. Unconditional (no feature

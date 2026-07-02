@@ -598,6 +598,14 @@ covers.
 
 For full build-target / CI gating coverage see "Build targets" at the top of this document.
 
+**Intentional per-language conveniences.** A small set of APIs exist only in
+one binding by design: `transmux` (Python-only convenience that bridges a
+`Demuxer` and `Muxer` in one call; Rust callers compose them directly);
+`split_video` (Rust/C API, not exposed in Python/JVM — callers there receive
+`VideoSample.raw` bytes); `Pts90khz` wrapper type (Rust + Python, not in C/JVM
+where ticks are passed as plain integers). These are not parity gaps but
+deliberate ergonomic adaptations for each language's idiom.
+
 ---
 
 ## Sanitizers

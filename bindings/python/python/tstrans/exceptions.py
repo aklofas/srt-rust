@@ -140,9 +140,9 @@ class KlvEncodeErrorKind(enum.IntEnum):
 class CodecErrorKind(enum.IntEnum):
     """Mirrors `tst_core::codec::CodecParseError` variants.
 
-    New Rust variants surface as `UNKNOWN_<RawName>` with raw int values
-    starting at 1000; Python pattern-matchers must include a default
-    fallback to remain robust.
+    Unknown Rust variants (e.g. from a newer library version) are mapped
+    to ``ENGINE_ERROR`` by the native extension; Python pattern-matchers
+    must include a default fallback to remain robust.
     """
 
     TRUNCATED_RBSP = 1
@@ -525,4 +525,12 @@ __all__ = [
     "RtpErrorKind",
     "SrtError",
     "SrtErrorKind",
+    "UdpErrorKind",
+    "UdpError",
+    "TcpErrorKind",
+    "TcpError",
+    "HlsErrorKind",
+    "HlsError",
+    "RistErrorKind",
+    "RistError",
 ]

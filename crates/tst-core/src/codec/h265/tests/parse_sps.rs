@@ -117,7 +117,7 @@ fn parse_sps_returns_err_on_garbage() {
     assert!(parse_sps(&[0xff; 16]).is_err());
 }
 
-/// Inline bit-builder. Mirrors the parser's expected reads exactly,
+/// Shared bit-builder. Mirrors the parser's expected reads exactly,
 /// keeping the test bytes debuggable by reading the field-write
 /// sequence top-to-bottom.
 use crate::codec::test_util::BitWriter;

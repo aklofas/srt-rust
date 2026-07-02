@@ -4,6 +4,8 @@ use std::io;
 use std::net::TcpStream;
 
 use crate::config::SocketConfig;
+// Transport-agnostic cancel-poll cadence; it lives in the udp_socket module
+// for historical reasons but is deliberately shared across transports.
 use tst_core::net::udp_socket::CANCEL_POLL_INTERVAL;
 
 pub fn apply_knobs(socket: &TcpStream, cfg: &SocketConfig) -> io::Result<()> {

@@ -609,6 +609,21 @@ fn num_units_in_tick_overflow_no_panic() {
     );
 }
 
+/// DA-H26X-2: `num_units_in_tick == 0` must not produce a zero denominator
+/// in the frame_rate ratio. H.265 VUI already guards this (`if num_units_in_tick > 0`);
+/// H.264 VUI had a gap where `0 * 2 = 0 != u32::MAX` flowed to
+/// `Some(Rational { den: 0 })`, a ÷0 hazard for consumers. Post-fix, the
+/// result must be `None`.
+#[test]
+fn num_units_in_tick_zero_yields_none_not_den0() {
+    let rbsp = craft_high_sps_with_constraints_and_timing(0, Some(0));
+    let sps = parse_sps(&rbsp).expect("parse SPS with num_units_in_tick = 0");
+    assert!(
+        sps.frame_rate.is_none(),
+        "frame_rate must be None when num_units_in_tick == 0 (den=0 is a ÷0 hazard)"
+    );
+}
+
 /// F-01 (codec): a non-conformant scaling-list `delta_scale` (outside the
 /// H.264 §7.4.2.1.1.1 [-128,127] range) must not panic. Before the fix, the
 /// `last_scale + delta_scale + 256` i32 add in `skip_scaling_list` overflowed

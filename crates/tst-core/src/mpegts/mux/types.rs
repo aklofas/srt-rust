@@ -305,6 +305,78 @@ impl StreamSpec {
     }
 }
 
+// ── StreamHandle macro ────────────────────────────────────────────────────
+//
+// All five *StreamHandle types share byte-identical Debug + impl blocks;
+// only the type name (for constructor / debug label) and the StreamKind
+// variant (for the try_from_raw error) differ. This macro emits those
+// two blocks, keeping the per-type struct definition and its public
+// rustdoc outside so each type reads independently in docs.
+macro_rules! impl_stream_handle {
+    ($ty:ident, $kind:expr, $label:literal) => {
+        impl core::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let (prog, within) = self.unpack();
+                write!(f, concat!($label, "(prog={}, stream={})"), prog, within)
+            }
+        }
+
+        impl $ty {
+            // Load-bearing for `tst-c` C ABI: `tst-c` converts handles
+            // to/from `uint32_t` at the FFI boundary. All methods are
+            // `#[doc(hidden)]` — obtain handles via the `Muxer::*_handles`
+            // entry points.
+
+            /// Pack `(program_index, within_program_index)` into an opaque u32.
+            #[doc(hidden)]
+            pub fn pack(program_index: usize, within_index: usize) -> Self {
+                Self(crate::mpegts::common::handle_pack::pack(
+                    program_index,
+                    within_index,
+                ))
+            }
+
+            /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+            #[doc(hidden)]
+            pub fn unpack(self) -> (usize, usize) {
+                crate::mpegts::common::handle_pack::unpack(self.0)
+            }
+
+            /// Return the packed `u32` representation (for FFI use).
+            #[doc(hidden)]
+            pub fn raw(self) -> u32 {
+                self.0
+            }
+
+            /// Wrap a raw packed `u32` for trusted in-process round-trips.
+            /// Use [`Self::try_from_raw`] at every external trust boundary.
+            #[doc(hidden)]
+            pub fn from_raw(raw: u32) -> Self {
+                Self(raw)
+            }
+
+            /// Validating sibling of [`Self::from_raw`]. Rejects any
+            /// `raw` value with bits set outside the 4-bit program + 4-bit
+            /// within-program layout. Use at every FFI / PyO3 / IPC boundary.
+            ///
+            /// # Errors
+            ///
+            /// Returns `MuxError::InvalidStreamHandle` if `raw` contains
+            /// any high bits outside the packed 8-bit layout.
+            #[doc(hidden)]
+            pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+                if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+                    return Err(crate::error::MuxError::InvalidStreamHandle {
+                        kind: $kind,
+                        index: raw as usize,
+                    });
+                }
+                Ok(Self(raw))
+            }
+        }
+    };
+}
+
 /// Opaque handle to a configured video stream on a `Muxer`.
 ///
 /// Obtained from [`Muxer::video_handles`](crate::mpegts::mux::Muxer::video_handles) / [`Muxer::video_stream_handle`](crate::mpegts::mux::Muxer::video_stream_handle) /
@@ -336,12 +408,7 @@ impl StreamSpec {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VideoStreamHandle(pub(super) u32);
 
-impl core::fmt::Debug for VideoStreamHandle {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (prog, within) = self.unpack();
-        write!(f, "VideoStreamHandle(prog={prog}, stream={within})")
-    }
-}
+impl_stream_handle!(VideoStreamHandle, StreamKind::Video, "VideoStreamHandle");
 
 /// Opaque handle to a configured KLV stream on a `Muxer`.
 ///
@@ -363,176 +430,7 @@ impl core::fmt::Debug for VideoStreamHandle {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KlvStreamHandle(pub(super) u32);
 
-impl core::fmt::Debug for KlvStreamHandle {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (prog, within) = self.unpack();
-        write!(f, "KlvStreamHandle(prog={prog}, stream={within})")
-    }
-}
-
-impl VideoStreamHandle {
-    // These methods are `#[doc(hidden)]` because they are load-bearing for the
-    // `tst-c` C ABI, which converts handles to/from `uint32_t` at the FFI
-    // boundary across crate lines. Full `pub(crate)` demotion requires reshaping
-    // `tst-c` to use opaque handles internally — deferred to a future plan.
-    // Direct Rust callers should obtain handles via `Muxer::add_video_stream` /
-    // `Muxer::video_handles` — those are the public API entry points.
-
-    /// Pack `(program_index, within_program_index)` into the opaque u32.
-    ///
-    /// Bit layout: bits 0..=3 = within_program_index (0..=15),
-    /// bits 4..=7 = program_index (0..=15), upper bits zero.
-    ///
-    /// Public so `tst-c` can construct handles at the FFI boundary. Single-
-    /// program callers pass `program_index = 0`.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
-    /// if `within_index >= 16` (the per-program video cap). Release builds
-    /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// at `push_video_to` time. Use [`Self::from_raw`] when re-wrapping a
-    /// handle that was already packed by the muxer (e.g. round-tripped
-    /// through C ABI) — calling `pack(0, raw)` would re-encode `raw` as a
-    /// `within_index` and trip the assert.
-    #[doc(hidden)]
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
-        Self(crate::mpegts::common::handle_pack::pack(
-            program_index,
-            within_index,
-        ))
-    }
-
-    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    #[doc(hidden)]
-    pub fn unpack(self) -> (usize, usize) {
-        crate::mpegts::common::handle_pack::unpack(self.0)
-    }
-
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `tst-c` needs to return a handle to a C caller as a bare integer.
-    #[doc(hidden)]
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) **within the same process**. Use this for
-    /// in-process round-trips where the input is trusted (e.g. the
-    /// muxer received its own `.raw()` output back).
-    ///
-    /// **Do not use this at trust boundaries** (FFI, deserialization,
-    /// IPC). A caller can pass any `u32`; `from_raw` does no validation
-    /// and the downstream [`Self::unpack`] silently masks the high bits.
-    /// A forged value like `valid.raw() | 0x100` would alias the valid
-    /// low-byte stream and route the push to the wrong elementary stream.
-    /// Use [`Self::try_from_raw`] at every boundary that takes
-    /// caller-provided integers.
-    ///
-    /// Pre-existing in-muxer push-time range checks still reject handles
-    /// whose unpacked `(program_index, within_index)` is out of range —
-    /// e.g. value `99` from a C invalid-handle test — but they cannot
-    /// distinguish a forged-but-low-byte-valid handle from the genuine
-    /// one because they only see the masked indices.
-    #[doc(hidden)]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// Validating sibling of [`Self::from_raw`]. Returns
-    /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// if any bit outside the documented 4-bit program + 4-bit within
-    /// slots is set. Use this at every FFI / PyO3 / IPC trust boundary
-    /// that rewraps a caller-provided `u32` back into a typed handle.
-    ///
-    /// # Errors
-    ///
-    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Video,
-    /// index: raw as usize }` if `raw` has any high bits set above the
-    /// 8-bit packed layout. The push-time range check still runs on
-    /// values that pass this validation — call sites get the same final
-    /// error type whether the rejection is "forged" or "out-of-range".
-    #[doc(hidden)]
-    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
-        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
-            return Err(crate::error::MuxError::InvalidStreamHandle {
-                kind: StreamKind::Video,
-                index: raw as usize,
-            });
-        }
-        Ok(Self(raw))
-    }
-}
-
-impl KlvStreamHandle {
-    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
-    // See the comment on that impl block for the full explanation.
-
-    /// Pack `(program_index, within_program_index)` into the opaque u32.
-    ///
-    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `tst-c`
-    /// can construct handles at the FFI boundary.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
-    /// if `within_index >= 16` (the per-program KLV cap). Release builds
-    /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// at `push_klv_to` time. Use [`Self::from_raw`] for already-packed
-    /// handles round-tripped through C ABI.
-    #[doc(hidden)]
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
-        Self(crate::mpegts::common::handle_pack::pack(
-            program_index,
-            within_index,
-        ))
-    }
-
-    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    #[doc(hidden)]
-    pub fn unpack(self) -> (usize, usize) {
-        crate::mpegts::common::handle_pack::unpack(self.0)
-    }
-
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `tst-c` needs to return a handle to a C caller as a bare integer.
-    #[doc(hidden)]
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) **within the same process**. Same in-process
-    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
-    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
-    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
-    #[doc(hidden)]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// Validating sibling of [`Self::from_raw`]. Same shape as
-    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
-    /// [`StreamKind::Klv`].
-    ///
-    /// # Errors
-    ///
-    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Klv,
-    /// index: raw as usize }` if any high bit outside the 8-bit packed
-    /// layout is set.
-    #[doc(hidden)]
-    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
-        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
-            return Err(crate::error::MuxError::InvalidStreamHandle {
-                kind: StreamKind::Klv,
-                index: raw as usize,
-            });
-        }
-        Ok(Self(raw))
-    }
-}
+impl_stream_handle!(KlvStreamHandle, StreamKind::Klv, "KlvStreamHandle");
 
 /// Opaque handle to a configured audio stream on a `Muxer`.
 ///
@@ -553,82 +451,7 @@ impl KlvStreamHandle {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioStreamHandle(pub(super) u32);
 
-impl core::fmt::Debug for AudioStreamHandle {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (prog, within) = self.unpack();
-        write!(f, "AudioStreamHandle(prog={prog}, stream={within})")
-    }
-}
-
-impl AudioStreamHandle {
-    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
-    // See the comment on that impl block for the full explanation.
-
-    /// Pack `(program_index, within_program_index)` into the opaque u32.
-    /// Both inputs are bounded by `MAX_PROGRAMS` and 16 respectively.
-    ///
-    /// Public so `tst-c` can construct handles at the FFI boundary.
-    /// Single-program callers pass `program_index = 0`.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
-    /// if `within_index >= 16` (the per-program audio cap). Release builds
-    /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// at `push_audio_to` time. Use [`Self::from_raw`] when re-wrapping a
-    /// handle that was already packed (e.g. round-tripped through C ABI).
-    #[doc(hidden)]
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
-        Self(crate::mpegts::common::handle_pack::pack(
-            program_index,
-            within_index,
-        ))
-    }
-
-    /// Inverse of `pack`. Returns `(program_index, within_index)`.
-    #[doc(hidden)]
-    pub fn unpack(self) -> (usize, usize) {
-        crate::mpegts::common::handle_pack::unpack(self.0)
-    }
-
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `tst-c` needs to return a handle to a C caller as a bare integer.
-    #[doc(hidden)]
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) **within the same process**. Same in-process
-    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
-    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
-    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
-    #[doc(hidden)]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// Validating sibling of [`Self::from_raw`]. Same shape as
-    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
-    /// [`StreamKind::Audio`].
-    ///
-    /// # Errors
-    ///
-    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Audio,
-    /// index: raw as usize }` if any high bit outside the 8-bit packed
-    /// layout is set.
-    #[doc(hidden)]
-    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
-        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
-            return Err(crate::error::MuxError::InvalidStreamHandle {
-                kind: StreamKind::Audio,
-                index: raw as usize,
-            });
-        }
-        Ok(Self(raw))
-    }
-}
+impl_stream_handle!(AudioStreamHandle, StreamKind::Audio, "AudioStreamHandle");
 
 /// Per-program upper bound on subtitle streams. Total program-stream
 /// cap with all kinds saturated: ≤16 video + ≤16 KLV + ≤16 audio +
@@ -657,85 +480,7 @@ pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SubtitleStreamHandle(pub(super) u32);
 
-impl core::fmt::Debug for SubtitleStreamHandle {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (prog, within) = self.unpack();
-        write!(f, "SubtitleStreamHandle(prog={prog}, stream={within})")
-    }
-}
-
-impl SubtitleStreamHandle {
-    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
-    // See the comment on that impl block for the full explanation.
-
-    /// Pack `(program_index, within_program_index)` into the opaque u32.
-    ///
-    /// Bit layout: bits 0..=3 = within_program_index
-    /// (0..=`MAX_SUBTITLE_STREAMS_PER_PROGRAM`-1), bits 4..=7 =
-    /// program_index (0..=`MAX_PROGRAMS`-1), upper bits zero.
-    ///
-    /// Public so `tst-c` can construct handles at the FFI boundary.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
-    /// if `within_index >= MAX_SUBTITLE_STREAMS_PER_PROGRAM` (16). Release
-    /// builds silently mask the inputs into the 4-bit fields, which
-    /// produces a handle that the muxer will reject with
-    /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle) at `push_subtitle_to` time.
-    /// Use [`Self::from_raw`] when re-wrapping a handle that was already
-    /// packed (e.g. round-tripped through C ABI).
-    #[doc(hidden)]
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
-        Self(crate::mpegts::common::handle_pack::pack(
-            program_index,
-            within_index,
-        ))
-    }
-
-    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    #[doc(hidden)]
-    pub fn unpack(self) -> (usize, usize) {
-        crate::mpegts::common::handle_pack::unpack(self.0)
-    }
-
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `tst-c` needs to return a handle to a C caller as a bare integer.
-    #[doc(hidden)]
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) **within the same process**. Same in-process
-    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
-    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
-    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
-    #[doc(hidden)]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// Validating sibling of [`Self::from_raw`]. Same shape as
-    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
-    /// [`StreamKind::Subtitle`].
-    ///
-    /// # Errors
-    ///
-    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Subtitle,
-    /// index: raw as usize }` if any high bit outside the 8-bit packed
-    /// layout is set.
-    #[doc(hidden)]
-    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
-        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
-            return Err(crate::error::MuxError::InvalidStreamHandle {
-                kind: StreamKind::Subtitle,
-                index: raw as usize,
-            });
-        }
-        Ok(Self(raw))
-    }
-}
+impl_stream_handle!(SubtitleStreamHandle, StreamKind::Subtitle, "SubtitleStreamHandle");
 
 /// Opaque handle to a configured data stream on a `Muxer`.
 ///
@@ -757,81 +502,7 @@ impl SubtitleStreamHandle {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DataStreamHandle(pub(super) u32);
 
-impl core::fmt::Debug for DataStreamHandle {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (prog, within) = self.unpack();
-        write!(f, "DataStreamHandle(prog={prog}, stream={within})")
-    }
-}
-
-impl DataStreamHandle {
-    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
-    // See the comment on that impl block for the full explanation.
-
-    /// Pack `(program_index, within_program_index)` into the opaque u32.
-    ///
-    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `tst-c`
-    /// can construct handles at the FFI boundary.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
-    /// if `within_index >= 16` (the per-program data cap). Release builds
-    /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// at `push_data_to` time. Use [`Self::from_raw`] for already-packed
-    /// handles round-tripped through C ABI.
-    #[doc(hidden)]
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
-        Self(crate::mpegts::common::handle_pack::pack(
-            program_index,
-            within_index,
-        ))
-    }
-
-    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    #[doc(hidden)]
-    pub fn unpack(self) -> (usize, usize) {
-        crate::mpegts::common::handle_pack::unpack(self.0)
-    }
-
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `tst-c` needs to return a handle to a C caller as a bare integer.
-    #[doc(hidden)]
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) **within the same process**. Same in-process
-    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
-    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
-    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
-    #[doc(hidden)]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// Validating sibling of [`Self::from_raw`]. Same shape as
-    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
-    /// [`StreamKind::Data`].
-    ///
-    /// # Errors
-    ///
-    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Data,
-    /// index: raw as usize }` if any high bit outside the 8-bit packed
-    /// layout is set.
-    #[doc(hidden)]
-    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
-        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
-            return Err(crate::error::MuxError::InvalidStreamHandle {
-                kind: StreamKind::Data,
-                index: raw as usize,
-            });
-        }
-        Ok(Self(raw))
-    }
-}
+impl_stream_handle!(DataStreamHandle, StreamKind::Data, "DataStreamHandle");
 
 /// Maximum number of programs in one transport stream multiplex.
 /// Mirrors the per-program 16-video + 16-KLV stream caps; far above any

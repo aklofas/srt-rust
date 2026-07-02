@@ -26,21 +26,36 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-/// Build a `MuxError` Python exception with the right `.kind` Enum
-/// value and `message` attribute. Used from inside the
-/// `Muxer.push_video` / `push_klv` / `push_audio` wrappers.
+// ---------------------------------------------------------------------------
+// Shared constructor + macro-generated thin wrappers
+// ---------------------------------------------------------------------------
+
+/// Construct any `FooError` Python exception from `tstrans.exceptions`.
 ///
-/// `kind_variant` is the Python-side `MuxErrorKind` Enum variant name
-/// (e.g. `"CONFIG_INVALID"`, `"INTERNAL"`). Caller must pass a valid
-/// variant — invalid names raise `AttributeError` from
-/// `MuxErrorKind.<NAME>` lookup, which surfaces as a `PyErr` and is
-/// returned in place of the intended `MuxError`.
-pub fn make_mux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+/// Looks up `<kind_enum_class>.<kind_variant>` and calls
+/// `<error_class>(kind=<variant>, message=<message>)` with kwargs.
+/// Any attribute-lookup failure (e.g. an unknown `kind_variant`) is itself
+/// returned as a `PyErr`. The bash ratchets in `scripts/check/python/`
+/// enforce that every variant name used in this crate is a valid member of
+/// the corresponding `FooErrorKind` enum.
+///
+/// We deliberately do NOT use PyO3's `create_exception!`: that would mint
+/// NEW exception classes on the Rust side, distinct from the Python-defined
+/// `class MuxError` etc. Users need `isinstance(err, MuxError)` to work
+/// whether the exception comes from Python or Rust, so this side must CALL
+/// INTO the Python-defined classes rather than defining its own.
+fn make_kinded_error(
+    py: Python<'_>,
+    error_class: &str,
+    kind_enum_class: &str,
+    kind_variant: &str,
+    message: &str,
+) -> PyErr {
     let exceptions = match py.import_bound("tstrans.exceptions") {
         Ok(m) => m,
         Err(e) => return e,
     };
-    let kind_enum = match exceptions.getattr(intern!(py, "MuxErrorKind")) {
+    let kind_enum = match exceptions.getattr(kind_enum_class) {
         Ok(e) => e,
         Err(e) => return e,
     };
@@ -48,7 +63,7 @@ pub fn make_mux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
         Ok(v) => v,
         Err(e) => return e,
     };
-    let mux_error_cls = match exceptions.getattr(intern!(py, "MuxError")) {
+    let cls = match exceptions.getattr(error_class) {
         Ok(c) => c,
         Err(e) => return e,
     };
@@ -59,194 +74,57 @@ pub fn make_mux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
     if let Err(e) = kwargs.set_item("message", message) {
         return e;
     }
-    match mux_error_cls.call((), Some(&kwargs)) {
+    match cls.call((), Some(&kwargs)) {
         Ok(instance) => PyErr::from_value_bound(instance),
         Err(e) => e,
     }
 }
 
-/// Build a `DemuxError` Python exception. Mirror of `make_mux_error`
-/// targeting `tstrans.exceptions.DemuxError` + `DemuxErrorKind`.
-///
-/// `kind_variant` must be a Python-side `DemuxErrorKind` Enum variant
-/// name (e.g. `"SYNC_LOSS"`, `"BAD_PMT"`, `"INTERNAL"`).
-pub fn make_demux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
+/// Generate a `pub fn make_<Name>_error(py, kind_variant, message) -> PyErr`
+/// thin wrapper around [`make_kinded_error`]. The error class is
+/// `<Prefix>Error` and the kind enum is `<Prefix>ErrorKind`. An optional
+/// `cfg(...)` arm gates the wrapper behind a cargo feature.
+macro_rules! make_error_fn {
+    ($fn_name:ident, $prefix:literal) => {
+        pub fn $fn_name(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+            make_kinded_error(
+                py,
+                concat!($prefix, "Error"),
+                concat!($prefix, "ErrorKind"),
+                kind_variant,
+                message,
+            )
+        }
     };
-    let kind_enum = match exceptions.getattr(intern!(py, "DemuxErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
+    ($fn_name:ident, $prefix:literal, cfg($($cfg:tt)*)) => {
+        #[cfg($($cfg)*)]
+        pub fn $fn_name(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+            make_kinded_error(
+                py,
+                concat!($prefix, "Error"),
+                concat!($prefix, "ErrorKind"),
+                kind_variant,
+                message,
+            )
+        }
     };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let demux_error_cls = match exceptions.getattr(intern!(py, "DemuxError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match demux_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
 }
 
-/// Build a `KlvError` Python exception. Mirror of `make_mux_error` /
-/// `make_demux_error` targeting `tstrans.exceptions.KlvError` +
-/// `KlvErrorKind`.
-///
-/// `kind_variant` must be a Python-side `KlvErrorKind` Enum variant
-/// name (e.g. `"BAD_UNIVERSAL_LABEL"`, `"TRUNCATED_SET"`,
-/// `"CHECKSUM_MISMATCH"`, `"INTERNAL"`).
-pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "KlvErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let klv_error_cls = match exceptions.getattr(intern!(py, "KlvError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match klv_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
-
-/// Build an `RtspError` Python exception. Mirror of `make_mux_error`
-/// targeting `tstrans.exceptions.RtspError` + `RtspErrorKind`.
-///
-/// `kind_variant` must be a Python-side `RtspErrorKind` Enum variant
-/// name (e.g. `"PROTOCOL"`, `"AUTH_FAILED"`, `"AUTH_REQUIRED"`,
-/// `"NOT_FOUND"`, `"UNSUPPORTED_TRANSPORT"`, `"TLS"`, `"IO"`,
-/// `"TIMEOUT"`, `"SERVER"`, `"MOUNT"`).
-#[cfg(feature = "rtp")]
-pub fn make_rtsp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "RtspErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let rtsp_error_cls = match exceptions.getattr(intern!(py, "RtspError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match rtsp_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
-
-/// Build an `RtpError` Python exception. Mirror of `make_mux_error`
-/// targeting `tstrans.exceptions.RtpError` + `RtpErrorKind`.
-///
-/// `kind_variant` must be a Python-side `RtpErrorKind` Enum variant
-/// name (e.g. `"TRANSPORT"`, `"MALFORMED_PACKET"`, `"CANCELLED"`).
-#[cfg(feature = "rtp")]
-pub fn make_rtp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "RtpErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let rtp_error_cls = match exceptions.getattr(intern!(py, "RtpError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match rtp_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
-
-/// Build an `SrtError` Python exception. Mirror of `make_rtp_error`
-/// targeting `tstrans.exceptions.SrtError` + `SrtErrorKind`.
-///
-/// `kind_variant` must be a Python-side `SrtErrorKind` Enum variant
-/// name (e.g. `"CONNECT_FAILED"`, `"ACCEPT_FAILED"`, `"WOULD_BLOCK"`,
-/// `"TIMEOUT"`, `"CLOSED"`, `"BROKEN"`, `"CONFIG_INVALID"`, `"IO"`).
-#[cfg(feature = "srt")]
-pub fn make_srt_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "SrtErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let srt_error_cls = match exceptions.getattr(intern!(py, "SrtError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match srt_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
+// One thin wrapper per tstrans.exceptions error class.
+// The bash ratchets in scripts/check/python/ enforce that every *ErrorKind
+// variant has at least one literal make_*_error(py, "VARIANT", ...) call
+// site in the crate. Callers pass string literals for kind_variant; an
+// unknown name surfaces as AttributeError from the Python side.
+make_error_fn!(make_mux_error, "Mux");
+make_error_fn!(make_demux_error, "Demux");
+make_error_fn!(make_klv_error, "Klv");
+make_error_fn!(make_rtsp_error, "Rtsp", cfg(feature = "rtp"));
+make_error_fn!(make_rtp_error, "Rtp", cfg(feature = "rtp"));
+make_error_fn!(make_srt_error, "Srt", cfg(feature = "srt"));
+make_error_fn!(make_udp_error, "Udp", cfg(feature = "udp"));
+make_error_fn!(make_tcp_error, "Tcp", cfg(feature = "tcp"));
+make_error_fn!(make_hls_error, "Hls", cfg(feature = "hls"));
+make_error_fn!(make_rist_error, "Rist", cfg(feature = "rist"));
 
 /// Test helper: forces a `MuxError` raise from Rust, used by
 /// `test_error_wiring.py` to confirm end-to-end wiring. Exposed only
@@ -288,41 +166,6 @@ pub fn raise_srt_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_srt_error(py, kind, message))
 }
 
-/// Build a `UdpError` Python exception. Mirror of `make_rtsp_error`
-/// targeting `tstrans.exceptions.UdpError` + `UdpErrorKind`.
-///
-/// `kind_variant` must be a Python-side `UdpErrorKind` Enum variant name
-/// (e.g. `"IO"`, `"PAYLOAD_TOO_LARGE"`, `"CLOSED"`).
-#[cfg(feature = "udp")]
-pub fn make_udp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "UdpErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let udp_error_cls = match exceptions.getattr(intern!(py, "UdpError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match udp_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
 
 /// Test helper: forces a `UdpError` raise from Rust, exposed as
 /// `_native._raise_udp_error_for_test` so the
@@ -335,41 +178,6 @@ pub fn raise_udp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_udp_error(py, kind, message))
 }
 
-/// Build a `TcpError` Python exception. Mirror of `make_udp_error`
-/// targeting `tstrans.exceptions.TcpError` + `TcpErrorKind`.
-///
-/// `kind_variant` must be a Python-side `TcpErrorKind` Enum variant name
-/// (e.g. `"IO"`, `"PAYLOAD_TOO_LARGE"`, `"CLOSED"`, `"TLS_DISABLED"`).
-#[cfg(feature = "tcp")]
-pub fn make_tcp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "TcpErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let tcp_error_cls = match exceptions.getattr(intern!(py, "TcpError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match tcp_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
 
 /// Test helper: forces a `TcpError` raise from Rust, exposed as
 /// `_native._raise_tcp_error_for_test` so the
@@ -382,43 +190,6 @@ pub fn raise_tcp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_tcp_error(py, kind, message))
 }
 
-/// Build an `HlsError` Python exception. Mirror of `make_tcp_error`
-/// targeting `tstrans.exceptions.HlsError` + `HlsErrorKind`.
-///
-/// `kind_variant` must be a Python-side `HlsErrorKind` Enum variant name
-/// (e.g. `"URL"`, `"IO"`, `"BIND_FAILED"`, `"INVALID_CONFIG"`,
-/// `"UNALIGNED_PUSH_TS"`, `"FINISHED"`, `"TLS_DISABLED"`, `"TLS"`,
-/// `"INTERNAL"`).
-#[cfg(feature = "hls")]
-pub fn make_hls_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "HlsErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let hls_error_cls = match exceptions.getattr(intern!(py, "HlsError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match hls_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
 
 /// Test helper: forces an `HlsError` raise from Rust, exposed as
 /// `_native._raise_hls_error_for_test` so the
@@ -431,43 +202,6 @@ pub fn raise_hls_error_for_test(py: Python<'_>, kind: &str, message: &str) -> Py
     Err(make_hls_error(py, kind, message))
 }
 
-/// Build a `RistError` Python exception. Mirror of `make_hls_error`
-/// targeting `tstrans.exceptions.RistError` + `RistErrorKind`.
-///
-/// `kind_variant` must be a Python-side `RistErrorKind` Enum variant name
-/// (e.g. `"URL"`, `"FFI"`, `"PAYLOAD_TOO_LARGE"`, `"CLOSED"`,
-/// `"INVALID_CONFIG"`, `"ENCRYPTION_DISABLED"`, `"CONTEXT_CREATE_FAILED"`,
-/// `"PEER_CREATE_FAILED"`, `"RECV_TIMEOUT"`, `"IO"`).
-#[cfg(feature = "rist")]
-pub fn make_rist_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
-    let exceptions = match py.import_bound("tstrans.exceptions") {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    let kind_enum = match exceptions.getattr(intern!(py, "RistErrorKind")) {
-        Ok(e) => e,
-        Err(e) => return e,
-    };
-    let kind_value = match kind_enum.getattr(kind_variant) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let rist_error_cls = match exceptions.getattr(intern!(py, "RistError")) {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    let kwargs = PyDict::new_bound(py);
-    if let Err(e) = kwargs.set_item("kind", kind_value) {
-        return e;
-    }
-    if let Err(e) = kwargs.set_item("message", message) {
-        return e;
-    }
-    match rist_error_cls.call((), Some(&kwargs)) {
-        Ok(instance) => PyErr::from_value_bound(instance),
-        Err(e) => e,
-    }
-}
 
 /// Test helper: forces a `RistError` raise from Rust, exposed as
 /// `_native._raise_rist_error_for_test` so the

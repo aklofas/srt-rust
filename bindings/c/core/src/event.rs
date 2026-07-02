@@ -100,7 +100,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (34 variants, codes 0..=33)
+// Non-conformant-issue codes (one code per `NonConformantIssue` variant)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s

@@ -1423,7 +1423,7 @@ typedef struct tst_socket_stats_t {
  * * `discontinuities` — sum across all PIDs of `DemuxEvent::Discontinuity`
  *   emissions (continuity-counter jumps, PES oversize, etc).
  * * `nonconformant` — sum across all PIDs of `DemuxEvent::NonConformant`
- *   emissions (17 issue variants; see `tst_event_t.u.nonconformant.issue_code`).
+ *   emissions (one code per issue variant; see `tst_event_t.u.nonconformant.issue_code`).
  *
  * NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
  * are deliberately absent — they live only on the inner `Receiver`'s

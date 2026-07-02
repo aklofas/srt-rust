@@ -284,9 +284,7 @@ pub fn frames_with_resync(bytes: &[u8]) -> Frames<'_> {
 /// Resync may therefore land on a false positive that re-fails parse;
 /// the next `next()` call will simply re-resync from `cursor + 1`.
 fn find_next_sync(buf: &[u8], start: usize) -> Option<usize> {
-    crate::codec::framing::scan_for_sync(buf, start, |b0, b1| {
-        b0 == 0xFF && (b1 & 0xE0) == 0xE0
-    })
+    crate::codec::framing::scan_for_sync(buf, start, |b0, b1| b0 == 0xFF && (b1 & 0xE0) == 0xE0)
 }
 
 /// `Iterator::next` implementation for [`Frames`], called from the model module.

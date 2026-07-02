@@ -627,7 +627,10 @@ impl super::demuxer::Demuxer {
                 t.streams
                     .iter()
                     .filter_map(|old| {
-                        let new_kind = stream_infos.iter().find(|s| s.pid == old.pid).map(|s| s.kind);
+                        let new_kind = stream_infos
+                            .iter()
+                            .find(|s| s.pid == old.pid)
+                            .map(|s| s.kind);
                         match new_kind {
                             Some(nk) if nk != old.kind => Some(old.pid),
                             _ => None,
@@ -1309,8 +1312,8 @@ mod tests {
         let mut pes_pkt = [0xFFu8; 188];
         pes_pkt[0] = 0x47;
         pes_pkt[1] = 0x40 | 0x01; // PUSI + PID hi
-        pes_pkt[2] = 0x01;         // PID lo → PID = 0x0101
-        pes_pkt[3] = 0x10;         // payload-only, CC=0
+        pes_pkt[2] = 0x01; // PID lo → PID = 0x0101
+        pes_pkt[3] = 0x10; // payload-only, CC=0
         // pointer_field = 0 (required for PSI, but handled as PES by demuxer
         // since this PID is now a stream PID). PES start bytes follow.
         // PES: 0x000001 start code + stream_id=0xE0 + length=0 + optional hdr

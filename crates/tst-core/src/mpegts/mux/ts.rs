@@ -511,6 +511,10 @@ mod tests {
         // A second consecutive heartbeat must also repeat CC = 2 (non-mutating).
         let mut hb2 = [0u8; 188];
         write_pcr_only_packet(&mut hb2, 0x200, pcr, &cc);
-        assert_eq!(hb2[3] & 0x0F, 2, "consecutive heartbeats must all repeat same CC");
+        assert_eq!(
+            hb2[3] & 0x0F,
+            2,
+            "consecutive heartbeats must all repeat same CC"
+        );
     }
 }

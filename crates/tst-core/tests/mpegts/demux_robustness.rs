@@ -605,7 +605,10 @@ fn cc_duplicate_suppressed_es_bytes_identical() {
     d_clean.feed(&clean).unwrap();
     d_clean.flush();
     let expected_aus = collect_video_raw_bytes(&mut d_clean);
-    assert!(!expected_aus.is_empty(), "clean stream must yield video AUs");
+    assert!(
+        !expected_aus.is_empty(),
+        "clean stream must yield video AUs"
+    );
 
     // Patch: insert one duplicate of the 2nd video packet (2nd so cc_by_pid
     // already has a prior value, matching the live-stream duplicate case).

@@ -41,7 +41,10 @@ portable-atomic = { version = "1", default-features = false, features = ["fallba
 # Enabled only under the `std` feature (socket2 requires std; no_std bare-metal
 # targets can't link it). The net module itself is #[cfg(feature = "std")]-gated
 # in lib.rs, so the dep and the module are always in sync.
-socket2      = { workspace = true, optional = true }
+# The "all" feature is required for Socket::set_reuse_port, which is only
+# compiled on the BSD/macOS cfg arm — a Linux-only build check cannot catch
+# its absence (caught by macOS CI on PR #71).
+socket2      = { workspace = true, optional = true, features = ["all"] }
 
 [dev-dependencies]
 proptest         = { workspace = true }

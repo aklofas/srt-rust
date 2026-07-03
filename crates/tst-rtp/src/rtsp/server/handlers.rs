@@ -651,6 +651,12 @@ pub(crate) fn handle_play(
 /// `initial_seq` and `initial_rtptime` must match the values handed to
 /// `spawn_peer_fanout` so the client's jitter buffer is seeded with the
 /// actual first-packet coordinates, not zeros.
+///
+/// `initial_seq` is exact — the fanout's first packet carries exactly this
+/// sequence number. `initial_rtptime` is a snapshot taken just before the
+/// fanout spawns: the first packet's RTP timestamp is this value plus the
+/// scheduling delay until the first send (bounded by one event-loop cycle),
+/// which is within RFC 7826 §18.45's intent of describing the first packet.
 fn play_response_ok(
     req: &RtspRequest,
     session_id: &str,

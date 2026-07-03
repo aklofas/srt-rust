@@ -44,7 +44,9 @@ struct Inner<P: Publisher> {
 /// Mirrors [`crate::MuxSender`].
 pub struct MuxPublisher<P: Publisher> {
     inner: Mutex<Inner<P>>,
-    _span: std::panic::AssertUnwindSafe<tracing::Span>,
+    /// Lifetime span, entered only in `new()` and `Drop` — see
+    /// [`crate::shell_error::ShellSpan`] for the unwind-safety rationale.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<P: Publisher> std::fmt::Debug for MuxPublisher<P> {

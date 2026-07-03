@@ -5,11 +5,16 @@ use std::time::Duration;
 use crate::url::TcpUrl;
 
 /// Per-transport socket knobs.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SocketConfig {
-    /// TCP_NODELAY. `None` = OS default; common preference is `Some(true)`
-    /// for low-latency streaming (disables Nagle's algorithm).
+    /// Whether to disable Nagle's algorithm (`TCP_NODELAY`).
+    ///
+    /// Defaults to `Some(true)` — Nagle is disabled by default because
+    /// live-video transports are latency-sensitive and Nagle's coalescing
+    /// adds measurable delay on small writes. Set to `Some(false)` or
+    /// `nodelay=0` in the URL to re-enable Nagle when bulk throughput
+    /// matters more than latency.
     pub nodelay: Option<bool>,
     /// SO_KEEPALIVE idle time. `None` = disabled.
     pub keepalive: Option<Duration>,
@@ -22,6 +27,21 @@ pub struct SocketConfig {
     /// Send-side payload chunk size; per-call max for `send_bytes`.
     /// Default 64 KiB (matches reasonable TCP send-buffer sizing).
     pub pkt_size: Option<usize>,
+}
+
+impl Default for SocketConfig {
+    fn default() -> Self {
+        Self {
+            // Default TCP_NODELAY to true: live-video transports are latency-
+            // sensitive; Nagle coalescing adds measurable delay on small writes.
+            nodelay: Some(true),
+            keepalive: None,
+            rcvbuf: None,
+            sndbuf: None,
+            connect_timeout: None,
+            pkt_size: None,
+        }
+    }
 }
 
 impl SocketConfig {
@@ -66,6 +86,19 @@ mod tests {
         let cfg = SocketConfig::default();
         assert_eq!(cfg.pkt_size_or_default(), 64 * 1024);
         assert_eq!(cfg.connect_timeout_or_default(), Duration::from_secs(10));
+        // TCP_NODELAY is on by default for live-latency paths.
+        assert_eq!(cfg.nodelay, Some(true), "nodelay must default to Some(true)");
+    }
+
+    /// DA-PERF-10: the URL `nodelay=0` override must still turn Nagle back on
+    /// even though the default is now `Some(true)`.
+    #[test]
+    fn nodelay_url_override_disables_nagle() {
+        let mut cfg = SocketConfig::default();
+        assert_eq!(cfg.nodelay, Some(true));
+        let u = TcpUrl::parse("tcp://1.2.3.4:7001?nodelay=0").unwrap();
+        cfg.merge_from_url(&u);
+        assert_eq!(cfg.nodelay, Some(false), "nodelay=0 must override the default to Some(false)");
     }
 
     #[test]

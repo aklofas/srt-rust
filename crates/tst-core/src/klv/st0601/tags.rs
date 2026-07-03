@@ -623,4 +623,48 @@ mod tests {
     fn lookup_misses_unknown_tag() {
         assert!(lookup(255).is_none());
     }
+
+    // --- KLV-1 accessor-table completeness ---
+
+    /// Every TAGS entry with `range: Some(...)` (excluding Tag 1, which is
+    /// raw U16 not a float field) must appear in RANGED_FIELDS exactly once.
+    /// RANGED_FIELDS must not contain entries that don't have a corresponding
+    /// ranged TAGS entry.
+    #[test]
+    fn ranged_fields_table_complete_and_injective() {
+        let ranged_table = crate::klv::st0601::decode::RANGED_FIELDS;
+
+        // Each ranged TAGS entry must appear exactly once in the table.
+        let mut ranged_tag_count = 0usize;
+        for spec in TAGS {
+            if spec.id == 1 {
+                continue; // Checksum: U16Range encoding but no float range
+            }
+            if spec.range.is_none() {
+                continue;
+            }
+            ranged_tag_count += 1;
+            let count = ranged_table.iter().filter(|e| e.id == spec.id).count();
+            assert_eq!(
+                count, 1,
+                "TAGS entry id={} ({}) appears {} times in RANGED_FIELDS (expected 1)",
+                spec.id, spec.name, count
+            );
+        }
+
+        // RANGED_FIELDS must not contain entries not in TAGS with range.
+        assert_eq!(
+            ranged_table.len(), ranged_tag_count,
+            "RANGED_FIELDS has {} entries but {} TAGS have range \
+             (table has extra or missing entries)",
+            ranged_table.len(), ranged_tag_count
+        );
+
+        // IDs in RANGED_FIELDS must be unique.
+        let mut ids: Vec<u8> = ranged_table.iter().map(|e| e.id).collect();
+        ids.sort_unstable();
+        let mut dedup = ids.clone();
+        dedup.dedup();
+        assert_eq!(ids, dedup, "duplicate IDs in RANGED_FIELDS");
+    }
 }

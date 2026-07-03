@@ -1466,6 +1466,12 @@ the trigger that would unblock it.
   timestamp, RTP timestamp, sender packet and octet counts in SR, and all
   RR report-block fields (fraction lost, cumulative lost,
   extended-highest-sequence-number, interarrival jitter, LSR, DLSR).
+  The receive-path round-trip-time estimate is part of this deferral:
+  `RtcpStats::rtt_us` always reports 0. The earlier computation mixed
+  clock domains (it seeded its anchor from the peer's SR NTP midpoint
+  instead of echoing our own SR per RFC 3550 §6.4.1) and produced garbage
+  on the rare path where it fired, so it was removed rather than shipped
+  wrong; a real RTT needs the LSR/DLSR feedback loop described below.
 - **Why deferred:** Populating the SR sender fields is a contained
   counter-sharing refactor, but full RR report blocks require a
   substantially larger new subsystem: RFC 3550 §A.1 sequence and cycle

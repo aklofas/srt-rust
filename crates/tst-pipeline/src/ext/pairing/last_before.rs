@@ -6,7 +6,7 @@
 //! PTS) cannot satisfy "before."
 
 use super::types::{KlvSample, PairerOutput, VideoSample};
-use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::DemuxEvent;
 
 pub(super) struct LastBeforeState {
     video_pid: u16,
@@ -31,47 +31,10 @@ impl LastBeforeState {
     }
 
     pub(super) fn feed(&mut self, event: DemuxEvent) -> Vec<PairerOutput> {
-        match event {
-            DemuxEvent::Sample {
-                stream,
-                pts,
-                dts,
-                payload:
-                    SamplePayload::Video {
-                        codec,
-                        raw,
-                        random_access_indicator,
-                        av1_carriage,
-                    },
-            } if stream.pid == self.video_pid => {
-                // raw-first: carry the encoded AU + RAI; parsing is opt-in via
-                // `VideoSample::split_units`.
-                let v = VideoSample {
-                    stream,
-                    pts,
-                    dts,
-                    codec,
-                    raw,
-                    random_access_indicator,
-                    av1_carriage,
-                };
-                self.handle_video(v)
-            }
-            DemuxEvent::Metadata {
-                stream,
-                pts,
-                kind,
-                payload,
-            } if stream.pid == self.klv_pid => {
-                let k = KlvSample {
-                    stream,
-                    pts,
-                    kind,
-                    payload,
-                };
-                self.handle_klv(k)
-            }
-            other => vec![PairerOutput::PassThrough(other)],
+        match super::classify(event, self.video_pid, self.klv_pid) {
+            super::EventClass::Video(v) => self.handle_video(v),
+            super::EventClass::Klv(k) => self.handle_klv(k),
+            super::EventClass::Other(other) => vec![PairerOutput::PassThrough(other)],
         }
     }
 
@@ -89,10 +52,7 @@ impl LastBeforeState {
             .map(|s| {
                 s.sample.pts <= v.pts
                     && match self.freshness_ticks {
-                        // PIPE-16 cross-ref: `v.pts - s.sample.pts` is safe
-                        // because the gate above proves `s.sample.pts <= v.pts`
-                        // (non-negative diff). No saturation needed.
-                        Some(n) => v.pts.as_ticks() - s.sample.pts.as_ticks() <= n,
+                        Some(n) => super::pts_distance(v.pts, s.sample.pts) <= n,
                         None => true,
                     }
             })
@@ -124,7 +84,7 @@ impl LastBeforeState {
 mod tests {
     use super::*;
     use tst_core::mpegts::common::Pts90khz;
-    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec};
+    use tst_core::mpegts::demux::{MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec};
     use tst_core::shared::SharedBytes;
 
     const VIDEO_PID: u16 = 0x100;
@@ -256,5 +216,26 @@ mod tests {
         let _ = s.flush();
         let out2 = s.flush();
         assert!(out2.is_empty());
+    }
+
+    #[test]
+    fn freshness_check_no_panic_with_extreme_pts() {
+        // DA-PIPE-4 regression: `v.pts - s.sample.pts` with i64-extreme
+        // inputs overflows in the old direct subtraction. pts_distance
+        // saturates instead.
+        //
+        // klv.pts = i64::MIN+10, video.pts = i64::MAX-10. The
+        // `s.pts <= v.pts` gate passes (MIN+10 < MAX-10 in i64 order).
+        // Old code: (MAX-10) - (MIN+10) overflows i64 (debug panic).
+        // New code: pts_distance saturates to i64::MAX > freshness=1000
+        //           → UnpairedVideo (correct: the gap is far too wide).
+        let mut s = LastBeforeState::new(VIDEO_PID, KLV_PID, Some(1000));
+        let _ = s.feed(klv_event(i64::MIN + 10));
+        let out = s.feed(video_event(i64::MAX - 10));
+        assert!(
+            matches!(&out[0], PairerOutput::UnpairedVideo(_)),
+            "extreme PTS pair should emit UnpairedVideo without panic, got {:?}",
+            out
+        );
     }
 }

@@ -614,7 +614,7 @@ mod tests {
         let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         // Fail the 2nd send_bytes call (index 1, 0-based).
         let transport = FailFirst::new(0, sink.clone()); // fails 0 times = succeeds immediately
-        let mut sender = Sender::new(transport, SenderConfig::default());
+        let sender = Sender::new(transport, SenderConfig::default());
 
         // Override: we want bundle-1 to fail. Use a custom transport.
         struct FailAt {

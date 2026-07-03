@@ -199,7 +199,12 @@ pub fn encode_strict_compliance(record: &SecurityLs) -> Result<Vec<u8>, KlvEncod
             });
         }
     }
-    encode_to_vec(record)
+    // ST 0107 §6.3.3.1: strip banned control chars from all string fields
+    // before encoding. Stripping runs before the DA-KLV-1 empty-string
+    // mapping, so a whitespace-only field strips to "" → encodes as [0x00].
+    let mut r = record.clone();
+    strip_control_chars_st0102(&mut r);
+    encode_to_vec(&r)
 }
 
 /// Pre-compute the encoded length for a given record.
@@ -288,4 +293,27 @@ fn str_wire_len(s: &str) -> usize {
 /// empty → single NUL byte `b"\x00"`, non-empty → raw UTF-8 bytes.
 fn str_wire(s: &str) -> &[u8] {
     if s.is_empty() { b"\x00" } else { s.as_bytes() }
+}
+
+/// Strip ST 0107 §6.3.3.1 banned control chars from all Iso646/FixedAscii
+/// string fields of a SecurityLs before strict-compliance encode.
+fn strip_control_chars_st0102(r: &mut super::model::SecurityLs) {
+    use crate::klv::st0601::encode::strip_st0107_control_chars;
+    let strip = |s: &mut Option<alloc::string::String>| {
+        if let Some(s) = s { *s = strip_st0107_control_chars(s); }
+    };
+    strip(&mut r.classifying_country);
+    strip(&mut r.sci_shi_info);
+    strip(&mut r.caveats);
+    strip(&mut r.releasing_instructions);
+    strip(&mut r.classified_by);
+    strip(&mut r.derived_from);
+    strip(&mut r.classification_reason);
+    strip(&mut r.declassification_date);
+    strip(&mut r.classification_marking_system);
+    strip(&mut r.classification_comments);
+    strip(&mut r.classifying_country_coding_method_version_date);
+    strip(&mut r.object_country_coding_method_version_date);
+    // Tag 13 (object_country_codes) is UTF-16 BOM — control char stripping
+    // is for single-byte Iso646/FixedAscii encodings; leave it unchanged.
 }

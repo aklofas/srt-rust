@@ -5,7 +5,7 @@ use std::path::Path;
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::st0601::{
     EncodeConfig, UasDatalinkLs, decode, decode_strict, decode_unchecked, encode, encode_to_vec,
-    encode_with, encoded_len,
+    encode_with, encoded_len, encode_strict_compliance,
 };
 
 #[allow(clippy::field_reassign_with_default)]
@@ -201,5 +201,48 @@ fn st0601_nul_byte_decodes_as_empty_string() {
         decoded.platform_designation.as_deref(),
         Some(""),
         "single NUL byte should decode as empty string"
+    );
+}
+
+// -------- DA-KLV-2: control-char stripping in strict path only --------
+
+#[test]
+fn st0601_strict_encode_strips_control_chars() {
+    // A string with embedded control chars should be stripped in strict mode.
+    let mut r = UasDatalinkLs::default();
+    r.timestamp_us = Some(1_000_000_000_000_000); // required by encode_strict_compliance
+    r.mission_id = Some("MIS\x01SION\x7F".to_owned()); // control chars in the middle
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some("MISSION"),
+        "strict encode must strip control chars from string fields"
+    );
+}
+
+#[test]
+fn st0601_strict_encode_whitespace_only_strips_to_empty_nul() {
+    // Whitespace-only (containing only control chars) → strips to "" → [0x00] on wire.
+    let mut r = UasDatalinkLs::default();
+    r.timestamp_us = Some(1_000_000_000_000_000);
+    r.mission_id = Some("\x01\x02\x7F".to_owned()); // only control chars
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    // Strips to "" → encodes as [0x00] → decodes as Some("")
+    assert_eq!(decoded.mission_id.as_deref(), Some(""), "all-control-char string must strip to empty string");
+}
+
+#[test]
+fn st0601_default_encode_does_not_strip_control_chars() {
+    // Default encode must pass control chars through byte-verbatim (no stripping).
+    let mut r = UasDatalinkLs::default();
+    r.mission_id = Some("MIS\x01SION".to_owned());
+    let bytes = encode_to_vec(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some("MIS\x01SION"),
+        "default encode must NOT strip control chars"
     );
 }

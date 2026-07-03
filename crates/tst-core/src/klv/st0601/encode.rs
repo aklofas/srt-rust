@@ -212,9 +212,7 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             74 => record.vmti.as_ref().map(|v| v.len()),
             // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so
             // that `byte_length` comes from the single `tags::TAGS` source.
-            _ if spec.range.is_some() => super::decode::RANGED_FIELDS
-                .iter()
-                .find(|e| e.id == spec.id)
+            _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
                 .and_then(|e| (e.get)(record).map(|_| spec.range.as_ref().unwrap().byte_length)),
             _ => None,
         };
@@ -277,10 +275,7 @@ pub(super) fn encode_tag_value(
         // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so the
         // tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
-            if let Some(entry) = super::decode::RANGED_FIELDS
-                .iter()
-                .find(|e| e.id == spec.id)
-            {
+            if let Some(entry) = super::decode::ranged_entry(spec.id) {
                 encode_ranged((entry.get)(record), spec, &mut scratch)?
             } else {
                 None

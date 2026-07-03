@@ -634,6 +634,18 @@ mod tests {
     fn ranged_fields_table_complete_and_injective() {
         let ranged_table = crate::klv::st0601::decode::RANGED_FIELDS;
 
+        // Strictly ascending tag order — the precondition for the
+        // binary_search_by_key lookup in `decode::ranged_entry`.
+        for w in ranged_table.windows(2) {
+            assert!(
+                w[0].id < w[1].id,
+                "RANGED_FIELDS must be strictly tag-ascending (binary-search \
+                 precondition): {} then {}",
+                w[0].id,
+                w[1].id
+            );
+        }
+
         // Each ranged TAGS entry must appear exactly once in the table.
         let mut ranged_tag_count = 0usize;
         for spec in TAGS {

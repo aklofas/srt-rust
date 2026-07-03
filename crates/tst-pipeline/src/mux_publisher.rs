@@ -44,7 +44,7 @@ struct Inner<P: Publisher> {
 /// Mirrors [`crate::MuxSender`].
 pub struct MuxPublisher<P: Publisher> {
     inner: Mutex<Inner<P>>,
-    /// Lifetime span, entered only in `new()` and `Drop` — see
+    /// Lifetime span, entered only during construction and `Drop` — see
     /// [`crate::shell_error::ShellSpan`] for the unwind-safety rationale.
     _span: crate::shell_error::ShellSpan,
 }

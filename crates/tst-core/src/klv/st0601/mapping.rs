@@ -44,7 +44,11 @@ pub(crate) fn encode_fixed_range(
         if i < int_min_plus_one {
             i = int_min_plus_one;
         }
-        write_signed_be(i, &mut out[..range.byte_length]);
+        // write_signed_be(i, buf) == write_unsigned_be(i as u64, buf): the
+        // per-slot `& 0xFF` already extracts the correct two's-complement byte
+        // regardless of any mask applied to the full value — see the test
+        // `write_signed_be_equals_unsigned_cast` which proves byte-exactness.
+        write_unsigned_be(i as u64, &mut out[..range.byte_length]);
     } else {
         let int_max = unsigned_max(range.byte_length);
         let span = range.max - range.min;
@@ -114,19 +118,6 @@ fn unsigned_max(n: usize) -> i64 {
     }
 }
 
-fn write_signed_be(value: i64, out: &mut [u8]) {
-    let n = out.len();
-    let mask = if n == 8 {
-        u64::MAX
-    } else {
-        (1u64 << (n as u32 * 8)) - 1
-    };
-    let bits = (value as u64) & mask;
-    for (i, slot) in out.iter_mut().enumerate().take(n) {
-        *slot = ((bits >> (8 * (n - 1 - i))) & 0xFF) as u8;
-    }
-}
-
 fn write_unsigned_be(value: u64, out: &mut [u8]) {
     let n = out.len();
     for (i, slot) in out.iter_mut().enumerate().take(n) {
@@ -160,6 +151,49 @@ fn read_unsigned_be(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- KLV-3: write_signed_be ≡ write_unsigned_be(v as u64) ---
+    //
+    // Proves the per-slot `(value >> shift) & 0xFF` already extracts the
+    // correct two's-complement byte, so the old `mask` computation was dead.
+    // Reference: both functions must emit identical bytes for negative values.
+    #[test]
+    fn write_signed_be_equals_unsigned_cast() {
+        // Test sentinel cases across all byte widths the signed path uses.
+        let cases: &[(i64, usize)] = &[
+            (-1, 1),
+            (-128, 1),
+            (i8::MAX as i64, 1),
+            (-1, 2),
+            (-32768, 2),
+            (i16::MAX as i64, 2),
+            (-1, 4),
+            (i32::MIN as i64 + 1, 4), // INT32_MIN+1 = the spec VALID minimum
+            (i32::MAX as i64, 4),
+        ];
+        for &(value, n) in cases {
+            let mut old = vec![0u8; n];
+            // Compute what the old write_signed_be would produce (inline the
+            // removed function so the test proves the equivalence explicitly).
+            let mask = if n == 8 {
+                u64::MAX
+            } else {
+                (1u64 << (n as u32 * 8)) - 1
+            };
+            let bits = (value as u64) & mask;
+            for (i, slot) in old.iter_mut().enumerate().take(n) {
+                *slot = ((bits >> (8 * (n - 1 - i))) & 0xFF) as u8;
+            }
+
+            let mut new = vec![0u8; n];
+            write_unsigned_be(value as u64, &mut new);
+
+            assert_eq!(
+                old, new,
+                "byte mismatch for value={value} n={n}: old={old:?} new={new:?}"
+            );
+        }
+    }
 
     #[test]
     fn signed_round_trip_lat() {

@@ -136,6 +136,46 @@ impl<'a> Iter<'a> {
 ///
 /// Other variants are not currently supported by `encode_pack`; use
 /// `klv::st0601::encode` for the ST 0601 specifics.
+/// Return `true` if `tag` is a known typed item in `lookup`'s table.
+///
+/// `lookup` is a per-set function `fn(u8) -> Option<T>` (e.g.
+/// `st0601::tags::lookup`, `st0903::tags::lookup`, `st0102::tags::lookup`,
+/// `vtarget_pack::model::pack_lookup`). Collapses the 4 identical
+/// `is_reserved_or_typed_tag` function bodies across the KLV encode modules.
+///
+/// Any tag value > 255 is by definition not in a u8-keyed typed table and
+/// returns `false` without calling `lookup`.
+pub(crate) fn is_typed_tag<T>(tag: u32, lookup: fn(u8) -> Option<T>) -> bool {
+    match u8::try_from(tag) {
+        Ok(t) => lookup(t).is_some(),
+        Err(_) => false,
+    }
+}
+
+/// Emit a single BER-OID-tagged TLV into a `Vec<u8>`.
+///
+/// Writes: `BER-OID(tag)` + `BER-length(value.len())` + `value`. This is
+/// the repeated 6-line emit pattern shared by every unknown-tag loop and
+/// typed-field emit in the ST 0601 / ST 0903 / VTargetPack encoders.
+///
+/// Returns `Err` only if `write_ber_oid` rejects the tag (i.e. the tag
+/// value is too large to encode as BER-OID, which is exceedingly unlikely
+/// for any realistic ST 0601/0903 tag number).
+pub(crate) fn emit_ber_oid_tlv(
+    tag: u32,
+    value: &[u8],
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    let mut tag_buf = [0u8; 8]; // u32 fits in at most 5 BER-OID bytes; 8 ≥ 5
+    let n = write_ber_oid(tag, &mut tag_buf)?;
+    out.extend_from_slice(&tag_buf[..n]);
+    let mut len_buf = [0u8; 9]; // BER length: 1 flag byte + up to 8 value bytes
+    let m = write_ber(value.len(), &mut len_buf)?;
+    out.extend_from_slice(&len_buf[..m]);
+    out.extend_from_slice(value);
+    Ok(())
+}
+
 pub fn encode_pack<'a>(
     label: &UniversalLabel,
     fields: impl IntoIterator<Item = RawField<'a>>,

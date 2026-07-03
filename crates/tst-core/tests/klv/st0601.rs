@@ -4,8 +4,8 @@ use std::path::Path;
 
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::st0601::{
-    EncodeConfig, UasDatalinkLs, decode, decode_strict, decode_unchecked, encode, encode_to_vec,
-    encode_with, encoded_len, encode_strict_compliance,
+    EncodeConfig, UasDatalinkLs, decode, decode_strict, decode_unchecked, encode,
+    encode_strict_compliance, encode_to_vec, encode_with, encoded_len,
 };
 
 #[allow(clippy::field_reassign_with_default)]
@@ -164,14 +164,23 @@ fn fixture_field_errors_decodes() {
 #[test]
 fn st0601_empty_string_encodes_as_nul_and_round_trips() {
     // Some("") → [0x00] on wire → Some("") on decode.
-    let mut r = UasDatalinkLs::default();
-    r.mission_id = Some(String::new());
+    let r = UasDatalinkLs {
+        mission_id: Some(String::new()),
+        ..Default::default()
+    };
     let bytes = encode_to_vec(&r).unwrap();
     // Locate the tag-3 TLV: tag byte 0x03, length 0x01, value 0x00.
     let pos = bytes.windows(3).position(|w| w == [0x03, 0x01, 0x00]);
-    assert!(pos.is_some(), "expected [03 01 00] for empty mission_id, bytes={bytes:?}");
+    assert!(
+        pos.is_some(),
+        "expected [03 01 00] for empty mission_id, bytes={bytes:?}"
+    );
     let decoded = decode(&bytes).unwrap();
-    assert_eq!(decoded.mission_id.as_deref(), Some(""), "empty string round-trip failed");
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some(""),
+        "empty string round-trip failed"
+    );
 }
 
 #[test]
@@ -185,7 +194,10 @@ fn st0601_length0_string_decodes_as_absent() {
     pkt.push(body.len() as u8); // outer BER length
     pkt.extend_from_slice(&body);
     let decoded = decode_unchecked(&pkt).unwrap();
-    assert_eq!(decoded.platform_call_sign, None, "length-0 string should decode as None");
+    assert_eq!(
+        decoded.platform_call_sign, None,
+        "length-0 string should decode as None"
+    );
 }
 
 #[test]
@@ -209,9 +221,11 @@ fn st0601_nul_byte_decodes_as_empty_string() {
 #[test]
 fn st0601_strict_encode_strips_control_chars() {
     // A string with embedded control chars should be stripped in strict mode.
-    let mut r = UasDatalinkLs::default();
-    r.timestamp_us = Some(1_000_000_000_000_000); // required by encode_strict_compliance
-    r.mission_id = Some("MIS\x01SION\x7F".to_owned()); // control chars in the middle
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_000_000_000_000_000), // required by encode_strict_compliance
+        mission_id: Some("MIS\x01SION\x7F".to_owned()), // control chars in the middle
+        ..Default::default()
+    };
     let bytes = encode_strict_compliance(&r).unwrap();
     let decoded = decode(&bytes).unwrap();
     assert_eq!(
@@ -224,20 +238,28 @@ fn st0601_strict_encode_strips_control_chars() {
 #[test]
 fn st0601_strict_encode_whitespace_only_strips_to_empty_nul() {
     // Whitespace-only (containing only control chars) → strips to "" → [0x00] on wire.
-    let mut r = UasDatalinkLs::default();
-    r.timestamp_us = Some(1_000_000_000_000_000);
-    r.mission_id = Some("\x01\x02\x7F".to_owned()); // only control chars
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_000_000_000_000_000),
+        mission_id: Some("\x01\x02\x7F".to_owned()), // only control chars
+        ..Default::default()
+    };
     let bytes = encode_strict_compliance(&r).unwrap();
     let decoded = decode(&bytes).unwrap();
     // Strips to "" → encodes as [0x00] → decodes as Some("")
-    assert_eq!(decoded.mission_id.as_deref(), Some(""), "all-control-char string must strip to empty string");
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some(""),
+        "all-control-char string must strip to empty string"
+    );
 }
 
 #[test]
 fn st0601_default_encode_does_not_strip_control_chars() {
     // Default encode must pass control chars through byte-verbatim (no stripping).
-    let mut r = UasDatalinkLs::default();
-    r.mission_id = Some("MIS\x01SION".to_owned());
+    let r = UasDatalinkLs {
+        mission_id: Some("MIS\x01SION".to_owned()),
+        ..Default::default()
+    };
     let bytes = encode_to_vec(&r).unwrap();
     let decoded = decode(&bytes).unwrap();
     assert_eq!(

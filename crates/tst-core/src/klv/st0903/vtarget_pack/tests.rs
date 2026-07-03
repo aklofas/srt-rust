@@ -347,7 +347,11 @@ const V6_MAX: u64 = (1u64 << 48) - 1; // 281_474_976_710_655
 
 #[test]
 fn centroid_pixel_over_v6_cap_rejects() {
-    let p = VTargetPack { target_id: 1, centroid_pixel: Some(V6_MAX + 1), ..Default::default() };
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pixel: Some(V6_MAX + 1),
+        ..Default::default()
+    };
     let err = write_pack(&p, &mut Vec::new()).unwrap_err();
     assert!(
         matches!(err, KlvEncodeError::OutOfRange { tag: 1, .. }),
@@ -357,7 +361,11 @@ fn centroid_pixel_over_v6_cap_rejects() {
 
 #[test]
 fn centroid_pixel_at_v6_cap_round_trips() {
-    let p = VTargetPack { target_id: 1, centroid_pixel: Some(V6_MAX), ..Default::default() };
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pixel: Some(V6_MAX),
+        ..Default::default()
+    };
     let mut buf = Vec::new();
     write_pack(&p, &mut buf).unwrap();
     let (decoded, n) = read_pack(&buf).unwrap();
@@ -460,7 +468,11 @@ fn centroid_pix_row_over_v4_cap_rejects() {
 
 #[test]
 fn centroid_pix_row_at_v4_cap_round_trips() {
-    let p = VTargetPack { target_id: 1, centroid_pix_row: Some(V4_MAX), ..Default::default() };
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pix_row: Some(V4_MAX),
+        ..Default::default()
+    };
     let mut buf = Vec::new();
     write_pack(&p, &mut buf).unwrap();
     let (decoded, n) = read_pack(&buf).unwrap();

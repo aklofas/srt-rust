@@ -379,7 +379,11 @@ mod tests {
             let n32 = write_ber_oid(v, &mut buf32).unwrap();
             let n64 = write_ber_oid_u64(v as u64, &mut buf64).unwrap();
             assert_eq!(n32, n64, "byte count mismatch for v={v}");
-            assert_eq!(&buf32[..n32], &buf64[..n64], "byte content mismatch for v={v}");
+            assert_eq!(
+                &buf32[..n32],
+                &buf64[..n64],
+                "byte content mismatch for v={v}"
+            );
         }
         // Also check that 2^32 is beyond u32 range: u64 encodes it in 5 bytes.
         let mut buf = [0u8; 8];

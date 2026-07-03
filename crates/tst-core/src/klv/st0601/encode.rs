@@ -187,10 +187,19 @@ fn each_typed_field<F: FnMut(u8, usize)>(
         let len = match spec.id {
             2 => record.timestamp_us.map(|_| 8),
             3 => record.mission_id.as_ref().map(|s| str_wire_len(s)),
-            4 => record.platform_tail_number.as_ref().map(|s| str_wire_len(s)),
-            10 => record.platform_designation.as_ref().map(|s| str_wire_len(s)),
+            4 => record
+                .platform_tail_number
+                .as_ref()
+                .map(|s| str_wire_len(s)),
+            10 => record
+                .platform_designation
+                .as_ref()
+                .map(|s| str_wire_len(s)),
             11 => record.image_source_sensor.as_ref().map(|s| str_wire_len(s)),
-            12 => record.image_coordinate_system.as_ref().map(|s| str_wire_len(s)),
+            12 => record
+                .image_coordinate_system
+                .as_ref()
+                .map(|s| str_wire_len(s)),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
             59 => record.platform_call_sign.as_ref().map(|s| str_wire_len(s)),
@@ -201,15 +210,10 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             74 => record.vmti.as_ref().map(|v| v.len()),
             // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so
             // that `byte_length` comes from the single `tags::TAGS` source.
-            _ if spec.range.is_some() => {
-                super::decode::RANGED_FIELDS
-                    .iter()
-                    .find(|e| e.id == spec.id)
-                    .and_then(|e| {
-                        (e.get)(record)
-                            .map(|_| spec.range.as_ref().unwrap().byte_length)
-                    })
-            }
+            _ if spec.range.is_some() => super::decode::RANGED_FIELDS
+                .iter()
+                .find(|e| e.id == spec.id)
+                .and_then(|e| (e.get)(record).map(|_| spec.range.as_ref().unwrap().byte_length)),
             _ => None,
         };
         if let Some(len) = len {
@@ -271,7 +275,10 @@ pub(super) fn encode_tag_value(
         // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so the
         // tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
-            if let Some(entry) = super::decode::RANGED_FIELDS.iter().find(|e| e.id == spec.id) {
+            if let Some(entry) = super::decode::RANGED_FIELDS
+                .iter()
+                .find(|e| e.id == spec.id)
+            {
                 encode_ranged((entry.get)(record), spec, &mut scratch)?
             } else {
                 None
@@ -336,7 +343,11 @@ fn str_wire_len(s: &str) -> usize {
 /// Encode a UTF-8 string per ST 0107.5 §6.3.3.2:
 /// empty string → `[0x00]` (single NUL), non-empty → `s.as_bytes()`.
 fn str_to_bytes(s: &str) -> Vec<u8> {
-    if s.is_empty() { vec![0x00] } else { s.as_bytes().to_vec() }
+    if s.is_empty() {
+        vec![0x00]
+    } else {
+        s.as_bytes().to_vec()
+    }
 }
 
 fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError> {
@@ -375,9 +386,7 @@ fn strip_opt_str(s: &mut Option<alloc::string::String>) {
 
 /// Remove ST 0107 §6.3.3.1 banned control characters from a string.
 pub(crate) fn strip_st0107_control_chars(s: &str) -> alloc::string::String {
-    s.chars()
-        .filter(|&c| !is_st0107_control_char(c))
-        .collect()
+    s.chars().filter(|&c| !is_st0107_control_char(c)).collect()
 }
 
 fn is_st0107_control_char(c: char) -> bool {

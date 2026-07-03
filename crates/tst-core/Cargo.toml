@@ -13,7 +13,7 @@ default = ["std", "file"]
 # `std` pulls in everything that needs the standard library: file I/O,
 # the net helpers, the thread/Barrier cancel path, and the std-only
 # serialization deps. Without it the crate is #![no_std] + alloc.
-std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:toml", "portable-atomic/std"]
+std  = ["file", "serde/std", "tracing/std", "sha2/std", "dep:serde_json", "dep:toml", "portable-atomic/std", "dep:socket2"]
 file = ["std"]  # std::fs-using helpers in io_file (must imply std)
 
 [dependencies]
@@ -38,8 +38,10 @@ portable-atomic = { version = "1", default-features = false, features = ["fallba
 # - SO_RCVBUF / SO_SNDBUF helpers (set_socket_buffers, shared by tst-udp/tst-tcp)
 # - SO_REUSEADDR on multicast recv binds (bind_udp_socket_multicast)
 # - IP_MULTICAST_IF on Windows (SockRef cross-platform setsockopt)
-# The net module is #[cfg(feature = "std")]-gated so no_std builds never link it.
-socket2      = { workspace = true }
+# Enabled only under the `std` feature (socket2 requires std; no_std bare-metal
+# targets can't link it). The net module itself is #[cfg(feature = "std")]-gated
+# in lib.rs, so the dep and the module are always in sync.
+socket2      = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest         = { workspace = true }

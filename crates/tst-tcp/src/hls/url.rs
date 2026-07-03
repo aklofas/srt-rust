@@ -81,23 +81,25 @@ impl HlsUrl {
             match key_str {
                 "output_dir" => output_dir = Some(value.to_string()),
                 "segment_duration" => {
-                    let secs: u64 = value.parse().map_err(|e: std::num::ParseIntError| {
-                        HlsUrlError::BadQueryValue {
-                            key: key_str.to_string(),
-                            value: value.to_string(),
-                            detail: e.to_string(),
-                        }
-                    })?;
+                    let secs: u64 =
+                        tst_core::url::common::parse_int_query(value).map_err(|detail| {
+                            HlsUrlError::BadQueryValue {
+                                key: key_str.to_string(),
+                                value: value.to_string(),
+                                detail,
+                            }
+                        })?;
                     segment_duration = Some(Duration::from_secs(secs));
                 }
                 "playlist_window" => {
-                    let n: usize = value.parse().map_err(|e: std::num::ParseIntError| {
-                        HlsUrlError::BadQueryValue {
-                            key: key_str.to_string(),
-                            value: value.to_string(),
-                            detail: e.to_string(),
-                        }
-                    })?;
+                    let n: usize =
+                        tst_core::url::common::parse_int_query(value).map_err(|detail| {
+                            HlsUrlError::BadQueryValue {
+                                key: key_str.to_string(),
+                                value: value.to_string(),
+                                detail,
+                            }
+                        })?;
                     playlist_window = Some(n);
                 }
                 "mode" => {

@@ -22,7 +22,6 @@ use crate::url::UdpUrl;
 /// [`crate::builder::UdpRecvTransportBuilder`] (added in a later phase).
 pub struct UdpRecvTransport {
     socket: UdpSocket,
-    pkt_size: usize,
     local: SocketAddr,
     stats: UdpStats,
     alive: Arc<AtomicBool>,
@@ -84,7 +83,6 @@ impl UdpRecvTransport {
 
         Ok(Self {
             socket,
-            pkt_size: cfg.pkt_size_or_default(),
             local,
             stats: UdpStats::default(),
             alive: Arc::new(AtomicBool::new(true)),

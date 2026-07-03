@@ -11,7 +11,7 @@ use tst_core::transport::{Transport, TransportError};
 use crate::config::{EncryptionKey, RistConfig, RistProfile};
 use crate::error::RistError;
 use crate::init::{GLOBAL_LOGGING, ensure_init};
-use crate::stats::RistStats;
+use crate::stats::{OnDrop, RistStats};
 use crate::url::RistUrl;
 
 /// Send-side RIST transport.
@@ -69,6 +69,9 @@ impl RistTransport {
         if rc != 0 || ctx.is_null() {
             return Err(RistError::ContextCreateFailed);
         }
+        // Guard that calls rist_destroy on every error-exit path. Disarmed at
+        // the bottom of this constructor once ctx is safely in Self.
+        let mut ctx_guard = OnDrop::new(|| unsafe { rist_sys::rist_destroy(ctx); });
 
         // ===== Parse peer URL into peer_config =====
         let peer_url_str = format!("rist://{}:{}", url.addr, url.port);
@@ -78,13 +81,11 @@ impl RistTransport {
         let mut peer_config: *mut rist_sys::rist_peer_config = std::ptr::null_mut();
         let rc = unsafe { rist_sys::rist_parse_address2(peer_url_c.as_ptr(), &mut peer_config) };
         if rc != 0 || peer_config.is_null() {
-            unsafe {
-                rist_sys::rist_destroy(ctx);
-            }
             return Err(RistError::Ffi {
                 code: rc,
                 function: "rist_parse_address2",
             });
+            // ctx_guard drops here → rist_destroy(ctx)
         }
 
         // Sender = caller: initiate_conn=1.
@@ -96,10 +97,11 @@ impl RistTransport {
         // can reuse it.
         if let Err(e) = apply_peer_overrides(peer_config, cfg) {
             unsafe {
+                // peer_config_free2 must happen before rist_destroy (guard drop).
                 rist_sys::rist_peer_config_free2(&mut peer_config);
-                rist_sys::rist_destroy(ctx);
             }
             return Err(e);
+            // ctx_guard drops here → rist_destroy(ctx)
         }
 
         // ===== Add peer to sender =====
@@ -112,28 +114,26 @@ impl RistTransport {
         }
 
         if rc != 0 {
-            unsafe {
-                rist_sys::rist_destroy(ctx);
-            }
             return Err(RistError::PeerCreateFailed);
+            // ctx_guard drops here → rist_destroy(ctx)
         }
 
         // ===== Start the session =====
         let rc = unsafe { rist_sys::rist_start(ctx) };
         if rc != 0 {
-            unsafe {
-                rist_sys::rist_destroy(ctx);
-            }
             return Err(RistError::Ffi {
                 code: rc,
                 function: "rist_start",
             });
+            // ctx_guard drops here → rist_destroy(ctx)
         }
 
         // Register the librist stats callback (interval, leak-one-Arc-ref +
         // reclaim-at-close contract live in stats::register_stats_callback).
         let (stats, stats_arg) = crate::stats::register_stats_callback(ctx);
 
+        // All setup succeeded — ctx ownership transfers to Self; disarm the guard.
+        ctx_guard.disarm();
         Ok(Self {
             ctx,
             pkt_size: cfg.pkt_size,

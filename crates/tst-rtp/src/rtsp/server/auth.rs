@@ -196,6 +196,12 @@ fn verify_digest(
                 ),
             });
         }
+        // Deliberately advanced BEFORE the password check below: a request
+        // with a valid nc but a wrong password still consumes that nc, so a
+        // captured Authorization header can never be replayed regardless of
+        // which check it failed. The cost — an unauthenticated peer can burn
+        // nc values — is bounded by the auth_failures counter (connection
+        // closes after 3 consecutive 401s) and by hwm reset on nonce rotation.
         *nc_hwm = nc_val;
     }
 

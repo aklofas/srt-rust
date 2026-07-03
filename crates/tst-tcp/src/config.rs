@@ -87,7 +87,11 @@ mod tests {
         assert_eq!(cfg.pkt_size_or_default(), 64 * 1024);
         assert_eq!(cfg.connect_timeout_or_default(), Duration::from_secs(10));
         // TCP_NODELAY is on by default for live-latency paths.
-        assert_eq!(cfg.nodelay, Some(true), "nodelay must default to Some(true)");
+        assert_eq!(
+            cfg.nodelay,
+            Some(true),
+            "nodelay must default to Some(true)"
+        );
     }
 
     /// DA-PERF-10: the URL `nodelay=0` override must still turn Nagle back on
@@ -98,7 +102,11 @@ mod tests {
         assert_eq!(cfg.nodelay, Some(true));
         let u = TcpUrl::parse("tcp://1.2.3.4:7001?nodelay=0").unwrap();
         cfg.merge_from_url(&u);
-        assert_eq!(cfg.nodelay, Some(false), "nodelay=0 must override the default to Some(false)");
+        assert_eq!(
+            cfg.nodelay,
+            Some(false),
+            "nodelay=0 must override the default to Some(false)"
+        );
     }
 
     #[test]

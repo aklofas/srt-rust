@@ -26,6 +26,12 @@ pub struct UdpRecvTransport {
     local: SocketAddr,
     stats: UdpStats,
     alive: Arc<AtomicBool>,
+    /// Cached `SO_RCVTIMEO` value. Initialized to `CANCEL_POLL_INTERVAL`
+    /// (matching what the bind helper sets). Updated lazily: `recv_timeout`
+    /// skips `set_read_timeout` when the socket is already at the requested
+    /// value; `recv_bytes` restores to `CANCEL_POLL_INTERVAL` at entry if a
+    /// prior `recv_timeout` left a different value in place.
+    applied_timeout: std::time::Duration,
 }
 
 impl UdpRecvTransport {
@@ -82,6 +88,9 @@ impl UdpRecvTransport {
             local,
             stats: UdpStats::default(),
             alive: Arc::new(AtomicBool::new(true)),
+            // The bind helper sets SO_RCVTIMEO = CANCEL_POLL_INTERVAL on
+            // the socket; cache that so the first recv_bytes entry is a no-op.
+            applied_timeout: CANCEL_POLL_INTERVAL,
         })
     }
 
@@ -98,10 +107,10 @@ impl UdpRecvTransport {
     /// Receive one datagram with a deadline. Returns `None` on timeout
     /// (no data arrived within `deadline`). Returns `Some(n)` on success.
     ///
-    /// Implemented by setting `SO_RCVTIMEO` on the underlying socket for
-    /// the duration of this call, then restoring it to the cancel-poll
-    /// interval so that subsequent `recv_bytes` calls continue to wake
-    /// periodically and re-check the `alive` flag. Not concurrency-safe —
+    /// Sets `SO_RCVTIMEO` lazily: if the socket already carries `deadline`
+    /// from a previous call, the setsockopt is skipped. The timeout is **not**
+    /// restored after this call; `recv_bytes` restores it to the cancel-poll
+    /// interval on entry when the cached value differs. Not concurrency-safe —
     /// callers must ensure no concurrent `recv_bytes` is in progress on
     /// the same transport handle (the `Mutex<Option<…>>` in the Python
     /// binding guarantees this).
@@ -110,34 +119,15 @@ impl UdpRecvTransport {
         buf: &mut [u8],
         deadline: std::time::Duration,
     ) -> Result<Option<usize>, crate::error::UdpError> {
-        self.socket
-            .set_read_timeout(Some(deadline))
-            .map_err(crate::error::UdpError::Io)?;
-        let result = self.socket.recv(buf);
-        // Restore the cancel-poll interval so that a subsequent recv_bytes
-        // continues to wake periodically and can observe alive=false set by
-        // close().  Restoring None (no timeout) would cause recv_bytes to
-        // block forever, making close() unable to interrupt it.
-        //
-        // A failed restore leaves SO_RCVTIMEO at `deadline` rather than the
-        // cancel-poll interval, silently breaking close()'s ability to
-        // interrupt a later recv_bytes. Surface it: log, and propagate it
-        // when the recv itself didn't already fail (a recv error takes
-        // priority since it is the more actionable failure).
-        let restore = self.socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL));
-        if let Err(e) = &restore {
-            tracing::warn!(
-                error = %e,
-                "failed to restore SO_RCVTIMEO after recv_timeout; \
-                 cancel-poll may be disabled for subsequent recv_bytes"
-            );
+        // Only pay the setsockopt cost when the socket needs a different value.
+        if self.applied_timeout != deadline {
+            self.socket
+                .set_read_timeout(Some(deadline))
+                .map_err(crate::error::UdpError::Io)?;
+            self.applied_timeout = deadline;
         }
-        match result {
+        match self.socket.recv(buf) {
             Ok(n) => {
-                // The datagram arrived, but the socket is now in a wrong-timeout
-                // state — report the restore failure rather than silently
-                // returning data on a broken socket.
-                restore.map_err(crate::error::UdpError::Io)?;
                 self.stats.datagrams_received = self.stats.datagrams_received.saturating_add(1);
                 self.stats.bytes_received = self.stats.bytes_received.saturating_add(n as u64);
                 Ok(Some(n))
@@ -158,6 +148,19 @@ impl UdpRecvTransport {
 
 impl RecvTransport for UdpRecvTransport {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        // Lazy restore: if recv_timeout left the socket at a non-cancel-poll
+        // timeout, restore it now so the cancel-poll guarantee holds for this
+        // entire recv. One setsockopt per recv_bytes entry rather than one per
+        // recv_timeout call.
+        if self.applied_timeout != CANCEL_POLL_INTERVAL {
+            self.socket
+                .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
+                .map_err(|e| TransportError::Broken {
+                    msg: format!("failed to restore cancel-poll timeout: {e}"),
+                    errno_code: e.raw_os_error(),
+                })?;
+            self.applied_timeout = CANCEL_POLL_INTERVAL;
+        }
         loop {
             if !self.alive.load(Ordering::Acquire) {
                 return Err(TransportError::Closed);
@@ -213,10 +216,9 @@ mod tests {
     ///
     /// `recv_bytes` relies on the socket waking every `CANCEL_POLL_INTERVAL`
     /// (~100 ms) to re-check the `alive` flag — that is how `close()` interrupts
-    /// a blocked recv.  Before the fix, `recv_timeout` restored `SO_RCVTIMEO` to
-    /// `None` (block forever), so a subsequent `recv_bytes` on a quiet socket
-    /// would never wake and `close()` (which only sets `alive=false`) could not
-    /// interrupt it.
+    /// a blocked recv. `recv_timeout` leaves `SO_RCVTIMEO` at the deadline value;
+    /// the cancel-poll interval is restored lazily at the start of `recv_bytes`
+    /// when the cached timeout differs from `CANCEL_POLL_INTERVAL`.
     #[test]
     fn close_unblocks_recv_bytes_after_recv_timeout() {
         let mut recv = UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
@@ -255,6 +257,43 @@ mod tests {
         assert!(
             matches!(err, Err(TransportError::Closed)),
             "expected Err(TransportError::Closed), got {err:?}"
+        );
+    }
+
+    /// DA-PERF-7: the `applied_timeout` cache must track setsockopt state correctly.
+    ///
+    /// After construction the cache is `CANCEL_POLL_INTERVAL`. After a `recv_timeout`
+    /// call the cache holds `deadline`. After `recv_bytes` returns, the cache is back
+    /// to `CANCEL_POLL_INTERVAL` because the lazy restore fires on entry.
+    #[test]
+    fn applied_timeout_cache_tracks_state() {
+        let mut recv = UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
+
+        // After construction: cache matches the cancel-poll interval.
+        assert_eq!(
+            recv.applied_timeout, CANCEL_POLL_INTERVAL,
+            "initial applied_timeout must equal CANCEL_POLL_INTERVAL"
+        );
+
+        // After recv_timeout times out: cache updated to the deadline.
+        let deadline = Duration::from_millis(20);
+        let mut buf = vec![0u8; recv.max_payload()];
+        let _ = recv.recv_timeout(&mut buf, deadline);
+        assert_eq!(
+            recv.applied_timeout, deadline,
+            "applied_timeout must be updated to the deadline after recv_timeout"
+        );
+
+        // After recv_bytes (which restores lazily): cache back to CANCEL_POLL_INTERVAL.
+        let alive = Arc::clone(&recv.alive);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            alive.store(false, Ordering::Release);
+        });
+        let _ = recv.recv_bytes(&mut buf); // returns Closed
+        assert_eq!(
+            recv.applied_timeout, CANCEL_POLL_INTERVAL,
+            "recv_bytes must restore applied_timeout to CANCEL_POLL_INTERVAL"
         );
     }
 

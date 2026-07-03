@@ -30,7 +30,7 @@ pub struct SocketConfig {
 }
 
 impl Default for SocketConfig {
-    fn default() -> Self {
+    fn default() -> SocketConfig {
         Self {
             // Default TCP_NODELAY to true: live-video transports are latency-
             // sensitive; Nagle coalescing adds measurable delay on small writes.

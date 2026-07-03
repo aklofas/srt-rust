@@ -360,15 +360,21 @@ mod tests {
         let port = recv1.local_addr().port();
 
         // Second receiver joins the same group:port — requires SO_REUSEADDR.
+        // recv1 succeeding proves this platform supports multicast bind+join,
+        // so an AddrInUse here IS the DA-NET-7 regression: hard-fail. Other
+        // errors (e.g. a second-join quirk) still degrade gracefully.
         let mut recv2 = match UdpRecvTransport::listen(&format!(
             "udp://@239.255.42.1:{port}?iface=127.0.0.1"
         )) {
             Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "skip: multicast recv2 bind/join failed ({e}); \
-                     SO_REUSEADDR may not be honoured on this platform"
+            Err(UdpError::Io(e)) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                panic!(
+                    "second multicast receiver hit EADDRINUSE on a platform where \
+                     the first bind+join succeeded — SO_REUSEADDR regression: {e}"
                 );
+            }
+            Err(e) => {
+                eprintln!("skip: multicast recv2 bind/join failed ({e})");
                 return;
             }
         };

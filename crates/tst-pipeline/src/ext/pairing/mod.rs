@@ -74,7 +74,8 @@ pub use demuxer::{PairingDemuxer, PairingDemuxerConfig};
 pub use types::{KlvSample, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample};
 
 use std::time::Duration;
-use tst_core::mpegts::demux::DemuxEvent;
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
 
 /// Convert a `Duration` to MPEG-TS 90 kHz PTS ticks. Saturating —
 /// inputs larger than `i64::MAX / 90_000` seconds clamp to `i64::MAX`.
@@ -90,6 +91,67 @@ fn duration_to_pts_ticks(d: Duration) -> i64 {
     } else {
         ticks_u128 as i64
     }
+}
+
+/// Categorized form of a `DemuxEvent` after PID-based routing. Both pairing
+/// state machines share this to avoid duplicating the match arms in their
+/// respective `feed()` methods.
+pub(super) enum EventClass {
+    Video(VideoSample),
+    Klv(KlvSample),
+    Other(DemuxEvent),
+}
+
+/// Route a `DemuxEvent` by PID into one of three categories.
+///
+/// Video events on `video_pid` with a `SamplePayload::Video` become
+/// `EventClass::Video`; `Metadata` events on `klv_pid` become
+/// `EventClass::Klv`; everything else (audio on video_pid, video on klv_pid,
+/// PMT, Discontinuity, etc.) becomes `EventClass::Other`.
+pub(super) fn classify(event: DemuxEvent, video_pid: u16, klv_pid: u16) -> EventClass {
+    match event {
+        DemuxEvent::Sample {
+            stream,
+            pts,
+            dts,
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    raw,
+                    random_access_indicator,
+                    av1_carriage,
+                },
+        } if stream.pid == video_pid => EventClass::Video(VideoSample {
+            stream,
+            pts,
+            dts,
+            codec,
+            raw,
+            random_access_indicator,
+            av1_carriage,
+        }),
+        DemuxEvent::Metadata {
+            stream,
+            pts,
+            kind,
+            payload,
+        } if stream.pid == klv_pid => EventClass::Klv(KlvSample {
+            stream,
+            pts,
+            kind,
+            payload,
+        }),
+        other => EventClass::Other(other),
+    }
+}
+
+/// Saturating absolute PTS distance in 90 kHz ticks.
+///
+/// Returns `|a − b|` with saturation: if the subtraction overflows (possible
+/// when a non-conformant source emits PTS values near the `i64` extremes),
+/// the result clamps to `i64::MAX` rather than panicking or wrapping.
+pub(super) fn pts_distance(a: Pts90khz, b: Pts90khz) -> i64 {
+    a.as_ticks().saturating_sub(b.as_ticks()).saturating_abs()
 }
 
 /// Stateful KLV ↔ video pairer. Construct with one of the strategy

@@ -6,7 +6,7 @@
 
 use super::types::{KlvSample, PairerOutput, VideoSample};
 use std::collections::VecDeque;
-use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::DemuxEvent;
 
 /// Internal mode shape. The public [`super::PairerMode`]'s `Buffered`
 /// variant carries a `Duration` (max arrival skew); we still pair
@@ -64,51 +64,10 @@ impl NearestState {
     }
 
     pub(super) fn feed(&mut self, event: DemuxEvent) -> Vec<PairerOutput> {
-        // Dispatch on event shape + configured PIDs. Anything that
-        // doesn't match the expected video/KLV shape on the configured
-        // PIDs falls through to PassThrough — see types::PairerOutput
-        // doc comment for the rationale (misconfiguration tolerance).
-        match event {
-            DemuxEvent::Sample {
-                stream,
-                pts,
-                dts,
-                payload:
-                    SamplePayload::Video {
-                        codec,
-                        raw,
-                        random_access_indicator,
-                        av1_carriage,
-                    },
-            } if stream.pid == self.video_pid => {
-                // raw-first: carry the encoded AU + RAI; parsing is opt-in via
-                // `VideoSample::split_units`.
-                let v = VideoSample {
-                    stream,
-                    pts,
-                    dts,
-                    codec,
-                    raw,
-                    random_access_indicator,
-                    av1_carriage,
-                };
-                self.handle_video(v)
-            }
-            DemuxEvent::Metadata {
-                stream,
-                pts,
-                kind,
-                payload,
-            } if stream.pid == self.klv_pid => {
-                let k = KlvSample {
-                    stream,
-                    pts,
-                    kind,
-                    payload,
-                };
-                self.handle_klv(k)
-            }
-            other => vec![PairerOutput::PassThrough(other)],
+        match super::classify(event, self.video_pid, self.klv_pid) {
+            super::EventClass::Video(v) => self.handle_video(v),
+            super::EventClass::Klv(k) => self.handle_klv(k),
+            super::EventClass::Other(other) => vec![PairerOutput::PassThrough(other)],
         }
     }
 
@@ -276,7 +235,7 @@ impl NearestState {
 mod tests {
     use super::*;
     use tst_core::mpegts::common::Pts90khz;
-    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec};
+    use tst_core::mpegts::demux::{MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec};
     use tst_core::shared::SharedBytes;
 
     const VIDEO_PID: u16 = 0x100;

@@ -97,7 +97,7 @@ use crate::managed_receive::ManagedRecvTransport;
 use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{Span, info, info_span};
+use tracing::{info, info_span};
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
 use tst_core::transport::RecvTransport;
 
@@ -168,13 +168,9 @@ pub struct ManagedDemuxReceiver<R: RecvTransport> {
     /// is cleared by `reset_sync` and we want the event to survive that
     /// clear.
     pending_reconnect_event: bool,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
-    /// from [`Drop`] to bracket open/close events. Private — must NOT
-    /// be exposed publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] to keep the shell
-    /// `UnwindSafe`/`RefUnwindSafe` despite `Span`'s internal `Mutex`.
-    _span: std::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span, entered only in `new()` and `Drop` — see
+    /// [`crate::shell_error::ShellSpan`] for the unwind-safety rationale.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<R: RecvTransport> std::fmt::Debug for ManagedDemuxReceiver<R> {

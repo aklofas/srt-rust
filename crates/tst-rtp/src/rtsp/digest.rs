@@ -123,8 +123,7 @@ mod tests {
             "auth",
         );
         assert_eq!(
-            resp,
-            "753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1",
+            resp, "753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1",
             "RFC 7616 §3.9.1 SHA-256 vector"
         );
     }
@@ -134,8 +133,26 @@ mod tests {
     fn cross_check_no_qop_is_deterministic() {
         let pw = SecretString::new("admin".into());
         let computed_ha1 = ha1(Algo::Md5, "admin", "OldCam", &pw);
-        let r1 = response(Algo::Md5, &computed_ha1, "OPTIONS", "rtsp://cam/h264", "abc123", "", "", "");
-        let r2 = response(Algo::Md5, &computed_ha1, "OPTIONS", "rtsp://cam/h264", "abc123", "", "", "");
+        let r1 = response(
+            Algo::Md5,
+            &computed_ha1,
+            "OPTIONS",
+            "rtsp://cam/h264",
+            "abc123",
+            "",
+            "",
+            "",
+        );
+        let r2 = response(
+            Algo::Md5,
+            &computed_ha1,
+            "OPTIONS",
+            "rtsp://cam/h264",
+            "abc123",
+            "",
+            "",
+            "",
+        );
         assert_eq!(r1, r2, "no-qop response must be deterministic");
         assert!(!r1.is_empty());
     }

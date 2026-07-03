@@ -1292,7 +1292,10 @@ mod tests {
         let req = make_req(RtspMethod::Play, "rtsp://127.0.0.1:8554/live");
         let resp = play_response_ok(&req, "sid123", 0xBEEF, 12345);
         assert_eq!(resp.status, 200);
-        let rtp_info = resp.headers.get("rtp-info").expect("rtp-info header present");
+        let rtp_info = resp
+            .headers
+            .get("rtp-info")
+            .expect("rtp-info header present");
         // 0xBEEF = 48879 decimal.
         assert!(
             rtp_info.contains("seq=48879"),

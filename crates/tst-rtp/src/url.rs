@@ -787,6 +787,9 @@ mod phase3_url_tests {
         let u = RtspUrl::parse("rtsp://192.168.1.10:554/live").unwrap();
         let rendered = u.render_no_credentials();
         assert_eq!(rendered, "rtsp://192.168.1.10:554/live");
-        assert!(!rendered.contains('['), "IPv4 rendered URL must not contain brackets");
+        assert!(
+            !rendered.contains('['),
+            "IPv4 rendered URL must not contain brackets"
+        );
     }
 }

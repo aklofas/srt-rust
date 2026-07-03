@@ -337,7 +337,15 @@ mod tests {
             socket: send_sock,
             peer_addr,
         };
-        let handle = spawn_peer_fanout(rx, transport, cancel.clone(), 0, 0, RtpClock::new(0), drop_counter);
+        let handle = spawn_peer_fanout(
+            rx,
+            transport,
+            cancel.clone(),
+            0,
+            0,
+            RtpClock::new(0),
+            drop_counter,
+        );
         cancel.cancel();
         // Should exit within a reasonable bound.
         tokio::time::timeout(std::time::Duration::from_secs(2), handle)

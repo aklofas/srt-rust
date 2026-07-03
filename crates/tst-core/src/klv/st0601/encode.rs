@@ -183,56 +183,28 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             2 => record.timestamp_us.map(|_| 8),
             3 => record.mission_id.as_ref().map(|s| s.len()),
             4 => record.platform_tail_number.as_ref().map(|s| s.len()),
-            5 => record.platform_heading_deg.map(|_| 2),
-            6 => record.platform_pitch_deg.map(|_| 2),
-            7 => record.platform_roll_deg.map(|_| 2),
-            8 => record.platform_true_airspeed.map(|_| 1),
-            9 => record.platform_indicated_airspeed.map(|_| 1),
             10 => record.platform_designation.as_ref().map(|s| s.len()),
             11 => record.image_source_sensor.as_ref().map(|s| s.len()),
             12 => record.image_coordinate_system.as_ref().map(|s| s.len()),
-            13 => record.sensor_lat_deg.map(|_| 4),
-            14 => record.sensor_lon_deg.map(|_| 4),
-            15 => record.sensor_alt_m.map(|_| 2),
-            16 => record.sensor_hfov_deg.map(|_| 2),
-            17 => record.sensor_vfov_deg.map(|_| 2),
-            18 => record.sensor_rel_az_deg.map(|_| 4),
-            19 => record.sensor_rel_el_deg.map(|_| 4),
-            20 => record.sensor_rel_roll_deg.map(|_| 4),
-            21 => record.slant_range_m.map(|_| 4),
-            22 => record.target_width_m.map(|_| 2),
-            23 => record.frame_center_lat_deg.map(|_| 4),
-            24 => record.frame_center_lon_deg.map(|_| 4),
-            25 => record.frame_center_elev_m.map(|_| 2),
-            26 => record.corner_lat_offset_p1_deg.map(|_| 2),
-            27 => record.corner_lon_offset_p1_deg.map(|_| 2),
-            28 => record.corner_lat_offset_p2_deg.map(|_| 2),
-            29 => record.corner_lon_offset_p2_deg.map(|_| 2),
-            30 => record.corner_lat_offset_p3_deg.map(|_| 2),
-            31 => record.corner_lon_offset_p3_deg.map(|_| 2),
-            32 => record.corner_lat_offset_p4_deg.map(|_| 2),
-            33 => record.corner_lon_offset_p4_deg.map(|_| 2),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
-            50 => record.platform_angle_of_attack_deg.map(|_| 2),
             59 => record.platform_call_sign.as_ref().map(|s| s.len()),
             65 => record
                 .uas_ls_version
                 .map(|_| 1)
                 .or(if auto_version { Some(1) } else { None }),
             74 => record.vmti.as_ref().map(|v| v.len()),
-            82 => record.corner_lat_p1_deg.map(|_| 4),
-            83 => record.corner_lon_p1_deg.map(|_| 4),
-            84 => record.corner_lat_p2_deg.map(|_| 4),
-            85 => record.corner_lon_p2_deg.map(|_| 4),
-            86 => record.corner_lat_p3_deg.map(|_| 4),
-            87 => record.corner_lon_p3_deg.map(|_| 4),
-            88 => record.corner_lat_p4_deg.map(|_| 4),
-            89 => record.corner_lon_p4_deg.map(|_| 4),
-            75 => record.sensor_ellipsoid_height_m.map(|_| 2),
-            78 => record.frame_center_ellipsoid_height_m.map(|_| 2),
-            90 => record.platform_pitch_full_deg.map(|_| 4),
-            91 => record.platform_roll_full_deg.map(|_| 4),
+            // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so
+            // that `byte_length` comes from the single `tags::TAGS` source.
+            _ if spec.range.is_some() => {
+                super::decode::RANGED_FIELDS
+                    .iter()
+                    .find(|e| e.id == spec.id)
+                    .and_then(|e| {
+                        (e.get)(record)
+                            .map(|_| spec.range.as_ref().unwrap().byte_length)
+                    })
+            }
             _ => None,
         };
         if let Some(len) = len {
@@ -263,11 +235,6 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(4, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
             .transpose()?,
-        5 => encode_ranged(record.platform_heading_deg, spec, &mut scratch)?,
-        6 => encode_ranged(record.platform_pitch_deg, spec, &mut scratch)?,
-        7 => encode_ranged(record.platform_roll_deg, spec, &mut scratch)?,
-        8 => encode_ranged(record.platform_true_airspeed, spec, &mut scratch)?,
-        9 => encode_ranged(record.platform_indicated_airspeed, spec, &mut scratch)?,
         10 => record
             .platform_designation
             .as_ref()
@@ -283,30 +250,8 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(12, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
             .transpose()?,
-        13 => encode_ranged(record.sensor_lat_deg, spec, &mut scratch)?,
-        14 => encode_ranged(record.sensor_lon_deg, spec, &mut scratch)?,
-        15 => encode_ranged(record.sensor_alt_m, spec, &mut scratch)?,
-        16 => encode_ranged(record.sensor_hfov_deg, spec, &mut scratch)?,
-        17 => encode_ranged(record.sensor_vfov_deg, spec, &mut scratch)?,
-        18 => encode_ranged(record.sensor_rel_az_deg, spec, &mut scratch)?,
-        19 => encode_ranged(record.sensor_rel_el_deg, spec, &mut scratch)?,
-        20 => encode_ranged(record.sensor_rel_roll_deg, spec, &mut scratch)?,
-        21 => encode_ranged(record.slant_range_m, spec, &mut scratch)?,
-        22 => encode_ranged(record.target_width_m, spec, &mut scratch)?,
-        23 => encode_ranged(record.frame_center_lat_deg, spec, &mut scratch)?,
-        24 => encode_ranged(record.frame_center_lon_deg, spec, &mut scratch)?,
-        25 => encode_ranged(record.frame_center_elev_m, spec, &mut scratch)?,
-        26 => encode_ranged(record.corner_lat_offset_p1_deg, spec, &mut scratch)?,
-        27 => encode_ranged(record.corner_lon_offset_p1_deg, spec, &mut scratch)?,
-        28 => encode_ranged(record.corner_lat_offset_p2_deg, spec, &mut scratch)?,
-        29 => encode_ranged(record.corner_lon_offset_p2_deg, spec, &mut scratch)?,
-        30 => encode_ranged(record.corner_lat_offset_p3_deg, spec, &mut scratch)?,
-        31 => encode_ranged(record.corner_lon_offset_p3_deg, spec, &mut scratch)?,
-        32 => encode_ranged(record.corner_lat_offset_p4_deg, spec, &mut scratch)?,
-        33 => encode_ranged(record.corner_lon_offset_p4_deg, spec, &mut scratch)?,
         47 => record.generic_flag_data.map(|b| vec![b]),
         48 => record.security_local_set.clone(),
-        50 => encode_ranged(record.platform_angle_of_attack_deg, spec, &mut scratch)?,
         59 => record
             .platform_call_sign
             .as_ref()
@@ -318,18 +263,15 @@ pub(super) fn encode_tag_value(
             (None, None) => None,
         },
         74 => record.vmti.clone(),
-        82 => encode_ranged(record.corner_lat_p1_deg, spec, &mut scratch)?,
-        83 => encode_ranged(record.corner_lon_p1_deg, spec, &mut scratch)?,
-        84 => encode_ranged(record.corner_lat_p2_deg, spec, &mut scratch)?,
-        85 => encode_ranged(record.corner_lon_p2_deg, spec, &mut scratch)?,
-        86 => encode_ranged(record.corner_lat_p3_deg, spec, &mut scratch)?,
-        87 => encode_ranged(record.corner_lon_p3_deg, spec, &mut scratch)?,
-        88 => encode_ranged(record.corner_lat_p4_deg, spec, &mut scratch)?,
-        89 => encode_ranged(record.corner_lon_p4_deg, spec, &mut scratch)?,
-        75 => encode_ranged(record.sensor_ellipsoid_height_m, spec, &mut scratch)?,
-        78 => encode_ranged(record.frame_center_ellipsoid_height_m, spec, &mut scratch)?,
-        90 => encode_ranged(record.platform_pitch_full_deg, spec, &mut scratch)?,
-        91 => encode_ranged(record.platform_roll_full_deg, spec, &mut scratch)?,
+        // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so the
+        // tag→field mapping is the single source of truth across decode + encode.
+        _ if spec.range.is_some() => {
+            if let Some(entry) = super::decode::RANGED_FIELDS.iter().find(|e| e.id == spec.id) {
+                encode_ranged((entry.get)(record), spec, &mut scratch)?
+            } else {
+                None
+            }
+        }
         _ => None,
     })
 }

@@ -71,7 +71,9 @@ impl RistTransport {
         }
         // Guard that calls rist_destroy on every error-exit path. Disarmed at
         // the bottom of this constructor once ctx is safely in Self.
-        let mut ctx_guard = OnDrop::new(|| unsafe { rist_sys::rist_destroy(ctx); });
+        let mut ctx_guard = OnDrop::new(|| unsafe {
+            rist_sys::rist_destroy(ctx);
+        });
 
         // ===== Parse peer URL into peer_config =====
         let peer_url_str = format!("rist://{}:{}", url.addr, url.port);

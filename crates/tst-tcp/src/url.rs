@@ -143,12 +143,13 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, TcpUrlError> {
 }
 
 fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> {
-    let secs: u64 = tst_core::url::common::parse_int_query(value)
-        .map_err(|detail| TcpUrlError::BadQueryValue {
+    let secs: u64 = tst_core::url::common::parse_int_query(value).map_err(|detail| {
+        TcpUrlError::BadQueryValue {
             key: key.to_string(),
             value: value.to_string(),
             detail,
-        })?;
+        }
+    })?;
     Ok(Duration::from_secs(secs))
 }
 

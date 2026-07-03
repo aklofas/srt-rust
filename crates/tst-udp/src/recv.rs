@@ -5,8 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::net::udp_socket::{
-    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket,
-    bind_udp_socket_multicast,
+    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket, bind_udp_socket_multicast,
 };
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
 

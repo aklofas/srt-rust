@@ -99,7 +99,11 @@ pub fn set_socket_buffers<S: std::os::windows::io::AsSocket>(
     apply_buffers(socket2::SockRef::from(sock), rcv, snd)
 }
 
-fn apply_buffers(sr: socket2::SockRef<'_>, rcv: Option<usize>, snd: Option<usize>) -> io::Result<()> {
+fn apply_buffers(
+    sr: socket2::SockRef<'_>,
+    rcv: Option<usize>,
+    snd: Option<usize>,
+) -> io::Result<()> {
     if let Some(n) = rcv {
         sr.set_recv_buffer_size(n)?;
     }

@@ -27,7 +27,12 @@ let listener = TcpListener::from_url("tcp://0.0.0.0:7001?listen=1&nodelay=1")?;
 let rx = listener.accept_blocking()?;
 ```
 
-For TLS listeners:
+For TLS listeners, the bind address must be an IP literal (the URL parser
+accepts only IPv4/IPv6 addresses, not hostnames). The server certificate
+must carry an `iPAddress` SubjectAltName matching the IP address callers
+use to reach the server — a `dnsName` SAN will cause callers to fail with
+a certificate error. See the [TLS section in the TCP send guide](/docs/cookbook/sending/tcp.md)
+for an OpenSSL one-liner to generate a cert with an IP SAN.
 
 ```rust
 let listener = TcpListener::from_url(
@@ -57,7 +62,7 @@ that allows outbound TCP):
 use tst_pipeline::DemuxReceiver;
 use tst_tcp::TcpTransport;
 
-let rx = TcpTransport::connect("tcp://video.example.com:7001")?;
+let rx = TcpTransport::connect("tcp://192.168.1.10:7001")?;
 let mut receiver = DemuxReceiver::new(rx);
 ```
 

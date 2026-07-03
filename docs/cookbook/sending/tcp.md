@@ -23,14 +23,29 @@ sender.send_klv(&klv_bytes, pts)?;
 
 ## TLS (`tcps://`)
 
+`tcps://` requires an **IP literal** — the URL parser accepts only IPv4/IPv6
+addresses, not hostnames. The TLS library presents the IP address to the server
+during the handshake, so the server certificate must carry a matching
+`iPAddress` SubjectAltName (SAN). A certificate with only a `dnsName` SAN (even
+if the DNS name resolves to that IP) will be rejected with a TLS certificate
+error.
+
+Generate a certificate with an IP SAN using OpenSSL:
+```bash
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -subj "/CN=server" \
+  -addext "subjectAltName=IP:192.168.1.10" \
+  -out server.crt -keyout server.key
+```
+
 ```rust
 use tst_tcp::TcpTransport;
 
-// Uses OS native cert store by default (no webpki-roots dep).
-let tx = TcpTransport::connect("tcps://video.example.com:7001")?;
+// Uses OS native cert store (the CA that signed the server cert must be there).
+let tx = TcpTransport::connect("tcps://192.168.1.10:7001")?;
 
-// Or supply a custom CA bundle:
-let tx = TcpTransport::connect("tcps://video.example.com:7001?ca=ca-bundle.pem")?;
+// Or supply a custom CA bundle (e.g. a self-signed CA):
+let tx = TcpTransport::connect("tcps://192.168.1.10:7001?ca=ca-bundle.pem")?;
 ```
 
 ## URL parameters

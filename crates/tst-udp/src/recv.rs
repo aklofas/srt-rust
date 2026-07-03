@@ -186,15 +186,16 @@ impl RecvTransport for UdpRecvTransport {
         }
     }
 
-    /// Maximum datagram payload this transport can receive.
+    /// Upper bound on the buffer needed to receive any UDP datagram.
     ///
-    /// Always returns 65535 (the UDP protocol maximum) so that pipeline
-    /// shells and direct callers allocate a buffer large enough to receive
-    /// any legal datagram without silent tail truncation. The `pkt_size`
-    /// field on [`crate::config::SocketConfig`] controls the *expected*
-    /// send-side packet size (e.g. 7×188 = 1316 bytes for a standard TS
-    /// burst) but has no effect on the receive buffer; the receiver always
-    /// accepts any datagram up to the protocol maximum.
+    /// Always returns 65535 (the maximum UDP datagram size, headers
+    /// included — actual payloads are always a few bytes smaller) so that
+    /// pipeline shells and direct callers allocate a receive buffer large
+    /// enough for any legal datagram without silent tail truncation. The
+    /// `pkt_size` field on [`crate::config::SocketConfig`] controls the
+    /// *expected* send-side packet size (e.g. 7×188 = 1316 bytes for a
+    /// standard TS burst) but has no effect on the receive buffer; the
+    /// receiver always accepts any datagram up to this bound.
     fn max_payload(&self) -> usize {
         65535
     }

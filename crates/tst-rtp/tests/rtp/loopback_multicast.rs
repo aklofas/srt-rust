@@ -112,6 +112,20 @@ fn two_rtp_multicast_receivers_deliver_same_datagram() {
     let (tx1, rx1) = std::sync::mpsc::channel::<Vec<u8>>();
     let (tx2, rx2) = std::sync::mpsc::channel::<Vec<u8>>();
 
+    // Capture cancel handles before the transports move into the threads —
+    // recv_bytes loops until data or cancellation, so the timeout/skip paths
+    // below must cancel or the threads outlive the test.
+    let cancel1 = recv1.cancel_handle();
+    let cancel2 = recv2.cancel_handle();
+    let cancel_receivers = || {
+        if let Some(c) = &cancel1 {
+            c.cancel();
+        }
+        if let Some(c) = &cancel2 {
+            c.cancel();
+        }
+    };
+
     let _t1 = thread::spawn(move || {
         let mut buf = vec![0u8; recv1.max_payload() + 64];
         if let Ok(n) = recv1.recv_bytes(&mut buf) {
@@ -134,6 +148,7 @@ fn two_rtp_multicast_receivers_deliver_same_datagram() {
     let got1 = match rx1.recv_timeout(Duration::from_secs(5)) {
         Ok(v) => v,
         Err(_) => {
+            cancel_receivers();
             eprintln!("two-receiver: recv1 timed out — kernel filtered loopback multicast");
             return;
         }
@@ -141,6 +156,7 @@ fn two_rtp_multicast_receivers_deliver_same_datagram() {
     let got2 = match rx2.recv_timeout(Duration::from_secs(5)) {
         Ok(v) => v,
         Err(_) => {
+            cancel_receivers();
             eprintln!("two-receiver: recv2 timed out — kernel filtered loopback multicast");
             return;
         }

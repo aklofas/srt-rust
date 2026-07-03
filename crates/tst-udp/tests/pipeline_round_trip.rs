@@ -23,7 +23,7 @@ use std::time::Duration;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
-use tst_pipeline::{DemuxReceiver, MuxSender};
+use tst_pipeline::{DemuxReceiver, MuxSender, ShellErrorKind};
 use tst_udp::{UdpRecvTransport, UdpTransport};
 
 /// Minimal Annex-B H.264 AUD + IDR — just enough for the muxer to accept and
@@ -119,9 +119,20 @@ fn mux_via_udp_demux_round_trip_recovers_program_map() {
         // here — the receiver already has what it needs. Stop sending on the
         // first broken-transport error; the real assertion is the channel
         // result below, which reports `false` (or times out) if the receiver
-        // never recovered a ProgramMap. Mirrors the tst-tcp sibling test.
-        if sender.send_video(&au, pts, true).is_err() {
-            break;
+        // never recovered a ProgramMap. Non-transport error kinds still panic
+        // so a real mux/config regression fails loudly. Mirrors the tst-tcp
+        // sibling test.
+        match sender.send_video(&au, pts, true) {
+            Ok(()) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ShellErrorKind::TransportBroken | ShellErrorKind::Closed
+                ) =>
+            {
+                break;
+            }
+            Err(e) => panic!("send_video failed for a non-transport reason: {e:?}"),
         }
     }
 

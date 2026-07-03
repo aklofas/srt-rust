@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use tst_core::net::udp_socket::{
     CANCEL_POLL_INTERVAL, apply_multicast_recv_join, apply_multicast_send_knobs,
+    bind_udp_socket_multicast,
 };
 use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
 
@@ -543,7 +544,17 @@ impl RtpRecvTransport {
         } else {
             SocketAddr::new(ip, url.port)
         };
-        let socket = UdpSocket::bind(local).map_err(ConnectError::Io)?;
+        let socket = if is_multicast {
+            // SO_REUSEADDR (+ SO_REUSEPORT on BSD/macOS) allows a second
+            // receiver to bind the same group:port. The helper also sets
+            // SO_SNDTIMEO to CANCEL_POLL_INTERVAL; the RTP recv socket
+            // never sends, so the write timeout is inert.
+            bind_udp_socket_multicast(local).map_err(ConnectError::Io)?
+        } else {
+            UdpSocket::bind(local).map_err(ConnectError::Io)?
+        };
+        // For the multicast path this re-sets SO_RCVTIMEO to the same
+        // value the helper already applied — redundant but harmless.
         socket
             .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
             .map_err(ConnectError::Io)?;
@@ -570,7 +581,17 @@ impl RtpRecvTransport {
                 } else {
                     SocketAddr::new(ip, rtcp_port)
                 };
-                Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
+                Some(if is_multicast {
+                    // SO_REUSEADDR (+ SO_REUSEPORT on BSD/macOS) allows a
+                    // second receiver to bind the same RTCP companion port
+                    // (group:port+1). The helper's SO_RCVTIMEO is inert —
+                    // rtcp_socket is never read from on the recv transport
+                    // path. SO_SNDTIMEO limits the RR-emitter's send_to
+                    // but that result is discarded (`let _ = ...`).
+                    bind_udp_socket_multicast(rtcp_local).map_err(ConnectError::Io)?
+                } else {
+                    UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?
+                })
             } else {
                 tracing::warn!(
                     "RTP port 65535 has no valid RTCP companion; \

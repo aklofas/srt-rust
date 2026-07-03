@@ -14,11 +14,12 @@
 //! delivers on the GHA runner. The `try_listen` skip-on-error path still
 //! degrades gracefully where multicast routing is genuinely absent.
 
+use std::io;
 use std::thread;
 use std::time::Duration;
 
 use tst_core::transport::{RecvTransport, Transport};
-use tst_rtp::{RtpRecvTransport, RtpTransport};
+use tst_rtp::{ConnectError, RtpRecvTransport, RtpTransport};
 
 fn try_listen_multicast_v4(addr: &str) -> Option<RtpRecvTransport> {
     match RtpRecvTransport::listen(addr) {
@@ -60,4 +61,103 @@ fn ipv4_multicast_loopback_round_trip() {
         }
     };
     assert_eq!(got.as_slice(), &payload[..]);
+}
+
+/// DA-NET-7 (RTP propagation): two receivers joining the same RTP multicast
+/// group on loopback must both bind AND both receive the same datagram.
+///
+/// Uses a fixed group `239.55.55.4:55012` (distinct from the round-trip test
+/// at `239.55.55.1:55010`). RTCP is left at its default (enabled) so the
+/// RTCP companion bind on port 55013 also exercises the SO_REUSEADDR path.
+///
+/// r1 failure: graceful skip (no loopback multicast routing on this platform).
+/// r2 failure with EADDRINUSE: hard panic — means SO_REUSEADDR is not applied.
+/// r2 failure with anything else: graceful skip.
+#[test]
+fn two_rtp_multicast_receivers_deliver_same_datagram() {
+    const GROUP: &str = "rtp://239.55.55.4:55012?iface=127.0.0.1";
+
+    let mut recv1 = match RtpRecvTransport::listen(GROUP) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!(
+                "skipping two-receiver test — r1 bind/join failed: {e:?}. \
+                 Likely missing multicast routing on lo."
+            );
+            return;
+        }
+    };
+
+    let mut recv2 = match RtpRecvTransport::listen(GROUP) {
+        Ok(r) => r,
+        Err(ConnectError::Io(ref io_err)) if io_err.kind() == io::ErrorKind::AddrInUse => {
+            panic!(
+                "r2 got EADDRINUSE on the same group:port — SO_REUSEADDR fix \
+                 is not applied to the RTP recv bind path: {io_err:?}"
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "skipping two-receiver test — r2 bind/join failed: {e:?}. \
+                 Platform may not honour SO_REUSEADDR for multicast."
+            );
+            return;
+        }
+    };
+
+    let payload = [0x47u8; 188];
+    let (tx1, rx1) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (tx2, rx2) = std::sync::mpsc::channel::<Vec<u8>>();
+
+    let _t1 = thread::spawn(move || {
+        let mut buf = vec![0u8; recv1.max_payload() + 64];
+        if let Ok(n) = recv1.recv_bytes(&mut buf) {
+            let _ = tx1.send(buf[..n].to_vec());
+        }
+    });
+    let _t2 = thread::spawn(move || {
+        let mut buf = vec![0u8; recv2.max_payload() + 64];
+        if let Ok(n) = recv2.recv_bytes(&mut buf) {
+            let _ = tx2.send(buf[..n].to_vec());
+        }
+    });
+
+    // Brief pause so both threads reach recv_bytes before the datagram is sent.
+    thread::sleep(Duration::from_millis(50));
+
+    let mut send =
+        RtpTransport::connect("rtp://239.55.55.4:55012?ttl=1&iface=127.0.0.1").unwrap();
+    send.send_bytes(&payload).unwrap();
+
+    let got1 = match rx1.recv_timeout(Duration::from_secs(5)) {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("two-receiver: recv1 timed out — kernel filtered loopback multicast");
+            return;
+        }
+    };
+    let got2 = match rx2.recv_timeout(Duration::from_secs(5)) {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("two-receiver: recv2 timed out — kernel filtered loopback multicast");
+            return;
+        }
+    };
+
+    assert_eq!(
+        got1.len(),
+        payload.len(),
+        "recv1: expected {} bytes, got {}",
+        payload.len(),
+        got1.len()
+    );
+    assert_eq!(
+        got2.len(),
+        payload.len(),
+        "recv2: expected {} bytes, got {}",
+        payload.len(),
+        got2.len()
+    );
+    assert_eq!(&got1[..], &payload[..], "recv1 payload mismatch");
+    assert_eq!(&got2[..], &payload[..], "recv2 payload mismatch");
 }

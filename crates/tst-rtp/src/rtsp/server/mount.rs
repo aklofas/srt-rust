@@ -182,6 +182,27 @@ impl MountHandle {
         &self.state.kind
     }
 
+    /// Lock the inner muxer, call `f`, and on success drain + broadcast
+    /// the resulting TS bytes. This is the shared skeleton used by every
+    /// `push_*` method below.
+    ///
+    /// Returns [`crate::error::MountError::Closed`] when the mutex is
+    /// poisoned, or propagates any [`tst_core::error::MuxError`] returned
+    /// by `f` as [`crate::error::MountError::Mux`].
+    fn with_muxer<F>(&self, f: F) -> Result<(), crate::error::MountError>
+    where
+        F: FnOnce(&mut Muxer) -> Result<(), tst_core::error::MuxError>,
+    {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        f(&mut muxer)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
     // ── Push surface ──────────────────────────────────────────────────────
     //
     // The push methods mirror `tst_pipeline::MuxSender`'s `send_*`
@@ -225,14 +246,7 @@ impl MountHandle {
         pts: tst_core::mpegts::common::Pts90khz,
         key_frame: bool,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_video(nal, pts, key_frame)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_video(nal, pts, key_frame))
     }
 
     /// Push one KLV blob. Mirror of
@@ -246,14 +260,7 @@ impl MountHandle {
         pts: tst_core::mpegts::common::Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_klv(klv, pts, metadata_service_id)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_klv(klv, pts, metadata_service_id))
     }
 
     /// Push one audio frame buffer. Mirror of
@@ -266,14 +273,7 @@ impl MountHandle {
         frames: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_audio(frames, pts)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_audio(frames, pts))
     }
 
     /// Push one subtitle payload. Mirror of
@@ -288,14 +288,7 @@ impl MountHandle {
         payload: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_subtitle(pts, payload)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_subtitle(pts, payload))
     }
 
     /// Push one data payload. Mirror of
@@ -310,14 +303,7 @@ impl MountHandle {
         data: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_data(data, pts)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_data(data, pts))
     }
 
     // ── Multi-stream / multi-program variants ────────────────────────────
@@ -336,14 +322,7 @@ impl MountHandle {
         pts: tst_core::mpegts::common::Pts90khz,
         key_frame: bool,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_video_to(handle, nal, pts, key_frame)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_video_to(handle, nal, pts, key_frame))
     }
 
     /// Push to a specific KLV stream handle. Mirror of
@@ -355,14 +334,7 @@ impl MountHandle {
         pts: tst_core::mpegts::common::Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_klv_to(handle, klv, pts, metadata_service_id)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_klv_to(handle, klv, pts, metadata_service_id))
     }
 
     /// Push to a specific audio stream handle. Mirror of
@@ -377,14 +349,7 @@ impl MountHandle {
         frames: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_audio_to(handle, pts, frames)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_audio_to(handle, pts, frames))
     }
 
     /// Push to a specific subtitle stream handle. Mirror of
@@ -400,14 +365,7 @@ impl MountHandle {
         payload: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_subtitle_to(handle, pts, payload)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_subtitle_to(handle, pts, payload))
     }
 
     /// Push to a specific data stream handle. Mirror of
@@ -418,14 +376,7 @@ impl MountHandle {
         data: &[u8],
         pts: tst_core::mpegts::common::Pts90khz,
     ) -> Result<(), crate::error::MountError> {
-        let mut muxer = self
-            .state
-            .muxer
-            .lock()
-            .map_err(|_| crate::error::MountError::Closed)?;
-        muxer.push_data_to(handle, data, pts)?;
-        drain_and_broadcast(&mut muxer, &self.state);
-        Ok(())
+        self.with_muxer(|m| m.push_data_to(handle, data, pts))
     }
 
     // ── Lifecycle helpers ────────────────────────────────────────────────

@@ -126,7 +126,7 @@ fn mux_via_udp_demux_round_trip_recovers_program_map() {
             Ok(()) => {}
             Err(e)
                 if matches!(
-                    e.kind(),
+                    e.kind,
                     ShellErrorKind::TransportBroken | ShellErrorKind::Closed
                 ) =>
             {

@@ -71,6 +71,10 @@ pub struct ServerSessionState {
     /// emitted in every WWW-Authenticate (rotation via stale=true is
     /// not yet implemented).
     pub auth_nonce: String,
+    /// Digest nc (nonce-count) high-water mark for replay detection
+    /// (DA-RTP-4b). Tracks the highest nc accepted under the current
+    /// nonce; reset to 0 whenever the nonce is rotated.
+    pub(crate) auth_nc_hwm: u32,
     /// Count of consecutive 401-bounced requests. After 3 in a row the
     /// session closes (basic DoS guard).
     pub auth_failures: u8,
@@ -124,6 +128,7 @@ impl ServerSessionState {
             session_id: None,
             mount_path: None,
             auth_nonce: generate_nonce(),
+            auth_nc_hwm: 0,
             auth_failures: 0,
             transport: None,
             udp_sockets: None,

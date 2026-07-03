@@ -44,7 +44,8 @@ pub(crate) fn error_response(req: &RtspRequest, status: u16, reason: &str) -> Rt
 /// Build a 401 Unauthorized response with a fresh `WWW-Authenticate`
 /// challenge for the configured auth scheme. Mutates `session.auth_nonce`
 /// if `stale = true` (rotates the nonce for a stale-challenge retry per
-/// RFC 7616 §3.5).
+/// RFC 7616 §3.5). Also resets `session.auth_nc_hwm` to 0 when the
+/// nonce is rotated so nc tracking starts fresh for the new nonce.
 pub(crate) fn challenge_response(
     req: &RtspRequest,
     state: &Arc<ServerState>,
@@ -55,8 +56,10 @@ pub(crate) fn challenge_response(
     if let Some(auth_cfg) = state.builder.auth.as_ref() {
         if stale {
             // Rotate the nonce so the client's next attempt uses a
-            // fresh one. Nonce only matters for Digest; Basic ignores.
+            // fresh one. Reset the nc hwm so replay tracking begins
+            // fresh under the new nonce.
             session.auth_nonce = crate::rtsp::server::auth::generate_nonce();
+            session.auth_nc_hwm = 0;
         }
         let challenge = build_challenge_header(auth_cfg, &session.auth_nonce);
         response
@@ -85,6 +88,7 @@ fn check_auth(
         &req.uri,
         auth_cfg,
         &session.auth_nonce,
+        &mut session.auth_nc_hwm,
     ) {
         Ok(()) => Ok(()),
         Err(AuthVerifyError::StaleNonce) => {

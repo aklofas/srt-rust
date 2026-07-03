@@ -45,7 +45,7 @@ public final class Pairer implements AutoCloseable {
         DemuxerConfig dx = config.demuxer();
         this.handle.set(nOpenWithConfig(videoPid, klvPid,
             buffered, maxLagNanos, pc.tolerance().toNanos(),
-            pc.maxBufferedKlv(), pc.maxBufferedVideo(), pc.linkKlvToVideo(),
+            pc.maxBufferedKlv(), pc.maxBufferedVideo(),
             dx != null,
             dx != null ? dx.strictMode().ordinal() : 0,
             dx != null ? dx.pesCapPerPid() : 0L,
@@ -107,7 +107,7 @@ public final class Pairer implements AutoCloseable {
     private static native long nOpen(int videoPid, int klvPid);
     private static native long nOpenWithConfig(int videoPid, int klvPid,
         boolean buffered, long maxLagNanos, long toleranceNanos,
-        long maxBufferedKlv, long maxBufferedVideo, boolean linkKlvToVideo,
+        long maxBufferedKlv, long maxBufferedVideo,
         boolean hasDemuxerConfig, int strict, long pesCapPerPid, long pesCapTotal,
         boolean cfi, int av1, long auCellCap, boolean lenientPsi);
     private static native Object nFeed(long handle, byte[] bytes) throws DemuxException;

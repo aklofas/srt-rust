@@ -191,7 +191,6 @@ impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::Pairer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::Pairer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::Pairer
 #[non_exhaustive] pub struct tst_pipeline::ext::pairing::PairerConfig
-pub tst_pipeline::ext::pairing::PairerConfig::link_klv_to_video: bool
 pub tst_pipeline::ext::pairing::PairerConfig::max_buffered_klv: u64
 pub tst_pipeline::ext::pairing::PairerConfig::max_buffered_video: u64
 pub tst_pipeline::ext::pairing::PairerConfig::mode: tst_pipeline::ext::pairing::PairerMode

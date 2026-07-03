@@ -74,7 +74,6 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
     tolerance_nanos: jlong,
     max_buffered_klv: jlong,
     max_buffered_video: jlong,
-    link_klv_to_video: jboolean,
     has_demuxer_config: jboolean,
     strict: jint,
     pes_cap_per_pid: jlong,
@@ -98,7 +97,6 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
         pairer.tolerance = Duration::from_nanos(tolerance_nanos as u64);
         pairer.max_buffered_klv = max_buffered_klv as u64;
         pairer.max_buffered_video = max_buffered_video as u64;
-        pairer.link_klv_to_video = link_klv_to_video != 0;
 
         let demuxer = if has_demuxer_config != 0 {
             build_demux_config_from_args(

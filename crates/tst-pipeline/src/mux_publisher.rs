@@ -34,6 +34,10 @@ struct Inner<P: Publisher> {
     segment_start_pts: Option<Pts90khz>,
     /// PTS of the most recent video AU (drives the explicit `cut_segment`).
     last_video_pts: Option<Pts90khz>,
+    /// Reusable scratch buffer for `drain_locked`. Allocated once on first
+    /// push and reused for every subsequent drain call, avoiding a fresh
+    /// 16 KB zero-init alloc per push.
+    scratch: Vec<u8>,
 }
 
 /// Shell that owns a [`Muxer`] and pushes its output to a [`Publisher`].
@@ -85,6 +89,7 @@ impl<P: Publisher> MuxPublisher<P> {
                 closed: false,
                 segment_start_pts: None,
                 last_video_pts: None,
+                scratch: Vec::new(),
             }),
             _span: std::panic::AssertUnwindSafe(span),
         })
@@ -240,20 +245,26 @@ impl<P: Publisher> MuxPublisher<P> {
             closed: _,
             segment_start_pts: _,
             last_video_pts: _,
+            scratch: _,
         } = self.inner.into_inner().expect("MuxPublisher poisoned");
         Ok(publisher)
     }
 
     fn drain_locked(inner: &mut Inner<P>) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut buf = vec![0u8; 16 * 1024];
+        // Grow the reusable scratch to 16 KB on first use; subsequent calls
+        // reuse the already-allocated buffer (no zero-init per push).
+        const DRAIN_BUF_SIZE: usize = 16 * 1024;
+        if inner.scratch.len() < DRAIN_BUF_SIZE {
+            inner.scratch.resize(DRAIN_BUF_SIZE, 0);
+        }
         loop {
-            let n = inner.muxer.pull(&mut buf);
+            let n = inner.muxer.pull(&mut inner.scratch);
             if n == 0 {
                 return Ok(());
             }
             inner
                 .publisher
-                .push_ts(&buf[..n])
+                .push_ts(&inner.scratch[..n])
                 .map_err(MuxPublisherError::Publisher)?;
             inner.stats.bytes_pushed = inner.stats.bytes_pushed.saturating_add(n as u64);
             inner.stats.drain_calls = inner.stats.drain_calls.saturating_add(1);

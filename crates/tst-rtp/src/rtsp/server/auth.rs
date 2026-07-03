@@ -135,6 +135,7 @@ fn verify_basic(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify_digest(
     auth_header: &str,
     method: &str,

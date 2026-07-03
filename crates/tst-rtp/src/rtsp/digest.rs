@@ -57,6 +57,7 @@ pub(crate) fn ha1(algo: Algo, username: &str, realm: &str, password: &SecretStri
 /// When `qop` is empty the RFC 2617 no-qop form `H(HA1:nonce:HA2)` is
 /// used; `nc` and `cnonce` are ignored. When `qop` is non-empty
 /// (typically `"auth"`), the full RFC 7616 §3.4.1 form is used.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn response(
     algo: Algo,
     ha1: &str,

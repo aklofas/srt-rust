@@ -19,7 +19,7 @@ use std::thread;
 use std::time::Duration;
 
 use tst_core::transport::{RecvTransport, Transport};
-use tst_rtp::{ConnectError, RtpRecvTransport, RtpTransport};
+use tst_rtp::{ConnectError, RtpRecvTransport, RtpTransport, RtpUrl};
 
 fn try_listen_multicast_v4(addr: &str) -> Option<RtpRecvTransport> {
     match RtpRecvTransport::listen(addr) {
@@ -67,8 +67,10 @@ fn ipv4_multicast_loopback_round_trip() {
 /// group on loopback must both bind AND both receive the same datagram.
 ///
 /// Uses a fixed group `239.55.55.4:55012` (distinct from the round-trip test
-/// at `239.55.55.1:55010`). RTCP is left at its default (enabled) so the
-/// RTCP companion bind on port 55013 also exercises the SO_REUSEADDR path.
+/// at `239.55.55.1:55010`). `listen` defaults the RTCP RR reporter OFF, so we
+/// call `listen_with_rtcp(…, true)` explicitly: each receiver then also binds
+/// the RTCP companion on port 55013, exercising the SO_REUSEADDR path on the
+/// companion bind as well (r2's companion bind would EADDRINUSE without it).
 ///
 /// r1 failure: graceful skip (no loopback multicast routing on this platform).
 /// r2 failure with EADDRINUSE: hard panic — means SO_REUSEADDR is not applied.
@@ -76,8 +78,9 @@ fn ipv4_multicast_loopback_round_trip() {
 #[test]
 fn two_rtp_multicast_receivers_deliver_same_datagram() {
     const GROUP: &str = "rtp://239.55.55.4:55012?iface=127.0.0.1";
+    let parsed = RtpUrl::parse(GROUP).expect("parse test URL");
 
-    let mut recv1 = match RtpRecvTransport::listen(GROUP) {
+    let mut recv1 = match RtpRecvTransport::listen_with_rtcp(&parsed, true) {
         Ok(r) => r,
         Err(e) => {
             eprintln!(
@@ -88,7 +91,7 @@ fn two_rtp_multicast_receivers_deliver_same_datagram() {
         }
     };
 
-    let mut recv2 = match RtpRecvTransport::listen(GROUP) {
+    let mut recv2 = match RtpRecvTransport::listen_with_rtcp(&parsed, true) {
         Ok(r) => r,
         Err(ConnectError::Io(ref io_err)) if io_err.kind() == io::ErrorKind::AddrInUse => {
             panic!(

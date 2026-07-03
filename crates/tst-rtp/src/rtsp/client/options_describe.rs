@@ -126,7 +126,9 @@ impl RtspClient {
         authorization: Option<String>,
     ) -> Result<RtspResponse, RtspError> {
         let uri = self.url.render_no_credentials();
-        let mut req = self.base_request(method, uri).header("accept", "application/sdp");
+        let mut req = self
+            .base_request(method, uri)
+            .header("accept", "application/sdp");
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }

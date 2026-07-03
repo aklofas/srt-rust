@@ -184,14 +184,16 @@ fn verify_digest(
     // The server always offers qop=auth, so nc MUST be present when qop is
     // non-empty. If nc is absent or unparseable, treat as a syntax error.
     if !qop.is_empty() {
-        let nc_val = u32::from_str_radix(nc_str, 16).map_err(|_| {
-            AuthVerifyError::BadDigestSyntax {
+        let nc_val =
+            u32::from_str_radix(nc_str, 16).map_err(|_| AuthVerifyError::BadDigestSyntax {
                 detail: format!("nc '{nc_str}' is not a valid hex counter"),
-            }
-        })?;
+            })?;
         if nc_val <= *nc_hwm {
             return Err(AuthVerifyError::BadDigestSyntax {
-                detail: format!("nc {nc_val:#010x} replays or regresses hwm {:#010x}", *nc_hwm),
+                detail: format!(
+                    "nc {nc_val:#010x} replays or regresses hwm {:#010x}",
+                    *nc_hwm
+                ),
             });
         }
         *nc_hwm = nc_val;
@@ -213,8 +215,18 @@ fn verify_digest(
             detail: format!("uri attr '{uri_attr}' != request uri '{uri}'"),
         });
     }
-    let expected_response =
-        compute_digest_response(scheme, expected_user, expected_realm, expected_pass, method, uri, nonce_attr, nc_str, cnonce, qop);
+    let expected_response = compute_digest_response(
+        scheme,
+        expected_user,
+        expected_realm,
+        expected_pass,
+        method,
+        uri,
+        nonce_attr,
+        nc_str,
+        cnonce,
+        qop,
+    );
     if response_attr == expected_response {
         Ok(())
     } else {
@@ -363,8 +375,7 @@ mod tests {
     #[test]
     fn verify_missing_authorization() {
         let cfg = basic_cfg();
-        let e =
-            verify_authorization(None, "DESCRIBE", "rtsp://x", &cfg, "", &mut 0).unwrap_err();
+        let e = verify_authorization(None, "DESCRIBE", "rtsp://x", &cfg, "", &mut 0).unwrap_err();
         assert!(matches!(e, AuthVerifyError::Missing));
     }
 
@@ -376,8 +387,15 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"admin:secret")
         );
-        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
-            .unwrap();
+        verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            "",
+            &mut 0,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -388,9 +406,15 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"admin:wrong")
         );
-        let e =
-            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            "",
+            &mut 0,
+        )
+        .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -402,9 +426,15 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"wrong:secret")
         );
-        let e =
-            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            "",
+            &mut 0,
+        )
+        .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -412,8 +442,8 @@ mod tests {
     fn verify_basic_bad_base64() {
         let cfg = basic_cfg();
         let auth = "Basic not-base64!!";
-        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0)
-            .unwrap_err();
+        let e =
+            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0).unwrap_err();
         assert!(matches!(e, AuthVerifyError::BadBasic(_)));
     }
 
@@ -421,8 +451,8 @@ mod tests {
     fn verify_scheme_mismatch() {
         let cfg = basic_cfg();
         let auth = "Bearer some-token-here";
-        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0)
-            .unwrap_err();
+        let e =
+            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0).unwrap_err();
         assert!(matches!(e, AuthVerifyError::SchemeMismatch));
     }
 
@@ -479,8 +509,15 @@ mod tests {
              uri=\"rtsp://server/live\", response=\"{response}\", algorithm=SHA-256, \
              nc=00000001, cnonce=\"cnonce123\", qop=auth"
         );
-        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, nonce, &mut 0)
-            .unwrap();
+        verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            nonce,
+            &mut 0,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -488,9 +525,8 @@ mod tests {
         let cfg = digest_md5_cfg();
         let auth = "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"stale\", \
                     uri=\"rtsp://x\", response=\"any\", algorithm=MD5";
-        let e =
-            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "fresh", &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "fresh", &mut 0)
+            .unwrap_err();
         assert!(matches!(e, AuthVerifyError::StaleNonce));
     }
 
@@ -499,9 +535,8 @@ mod tests {
         let cfg = digest_md5_cfg();
         let auth = "Digest username=\"impostor\", realm=\"tst-rtp\", nonce=\"abc\", \
                     uri=\"rtsp://x\", response=\"any\", algorithm=MD5";
-        let e =
-            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "abc", &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "abc", &mut 0)
+            .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -527,9 +562,8 @@ mod tests {
              uri=\"rtsp://y\", response=\"{response}\", algorithm=MD5, \
              nc=00000001, cnonce=\"cnonce\", qop=auth"
         );
-        let e =
-            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+            .unwrap_err();
         assert!(matches!(e, AuthVerifyError::BadDigestSyntax { .. }));
     }
 
@@ -548,9 +582,8 @@ mod tests {
              uri=\"rtsp://x\", response=\"any\", algorithm=MD5, \
              nc=00000001, cnonce=\"cc\", qop=auth"
         );
-        let e =
-            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+            .unwrap_err();
         assert!(
             matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
             "expected BadDigestSyntax for realm mismatch, got {e:?}"
@@ -648,9 +681,8 @@ mod tests {
             "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"{nonce}\", \
              uri=\"rtsp://x\", response=\"any\", algorithm=MD5"
         );
-        let e =
-            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
-                .unwrap_err();
+        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+            .unwrap_err();
         assert!(
             matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
             "expected BadDigestSyntax for qop downgrade, got {e:?}"

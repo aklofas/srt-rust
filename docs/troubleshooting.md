@@ -100,6 +100,28 @@ Fix: build both sides with the same feature configuration. If you need encryptio
 
 Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where late frames are useless, or use the `SocketBuilder::linger(Duration)` setter. The `tst-c` connect path (`bindings/c/core/src/sender/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
 
+## TCP / TLS (`tcps://`)
+
+**`tcps://` fails with a certificate error even though the hostname resolves correctly**
+
+The URL parser accepts only IPv4/IPv6 literals — hostnames are rejected at
+parse time. When `tcps://` is used, the TLS handshake presents the **IP
+address** as the server name (via `iPAddress` SubjectAltName). A certificate
+with only a `dnsName` SAN — even a name that resolves to the correct IP — does
+not match and the handshake fails.
+
+Fix: regenerate the server certificate with an `iPAddress` SAN entry matching
+the IP address the client connects to:
+
+```bash
+openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=server" \
+  -addext "subjectAltName=IP:192.168.1.10" -out server.crt -keyout server.key
+```
+
+Then reference this certificate with `?cert=server.crt&key=server.key` on the
+listener URL, and add the CA to the caller's trust store (`?ca=ca.crt`) or to
+the OS native trust store.
+
 ## KLV decode rejection
 
 **`decode_strict_compliance` rejects**

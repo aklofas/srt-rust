@@ -4,6 +4,20 @@
 //! - `tcps://host:port` — TLS caller
 //! - `tcp://0.0.0.0:port?listen=1` — listener (plain)
 //! - `tcps://0.0.0.0:port?listen=1&cert=...&key=...` — listener (TLS)
+//!
+//! # IP-literal requirement for `tcps://`
+//!
+//! The parser accepts only IPv4 or IPv6 literals, never hostnames. For TLS
+//! (`tcps://`), this means the TLS handshake presents the IP address as the
+//! server name. The server certificate must carry a matching `iPAddress`
+//! SubjectAltName (SAN); a `dnsName` SAN — even one that resolves to the same
+//! IP — will cause the handshake to fail with a certificate error. Generate
+//! a certificate with an IP SAN using:
+//!
+//! ```bash
+//! openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=server" \
+//!   -addext "subjectAltName=IP:192.168.1.10" -out server.crt -keyout server.key
+//! ```
 
 use std::net::IpAddr;
 use std::time::Duration;

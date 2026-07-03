@@ -35,6 +35,12 @@ impl TlsStream {
 }
 
 /// Build a TLS-wrapped TcpTransport (caller side).
+///
+/// Because `TcpUrl` accepts only IP literals, the TLS server name presented
+/// during the handshake is always an IP address. The server certificate must
+/// carry a matching `iPAddress` SubjectAltName (SAN). A certificate with only
+/// a `dnsName` SAN will be rejected. See the module-level docs on [`crate::url`]
+/// for a one-liner to generate an IP-SAN certificate with OpenSSL.
 pub fn connect_tls(url: &TcpUrl, cfg: &SocketConfig) -> Result<TcpTransport, TcpError> {
     let mut roots = rustls::RootCertStore::empty();
 

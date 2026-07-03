@@ -818,3 +818,49 @@ fn st0102_lenient_encode_still_accepts_partial() {
     let mut buf = [0u8; 256];
     encode(&r, &mut buf).expect("lenient encode must accept a partial record");
 }
+
+// -------- DA-KLV-1: ST 0107.5 §6.3.3.2 empty-string convention --------
+
+#[test]
+fn st0102_empty_string_encodes_as_nul_and_round_trips() {
+    // Some("") → [0x00] on wire → Some("") on decode.
+    let r = SecurityLs {
+        caveats: Some(String::new()),
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    // Tag 5 (caveats) with length 1 and value 0x00: [0x05, 0x01, 0x00]
+    let pos = bytes.windows(3).position(|w| w == [0x05, 0x01, 0x00]);
+    assert!(pos.is_some(), "expected [05 01 00] for empty caveats, bytes={bytes:?}");
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.caveats.as_deref(), Some(""), "empty string should round-trip as Some(\"\")");
+}
+
+#[test]
+fn st0102_length0_string_decodes_as_absent() {
+    // Tag 5 (caveats) with length 0: [0x05, 0x00]
+    let body: Vec<u8> = vec![0x05, 0x00];
+    let decoded = decode(&body).unwrap();
+    assert_eq!(decoded.caveats, None, "length-0 string should decode as None");
+}
+
+#[test]
+fn st0102_nul_byte_decodes_as_empty_string() {
+    // Tag 7 (classified_by) with single NUL value: [0x07, 0x01, 0x00]
+    let body: Vec<u8> = vec![0x07, 0x01, 0x00];
+    let decoded = decode(&body).unwrap();
+    assert_eq!(
+        decoded.classified_by.as_deref(),
+        Some(""),
+        "single NUL byte should decode as empty string"
+    );
+}
+
+#[test]
+fn st0102_encoded_len_counts_nul_for_empty_string() {
+    // empty string → 1 value byte (NUL), so tag + ber_len(1) + 1 = 3 bytes
+    let r = SecurityLs { classified_by: Some(String::new()), ..Default::default() };
+    let n = encoded_len(&r);
+    // tag 7 (1 byte) + length 1 (1 byte) + value [0x00] (1 byte) = 3
+    assert_eq!(n, 3, "encoded_len should count 1 wire byte for empty string (NUL signal)");
+}

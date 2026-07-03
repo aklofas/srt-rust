@@ -158,3 +158,48 @@ fn fixture_field_errors_decodes() {
     // whether the tag dispatch matched it).
     let _ = parsed; // just verifies decode succeeds without panic
 }
+
+// -------- DA-KLV-1: ST 0107.5 §6.3.3.2 empty-string convention --------
+
+#[test]
+fn st0601_empty_string_encodes_as_nul_and_round_trips() {
+    // Some("") → [0x00] on wire → Some("") on decode.
+    let mut r = UasDatalinkLs::default();
+    r.mission_id = Some(String::new());
+    let bytes = encode_to_vec(&r).unwrap();
+    // Locate the tag-3 TLV: tag byte 0x03, length 0x01, value 0x00.
+    let pos = bytes.windows(3).position(|w| w == [0x03, 0x01, 0x00]);
+    assert!(pos.is_some(), "expected [03 01 00] for empty mission_id, bytes={bytes:?}");
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.mission_id.as_deref(), Some(""), "empty string round-trip failed");
+}
+
+#[test]
+fn st0601_length0_string_decodes_as_absent() {
+    // Manually craft a TLV with length-0 string value for platform_call_sign (tag 59 = 0x3B).
+    // decode_unchecked still requires a 16-byte UL prefix + outer BER length, but
+    // does not validate the UL — any 16 bytes work.
+    use tst_core::klv::st0601::decode_unchecked;
+    let body: Vec<u8> = vec![0x3B, 0x00]; // tag 59 with empty value
+    let mut pkt = vec![0u8; 16]; // dummy UL (not validated by decode_unchecked)
+    pkt.push(body.len() as u8); // outer BER length
+    pkt.extend_from_slice(&body);
+    let decoded = decode_unchecked(&pkt).unwrap();
+    assert_eq!(decoded.platform_call_sign, None, "length-0 string should decode as None");
+}
+
+#[test]
+fn st0601_nul_byte_decodes_as_empty_string() {
+    // [0x00] as the value of platform_designation (tag 10 = 0x0A) → Some("").
+    use tst_core::klv::st0601::decode_unchecked;
+    let body: Vec<u8> = vec![0x0A, 0x01, 0x00]; // tag 10, length 1, value [0x00]
+    let mut pkt = vec![0u8; 16]; // dummy UL
+    pkt.push(body.len() as u8);
+    pkt.extend_from_slice(&body);
+    let decoded = decode_unchecked(&pkt).unwrap();
+    assert_eq!(
+        decoded.platform_designation.as_deref(),
+        Some(""),
+        "single NUL byte should decode as empty string"
+    );
+}

@@ -53,32 +53,34 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
     if let Some(v) = record.classifying_country_coding_method {
         emit(out, &mut pos, 2, &[v.to_u8()])?;
     }
+    // ST 0107.5 §6.3.3.2: empty string → single NUL byte on the wire.
+    // Non-empty strings encode as raw UTF-8 bytes.
     if let Some(s) = record.classifying_country.as_ref() {
-        emit(out, &mut pos, 3, s.as_bytes())?;
+        emit(out, &mut pos, 3, str_wire(s))?;
     }
     if let Some(s) = record.sci_shi_info.as_ref() {
-        emit(out, &mut pos, 4, s.as_bytes())?;
+        emit(out, &mut pos, 4, str_wire(s))?;
     }
     if let Some(s) = record.caveats.as_ref() {
-        emit(out, &mut pos, 5, s.as_bytes())?;
+        emit(out, &mut pos, 5, str_wire(s))?;
     }
     if let Some(s) = record.releasing_instructions.as_ref() {
-        emit(out, &mut pos, 6, s.as_bytes())?;
+        emit(out, &mut pos, 6, str_wire(s))?;
     }
     if let Some(s) = record.classified_by.as_ref() {
-        emit(out, &mut pos, 7, s.as_bytes())?;
+        emit(out, &mut pos, 7, str_wire(s))?;
     }
     if let Some(s) = record.derived_from.as_ref() {
-        emit(out, &mut pos, 8, s.as_bytes())?;
+        emit(out, &mut pos, 8, str_wire(s))?;
     }
     if let Some(s) = record.classification_reason.as_ref() {
-        emit(out, &mut pos, 9, s.as_bytes())?;
+        emit(out, &mut pos, 9, str_wire(s))?;
     }
     if let Some(s) = record.declassification_date.as_ref() {
-        emit(out, &mut pos, 10, s.as_bytes())?;
+        emit(out, &mut pos, 10, str_wire(s))?;
     }
     if let Some(s) = record.classification_marking_system.as_ref() {
-        emit(out, &mut pos, 11, s.as_bytes())?;
+        emit(out, &mut pos, 11, str_wire(s))?;
     }
     if let Some(v) = record.object_country_coding_method {
         emit(out, &mut pos, 12, &[v.to_u8()])?;
@@ -88,7 +90,7 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
         emit(out, &mut pos, 13, &utf16)?;
     }
     if let Some(s) = record.classification_comments.as_ref() {
-        emit(out, &mut pos, 14, s.as_bytes())?;
+        emit(out, &mut pos, 14, str_wire(s))?;
     }
     if let Some(v) = record.version {
         emit(out, &mut pos, 22, &v.to_be_bytes())?;
@@ -97,10 +99,10 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
         .classifying_country_coding_method_version_date
         .as_ref()
     {
-        emit(out, &mut pos, 23, s.as_bytes())?;
+        emit(out, &mut pos, 23, str_wire(s))?;
     }
     if let Some(s) = record.object_country_coding_method_version_date.as_ref() {
-        emit(out, &mut pos, 24, s.as_bytes())?;
+        emit(out, &mut pos, 24, str_wire(s))?;
     }
 
     // Emit unknown tags last to preserve forward-compat. Tags above
@@ -216,31 +218,31 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
         add(1);
     }
     if let Some(s) = record.classifying_country.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.sci_shi_info.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.caveats.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.releasing_instructions.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.classified_by.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.derived_from.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.classification_reason.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.declassification_date.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.classification_marking_system.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if record.object_country_coding_method.is_some() {
         add(1);
@@ -251,7 +253,7 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
         add(utf16_bytes);
     }
     if let Some(s) = record.classification_comments.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if record.version.is_some() {
         add(2);
@@ -260,10 +262,10 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
         .classifying_country_coding_method_version_date
         .as_ref()
     {
-        add(s.len());
+        add(str_wire_len(s));
     }
     if let Some(s) = record.object_country_coding_method_version_date.as_ref() {
-        add(s.len());
+        add(str_wire_len(s));
     }
 
     for u in record.unknown.iter() {
@@ -277,3 +279,13 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
     total
 }
 
+/// Wire byte count for a string field: empty → 1 (NUL signal), else `s.len()`.
+fn str_wire_len(s: &str) -> usize {
+    if s.is_empty() { 1 } else { s.len() }
+}
+
+/// Encode a string field per ST 0107.5 §6.3.3.2:
+/// empty → single NUL byte `b"\x00"`, non-empty → raw UTF-8 bytes.
+fn str_wire(s: &str) -> &[u8] {
+    if s.is_empty() { b"\x00" } else { s.as_bytes() }
+}

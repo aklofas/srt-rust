@@ -400,6 +400,11 @@ fn apply_typed_tag(
             }
         }
         Encoding::Utf8 { max_bytes } => {
+            // ST 0107.5 §6.3.3.2: length-0 value = "Unknown" (field absent);
+            // single NUL byte = empty string "". Anything else is UTF-8 text.
+            if f.value.is_empty() {
+                return Ok(()); // absent; leave field as None
+            }
             if f.value.len() > max_bytes {
                 return Err(KlvFieldError::InvalidLength {
                     tag,
@@ -407,9 +412,13 @@ fn apply_typed_tag(
                     got: f.value.len(),
                 });
             }
-            let s = core::str::from_utf8(f.value)
-                .map_err(|_| KlvFieldError::InvalidUtf8 { tag })?
-                .to_owned();
+            let s = if f.value == [0x00] {
+                String::new() // empty string signal
+            } else {
+                core::str::from_utf8(f.value)
+                    .map_err(|_| KlvFieldError::InvalidUtf8 { tag })?
+                    .to_owned()
+            };
             match tag {
                 3 => record.mission_id = Some(s),
                 4 => record.platform_tail_number = Some(s),

@@ -395,6 +395,23 @@ fn bbox_bottom_right_pixel_over_v6_cap_rejects() {
     assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 3, .. }));
 }
 
+#[test]
+fn bbox_pixels_at_v6_cap_round_trip() {
+    // Encode→decode must be a fixpoint AT the cap for both bbox tags.
+    let p = VTargetPack {
+        target_id: 1,
+        bbox_top_left_pixel: Some(V6_MAX),
+        bbox_bottom_right_pixel: Some(V6_MAX),
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.bbox_top_left_pixel, Some(V6_MAX));
+    assert_eq!(decoded.bbox_bottom_right_pixel, Some(V6_MAX));
+}
+
 // V3 cap (tag 9: target_intensity, tag 22: algorithm_id)
 
 #[test]
@@ -489,4 +506,18 @@ fn centroid_pix_col_over_v4_cap_rejects() {
     };
     let err = write_pack(&p, &mut Vec::new()).unwrap_err();
     assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 20, .. }));
+}
+
+#[test]
+fn centroid_pix_col_at_v4_cap_round_trips() {
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pix_col: Some(V4_MAX),
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.centroid_pix_col, Some(V4_MAX));
 }

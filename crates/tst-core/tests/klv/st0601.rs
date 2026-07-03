@@ -236,8 +236,9 @@ fn st0601_strict_encode_strips_control_chars() {
 }
 
 #[test]
-fn st0601_strict_encode_whitespace_only_strips_to_empty_nul() {
-    // Whitespace-only (containing only control chars) → strips to "" → [0x00] on wire.
+fn st0601_strict_encode_all_control_chars_strips_to_empty_nul() {
+    // All-control-char content → strips to "" → [0x00] on wire (ST 0107.3-13
+    // composing with the DA-KLV-1 empty-string mapping).
     let r = UasDatalinkLs {
         timestamp_us: Some(1_000_000_000_000_000),
         mission_id: Some("\x01\x02\x7F".to_owned()), // only control chars
@@ -250,6 +251,42 @@ fn st0601_strict_encode_whitespace_only_strips_to_empty_nul() {
         decoded.mission_id.as_deref(),
         Some(""),
         "all-control-char string must strip to empty string"
+    );
+}
+
+#[test]
+fn st0601_strict_encode_trims_leading_trailing_whitespace() {
+    // ST 0107.3-12: leading/trailing tab/LF/CR/space are removed; EMBEDDED
+    // whitespace is legitimate content and must survive.
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_000_000_000_000_000),
+        mission_id: Some("\t CAMP FIRE \r\n".to_owned()),
+        ..Default::default()
+    };
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some("CAMP FIRE"),
+        "strict encode must trim end-whitespace but keep the embedded space"
+    );
+}
+
+#[test]
+fn st0601_strict_encode_whitespace_only_strips_to_empty_nul() {
+    // A genuinely whitespace-only string (spaces/tabs) trims to "" per
+    // ST 0107.3-12 → [0x00] on wire → decodes as Some("").
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_000_000_000_000_000),
+        mission_id: Some("  \t ".to_owned()),
+        ..Default::default()
+    };
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.mission_id.as_deref(),
+        Some(""),
+        "whitespace-only string must trim to empty string"
     );
 }
 

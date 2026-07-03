@@ -910,7 +910,7 @@ fn st0102_strict_encode_strips_control_chars() {
 }
 
 #[test]
-fn st0102_strict_encode_whitespace_only_strips_to_empty_nul() {
+fn st0102_strict_encode_all_control_chars_strips_to_empty_nul() {
     let mut r = minimal_strict_record();
     r.caveats = Some("\x01\x7F".to_owned());
     let bytes = encode_strict_compliance(&r).unwrap();
@@ -919,6 +919,20 @@ fn st0102_strict_encode_whitespace_only_strips_to_empty_nul() {
         decoded.caveats.as_deref(),
         Some(""),
         "all-control-char field must strip to empty string"
+    );
+}
+
+#[test]
+fn st0102_strict_encode_trims_leading_trailing_whitespace() {
+    // ST 0107.3-12: end tab/LF/CR/space trimmed; embedded space kept.
+    let mut r = minimal_strict_record();
+    r.caveats = Some("  REL TO \r\n".to_owned());
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.caveats.as_deref(),
+        Some("REL TO"),
+        "strict encode must trim end-whitespace but keep the embedded space"
     );
 }
 

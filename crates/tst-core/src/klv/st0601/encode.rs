@@ -129,11 +129,13 @@ pub fn encode_strict_compliance(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEn
             name: "Precision Time Stamp",
         });
     }
-    // ST 0107 §6.3.3.1: strip banned control chars from all string fields
-    // before encoding. Stripping runs before the DA-KLV-1 empty-string
-    // mapping, so a whitespace-only field strips to "" → encodes as [0x00].
+    // ST 0107.5 §6.3.3: sanitize all string fields before encoding —
+    // remove banned control chars everywhere (ST 0107.3-13) and trim
+    // leading/trailing null/tab/LF/CR/space (ST 0107.3-12). Sanitization
+    // runs before the DA-KLV-1 empty-string mapping, so a field that
+    // sanitizes to "" encodes as [0x00].
     let mut r = record.clone();
-    strip_control_chars_st0601(&mut r);
+    sanitize_strings_st0601(&mut r);
     encode_to_vec(&r)
 }
 
@@ -362,14 +364,10 @@ fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError>
     Ok(())
 }
 
-/// Strip ST 0107 §6.3.3.1 control characters from all string fields of a
-/// record before strict-compliance encode. Runs BEFORE the empty-string
-/// mapping (a whitespace-only string strips to `""` → encodes as `[0x00]`).
-///
-/// Control chars removed: U+0000–U+0008, U+000B, U+000C, U+000E–U+001F, U+007F.
-/// Tab (U+0009), LF (U+000A), CR (U+000D) are intentionally kept — they are
-/// horizontal whitespace or line endings, not C0 control chars the spec bans.
-pub(crate) fn strip_control_chars_st0601(r: &mut super::model::UasDatalinkLs) {
+/// Sanitize all string fields of a record per ST 0107.5 §6.3.3 before
+/// strict-compliance encode. Runs BEFORE the empty-string mapping (a field
+/// that sanitizes to `""` encodes as `[0x00]`).
+pub(crate) fn sanitize_strings_st0601(r: &mut super::model::UasDatalinkLs) {
     strip_opt_str(&mut r.mission_id);
     strip_opt_str(&mut r.platform_tail_number);
     strip_opt_str(&mut r.platform_designation);
@@ -380,13 +378,25 @@ pub(crate) fn strip_control_chars_st0601(r: &mut super::model::UasDatalinkLs) {
 
 fn strip_opt_str(s: &mut Option<alloc::string::String>) {
     if let Some(s) = s {
-        *s = strip_st0107_control_chars(s);
+        *s = sanitize_st0107_string(s);
     }
 }
 
-/// Remove ST 0107 §6.3.3.1 banned control characters from a string.
-pub(crate) fn strip_st0107_control_chars(s: &str) -> alloc::string::String {
-    s.chars().filter(|&c| !is_st0107_control_char(c)).collect()
+/// Sanitize one string per ST 0107.5 §6.3.3's two "shall"s:
+/// - ST 0107.3-13: remove ALL characters in U+0000–U+0008, U+000B, U+000C,
+///   U+000E–U+001F, U+007F (at any position);
+/// - ST 0107.3-12: remove LEADING and TRAILING null (0x00), tab (0x09),
+///   line feed (0x0A), carriage return (0x0D), and space (0x20).
+///
+/// Embedded tab/LF/CR/space are legitimate content and are kept. The filter
+/// runs first so control characters cannot shield end-whitespace from the
+/// trim (null is in both sets, so only tab/LF/CR/space remain to trim).
+pub(crate) fn sanitize_st0107_string(s: &str) -> alloc::string::String {
+    let filtered: alloc::string::String =
+        s.chars().filter(|&c| !is_st0107_control_char(c)).collect();
+    filtered
+        .trim_matches([' ', '\t', '\n', '\r'].as_slice())
+        .into()
 }
 
 fn is_st0107_control_char(c: char) -> bool {

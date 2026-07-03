@@ -199,11 +199,13 @@ pub fn encode_strict_compliance(record: &SecurityLs) -> Result<Vec<u8>, KlvEncod
             });
         }
     }
-    // ST 0107 §6.3.3.1: strip banned control chars from all string fields
-    // before encoding. Stripping runs before the DA-KLV-1 empty-string
-    // mapping, so a whitespace-only field strips to "" → encodes as [0x00].
+    // ST 0107.5 §6.3.3: sanitize all string fields before encoding —
+    // remove banned control chars everywhere (ST 0107.3-13) and trim
+    // leading/trailing null/tab/LF/CR/space (ST 0107.3-12). Sanitization
+    // runs before the DA-KLV-1 empty-string mapping, so a field that
+    // sanitizes to "" encodes as [0x00].
     let mut r = record.clone();
-    strip_control_chars_st0102(&mut r);
+    sanitize_strings_st0102(&mut r);
     encode_to_vec(&r)
 }
 
@@ -295,13 +297,14 @@ fn str_wire(s: &str) -> &[u8] {
     if s.is_empty() { b"\x00" } else { s.as_bytes() }
 }
 
-/// Strip ST 0107 §6.3.3.1 banned control chars from all Iso646/FixedAscii
-/// string fields of a SecurityLs before strict-compliance encode.
-fn strip_control_chars_st0102(r: &mut super::model::SecurityLs) {
-    use crate::klv::st0601::encode::strip_st0107_control_chars;
+/// Sanitize all Iso646/FixedAscii string fields of a SecurityLs per
+/// ST 0107.5 §6.3.3 (control-char removal + leading/trailing-whitespace
+/// trim — see `sanitize_st0107_string`) before strict-compliance encode.
+fn sanitize_strings_st0102(r: &mut super::model::SecurityLs) {
+    use crate::klv::st0601::encode::sanitize_st0107_string;
     let strip = |s: &mut Option<alloc::string::String>| {
         if let Some(s) = s {
-            *s = strip_st0107_control_chars(s);
+            *s = sanitize_st0107_string(s);
         }
     };
     strip(&mut r.classifying_country);

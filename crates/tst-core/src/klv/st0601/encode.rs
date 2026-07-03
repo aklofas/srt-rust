@@ -181,14 +181,14 @@ fn each_typed_field<F: FnMut(u8, usize)>(
         }
         let len = match spec.id {
             2 => record.timestamp_us.map(|_| 8),
-            3 => record.mission_id.as_ref().map(|s| s.len()),
-            4 => record.platform_tail_number.as_ref().map(|s| s.len()),
-            10 => record.platform_designation.as_ref().map(|s| s.len()),
-            11 => record.image_source_sensor.as_ref().map(|s| s.len()),
-            12 => record.image_coordinate_system.as_ref().map(|s| s.len()),
+            3 => record.mission_id.as_ref().map(|s| str_wire_len(s)),
+            4 => record.platform_tail_number.as_ref().map(|s| str_wire_len(s)),
+            10 => record.platform_designation.as_ref().map(|s| str_wire_len(s)),
+            11 => record.image_source_sensor.as_ref().map(|s| str_wire_len(s)),
+            12 => record.image_coordinate_system.as_ref().map(|s| str_wire_len(s)),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
-            59 => record.platform_call_sign.as_ref().map(|s| s.len()),
+            59 => record.platform_call_sign.as_ref().map(|s| str_wire_len(s)),
             65 => record
                 .uas_ls_version
                 .map(|_| 1)
@@ -228,34 +228,34 @@ pub(super) fn encode_tag_value(
         3 => record
             .mission_id
             .as_ref()
-            .map(|s| check_string(3, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(3, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         4 => record
             .platform_tail_number
             .as_ref()
-            .map(|s| check_string(4, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(4, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         10 => record
             .platform_designation
             .as_ref()
-            .map(|s| check_string(10, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(10, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         11 => record
             .image_source_sensor
             .as_ref()
-            .map(|s| check_string(11, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(11, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         12 => record
             .image_coordinate_system
             .as_ref()
-            .map(|s| check_string(12, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(12, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         47 => record.generic_flag_data.map(|b| vec![b]),
         48 => record.security_local_set.clone(),
         59 => record
             .platform_call_sign
             .as_ref()
-            .map(|s| check_string(59, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+            .map(|s| check_string(59, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         65 => match (record.uas_ls_version, version_fallback) {
             (Some(v), _) => Some(vec![v]),
@@ -321,6 +321,17 @@ fn encode_ranged(
         .expect("ranged tag must have LinearRange");
     encode_fixed_range(r, spec.id as u32, v, &mut scratch[..r.byte_length])?;
     Ok(Some(scratch[..r.byte_length].to_vec()))
+}
+
+/// Wire byte count for a UTF-8 string: empty → 1 (NUL signal), else `s.len()`.
+fn str_wire_len(s: &str) -> usize {
+    if s.is_empty() { 1 } else { s.len() }
+}
+
+/// Encode a UTF-8 string per ST 0107.5 §6.3.3.2:
+/// empty string → `[0x00]` (single NUL), non-empty → `s.as_bytes()`.
+fn str_to_bytes(s: &str) -> Vec<u8> {
+    if s.is_empty() { vec![0x00] } else { s.as_bytes().to_vec() }
 }
 
 fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError> {

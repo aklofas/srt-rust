@@ -251,23 +251,33 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
                 record.version = Some(u16::from_be_bytes([f.value[0], f.value[1]]));
             }
             Encoding::Iso646 | Encoding::FixedAscii { .. } => {
-                let s = match core::str::from_utf8(f.value) {
-                    Ok(s) => s.to_string(),
-                    Err(_) => {
-                        return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 {
-                            tag: f.tag,
-                        }));
-                    }
-                };
-                if let Encoding::FixedAscii { expected_len } = spec.encoding {
-                    if strict && s.len() != expected_len {
-                        return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
-                            tag: f.tag,
-                            expected: expected_len,
-                            got: s.len(),
-                        }));
-                    }
+                // ST 0107.5 §6.3.3.2: length-0 value = "Unknown" (field absent);
+                // single NUL byte = empty string "".
+                if f.value.is_empty() {
+                    continue; // absent; leave field as None
                 }
+                let s = if f.value == [0x00] {
+                    String::new() // empty string signal; skip FixedAscii length check
+                } else {
+                    let parsed = match core::str::from_utf8(f.value) {
+                        Ok(s) => s.to_string(),
+                        Err(_) => {
+                            return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 {
+                                tag: f.tag,
+                            }));
+                        }
+                    };
+                    if let Encoding::FixedAscii { expected_len } = spec.encoding {
+                        if strict && parsed.len() != expected_len {
+                            return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                                tag: f.tag,
+                                expected: expected_len,
+                                got: parsed.len(),
+                            }));
+                        }
+                    }
+                    parsed
+                };
                 match tag_u8 {
                     3 => record.classifying_country = Some(s),
                     4 => record.sci_shi_info = Some(s),
@@ -286,6 +296,10 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
             }
             Encoding::Utf16Bom => {
                 debug_assert_eq!(tag_u8, 13);
+                // ST 0107.5 §6.3.3.2: length-0 value = field absent.
+                if f.value.is_empty() {
+                    continue;
+                }
                 match decode_utf16_bom(f.value) {
                     Ok(s) => record.object_country_codes = Some(s),
                     Err(()) => {

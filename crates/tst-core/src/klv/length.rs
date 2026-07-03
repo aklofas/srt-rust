@@ -237,23 +237,11 @@ pub fn write_ber_oid_u64(value: u64, out: &mut [u8]) -> Result<usize, KlvEncodeE
 }
 
 /// Write a BER-OID variable-length integer to `out`. Returns bytes written.
+///
+/// Delegates to [`write_ber_oid_u64`] — byte-exact for all u32 values
+/// (the u64 algorithm is identical for inputs ≤ u32::MAX).
 pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
-    let needed = ber_oid_len(value);
-    if out.len() < needed {
-        return Err(KlvEncodeError::BufferTooSmall {
-            needed,
-            got: out.len(),
-        });
-    }
-    for (i, slot) in out.iter_mut().enumerate().take(needed) {
-        let shift = 7 * (needed - 1 - i);
-        let mut byte = ((value >> shift) & 0x7F) as u8;
-        if i + 1 < needed {
-            byte |= 0x80;
-        }
-        *slot = byte;
-    }
-    Ok(needed)
+    write_ber_oid_u64(value as u64, out)
 }
 
 #[cfg(test)]
@@ -377,6 +365,26 @@ mod tests {
         assert_eq!(n, 2);
         // 0x80 = 10000000_2; split into 7-bit groups: [1, 0]; with continuation: 0x81, 0x00.
         assert_eq!(&buf[..n], &[0x81, 0x00]);
+    }
+
+    // --- KLV-2: write_ber_oid delegates to write_ber_oid_u64 (boundary) ---
+
+    #[test]
+    fn write_ber_oid_matches_u64_sibling_at_u32_boundary() {
+        // write_ber_oid(v) must produce the same bytes as write_ber_oid_u64(v as u64)
+        // for the two sentinel values: u32::MAX (max u32) and u32::MAX+1=2^32 (u64-only).
+        for v in [0u32, 1u32, 0x7Fu32, 0x80u32, u32::MAX - 1, u32::MAX] {
+            let mut buf32 = [0u8; 8];
+            let mut buf64 = [0u8; 8];
+            let n32 = write_ber_oid(v, &mut buf32).unwrap();
+            let n64 = write_ber_oid_u64(v as u64, &mut buf64).unwrap();
+            assert_eq!(n32, n64, "byte count mismatch for v={v}");
+            assert_eq!(&buf32[..n32], &buf64[..n64], "byte content mismatch for v={v}");
+        }
+        // Also check that 2^32 is beyond u32 range: u64 encodes it in 5 bytes.
+        let mut buf = [0u8; 8];
+        let n = write_ber_oid_u64(u32::MAX as u64 + 1, &mut buf).unwrap();
+        assert_eq!(n, 5);
     }
 
     #[test]

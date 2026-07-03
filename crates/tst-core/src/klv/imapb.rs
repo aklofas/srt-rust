@@ -276,9 +276,10 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     //
     // Mirrors the tolerance derivation in `tests/common::imapb_tol`.
     let span = p.max - p.min;
-    let b_pow = span.log2().ceil();
-    let d_pow = (8 * p.length as i32 - 1) as f64;
-    let scale = 2f64.powf(b_pow - d_pow);
+    // `s_r = 1 / sF = 1 / 2^(dPow-bPow) = 2^(bPow-dPow)` (ST 1201.5 §8.9),
+    // which equals the quantization step `scale = 2^ceil(log2(span)) / 2^(8L-1)`
+    // described in the comment above. No second `powf` call needed.
+    let scale = s_r;
     let fp_eps = span.abs() * f64::EPSILON * 8.0;
     let epsilon = scale.max(fp_eps);
     if value < p.min - epsilon || value > p.max + epsilon {

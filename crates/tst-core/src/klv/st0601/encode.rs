@@ -2,7 +2,8 @@
 
 use crate::error::KlvEncodeError;
 use crate::klv::checksum::checksum_running_sum_16;
-use crate::klv::length::{ber_len, ber_oid_len, write_ber, write_ber_oid};
+use crate::klv::length::{ber_len, ber_oid_len, write_ber};
+use crate::klv::pack::{emit_ber_oid_tlv, is_typed_tag};
 use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
@@ -343,13 +344,7 @@ fn write_typed_fields(
             continue;
         }
         if let Some(value) = encode_tag_value(record, spec, Some(opts.version))? {
-            let mut tag_buf = [0u8; 8];
-            let n = write_ber_oid(spec.id as u32, &mut tag_buf)?;
-            body.extend_from_slice(&tag_buf[..n]);
-            let mut len_buf = [0u8; 16];
-            let m = write_ber(value.len(), &mut len_buf)?;
-            body.extend_from_slice(&len_buf[..m]);
-            body.extend_from_slice(&value);
+            emit_ber_oid_tlv(spec.id as u32, &value, body)?;
         }
     }
     Ok(())
@@ -364,33 +359,12 @@ fn write_unknown_fields(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<()
         // would produce a duplicate UAS LS Version Number; and any typed
         // tag (5-91 modeled) would produce a non-conformant duplicate. The
         // `unknown` vec is for forward-compat pass-through only.
-        if is_reserved_or_typed_tag(f.tag) {
+        if is_typed_tag(f.tag, super::tags::lookup) {
             return Err(KlvEncodeError::ReservedTagInUnknown { tag: f.tag });
         }
-        let mut tag_buf = [0u8; 8];
-        let n = write_ber_oid(f.tag, &mut tag_buf)?;
-        body.extend_from_slice(&tag_buf[..n]);
-        let mut len_buf = [0u8; 16];
-        let m = write_ber(f.value.len(), &mut len_buf)?;
-        body.extend_from_slice(&len_buf[..m]);
-        body.extend_from_slice(&f.value);
+        emit_ber_oid_tlv(f.tag, &f.value, body)?;
     }
     Ok(())
-}
-
-/// True iff `tag` is a structural reserved tag (1 = Checksum, 2 = PTS,
-/// 65 = UAS LS Version) or a tag the typed encoder would emit (anything
-/// in `tags::TAGS`). Used by `write_unknown_fields` to fail-fast on
-/// caller-constructed `unknown` entries that would produce a duplicate
-/// or non-conformant Local Set.
-///
-/// The typed table is u8-keyed; `OwnedRawField.tag` is u32, so any tag
-/// > 255 is by definition not in the typed table and not structural.
-fn is_reserved_or_typed_tag(tag: u32) -> bool {
-    if tag > u8::MAX as u32 {
-        return false;
-    }
-    super::tags::lookup(tag as u8).is_some()
 }
 
 fn encode_ranged(

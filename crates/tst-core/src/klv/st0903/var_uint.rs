@@ -24,6 +24,9 @@ use alloc::vec::Vec;
 
 /// Decode `bytes` as a truncated big-endian uint up to 4 bytes wide.
 /// `bytes.len()` must be 1..=4.
+///
+/// Delegates to [`read_var_u64`] — byte-exact for all u32 inputs (the
+/// value always fits in u32 when `bytes.len() ≤ 4`).
 pub(crate) fn read_var_u32(bytes: &[u8]) -> Result<u32, KlvFieldError> {
     if bytes.is_empty() || bytes.len() > 4 {
         return Err(KlvFieldError::InvalidLength {
@@ -32,28 +35,29 @@ pub(crate) fn read_var_u32(bytes: &[u8]) -> Result<u32, KlvFieldError> {
             got: bytes.len(),
         });
     }
-    let mut buf = [0u8; 4];
-    buf[4 - bytes.len()..].copy_from_slice(bytes);
-    Ok(u32::from_be_bytes(buf))
+    // read_var_u64 accepts 1..=8 bytes; with len ≤ 4 the result is
+    // at most 0xFFFF_FFFF which fits in u32 — the cast is lossless.
+    let v = read_var_u64(bytes).map_err(|_| KlvFieldError::InvalidLength {
+        tag: 0,
+        expected: 4,
+        got: bytes.len(),
+    })?;
+    Ok(v as u32)
 }
 
 /// Number of wire bytes that `value` will encode to (1..=4).
+///
+/// Delegates to [`var_u64_len`] — identical result for u32 inputs.
 pub(crate) fn var_u32_len(value: u32) -> usize {
-    if value == 0 {
-        1
-    } else {
-        let leading_zero_bytes = (value.leading_zeros() / 8) as usize;
-        4 - leading_zero_bytes
-    }
+    var_u64_len(value as u64)
 }
 
 /// Write `value` as a truncated big-endian uint into `out`. Returns
 /// bytes written (1..=4).
+///
+/// Delegates to [`write_var_u64`] — byte-exact for all u32 values.
 pub(crate) fn write_var_u32(value: u32, out: &mut Vec<u8>) -> usize {
-    let n = var_u32_len(value);
-    let bytes = value.to_be_bytes();
-    out.extend_from_slice(&bytes[4 - n..]);
-    n
+    write_var_u64(value as u64, out)
 }
 
 /// `u64` sibling of [`read_var_u32`] — ST 0903.6 V6 pixel numbers permit up
@@ -164,6 +168,27 @@ mod tests {
     }
 
     // ---------- var-uint u64 ----------
+
+    // --- KLV-2 delegation boundary tests ---
+
+    #[test]
+    fn var_u32_delegates_to_u64_boundary() {
+        // var_u32_len and write_var_u32 must agree with their _u64 siblings
+        // at the u32 boundary. Below-boundary (u32::MAX) and above-boundary
+        // (u32::MAX + 1, only testable via u64) must produce the same byte
+        // count vs. an independent reference.
+        assert_eq!(var_u32_len(u32::MAX), var_u64_len(u32::MAX as u64));
+        assert_eq!(var_u32_len(u32::MAX - 1), var_u64_len((u32::MAX - 1) as u64));
+
+        let mut out32 = Vec::new();
+        let mut out64 = Vec::new();
+        write_var_u32(u32::MAX, &mut out32);
+        write_var_u64(u32::MAX as u64, &mut out64);
+        assert_eq!(out32, out64, "write_var_u32(u32::MAX) must match write_var_u64");
+
+        // read_var_u32 at the u32::MAX 4-byte input.
+        assert_eq!(read_var_u32(&out32).unwrap(), u32::MAX);
+    }
 
     #[test]
     fn var_u64_round_trip_above_u32() {

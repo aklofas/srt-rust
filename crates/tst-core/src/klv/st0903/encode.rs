@@ -3,6 +3,7 @@
 //! `encoded_len`.
 
 use crate::error::KlvEncodeError;
+use crate::klv::pack::{emit_ber_oid_tlv, is_typed_tag};
 use crate::klv::st0903::model::VmtiLs;
 use crate::klv::st0903::{VMTI_LS_UL, vtarget_pack};
 use alloc::vec::Vec;
@@ -112,23 +113,16 @@ pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     // losslessly. Tags 1..=103 (the §10.1 typed universe) are all ≤ 127
     // and encode as a single byte, byte-identical to the pre-E5 emit.
     // `encoded_len` mirrors this via `ber_oid_len(field.tag)`.
-    use crate::klv::length::write_ber_oid;
     for field in &ls.unknown {
         // Reject reserved/typed tags before emitting. Without this guard,
         // a caller-constructed typed tag (e.g. Tag 4 = Version Number)
         // in `unknown` would produce a duplicate that ST 0903 decode_strict
         // rejects as DuplicateTag. The `unknown` vec is for forward-compat
         // pass-through only. Mirrors st0601::encode::write_unknown_fields.
-        if is_reserved_or_typed_tag(field.tag) {
+        if is_typed_tag(field.tag, super::tags::lookup) {
             return Err(KlvEncodeError::ReservedTagInUnknown { tag: field.tag });
         }
-        let mut tag_buf = [0u8; 5]; // u32 fits in at most 5 BER-OID bytes
-        let tag_n = write_ber_oid(field.tag, &mut tag_buf)?;
-        out.extend_from_slice(&tag_buf[..tag_n]);
-        let mut len_buf = [0u8; 9];
-        let len_n = write_ber(field.value.len(), &mut len_buf)?;
-        out.extend_from_slice(&len_buf[..len_n]);
-        out.extend_from_slice(&field.value);
+        emit_ber_oid_tlv(field.tag, &field.value, out)?;
     }
 
     Ok(())
@@ -301,20 +295,6 @@ pub fn encoded_len(ls: &VmtiLs) -> usize {
         total += ber_oid_len(field.tag) + ber_len(field.value.len()) + field.value.len();
     }
     total
-}
-
-/// True iff `tag` is in the ST 0903 top-level typed tag table. Used
-/// by the `unknown` loop in [`encode`] to fail-fast on caller-constructed
-/// `unknown` entries that would produce a duplicate or non-conformant
-/// Local Set. Mirrors `st0601::encode::is_reserved_or_typed_tag`.
-///
-/// The typed table is u8-keyed; `OwnedRawField.tag` is u32, so any tag
-/// > 255 is by definition not in the typed table.
-fn is_reserved_or_typed_tag(tag: u32) -> bool {
-    if tag > u8::MAX as u32 {
-        return false;
-    }
-    super::tags::lookup(tag as u8).is_some()
 }
 
 // ---------------------------------------------------------------------------

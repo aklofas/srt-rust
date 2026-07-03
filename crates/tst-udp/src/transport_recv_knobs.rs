@@ -2,12 +2,10 @@
 
 use std::net::UdpSocket;
 
+use tst_core::net::udp_socket::set_socket_buffers;
+
 use crate::config::SocketConfig;
 
 pub fn apply_recv_knobs(socket: &UdpSocket, cfg: &SocketConfig) -> std::io::Result<()> {
-    let s = socket2::SockRef::from(socket);
-    if let Some(rcv) = cfg.rcvbuf {
-        s.set_recv_buffer_size(rcv)?;
-    }
-    Ok(())
+    set_socket_buffers(socket, cfg.rcvbuf, None)
 }

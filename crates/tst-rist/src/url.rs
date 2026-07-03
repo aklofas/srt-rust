@@ -159,25 +159,19 @@ impl RistUrl {
 }
 
 fn parse_u32(key: &str, value: &str) -> Result<u32, RistUrlError> {
-    value
-        .parse()
-        .map_err(|e: std::num::ParseIntError| RistUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: value.to_string(),
-            detail: e.to_string(),
-        })
+    tst_core::url::common::parse_int_query(value).map_err(|detail| RistUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    })
 }
 
 fn parse_bool(key: &str, value: &str) -> Result<bool, RistUrlError> {
-    match value {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        other => Err(RistUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: other.to_string(),
-            detail: "expected one of: 1/0/true/false/yes/no/on/off".into(),
-        }),
-    }
+    tst_core::url::common::parse_bool_query(value).map_err(|detail| RistUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    })
 }
 
 #[cfg(test)]

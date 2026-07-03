@@ -5413,8 +5413,10 @@ pub fn tst_core::net::udp_socket::apply_multicast_iface(&std::net::udp::UdpSocke
 pub fn tst_core::net::udp_socket::apply_multicast_recv_join(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<&str>) -> core::io::error::Result<()>
 pub fn tst_core::net::udp_socket::apply_multicast_send_knobs(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<u8>, core::option::Option<&str>) -> core::io::error::Result<()>
 pub fn tst_core::net::udp_socket::bind_udp_socket(core::net::socket_addr::SocketAddr) -> core::io::error::Result<std::net::udp::UdpSocket>
+pub fn tst_core::net::udp_socket::bind_udp_socket_multicast(core::net::socket_addr::SocketAddr) -> core::io::error::Result<std::net::udp::UdpSocket>
 pub fn tst_core::net::udp_socket::set_multicast_hops_v6(&std::net::udp::UdpSocket, u8) -> core::io::error::Result<()>
 pub fn tst_core::net::udp_socket::set_multicast_if_v4(&std::net::udp::UdpSocket, core::net::ip_addr::Ipv4Addr) -> core::io::error::Result<()>
+pub fn tst_core::net::udp_socket::set_socket_buffers<S: std::os::fd::owned::AsFd>(&S, core::option::Option<usize>, core::option::Option<usize>) -> core::io::error::Result<()>
 pub mod tst_core::publisher
 #[non_exhaustive] pub struct tst_core::publisher::PublisherStats
 pub tst_core::publisher::PublisherStats::bytes_written: u64
@@ -5621,9 +5623,13 @@ impl<'a> core::marker::Unpin for tst_core::url::common::ParsedUrl<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::url::common::ParsedUrl<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::ParsedUrl<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::url::common::ParsedUrl<'a>
+pub const tst_core::url::common::MAX_BYTE_SIZE: usize
 pub fn tst_core::url::common::is_multicast_v4(core::net::ip_addr::Ipv4Addr) -> bool
 pub fn tst_core::url::common::is_multicast_v6(core::net::ip_addr::Ipv6Addr) -> bool
+pub fn tst_core::url::common::parse_bool_query(&str) -> core::result::Result<bool, alloc::string::String>
+pub fn tst_core::url::common::parse_byte_size(&str) -> core::result::Result<usize, alloc::string::String>
 pub fn tst_core::url::common::parse_host_port(&str) -> core::result::Result<(core::net::ip_addr::IpAddr, u16), tst_core::url::common::UrlError>
+pub fn tst_core::url::common::parse_int_query<T>(&str) -> core::result::Result<T, alloc::string::String> where T: core::str::traits::FromStr, <T as core::str::traits::FromStr>::Err: core::fmt::Display
 pub fn tst_core::url::common::parse_url(&str) -> core::result::Result<tst_core::url::common::ParsedUrl<'_>, tst_core::url::common::UrlError>
 #[non_exhaustive] pub enum tst_core::url::UrlError
 pub tst_core::url::UrlError::BadPercentEncoding

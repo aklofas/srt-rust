@@ -121,61 +121,29 @@ impl TcpUrl {
 }
 
 fn parse_bool(key: &str, value: &str) -> Result<bool, TcpUrlError> {
-    match value {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        other => Err(TcpUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: other.to_string(),
-            detail: "expected one of: 1/0/true/false/yes/no/on/off".into(),
-        }),
-    }
-}
-
-fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> {
-    let secs: u64 =
-        value
-            .parse()
-            .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
-                key: key.to_string(),
-                value: value.to_string(),
-                detail: e.to_string(),
-            })?;
-    Ok(Duration::from_secs(secs))
-}
-
-/// Upper bound for any byte-size query field (`rcvbuf`, `sndbuf`).
-///
-/// 256 MiB comfortably covers any realistic socket-buffer request while
-/// rejecting absurd values (e.g. `rcvbuf=999999999999G`) that would
-/// otherwise overflow or drive a huge downstream allocation.
-const MAX_BYTE_SIZE: usize = 256 * 1024 * 1024;
-
-fn parse_byte_size(key: &str, value: &str) -> Result<usize, TcpUrlError> {
-    let (num, mul) = match value.chars().last() {
-        Some('K') | Some('k') => (&value[..value.len() - 1], 1024usize),
-        Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
-        _ => (value, 1usize),
-    };
-    let bad = |detail: String| TcpUrlError::BadQueryValue {
+    tst_core::url::common::parse_bool_query(value).map_err(|detail| TcpUrlError::BadQueryValue {
         key: key.to_string(),
         value: value.to_string(),
         detail,
-    };
-    let n: usize = num
-        .parse()
-        .map_err(|e: std::num::ParseIntError| bad(e.to_string()))?;
-    // Checked multiply: a value like "999999999999G" must not panic (debug)
-    // or wrap (release) into a small/huge size.
-    let bytes = n
-        .checked_mul(mul)
-        .ok_or_else(|| bad("byte size overflows usize".to_string()))?;
-    if bytes > MAX_BYTE_SIZE {
-        return Err(bad(format!(
-            "byte size {bytes} exceeds maximum {MAX_BYTE_SIZE}"
-        )));
-    }
-    Ok(bytes)
+    })
+}
+
+fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> {
+    let secs: u64 = tst_core::url::common::parse_int_query(value)
+        .map_err(|detail| TcpUrlError::BadQueryValue {
+            key: key.to_string(),
+            value: value.to_string(),
+            detail,
+        })?;
+    Ok(Duration::from_secs(secs))
+}
+
+fn parse_byte_size(key: &str, value: &str) -> Result<usize, TcpUrlError> {
+    tst_core::url::common::parse_byte_size(value).map_err(|detail| TcpUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    })
 }
 
 #[cfg(test)]

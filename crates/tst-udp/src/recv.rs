@@ -395,15 +395,15 @@ mod tests {
         // datagram is sent (avoids a race between join and the first packet).
         std::thread::sleep(Duration::from_millis(50));
 
-        let mut sender =
-            match UdpTransport::connect(&format!("udp://239.255.42.1:{port}?ttl=1&iface=127.0.0.1"))
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("skip: multicast sender setup failed ({e})");
-                    return;
-                }
-            };
+        let mut sender = match UdpTransport::connect(&format!(
+            "udp://239.255.42.1:{port}?ttl=1&iface=127.0.0.1"
+        )) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("skip: multicast sender setup failed ({e})");
+                return;
+            }
+        };
         use tst_core::transport::Transport as _;
         sender.send_bytes(&payload).expect("multicast send_bytes");
 

@@ -93,6 +93,11 @@ impl PeerDropCounter {
 /// `initial_seq` is the starting RTP sequence number (random per
 /// RFC 3550 §5.1 to avoid known-plaintext attacks on encrypted RTP — not
 /// strictly needed since we don't ship SRTP, but matches the convention).
+/// `clock` is the session-local 90 kHz timestamp source. The caller
+/// snapshots `clock.now_ticks()` before calling this function and reports
+/// that value in the PLAY `RTP-Info` `rtptime` field (RFC 7826 §18.45),
+/// so the RTP timestamps in the first packets correspond to what the
+/// client was told to expect.
 #[allow(dead_code)]
 pub(crate) fn spawn_peer_fanout(
     mut rx: broadcast::Receiver<Bytes>,
@@ -100,13 +105,10 @@ pub(crate) fn spawn_peer_fanout(
     cancel: CancellationToken,
     ssrc: u32,
     initial_seq: u16,
+    clock: RtpClock,
     drop_counter: Arc<PeerDropCounter>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        // Wall-clock-from-PTS happens in the muxer; here we use a session-local
-        // clock so RTP timestamps advance monotonically even if peers connect
-        // at different times.
-        let clock = RtpClock::new(0);
         let mut seq = initial_seq;
         loop {
             tokio::select! {
@@ -200,6 +202,7 @@ mod tests {
             cancel.clone(),
             0x12345678,
             1000,
+            RtpClock::new(0),
             drop_counter.clone(),
         );
 
@@ -255,6 +258,7 @@ mod tests {
             cancel.clone(),
             0xCAFEBABE,
             1,
+            RtpClock::new(0),
             drop_counter.clone(),
         );
 
@@ -295,6 +299,7 @@ mod tests {
             cancel.clone(),
             0xCAFEBABE,
             1,
+            RtpClock::new(0),
             drop_counter.clone(),
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -326,12 +331,82 @@ mod tests {
             socket: send_sock,
             peer_addr,
         };
-        let handle = spawn_peer_fanout(rx, transport, cancel.clone(), 0, 0, drop_counter);
+        let handle = spawn_peer_fanout(rx, transport, cancel.clone(), 0, 0, RtpClock::new(0), drop_counter);
         cancel.cancel();
         // Should exit within a reasonable bound.
         tokio::time::timeout(std::time::Duration::from_secs(2), handle)
             .await
             .expect("fanout task did not exit on cancel")
             .unwrap();
+    }
+
+    /// The first RTP packet's sequence number must equal `initial_seq` and
+    /// the caller's clock snapshot (`initial_rtptime`) must correspond to
+    /// the timestamp embedded in that packet.
+    ///
+    /// This is the property required by RFC 7826 §18.45 / RFC 2326 §12.33:
+    /// the server's PLAY `RTP-Info` `seq=` and `rtptime=` fields describe
+    /// the first packet the client will receive, not hardcoded zeros.
+    #[tokio::test]
+    async fn first_rtp_packet_seq_matches_initial_seq() {
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+        let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let (tx, rx) = broadcast::channel::<Bytes>(8);
+        let cancel = CancellationToken::new();
+        let drop_counter = PeerDropCounter::new();
+        let transport = PeerTransport::Udp {
+            socket: send_sock,
+            peer_addr,
+        };
+
+        // Use a distinctive initial sequence number and clock snapshot
+        // so a zero-regression would be obvious.
+        let initial_seq: u16 = 0x1A2B;
+        let clock = RtpClock::new(0);
+        let initial_rtptime = clock.now_ticks();
+
+        let handle = spawn_peer_fanout(
+            rx,
+            transport,
+            cancel.clone(),
+            0xDEAD_BEEF,
+            initial_seq,
+            clock,
+            drop_counter,
+        );
+
+        tx.send(Bytes::from(vec![0xAAu8; 8])).unwrap();
+
+        let mut buf = [0u8; 64];
+        let (n, _) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), peer.recv_from(&mut buf))
+                .await
+                .expect("timeout receiving first RTP packet")
+                .unwrap();
+        assert!(n >= RTP_HEADER_LEN, "datagram too short: {n}");
+
+        // RFC 3550 §5.1: sequence number is bytes 2-3, big-endian.
+        let pkt_seq = u16::from_be_bytes([buf[2], buf[3]]);
+        assert_eq!(
+            pkt_seq, initial_seq,
+            "first packet seq {pkt_seq} must equal initial_seq {initial_seq} \
+             (the value reported in the PLAY RTP-Info header)"
+        );
+
+        // RFC 3550 §5.1: timestamp is bytes 4-7, big-endian.
+        // The packet timestamp is clock.now_ticks() at send time, which must
+        // be >= initial_rtptime (a few ticks may have elapsed between the
+        // snapshot and the send). Allow up to 90_000 ticks (1 second).
+        let pkt_rtptime = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        let delta = pkt_rtptime.wrapping_sub(initial_rtptime);
+        assert!(
+            delta < 90_000,
+            "packet rtptime {pkt_rtptime} is more than 1 s after \
+             initial_rtptime {initial_rtptime} (delta={delta} ticks)"
+        );
+
+        cancel.cancel();
+        let _ = handle.await;
     }
 }

@@ -4808,6 +4808,14 @@ item = "tst_core::net::udp_socket::bind_udp_socket"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::net::udp_socket::bind_udp_socket_multicast"
+reason = "WP13 seam: shared SO_REUSEADDR multicast recv helper; consumed by tst-udp/tst-rtp recv paths"
+
+[[exempt]]
+item = "tst_core::net::udp_socket::set_socket_buffers"
+reason = "WP13 seam: shared SO_RCVBUF/SO_SNDBUF helper; consumed by tst-udp/tst-tcp recv and send paths"
+
+[[exempt]]
 item = "tst_core::net::udp_socket::set_multicast_hops_v6"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -5038,6 +5046,22 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 [[exempt]]
 item = "tst_core::url::common::parse_url"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::url::common::MAX_BYTE_SIZE"
+reason = "WP13 seam: shared max byte-size constant for URL query param validation"
+
+[[exempt]]
+item = "tst_core::url::common::parse_bool_query"
+reason = "WP13 seam: shared URL boolean query param parser; consumed by tst-udp/tst-tcp/tst-rist URL parsers"
+
+[[exempt]]
+item = "tst_core::url::common::parse_byte_size"
+reason = "WP13 seam: shared URL byte-size query param parser; consumed by tst-udp/tst-tcp/tst-rist URL parsers"
+
+[[exempt]]
+item = "tst_core::url::common::parse_int_query"
+reason = "WP13 seam: shared URL integer query param parser; consumed by tst-udp/tst-tcp/tst-rist URL parsers"
 
 [[exempt]]
 item = "tst_core::url::is_multicast_v4"

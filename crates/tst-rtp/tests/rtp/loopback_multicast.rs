@@ -125,8 +125,7 @@ fn two_rtp_multicast_receivers_deliver_same_datagram() {
     // Brief pause so both threads reach recv_bytes before the datagram is sent.
     thread::sleep(Duration::from_millis(50));
 
-    let mut send =
-        RtpTransport::connect("rtp://239.55.55.4:55012?ttl=1&iface=127.0.0.1").unwrap();
+    let mut send = RtpTransport::connect("rtp://239.55.55.4:55012?ttl=1&iface=127.0.0.1").unwrap();
     send.send_bytes(&payload).unwrap();
 
     let got1 = match rx1.recv_timeout(Duration::from_secs(5)) {

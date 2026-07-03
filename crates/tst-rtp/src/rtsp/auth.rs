@@ -212,78 +212,51 @@ pub struct DigestContext<'a> {
 /// RFC 7616 §3.4. Handles both `qop=auth` (with nc + cnonce) and the
 /// older RFC 2617 no-qop variant when `challenge.qop` is None.
 pub fn build_digest_response(ctx: &DigestContext<'_>) -> String {
-    use md5::Md5;
-    use sha2::Digest as _;
-    use sha2::Sha256;
+    use super::digest::{self, Algo};
 
-    fn hexlify<const N: usize>(bytes: [u8; N]) -> String {
-        let mut out = String::with_capacity(N * 2);
-        for b in bytes {
-            out.push_str(&format!("{:02x}", b));
-        }
-        out
-    }
-
-    fn h_md5(s: &str) -> String {
-        let mut h = Md5::new();
-        h.update(s.as_bytes());
-        let v: [u8; 16] = h.finalize().into();
-        hexlify(v)
-    }
-    fn h_sha256(s: &str) -> String {
-        let mut h = Sha256::new();
-        h.update(s.as_bytes());
-        let v: [u8; 32] = h.finalize().into();
-        hexlify(v)
-    }
-
-    let h = |s: &str| -> String {
-        match ctx.challenge.algorithm {
-            DigestAlgorithm::Md5 | DigestAlgorithm::Md5Sess => h_md5(s),
-            DigestAlgorithm::Sha256 | DigestAlgorithm::Sha256Sess => h_sha256(s),
-        }
+    let algo = match ctx.challenge.algorithm {
+        DigestAlgorithm::Md5 | DigestAlgorithm::Md5Sess => Algo::Md5,
+        DigestAlgorithm::Sha256 | DigestAlgorithm::Sha256Sess => Algo::Sha256,
     };
 
-    // A1 per RFC 7616 §3.4.2
-    let mut a1 = format!(
-        "{}:{}:{}",
-        ctx.username,
-        ctx.challenge.realm,
-        ctx.password.expose_secret()
-    );
-    if matches!(
+    // A1 per RFC 7616 §3.4.2; sess variants further hash with nonce+cnonce.
+    let ha1_str = if matches!(
         ctx.challenge.algorithm,
         DigestAlgorithm::Md5Sess | DigestAlgorithm::Sha256Sess
     ) {
-        a1 = format!("{}:{}:{}", h(&a1), ctx.challenge.nonce, ctx.cnonce);
-    }
-    let ha1 = h(&a1);
+        let base = digest::ha1(algo, ctx.username, &ctx.challenge.realm, ctx.password);
+        digest::hash(
+            algo,
+            &format!("{}:{}:{}", base, ctx.challenge.nonce, ctx.cnonce),
+        )
+    } else {
+        digest::ha1(algo, ctx.username, &ctx.challenge.realm, ctx.password)
+    };
 
-    // A2 per RFC 7616 §3.4.3 (qop=auth or absent — we don't support auth-int)
-    let a2 = format!("{}:{}", ctx.method, ctx.uri);
-    let ha2 = h(&a2);
-
-    // Response per RFC 7616 §3.4.1
     let qop_chosen = ctx
         .challenge
         .qop
         .as_ref()
         .and_then(|q| q.iter().find(|s| s.as_str() == "auth"))
         .cloned();
-    let response = if let Some(qop) = &qop_chosen {
-        let nc_str = format!("{:08x}", ctx.nc);
-        let data = format!(
-            "{}:{}:{}:{}:{}:{}",
-            ha1, ctx.challenge.nonce, nc_str, ctx.cnonce, qop, ha2
-        );
-        h(&data)
-    } else {
-        // RFC 2617 unqualified — older cameras
-        let data = format!("{}:{}:{}", ha1, ctx.challenge.nonce, ha2);
-        h(&data)
+
+    let (nc_str, qop_str): (String, &str) = match qop_chosen.as_deref() {
+        Some(qop) => (format!("{:08x}", ctx.nc), qop),
+        None => (String::new(), ""),
     };
 
-    // Build the header
+    let resp = digest::response(
+        algo,
+        &ha1_str,
+        ctx.method,
+        ctx.uri,
+        &ctx.challenge.nonce,
+        &nc_str,
+        ctx.cnonce,
+        qop_str,
+    );
+
+    // Build the Authorization header value.
     let algorithm_str = match ctx.challenge.algorithm {
         DigestAlgorithm::Md5 => "MD5",
         DigestAlgorithm::Sha256 => "SHA-256",
@@ -292,7 +265,7 @@ pub fn build_digest_response(ctx: &DigestContext<'_>) -> String {
     };
     let mut out = format!(
         r#"Digest username="{}", realm="{}", nonce="{}", uri="{}", response="{}", algorithm={}"#,
-        ctx.username, ctx.challenge.realm, ctx.challenge.nonce, ctx.uri, response, algorithm_str,
+        ctx.username, ctx.challenge.realm, ctx.challenge.nonce, ctx.uri, resp, algorithm_str,
     );
     if let Some(qop) = &qop_chosen {
         out.push_str(&format!(

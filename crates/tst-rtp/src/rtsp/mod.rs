@@ -3,6 +3,7 @@
 
 pub mod auth;
 pub mod client;
+pub(crate) mod digest;
 pub mod interleaved;
 pub mod message;
 pub mod server;

@@ -2,7 +2,7 @@
 
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
-use crate::rtsp::message::{RtspMethod, RtspRequest};
+use crate::rtsp::message::RtspMethod;
 
 /// `RTP-Info:` header from a PLAY response. Tells us the first RTP
 /// sequence number and RTP timestamp the server will emit, which
@@ -32,24 +32,14 @@ impl RtspClient {
                 detail: "PLAY before SETUP",
             })?
             .clone();
-        let cseq = self.bump_cseq();
-        let req = RtspRequest::new(
-            RtspMethod::Play,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("session", sid)
-        .header("range", "npt=0.000-")
-        .header("user-agent", self.user_agent.as_str());
+        let uri = self.url.render_no_credentials();
+        let req = self
+            .base_request(RtspMethod::Play, uri)
+            .header("session", sid)
+            .header("range", "npt=0.000-");
         let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
-        if resp.status != 200 {
-            return Err(RtspError::Protocol {
-                code: resp.status,
-                reason: resp.reason,
-            });
-        }
+        self.expect_ok(&resp)?;
         Ok(parse_rtp_info(
             resp.headers
                 .get("rtp-info")
@@ -75,24 +65,13 @@ impl RtspClient {
                 detail: "PAUSE before SETUP",
             })?
             .clone();
-        let cseq = self.bump_cseq();
-        let req = RtspRequest::new(
-            RtspMethod::Pause,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("session", sid)
-        .header("user-agent", self.user_agent.as_str());
+        let uri = self.url.render_no_credentials();
+        let req = self
+            .base_request(RtspMethod::Pause, uri)
+            .header("session", sid);
         let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
-        if resp.status != 200 {
-            return Err(RtspError::Protocol {
-                code: resp.status,
-                reason: resp.reason,
-            });
-        }
-        Ok(())
+        self.expect_ok(&resp)
     }
 }
 

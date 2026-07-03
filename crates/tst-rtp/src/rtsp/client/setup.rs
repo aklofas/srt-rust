@@ -8,7 +8,7 @@ use crate::rtsp::client::session::RtspSession;
 use crate::rtsp::client::transport_negotiation::{
     RtspTransportKind, bind_udp_pair, build_transport_request, parse_transport_response,
 };
-use crate::rtsp::message::{RtspMethod, RtspRequest};
+use crate::rtsp::message::RtspMethod;
 use crate::sdp::pick::pick_mp2t;
 use crate::sdp::{Sdp, SdpMedia};
 use crate::url::RtspTransportPref;
@@ -70,7 +70,6 @@ impl RtspClient {
         uri: &str,
         pref: RtspTransportPref,
     ) -> Result<RtspSession, RtspError> {
-        let cseq = self.bump_cseq();
         // For UDP we need a local port pair before SETUP.
         let local_udp = if matches!(
             pref,
@@ -83,18 +82,12 @@ impl RtspClient {
         };
         let local_port = local_udp.as_ref().map(|(_, _, p)| *p).unwrap_or(0);
         let transport_hdr = build_transport_request(pref, local_port)?;
-        let req = RtspRequest::new(RtspMethod::Setup, uri.to_string(), self.url.rtsp_version)
-            .header("cseq", cseq.to_string())
-            .header("transport", transport_hdr)
-            .header("user-agent", self.user_agent.as_str());
+        let req = self
+            .base_request(RtspMethod::Setup, uri.to_string())
+            .header("transport", transport_hdr);
         let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
-        if resp.status != 200 {
-            return Err(RtspError::Protocol {
-                code: resp.status,
-                reason: resp.reason,
-            });
-        }
+        self.expect_ok(&resp)?;
         // Server-rewritten Transport: tells us what was actually negotiated.
         let server_transport = resp
             .headers

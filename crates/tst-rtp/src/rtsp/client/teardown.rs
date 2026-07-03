@@ -2,7 +2,7 @@
 
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
-use crate::rtsp::message::{RtspMethod, RtspRequest};
+use crate::rtsp::message::RtspMethod;
 
 impl RtspClient {
     /// Send TEARDOWN. After this returns, no further methods succeed.
@@ -39,15 +39,10 @@ impl RtspClient {
             Some(s) => s.clone(),
             None => return Ok(()), // nothing to tear down
         };
-        let cseq = self.bump_cseq();
-        let req = RtspRequest::new(
-            RtspMethod::Teardown,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("session", sid)
-        .header("user-agent", self.user_agent.as_str());
+        let uri = self.url.render_no_credentials();
+        let req = self
+            .base_request(RtspMethod::Teardown, uri)
+            .header("session", sid);
         let bytes = req.encode_checked()?;
         // Use the deadline-aware send if a pump is active; the non-pump
         // path's `send_and_read` already bounds via cancel-poll. With a

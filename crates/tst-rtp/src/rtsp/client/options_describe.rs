@@ -28,6 +28,32 @@ pub struct OptionsResponse {
 }
 
 impl RtspClient {
+    /// Build a base RTSP request: bump the CSeq counter, create the
+    /// [`RtspRequest`] for `method` at `uri`, and add the mandatory
+    /// `CSeq:` and `User-Agent:` headers. Callers add method-specific
+    /// headers (e.g., `Session:`, `Transport:`) on the returned value.
+    pub(crate) fn base_request(&mut self, method: RtspMethod, uri: String) -> RtspRequest {
+        let cseq = self.bump_cseq();
+        RtspRequest::new(method, uri, self.url.rtsp_version)
+            .header("cseq", cseq.to_string())
+            .header("user-agent", self.user_agent.as_str())
+    }
+
+    /// Check that `resp` carries a 200 OK status.
+    ///
+    /// Returns [`RtspError::Protocol`] for any other status. Used as a
+    /// one-liner after every synchronous `send_and_read` call that
+    /// expects a 200.
+    pub(crate) fn expect_ok(&self, resp: &RtspResponse) -> Result<(), RtspError> {
+        if resp.status != 200 {
+            return Err(RtspError::Protocol {
+                code: resp.status,
+                reason: resp.reason.clone(),
+            });
+        }
+        Ok(())
+    }
+
     /// Send an OPTIONS request; parse the `Public:` header into the
     /// list of methods the server supports.
     ///
@@ -39,26 +65,15 @@ impl RtspClient {
     /// - [`RtspError::LocalCancel`] if the cancel handle was triggered
     ///   mid-read.
     pub fn options(&mut self) -> Result<OptionsResponse, RtspError> {
-        let cseq = self.bump_cseq();
-        let mut req = RtspRequest::new(
-            RtspMethod::Options,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("user-agent", self.user_agent.as_str());
+        let uri = self.url.render_no_credentials();
+        let mut req = self.base_request(RtspMethod::Options, uri);
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }
         let bytes = req.encode_checked()?;
         let resp = self.send_and_read(&bytes)?;
         self.last_server_version = resp.version;
-        if resp.status != 200 {
-            return Err(RtspError::Protocol {
-                code: resp.status,
-                reason: resp.reason,
-            });
-        }
+        self.expect_ok(&resp)?;
         let public_methods = resp
             .headers
             .get("public")
@@ -110,15 +125,8 @@ impl RtspClient {
         method: RtspMethod,
         authorization: Option<String>,
     ) -> Result<RtspResponse, RtspError> {
-        let cseq = self.bump_cseq();
-        let mut req = RtspRequest::new(
-            method,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("accept", "application/sdp")
-        .header("user-agent", self.user_agent.as_str());
+        let uri = self.url.render_no_credentials();
+        let mut req = self.base_request(method, uri).header("accept", "application/sdp");
         if let Some(sid) = &self.session_id {
             req = req.header("session", sid.clone());
         }

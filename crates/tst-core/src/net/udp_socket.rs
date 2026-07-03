@@ -2,6 +2,10 @@
 //!
 //! Provides:
 //! - `bind_udp_socket` — bind + apply cancel-poll timeouts
+//! - `bind_udp_socket_multicast` — like `bind_udp_socket` but with `SO_REUSEADDR`
+//!   so multiple receivers can bind the same group:port
+//! - `set_socket_buffers` — `SO_RCVBUF`/`SO_SNDBUF` via `socket2::SockRef`,
+//!   shared by `tst-udp` and `tst-tcp` to avoid duplication
 //! - Multicast send knobs (TTL + iface, IPv4 + IPv6)
 //! - Multicast recv group join (IPv4 + IPv6)
 //!
@@ -25,6 +29,84 @@ pub fn bind_udp_socket(local: SocketAddr) -> io::Result<UdpSocket> {
     socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL))?;
     socket.set_write_timeout(Some(CANCEL_POLL_INTERVAL))?;
     Ok(socket)
+}
+
+/// Bind a UDP socket for multicast receive, setting `SO_REUSEADDR` (and
+/// `SO_REUSEPORT` on macOS/BSD) before bind so that multiple receivers on the
+/// same host can both join the same `group:port`.
+///
+/// Uses `socket2` for the reuse options (not available on stable std in Rust
+/// 1.85). The resulting socket has the same cancel-poll read/write timeouts as
+/// [`bind_udp_socket`].
+pub fn bind_udp_socket_multicast(local: SocketAddr) -> io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+
+    let domain = if local.is_ipv6() {
+        Domain::IPV6
+    } else {
+        Domain::IPV4
+    };
+    let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    sock.set_reuse_address(true)?;
+    // SO_REUSEPORT on macOS/BSD lets multiple sockets receive the same multicast
+    // datagram; on Linux it is optional (SO_REUSEADDR is sufficient). Gate to
+    // the platforms where SO_REUSEPORT has multicast semantics.
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    sock.set_reuse_port(true)?;
+    sock.bind(&SockAddr::from(local))?;
+    // Convert to std UdpSocket and apply cancel-poll timeouts.
+    let socket: UdpSocket = sock.into();
+    socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL))?;
+    socket.set_write_timeout(Some(CANCEL_POLL_INTERVAL))?;
+    Ok(socket)
+}
+
+/// Set `SO_RCVBUF` and/or `SO_SNDBUF` on a socket via `socket2::SockRef`.
+///
+/// Shared by `tst-udp` and `tst-tcp` to avoid copying the same three-line
+/// `SockRef` pattern across every transport's socket-setup function. Only the
+/// `Some(n)` fields are applied; `None` leaves the OS default unchanged.
+///
+/// # Platform trait bounds
+///
+/// `SockRef::from` requires `AsFd` on Unix and `AsSocket` on Windows (the
+/// concrete `UdpSocket` / `TcpStream` types implement both). This function
+/// is platform-gated accordingly.
+#[cfg(unix)]
+pub fn set_socket_buffers<S: std::os::fd::AsFd>(
+    sock: &S,
+    rcv: Option<usize>,
+    snd: Option<usize>,
+) -> io::Result<()> {
+    apply_buffers(socket2::SockRef::from(sock), rcv, snd)
+}
+
+/// Windows version of [`set_socket_buffers`] — identical body, different trait
+/// bound.
+#[cfg(windows)]
+pub fn set_socket_buffers<S: std::os::windows::io::AsSocket>(
+    sock: &S,
+    rcv: Option<usize>,
+    snd: Option<usize>,
+) -> io::Result<()> {
+    apply_buffers(socket2::SockRef::from(sock), rcv, snd)
+}
+
+fn apply_buffers(sr: socket2::SockRef<'_>, rcv: Option<usize>, snd: Option<usize>) -> io::Result<()> {
+    if let Some(n) = rcv {
+        sr.set_recv_buffer_size(n)?;
+    }
+    if let Some(n) = snd {
+        sr.set_send_buffer_size(n)?;
+    }
+    Ok(())
 }
 
 /// Apply multicast SEND-side knobs (TTL + iface).

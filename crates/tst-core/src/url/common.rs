@@ -285,6 +285,65 @@ pub fn is_multicast_v6(addr: Ipv6Addr) -> bool {
     addr.is_multicast()
 }
 
+// ============================================================
+// Scheme-neutral URL query helpers (shared by tst-udp / tst-tcp / tst-rist)
+// ============================================================
+
+/// Ceiling on byte-size query parameters (`rcvbuf`, `sndbuf`, `pkt_size`).
+///
+/// 256 MiB covers any realistic socket-buffer request while rejecting
+/// values that would cause a huge downstream allocation (e.g. `sndbuf=999T`).
+pub const MAX_BYTE_SIZE: usize = 256 * 1024 * 1024;
+
+/// Parse a byte-size URL query value, accepting plain decimals and the
+/// suffixes `K`/`k` (×1 024) and `M`/`m` (×1 048 576). Returns `Ok(bytes)`
+/// or `Err(detail)` where `detail` is suitable for a `BadQueryValue.detail`
+/// field.
+///
+/// Values above [`MAX_BYTE_SIZE`] are rejected even if the arithmetic fits.
+/// Callers are responsible for attaching the key/value context to the error.
+pub fn parse_byte_size(value: &str) -> Result<usize, String> {
+    let (num, mul) = match value.chars().last() {
+        Some('K') | Some('k') => (&value[..value.len() - 1], 1024usize),
+        Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
+        _ => (value, 1usize),
+    };
+    let n: usize = num
+        .parse()
+        .map_err(|e: core::num::ParseIntError| e.to_string())?;
+    let bytes = n
+        .checked_mul(mul)
+        .ok_or_else(|| alloc::string::String::from("byte size overflows usize"))?;
+    if bytes > MAX_BYTE_SIZE {
+        return Err(alloc::format!(
+            "byte size {bytes} exceeds maximum {MAX_BYTE_SIZE}"
+        ));
+    }
+    Ok(bytes)
+}
+
+/// Parse a boolean URL query value. Accepts `1`/`true`/`yes`/`on` (true) and
+/// `0`/`false`/`no`/`off` (false). Returns `Err(detail)` for anything else.
+pub fn parse_bool_query(value: &str) -> Result<bool, String> {
+    match value {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(alloc::string::String::from(
+            "expected one of: 1/0/true/false/yes/no/on/off",
+        )),
+    }
+}
+
+/// Parse an integer URL query value into any type that implements
+/// [`core::str::FromStr`]. Returns `Err(detail)` on parse failure.
+pub fn parse_int_query<T>(value: &str) -> Result<T, String>
+where
+    T: core::str::FromStr,
+    T::Err: core::fmt::Display,
+{
+    value.parse().map_err(|e: T::Err| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

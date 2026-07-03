@@ -6,7 +6,7 @@ use std::net::TcpStream;
 use crate::config::SocketConfig;
 // Transport-agnostic cancel-poll cadence; it lives in the udp_socket module
 // for historical reasons but is deliberately shared across transports.
-use tst_core::net::udp_socket::CANCEL_POLL_INTERVAL;
+use tst_core::net::udp_socket::{CANCEL_POLL_INTERVAL, set_socket_buffers};
 
 pub fn apply_knobs(socket: &TcpStream, cfg: &SocketConfig) -> io::Result<()> {
     socket.set_read_timeout(Some(CANCEL_POLL_INTERVAL))?;
@@ -16,16 +16,10 @@ pub fn apply_knobs(socket: &TcpStream, cfg: &SocketConfig) -> io::Result<()> {
         socket.set_nodelay(nd)?;
     }
 
-    let s = socket2::SockRef::from(socket);
-    if let Some(rcv) = cfg.rcvbuf {
-        s.set_recv_buffer_size(rcv)?;
-    }
-    if let Some(snd) = cfg.sndbuf {
-        s.set_send_buffer_size(snd)?;
-    }
+    set_socket_buffers(socket, cfg.rcvbuf, cfg.sndbuf)?;
     if let Some(idle) = cfg.keepalive {
         let ka = socket2::TcpKeepalive::new().with_time(idle);
-        s.set_tcp_keepalive(&ka)?;
+        socket2::SockRef::from(socket).set_tcp_keepalive(&ka)?;
     }
     Ok(())
 }

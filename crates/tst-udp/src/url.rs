@@ -134,16 +134,6 @@ impl UdpUrl {
     }
 }
 
-fn parse_u8_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
-    value
-        .parse()
-        .map_err(|e: std::num::ParseIntError| UdpUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: value.to_string(),
-            detail: e.to_string(),
-        })
-}
-
 fn parse_u8_hex_or_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
     let v = if let Some(hex) = value
         .strip_prefix("0x")
@@ -160,39 +150,20 @@ fn parse_u8_hex_or_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
     })
 }
 
-/// Upper bound for any byte-size query field (`rcvbuf`, `sndbuf`, `pkt_size`).
-///
-/// 256 MiB comfortably covers any realistic socket-buffer or recv-buffer
-/// request while rejecting absurd values that would attempt a huge
-/// pre-allocation downstream (e.g. `pkt_size=999999999999G`).
-const MAX_BYTE_SIZE: usize = 256 * 1024 * 1024;
-
-fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
-    // Accept "12345", "12K", "12k", "12M", "12m"; matches ffmpeg.
-    let (num, mul) = match value.chars().last() {
-        Some('K') | Some('k') => (&value[..value.len() - 1], 1024usize),
-        Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
-        _ => (value, 1usize),
-    };
-    let bad = |detail: String| UdpUrlError::BadQueryValue {
+fn parse_u8_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
+    tst_core::url::common::parse_int_query(value).map_err(|detail| UdpUrlError::BadQueryValue {
         key: key.to_string(),
         value: value.to_string(),
         detail,
-    };
-    let n: usize = num
-        .parse()
-        .map_err(|e: std::num::ParseIntError| bad(e.to_string()))?;
-    // Checked multiply: a value like "999999999999G" must not panic (debug)
-    // or wrap (release) into a small/huge size.
-    let bytes = n
-        .checked_mul(mul)
-        .ok_or_else(|| bad("byte size overflows usize".to_string()))?;
-    if bytes > MAX_BYTE_SIZE {
-        return Err(bad(format!(
-            "byte size {bytes} exceeds maximum {MAX_BYTE_SIZE}"
-        )));
-    }
-    Ok(bytes)
+    })
+}
+
+fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
+    tst_core::url::common::parse_byte_size(value).map_err(|detail| UdpUrlError::BadQueryValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        detail,
+    })
 }
 
 #[cfg(test)]

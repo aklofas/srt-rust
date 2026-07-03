@@ -11,7 +11,7 @@ use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use tracing::{Span, info_span};
+use tracing::info_span;
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
@@ -158,16 +158,9 @@ pub struct Sender<T: Transport> {
     /// recovery is `flush()`/the next call with NEW data — re-sending the
     /// same input would duplicate (see `send_ts`'s retention contract).
     pending_bundles: VecDeque<Vec<u8>>,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
-    /// from [`Drop`] to bracket open/close events. Private — must NOT
-    /// be exposed publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
-    /// internally holds a `Mutex` which would otherwise flip this shell
-    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
-    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
-    /// so asserting unwind safety is correct here.
-    _span: core::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
+    /// unwind-safe rationale. Private; never exposed publicly.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<T: Transport> core::fmt::Debug for Sender<T> {

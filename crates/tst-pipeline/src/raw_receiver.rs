@@ -10,7 +10,7 @@
 //! - You're writing a test that needs a bare receive loop.
 
 use std::sync::Arc;
-use tracing::{Span, info_span};
+use tracing::info_span;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -70,16 +70,9 @@ pub struct RawReceiver<R: RecvTransport> {
     /// `recv_one` still allocates a `Vec` for the returned slice.
     buf: Vec<u8>,
     stats: RawRecvStats,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
-    /// from [`Drop`] to bracket open/close events. Private — must NOT
-    /// be exposed publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
-    /// internally holds a `Mutex` which would otherwise flip this shell
-    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
-    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
-    /// so asserting unwind safety is correct here.
-    _span: std::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
+    /// unwind-safe rationale. Private; never exposed publicly.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<R: RecvTransport> std::fmt::Debug for RawReceiver<R> {

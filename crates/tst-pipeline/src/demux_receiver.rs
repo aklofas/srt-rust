@@ -26,7 +26,7 @@
 use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
 use crate::shell_error::ShellErrorKind;
 use std::sync::Arc;
-use tracing::{Span, info_span};
+use tracing::info_span;
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
 use tst_core::transport::RecvTransport;
@@ -97,17 +97,9 @@ pub struct DemuxReceiver<R: RecvTransport> {
     ts: Receiver<R>,
     demux: Demuxer,
     byte_sinks: Vec<ByteSink>,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] /
-    /// [`Self::with_demux_options`] and entered from [`Drop`] to
-    /// bracket open/close events. Private — must NOT be exposed
-    /// publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
-    /// internally holds a `Mutex` which would otherwise flip this shell
-    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
-    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
-    /// so asserting unwind safety is correct here.
-    _span: std::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
+    /// unwind-safe rationale. Private; never exposed publicly.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<R: RecvTransport> std::fmt::Debug for DemuxReceiver<R> {

@@ -433,7 +433,7 @@ pub(crate) enum Source {
 /// | [`SocketStats`] field | Source |
 /// |---|---|
 /// | `bytes_received` / `packets_received` | Local counters, tick per `recv_bytes` |
-/// | `rtt_us` | RTCP RR-after-SR computation (RFC 3550 §6.4.1). Populates on TCP-interleaved RTSP client paths (the `RtspSession::into_recv_transport` route wires it via `from_mpsc_with_rtcp`); `0` on UDP (RTCP ingest on UDP is not yet wired) |
+/// | `rtt_us` | Always 0. RTT computation is deferred; see `docs/project/deferred-features.md` (RTCP statistics reporting). |
 /// | `packets_lost_send` | RTCP RR cumulative-lost field. Populates on the same paths as `rtt_us`; `0` otherwise |
 /// | `bytes_sent` / `packets_sent` | 0 (this is the receive half) |
 /// | All other fields | 0 |
@@ -1115,11 +1115,13 @@ mod tests {
         assert_eq!(s.rtt_us, 0);
     }
 
-    /// T30 — verify that an SR followed by a matching RR populates
-    /// `socket_stats().rtt_us`. The RB's `last_sr` must equal the
-    /// stored anchor's mid-32 NTP for `compute_rtt_us` to fire.
+    /// T30 — verify that SR + RR leave `rtt_us` at 0 after the ingest
+    /// thread processes both packets. RTT computation is deferred (see
+    /// `docs/project/deferred-features.md`); the previously-asserted
+    /// "non-zero rtt_us after SR→RR" was wrong because the anchor NTP
+    /// came from the PEER's SR (wrong clock domain for the formula).
     #[test]
-    fn sr_then_rr_populates_rtt_us() {
+    fn sr_then_rr_leaves_rtt_us_zero() {
         use crate::rtcp::{ReceiverReport, ReportBlock, SenderReport};
 
         let (_data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
@@ -1163,19 +1165,14 @@ mod tests {
             .send(bytes::Bytes::from(rr.encode().unwrap()))
             .expect("send RR");
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        let mut surfaced_rtt = 0u32;
-        while std::time::Instant::now() < deadline {
-            let s = t.socket_stats().expect("alive transport reports stats");
-            if s.rtt_us > 0 {
-                surfaced_rtt = s.rtt_us;
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        assert!(
-            surfaced_rtt > 0,
-            "expected SR-then-RR to surface a non-zero rtt_us, got {surfaced_rtt}"
+        // Give the ingest thread a moment to process the RR.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let s = t.socket_stats().expect("alive transport reports stats");
+        assert_eq!(
+            s.rtt_us, 0,
+            "rtt_us must stay 0 after SR+RR (RTT computation is deferred); got {}",
+            s.rtt_us
         );
     }
 

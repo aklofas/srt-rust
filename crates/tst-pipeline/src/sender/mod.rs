@@ -522,7 +522,10 @@ mod tests {
     }
     impl FailFirst {
         fn new(n: usize, sink: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Self {
-            Self { remaining_failures: n, sink }
+            Self {
+                remaining_failures: n,
+                sink,
+            }
         }
     }
     impl Transport for FailFirst {
@@ -537,9 +540,13 @@ mod tests {
             self.sink.lock().unwrap().extend_from_slice(b);
             Ok(())
         }
-        fn max_payload(&self) -> usize { 1316 }
+        fn max_payload(&self) -> usize {
+            1316
+        }
         fn close(&mut self) {}
-        fn is_alive(&self) -> bool { true }
+        fn is_alive(&self) -> bool {
+            true
+        }
     }
 
     /// Build N syntethic TS packets starting with 0x47.
@@ -572,7 +579,8 @@ mod tests {
         assert_eq!(
             err.kind,
             crate::shell_error::ShellErrorKind::Backpressure,
-            "expected Backpressure, got {:?}", err
+            "expected Backpressure, got {:?}",
+            err
         );
         // Nothing sent yet.
         assert_eq!(sink.lock().unwrap().len(), 0);
@@ -580,8 +588,11 @@ mod tests {
         // Second call (empty input to flush pending_bundles only).
         sender.send_ts(&[]).unwrap();
         // Both bundles must have been delivered: 14 × 188 = 2632.
-        assert_eq!(sink.lock().unwrap().len(), 14 * 188,
-            "retry must deliver all retained bundles exactly once");
+        assert_eq!(
+            sink.lock().unwrap().len(),
+            14 * 188,
+            "retry must deliver all retained bundles exactly once"
+        );
     }
 
     #[test]
@@ -603,8 +614,11 @@ mod tests {
 
         // Second flush: drains pending, framing is already empty.
         sender.flush().unwrap();
-        assert_eq!(sink.lock().unwrap().len(), 3 * 188,
-            "retry flush must deliver the retained bundle exactly once, no duplication");
+        assert_eq!(
+            sink.lock().unwrap().len(),
+            3 * 188,
+            "retry flush must deliver the retained bundle exactly once, no duplication"
+        );
     }
 
     #[test]
@@ -635,15 +649,23 @@ mod tests {
                 self.sink.lock().unwrap().extend_from_slice(b);
                 Ok(())
             }
-            fn max_payload(&self) -> usize { 1316 }
+            fn max_payload(&self) -> usize {
+                1316
+            }
             fn close(&mut self) {}
-            fn is_alive(&self) -> bool { true }
+            fn is_alive(&self) -> bool {
+                true
+            }
         }
         drop(sender); // discard the previous one
 
         let sink2 = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut sender2 = Sender::new(
-            FailAt { fail_on: 1, calls: 0, sink: sink2.clone() },
+            FailAt {
+                fail_on: 1,
+                calls: 0,
+                sink: sink2.clone(),
+            },
             SenderConfig::default(),
         );
 
@@ -652,13 +674,19 @@ mod tests {
         let err = sender2.send_ts(&input).unwrap_err();
         assert_eq!(err.kind, crate::shell_error::ShellErrorKind::Backpressure);
         // Only bundle 0 sent (1316 bytes).
-        assert_eq!(sink2.lock().unwrap().len(), 1316,
-            "only the first bundle should have been sent before the failure");
+        assert_eq!(
+            sink2.lock().unwrap().len(),
+            1316,
+            "only the first bundle should have been sent before the failure"
+        );
 
         // Retry: drain pending (bundles 1 and 2) with empty input.
         sender2.send_ts(&[]).unwrap();
         // All 3 bundles must be present: 3 × 1316 = 3948.
-        assert_eq!(sink2.lock().unwrap().len(), 21 * 188,
-            "after retry, all 3 bundles must be present exactly once");
+        assert_eq!(
+            sink2.lock().unwrap().len(),
+            21 * 188,
+            "after retry, all 3 bundles must be present exactly once"
+        );
     }
 }

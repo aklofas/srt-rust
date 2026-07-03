@@ -112,7 +112,17 @@ fn mux_via_udp_demux_round_trip_recovers_program_map() {
     let au = synthetic_h264_au();
     for i in 0i64..5 {
         let pts = Pts90khz::new(i * 9001);
-        sender.send_video(&au, pts, true).expect("send_video");
+        // The receiver thread returns the instant it sees a ProgramMap, which
+        // drops its socket. On fast runners that can happen before this loop
+        // finishes; Linux then surfaces the ICMP port-unreachable as
+        // ECONNREFUSED on this connected UDP socket's next send. That's benign
+        // here — the receiver already has what it needs. Stop sending on the
+        // first broken-transport error; the real assertion is the channel
+        // result below, which reports `false` (or times out) if the receiver
+        // never recovered a ProgramMap. Mirrors the tst-tcp sibling test.
+        if sender.send_video(&au, pts, true).is_err() {
+            break;
+        }
     }
 
     // -----------------------------------------------------------------------

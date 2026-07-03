@@ -661,10 +661,20 @@ pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
     },
 ];
 
+/// Look up a ranged-field entry by tag. `RANGED_FIELDS` is tag-ascending
+/// (pinned by `ranged_fields_table_complete_and_injective`), so this is a
+/// binary search rather than a per-call linear scan.
+pub(super) fn ranged_entry(tag: u8) -> Option<&'static RangedEntry> {
+    RANGED_FIELDS
+        .binary_search_by_key(&tag, |e| e.id)
+        .ok()
+        .map(|i| &RANGED_FIELDS[i])
+}
+
 /// Write a decoded ranged-float value to the matching field in `record`.
 /// Replaces a 39-arm match — the table is the single source of the tag→field mapping.
 pub(super) fn assign_ranged(record: &mut UasDatalinkLs, tag: u32, v: f64) {
-    if let Some(entry) = RANGED_FIELDS.iter().find(|e| e.id as u32 == tag) {
+    if let Some(entry) = u8::try_from(tag).ok().and_then(ranged_entry) {
         (entry.set)(record, v);
     }
 }

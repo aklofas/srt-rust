@@ -428,28 +428,40 @@ impl RtspUrl {
     /// Render the URL string suitable for the Digest `uri=` parameter
     /// and the RTSP request line. Includes scheme, host, port, and path;
     /// does NOT include user credentials.
+    ///
+    /// IPv6 hosts are stored bracket-stripped (e.g., `::1`); this method
+    /// re-brackets them per RFC 3986 §3.2.2 so the rendered URI is valid
+    /// (e.g., `rtsp://[::1]:554/live`).
     #[must_use]
     pub fn render_no_credentials(&self) -> String {
         let scheme = match self.scheme {
             RtspScheme::Rtsp => "rtsp",
             RtspScheme::Rtsps => "rtsps",
         };
-        format!("{}://{}:{}{}", scheme, self.host, self.port, self.path)
+        // An IPv6 literal contains ':'; IPv4 addresses and DNS names do not.
+        let host_str = if self.host.contains(':') {
+            format!("[{}]", self.host)
+        } else {
+            self.host.clone()
+        };
+        format!("{}://{}:{}{}", scheme, host_str, self.port, self.path)
     }
 
-    /// True if the host is a wildcard bind (`0.0.0.0` or `[::]`) or a
+    /// True if the host is a wildcard bind (`0.0.0.0` or `::`) or a
     /// loopback (`127.x.x.x` or `::1`) — suitable for `RtspServer::bind`.
     /// Server-only callers should use [`Self::validate_for_server_bind`]
     /// which also requires the host to parse as an IP literal.
+    ///
+    /// Hosts are stored bracket-stripped, so only the bare forms (`::`,
+    /// `::1`) appear here; the bracketed forms (`[::]`, `[::1]`) are never
+    /// stored and are not matched.
     #[must_use]
     pub fn is_server_bind(&self) -> bool {
         let h = self.host.as_str();
         h == "0.0.0.0"
             || h == "::"
-            || h == "[::]"
             || h.starts_with("127.")
             || h == "::1"
-            || h == "[::1]"
             || h.parse::<std::net::IpAddr>().is_ok()
     }
 
@@ -750,5 +762,31 @@ mod phase3_url_tests {
         let g = MulticastGroup::parse("rtp://239.0.0.1:5004?ttl=4&iface=192.168.1.50").unwrap();
         assert_eq!(g.ttl, 4);
         assert_eq!(g.iface.as_deref(), Some("192.168.1.50"));
+    }
+
+    /// IPv6 hosts must be bracket-stripped on parse and re-bracketed on
+    /// render so the rendered URI is valid per RFC 3986 §3.2.2.
+    #[test]
+    fn ipv6_host_render_round_trips_with_brackets() {
+        let u = RtspUrl::parse("rtsp://[::1]:554/live").unwrap();
+        // Stored bracket-stripped.
+        assert_eq!(u.host, "::1", "host must be stored without brackets");
+        // Rendered with brackets.
+        let rendered = u.render_no_credentials();
+        assert_eq!(rendered, "rtsp://[::1]:554/live");
+        // Re-parsing the rendered form must succeed and produce the same URL.
+        let u2 = RtspUrl::parse(&rendered).unwrap();
+        assert_eq!(u2.host, "::1");
+        assert_eq!(u2.port, 554);
+        assert_eq!(u2.path, "/live");
+    }
+
+    /// IPv4 hosts must not gain spurious brackets.
+    #[test]
+    fn ipv4_host_render_has_no_brackets() {
+        let u = RtspUrl::parse("rtsp://192.168.1.10:554/live").unwrap();
+        let rendered = u.render_no_credentials();
+        assert_eq!(rendered, "rtsp://192.168.1.10:554/live");
+        assert!(!rendered.contains('['), "IPv4 rendered URL must not contain brackets");
     }
 }

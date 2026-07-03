@@ -89,6 +89,10 @@ pub struct RtpTransport {
     /// the reporter thread. Held only for its `Drop` side effect.
     #[allow(dead_code)]
     rtcp_reporter: Option<RtcpReporterHandle>,
+    /// Reusable scratch buffer for building RTP datagrams. Avoids a heap
+    /// allocation per `send_bytes` call — cleared and refilled each time,
+    /// but the underlying allocation is retained across frames.
+    send_scratch: Vec<u8>,
 }
 
 impl RtpTransport {
@@ -206,6 +210,7 @@ impl RtpTransport {
                             rtcp_socket,
                             rtcp_stats,
                             rtcp_reporter: None,
+                            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
                         };
                     }
                 };
@@ -227,6 +232,7 @@ impl RtpTransport {
                         rtcp_socket,
                         rtcp_stats,
                         rtcp_reporter: None,
+                        send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
                     };
                 };
                 let rtcp_target = SocketAddr::new(peer.ip(), rtcp_companion_port);
@@ -281,6 +287,7 @@ impl RtpTransport {
             rtcp_socket,
             rtcp_stats,
             rtcp_reporter,
+            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
         }
     }
 
@@ -323,16 +330,18 @@ impl Transport for RtpTransport {
             });
         }
         let socket = self.socket.as_ref().ok_or(TransportError::Closed)?;
-        // Build datagram: RTP header (12 B) + TS payload.
-        let mut datagram = Vec::with_capacity(RTP_HEADER_LEN + msg.len());
-        datagram.resize(RTP_HEADER_LEN, 0);
-        RtpHeader::new(self.next_seq, self.clock.now_ticks(), self.ssrc).encode_into(&mut datagram);
-        datagram.extend_from_slice(msg);
+        // Build datagram: RTP header (12 B) + TS payload. Reuse the
+        // per-transport scratch buffer to avoid a heap allocation per frame.
+        self.send_scratch.clear();
+        self.send_scratch.resize(RTP_HEADER_LEN, 0);
+        RtpHeader::new(self.next_seq, self.clock.now_ticks(), self.ssrc)
+            .encode_into(&mut self.send_scratch);
+        self.send_scratch.extend_from_slice(msg);
         loop {
             if self.cancel.is_cancelled() {
                 return Err(TransportError::ExplicitClose);
             }
-            match socket.send(&datagram) {
+            match socket.send(&self.send_scratch) {
                 Ok(n) => {
                     self.next_seq = self.next_seq.wrapping_add(1);
                     self.bytes_sent += n as u64;

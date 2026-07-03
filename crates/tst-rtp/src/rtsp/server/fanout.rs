@@ -110,12 +110,18 @@ pub(crate) fn spawn_peer_fanout(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut seq = initial_seq;
+        // Task-owned scratch buffers: hoisted above the recv loop so the
+        // heap allocation is reused across frames rather than re-allocated
+        // per payload. Capacity grows to the high-water mark after the
+        // first few frames and stays there.
+        let mut datagram: Vec<u8> = Vec::with_capacity(RTP_HEADER_LEN + 1316);
+        let mut framed: Vec<u8> = Vec::with_capacity(4 + RTP_HEADER_LEN + 1316);
         loop {
             tokio::select! {
                 payload_res = rx.recv() => match payload_res {
                     Ok(payload) => {
                         // Build RTP datagram: 12-byte header + payload.
-                        let mut datagram = Vec::with_capacity(RTP_HEADER_LEN + payload.len());
+                        datagram.clear();
                         datagram.resize(RTP_HEADER_LEN, 0);
                         RtpHeader::new(seq, clock.now_ticks(), ssrc)
                             .encode_into(&mut datagram);
@@ -135,7 +141,7 @@ pub(crate) fn spawn_peer_fanout(
                             }
                             PeerTransport::Interleaved { writer, rtp_channel } => {
                                 // RFC 7826 §14: `$<channel:u8><length:u16-BE><payload>`.
-                                let mut framed = Vec::with_capacity(4 + datagram.len());
+                                framed.clear();
                                 framed.push(b'$');
                                 framed.push(*rtp_channel);
                                 framed.extend_from_slice(&(datagram.len() as u16).to_be_bytes());

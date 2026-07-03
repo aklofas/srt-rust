@@ -1,8 +1,14 @@
-//! Ingest path for incoming RTCP — RR → fraction-lost ticks into
-//! `SocketStats.packets_lost_send`; SR → NTP/RTP anchor seeds RTT calc.
+//! Ingest path for incoming RTCP — RR → fraction-lost / jitter /
+//! cumulative-lost ticks into `RtcpStats`; SR → NTP/RTP anchor stored
+//! for future use.
 //!
-//! Per RFC 3550 §6.4.1, RTT = (current_NTP_mid - last_sr_NTP_mid - delay_since_last_sr)
-//! where the NTP timestamps are 32-bit middle fields (16.16 fixed-point seconds).
+//! `rtt_us` is always reported as 0. The `compute_rtt_us` helper that
+//! computes from RFC 3550 §6.4.1 is retained as public API but is no longer
+//! called from `ingest_rr`: the anchor ingested via `ingest_sr` comes from
+//! the PEER's SR (measuring the peer's clock domain), while the RTT formula
+//! needs the timestamp of OUR SR that we sent to the peer. That mismatch
+//! makes the computed value meaningless. Full RFC 3550 RTT is deferred; see
+//! `docs/project/deferred-features.md` (RTCP statistics reporting).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -54,11 +60,9 @@ pub fn system_time_to_ntp_mid(t: SystemTime) -> u32 {
 }
 
 /// Ingest one RR — updates `RtcpStats` fraction_lost + jitter +
-/// cumulative_lost_send + rtt_us from the first report block
-/// referencing our SSRC (if matched). RTT is computed using the
-/// previously stored SR anchor (from [`ingest_sr`]); when no anchor
-/// is available or the RB's `last_sr` doesn't match it, `rtt_us`
-/// is left at its prior value. Returns true if the RR was applicable.
+/// cumulative_lost_send from the first report block referencing our SSRC
+/// (if matched). `rtt_us` is never updated by this function; it stays at
+/// its prior value (0 by default). Returns true if the RR was applicable.
 pub fn ingest_rr(stats: &mut RtcpStats, our_ssrc: u32, rr: &ReceiverReport) -> bool {
     stats.rr_packets_received += 1;
     stats.last_rr_ts = Some(SystemTime::now());
@@ -74,9 +78,7 @@ pub fn ingest_rr(stats: &mut RtcpStats, our_ssrc: u32, rr: &ReceiverReport) -> b
             // loss (duplicates exceeded losses) projects to "0 lost" on
             // SocketStats.packets_lost_send.
             stats.cumulative_lost_send = rb.cumulative_lost.max(0) as u32;
-            if let Some(rtt) = compute_rtt_us(rb, stats.last_sr_anchor) {
-                stats.rtt_us = rtt;
-            }
+            // rtt_us: not computed here — see module doc for the reason.
             matched = true;
         }
     }
@@ -140,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn ingest_rr_after_sr_computes_rtt() {
+    fn ingest_rr_after_sr_leaves_rtt_us_zero() {
         let mut stats = RtcpStats::default();
         // Stage an SR anchor by ingesting an SR first.
         let sr = SenderReport {
@@ -167,13 +169,8 @@ mod tests {
             report_blocks: vec![rb],
         };
         assert!(ingest_rr(&mut stats, 0xCAFEBABE, &rr));
-        // Real-time RTT is now-vs-NTP-of-SR; with a 2026-ish SR NTP value
-        // and now()-time, the value is nondeterministic but positive.
-        assert!(
-            stats.rtt_us > 0,
-            "expected positive RTT, got {}",
-            stats.rtt_us
-        );
+        // RTT is not computed by ingest_rr (see module doc); stays 0.
+        assert_eq!(stats.rtt_us, 0, "rtt_us must stay 0: got {}", stats.rtt_us);
     }
 
     #[test]

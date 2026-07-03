@@ -82,12 +82,17 @@ pub(crate) fn build_challenge_header(cfg: &ServerAuthConfig, nonce: &str) -> Str
 /// recently emitted in `WWW-Authenticate: ... nonce=...` for this
 /// session. Mismatches surface as `AuthVerifyError::StaleNonce`, which
 /// the request handler should re-challenge with `stale=true`.
+///
+/// `nc_hwm` is the per-session nonce-count high-water mark; it is
+/// updated on each successful Digest verification to reject nc replays.
+/// Reset it to 0 whenever the nonce is rotated.
 pub(crate) fn verify_authorization(
     auth_header: Option<&str>,
     method: &str,
     uri: &str,
     cfg: &ServerAuthConfig,
     expected_nonce: &str,
+    nc_hwm: &mut u32,
 ) -> Result<(), AuthVerifyError> {
     let auth = auth_header.ok_or(AuthVerifyError::Missing)?;
     match cfg.scheme {
@@ -98,8 +103,10 @@ pub(crate) fn verify_authorization(
             uri,
             &cfg.username,
             &cfg.password,
+            &cfg.realm,
             cfg.scheme,
             expected_nonce,
+            nc_hwm,
         ),
     }
 }
@@ -134,8 +141,10 @@ fn verify_digest(
     uri: &str,
     expected_user: &str,
     expected_pass: &SecretString,
+    expected_realm: &str,
     scheme: ServerAuthScheme,
     expected_nonce: &str,
+    nc_hwm: &mut u32,
 ) -> Result<(), AuthVerifyError> {
     let value = auth_header
         .strip_prefix("Digest ")
@@ -144,7 +153,7 @@ fn verify_digest(
     let username = params.get("username").map(String::as_str).unwrap_or("");
     let nonce_attr = params.get("nonce").map(String::as_str).unwrap_or("");
     let cnonce = params.get("cnonce").map(String::as_str).unwrap_or("");
-    let nc = params.get("nc").map(String::as_str).unwrap_or("");
+    let nc_str = params.get("nc").map(String::as_str).unwrap_or("");
     let qop = params.get("qop").map(String::as_str).unwrap_or("");
     let uri_attr = params.get("uri").map(String::as_str).unwrap_or("");
     let response_attr = params.get("response").map(String::as_str).unwrap_or("");
@@ -156,24 +165,55 @@ fn verify_digest(
     if nonce_attr != expected_nonce {
         return Err(AuthVerifyError::StaleNonce);
     }
+
+    // DA-RTP-4(a): reject when the client's realm doesn't match ours.
+    // A mismatched realm means HA1 was computed against a different domain;
+    // the response will never verify. Surface as BadDigestSyntax (structural
+    // violation of the challenge-response contract).
+    if realm_attr != expected_realm {
+        return Err(AuthVerifyError::BadDigestSyntax {
+            detail: format!(
+                "realm mismatch: client sent '{}', server realm is '{}'",
+                realm_attr, expected_realm
+            ),
+        });
+    }
+
+    // DA-RTP-4(b): reject nc replays and regressions.
+    // The server always offers qop=auth, so nc MUST be present when qop is
+    // non-empty. If nc is absent or unparseable, treat as a syntax error.
+    if !qop.is_empty() {
+        let nc_val = u32::from_str_radix(nc_str, 16).map_err(|_| {
+            AuthVerifyError::BadDigestSyntax {
+                detail: format!("nc '{nc_str}' is not a valid hex counter"),
+            }
+        })?;
+        if nc_val <= *nc_hwm {
+            return Err(AuthVerifyError::BadDigestSyntax {
+                detail: format!("nc {nc_val:#010x} replays or regresses hwm {:#010x}", *nc_hwm),
+            });
+        }
+        *nc_hwm = nc_val;
+    }
+
+    // DA-RTP-4(c): reject the RFC 2617 no-qop downgrade when the server
+    // challenge offered qop=auth. Our build_challenge_header always adds
+    // qop="auth" for DigestMd5/DigestSha256; a client that omits qop is
+    // deliberately downgrading (or is a broken implementation).
+    if qop.is_empty() {
+        return Err(AuthVerifyError::BadDigestSyntax {
+            detail: "qop downgrade rejected: server offered qop=auth".to_string(),
+        });
+    }
+
     if uri_attr != uri {
         // RFC 7616 §3.4.6 — URI in Authorization MUST match request URI.
         return Err(AuthVerifyError::BadDigestSyntax {
             detail: format!("uri attr '{uri_attr}' != request uri '{uri}'"),
         });
     }
-    let expected_response = compute_digest_response(
-        scheme,
-        expected_user,
-        realm_attr,
-        expected_pass,
-        method,
-        uri,
-        nonce_attr,
-        nc,
-        cnonce,
-        qop,
-    );
+    let expected_response =
+        compute_digest_response(scheme, expected_user, expected_realm, expected_pass, method, uri, nonce_attr, nc_str, cnonce, qop);
     if response_attr == expected_response {
         Ok(())
     } else {
@@ -194,41 +234,14 @@ fn compute_digest_response(
     cnonce: &str,
     qop: &str,
 ) -> String {
-    use md5::Md5;
-    use sha2::{Digest as _, Sha256};
-    fn hex<const N: usize>(b: [u8; N]) -> String {
-        let mut s = String::with_capacity(N * 2);
-        for x in b {
-            use std::fmt::Write;
-            let _ = write!(s, "{:02x}", x);
-        }
-        s
-    }
-    let h: fn(&str) -> String = match scheme {
-        ServerAuthScheme::DigestMd5 => |s| {
-            let mut h = Md5::new();
-            h.update(s.as_bytes());
-            let r: [u8; 16] = h.finalize().into();
-            hex(r)
-        },
-        ServerAuthScheme::DigestSha256 => |s| {
-            let mut h = Sha256::new();
-            h.update(s.as_bytes());
-            let r: [u8; 32] = h.finalize().into();
-            hex(r)
-        },
+    use crate::rtsp::digest::{Algo, ha1, response};
+    let algo = match scheme {
+        ServerAuthScheme::DigestMd5 => Algo::Md5,
+        ServerAuthScheme::DigestSha256 => Algo::Sha256,
         ServerAuthScheme::Basic => unreachable!("compute_digest_response not called for Basic"),
     };
-    let a1 = format!("{user}:{realm}:{}", pass.expose_secret());
-    let ha1 = h(&a1);
-    let a2 = format!("{method}:{uri}");
-    let ha2 = h(&a2);
-    let body = if qop.is_empty() {
-        format!("{ha1}:{nonce}:{ha2}")
-    } else {
-        format!("{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}")
-    };
-    h(&body)
+    let computed_ha1 = ha1(algo, user, realm, pass);
+    response(algo, &computed_ha1, method, uri, nonce, nc, cnonce, qop)
 }
 
 /// Tokenize a Digest parameter list `key="value", key2=token, ...` into a
@@ -349,7 +362,8 @@ mod tests {
     #[test]
     fn verify_missing_authorization() {
         let cfg = basic_cfg();
-        let e = verify_authorization(None, "DESCRIBE", "rtsp://x", &cfg, "").unwrap_err();
+        let e =
+            verify_authorization(None, "DESCRIBE", "rtsp://x", &cfg, "", &mut 0).unwrap_err();
         assert!(matches!(e, AuthVerifyError::Missing));
     }
 
@@ -361,7 +375,8 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"admin:secret")
         );
-        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "").unwrap();
+        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
+            .unwrap();
     }
 
     #[test]
@@ -372,8 +387,9 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"admin:wrong")
         );
-        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "")
-            .unwrap_err();
+        let e =
+            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
+                .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -385,8 +401,9 @@ mod tests {
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(b"wrong:secret")
         );
-        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "")
-            .unwrap_err();
+        let e =
+            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, "", &mut 0)
+                .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -394,7 +411,8 @@ mod tests {
     fn verify_basic_bad_base64() {
         let cfg = basic_cfg();
         let auth = "Basic not-base64!!";
-        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "").unwrap_err();
+        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0)
+            .unwrap_err();
         assert!(matches!(e, AuthVerifyError::BadBasic(_)));
     }
 
@@ -402,7 +420,8 @@ mod tests {
     fn verify_scheme_mismatch() {
         let cfg = basic_cfg();
         let auth = "Bearer some-token-here";
-        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "").unwrap_err();
+        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "", &mut 0)
+            .unwrap_err();
         assert!(matches!(e, AuthVerifyError::SchemeMismatch));
     }
 
@@ -432,7 +451,7 @@ mod tests {
              uri=\"{uri}\", response=\"{response}\", algorithm=MD5, \
              nc={nc}, cnonce=\"{cnonce}\", qop={qop}"
         );
-        verify_authorization(Some(&auth), method, uri, &cfg, nonce).unwrap();
+        verify_authorization(Some(&auth), method, uri, &cfg, nonce, &mut 0).unwrap();
     }
 
     #[test]
@@ -459,7 +478,8 @@ mod tests {
              uri=\"rtsp://server/live\", response=\"{response}\", algorithm=SHA-256, \
              nc=00000001, cnonce=\"cnonce123\", qop=auth"
         );
-        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, nonce).unwrap();
+        verify_authorization(Some(&auth), "DESCRIBE", "rtsp://server/live", &cfg, nonce, &mut 0)
+            .unwrap();
     }
 
     #[test]
@@ -468,7 +488,8 @@ mod tests {
         let auth = "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"stale\", \
                     uri=\"rtsp://x\", response=\"any\", algorithm=MD5";
         let e =
-            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "fresh").unwrap_err();
+            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "fresh", &mut 0)
+                .unwrap_err();
         assert!(matches!(e, AuthVerifyError::StaleNonce));
     }
 
@@ -477,7 +498,9 @@ mod tests {
         let cfg = digest_md5_cfg();
         let auth = "Digest username=\"impostor\", realm=\"tst-rtp\", nonce=\"abc\", \
                     uri=\"rtsp://x\", response=\"any\", algorithm=MD5";
-        let e = verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "abc").unwrap_err();
+        let e =
+            verify_authorization(Some(auth), "DESCRIBE", "rtsp://x", &cfg, "abc", &mut 0)
+                .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
     }
 
@@ -503,8 +526,134 @@ mod tests {
              uri=\"rtsp://y\", response=\"{response}\", algorithm=MD5, \
              nc=00000001, cnonce=\"cnonce\", qop=auth"
         );
-        let e = verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce).unwrap_err();
+        let e =
+            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+                .unwrap_err();
         assert!(matches!(e, AuthVerifyError::BadDigestSyntax { .. }));
+    }
+
+    // ── DA-RTP-4 hardening tests ────────────────────────────────────────
+
+    /// DA-RTP-4(a): client supplies a realm that differs from the server's
+    /// configured realm — the response would be computed against the wrong
+    /// domain. Expect BadDigestSyntax.
+    #[test]
+    fn verify_digest_realm_mismatch_rejected() {
+        let cfg = digest_md5_cfg(); // realm = "tst-rtp"
+        let nonce = "nonce1";
+        // Auth header with realm="wrong-realm" (not "tst-rtp").
+        let auth = format!(
+            "Digest username=\"admin\", realm=\"wrong-realm\", nonce=\"{nonce}\", \
+             uri=\"rtsp://x\", response=\"any\", algorithm=MD5, \
+             nc=00000001, cnonce=\"cc\", qop=auth"
+        );
+        let e =
+            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+                .unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
+            "expected BadDigestSyntax for realm mismatch, got {e:?}"
+        );
+    }
+
+    /// DA-RTP-4(b): nc replay — sending nc=00000001 twice with the same
+    /// nonce must be rejected.
+    #[test]
+    fn verify_digest_nc_replay_rejected() {
+        let cfg = digest_md5_cfg();
+        let nonce = "nonce1";
+        let nc = "00000001";
+        let cnonce = "cc";
+        let method = "DESCRIBE";
+        let uri = "rtsp://server/live";
+        let response = compute_digest_response(
+            ServerAuthScheme::DigestMd5,
+            "admin",
+            "tst-rtp",
+            &cfg.password,
+            method,
+            uri,
+            nonce,
+            nc,
+            cnonce,
+            "auth",
+        );
+        let auth = format!(
+            "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"{nonce}\", \
+             uri=\"{uri}\", response=\"{response}\", algorithm=MD5, \
+             nc={nc}, cnonce=\"{cnonce}\", qop=auth"
+        );
+
+        // First request: nc=1, hwm starts at 0 → accepted, hwm becomes 1.
+        let mut hwm = 0u32;
+        verify_authorization(Some(&auth), method, uri, &cfg, nonce, &mut hwm).unwrap();
+        assert_eq!(hwm, 1, "hwm should be updated to 1 after first request");
+
+        // Second request: nc=1 again (replay) → rejected.
+        let e = verify_authorization(Some(&auth), method, uri, &cfg, nonce, &mut hwm).unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
+            "expected BadDigestSyntax for nc replay, got {e:?}"
+        );
+        assert_eq!(hwm, 1, "hwm must not advance on rejection");
+    }
+
+    /// DA-RTP-4(b): nc must advance monotonically (regression rejected).
+    #[test]
+    fn verify_digest_nc_regression_rejected() {
+        let cfg = digest_md5_cfg();
+        let nonce = "nonce1";
+        let method = "DESCRIBE";
+        let uri = "rtsp://server/live";
+
+        // Advance the hwm to 5 manually (simulating 5 prior requests).
+        let mut hwm = 5u32;
+
+        // Send nc=00000003 (regression below hwm=5) → rejected.
+        let nc = "00000003";
+        let response = compute_digest_response(
+            ServerAuthScheme::DigestMd5,
+            "admin",
+            "tst-rtp",
+            &cfg.password,
+            method,
+            uri,
+            nonce,
+            nc,
+            "cc",
+            "auth",
+        );
+        let auth = format!(
+            "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"{nonce}\", \
+             uri=\"{uri}\", response=\"{response}\", algorithm=MD5, \
+             nc={nc}, cnonce=\"cc\", qop=auth"
+        );
+        let e = verify_authorization(Some(&auth), method, uri, &cfg, nonce, &mut hwm).unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
+            "expected BadDigestSyntax for nc regression, got {e:?}"
+        );
+        assert_eq!(hwm, 5, "hwm must not change on rejected request");
+    }
+
+    /// DA-RTP-4(c): no-qop downgrade is rejected even with correct
+    /// credentials — the server always offers qop=auth.
+    #[test]
+    fn verify_digest_qop_downgrade_rejected() {
+        let cfg = digest_md5_cfg();
+        let nonce = "nonce1";
+        // RFC 2617 no-qop form: response = H(HA1:nonce:HA2), no nc/cnonce/qop.
+        let auth = format!(
+            "Digest username=\"admin\", realm=\"tst-rtp\", nonce=\"{nonce}\", \
+             uri=\"rtsp://x\", response=\"any\", algorithm=MD5"
+        );
+        let e =
+            verify_authorization(Some(&auth), "DESCRIBE", "rtsp://x", &cfg, nonce, &mut 0)
+                .unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::BadDigestSyntax { .. }),
+            "expected BadDigestSyntax for qop downgrade, got {e:?}"
+        );
     }
 
     #[test]

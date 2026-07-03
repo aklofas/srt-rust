@@ -168,7 +168,7 @@ pub struct ManagedDemuxReceiver<R: RecvTransport> {
     /// is cleared by `reset_sync` and we want the event to survive that
     /// clear.
     pending_reconnect_event: bool,
-    /// Lifetime span, entered only in `new()` and `Drop` — see
+    /// Lifetime span, entered only during construction and `Drop` — see
     /// [`crate::shell_error::ShellSpan`] for the unwind-safety rationale.
     _span: crate::shell_error::ShellSpan,
 }

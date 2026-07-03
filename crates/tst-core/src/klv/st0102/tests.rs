@@ -1,5 +1,5 @@
 use super::decode::{decode, decode_strict};
-use super::encode::{encode, encode_to_vec, encoded_len};
+use super::encode::{encode, encode_strict_compliance, encode_to_vec, encoded_len};
 use super::model::SecurityLs;
 use crate::error::{KlvDecodeError, KlvEncodeError};
 use crate::klv::length::write_ber;
@@ -863,4 +863,56 @@ fn st0102_encoded_len_counts_nul_for_empty_string() {
     let n = encoded_len(&r);
     // tag 7 (1 byte) + length 1 (1 byte) + value [0x00] (1 byte) = 3
     assert_eq!(n, 3, "encoded_len should count 1 wire byte for empty string (NUL signal)");
+}
+
+// -------- DA-KLV-2: control-char stripping in strict path only --------
+
+fn minimal_strict_record() -> SecurityLs {
+    // A minimal valid SecurityLs for encode_strict_compliance (all 6 required tags).
+    SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        classifying_country_coding_method: Some(ClassifyingCountryCodingMethod::Iso3166Numeric),
+        classifying_country: Some("840".to_owned()), // US ISO 3166 numeric
+        object_country_coding_method: Some(ObjectCountryCodingMethod::Iso3166Numeric),
+        object_country_codes: Some("840".to_owned()),
+        version: Some(12),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn st0102_strict_encode_strips_control_chars() {
+    let mut r = minimal_strict_record();
+    r.caveats = Some("CAVEATS\x01\x7F".to_owned());
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.caveats.as_deref(),
+        Some("CAVEATS"),
+        "strict encode must strip control chars from Iso646/FixedAscii fields"
+    );
+}
+
+#[test]
+fn st0102_strict_encode_whitespace_only_strips_to_empty_nul() {
+    let mut r = minimal_strict_record();
+    r.caveats = Some("\x01\x7F".to_owned());
+    let bytes = encode_strict_compliance(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.caveats.as_deref(), Some(""), "all-control-char field must strip to empty string");
+}
+
+#[test]
+fn st0102_default_encode_does_not_strip_control_chars() {
+    let r = SecurityLs {
+        caveats: Some("CAV\x01EAT".to_owned()),
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(
+        decoded.caveats.as_deref(),
+        Some("CAV\x01EAT"),
+        "default encode must NOT strip control chars"
+    );
 }

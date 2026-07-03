@@ -189,8 +189,15 @@ impl RecvTransport for UdpRecvTransport {
         }
     }
 
+    /// Maximum datagram payload this transport can receive.
+    ///
+    /// Always returns 65535 (the UDP protocol maximum) so that pipeline
+    /// shells and direct callers allocate a buffer large enough to receive
+    /// any legal datagram without silent tail truncation. `pkt_size` is
+    /// retained as the *expected* packet size for config introspection but
+    /// is not used to bound the receive buffer.
     fn max_payload(&self) -> usize {
-        self.pkt_size
+        65535
     }
 
     fn is_alive(&self) -> bool {
@@ -295,6 +302,38 @@ mod tests {
             recv.applied_timeout, CANCEL_POLL_INTERVAL,
             "recv_bytes must restore applied_timeout to CANCEL_POLL_INTERVAL"
         );
+    }
+
+    /// DA-NET-8: datagrams larger than the default `pkt_size` (1316 bytes)
+    /// must be delivered in full. Before the fix, `max_payload()` returned
+    /// `pkt_size` so pipeline shells allocated a 1316-byte buffer; the OS
+    /// would silently truncate larger datagrams to 1316 bytes on `recv`.
+    ///
+    /// Send 2000 bytes, assert 2000 bytes arrive.
+    #[test]
+    fn oversize_datagram_delivered_in_full() {
+        let recv = UdpRecvTransport::listen("udp://@127.0.0.1:0").expect("bind recv");
+        let port = recv.local_addr().port();
+        let addr = format!("127.0.0.1:{port}");
+
+        let payload: Vec<u8> = (0u8..=255).cycle().take(2000).collect();
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind sender");
+        sender.send_to(&payload, &addr).expect("send");
+
+        // recv_bytes uses the provided buffer; caller must supply ≥ max_payload bytes.
+        let mut buf = vec![0u8; recv.max_payload()];
+        // Use recv_timeout so the test doesn't block indefinitely on CI.
+        let mut recv = recv;
+        let got = recv
+            .recv_timeout(&mut buf, Duration::from_secs(2))
+            .expect("recv_timeout")
+            .expect("expected datagram, got timeout");
+
+        assert_eq!(
+            got, 2000,
+            "expected 2000 bytes, got {got} (truncation may have occurred)"
+        );
+        assert_eq!(&buf[..got], &payload[..], "payload content mismatch");
     }
 
     /// DA-NET-7 regression: two receivers joining the same multicast group on

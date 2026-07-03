@@ -6,13 +6,23 @@ use std::sync::{Arc, Mutex};
 use tst_core::transport::SocketStats;
 
 /// Run a closure exactly once when dropped — including on unwind. Used to
-/// free the librist stats container on *every* trampoline exit path (normal,
+/// free librist resources on *every* constructor/trampoline exit path (normal,
 /// early-return, panic), outside the `catch_unwind` boundary.
-struct OnDrop<F: FnOnce()>(Option<F>);
+///
+/// Call [`OnDrop::disarm`] to prevent the closure from running on a success
+/// path where ownership has been transferred (e.g., a `rist_ctx` pointer
+/// moved into a struct).
+pub(crate) struct OnDrop<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> OnDrop<F> {
-    fn new(f: F) -> Self {
+    pub(crate) fn new(f: F) -> Self {
         OnDrop(Some(f))
+    }
+
+    /// Cancel the deferred action. After `disarm()`, dropping this guard is a
+    /// no-op. Use this on the success path once ownership is transferred.
+    pub(crate) fn disarm(&mut self) {
+        let _ = self.0.take();
     }
 }
 

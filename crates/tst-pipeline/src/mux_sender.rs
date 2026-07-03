@@ -1112,7 +1112,10 @@ impl<T: Transport> Inner<T> {
             self.scratch.resize(max, 0);
         }
         loop {
-            let n = self.muxer.pull(&mut self.scratch);
+            // Cap the view at the CURRENT max_payload — the scratch only
+            // grows, so after a max_payload shrink the full buffer would
+            // let `pull` produce chunks larger than the transport accepts.
+            let n = self.muxer.pull(&mut self.scratch[..max]);
             if n == 0 {
                 return Ok(());
             }
@@ -1129,7 +1132,7 @@ impl<T: Transport> Inner<T> {
                     // so the muxer's internal buffer doesn't fill up while
                     // transport is unavailable.
                     loop {
-                        let n2 = self.muxer.pull(&mut self.scratch);
+                        let n2 = self.muxer.pull(&mut self.scratch[..max]);
                         if n2 == 0 {
                             break;
                         }

@@ -152,11 +152,11 @@ pub struct Sender<T: Transport> {
     /// Bundles that were framed and partially sent but whose transport call
     /// failed mid-sequence. The failed bundle and any remaining bundles from
     /// that `send_ts`/`flush` call are retained here and drained first on the
-    /// next `send_ts`/`flush` call. This makes the `Backpressure` retry
-    /// contract ("caller can retry the same input") correct for `Sender`:
-    /// a caller that retries after `Backpressure` will re-send framed bytes,
-    /// but the retained bundles are the canonical "what the transport still
-    /// needs to receive" list — no loss, no duplication.
+    /// next `send_ts`/`flush` call — the canonical "what the transport still
+    /// needs to receive" list, delivered exactly once, in order. NOTE: an
+    /// `Err` from `send_ts` means the input was consumed into this queue;
+    /// recovery is `flush()`/the next call with NEW data — re-sending the
+    /// same input would duplicate (see `send_ts`'s retention contract).
     pending_bundles: VecDeque<Vec<u8>>,
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
@@ -224,9 +224,14 @@ impl<T: Transport> Sender<T> {
     /// On a transport error the sender retains any bundles it could not send
     /// (the failed bundle and any that followed it within this call) in an
     /// internal queue. The next call to `send_ts` or `flush` drains that queue
-    /// first before processing new input. This makes `Backpressure` retry
-    /// semantics correct: a caller that retries on `Backpressure` will not
-    /// lose or duplicate previously framed bytes.
+    /// first before processing new input, so nothing is lost.
+    ///
+    /// **An `Err` from this method means the input `bytes` HAVE been
+    /// consumed** (framed and queued) — do **not** call `send_ts` again with
+    /// the same bytes, or the already-delivered prefix is framed and sent a
+    /// second time. To recover after `Backpressure`, back off and then call
+    /// [`Self::flush`] (or the next `send_ts` with *new* data); the retained
+    /// bundles drain first, exactly once, in order.
     ///
     /// # Example
     /// ```
@@ -549,7 +554,7 @@ mod tests {
         }
     }
 
-    /// Build N syntethic TS packets starting with 0x47.
+    /// Build N synthetic TS packets starting with 0x47.
     fn ts_packets(n: usize) -> Vec<u8> {
         let mut buf = Vec::with_capacity(n * 188);
         for i in 0..n {

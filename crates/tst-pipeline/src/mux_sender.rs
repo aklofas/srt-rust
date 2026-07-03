@@ -159,6 +159,10 @@ struct Inner<T: Transport> {
     /// (Ok→Warn or Warn→Overflow), not on every `send_*` call. Recovery
     /// transitions (Warn→Ok / Overflow→Warn) are silent.
     last_backpressure_state: BackpressureState,
+    /// Reusable scratch buffer for `drain_muxer`. Sized to
+    /// `transport.max_payload()` and grown lazily. Avoids a fresh
+    /// heap allocation on every muxer drain call.
+    scratch: Vec<u8>,
 }
 
 /// Back-pressure tier on the muxer's internal packet queue. Ordering
@@ -211,6 +215,7 @@ impl<T: Transport> MuxSender<T> {
                 bytes_sent: 0,
                 packets_sent: 0,
                 last_backpressure_state: BackpressureState::Ok,
+                scratch: Vec::new(),
             }),
             cancel,
             _span: core::panic::AssertUnwindSafe(span),
@@ -1100,30 +1105,35 @@ impl<T: Transport> Inner<T> {
     /// `pending_bytes` and returns the error.
     fn drain_muxer(&mut self) -> Result<(), MuxSenderError> {
         let max = self.transport.max_payload();
-        let mut buf = vec![0u8; max];
+        // Grow the scratch buffer lazily. The Transport trait does not
+        // guarantee a fixed max_payload() across calls, so re-check each
+        // time and resize only when the current allocation is too small.
+        if self.scratch.len() < max {
+            self.scratch.resize(max, 0);
+        }
         loop {
-            let n = self.muxer.pull(&mut buf);
+            let n = self.muxer.pull(&mut self.scratch);
             if n == 0 {
                 return Ok(());
             }
-            let chunk = buf[..n].to_vec();
-            match self.transport.send_bytes(&chunk) {
+            match self.transport.send_bytes(&self.scratch[..n]) {
                 Ok(()) => {
-                    self.bytes_sent += chunk.len() as u64;
+                    // Happy path: no allocation needed; bytes are in flight.
+                    self.bytes_sent += n as u64;
                     self.packets_sent += 1;
                 }
                 Err(e) => {
                     // Transport rejected the chunk — buffer it; do NOT count as sent.
-                    self.pending_bytes.push_back(chunk);
+                    self.pending_bytes.push_back(self.scratch[..n].to_vec());
                     // Drain any further muxer output into pending_bytes too,
                     // so the muxer's internal buffer doesn't fill up while
                     // transport is unavailable.
                     loop {
-                        let n2 = self.muxer.pull(&mut buf);
+                        let n2 = self.muxer.pull(&mut self.scratch);
                         if n2 == 0 {
                             break;
                         }
-                        self.pending_bytes.push_back(buf[..n2].to_vec());
+                        self.pending_bytes.push_back(self.scratch[..n2].to_vec());
                     }
                     return Err(e.into());
                 }

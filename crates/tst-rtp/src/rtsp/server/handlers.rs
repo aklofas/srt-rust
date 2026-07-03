@@ -558,12 +558,15 @@ pub(crate) fn handle_play(
 
     // Multicast mounts: the per-mount sender (Task 14) already drives
     // sends to the group. PLAY just confirms; no per-peer task spawn.
+    // seq/rtptime are not meaningful for a multicast mount (the server
+    // has been sending since the mount was created); report zeros per
+    // the shared-stream convention.
     let is_multicast = matches!(
         mount.kind,
         crate::rtsp::server::mount::MountKind::Multicast { .. }
     );
     if is_multicast {
-        return play_response_ok(req, &session_id);
+        return play_response_ok(req, &session_id, 0, 0);
     }
 
     // Unicast PLAY: subscribe + spawn per-peer fanout.
@@ -618,25 +621,42 @@ pub(crate) fn handle_play(
             }
         }
     };
+    // Snapshot the initial RTP seq and clock timestamp before spawning.
+    // These values are handed to both spawn_peer_fanout (which uses them
+    // to seed the first packet's header fields) and play_response_ok
+    // (which embeds them in the PLAY RTP-Info header per RFC 7826 §18.45),
+    // so the client's jitter buffer is seeded with the actual first-packet
+    // coordinates.
+    let initial_seq = crate::rtsp::server::rand_seq();
+    let clock = crate::clock::RtpClock::new(0);
+    let initial_rtptime = clock.now_ticks();
     let join = crate::rtsp::server::fanout::spawn_peer_fanout(
         rx,
         peer_transport,
         session.peer_cancel.clone(),
         crate::rtsp::server::rand_ssrc(),
-        crate::rtsp::server::rand_seq(),
+        initial_seq,
+        clock,
         drop_counter.clone(),
     );
     session.fanout_handle = Some(join);
     session.peer_drop_counter = Some(drop_counter);
 
-    play_response_ok(req, &session_id)
+    play_response_ok(req, &session_id, initial_seq, initial_rtptime)
 }
 
 /// Build a 200 OK PLAY response with Session + RTP-Info headers.
 /// RTP-Info per RFC 7826 §18.45 — the `url` tag is required; `seq` and
-/// `rtptime` are anchors clients can use for jitter-buffer
-/// initialization.
-fn play_response_ok(req: &RtspRequest, session_id: &str) -> RtspResponse {
+/// `rtptime` are anchors clients can use for jitter-buffer initialization.
+/// `initial_seq` and `initial_rtptime` must match the values handed to
+/// `spawn_peer_fanout` so the client's jitter buffer is seeded with the
+/// actual first-packet coordinates, not zeros.
+fn play_response_ok(
+    req: &RtspRequest,
+    session_id: &str,
+    initial_seq: u16,
+    initial_rtptime: u32,
+) -> RtspResponse {
     let mut headers = HashMap::new();
     if let Some(cseq) = req.headers.get("cseq") {
         headers.insert("cseq".into(), cseq.clone());
@@ -645,7 +665,10 @@ fn play_response_ok(req: &RtspRequest, session_id: &str) -> RtspResponse {
     headers.insert("session".into(), session_id.into());
     headers.insert(
         "rtp-info".into(),
-        format!("url={};seq=0;rtptime=0", req.uri),
+        format!(
+            "url={};seq={};rtptime={}",
+            req.uri, initial_seq, initial_rtptime
+        ),
     );
     RtspResponse {
         version: req.version,
@@ -1258,6 +1281,31 @@ mod tests {
         assert_eq!(
             resp.headers.get("session").map(String::as_str),
             Some("abc123")
+        );
+    }
+
+    /// play_response_ok must embed the caller-supplied seq and rtptime values,
+    /// not hardcoded zeros.  This is the server side of RFC 7826 §18.45: the
+    /// PLAY response RTP-Info header must describe the actual first packet.
+    #[test]
+    fn play_response_ok_embeds_initial_seq_and_rtptime() {
+        let req = make_req(RtspMethod::Play, "rtsp://127.0.0.1:8554/live");
+        let resp = play_response_ok(&req, "sid123", 0xBEEF, 12345);
+        assert_eq!(resp.status, 200);
+        let rtp_info = resp.headers.get("rtp-info").expect("rtp-info header present");
+        // 0xBEEF = 48879 decimal.
+        assert!(
+            rtp_info.contains("seq=48879"),
+            "rtp-info must contain actual seq=48879: {rtp_info}"
+        );
+        assert!(
+            rtp_info.contains("rtptime=12345"),
+            "rtp-info must contain actual rtptime=12345: {rtp_info}"
+        );
+        // Guard: a zero-regression would be caught here.
+        assert!(
+            !rtp_info.contains("seq=0;rtptime=0"),
+            "rtp-info must not hardcode zeros: {rtp_info}"
         );
     }
 

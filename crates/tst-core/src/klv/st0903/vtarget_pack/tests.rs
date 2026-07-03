@@ -1,6 +1,7 @@
 use super::decode::read_pack;
 use super::encode::{encoded_len, write_pack};
 use super::model::{PACK_TAGS, VTargetPack, VTargetPackError, pack_lookup};
+use crate::error::KlvEncodeError;
 use crate::klv::pack::OwnedRawField;
 
 #[test]
@@ -334,4 +335,146 @@ fn vtarget_pack_pixel_above_u32_round_trips() {
     write_pack(&p, &mut buf).unwrap();
     let (decoded, _) = read_pack(&buf).unwrap();
     assert_eq!(decoded.centroid_pixel, Some(big_pixel));
+}
+
+// -------- DA-KLVC-1: wire-width cap enforcement --------
+
+const V3_MAX: u64 = (1u64 << 24) - 1; // 16_777_215
+const V4_MAX: u64 = u32::MAX as u64; // 4_294_967_295
+const V6_MAX: u64 = (1u64 << 48) - 1; // 281_474_976_710_655
+
+// V6 cap (tags 1, 2, 3): centroid_pixel / bbox corners
+
+#[test]
+fn centroid_pixel_over_v6_cap_rejects() {
+    let p = VTargetPack { target_id: 1, centroid_pixel: Some(V6_MAX + 1), ..Default::default() };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::OutOfRange { tag: 1, .. }),
+        "expected OutOfRange tag 1, got {err:?}"
+    );
+}
+
+#[test]
+fn centroid_pixel_at_v6_cap_round_trips() {
+    let p = VTargetPack { target_id: 1, centroid_pixel: Some(V6_MAX), ..Default::default() };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.centroid_pixel, Some(V6_MAX));
+}
+
+#[test]
+fn bbox_top_left_pixel_over_v6_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        bbox_top_left_pixel: Some(V6_MAX + 1),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 2, .. }));
+}
+
+#[test]
+fn bbox_bottom_right_pixel_over_v6_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        bbox_bottom_right_pixel: Some(V6_MAX + 1),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 3, .. }));
+}
+
+// V3 cap (tag 9: target_intensity, tag 22: algorithm_id)
+
+#[test]
+fn target_intensity_over_v3_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        target_intensity: Some((V3_MAX + 1) as u32),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::OutOfRange { tag: 9, .. }),
+        "expected OutOfRange tag 9, got {err:?}"
+    );
+}
+
+#[test]
+fn target_intensity_at_v3_cap_round_trips() {
+    let p = VTargetPack {
+        target_id: 1,
+        target_intensity: Some(V3_MAX as u32),
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.target_intensity, Some(V3_MAX as u32));
+}
+
+#[test]
+fn algorithm_id_over_v3_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        algorithm_id: Some((V3_MAX + 1) as u32),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 22, .. }));
+}
+
+#[test]
+fn algorithm_id_at_v3_cap_round_trips() {
+    let p = VTargetPack {
+        target_id: 1,
+        algorithm_id: Some(V3_MAX as u32),
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.algorithm_id, Some(V3_MAX as u32));
+}
+
+// V4 cap (tags 19, 20: centroid_pix_row / centroid_pix_col)
+
+#[test]
+fn centroid_pix_row_over_v4_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pix_row: Some(V4_MAX + 1),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::OutOfRange { tag: 19, .. }),
+        "expected OutOfRange tag 19, got {err:?}"
+    );
+}
+
+#[test]
+fn centroid_pix_row_at_v4_cap_round_trips() {
+    let p = VTargetPack { target_id: 1, centroid_pix_row: Some(V4_MAX), ..Default::default() };
+    let mut buf = Vec::new();
+    write_pack(&p, &mut buf).unwrap();
+    let (decoded, n) = read_pack(&buf).unwrap();
+    assert_eq!(n, buf.len());
+    assert_eq!(decoded.centroid_pix_row, Some(V4_MAX));
+}
+
+#[test]
+fn centroid_pix_col_over_v4_cap_rejects() {
+    let p = VTargetPack {
+        target_id: 1,
+        centroid_pix_col: Some(V4_MAX + 1),
+        ..Default::default()
+    };
+    let err = write_pack(&p, &mut Vec::new()).unwrap_err();
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 20, .. }));
 }

@@ -303,13 +303,15 @@ pub struct VTargetPack {
     /// (≈ 63 bits) per ST 0903.6 §10.2.2.1; widened to `u64`.
     pub target_id: u64,
     /// Tag 1 `targetCentroid` per §10.2.2.2 — pixel number, V6
-    /// truncated big-endian (up to 6 wire bytes).
+    /// truncated big-endian (up to 6 wire bytes, max `(1u64 << 48) - 1`).
+    /// A value above `(1u64 << 48) - 1` would encode to 7+ bytes and the
+    /// decoder rejects — callers must keep this within the V6 range.
     pub centroid_pixel: Option<u64>,
     /// Tag 2 `boundingBoxTopLeft` per §10.2.2.3 — pixel number, V6
-    /// (up to 6 wire bytes).
+    /// (up to 6 wire bytes, max `(1u64 << 48) - 1`). Same V6 cap as Tag 1.
     pub bbox_top_left_pixel: Option<u64>,
     /// Tag 3 `boundingBoxBottomRight` per §10.2.2.4 — pixel number, V6
-    /// (up to 6 wire bytes).
+    /// (up to 6 wire bytes, max `(1u64 << 48) - 1`). Same V6 cap as Tag 1.
     pub bbox_bottom_right_pixel: Option<u64>,
     /// Tag 4 `targetPriority` per §10.2.2.5 — fixed-length 1, valid 1..=255.
     pub priority: Option<u8>,
@@ -323,7 +325,10 @@ pub struct VTargetPack {
     pub percentage_of_target_pixels: Option<u8>,
     /// Tag 8 `targetColor` per §10.2.2.9 — fixed 3 bytes [R, G, B].
     pub target_color: Option<[u8; 3]>,
-    /// Tag 9 `targetIntensity` per §10.2.2.10 — V3 (24-bit dynamic range).
+    /// Tag 9 `targetIntensity` per §10.2.2.10 — V3 (24-bit dynamic range,
+    /// max `(1u32 << 24) - 1` = 16777215). A value above `(1u32 << 24) - 1`
+    /// would encode to 4 bytes but the decoder rejects (V3 max 3 bytes) —
+    /// callers must keep this within the V3 range.
     pub target_intensity: Option<u32>,
     /// Tag 10 `targetLocationOffsetLat` per §10.2.2.11 —
     /// IMAPB(-19.2°, 19.2°, 3 bytes).
@@ -361,8 +366,10 @@ pub struct VTargetPack {
     /// `u32::MAX` would encode but fail to decode — callers must keep
     /// this within the V4 range.
     pub centroid_pix_col: Option<u64>,
-    /// Tag 22 `algorithmId` per §10.2.2.23 — V3 reference into
-    /// the parent VMTI LS Algorithm Series.
+    /// Tag 22 `algorithmId` per §10.2.2.23 — V3 reference into the
+    /// parent VMTI LS Algorithm Series (max `(1u32 << 24) - 1`). Same V3
+    /// cap as Tag 9 — values above 16777215 encode to 4 bytes and the
+    /// decoder rejects.
     pub algorithm_id: Option<u32>,
     /// Tag 23 `detectionStatus` per §10.2.2.24 — fixed-length 1.
     /// See struct-level doc for the 5 spec codepoints.

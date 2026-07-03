@@ -37,7 +37,7 @@ let tx = TcpTransport::connect("tcps://video.example.com:7001?ca=ca-bundle.pem")
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `nodelay` | OS default | TCP_NODELAY (`1` = disable Nagle for low-latency streaming) |
+| `nodelay` | `1` (enabled) | TCP_NODELAY; disable Nagle by default for low-latency streaming (`0` re-enables Nagle for bulk throughput) |
 | `keepalive` | disabled | SO_KEEPALIVE idle time in seconds |
 | `rcvbuf` | OS default | SO_RCVBUF in bytes (suffixes: `K`, `M`) |
 | `sndbuf` | OS default | SO_SNDBUF in bytes |

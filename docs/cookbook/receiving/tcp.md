@@ -40,7 +40,7 @@ let listener = TcpListener::from_url(
 | Parameter | Default | Meaning |
 |---|---|---|
 | `listen` | (required for listener) | Set to `1` to indicate listener intent |
-| `nodelay` | OS default | TCP_NODELAY for accepted connections |
+| `nodelay` | `1` (enabled) | TCP_NODELAY for accepted connections; Nagle is disabled by default (`0` re-enables it) |
 | `rcvbuf` | OS default | SO_RCVBUF for accepted connections |
 | `sndbuf` | OS default | SO_SNDBUF for accepted connections |
 | `keepalive` | disabled | SO_KEEPALIVE idle time in seconds |

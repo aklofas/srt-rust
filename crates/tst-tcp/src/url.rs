@@ -1,9 +1,12 @@
 //! Parsing of `tcp://` and `tcps://` URLs.
 //!
-//! - `tcp://host:port` — plain TCP caller
-//! - `tcps://host:port` — TLS caller
+//! - `tcp://10.0.0.5:9000` — plain TCP caller
+//! - `tcps://10.0.0.5:9000` — TLS caller
 //! - `tcp://0.0.0.0:port?listen=1` — listener (plain)
 //! - `tcps://0.0.0.0:port?listen=1&cert=...&key=...` — listener (TLS)
+//!
+//! Hosts must be IPv4/IPv6 literals for both schemes — hostnames are
+//! rejected at parse time (`BadHost`).
 //!
 //! # IP-literal requirement for `tcps://`
 //!

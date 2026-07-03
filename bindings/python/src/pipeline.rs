@@ -314,14 +314,12 @@ fn build_pairer_config(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Paire
     let tolerance = timedelta_to_duration(py, &tolerance_obj)?;
     let max_buffered_klv: u64 = obj.getattr(intern!(py, "max_buffered_klv"))?.extract()?;
     let max_buffered_video: u64 = obj.getattr(intern!(py, "max_buffered_video"))?.extract()?;
-    let link_klv_to_video: bool = obj.getattr(intern!(py, "link_klv_to_video"))?.extract()?;
 
     let mut pc = PairerConfig::default();
     pc.mode = mode;
     pc.tolerance = tolerance;
     pc.max_buffered_klv = max_buffered_klv;
     pc.max_buffered_video = max_buffered_video;
-    pc.link_klv_to_video = link_klv_to_video;
     Ok(pc)
 }
 

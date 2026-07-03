@@ -66,7 +66,6 @@ class PairerConfig:
     tolerance: timedelta = field(default_factory=lambda: timedelta(milliseconds=300))
     max_buffered_klv: int = 32
     max_buffered_video: int = 32
-    link_klv_to_video: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.mode, (_RealtimeMode, _BufferedMode)):

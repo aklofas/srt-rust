@@ -108,7 +108,7 @@ class PairerTest {
                 VIDEO_PID, KLV_PID,
                 new PairingDemuxerConfig(
                     new PairerConfig(new PairerMode.Realtime(),
-                        Duration.ofMillis(100), 32, 32, true),
+                        Duration.ofMillis(100), 32, 32),
                     null))) {
             List<PairerOutput> outs = feedAll(pairer, data);
             List<PairerOutput.Paired> paired = pairedOf(outs);
@@ -203,7 +203,7 @@ class PairerTest {
                 VIDEO_PID, KLV_PID,
                 new PairingDemuxerConfig(
                     new PairerConfig(new PairerMode.Buffered(Duration.ofMillis(200)),
-                        Duration.ofMillis(50), 32, 16, true),
+                        Duration.ofMillis(50), 32, 16),
                     null))) {
             List<PairerOutput> outs = feedAll(pairer, SYNC_KLV_BYTES);
             assertFalse(pairedOf(outs).isEmpty(), "Buffered mode must still produce Paired outputs");

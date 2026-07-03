@@ -238,10 +238,6 @@ impl Pairer {
             }
         };
         let max_klv_history = config.max_buffered_klv as usize;
-        // `link_klv_to_video` is reserved on PairerConfig; not yet
-        // wired through to the internal NearestState. Tracking for
-        // follow-up.
-        let _ = config.link_klv_to_video;
         Self {
             state: PairerState::Nearest(nearest::NearestState::new(
                 video_pid,
@@ -359,7 +355,6 @@ mod tests {
                 tolerance: Duration::from_millis(1),
                 max_buffered_klv: 4,
                 max_buffered_video: 4,
-                link_klv_to_video: true,
             },
         )
     }
@@ -570,7 +565,6 @@ mod tests {
                 tolerance: Duration::from_millis(1),
                 max_buffered_klv: 4,
                 max_buffered_video: 4,
-                link_klv_to_video: true,
             },
         )
     }
@@ -734,7 +728,6 @@ mod proptests {
                     tolerance: Duration::from_millis(12),
                     max_buffered_klv: 16,
                     max_buffered_video: 16,
-                    link_klv_to_video: true,
                 },
             );
             let mut video_count = 0u64;
@@ -788,7 +781,6 @@ mod proptests {
                     tolerance: Duration::from_millis(12),
                     max_buffered_klv: 16,
                     max_buffered_video: 8,
-                    link_klv_to_video: true,
                 },
             );
             let mut video_count = 0u64;

@@ -762,7 +762,7 @@ from tstrans.pipeline import (
 video_pid, klv_pid = 0x101, 0x102
 
 # Realtime nearest-PTS pairing, 100 ms tolerance. config=None → defaults
-# (Realtime, 300 ms tolerance, 32/32 buffers, link_klv_to_video=True).
+# (Realtime, 300 ms tolerance, 32/32 buffers).
 cfg = PairingDemuxerConfig(
     pairer=PairerConfig(
         mode=PairerMode.Realtime,

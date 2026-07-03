@@ -111,9 +111,7 @@ impl TsFraming {
     /// recovered. Stats reflect events.
     pub fn push(&mut self, bytes: &[u8]) -> (Vec<Vec<u8>>, &SenderStats) {
         self.stats.bytes_pushed += bytes.len() as u64;
-        for &b in bytes {
-            self.buffer.push_back(b);
-        }
+        self.buffer.extend(bytes.iter().copied());
         let mut bundles = Vec::new();
         loop {
             match self.state {
@@ -136,9 +134,7 @@ impl TsFraming {
     /// any misalignment — no recovery.
     pub fn push_strict(&mut self, bytes: &[u8]) -> Result<Vec<Vec<u8>>, TsFramingError> {
         self.stats.bytes_pushed += bytes.len() as u64;
-        for &b in bytes {
-            self.buffer.push_back(b);
-        }
+        self.buffer.extend(bytes.iter().copied());
         let mut bundles = Vec::new();
         loop {
             match self.state {

@@ -8,7 +8,9 @@ mod framing;
 pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
 use alloc::boxed::Box;
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use tracing::{Span, info_span};
 use tst_core::transport::Transport;
 
@@ -147,6 +149,15 @@ pub struct Sender<T: Transport> {
     transport: T,
     closed: bool,
     mode: TsFramingMode,
+    /// Bundles that were framed and partially sent but whose transport call
+    /// failed mid-sequence. The failed bundle and any remaining bundles from
+    /// that `send_ts`/`flush` call are retained here and drained first on the
+    /// next `send_ts`/`flush` call. This makes the `Backpressure` retry
+    /// contract ("caller can retry the same input") correct for `Sender`:
+    /// a caller that retries after `Backpressure` will re-send framed bytes,
+    /// but the retained bundles are the canonical "what the transport still
+    /// needs to receive" list — no loss, no duplication.
+    pending_bundles: VecDeque<Vec<u8>>,
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
     /// be exposed publicly (see CI public-API ratchet).
@@ -164,6 +175,7 @@ impl<T: Transport> core::fmt::Debug for Sender<T> {
         f.debug_struct("Sender")
             .field("closed", &self.closed)
             .field("mode", &self.mode)
+            .field("pending_bundles", &self.pending_bundles.len())
             .field("transport_kind", &core::any::type_name::<T>())
             .finish()
     }
@@ -184,6 +196,7 @@ impl<T: Transport> Sender<T> {
             transport,
             closed: false,
             mode: config.framing_mode,
+            pending_bundles: VecDeque::new(),
             _span: core::panic::AssertUnwindSafe(span),
         }
     }
@@ -204,7 +217,16 @@ impl<T: Transport> Sender<T> {
     /// - [`SenderErrorSource::Framing`] in STRICT mode when the input fails
     ///   to align on a TS sync byte (`0x47`).
     /// - [`SenderErrorSource::Transport`] when the underlying [`Transport`]
-    ///   returns an error (e.g. `Closed`, `Broken`).
+    ///   returns an error (e.g. `Closed`, `Broken`, `Backpressure`).
+    ///
+    /// # Retention contract
+    ///
+    /// On a transport error the sender retains any bundles it could not send
+    /// (the failed bundle and any that followed it within this call) in an
+    /// internal queue. The next call to `send_ts` or `flush` drains that queue
+    /// first before processing new input. This makes `Backpressure` retry
+    /// semantics correct: a caller that retries on `Backpressure` will not
+    /// lose or duplicate previously framed bytes.
     ///
     /// # Example
     /// ```
@@ -250,14 +272,22 @@ impl<T: Transport> Sender<T> {
         if self.closed {
             return Err(tst_core::transport::TransportError::Closed.into());
         }
+        self.drain_pending()?;
         let bundles = if self.mode == TsFramingMode::Recover {
             let (bundles, _stats) = self.framing.push(bytes);
             bundles
         } else {
             self.framing.push_strict(bytes)?
         };
-        for bundle in bundles {
-            self.transport.send_bytes(&bundle)?;
+        let mut iter = bundles.into_iter();
+        for bundle in &mut iter {
+            if let Err(e) = self.transport.send_bytes(&bundle) {
+                // Retain the failed bundle + any remaining so the next
+                // send_ts/flush call can re-try them in order.
+                self.pending_bundles.push_back(bundle);
+                self.pending_bundles.extend(iter);
+                return Err(e.into());
+            }
         }
         Ok(())
     }
@@ -271,14 +301,36 @@ impl<T: Transport> Sender<T> {
     /// # Errors
     /// Returns [`SenderErrorSource::Transport`] when the underlying [`Transport`]
     /// rejects the flushed bundle (typically `Closed` after a prior
-    /// [`Self::close`], or `Broken` on transport flap).
+    /// [`Self::close`], or `Broken` on transport flap, or `Backpressure`).
+    /// On `Backpressure` the bundle is retained (see the retention contract on
+    /// [`Self::send_ts`]) and will be re-attempted on the next call.
     pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
             return Err(tst_core::transport::TransportError::Closed.into());
         }
+        self.drain_pending()?;
         let bundles = self.framing.flush();
-        for bundle in bundles {
-            self.transport.send_bytes(&bundle)?;
+        let mut iter = bundles.into_iter();
+        for bundle in &mut iter {
+            if let Err(e) = self.transport.send_bytes(&bundle) {
+                self.pending_bundles.push_back(bundle);
+                self.pending_bundles.extend(iter);
+                return Err(e.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Drain the `pending_bundles` queue. Returns on the first transport
+    /// error, leaving the remaining bundles in the queue.
+    fn drain_pending(&mut self) -> Result<(), SenderError> {
+        while let Some(bundle) = self.pending_bundles.front() {
+            match self.transport.send_bytes(bundle) {
+                Ok(()) => {
+                    self.pending_bundles.pop_front();
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }
@@ -460,5 +512,153 @@ mod tests {
             3 * 188,
             "Sender::close must flush buffered partial TS packets (parity with Drop)"
         );
+    }
+
+    /// Transport that fails the first N `send_bytes` calls with Backpressure,
+    /// then succeeds. Captures all bytes written on successful calls.
+    struct FailFirst {
+        remaining_failures: usize,
+        sink: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    }
+    impl FailFirst {
+        fn new(n: usize, sink: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Self {
+            Self { remaining_failures: n, sink }
+        }
+    }
+    impl Transport for FailFirst {
+        fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+            if self.remaining_failures > 0 {
+                self.remaining_failures -= 1;
+                return Err(TransportError::Backpressure {
+                    msg: "test backpressure".into(),
+                    errno_code: None,
+                });
+            }
+            self.sink.lock().unwrap().extend_from_slice(b);
+            Ok(())
+        }
+        fn max_payload(&self) -> usize { 1316 }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool { true }
+    }
+
+    /// Build N syntethic TS packets starting with 0x47.
+    fn ts_packets(n: usize) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(n * 188);
+        for i in 0..n {
+            buf.push(0x47);
+            for j in 1..188usize {
+                buf.push(((i & 0xFF) as u8).wrapping_add(j as u8));
+            }
+        }
+        buf
+    }
+
+    #[test]
+    fn send_ts_retains_failed_bundle_and_retry_delivers_exactly_once() {
+        // 14 TS packets → 2 bundles (7 packets × 1316 bytes each).
+        // Transport fails the first send_bytes call (bundle 0), so bundle 0
+        // ends up in pending_bundles and bundle 1 is not attempted.
+        // On retry (second send_ts call), pending_bundles drains first (bundle
+        // 0 goes through), then the new call pushes nothing (empty input).
+        // Total output must equal 14 packets = 2 × 1316 bytes, in order.
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let transport = FailFirst::new(1, sink.clone());
+        let mut sender = Sender::new(transport, SenderConfig::default());
+
+        // First call: produces 2 bundles; transport fails on the 1st.
+        let input = ts_packets(14);
+        let err = sender.send_ts(&input).unwrap_err();
+        assert_eq!(
+            err.kind,
+            crate::shell_error::ShellErrorKind::Backpressure,
+            "expected Backpressure, got {:?}", err
+        );
+        // Nothing sent yet.
+        assert_eq!(sink.lock().unwrap().len(), 0);
+
+        // Second call (empty input to flush pending_bundles only).
+        sender.send_ts(&[]).unwrap();
+        // Both bundles must have been delivered: 14 × 188 = 2632.
+        assert_eq!(sink.lock().unwrap().len(), 14 * 188,
+            "retry must deliver all retained bundles exactly once");
+    }
+
+    #[test]
+    fn flush_retains_failed_bundle_and_retry_flush_delivers_exactly_once() {
+        // Push 3 TS packets (< 7 → no bundle emitted). Transport fails the
+        // flush call. Retry flush must deliver the bundle without duplication.
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let transport = FailFirst::new(1, sink.clone());
+        let mut sender = Sender::new(transport, SenderConfig::default());
+
+        let input = ts_packets(3);
+        sender.send_ts(&input).unwrap(); // no bundle emitted yet
+        assert_eq!(sink.lock().unwrap().len(), 0);
+
+        // flush() produces 1 partial bundle; transport rejects it.
+        let err = sender.flush().unwrap_err();
+        assert_eq!(err.kind, crate::shell_error::ShellErrorKind::Backpressure);
+        assert_eq!(sink.lock().unwrap().len(), 0);
+
+        // Second flush: drains pending, framing is already empty.
+        sender.flush().unwrap();
+        assert_eq!(sink.lock().unwrap().len(), 3 * 188,
+            "retry flush must deliver the retained bundle exactly once, no duplication");
+    }
+
+    #[test]
+    fn send_ts_mid_multi_bundle_failure_retains_remaining() {
+        // 21 packets → 3 bundles. Transport fails on bundle index 1 (the
+        // second bundle). After retry, all 3 bundles must be delivered.
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        // Fail the 2nd send_bytes call (index 1, 0-based).
+        let transport = FailFirst::new(0, sink.clone()); // fails 0 times = succeeds immediately
+        let mut sender = Sender::new(transport, SenderConfig::default());
+
+        // Override: we want bundle-1 to fail. Use a custom transport.
+        struct FailAt {
+            fail_on: usize,
+            calls: usize,
+            sink: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+        }
+        impl Transport for FailAt {
+            fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+                let call = self.calls;
+                self.calls += 1;
+                if call == self.fail_on {
+                    return Err(TransportError::Backpressure {
+                        msg: "test backpressure".into(),
+                        errno_code: None,
+                    });
+                }
+                self.sink.lock().unwrap().extend_from_slice(b);
+                Ok(())
+            }
+            fn max_payload(&self) -> usize { 1316 }
+            fn close(&mut self) {}
+            fn is_alive(&self) -> bool { true }
+        }
+        drop(sender); // discard the previous one
+
+        let sink2 = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut sender2 = Sender::new(
+            FailAt { fail_on: 1, calls: 0, sink: sink2.clone() },
+            SenderConfig::default(),
+        );
+
+        let input = ts_packets(21); // 3 bundles
+        // First call: bundle 0 succeeds, bundle 1 fails, bundle 2 retained.
+        let err = sender2.send_ts(&input).unwrap_err();
+        assert_eq!(err.kind, crate::shell_error::ShellErrorKind::Backpressure);
+        // Only bundle 0 sent (1316 bytes).
+        assert_eq!(sink2.lock().unwrap().len(), 1316,
+            "only the first bundle should have been sent before the failure");
+
+        // Retry: drain pending (bundles 1 and 2) with empty input.
+        sender2.send_ts(&[]).unwrap();
+        // All 3 bundles must be present: 3 × 1316 = 3948.
+        assert_eq!(sink2.lock().unwrap().len(), 21 * 188,
+            "after retry, all 3 bundles must be present exactly once");
     }
 }

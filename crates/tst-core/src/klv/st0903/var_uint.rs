@@ -178,13 +178,19 @@ mod tests {
         // (u32::MAX + 1, only testable via u64) must produce the same byte
         // count vs. an independent reference.
         assert_eq!(var_u32_len(u32::MAX), var_u64_len(u32::MAX as u64));
-        assert_eq!(var_u32_len(u32::MAX - 1), var_u64_len((u32::MAX - 1) as u64));
+        assert_eq!(
+            var_u32_len(u32::MAX - 1),
+            var_u64_len((u32::MAX - 1) as u64)
+        );
 
         let mut out32 = Vec::new();
         let mut out64 = Vec::new();
         write_var_u32(u32::MAX, &mut out32);
         write_var_u64(u32::MAX as u64, &mut out64);
-        assert_eq!(out32, out64, "write_var_u32(u32::MAX) must match write_var_u64");
+        assert_eq!(
+            out32, out64,
+            "write_var_u32(u32::MAX) must match write_var_u64"
+        );
 
         // read_var_u32 at the u32::MAX 4-byte input.
         assert_eq!(read_var_u32(&out32).unwrap(), u32::MAX);

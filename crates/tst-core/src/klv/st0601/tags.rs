@@ -654,10 +654,12 @@ mod tests {
 
         // RANGED_FIELDS must not contain entries not in TAGS with range.
         assert_eq!(
-            ranged_table.len(), ranged_tag_count,
+            ranged_table.len(),
+            ranged_tag_count,
             "RANGED_FIELDS has {} entries but {} TAGS have range \
              (table has extra or missing entries)",
-            ranged_table.len(), ranged_tag_count
+            ranged_table.len(),
+            ranged_tag_count
         );
 
         // IDs in RANGED_FIELDS must be unique.

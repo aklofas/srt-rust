@@ -831,9 +831,16 @@ fn st0102_empty_string_encodes_as_nul_and_round_trips() {
     let bytes = encode_to_vec(&r).unwrap();
     // Tag 5 (caveats) with length 1 and value 0x00: [0x05, 0x01, 0x00]
     let pos = bytes.windows(3).position(|w| w == [0x05, 0x01, 0x00]);
-    assert!(pos.is_some(), "expected [05 01 00] for empty caveats, bytes={bytes:?}");
+    assert!(
+        pos.is_some(),
+        "expected [05 01 00] for empty caveats, bytes={bytes:?}"
+    );
     let decoded = decode(&bytes).unwrap();
-    assert_eq!(decoded.caveats.as_deref(), Some(""), "empty string should round-trip as Some(\"\")");
+    assert_eq!(
+        decoded.caveats.as_deref(),
+        Some(""),
+        "empty string should round-trip as Some(\"\")"
+    );
 }
 
 #[test]
@@ -841,7 +848,10 @@ fn st0102_length0_string_decodes_as_absent() {
     // Tag 5 (caveats) with length 0: [0x05, 0x00]
     let body: Vec<u8> = vec![0x05, 0x00];
     let decoded = decode(&body).unwrap();
-    assert_eq!(decoded.caveats, None, "length-0 string should decode as None");
+    assert_eq!(
+        decoded.caveats, None,
+        "length-0 string should decode as None"
+    );
 }
 
 #[test]
@@ -859,10 +869,16 @@ fn st0102_nul_byte_decodes_as_empty_string() {
 #[test]
 fn st0102_encoded_len_counts_nul_for_empty_string() {
     // empty string → 1 value byte (NUL), so tag + ber_len(1) + 1 = 3 bytes
-    let r = SecurityLs { classified_by: Some(String::new()), ..Default::default() };
+    let r = SecurityLs {
+        classified_by: Some(String::new()),
+        ..Default::default()
+    };
     let n = encoded_len(&r);
     // tag 7 (1 byte) + length 1 (1 byte) + value [0x00] (1 byte) = 3
-    assert_eq!(n, 3, "encoded_len should count 1 wire byte for empty string (NUL signal)");
+    assert_eq!(
+        n, 3,
+        "encoded_len should count 1 wire byte for empty string (NUL signal)"
+    );
 }
 
 // -------- DA-KLV-2: control-char stripping in strict path only --------
@@ -899,7 +915,11 @@ fn st0102_strict_encode_whitespace_only_strips_to_empty_nul() {
     r.caveats = Some("\x01\x7F".to_owned());
     let bytes = encode_strict_compliance(&r).unwrap();
     let decoded = decode(&bytes).unwrap();
-    assert_eq!(decoded.caveats.as_deref(), Some(""), "all-control-char field must strip to empty string");
+    assert_eq!(
+        decoded.caveats.as_deref(),
+        Some(""),
+        "all-control-char field must strip to empty string"
+    );
 }
 
 #[test]

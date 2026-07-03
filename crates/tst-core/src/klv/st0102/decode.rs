@@ -8,7 +8,7 @@ use crate::klv::st0102::enums::{
 };
 use crate::klv::st0102::model::{SecurityLs, decode_utf16_bom};
 use crate::klv::st0102::tags::{Encoding, REQUIRED_TAGS, lookup};
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 
 /// Decode a Security Metadata Local Set per MISB ST 0102.12.
 ///

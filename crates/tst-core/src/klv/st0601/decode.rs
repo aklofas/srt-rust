@@ -6,6 +6,7 @@ use crate::klv::length::{read_ber, read_ber_oid_strict, read_ber_strict};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::universal_label::UniversalLabel;
 use alloc::borrow::ToOwned;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::mapping::decode_fixed_range;
@@ -463,45 +464,201 @@ pub(super) struct RangedEntry {
 /// The encode path derives value_len from `tags::TAGS[id].range.byte_length`;
 /// the decode path calls `set`; the encode path calls `get`.
 pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
-    RangedEntry { id: 5,  get: |r| r.platform_heading_deg,               set: |r, v| r.platform_heading_deg = Some(v) },
-    RangedEntry { id: 6,  get: |r| r.platform_pitch_deg,                 set: |r, v| r.platform_pitch_deg = Some(v) },
-    RangedEntry { id: 7,  get: |r| r.platform_roll_deg,                  set: |r, v| r.platform_roll_deg = Some(v) },
-    RangedEntry { id: 8,  get: |r| r.platform_true_airspeed,             set: |r, v| r.platform_true_airspeed = Some(v) },
-    RangedEntry { id: 9,  get: |r| r.platform_indicated_airspeed,        set: |r, v| r.platform_indicated_airspeed = Some(v) },
-    RangedEntry { id: 13, get: |r| r.sensor_lat_deg,                     set: |r, v| r.sensor_lat_deg = Some(v) },
-    RangedEntry { id: 14, get: |r| r.sensor_lon_deg,                     set: |r, v| r.sensor_lon_deg = Some(v) },
-    RangedEntry { id: 15, get: |r| r.sensor_alt_m,                       set: |r, v| r.sensor_alt_m = Some(v) },
-    RangedEntry { id: 16, get: |r| r.sensor_hfov_deg,                    set: |r, v| r.sensor_hfov_deg = Some(v) },
-    RangedEntry { id: 17, get: |r| r.sensor_vfov_deg,                    set: |r, v| r.sensor_vfov_deg = Some(v) },
-    RangedEntry { id: 18, get: |r| r.sensor_rel_az_deg,                  set: |r, v| r.sensor_rel_az_deg = Some(v) },
-    RangedEntry { id: 19, get: |r| r.sensor_rel_el_deg,                  set: |r, v| r.sensor_rel_el_deg = Some(v) },
-    RangedEntry { id: 20, get: |r| r.sensor_rel_roll_deg,                set: |r, v| r.sensor_rel_roll_deg = Some(v) },
-    RangedEntry { id: 21, get: |r| r.slant_range_m,                      set: |r, v| r.slant_range_m = Some(v) },
-    RangedEntry { id: 22, get: |r| r.target_width_m,                     set: |r, v| r.target_width_m = Some(v) },
-    RangedEntry { id: 23, get: |r| r.frame_center_lat_deg,               set: |r, v| r.frame_center_lat_deg = Some(v) },
-    RangedEntry { id: 24, get: |r| r.frame_center_lon_deg,               set: |r, v| r.frame_center_lon_deg = Some(v) },
-    RangedEntry { id: 25, get: |r| r.frame_center_elev_m,                set: |r, v| r.frame_center_elev_m = Some(v) },
-    RangedEntry { id: 26, get: |r| r.corner_lat_offset_p1_deg,           set: |r, v| r.corner_lat_offset_p1_deg = Some(v) },
-    RangedEntry { id: 27, get: |r| r.corner_lon_offset_p1_deg,           set: |r, v| r.corner_lon_offset_p1_deg = Some(v) },
-    RangedEntry { id: 28, get: |r| r.corner_lat_offset_p2_deg,           set: |r, v| r.corner_lat_offset_p2_deg = Some(v) },
-    RangedEntry { id: 29, get: |r| r.corner_lon_offset_p2_deg,           set: |r, v| r.corner_lon_offset_p2_deg = Some(v) },
-    RangedEntry { id: 30, get: |r| r.corner_lat_offset_p3_deg,           set: |r, v| r.corner_lat_offset_p3_deg = Some(v) },
-    RangedEntry { id: 31, get: |r| r.corner_lon_offset_p3_deg,           set: |r, v| r.corner_lon_offset_p3_deg = Some(v) },
-    RangedEntry { id: 32, get: |r| r.corner_lat_offset_p4_deg,           set: |r, v| r.corner_lat_offset_p4_deg = Some(v) },
-    RangedEntry { id: 33, get: |r| r.corner_lon_offset_p4_deg,           set: |r, v| r.corner_lon_offset_p4_deg = Some(v) },
-    RangedEntry { id: 50, get: |r| r.platform_angle_of_attack_deg,       set: |r, v| r.platform_angle_of_attack_deg = Some(v) },
-    RangedEntry { id: 75, get: |r| r.sensor_ellipsoid_height_m,          set: |r, v| r.sensor_ellipsoid_height_m = Some(v) },
-    RangedEntry { id: 78, get: |r| r.frame_center_ellipsoid_height_m,    set: |r, v| r.frame_center_ellipsoid_height_m = Some(v) },
-    RangedEntry { id: 82, get: |r| r.corner_lat_p1_deg,                  set: |r, v| r.corner_lat_p1_deg = Some(v) },
-    RangedEntry { id: 83, get: |r| r.corner_lon_p1_deg,                  set: |r, v| r.corner_lon_p1_deg = Some(v) },
-    RangedEntry { id: 84, get: |r| r.corner_lat_p2_deg,                  set: |r, v| r.corner_lat_p2_deg = Some(v) },
-    RangedEntry { id: 85, get: |r| r.corner_lon_p2_deg,                  set: |r, v| r.corner_lon_p2_deg = Some(v) },
-    RangedEntry { id: 86, get: |r| r.corner_lat_p3_deg,                  set: |r, v| r.corner_lat_p3_deg = Some(v) },
-    RangedEntry { id: 87, get: |r| r.corner_lon_p3_deg,                  set: |r, v| r.corner_lon_p3_deg = Some(v) },
-    RangedEntry { id: 88, get: |r| r.corner_lat_p4_deg,                  set: |r, v| r.corner_lat_p4_deg = Some(v) },
-    RangedEntry { id: 89, get: |r| r.corner_lon_p4_deg,                  set: |r, v| r.corner_lon_p4_deg = Some(v) },
-    RangedEntry { id: 90, get: |r| r.platform_pitch_full_deg,            set: |r, v| r.platform_pitch_full_deg = Some(v) },
-    RangedEntry { id: 91, get: |r| r.platform_roll_full_deg,             set: |r, v| r.platform_roll_full_deg = Some(v) },
+    RangedEntry {
+        id: 5,
+        get: |r| r.platform_heading_deg,
+        set: |r, v| r.platform_heading_deg = Some(v),
+    },
+    RangedEntry {
+        id: 6,
+        get: |r| r.platform_pitch_deg,
+        set: |r, v| r.platform_pitch_deg = Some(v),
+    },
+    RangedEntry {
+        id: 7,
+        get: |r| r.platform_roll_deg,
+        set: |r, v| r.platform_roll_deg = Some(v),
+    },
+    RangedEntry {
+        id: 8,
+        get: |r| r.platform_true_airspeed,
+        set: |r, v| r.platform_true_airspeed = Some(v),
+    },
+    RangedEntry {
+        id: 9,
+        get: |r| r.platform_indicated_airspeed,
+        set: |r, v| r.platform_indicated_airspeed = Some(v),
+    },
+    RangedEntry {
+        id: 13,
+        get: |r| r.sensor_lat_deg,
+        set: |r, v| r.sensor_lat_deg = Some(v),
+    },
+    RangedEntry {
+        id: 14,
+        get: |r| r.sensor_lon_deg,
+        set: |r, v| r.sensor_lon_deg = Some(v),
+    },
+    RangedEntry {
+        id: 15,
+        get: |r| r.sensor_alt_m,
+        set: |r, v| r.sensor_alt_m = Some(v),
+    },
+    RangedEntry {
+        id: 16,
+        get: |r| r.sensor_hfov_deg,
+        set: |r, v| r.sensor_hfov_deg = Some(v),
+    },
+    RangedEntry {
+        id: 17,
+        get: |r| r.sensor_vfov_deg,
+        set: |r, v| r.sensor_vfov_deg = Some(v),
+    },
+    RangedEntry {
+        id: 18,
+        get: |r| r.sensor_rel_az_deg,
+        set: |r, v| r.sensor_rel_az_deg = Some(v),
+    },
+    RangedEntry {
+        id: 19,
+        get: |r| r.sensor_rel_el_deg,
+        set: |r, v| r.sensor_rel_el_deg = Some(v),
+    },
+    RangedEntry {
+        id: 20,
+        get: |r| r.sensor_rel_roll_deg,
+        set: |r, v| r.sensor_rel_roll_deg = Some(v),
+    },
+    RangedEntry {
+        id: 21,
+        get: |r| r.slant_range_m,
+        set: |r, v| r.slant_range_m = Some(v),
+    },
+    RangedEntry {
+        id: 22,
+        get: |r| r.target_width_m,
+        set: |r, v| r.target_width_m = Some(v),
+    },
+    RangedEntry {
+        id: 23,
+        get: |r| r.frame_center_lat_deg,
+        set: |r, v| r.frame_center_lat_deg = Some(v),
+    },
+    RangedEntry {
+        id: 24,
+        get: |r| r.frame_center_lon_deg,
+        set: |r, v| r.frame_center_lon_deg = Some(v),
+    },
+    RangedEntry {
+        id: 25,
+        get: |r| r.frame_center_elev_m,
+        set: |r, v| r.frame_center_elev_m = Some(v),
+    },
+    RangedEntry {
+        id: 26,
+        get: |r| r.corner_lat_offset_p1_deg,
+        set: |r, v| r.corner_lat_offset_p1_deg = Some(v),
+    },
+    RangedEntry {
+        id: 27,
+        get: |r| r.corner_lon_offset_p1_deg,
+        set: |r, v| r.corner_lon_offset_p1_deg = Some(v),
+    },
+    RangedEntry {
+        id: 28,
+        get: |r| r.corner_lat_offset_p2_deg,
+        set: |r, v| r.corner_lat_offset_p2_deg = Some(v),
+    },
+    RangedEntry {
+        id: 29,
+        get: |r| r.corner_lon_offset_p2_deg,
+        set: |r, v| r.corner_lon_offset_p2_deg = Some(v),
+    },
+    RangedEntry {
+        id: 30,
+        get: |r| r.corner_lat_offset_p3_deg,
+        set: |r, v| r.corner_lat_offset_p3_deg = Some(v),
+    },
+    RangedEntry {
+        id: 31,
+        get: |r| r.corner_lon_offset_p3_deg,
+        set: |r, v| r.corner_lon_offset_p3_deg = Some(v),
+    },
+    RangedEntry {
+        id: 32,
+        get: |r| r.corner_lat_offset_p4_deg,
+        set: |r, v| r.corner_lat_offset_p4_deg = Some(v),
+    },
+    RangedEntry {
+        id: 33,
+        get: |r| r.corner_lon_offset_p4_deg,
+        set: |r, v| r.corner_lon_offset_p4_deg = Some(v),
+    },
+    RangedEntry {
+        id: 50,
+        get: |r| r.platform_angle_of_attack_deg,
+        set: |r, v| r.platform_angle_of_attack_deg = Some(v),
+    },
+    RangedEntry {
+        id: 75,
+        get: |r| r.sensor_ellipsoid_height_m,
+        set: |r, v| r.sensor_ellipsoid_height_m = Some(v),
+    },
+    RangedEntry {
+        id: 78,
+        get: |r| r.frame_center_ellipsoid_height_m,
+        set: |r, v| r.frame_center_ellipsoid_height_m = Some(v),
+    },
+    RangedEntry {
+        id: 82,
+        get: |r| r.corner_lat_p1_deg,
+        set: |r, v| r.corner_lat_p1_deg = Some(v),
+    },
+    RangedEntry {
+        id: 83,
+        get: |r| r.corner_lon_p1_deg,
+        set: |r, v| r.corner_lon_p1_deg = Some(v),
+    },
+    RangedEntry {
+        id: 84,
+        get: |r| r.corner_lat_p2_deg,
+        set: |r, v| r.corner_lat_p2_deg = Some(v),
+    },
+    RangedEntry {
+        id: 85,
+        get: |r| r.corner_lon_p2_deg,
+        set: |r, v| r.corner_lon_p2_deg = Some(v),
+    },
+    RangedEntry {
+        id: 86,
+        get: |r| r.corner_lat_p3_deg,
+        set: |r, v| r.corner_lat_p3_deg = Some(v),
+    },
+    RangedEntry {
+        id: 87,
+        get: |r| r.corner_lon_p3_deg,
+        set: |r, v| r.corner_lon_p3_deg = Some(v),
+    },
+    RangedEntry {
+        id: 88,
+        get: |r| r.corner_lat_p4_deg,
+        set: |r, v| r.corner_lat_p4_deg = Some(v),
+    },
+    RangedEntry {
+        id: 89,
+        get: |r| r.corner_lon_p4_deg,
+        set: |r, v| r.corner_lon_p4_deg = Some(v),
+    },
+    RangedEntry {
+        id: 90,
+        get: |r| r.platform_pitch_full_deg,
+        set: |r, v| r.platform_pitch_full_deg = Some(v),
+    },
+    RangedEntry {
+        id: 91,
+        get: |r| r.platform_roll_full_deg,
+        set: |r, v| r.platform_roll_full_deg = Some(v),
+    },
 ];
 
 /// Write a decoded ranged-float value to the matching field in `record`.

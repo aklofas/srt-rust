@@ -300,7 +300,9 @@ fn str_wire(s: &str) -> &[u8] {
 fn strip_control_chars_st0102(r: &mut super::model::SecurityLs) {
     use crate::klv::st0601::encode::strip_st0107_control_chars;
     let strip = |s: &mut Option<alloc::string::String>| {
-        if let Some(s) = s { *s = strip_st0107_control_chars(s); }
+        if let Some(s) = s {
+            *s = strip_st0107_control_chars(s);
+        }
     };
     strip(&mut r.classifying_country);
     strip(&mut r.sci_shi_info);

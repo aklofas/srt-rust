@@ -34,7 +34,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.centroid_pixel {
         if v > V6_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 1, value: v as f64, min: 0.0, max: V6_MAX as f64,
+                tag: 1,
+                value: v as f64,
+                min: 0.0,
+                max: V6_MAX as f64,
             });
         }
         emit_var_u64(out, 1, v)?;
@@ -42,7 +45,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.bbox_top_left_pixel {
         if v > V6_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 2, value: v as f64, min: 0.0, max: V6_MAX as f64,
+                tag: 2,
+                value: v as f64,
+                min: 0.0,
+                max: V6_MAX as f64,
             });
         }
         emit_var_u64(out, 2, v)?;
@@ -50,7 +56,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.bbox_bottom_right_pixel {
         if v > V6_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 3, value: v as f64, min: 0.0, max: V6_MAX as f64,
+                tag: 3,
+                value: v as f64,
+                min: 0.0,
+                max: V6_MAX as f64,
             });
         }
         emit_var_u64(out, 3, v)?;
@@ -73,7 +82,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.target_intensity {
         if v as u64 > V3_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 9, value: v as f64, min: 0.0, max: V3_MAX as f64,
+                tag: 9,
+                value: v as f64,
+                min: 0.0,
+                max: V3_MAX as f64,
             });
         }
         emit_var(out, 9, v)?;
@@ -113,7 +125,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.centroid_pix_row {
         if v > V4_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 19, value: v as f64, min: 0.0, max: V4_MAX as f64,
+                tag: 19,
+                value: v as f64,
+                min: 0.0,
+                max: V4_MAX as f64,
             });
         }
         emit_var_u64(out, 19, v)?;
@@ -121,7 +136,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.centroid_pix_col {
         if v > V4_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 20, value: v as f64, min: 0.0, max: V4_MAX as f64,
+                tag: 20,
+                value: v as f64,
+                min: 0.0,
+                max: V4_MAX as f64,
             });
         }
         emit_var_u64(out, 20, v)?;
@@ -129,7 +147,10 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
     if let Some(v) = pack.algorithm_id {
         if v as u64 > V3_MAX {
             return Err(KlvEncodeError::OutOfRange {
-                tag: 22, value: v as f64, min: 0.0, max: V3_MAX as f64,
+                tag: 22,
+                value: v as f64,
+                min: 0.0,
+                max: V3_MAX as f64,
             });
         }
         emit_var(out, 22, v)?;
@@ -275,4 +296,3 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
     }
     total
 }
-

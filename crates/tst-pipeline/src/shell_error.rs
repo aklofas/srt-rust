@@ -14,6 +14,15 @@ use tst_core::transport::TransportError;
 
 use crate::sender::TsFramingError;
 
+/// Lifetime span field shared by all six pipeline shells.
+///
+/// The inner [`tracing::Span`] holds a `Mutex`, which would flip the shell
+/// type from `UnwindSafe`/`RefUnwindSafe` to their negations. Wrapping in
+/// [`core::panic::AssertUnwindSafe`] is correct here because `_span` is only
+/// entered in `new()` and `Drop`, never on hot push/recv paths — no mutation
+/// of the shell's logical state happens while the span is entered.
+pub(crate) type ShellSpan = core::panic::AssertUnwindSafe<tracing::Span>;
+
 /// Categorical reason for a shell-layer failure.
 ///
 /// Bindings (`tst-c`, `tst-jni`, `tst-uniffi`) map each kind directly to

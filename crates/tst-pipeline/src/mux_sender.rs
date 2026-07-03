@@ -15,7 +15,7 @@ use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use tracing::{Span, info_span};
+use tracing::info_span;
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
@@ -103,16 +103,9 @@ pub struct MuxSender<T: Transport> {
     /// time. Held outside the inner Mutex so `close()` can fire it
     /// without competing with a concurrent `send_*` for the lock.
     cancel: Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
-    /// from [`Drop`] to bracket open/close events. Private — must NOT
-    /// be exposed publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
-    /// internally holds a `Mutex` which would otherwise flip this shell
-    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
-    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
-    /// so asserting unwind safety is correct here.
-    _span: core::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
+    /// unwind-safe rationale. Private; never exposed publicly.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<T: Transport> core::fmt::Debug for MuxSender<T> {

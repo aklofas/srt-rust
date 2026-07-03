@@ -9,7 +9,7 @@
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use tracing::{Span, info_span};
+use tracing::info_span;
 use tst_core::transport::{Transport, TransportError};
 
 use crate::shell_error::ShellErrorKind;
@@ -126,16 +126,9 @@ pub struct RawSender<T: Transport> {
     transport: T,
     _config: RawSenderConfig,
     stats: RawSendStats,
-    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
-    /// from [`Drop`] to bracket open/close events. Private — must NOT
-    /// be exposed publicly (see CI public-API ratchet).
-    ///
-    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
-    /// internally holds a `Mutex` which would otherwise flip this shell
-    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
-    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
-    /// so asserting unwind safety is correct here.
-    _span: core::panic::AssertUnwindSafe<Span>,
+    /// Lifetime span — see [`crate::shell_error::ShellSpan`] for the
+    /// unwind-safe rationale. Private; never exposed publicly.
+    _span: crate::shell_error::ShellSpan,
 }
 
 impl<T: Transport> core::fmt::Debug for RawSender<T> {

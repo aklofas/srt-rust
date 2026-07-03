@@ -4,7 +4,10 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tst_core::net::udp_socket::{CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket};
+use tst_core::net::udp_socket::{
+    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, bind_udp_socket,
+    bind_udp_socket_multicast,
+};
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
 
 use crate::config::SocketConfig;
@@ -54,7 +57,15 @@ impl UdpRecvTransport {
             SocketAddr::new(url.addr, url.port)
         };
 
-        let socket = bind_udp_socket(bind_addr).map_err(UdpError::Io)?;
+        // Multicast receivers must use SO_REUSEADDR (+ SO_REUSEPORT on BSD/macOS)
+        // so that more than one receiver process can bind the same group:port on
+        // the same host. Unicast receivers use the plain bind to avoid sharing
+        // ports unintentionally.
+        let socket = if url.is_multicast() {
+            bind_udp_socket_multicast(bind_addr).map_err(UdpError::Io)?
+        } else {
+            bind_udp_socket(bind_addr).map_err(UdpError::Io)?
+        };
 
         if url.is_multicast() {
             apply_multicast_recv_join(&socket, url.addr, cfg.iface.as_deref())
@@ -245,5 +256,35 @@ mod tests {
             matches!(err, Err(TransportError::Closed)),
             "expected Err(TransportError::Closed), got {err:?}"
         );
+    }
+
+    /// DA-NET-7 regression: two receivers joining the same multicast group on
+    /// the same loopback port must both bind successfully. Before the fix, the
+    /// second `UdpRecvTransport::listen` would fail with EADDRINUSE because the
+    /// plain `UdpSocket::bind` path did not set SO_REUSEADDR.
+    ///
+    /// This test only asserts bind-and-join success (not datagram delivery),
+    /// because getting multicast loopback delivery reliably across all CI
+    /// platforms is a separate concern.
+    #[test]
+    fn two_multicast_receivers_can_bind_same_group_port() {
+        let url = "udp://@239.255.42.1:0";
+        // Parse to get the actual port after binding.
+        let recv1 = match UdpRecvTransport::listen(url) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("skip: first multicast bind failed ({e}); likely no multicast support");
+                return;
+            }
+        };
+        let port = recv1.local_addr().port();
+        let url_with_port = format!("udp://@239.255.42.1:{port}");
+        let recv2 = match UdpRecvTransport::listen(&url_with_port) {
+            Ok(r) => r,
+            Err(e) => panic!("second multicast receiver bind failed (EADDRINUSE?): {e}"),
+        };
+        // Both receivers bound to the same group:port — drop order doesn't matter.
+        drop(recv1);
+        drop(recv2);
     }
 }

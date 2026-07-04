@@ -85,7 +85,7 @@ impl RtspServerCancelHandle {
     }
 
     /// Has [`Self::cancel`] been called?
-    pub fn is_canceled(&self) -> bool {
+    pub fn is_cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
     }
 }
@@ -158,9 +158,9 @@ mod phase3_server_cancel_tests {
     #[test]
     fn server_cancel_handle_toggles() {
         let h = RtspServerCancelHandle::new();
-        assert!(!h.is_canceled());
+        assert!(!h.is_cancelled());
         h.cancel();
-        assert!(h.is_canceled());
+        assert!(h.is_cancelled());
     }
 
     #[test]
@@ -168,7 +168,7 @@ mod phase3_server_cancel_tests {
         let h1 = RtspServerCancelHandle::new();
         let h2 = h1.clone();
         h1.cancel();
-        assert!(h2.is_canceled());
+        assert!(h2.is_cancelled());
     }
 
     #[test]
@@ -177,12 +177,12 @@ mod phase3_server_cancel_tests {
         h.cancel();
         h.cancel();
         h.cancel();
-        assert!(h.is_canceled());
+        assert!(h.is_cancelled());
     }
 
     #[test]
     fn server_cancel_handle_default_is_not_canceled() {
         let h = RtspServerCancelHandle::default();
-        assert!(!h.is_canceled());
+        assert!(!h.is_cancelled());
     }
 }

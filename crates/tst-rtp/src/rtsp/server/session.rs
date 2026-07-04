@@ -233,7 +233,7 @@ where
     loop {
         // Cancellation guard — hard cancel exits the loop immediately,
         // graceful cancel observed via the tokio::select! below.
-        if state.hard_cancel.is_canceled() {
+        if state.hard_cancel.is_cancelled() {
             break;
         }
 

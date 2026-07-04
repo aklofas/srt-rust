@@ -59,13 +59,13 @@ fn cancel_handle_obtainable_pre_start() {
     // cancel_handle() must work before start() — callers may stash it
     // ahead of time for cross-thread shutdown coordination.
     let h = server.cancel_handle();
-    assert!(!h.is_canceled());
+    assert!(!h.is_cancelled());
     h.cancel();
     // The same handle observes its own flip.
-    assert!(h.is_canceled());
+    assert!(h.is_cancelled());
     // A second handle obtained from the same server observes it too.
     let h2 = server.cancel_handle();
-    assert!(h2.is_canceled());
+    assert!(h2.is_cancelled());
 }
 
 #[test]

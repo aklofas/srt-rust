@@ -65,9 +65,9 @@ fn cancel_handle_flip_observable() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
     server.start().unwrap();
     let h = server.cancel_handle();
-    assert!(!h.is_canceled());
+    assert!(!h.is_cancelled());
     h.cancel();
-    assert!(h.is_canceled());
+    assert!(h.is_cancelled());
     // Drop after a hard-cancel completes without hanging.
     drop(server);
 }

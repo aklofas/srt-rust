@@ -191,7 +191,7 @@ impl RtspCancelHandle {
     }
 
     /// Has [`Self::cancel`] been called?
-    pub fn is_canceled(&self) -> bool {
+    pub fn is_cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
     }
 }
@@ -583,8 +583,8 @@ mod tests {
         let url = format!("rtsp://127.0.0.1:{}/test", port);
         let c = RtspClient::connect(&url).unwrap();
         let h = c.cancel_handle();
-        assert!(!h.is_canceled());
+        assert!(!h.is_cancelled());
         h.cancel();
-        assert!(h.is_canceled());
+        assert!(h.is_cancelled());
     }
 }

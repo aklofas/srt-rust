@@ -6894,7 +6894,7 @@ item = "tst_rtp::cancel::RtspServerCancelHandle::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_rtp::cancel::RtspServerCancelHandle::is_canceled"
+item = "tst_rtp::cancel::RtspServerCancelHandle::is_cancelled"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -7310,7 +7310,7 @@ item = "tst_rtp::rtsp::client::RtspCancelHandle::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_rtp::rtsp::client::RtspCancelHandle::is_canceled"
+item = "tst_rtp::rtsp::client::RtspCancelHandle::is_cancelled"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

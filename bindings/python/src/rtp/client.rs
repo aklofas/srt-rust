@@ -468,12 +468,12 @@ impl PyRtspCancelHandle {
     }
 
     /// Has `cancel()` been called?
-    fn is_canceled(&self) -> bool {
-        self.inner.is_canceled()
+    fn is_cancelled(&self) -> bool {
+        self.inner.is_cancelled()
     }
 
     fn __repr__(&self) -> String {
-        format!("RtspCancelHandle(canceled={})", self.inner.is_canceled())
+        format!("RtspCancelHandle(cancelled={})", self.inner.is_cancelled())
     }
 }
 

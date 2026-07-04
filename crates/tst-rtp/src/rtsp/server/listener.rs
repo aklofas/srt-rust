@@ -67,7 +67,7 @@ pub(crate) async fn run_listener(state: Arc<ServerState>) -> Result<(), RtspServ
     }
 
     loop {
-        if state.hard_cancel.is_canceled() {
+        if state.hard_cancel.is_cancelled() {
             tracing::info!(target: "tst_rtp::server", "hard cancel observed; listener exiting");
             return Ok(());
         }

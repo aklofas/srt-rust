@@ -326,7 +326,7 @@ mod tests {
         assert!(!ch.is_null());
         // Verify cancel is observable.
         unsafe { tst_rtsp_cancel_handle_cancel(ch) };
-        assert!(unsafe { (*ch).inner.is_canceled() });
+        assert!(unsafe { (*ch).inner.is_cancelled() });
         unsafe { tst_rtsp_cancel_handle_free(ch) };
         unsafe { tst_rtsp_server_free(server) };
     }

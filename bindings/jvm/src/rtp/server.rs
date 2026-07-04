@@ -73,11 +73,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServerCancelHandle_nIsCancelled(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
-    // tst-rtp uses American spelling is_canceled(); the JVM method is isCancelled().
     // A cancel target is never "parked", so `try_with` never reports `Locked`;
     // treat `Locked`/`Taken` as closed.
     crate::panic::jni_catch(&mut env, 0, |env| {
-        match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_canceled())) {
+        match REGISTRY_CANCEL.try_with(handle as u64, |c| u8::from(c.inner.is_cancelled())) {
             crate::handle::TryWith::Ran(v) => v,
             _ => {
                 crate::error::throw_closed(env, "RtspServerCancelHandle");

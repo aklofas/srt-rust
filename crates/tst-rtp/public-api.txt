@@ -100,7 +100,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtpCancelHandle
 pub struct tst_rtp::cancel::RtspServerCancelHandle
 impl tst_rtp::cancel::RtspServerCancelHandle
 pub fn tst_rtp::cancel::RtspServerCancelHandle::cancel(&self)
-pub fn tst_rtp::cancel::RtspServerCancelHandle::is_canceled(&self) -> bool
+pub fn tst_rtp::cancel::RtspServerCancelHandle::is_cancelled(&self) -> bool
 impl core::clone::Clone for tst_rtp::cancel::RtspServerCancelHandle
 pub fn tst_rtp::cancel::RtspServerCancelHandle::clone(&self) -> tst_rtp::cancel::RtspServerCancelHandle
 impl core::default::Default for tst_rtp::cancel::RtspServerCancelHandle
@@ -685,7 +685,7 @@ pub fn tst_rtp::rtsp::client::transport_negotiation::parse_transport_response(&s
 pub struct tst_rtp::rtsp::client::RtspCancelHandle
 impl tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspCancelHandle::cancel(&self)
-pub fn tst_rtp::rtsp::client::RtspCancelHandle::is_canceled(&self) -> bool
+pub fn tst_rtp::rtsp::client::RtspCancelHandle::is_cancelled(&self) -> bool
 impl core::clone::Clone for tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspCancelHandle::clone(&self) -> tst_rtp::rtsp::client::RtspCancelHandle
 impl core::marker::Freeze for tst_rtp::rtsp::client::RtspCancelHandle
@@ -2186,7 +2186,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtpUrl
 pub struct tst_rtp::RtspCancelHandle
 impl tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspCancelHandle::cancel(&self)
-pub fn tst_rtp::rtsp::client::RtspCancelHandle::is_canceled(&self) -> bool
+pub fn tst_rtp::rtsp::client::RtspCancelHandle::is_cancelled(&self) -> bool
 impl core::clone::Clone for tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspCancelHandle::clone(&self) -> tst_rtp::rtsp::client::RtspCancelHandle
 impl core::marker::Freeze for tst_rtp::rtsp::client::RtspCancelHandle
@@ -2334,7 +2334,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtspServerBuilde
 pub struct tst_rtp::RtspServerCancelHandle
 impl tst_rtp::cancel::RtspServerCancelHandle
 pub fn tst_rtp::cancel::RtspServerCancelHandle::cancel(&self)
-pub fn tst_rtp::cancel::RtspServerCancelHandle::is_canceled(&self) -> bool
+pub fn tst_rtp::cancel::RtspServerCancelHandle::is_cancelled(&self) -> bool
 impl core::clone::Clone for tst_rtp::cancel::RtspServerCancelHandle
 pub fn tst_rtp::cancel::RtspServerCancelHandle::clone(&self) -> tst_rtp::cancel::RtspServerCancelHandle
 impl core::default::Default for tst_rtp::cancel::RtspServerCancelHandle

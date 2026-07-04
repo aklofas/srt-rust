@@ -43,6 +43,7 @@ use tst_core::mpegts::mux::{
 
 use crate::error::throw_mux;
 use crate::handle::HandleRegistry;
+use crate::jutil::decode_stream_handle;
 
 /// Per-type leased-handle registry for `org.tstrans.mpegts.Muxer`.
 static REGISTRY: LazyLock<HandleRegistry<Muxer>> = LazyLock::new(HandleRegistry::new);
@@ -281,20 +282,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&nal) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &nal) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_video(&buf, Pts90khz::new(pts), key_frame != 0)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -313,14 +306,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWire<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&wire) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &wire) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             // Single-stream resolution: same ambiguity contract as push_video /
             // C ABI's tst_muxer_push_video_wire.
             let handles = mux.video_handles();
@@ -331,11 +320,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWire<'local>(
                     count: handles.len(),
                 }),
             }
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -352,21 +337,13 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlv<'local>(
     metadata_service_id: jint,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&klv) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &klv) else {
+            return;
         };
         // `metadata_service_id` is `u8` in `Muxer::push_klv` (spec default 0x00).
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_klv(&buf, Pts90khz::new(pts), metadata_service_id as u8)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -380,20 +357,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudio<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&frames) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &frames) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
-            mux.push_audio(&buf, Pts90khz::new(pts))
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        with_mux_push(env, handle, |mux| mux.push_audio(&buf, Pts90khz::new(pts)));
     })
 }
 
@@ -408,20 +375,12 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitle<'local>(
     payload: JByteArray<'local>,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&payload) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &payload) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_subtitle(Pts90khz::new(pts), &buf)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -438,19 +397,10 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushData<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let buf = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &data) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| mux.push_data(&buf, Pts90khz::new(pts)))
-        {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        with_mux_push(env, handle, |mux| mux.push_data(&buf, Pts90khz::new(pts)));
     })
 }
 
@@ -470,27 +420,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushDataTo<'local>(
     crate::panic::jni_catch(&mut env, (), |env| {
         // Reject any jlong outside the packed-u32 handle layout (negative, > u32,
         // or high bits set within u32) up front, rather than truncating.
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, DataStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid data stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &data) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_data_to(h, &buf, Pts90khz::new(pts))
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -509,27 +449,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoTo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&nal) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &nal) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_video_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -548,27 +478,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireTo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&wire) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &wire) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_video_wire_to(h, &buf, Pts90khz::new(pts), key_frame != 0)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -590,21 +510,15 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoToWithDts<'local>
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&nal) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &nal) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_video_to_with_dts(
                 h,
                 &buf,
@@ -612,11 +526,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoToWithDts<'local>
                 Pts90khz::new(dts),
                 key_frame != 0,
             )
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -636,21 +546,15 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'lo
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&wire) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &wire) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_video_wire_to_with_dts(
                 h,
                 &buf,
@@ -658,11 +562,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'lo
                 Pts90khz::new(dts),
                 key_frame != 0,
             )
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -680,27 +580,16 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushKlvTo<'local>(
     metadata_service_id: jint,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| KlvStreamHandle::try_from_raw(r).ok())
-        else {
+        let Some(h) = decode_stream_handle(stream_handle_raw, KlvStreamHandle::try_from_raw) else {
             throw_mux(env, "INVALID_USAGE", "invalid klv stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&klv) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &klv) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_klv_to(h, &buf, Pts90khz::new(pts), metadata_service_id as u8)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -719,28 +608,18 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushAudioTo<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| AudioStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, AudioStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid audio stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&frames) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &frames) else {
+            return;
         };
         // Core: push_audio_to(handle, pts, frames) — pts before frames.
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_audio_to(h, Pts90khz::new(pts), &buf)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -758,27 +637,17 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushSubtitleTo<'local>(
     payload: JByteArray<'local>,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| SubtitleStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, SubtitleStreamHandle::try_from_raw)
         else {
             throw_mux(env, "INVALID_USAGE", "invalid subtitle stream handle");
             return;
         };
-        let buf = match env.convert_byte_array(&payload) {
-            Ok(b) => b,
-            Err(_) => {
-                throw_mux(env, "INTERNAL", "failed to read byte[] argument");
-                return;
-            }
+        let Some(buf) = read_mux_bytes(env, &payload) else {
+            return;
         };
-        match REGISTRY.with_poisoning(handle as u64, |mux| {
+        with_mux_push(env, handle, |mux| {
             mux.push_subtitle_to(h, Pts90khz::new(pts), &buf)
-        }) {
-            Some(Ok(())) => {}
-            Some(Err(e)) => throw_mux_error(env, &e),
-            None => closed(env),
-        }
+        });
     })
 }
 
@@ -1082,6 +951,32 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nClose<'local>(
         // let it drop here.
         let _ = REGISTRY.close(handle as u64);
     })
+}
+
+/// Read a Java `byte[]`, throwing `MuxException(INTERNAL)` on failure.
+/// Returns `None` when the read fails (exception already thrown); callers
+/// should return early in that case.
+fn read_mux_bytes(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
+    match env.convert_byte_array(arr) {
+        Ok(b) => Some(b),
+        Err(_) => {
+            throw_mux(env, "INTERNAL", "failed to read byte[] argument");
+            None
+        }
+    }
+}
+
+/// Lease the muxer handle, run `op`, and map the outcome to thrown exceptions.
+fn with_mux_push(
+    env: &mut JNIEnv,
+    handle: jlong,
+    op: impl FnOnce(&mut Muxer) -> Result<(), MuxError>,
+) {
+    match REGISTRY.with_poisoning(handle as u64, op) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => throw_mux_error(env, &e),
+        None => closed(env),
+    }
 }
 
 /// Throw `IllegalStateException` for a leased call that found a

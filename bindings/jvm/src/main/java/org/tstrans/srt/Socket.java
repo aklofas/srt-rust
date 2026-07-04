@@ -2,6 +2,7 @@ package org.tstrans.srt;
 
 import java.util.Optional;
 import org.tstrans.MuxException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 
@@ -27,18 +28,12 @@ import org.tstrans.SrtException;
  * }
  * }</pre>
  */
-public final class Socket implements AutoCloseable {
+public final class Socket extends NativeHandle {
 
     static { NativeLoader.load(); }
 
-    /** Box&lt;tst_srt::Socket&gt; pointer; 0 = consumed or closed. */
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong();
-
     /** Package-private: constructed by Builder and Listener only. */
-    Socket(long h) {
-        this.handle.set(h);
-    }
+    Socket(long h) { setHandle(h); }
 
     /**
      * Consume this socket and produce a {@link Sender}.
@@ -50,10 +45,11 @@ public final class Socket implements AutoCloseable {
      * @throws SrtException on transport error
      */
     public Sender intoSender() throws SrtException {
-        ensureOpen();
-        // Claim the registry id atomically; a concurrent close/consume that wins
-        // leaves us with 0 and the native call throws IllegalStateException.
-        long sock = handle.getAndSet(0); // consumed — moved into the Sender
+        ensureOpen("Socket is closed");
+        // Claim the registry id atomically before the native call (consume-first);
+        // a concurrent close/consume that wins leaves us with 0 and the native call
+        // throws IllegalStateException.
+        long sock = consumeHandle(); // consumed — moved into the Sender
         long h = nIntoSender(sock);
         return new Sender(h);
     }
@@ -67,8 +63,8 @@ public final class Socket implements AutoCloseable {
      * @throws SrtException on transport error
      */
     public Receiver intoReceiver() throws SrtException {
-        ensureOpen();
-        long sock = handle.getAndSet(0); // consumed — moved into the Receiver
+        ensureOpen("Socket is closed");
+        long sock = consumeHandle(); // consumed — moved into the Receiver
         long h = nIntoReceiver(sock);
         return new Receiver(h);
     }
@@ -90,13 +86,13 @@ public final class Socket implements AutoCloseable {
      */
     public MuxSender intoMuxSender(org.tstrans.mpegts.MuxerConfig programConfig)
             throws SrtException, MuxException {
-        ensureOpen();
+        ensureOpen("Socket is closed");
         // Claim the registry id BEFORE the native call (consume-first). nIntoMuxSender
         // closes the registry entry unconditionally but can still throw afterwards
         // (muxer-config rejection / MuxSender::new failure); claiming first means a
         // later close() finds 0 and is a clean no-op. (The registry already makes a
         // double-close idempotent, but consume-first keeps the contract explicit.)
-        long sock = handle.getAndSet(0);
+        long sock = consumeHandle();
         long h = nIntoMuxSender(sock, programConfig.programNumber(), programConfig.pmtPid(),
             programConfig.pcrPid(), programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
             programConfig.bufferPackets(), programConfig.av1Carriage().ordinal(),
@@ -119,9 +115,9 @@ public final class Socket implements AutoCloseable {
      * @throws SrtException on transport error
      */
     public DemuxReceiver intoDemuxReceiver() throws SrtException {
-        ensureOpen();
+        ensureOpen("Socket is closed");
         // Claim the registry id first (consume-first), uniform with intoMuxSender.
-        long sock = handle.getAndSet(0);
+        long sock = consumeHandle();
         long h = nIntoDemuxReceiver(sock);
         return new DemuxReceiver(h);
     }
@@ -139,9 +135,9 @@ public final class Socket implements AutoCloseable {
      */
     public DemuxReceiver intoDemuxReceiver(org.tstrans.mpegts.DemuxerConfig demuxConfig)
             throws SrtException {
-        ensureOpen();
+        ensureOpen("Socket is closed");
         // Consume-first (see intoDemuxReceiver()).
-        long sock = handle.getAndSet(0);
+        long sock = consumeHandle();
         long h = nIntoDemuxReceiverWithConfig(sock,
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
@@ -158,8 +154,8 @@ public final class Socket implements AutoCloseable {
      * @throws SrtException if the socket handle is invalid ({@code IO}).
      */
     public HostPort localAddr() throws SrtException {
-        ensureOpen();
-        return nLocalAddr(handle.get());
+        ensureOpen("Socket is closed");
+        return nLocalAddr(peekHandle());
     }
 
     /**
@@ -168,8 +164,8 @@ public final class Socket implements AutoCloseable {
      * @throws SrtException if the socket is not connected or the handle is invalid ({@code IO}).
      */
     public HostPort peerAddr() throws SrtException {
-        ensureOpen();
-        return nPeerAddr(handle.get());
+        ensureOpen("Socket is closed");
+        return nPeerAddr(peekHandle());
     }
 
     /**
@@ -177,13 +173,13 @@ public final class Socket implements AutoCloseable {
      * Returns {@link Optional#empty()} if no stream ID was set.
      */
     public Optional<String> streamId() {
-        ensureOpen();
-        return Optional.ofNullable(nStreamId(handle.get()));
+        ensureOpen("Socket is closed");
+        return Optional.ofNullable(nStreamId(peekHandle()));
     }
 
     /** {@code true} while this socket still owns the native handle. */
     public boolean isAlive() {
-        return handle.get() != 0;
+        return peekHandle() != 0;
     }
 
     /**
@@ -191,15 +187,9 @@ public final class Socket implements AutoCloseable {
      * {@link #intoReceiver()}, {@link #localAddr()}, and {@link #peerAddr()} throw
      * {@code IllegalStateException}.
      */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Socket is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     // --- Natives ---
 

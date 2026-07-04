@@ -127,4 +127,15 @@ def test_push_video_with_valid_handle_still_works():
     handles = m.video_handles()
     nal = bytes([0x00, 0x00, 0x00, 0x01, 0x09, 0x10])  # AUD NAL
     m.push_video_to(handles[0], nal, pts=Pts90khz.from_raw(900_000), key_frame=True)
-    assert m.pending_packets() >= 0
+
+    def _pull_all(mx: Muxer) -> bytes:
+        n = mx.pending_packets()
+        buf = bytearray(max(n, 1) * 188)
+        pulled = mx.pull(buf)
+        return bytes(buf[:pulled])
+
+    ref = Muxer(_simple_config())
+    ref.push_video(nal, pts=Pts90khz.from_raw(900_000), key_frame=True)
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference video push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts

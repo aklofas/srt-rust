@@ -439,6 +439,26 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | JNI exposure | Shipped — `org.tstrans.pipeline.Pairer` |
 | UniFFI exposure | Deferred to future `tst-uniffi` plan |
 
+### Receive-side entry points
+
+The five transports split into two models: **connectionless** transports expose
+a single one-shot factory (`listen`) that binds a socket and serves as the
+receive transport for its lifetime, while **connection-oriented** transports
+expose a `Listener` that loops over `accept` / `accept_blocking` to hand back
+one dedicated transport per inbound peer. There is deliberately no
+`TcpRecvTransport::listen` convenience wrapper: such a wrapper would accept
+only the first connection and discard the listener, which is almost never the
+right behaviour for a TCP server. `TcpListener::from_url` is the URL-style
+constructor for the TCP listener; callers call `accept_blocking` once per peer.
+
+| Transport | Model | Constructor | Argument | Yields |
+|-----------|-------|-------------|----------|--------|
+| UDP | Connectionless | `UdpRecvTransport::listen` | `url: &str` (`udp://@host:port`) | `UdpRecvTransport` |
+| RTP | Connectionless | `RtpRecvTransport::listen` | `url: &str` (`rtp://host:port`) | `RtpRecvTransport` |
+| RIST | Connectionless | `RistRecvTransport::listen` | `url: &str` (`rist://@host:port`) | `RistRecvTransport` |
+| TCP | Connection-oriented | `TcpListener::from_url` / `TcpListener::bind` → `accept_blocking` | url (`tcp://…?listen=1`) / `SocketAddr` | one `TcpTransport` per accepted peer |
+| SRT | Connection-oriented | `ListenerBuilder::bind` / `Listener::bind_with` → `accept` → `SrtTransport::new` | addr / config+addr | one `SrtTransport` per accepted peer |
+
 ---
 
 ## Codec parameter set parsing (`tst-core::codec`)

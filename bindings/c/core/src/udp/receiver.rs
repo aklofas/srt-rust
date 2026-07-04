@@ -238,6 +238,27 @@ mod tests {
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
+    /// Copilot PR #77: the `buf_len < TS_PACKET_SIZE` guard moved into the
+    /// generic `transport_impls::receiver_recv_ts` body during the WP18 dedup,
+    /// and the old per-transport small-buffer tests went with the old bodies.
+    /// Exercise it through a VALID handle (ephemeral loopback bind, offline)
+    /// so the guard — not the null-handle check — is what fires.
+    #[test]
+    fn small_buffer_recv_ts_returns_invalid_config() {
+        let url = std::ffi::CString::new("udp://@127.0.0.1:0").unwrap();
+        let rx = unsafe { tst_udp_recv_open(url.as_ptr()) };
+        assert!(!rx.is_null(), "ephemeral loopback bind must succeed");
+        let mut buf = [0u8; 100]; // < TS_PACKET_SIZE (188)
+        let mut n = 0usize;
+        let rc = unsafe { tst_udp_receiver_recv_ts(rx, buf.as_mut_ptr(), buf.len(), &mut n) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+        assert!(
+            crate::error::test_last_error_msg().contains("too small"),
+            "last_error must carry the small-buffer message"
+        );
+        unsafe { tst_udp_receiver_close(rx) };
+    }
+
     #[test]
     fn null_get_stats_returns_invalid_config() {
         let mut stats = TstReceiverStats::default();

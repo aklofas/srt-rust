@@ -1,11 +1,17 @@
 //! PMT descriptor configuration entry points.
 //!
-//! Houses the program- and per-stream descriptor setters/adders. The two
-//! private helpers `desc_to_tlv_blob` (single-descriptor copy) and
-//! `parse_tlv_list` (multi-descriptor byte-stream parse) live here next to
-//! their callers. PMT descriptors flow from the caller's `tst_descriptor_t`
-//! values into per-stream `Vec<Vec<u8>>` slots on the inner
-//! `MuxerProgramConfig`; the muxer emits them in PMT order at open time.
+//! Houses the program- and per-stream descriptor setters/adders. Three
+//! private helpers live here:
+//!
+//! - `resolve_stream_descriptor_slot` — shared resolver for all 8 per-stream
+//!   descriptor fns (5 `add_*` + 3 `set_stream_descriptors_for_*`). Routes
+//!   **both** families through the `try_from_raw` trust-boundary guard
+//!   (closes DA-CABI-3 / SIMP-CBIND-2).
+//! - `desc_to_tlv_blob` — single-descriptor copy.
+//! - `parse_tlv_list` — multi-descriptor byte-stream parse. The
+//!   `with_capacity` reservation is clamped to `tlv_count.min(tlv_total_len
+//!   / 2 + 1)` to prevent a caller-controlled `tlv_count = 2e9` from
+//!   triggering an uncatchable `handle_alloc_error` abort (closes DA-CABI-1).
 
 use super::{TstMuxConfig, TstProgramHandle};
 use crate::error::{TstError, set_last_error};
@@ -15,7 +21,71 @@ use crate::handle::{
 };
 use crate::panic::ffi_catch;
 use alloc::vec::Vec;
-use tst_core::mpegts::mux::{DataStreamHandle, KlvStreamHandle, StreamSpec, VideoStreamHandle};
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, DataStreamHandle, KlvStreamHandle, StreamSpec, SubtitleStreamHandle,
+    VideoStreamHandle,
+};
+
+// ---------------------------------------------------------------------------
+// Shared slot resolver (DA-CABI-3 + SIMP-CBIND-2)
+// ---------------------------------------------------------------------------
+
+/// Resolve a per-stream descriptor slot, shared by all 8 per-stream
+/// descriptor entry points (5 `add_*` + 3 `set_stream_descriptors_for_*`).
+///
+/// `raw` is the packed `u32` stream handle received from the C caller.
+///
+/// `try_unpack` must call the kind-specific `*StreamHandle::try_from_raw(raw)`
+/// and then `h.unpack()`, returning `Ok((prog_idx, within_idx))` on a
+/// canonical handle or `Err(error_code)` (with the last-error already set)
+/// on a forged one. Routing both the `add_*` and `set_*` families through
+/// this path closes the bypass that let a raw bit-twiddled handle escape
+/// the anti-forgery check in the `add_*` family.
+///
+/// `kind_filter` selects the matching `StreamSpec` variant.
+///
+/// `prog_oor_msg` / `stream_oor_msg` are the static error strings emitted
+/// when the programme or within-kind index is out of range.
+///
+/// Returns `Ok((prog_idx, stream_idx))` where `stream_idx` is the index
+/// into both `prog.streams` and `prog.stream_descriptors`.
+fn resolve_stream_descriptor_slot<U, F>(
+    cfg: &TstMuxConfig,
+    raw: u32,
+    try_unpack: U,
+    kind_filter: F,
+    prog_oor_msg: &str,
+    stream_oor_msg: &str,
+) -> Result<(usize, usize), i32>
+where
+    U: FnOnce(u32) -> Result<(usize, usize), i32>,
+    F: Fn(&StreamSpec) -> bool,
+{
+    let (prog_idx, within_idx) = try_unpack(raw)?;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(TstError::InvalidUsage, prog_oor_msg);
+        return Err(TstError::InvalidUsage as i32);
+    }
+    let prog = &cfg.programs[prog_idx];
+    match prog
+        .streams
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| kind_filter(s))
+        .nth(within_idx)
+        .map(|(i, _)| i)
+    {
+        Some(stream_idx) => Ok((prog_idx, stream_idx)),
+        None => {
+            set_last_error(TstError::InvalidUsage, stream_oor_msg);
+            Err(TstError::InvalidUsage as i32)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Program-level descriptor setter
+// ---------------------------------------------------------------------------
 
 /// Set program-level PMT descriptors for the specified program.
 ///
@@ -64,6 +134,10 @@ pub unsafe extern "C" fn tst_mux_config_set_program_descriptors(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Per-stream descriptor setters (set_stream_descriptors_for_*)
+// ---------------------------------------------------------------------------
+
 /// Set per-stream PMT descriptors for the specified video stream.
 ///
 /// `video` is a handle previously returned by `tst_mux_config_add_video_stream`.
@@ -87,46 +161,28 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TstError::InvalidConfig as i32;
         };
-        // Trust-boundary validation — reject any caller-provided handle
-        // whose high bits are set above the canonical 8-bit layout. Without
-        // this, a forged `valid.raw() | 0x100` would mask down to the valid
-        // low byte and silently set descriptors on the wrong stream.
-        let (prog_idx, video_within_idx) = match VideoStreamHandle::try_from_raw(video) {
-            Ok(h) => h.unpack(),
-            Err(_) => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid video stream handle (non-canonical raw bits set)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
-        };
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid video stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        // video_within_idx is the index among video streams only; find the parallel
-        // position in prog.streams (which holds all stream kinds interleaved).
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
-            .nth(video_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid video stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        // Trust-boundary validation via try_from_raw: rejects handles whose
+        // high bits are set above the canonical packed layout. A forged
+        // `valid.raw() | 0x100` would otherwise mask to the same low byte and
+        // silently write descriptors to the wrong elementary stream.
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            video,
+            |raw| {
+                VideoStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid video stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Video { .. }),
+            "invalid video stream handle (program out of range)",
+            "invalid video stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
         let descs = unsafe {
             match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
@@ -134,7 +190,7 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
                 Err(rc) => return rc,
             }
         };
-        prog.stream_descriptors[stream_idx] = descs;
+        cfg.programs[prog_idx].stream_descriptors[stream_idx] = descs;
         0
     })
 }
@@ -159,44 +215,24 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TstError::InvalidConfig as i32;
         };
-        // Trust-boundary validation — see VideoStreamHandle::try_from_raw
-        // rationale in tst_mux_config_set_stream_descriptors_for_video above.
-        let (prog_idx, klv_within_idx) = match KlvStreamHandle::try_from_raw(klv) {
-            Ok(h) => h.unpack(),
-            Err(_) => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid klv stream handle (non-canonical raw bits set)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
-        };
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid klv stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        // klv_within_idx is the index among KLV streams only; find the parallel
-        // position in prog.streams (which holds all stream kinds interleaved).
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
-            .nth(klv_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid klv stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            klv,
+            |raw| {
+                KlvStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid klv stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Klv { .. }),
+            "invalid klv stream handle (program out of range)",
+            "invalid klv stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
         let descs = unsafe {
             match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
@@ -204,7 +240,7 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
                 Err(rc) => return rc,
             }
         };
-        prog.stream_descriptors[stream_idx] = descs;
+        cfg.programs[prog_idx].stream_descriptors[stream_idx] = descs;
         0
     })
 }
@@ -229,44 +265,24 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_data(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TstError::InvalidConfig as i32;
         };
-        // Trust-boundary validation — see VideoStreamHandle::try_from_raw
-        // rationale in tst_mux_config_set_stream_descriptors_for_video above.
-        let (prog_idx, data_within_idx) = match DataStreamHandle::try_from_raw(data) {
-            Ok(h) => h.unpack(),
-            Err(_) => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid data stream handle (non-canonical raw bits set)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
-        };
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid data stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        // data_within_idx is the index among data streams only; find the parallel
-        // position in prog.streams (which holds all stream kinds interleaved).
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
-            .nth(data_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid data stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            data,
+            |raw| {
+                DataStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid data stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Data { .. }),
+            "invalid data stream handle (program out of range)",
+            "invalid data stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
         let descs = unsafe {
             match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
@@ -274,10 +290,14 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_data(
                 Err(rc) => return rc,
             }
         };
-        prog.stream_descriptors[stream_idx] = descs;
+        cfg.programs[prog_idx].stream_descriptors[stream_idx] = descs;
         0
     })
 }
+
+// ---------------------------------------------------------------------------
+// Internal helper: single-descriptor copy
+// ---------------------------------------------------------------------------
 
 // Internal helper: copy one `TstDescriptor` into a full TLV blob
 // `[tag, body_len, body...]` ready to push onto a `stream_descriptors[i]` slot.
@@ -317,6 +337,10 @@ unsafe fn desc_to_tlv_blob(
     Ok(tlv)
 }
 
+// ---------------------------------------------------------------------------
+// Per-stream descriptor adders (add_*_descriptor)
+// ---------------------------------------------------------------------------
+
 /// Append one PMT descriptor to a video stream's per-PID descriptor list.
 ///
 /// `stream` is the handle returned by `tst_mux_config_add_video_stream`.
@@ -349,36 +373,26 @@ pub unsafe extern "C" fn tst_mux_config_add_video_descriptor(
                 Err(rc) => return rc,
             }
         };
-        // Unpack (prog_idx, within_idx) from the packed handle — same bit layout
-        // as VideoStreamHandle::pack: bits 4..7 = program, bits 0..3 = within.
-        let prog_idx = (stream >> 4) as usize;
-        let video_within_idx = (stream & 0xF) as usize;
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid video stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
-            .nth(video_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid video stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            stream,
+            |raw| {
+                VideoStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid video stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Video { .. }),
+            "invalid video stream handle (program out of range)",
+            "invalid video stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        prog.stream_descriptors[stream_idx].push(tlv);
+        cfg.programs[prog_idx].stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
@@ -408,34 +422,26 @@ pub unsafe extern "C" fn tst_mux_config_add_klv_descriptor(
                 Err(rc) => return rc,
             }
         };
-        let prog_idx = (stream >> 4) as usize;
-        let klv_within_idx = (stream & 0xF) as usize;
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid klv stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
-            .nth(klv_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid klv stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            stream,
+            |raw| {
+                KlvStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid klv stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Klv { .. }),
+            "invalid klv stream handle (program out of range)",
+            "invalid klv stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        prog.stream_descriptors[stream_idx].push(tlv);
+        cfg.programs[prog_idx].stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
@@ -465,34 +471,26 @@ pub unsafe extern "C" fn tst_mux_config_add_audio_descriptor(
                 Err(rc) => return rc,
             }
         };
-        let prog_idx = (stream >> 4) as usize;
-        let audio_within_idx = (stream & 0xF) as usize;
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid audio stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Audio { .. }))
-            .nth(audio_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid audio stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            stream,
+            |raw| {
+                AudioStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid audio stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Audio { .. }),
+            "invalid audio stream handle (program out of range)",
+            "invalid audio stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        prog.stream_descriptors[stream_idx].push(tlv);
+        cfg.programs[prog_idx].stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
@@ -526,34 +524,26 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_descriptor(
                 Err(rc) => return rc,
             }
         };
-        let prog_idx = (stream >> 4) as usize;
-        let subtitle_within_idx = (stream & 0xF) as usize;
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid subtitle stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Subtitle { .. }))
-            .nth(subtitle_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid subtitle stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            stream,
+            |raw| {
+                SubtitleStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid subtitle stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Subtitle { .. }),
+            "invalid subtitle stream handle (program out of range)",
+            "invalid subtitle stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        prog.stream_descriptors[stream_idx].push(tlv);
+        cfg.programs[prog_idx].stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
@@ -586,40 +576,43 @@ pub unsafe extern "C" fn tst_mux_config_add_data_descriptor(
                 Err(rc) => return rc,
             }
         };
-        let prog_idx = (stream >> 4) as usize;
-        let data_within_idx = (stream & 0xF) as usize;
-        if prog_idx >= cfg.programs.len() {
-            set_last_error(
-                TstError::InvalidUsage,
-                "invalid data stream handle (program out of range)",
-            );
-            return TstError::InvalidUsage as i32;
-        }
-        let prog = &mut cfg.programs[prog_idx];
-        let stream_idx = match prog
-            .streams
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, StreamSpec::Data { .. }))
-            .nth(data_within_idx)
-            .map(|(i, _)| i)
-        {
-            Some(i) => i,
-            None => {
-                set_last_error(
-                    TstError::InvalidUsage,
-                    "invalid data stream handle (stream out of range)",
-                );
-                return TstError::InvalidUsage as i32;
-            }
+        let (prog_idx, stream_idx) = match resolve_stream_descriptor_slot(
+            cfg,
+            stream,
+            |raw| {
+                DataStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
+                    set_last_error(
+                        TstError::InvalidUsage,
+                        "invalid data stream handle (non-canonical raw bits set)",
+                    );
+                    TstError::InvalidUsage as i32
+                })
+            },
+            |s| matches!(s, StreamSpec::Data { .. }),
+            "invalid data stream handle (program out of range)",
+            "invalid data stream handle (stream out of range)",
+        ) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
-        prog.stream_descriptors[stream_idx].push(tlv);
+        cfg.programs[prog_idx].stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
 
+// ---------------------------------------------------------------------------
+// Internal helper: TLV byte-stream parser (DA-CABI-1 with_capacity clamp)
+// ---------------------------------------------------------------------------
+
 // Internal helper: parse a concatenated TLV byte stream (tag + length + body
 // per descriptor) into a Vec<Vec<u8>>. Returns Err(TST_E_*) on malformed input.
+//
+// DA-CABI-1: `with_capacity` is clamped to `tlv_count.min(tlv_total_len / 2 + 1)`.
+// Each TLV occupies at least 2 bytes (tag + length), so this is a tight upper
+// bound on the number of TLVs that can fit in `tlv_total_len` bytes. Without
+// the clamp, a caller-supplied `tlv_count = 2_000_000_000` with a 4-byte
+// `tlv_total_len` would trigger an uncatchable `handle_alloc_error` abort via
+// a ~48 GB `Vec::with_capacity`.
 //
 // # Safety
 // Caller must ensure `tlv_bytes` is valid for `tlv_total_len` bytes when
@@ -640,7 +633,12 @@ unsafe fn parse_tlv_list(
         return Err(TstError::InvalidUsage as i32);
     }
     let bytes = unsafe { core::slice::from_raw_parts(tlv_bytes, tlv_total_len) };
-    let mut descs = Vec::with_capacity(tlv_count);
+    // Clamp capacity: each TLV is at minimum 2 bytes (tag + body-length).
+    // `tlv_count.min(tlv_total_len / 2 + 1)` bounds the reservation to a
+    // value proportional to the actual byte budget, preventing caller-controlled
+    // reservation exhaustion via an absurd `tlv_count`.
+    let capacity = tlv_count.min(tlv_total_len / 2 + 1);
+    let mut descs = Vec::with_capacity(capacity);
     let mut offset = 0usize;
     for _ in 0..tlv_count {
         if offset + 2 > bytes.len() {
@@ -663,4 +661,131 @@ unsafe fn parse_tlv_list(
         offset += total;
     }
     Ok(descs)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{
+        TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
+        tst_mux_config_free, tst_mux_config_new,
+    };
+    use crate::event::TstDescriptor;
+
+    /// Helper: a zero-body TLV (2 bytes: tag + zero body_len).
+    fn zero_body_tlv(tag: u8) -> [u8; 2] {
+        [tag, 0x00]
+    }
+
+    // -----------------------------------------------------------------------
+    // DA-CABI-1: with_capacity clamp
+    // -----------------------------------------------------------------------
+
+    /// Confirms that a caller-supplied `tlv_count = 2_000_000_000` paired with
+    /// a tiny `tlv_total_len` returns an error code rather than aborting the
+    /// process via an uncatchable `handle_alloc_error`.
+    ///
+    /// Before the clamp fix, `Vec::with_capacity(2_000_000_000)` would attempt
+    /// a ~48 GB reservation and abort. After the fix the capacity is clamped to
+    /// `min(2e9, tlv_total_len / 2 + 1)` — a small number — and the subsequent
+    /// loop immediately detects the TLV count / byte-stream mismatch and returns
+    /// `TST_E_INVALID_CONFIG`.
+    #[test]
+    fn absurd_tlv_count_tiny_total_len_returns_error_not_abort() {
+        let byte = zero_body_tlv(0xAB); // one valid 2-byte TLV
+        // tlv_count = 2e9, tlv_total_len = 2: only one TLV fits.
+        // with_capacity → min(2_000_000_000, 2/2+1=2) = 2 (safe).
+        // Loop iteration 2 will try offset=2, offset+2=4 > 2 → error.
+        let rc = unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+            let result = tst_mux_config_set_program_descriptors(
+                cfg,
+                prog,
+                byte.as_ptr(),
+                2,           // tlv_total_len = 2
+                2_000_000_000, // tlv_count = absurd
+            );
+            tst_mux_config_free(cfg);
+            result
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    // -----------------------------------------------------------------------
+    // DA-CABI-3: forged handle rejection (add- and set-family parity)
+    // -----------------------------------------------------------------------
+
+    /// Confirms that both the `add_*` and `set_stream_descriptors_for_*`
+    /// families reject a forged video stream handle (high bits set) with
+    /// `TST_E_INVALID_USAGE`. Before DA-CABI-3 the `add_*` family used raw
+    /// bit-twiddling and silently masked the high bits.
+    #[test]
+    fn forged_video_handle_rejected_by_add_and_set_families() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+            let real_handle = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            // Forge a handle by setting a high bit that try_from_raw rejects.
+            let forged = real_handle | 0x100;
+
+            // add-family
+            let null_desc =
+                TstDescriptor { tag: 0x02, _reserved: [0; 7], data: core::ptr::null(), data_len: 0 };
+            let rc_add =
+                tst_mux_config_add_video_descriptor(cfg, forged, &null_desc as *const _);
+            assert_eq!(
+                rc_add,
+                TstError::InvalidUsage as i32,
+                "add-family must reject forged handle"
+            );
+
+            // set-family
+            let byte = zero_body_tlv(0x28);
+            let rc_set = tst_mux_config_set_stream_descriptors_for_video(
+                cfg,
+                forged,
+                byte.as_ptr(),
+                2,
+                1,
+            );
+            assert_eq!(
+                rc_set,
+                TstError::InvalidUsage as i32,
+                "set-family must reject forged handle"
+            );
+
+            tst_mux_config_free(cfg);
+        }
+    }
+
+    /// Sanity check: a valid (canonical) handle succeeds for the add-family.
+    #[test]
+    fn valid_handle_add_video_descriptor_succeeds() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+            let handle = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            let body = [0xDE, 0xAD];
+            let desc = TstDescriptor { tag: 0x52, _reserved: [0; 7], data: body.as_ptr(), data_len: 2 };
+            let rc = tst_mux_config_add_video_descriptor(cfg, handle, &desc as *const _);
+            assert_eq!(rc, 0, "valid add-video-descriptor must return 0");
+            tst_mux_config_free(cfg);
+        }
+    }
+
+    /// Null config pointer → `TST_E_INVALID_CONFIG`.
+    #[test]
+    fn null_cfg_returns_invalid_config() {
+        let desc =
+            TstDescriptor { tag: 0x02, _reserved: [0; 7], data: core::ptr::null(), data_len: 0 };
+        let rc = unsafe {
+            tst_mux_config_add_video_descriptor(core::ptr::null_mut(), 0, &desc as *const _)
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
 }

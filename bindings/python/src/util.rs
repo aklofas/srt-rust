@@ -47,6 +47,7 @@ pub(crate) fn coerce_bytes_like<'py>(
 /// `host` must be the plain hostname or IP literal (without brackets or
 /// port). The function adds `[…]` iff `host` contains a colon and does
 /// not already start with `[`.
+#[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn join_host_port(host: &str, port: u16) -> String {
     if host.contains(':') && !host.starts_with('[') {
         format!("[{host}]:{port}")

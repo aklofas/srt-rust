@@ -719,4 +719,98 @@ mod tests {
         assert_eq!(m.get("a").map(String::as_str), Some(r#"he said \"hi\""#));
         assert_eq!(m.get("b").map(String::as_str), Some("ok"));
     }
+
+    // ── WP14 M3: combined client-build → server-verify round-trip ─────────
+
+    /// Exercise the PUBLIC `build_digest_response` client builder against the
+    /// server verifier. Previously each side was tested only against shared RFC
+    /// vectors; this helper drives the full path.
+    fn client_server_roundtrip(
+        algorithm: crate::rtsp::auth::DigestAlgorithm,
+        scheme: ServerAuthScheme,
+        client_password: &str,
+        server_password: &str,
+    ) -> (Result<(), AuthVerifyError>, u32) {
+        use crate::rtsp::auth::{DigestChallenge, DigestContext, build_digest_response};
+        let nonce = "0123456789abcdef0123456789abcdef";
+        let challenge = DigestChallenge {
+            realm: "tstrans-test".to_string(),
+            nonce: nonce.to_string(),
+            opaque: None,
+            algorithm,
+            qop: Some(vec!["auth".to_string()]),
+            stale: false,
+        };
+        let password = SecretString::new(client_password.to_string().into());
+        let ctx = DigestContext {
+            username: "operator",
+            password: &password,
+            method: "DESCRIBE",
+            uri: "rtsp://127.0.0.1/stream",
+            nc: 1,
+            cnonce: "abcdef01",
+            challenge: &challenge,
+        };
+        let header = build_digest_response(&ctx);
+        let cfg = ServerAuthConfig {
+            scheme,
+            realm: "tstrans-test".to_string(),
+            username: "operator".to_string(),
+            password: SecretString::new(server_password.to_string().into()),
+        };
+        let mut nc_hwm = 0u32;
+        let res = verify_authorization(
+            Some(&header),
+            "DESCRIBE",
+            "rtsp://127.0.0.1/stream",
+            &cfg,
+            nonce,
+            &mut nc_hwm,
+        );
+        (res, nc_hwm)
+    }
+
+    #[test]
+    fn client_built_md5_digest_verifies_server_side() {
+        use crate::rtsp::auth::DigestAlgorithm;
+        let (res, nc_hwm) = client_server_roundtrip(
+            DigestAlgorithm::Md5,
+            ServerAuthScheme::DigestMd5,
+            "s3cret",
+            "s3cret",
+        );
+        res.expect("server must accept the client-built MD5 digest");
+        assert_eq!(
+            nc_hwm, 1,
+            "nc high-water mark must advance to the client's nc"
+        );
+    }
+
+    #[test]
+    fn client_built_sha256_digest_verifies_server_side() {
+        use crate::rtsp::auth::DigestAlgorithm;
+        let (res, nc_hwm) = client_server_roundtrip(
+            DigestAlgorithm::Sha256,
+            ServerAuthScheme::DigestSha256,
+            "s3cret",
+            "s3cret",
+        );
+        res.expect("server must accept the client-built SHA-256 digest");
+        assert_eq!(nc_hwm, 1);
+    }
+
+    #[test]
+    fn client_built_digest_wrong_password_rejected() {
+        use crate::rtsp::auth::DigestAlgorithm;
+        let (res, _) = client_server_roundtrip(
+            DigestAlgorithm::Md5,
+            ServerAuthScheme::DigestMd5,
+            "wrong",
+            "s3cret",
+        );
+        assert!(
+            matches!(res, Err(AuthVerifyError::WrongDigestResponse)),
+            "mismatched password must be rejected, got {res:?}"
+        );
+    }
 }

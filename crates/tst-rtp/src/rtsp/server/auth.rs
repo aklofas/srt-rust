@@ -83,9 +83,13 @@ pub(crate) fn build_challenge_header(cfg: &ServerAuthConfig, nonce: &str) -> Str
 /// session. Mismatches surface as `AuthVerifyError::StaleNonce`, which
 /// the request handler should re-challenge with `stale=true`.
 ///
-/// `nc_hwm` is the per-session nonce-count high-water mark; it is
-/// updated on each successful Digest verification to reject nc replays.
-/// Reset it to 0 whenever the nonce is rotated.
+/// `nc_hwm` is the per-session nonce-count high-water mark used to
+/// reject nc replays. It advances whenever a structurally valid Digest
+/// attempt presents a fresh nc under the current nonce — deliberately
+/// including attempts that then fail the password check, so a captured
+/// Authorization header can never be replayed (see the note at the
+/// update site in `verify_digest`). Reset it to 0 whenever the nonce
+/// is rotated.
 pub(crate) fn verify_authorization(
     auth_header: Option<&str>,
     method: &str,

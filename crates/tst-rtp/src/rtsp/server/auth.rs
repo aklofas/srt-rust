@@ -796,7 +796,10 @@ mod tests {
             "s3cret",
         );
         res.expect("server must accept the client-built SHA-256 digest");
-        assert_eq!(nc_hwm, 1);
+        assert_eq!(
+            nc_hwm, 1,
+            "nc high-water mark must advance to the client's nc"
+        );
     }
 
     #[test]

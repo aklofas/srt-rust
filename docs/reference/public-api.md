@@ -110,7 +110,7 @@ anything.
 See `docs/reference/binding-authors.md` for the full C-ABI error-mapping
 contract and the Python/JVM/Swift binding-shape conventions.
 
-### Regenerating baselines
+## Regenerating baselines
 
 Baselines are rendered by `cargo public-api` on the **pinned nightly toolchain**
 declared in the CI public-api step (see `.github/workflows/ci.yml`, currently

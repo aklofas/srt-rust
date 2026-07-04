@@ -447,10 +447,12 @@ impl RtspUrl {
         format!("{}://{}:{}{}", scheme, host_str, self.port, self.path)
     }
 
-    /// True if the host is a wildcard bind (`0.0.0.0` or `::`) or a
-    /// loopback (`127.x.x.x` or `::1`) — suitable for `RtspServer::bind`.
-    /// Server-only callers should use [`Self::validate_for_server_bind`]
-    /// which also requires the host to parse as an IP literal.
+    /// True if the host parses as an IP literal — a wildcard bind
+    /// (`0.0.0.0` or `::`), a loopback (`127.x.x.x` or `::1`), or any
+    /// concrete interface address — i.e. anything bindable by
+    /// `RtspServer::bind`. Hostnames return false. Server-only callers
+    /// should use [`Self::validate_for_server_bind`], which reports a
+    /// typed error instead of a bool.
     ///
     /// Hosts are stored bracket-stripped, so only the bare forms (`::`,
     /// `::1`) appear here; the bracketed forms (`[::]`, `[::1]`) are never

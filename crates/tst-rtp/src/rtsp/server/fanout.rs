@@ -112,10 +112,12 @@ pub(crate) fn spawn_peer_fanout(
         let mut seq = initial_seq;
         // Task-owned scratch buffers: hoisted above the recv loop so the
         // heap allocation is reused across frames rather than re-allocated
-        // per payload. Capacity grows to the high-water mark after the
-        // first few frames and stays there.
-        let mut datagram: Vec<u8> = Vec::with_capacity(RTP_HEADER_LEN + 1316);
-        let mut framed: Vec<u8> = Vec::with_capacity(4 + RTP_HEADER_LEN + 1316);
+        // per payload. Sized for one default TS burst; capacity grows to
+        // the high-water mark after the first few frames and stays there.
+        let mut datagram: Vec<u8> =
+            Vec::with_capacity(RTP_HEADER_LEN + crate::url::DEFAULT_PKT_SIZE);
+        let mut framed: Vec<u8> =
+            Vec::with_capacity(4 + RTP_HEADER_LEN + crate::url::DEFAULT_PKT_SIZE);
         loop {
             tokio::select! {
                 payload_res = rx.recv() => match payload_res {

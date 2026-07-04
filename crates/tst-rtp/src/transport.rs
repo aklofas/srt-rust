@@ -1152,8 +1152,17 @@ mod tests {
             .send(bytes::Bytes::from(sr.encode().unwrap()))
             .expect("send SR");
 
-        // Give the ingest thread a moment to process the SR.
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Deterministic wait: the SR must actually be ingested before we
+        // proceed — otherwise the final rtt_us == 0 assertion would be
+        // vacuously true (0 is also the never-processed default).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while t.rtcp_stats().sr_packets_received == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for SR ingest"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
 
         // Peer RR — RB's `last_sr` mirrors the anchor's mid-32 NTP.
         let last_sr_mid = ((sr_ntp_full >> 16) & 0xFFFF_FFFF) as u32;
@@ -1174,8 +1183,16 @@ mod tests {
             .send(bytes::Bytes::from(rr.encode().unwrap()))
             .expect("send RR");
 
-        // Give the ingest thread a moment to process the RR.
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Same deterministic wait for the RR: only after it is provably
+        // ingested does the rtt_us == 0 assertion pin the new behavior.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while t.rtcp_stats().rr_packets_received == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for RR ingest"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
 
         let s = t.socket_stats().expect("alive transport reports stats");
         assert_eq!(

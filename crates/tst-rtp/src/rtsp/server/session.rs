@@ -67,13 +67,15 @@ pub struct ServerSessionState {
     /// Mount path the client SETUP'd against, e.g. "/live". None
     /// pre-SETUP.
     pub mount_path: Option<String>,
-    /// Stable nonce for Digest auth — generated once per connection and
-    /// emitted in every WWW-Authenticate (rotation via stale=true is
-    /// not yet implemented).
+    /// Nonce for Digest auth — generated per connection and emitted in
+    /// every WWW-Authenticate; rotated by `challenge_response` on a
+    /// stale re-challenge (which also resets `auth_nc_hwm`).
     pub auth_nonce: String,
     /// Digest nc (nonce-count) high-water mark for replay detection
-    /// (DA-RTP-4b). Tracks the highest nc accepted under the current
-    /// nonce; reset to 0 whenever the nonce is rotated.
+    /// (DA-RTP-4b). Tracks the highest nc observed/consumed under the
+    /// current nonce — it advances even when the digest-response check
+    /// subsequently fails (see `verify_digest`), so a captured header
+    /// can never be replayed. Reset to 0 whenever the nonce is rotated.
     pub(crate) auth_nc_hwm: u32,
     /// Count of consecutive 401-bounced requests. After 3 in a row the
     /// session closes (basic DoS guard).

@@ -8,7 +8,7 @@
 //!
 //! Lenient by default — non-conformance surfaces as
 //! `DemuxEvent::NonConformant` events so the receive loop keeps running.
-//! `DemuxerBuilder::strict(StrictMode::*)` opts in to hard-fail
+//! `DemuxerConfig::builder().strict(StrictMode::*)` opts in to hard-fail
 //! categories for compliance / ingest workflows.
 
 pub(crate) mod au_reassemble;
@@ -49,4 +49,4 @@ pub use event::{
 };
 pub use payload::{split_video, split_video_strict};
 pub use strict::StrictMode;
-pub use types::{DemuxerBuilder, DemuxerConfig, DemuxerStats};
+pub use types::{DemuxerConfig, DemuxerConfigBuilder, DemuxerStats};

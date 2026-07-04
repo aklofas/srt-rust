@@ -546,7 +546,7 @@ def _run_strict_psi_rejection(
     stable public code regardless of the binding (exception-kind stability).
     The default (lenient) demuxer would NOT raise here — it would emit a
     NonConformant event instead — so FULL strict mode is required, mirroring the
-    Rust adapter's ``DemuxerBuilder::new().strict(StrictMode::Full)``.
+    Rust adapter's ``Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build())``.
     """
     demuxer = Demuxer(DemuxerConfig(strict_mode=StrictMode.FULL))
     raised = False

@@ -60,7 +60,7 @@ pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 /// for any realistic MISB sync-metadata AU (ST 0903 VMTI with hundreds
 /// of target packs is ~hundreds of KB at most); well below the
 /// per-PES default. Configurable via
-/// [`DemuxerBuilder::au_cell_cap_per_pid`].
+/// [`DemuxerConfigBuilder::au_cell_cap_per_pid`].
 pub(super) const DEFAULT_AU_CELL_CAP_PER_PID: usize = 1024 * 1024;
 
 /// Default aggregate AU cell reassembly cap across all PIDs (16 MiB).
@@ -230,19 +230,20 @@ pub(crate) struct ProgramTracker {
     pub(crate) klv_mismatch_coalesce: HashSet<u16>,
 }
 
-/// Builder for [`Demuxer`](crate::mpegts::demux::Demuxer).
+/// Builder for [`DemuxerConfig`].
 ///
-/// Construct via [`DemuxerBuilder::new`] or
-/// [`DemuxerBuilder::default`], chain option methods, and call
-/// [`DemuxerBuilder::build`] to produce a
-/// [`Demuxer`](crate::mpegts::demux::Demuxer).
+/// Construct via [`DemuxerConfig::builder`], [`DemuxerConfigBuilder::new`], or
+/// [`DemuxerConfigBuilder::default`], chain option methods, and call
+/// [`DemuxerConfigBuilder::build`] to produce a [`DemuxerConfig`].
+/// Pass the config to [`Demuxer::with_config`](crate::mpegts::demux::Demuxer::with_config)
+/// to create the demuxer.
 #[must_use]
 #[derive(Debug, Default)]
-pub struct DemuxerBuilder {
+pub struct DemuxerConfigBuilder {
     options: DemuxerConfig,
 }
 
-impl DemuxerBuilder {
+impl DemuxerConfigBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -310,8 +311,19 @@ impl DemuxerBuilder {
         self
     }
 
-    pub fn build(self) -> crate::mpegts::demux::Demuxer {
-        crate::mpegts::demux::Demuxer::with_config(self.options)
+    pub fn build(self) -> DemuxerConfig {
+        self.options
+    }
+}
+
+impl DemuxerConfig {
+    /// Create a [`DemuxerConfigBuilder`] with default options.
+    ///
+    /// Mirrors [`MuxerConfig::builder`](crate::mpegts::mux::MuxerConfig::builder):
+    /// the builder produces the config, then pass it to
+    /// [`Demuxer::with_config`](crate::mpegts::demux::Demuxer::with_config).
+    pub fn builder() -> DemuxerConfigBuilder {
+        DemuxerConfigBuilder::default()
     }
 }
 
@@ -342,14 +354,14 @@ mod tests {
 
     #[test]
     fn builder_sets_cfi_tolerance() {
-        let builder = DemuxerBuilder::new().cfi_tolerance(true);
+        let builder = DemuxerConfig::builder().cfi_tolerance(true);
         let config = builder.options;
         assert!(config.cfi_tolerance);
     }
 
     #[test]
     fn builder_can_toggle_cfi_tolerance_off() {
-        let builder = DemuxerBuilder::new()
+        let builder = DemuxerConfig::builder()
             .cfi_tolerance(true)
             .cfi_tolerance(false);
         assert!(!builder.options.cfi_tolerance);

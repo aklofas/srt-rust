@@ -4340,31 +4340,6 @@ impl core::marker::Unpin for tst_core::mpegts::demux::demuxer::Demuxer
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::demuxer::Demuxer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
-pub struct tst_core::mpegts::demux::DemuxerBuilder
-impl tst_core::mpegts::demux::DemuxerBuilder
-pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid(self, usize) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_total(self, usize) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_max_in_flight_pids(self, usize) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::av1_carriage(self, tst_core::mpegts::mux::Av1CarriageMode) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::build(self) -> tst_core::mpegts::demux::demuxer::Demuxer
-pub fn tst_core::mpegts::demux::DemuxerBuilder::cfi_tolerance(self, bool) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::link_klv(self, u16, u16) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::new() -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::pes_cap_per_pid(self, usize) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::pes_cap_total(self, usize) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::strict(self, tst_core::mpegts::demux::strict::StrictMode) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::treat_as(self, u16, tst_core::mpegts::demux::event::StreamKind) -> Self
-impl core::default::Default for tst_core::mpegts::demux::DemuxerBuilder
-pub fn tst_core::mpegts::demux::DemuxerBuilder::default() -> tst_core::mpegts::demux::DemuxerBuilder
-impl core::fmt::Debug for tst_core::mpegts::demux::DemuxerBuilder
-pub fn tst_core::mpegts::demux::DemuxerBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::mpegts::demux::DemuxerBuilder
-impl core::marker::Send for tst_core::mpegts::demux::DemuxerBuilder
-impl core::marker::Sync for tst_core::mpegts::demux::DemuxerBuilder
-impl core::marker::Unpin for tst_core::mpegts::demux::DemuxerBuilder
-impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::DemuxerBuilder
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
-impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 #[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
 pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_total: core::option::Option<usize>
@@ -4377,6 +4352,8 @@ pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Optio
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_total: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::demux::event::StreamKind>
 pub tst_core::mpegts::demux::DemuxerConfig::strict: tst_core::mpegts::demux::strict::StrictMode
+impl tst_core::mpegts::demux::DemuxerConfig
+pub fn tst_core::mpegts::demux::DemuxerConfig::builder() -> tst_core::mpegts::demux::DemuxerConfigBuilder
 impl core::clone::Clone for tst_core::mpegts::demux::DemuxerConfig
 pub fn tst_core::mpegts::demux::DemuxerConfig::clone(&self) -> tst_core::mpegts::demux::DemuxerConfig
 impl core::default::Default for tst_core::mpegts::demux::DemuxerConfig
@@ -4390,6 +4367,31 @@ impl core::marker::Unpin for tst_core::mpegts::demux::DemuxerConfig
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::DemuxerConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::DemuxerConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerConfig
+pub struct tst_core::mpegts::demux::DemuxerConfigBuilder
+impl tst_core::mpegts::demux::DemuxerConfigBuilder
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::au_cell_cap_per_pid(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::au_cell_cap_total(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::au_cell_max_in_flight_pids(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::av1_carriage(self, tst_core::mpegts::mux::Av1CarriageMode) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::build(self) -> tst_core::mpegts::demux::DemuxerConfig
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::cfi_tolerance(self, bool) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::link_klv(self, u16, u16) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::new() -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::pes_cap_per_pid(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::pes_cap_total(self, usize) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::strict(self, tst_core::mpegts::demux::strict::StrictMode) -> Self
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::treat_as(self, u16, tst_core::mpegts::demux::event::StreamKind) -> Self
+impl core::default::Default for tst_core::mpegts::demux::DemuxerConfigBuilder
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::default() -> tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::fmt::Debug for tst_core::mpegts::demux::DemuxerConfigBuilder
+pub fn tst_core::mpegts::demux::DemuxerConfigBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::marker::Send for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::marker::Sync for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::marker::Unpin for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::DemuxerConfigBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerConfigBuilder
 pub struct tst_core::mpegts::demux::DemuxerStats
 pub tst_core::mpegts::demux::DemuxerStats::discontinuities: u64
 pub tst_core::mpegts::demux::DemuxerStats::nonconformant: u64

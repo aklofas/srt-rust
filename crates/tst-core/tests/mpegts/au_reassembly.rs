@@ -32,7 +32,8 @@
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, MetadataKind, NonConformantIssue, event::MultiCellAuReason,
+    DemuxEvent, Demuxer, DemuxerConfig, DemuxerConfigBuilder, MetadataKind, NonConformantIssue,
+    event::MultiCellAuReason,
 };
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
@@ -161,8 +162,8 @@ fn collect_events(ts_bytes: &[u8]) -> Vec<DemuxEvent> {
 
 /// Same as `collect_events` but uses a custom-configured demuxer (for
 /// the Overflow test, which lowers `au_cell_cap_per_pid`).
-fn collect_events_with(builder: DemuxerBuilder, ts_bytes: &[u8]) -> Vec<DemuxEvent> {
-    let mut dem = builder.build();
+fn collect_events_with(builder: DemuxerConfigBuilder, ts_bytes: &[u8]) -> Vec<DemuxEvent> {
+    let mut dem = Demuxer::with_config(builder.build());
     dem.feed(ts_bytes).unwrap();
     let mut events = Vec::new();
     while let Some(e) = dem.next_event() {
@@ -588,7 +589,7 @@ fn concurrent_first_emits_nonconformant_then_buffers_new() {
 
 #[test]
 fn overflow_drops_buffer_emits_nonconformant() {
-    // Lower au_cell_cap_per_pid via DemuxerBuilder so the second
+    // Lower au_cell_cap_per_pid via DemuxerConfigBuilder so the second
     // (Middle) cell overflows.
     let mut mux = build_muxer();
     pump_video(&mut mux, 8, 90_000);
@@ -603,7 +604,7 @@ fn overflow_drops_buffer_emits_nonconformant() {
     patch_au_cell(&mut ts, off0, CellFragmentIndication::First, 10, &a);
     patch_au_cell(&mut ts, off1, CellFragmentIndication::Middle, 11, &b);
 
-    let builder = DemuxerBuilder::new().au_cell_cap_per_pid(10); // 5 + 10 = 15 > 10
+    let builder = DemuxerConfig::builder().au_cell_cap_per_pid(10); // 5 + 10 = 15 > 10
     let events = collect_events_with(builder, &ts);
 
     assert!(

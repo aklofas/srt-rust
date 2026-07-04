@@ -425,7 +425,7 @@ pub enum LinkSource {
     /// Demuxer inferred the link from topology (e.g., one video + one
     /// metadata PID with no descriptor). Treat as a hint, not authority.
     Inferred,
-    /// Caller provided the link via `DemuxerBuilder::link_klv`.
+    /// Caller provided the link via `DemuxerConfigBuilder::link_klv`.
     Override,
 }
 

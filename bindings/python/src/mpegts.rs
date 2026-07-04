@@ -160,13 +160,13 @@ impl PyDemuxer {
 }
 
 // ---------------------------------------------------------------------------
-// Config translation — Python DemuxerConfig dataclass → Rust DemuxerBuilder
+// Config translation — Python DemuxerConfig dataclass → Rust DemuxerConfig
 // ---------------------------------------------------------------------------
 
 /// Build a `Demuxer` from an optional Python `DemuxerConfig` dataclass.
 ///
 /// Constructs a `DemuxerConfig` field-by-field rather than chaining
-/// the `DemuxerBuilder` setters: that lets us set
+/// the `DemuxerConfigBuilder` setters: that lets us set
 /// `lenient_psi_reassembly` (which has no dedicated builder method
 /// today) and keep the dispatch shape uniform across the 6 bridged
 /// knobs, mirroring how the C wrapper's `build_options()` assembles

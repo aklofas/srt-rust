@@ -102,9 +102,11 @@ fn demuxer_from_c_with_av1_mode(mode: TstAv1CarriageMode) -> Demuxer {
         assert_eq!(rc, 0, "set_av1_carriage failed");
         let opts = test_build_options(cfg);
         tst_demux_config_free(cfg);
-        tst_core::mpegts::demux::DemuxerBuilder::new()
-            .av1_carriage(opts.av1_carriage)
-            .build()
+        tst_core::mpegts::demux::Demuxer::with_config(
+            tst_core::mpegts::demux::DemuxerConfig::builder()
+                .av1_carriage(opts.av1_carriage)
+                .build(),
+        )
     }
 }
 

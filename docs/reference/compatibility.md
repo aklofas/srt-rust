@@ -348,7 +348,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
 | `Demuxer` | ✅ Full | Stateful TS demuxer; `feed` bytes in, `next_event` typed events out, `flush` drains trailing PES on stream end. Bytes need not be 188-aligned. |
-| `DemuxerBuilder` / `DemuxerConfig` | ✅ Full | Fluent builder + plain-struct config form. |
+| `DemuxerConfigBuilder` / `DemuxerConfig` | ✅ Full | Fluent builder (via `DemuxerConfig::builder()`) + plain-struct config form. |
 | `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `pmt_pid`, `streams`, `klv_links`. |
 | `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
 | `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator, was_reassembled, cell_count }` (7 fields per H.222.0 § 2.12.4.2 Table 2-156 + multi-cell reassembly state), `KlvAsync` (bare LS), `Unknown(u8)`. |
@@ -363,8 +363,8 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Stream type / shape mismatch (sync↔async fallback) | ✅ Full | When PMT and wire shape disagree (e.g. 0x15 PID with bare KLV), demuxer classifies on actual shape and emits `StreamTypeMismatch{Sync,Async}On*Pid` non-conformance. PES PTS preserved. |
 | `metadata_descriptor` parser | ✅ Full | KLV→video link emitted in `ProgramMap.klv_links` as `LinkSource::Declared`. |
 | KLV link inference (single video + single KLV) | ✅ Full | `LinkSource::Inferred` when no descriptor but topology is unambiguous. |
-| `DemuxerBuilder::link_klv` override | ✅ Full | Caller-supplied klv→video PID link (`LinkSource::Override`). |
-| `DemuxerBuilder::treat_as` override | ✅ Full | Caller-supplied `StreamKind` override per PID — overrides the PMT-derived kind. |
+| `DemuxerConfigBuilder::link_klv` override | ✅ Full | Caller-supplied klv→video PID link (`LinkSource::Override`). |
+| `DemuxerConfigBuilder::treat_as` override | ✅ Full | Caller-supplied `StreamKind` override per PID — overrides the PMT-derived kind. |
 | PES reassembly cap (`pes_cap_per_pid`) | ✅ Full | Default 4 MiB per-PID; overflow surfaces as `Discontinuity::PesOversize`. |
 | PES reassembly cap (`pes_cap_total`) | ✅ Full | Default 64 MiB aggregate; overflow surfaces as `Discontinuity::PesTotalOversize`. |
 | Sync recovery (HUNT/VERIFY/LOCKED) | ✅ Full | Internal syncer state machine; ~6 KiB search window, then `DemuxError::Unrecoverable`. |

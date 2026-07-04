@@ -10,7 +10,7 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxerBuilder,
+    Demuxer, DemuxerConfig,
     event::{DemuxEvent, SamplePayload},
 };
 use tst_core::mpegts::mux::{
@@ -132,11 +132,13 @@ fn mux_then_collect_video_raws(
     let ts_bytes = drain_mux(&mut mux);
 
     let mut demux = if av1_interop {
-        DemuxerBuilder::new()
-            .av1_carriage(Av1CarriageMode::InteropRawObu)
-            .build()
+        Demuxer::with_config(
+            DemuxerConfig::builder()
+                .av1_carriage(Av1CarriageMode::InteropRawObu)
+                .build(),
+        )
     } else {
-        DemuxerBuilder::new().build()
+        Demuxer::with_config(DemuxerConfig::builder().build())
     };
     demux.feed(&ts_bytes).unwrap();
     // flush drains unbounded video PES (PES_packet_length=0) buffered in-flight.

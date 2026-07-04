@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Lenient by default. The demuxer keeps going past every recoverable
     // problem and surfaces what it found as `NonConformant` events. For
-    // hard-fail behavior, swap to `DemuxerBuilder::new().strict(...).build()`.
+    // hard-fail behavior, swap to `Demuxer::with_config(DemuxerConfig::builder().strict(...).build())`.
     let mut d = Demuxer::new();
     d.feed(&bytes)?;  // `feed` accepts unaligned slices and re-syncs internally
     d.flush();        // end-of-stream: commits the trailing PES-length-0 AU

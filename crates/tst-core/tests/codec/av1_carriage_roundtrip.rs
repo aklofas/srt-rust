@@ -7,12 +7,11 @@
 //! per-OBU header bytes.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::Demuxer;
-use tst_core::mpegts::demux::DemuxerBuilder;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NonConformantIssue, Obu, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
 use tst_core::mpegts::demux::{split_video, split_video_strict};
 use tst_core::mpegts::mux::{
     Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -323,9 +322,11 @@ fn av1_interop_round_trip_no_binding_issues() {
         .unwrap();
     let ts_bytes = drain_mux(&mut mux);
 
-    let mut demux = DemuxerBuilder::new()
-        .av1_carriage(Av1CarriageMode::InteropRawObu)
-        .build();
+    let mut demux = Demuxer::with_config(
+        DemuxerConfig::builder()
+            .av1_carriage(Av1CarriageMode::InteropRawObu)
+            .build(),
+    );
     demux.feed(&ts_bytes).unwrap();
     demux.flush();
 

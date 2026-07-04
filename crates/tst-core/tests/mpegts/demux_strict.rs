@@ -35,9 +35,7 @@ use tst_core::error::DemuxError;
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::common::crc32::crc32_mpeg2;
-use tst_core::mpegts::demux::{
-    DemuxEvent, DemuxerBuilder, DemuxerConfig, NonConformantIssue, StrictMode,
-};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, StrictMode};
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
@@ -103,7 +101,7 @@ fn build_mismatched_stream() -> Vec<u8> {
 #[test]
 fn strict_full_rejects_stream_type_mismatch() {
     let bytes = build_mismatched_stream();
-    let mut d = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut d = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     let res = d.feed(&bytes);
     // The implementation queues the `NonConformant` event first, then
     // drains `fatal` at end of the packet loop and returns
@@ -135,7 +133,7 @@ fn strict_full_rejects_stream_type_mismatch() {
 #[test]
 fn strict_off_emits_event_keeps_running() {
     let bytes = build_mismatched_stream();
-    let mut d = DemuxerBuilder::new().build(); // default = StrictMode::Off
+    let mut d = Demuxer::with_config(DemuxerConfig::builder().build()); // default = StrictMode::Off
     d.feed(&bytes).unwrap(); // should not error in StrictMode::Off
 
     // The lenient contract has two halves: feed returns Ok AND the

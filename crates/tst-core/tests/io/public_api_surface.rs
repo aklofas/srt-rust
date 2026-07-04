@@ -21,7 +21,7 @@ use tst_core::mpegts::common::{Pcr27mhz, Pts90khz, TS_PACKET_SIZE};
 // === Demux curated surface (the typical consumer path) ===
 #[allow(unused_imports)]
 use tst_core::mpegts::demux::{
-    AudioCodec, DemuxEvent, Demuxer, DemuxerBuilder, DemuxerConfig, DemuxerStats,
+    AudioCodec, DemuxEvent, Demuxer, DemuxerConfig, DemuxerConfigBuilder, DemuxerStats,
     DiscontinuityKind, LinkSource, MetadataKind, NalUnit, NonConformantIssue, ProgramMap,
     SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode, SubtitleCodec, VideoCodec,
     VideoPayload,

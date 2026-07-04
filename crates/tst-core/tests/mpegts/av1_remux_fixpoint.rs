@@ -1,8 +1,8 @@
 //! AV1-01 acceptance: mux -> demux raw -> remux is a PAYLOAD FIXPOINT in
 //! BOTH carriage modes, using the pass-through wire push for the remux.
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::DemuxerBuilder;
 use tst_core::mpegts::demux::event::{DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
 use tst_core::mpegts::mux::{
     Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -45,7 +45,7 @@ fn mux_cfg(mode: Av1CarriageMode) -> MuxerConfig {
 }
 
 fn first_raw(ts: &[u8], mode: Av1CarriageMode) -> (SharedBytes, Option<Av1CarriageMode>) {
-    let mut d = DemuxerBuilder::new().av1_carriage(mode).build();
+    let mut d = Demuxer::with_config(DemuxerConfig::builder().av1_carriage(mode).build());
     d.feed(ts).unwrap();
     d.flush();
     while let Some(e) = d.next_event() {

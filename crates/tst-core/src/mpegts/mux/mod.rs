@@ -67,7 +67,7 @@ pub use stats_accounting::MuxerStats;
 /// New variants WILL be added without a major version bump;
 /// pattern-matching code here should include a wildcard arm. If you
 /// only need action-discriminating categorization, prefer the
-/// coarse-tier [`crate::error::MuxSenderErrorKind`] enum via
+/// coarse-tier [`crate::error::MuxErrorKind`] enum via
 /// [`crate::error::MuxError::kind()`].
 pub mod _detail {
     /// The canonical [`crate::error::MuxError`].

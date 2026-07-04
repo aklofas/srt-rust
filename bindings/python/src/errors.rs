@@ -215,11 +215,11 @@ pub fn raise_rist_error_for_test(py: Python<'_>, kind: &str, message: &str) -> P
 // ---------------------------------------------------------------------------
 
 /// Map a Rust `MuxError` to a Python `MuxError` instance. Routes
-/// via the 5-variant `MuxSenderErrorKind` coarse classification —
+/// via the 5-variant `MuxErrorKind` coarse classification —
 /// the muxer's `kind()` accessor (plan #91) is the source of truth
 /// for which Python `MuxErrorKind` variant to use.
 ///
-/// The `MuxSenderErrorKind` enum is `#[non_exhaustive]`; the wildcard
+/// The `MuxErrorKind` enum is `#[non_exhaustive]`; the wildcard
 /// arm routes unknown future variants to `INTERNAL` so this fn never
 /// panics on a Rust-side enum addition (the test suite will surface
 /// the omission when the new variant gets a tagged-test fixture).
@@ -227,13 +227,13 @@ pub fn raise_rist_error_for_test(py: Python<'_>, kind: &str, message: &str) -> P
 /// Called from Muxer wrappers.
 #[allow(dead_code)]
 pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr {
-    use tst_core::error::MuxSenderErrorKind;
+    use tst_core::error::MuxErrorKind;
     let kind_str = match e.kind() {
-        MuxSenderErrorKind::InputMalformed => "INPUT_MALFORMED",
-        MuxSenderErrorKind::ConfigInvalid => "CONFIG_INVALID",
-        MuxSenderErrorKind::InvalidUsage => "INVALID_USAGE",
-        MuxSenderErrorKind::Backpressure => "BACKPRESSURE",
-        MuxSenderErrorKind::Internal => "INTERNAL",
+        MuxErrorKind::InputMalformed => "INPUT_MALFORMED",
+        MuxErrorKind::ConfigInvalid => "CONFIG_INVALID",
+        MuxErrorKind::InvalidUsage => "INVALID_USAGE",
+        MuxErrorKind::Backpressure => "BACKPRESSURE",
+        MuxErrorKind::Internal => "INTERNAL",
         _ => "INTERNAL",
     };
     // BufferFull gets a Python-only breadcrumb: the most common way to

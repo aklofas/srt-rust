@@ -90,7 +90,7 @@ def test_push_video_invalid_nal_raises_input_malformed():
 
 def test_push_video_to_with_invalid_handle_raises_invalid_usage():
     """An out-of-range handle surfaces as InvalidStreamHandle →
-    INVALID_USAGE per the MuxSenderErrorKind classifier in
+    INVALID_USAGE per the MuxErrorKind classifier in
     tst-core/src/error.rs. Uses a within-canonical-layout-but-not-configured
     handle (program=15, within=15 = 0xFF) so the closeout audit's
     `from_raw` validation passes and the push-time range check fires.
@@ -461,7 +461,7 @@ def test_push_subtitle_to_handle_form_works():
 
 def test_push_subtitle_to_invalid_handle_raises():
     """Within-canonical-layout but unconfigured handle surfaces as
-    INVALID_USAGE at push-time via the MuxSenderErrorKind classifier.
+    INVALID_USAGE at push-time via the MuxErrorKind classifier.
     (Forged-high-bit handles are rejected earlier at `from_raw` itself —
     that contract is covered in `test_handle_forge.py`.)"""
     from tstrans.mpegts import SubtitleStreamHandle, WebVttInTsConfig
@@ -724,7 +724,7 @@ def test_dvb_teletext_config_rejects_bytearray_language():
 #   subtitle_* — list + by_program             (no by-index getter Rust-side)
 #
 # `*_handles_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
-# raises `MuxError(INVALID_USAGE)` (via the MuxSenderErrorKind classifier
+# raises `MuxError(INVALID_USAGE)` (via the MuxErrorKind classifier
 # mapping `ProgramNotFound`) on a non-existent program number; the Python
 # wraps propagate that error rather than returning an empty list, so the
 # call-site sees the same shape as the Rust API.
@@ -772,7 +772,7 @@ def test_video_handles_for_program_returns_program_streams():
 
 def test_video_handles_for_program_unknown_raises_invalid_usage():
     # Rust returns `Err(MuxError::ProgramNotFound)`, classified as
-    # INVALID_USAGE by the MuxSenderErrorKind classifier in
+    # INVALID_USAGE by the MuxErrorKind classifier in
     # tst-core/src/error.rs. The Python wrap propagates that error.
     m = Muxer(_simple_config())
     with pytest.raises(MuxError) as ei:

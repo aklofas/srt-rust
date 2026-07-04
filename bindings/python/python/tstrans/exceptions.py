@@ -12,7 +12,7 @@ parsed object as `field_errors`, matching Rust's "best-effort parse"
 semantics for ST 0601 in the field.
 
 `MuxErrorKind` mirrors Rust's 5-variant
-`tst_core::error::MuxSenderErrorKind` coarse-tier categorical
+`tst_core::error::MuxErrorKind` coarse-tier categorical
 classification. `KlvEncodeErrorKind` accompanies the `klv.encode_*`
 Python wrappers. `DemuxErrorKind` / `KlvErrorKind` / `CodecErrorKind`
 mirror their owning Rust enums.
@@ -52,7 +52,7 @@ class _KindMessageError(TstError):
 
 
 class MuxErrorKind(enum.IntEnum):
-    """Mirrors Rust `tst_core::error::MuxSenderErrorKind` — the
+    """Mirrors Rust `tst_core::error::MuxErrorKind` — the
     coarse-tier 5-variant classification of muxer-side failures
     introduced in plan #91. Every `MuxError` carries one of these on
     `.kind` for programmatic matching; the underlying free-text message
@@ -61,7 +61,7 @@ class MuxErrorKind(enum.IntEnum):
     The Rust enum is `#[non_exhaustive]`; Python matchers should
     include a default arm. Mapping is performed by
     `tst_py::errors::make_mux_error` in Rust, which translates from
-    `MuxSenderErrorKind` to this enum's variant name via SHOUTY_SNAKE.
+    `MuxErrorKind` to this enum's variant name via SHOUTY_SNAKE.
     """
 
     # Caller pushed input bytes that don't conform — non-Annex-B NAL,

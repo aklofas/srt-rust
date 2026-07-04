@@ -334,7 +334,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 }
 
 /// Map a `MuxError` to a code + message via the inner-tier
-/// `MuxSenderErrorKind` category.
+/// `MuxErrorKind` category.
 ///
 /// The code projection routes through `MuxError::kind()` for the
 /// `ConfigInvalid` / `InvalidUsage` / `Backpressure` / `Internal`
@@ -353,7 +353,7 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
 ///    verifies all 37 variants produce the expected `TstError` code.
 #[allow(dead_code)] // transport-feature-gated callers; unused in minimal builds
 pub(crate) fn record_mux_error(e: &MuxError) {
-    use tst_core::error::MuxSenderErrorKind;
+    use tst_core::error::MuxErrorKind;
 
     // Per-variant code routing (covered by kind() projection below
     // unless explicitly overridden). The ratchet
@@ -408,18 +408,18 @@ pub(crate) fn record_mux_error(e: &MuxError) {
 
         // All other variants route via the kind() projection.
         _ => match e.kind() {
-            MuxSenderErrorKind::ConfigInvalid => TstError::InvalidConfig,
-            MuxSenderErrorKind::InvalidUsage => TstError::InvalidUsage,
-            MuxSenderErrorKind::Backpressure => TstError::BufferFull,
+            MuxErrorKind::ConfigInvalid => TstError::InvalidConfig,
+            MuxErrorKind::InvalidUsage => TstError::InvalidUsage,
+            MuxErrorKind::Backpressure => TstError::BufferFull,
             // AudioTooLarge + SubtitleTooLarge + DataTooLarge fall through
             // here (the 3 InputMalformed variants not covered by overrides
             // above). All three project to InvalidUsage per the
             // pre-Wave-6.D behavior.
-            MuxSenderErrorKind::InputMalformed => TstError::InvalidUsage,
-            MuxSenderErrorKind::Internal => TstError::Internal,
+            MuxErrorKind::InputMalformed => TstError::InvalidUsage,
+            MuxErrorKind::Internal => TstError::Internal,
             // Required by #[non_exhaustive]. CI ratchet
             // scripts/check/rust/mux-error-kind-coverage.sh enforces every
-            // MuxSenderErrorKind variant is matched above before this arm.
+            // MuxErrorKind variant is matched above before this arm.
             // Matches the wildcard-default-to-Internal pattern from Wave
             // 4.A (record_shell_error) and Wave 6.D (MuxError::kind() at
             // tst-core/src/error.rs:631): an unknown future coarse kind

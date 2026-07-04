@@ -1418,7 +1418,7 @@ pub tst_core::error::MuxError::TooManyVideoStreams
 pub tst_core::error::MuxError::TooManyVideoStreams::cap: usize
 pub tst_core::error::MuxError::TooManyVideoStreams::count: usize
 impl tst_core::error::MuxError
-pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxSenderErrorKind
+pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxErrorKind
 impl core::clone::Clone for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError
@@ -1437,30 +1437,30 @@ impl core::marker::Unpin for tst_core::error::MuxError
 impl core::marker::UnsafeUnpin for tst_core::error::MuxError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::MuxError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxError
-#[non_exhaustive] pub enum tst_core::error::MuxSenderErrorKind
-pub tst_core::error::MuxSenderErrorKind::Backpressure
-pub tst_core::error::MuxSenderErrorKind::ConfigInvalid
-pub tst_core::error::MuxSenderErrorKind::InputMalformed
-pub tst_core::error::MuxSenderErrorKind::Internal
-pub tst_core::error::MuxSenderErrorKind::InvalidUsage
-impl core::clone::Clone for tst_core::error::MuxSenderErrorKind
-pub fn tst_core::error::MuxSenderErrorKind::clone(&self) -> tst_core::error::MuxSenderErrorKind
-impl core::cmp::Eq for tst_core::error::MuxSenderErrorKind
-impl core::cmp::PartialEq for tst_core::error::MuxSenderErrorKind
-pub fn tst_core::error::MuxSenderErrorKind::eq(&self, &tst_core::error::MuxSenderErrorKind) -> bool
-impl core::fmt::Debug for tst_core::error::MuxSenderErrorKind
-pub fn tst_core::error::MuxSenderErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for tst_core::error::MuxSenderErrorKind
-pub fn tst_core::error::MuxSenderErrorKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for tst_core::error::MuxSenderErrorKind
-impl core::marker::StructuralPartialEq for tst_core::error::MuxSenderErrorKind
-impl core::marker::Freeze for tst_core::error::MuxSenderErrorKind
-impl core::marker::Send for tst_core::error::MuxSenderErrorKind
-impl core::marker::Sync for tst_core::error::MuxSenderErrorKind
-impl core::marker::Unpin for tst_core::error::MuxSenderErrorKind
-impl core::marker::UnsafeUnpin for tst_core::error::MuxSenderErrorKind
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::MuxSenderErrorKind
-impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxSenderErrorKind
+#[non_exhaustive] pub enum tst_core::error::MuxErrorKind
+pub tst_core::error::MuxErrorKind::Backpressure
+pub tst_core::error::MuxErrorKind::ConfigInvalid
+pub tst_core::error::MuxErrorKind::InputMalformed
+pub tst_core::error::MuxErrorKind::Internal
+pub tst_core::error::MuxErrorKind::InvalidUsage
+impl core::clone::Clone for tst_core::error::MuxErrorKind
+pub fn tst_core::error::MuxErrorKind::clone(&self) -> tst_core::error::MuxErrorKind
+impl core::cmp::Eq for tst_core::error::MuxErrorKind
+impl core::cmp::PartialEq for tst_core::error::MuxErrorKind
+pub fn tst_core::error::MuxErrorKind::eq(&self, &tst_core::error::MuxErrorKind) -> bool
+impl core::fmt::Debug for tst_core::error::MuxErrorKind
+pub fn tst_core::error::MuxErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::error::MuxErrorKind
+pub fn tst_core::error::MuxErrorKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tst_core::error::MuxErrorKind
+impl core::marker::StructuralPartialEq for tst_core::error::MuxErrorKind
+impl core::marker::Freeze for tst_core::error::MuxErrorKind
+impl core::marker::Send for tst_core::error::MuxErrorKind
+impl core::marker::Sync for tst_core::error::MuxErrorKind
+impl core::marker::Unpin for tst_core::error::MuxErrorKind
+impl core::marker::UnsafeUnpin for tst_core::error::MuxErrorKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::MuxErrorKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxErrorKind
 pub mod tst_core::io_file
 pub struct tst_core::io_file::DemuxFromFile
 impl tst_core::io_file::DemuxFromFile
@@ -4854,7 +4854,7 @@ pub tst_core::mpegts::mux::_detail::MuxError::TooManyVideoStreams
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyVideoStreams::cap: usize
 pub tst_core::mpegts::mux::_detail::MuxError::TooManyVideoStreams::count: usize
 impl tst_core::error::MuxError
-pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxSenderErrorKind
+pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxErrorKind
 impl core::clone::Clone for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError
@@ -5981,7 +5981,7 @@ pub tst_core::MuxError::TooManyVideoStreams
 pub tst_core::MuxError::TooManyVideoStreams::cap: usize
 pub tst_core::MuxError::TooManyVideoStreams::count: usize
 impl tst_core::error::MuxError
-pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxSenderErrorKind
+pub fn tst_core::error::MuxError::kind(&self) -> tst_core::error::MuxErrorKind
 impl core::clone::Clone for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError

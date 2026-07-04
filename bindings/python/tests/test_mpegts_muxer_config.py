@@ -350,7 +350,7 @@ def test_stream_descriptors_for_data_round_trip():
 def test_stream_descriptors_for_data_out_of_range_raises():
     # DescriptorIndexOutOfRange classifies as INVALID_USAGE (call-order
     # misuse — no add_data has happened yet), matching the Rust
-    # MuxSenderErrorKind classifier.
+    # MuxErrorKind classifier.
     b = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264)
     with pytest.raises(MuxError) as ei:
         b.stream_descriptors_for_data(0, [b"\xff\x04demo"])

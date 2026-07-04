@@ -17,7 +17,7 @@
 //!
 //! The `MuxError` → `MuxException.Kind` mapping mirrors tst-py's
 //! `mux_error_to_pyerr` decision-for-decision: it routes via the 5-variant
-//! [`MuxSenderErrorKind`] (`MuxError::kind()`), NOT a per-variant inline match.
+//! [`MuxErrorKind`] (`MuxError::kind()`), NOT a per-variant inline match.
 //!
 //! Handle convention: the `jlong` is an opaque key into a per-type
 //! [`crate::handle::HandleRegistry`] over the [`Muxer`]; per-call methods lease
@@ -987,10 +987,10 @@ fn closed(env: &mut JNIEnv) {
 }
 
 /// Map a `MuxError` to a thrown `org.tstrans.MuxException`, mirroring tst-py's
-/// `mux_error_to_pyerr` (route via the 5-variant `MuxSenderErrorKind`). Each
+/// `mux_error_to_pyerr` (route via the 5-variant `MuxErrorKind`). Each
 /// inline literal is what the error-mapping ratchet greps for.
 pub(crate) fn throw_mux_error(env: &mut JNIEnv, e: &MuxError) {
-    use tst_core::error::MuxSenderErrorKind::*;
+    use tst_core::error::MuxErrorKind::*;
     let msg = e.to_string();
     match e.kind() {
         InputMalformed => throw_mux(env, "INPUT_MALFORMED", &msg),
@@ -998,7 +998,7 @@ pub(crate) fn throw_mux_error(env: &mut JNIEnv, e: &MuxError) {
         InvalidUsage => throw_mux(env, "INVALID_USAGE", &msg),
         Backpressure => throw_mux(env, "BACKPRESSURE", &msg),
         Internal => throw_mux(env, "INTERNAL", &msg),
-        // MuxSenderErrorKind is non-exhaustive; forward-compat catch-all.
+        // MuxErrorKind is non-exhaustive; forward-compat catch-all.
         _ => throw_mux(env, "INTERNAL", &msg),
     }
 }

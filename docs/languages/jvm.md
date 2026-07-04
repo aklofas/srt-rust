@@ -521,6 +521,8 @@ The `codec()` accessor on each event tags the discriminant (`VideoCodec` /
 `AudioCodec`). Downcast with `instanceof`:
 
 ```java
+// parse() throws the checked DemuxException — declare it on the
+// enclosing method (as nextEvent()-driven code usually already does).
 for (DemuxEvent e : demuxer) {
     if (e instanceof DemuxEvent.Video v && v.codec() == VideoCodec.H264) {
         for (VideoUnit u : v.parse()) {       // opt-in: calls split_video
@@ -581,8 +583,11 @@ try (var events = Io.parseFile(path)) {
             System.out.println("PMT program=" + pm.programNumber()
                 + " streams=" + pm.elementaryPids().size());
         } else if (e instanceof DemuxEvent.Video v) {
+            // raw() is exception-free; parse() throws the checked
+            // DemuxException, which a forEach lambda cannot propagate —
+            // use a plain for-loop when you need the typed units here.
             System.out.println("Video pts=" + v.pts()
-                + " len=" + v.parse().size() + " units");
+                + " rawBytes=" + v.raw().remaining());
         } else if (e instanceof DemuxEvent.Metadata m) {
             System.out.println("KLV kind=" + m.kind()
                 + " len=" + m.payload().remaining());
@@ -963,8 +968,10 @@ import org.tstrans.mpegts.DemuxEvent;
 
 try (DemuxReceiver rx = DemuxReceiver.fromUrl("srt://:9000?mode=listener")) {
     for (DemuxEvent e : rx) {
-        if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
-            // v.parse() is List<VideoUnit> (typed NAL / OBU units, opt-in)
+        if (e instanceof DemuxEvent.Video v) {
+            // Opt-in typed units; parse() throws the checked DemuxException,
+            // so declare it on the enclosing method.
+            List<VideoUnit> units = v.parse();
         }
     }
 }
@@ -1071,7 +1078,8 @@ try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
     for (DemuxEvent e : rx) {
         if (e instanceof DemuxEvent.ReconnectDiscontinuity) {
             caches.clear();  // transport rebuilt — re-derive from the next ProgramMap
-        } else if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+        } else if (e instanceof DemuxEvent.Video v) {
+            List<VideoUnit> units = v.parse();  // checked: enclosing method throws DemuxException
             // ... handle video ...
         }
     }

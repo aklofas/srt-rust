@@ -41,6 +41,11 @@ fn ipv4_multicast_loopback_round_trip() {
         return;
     };
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    // Capture the cancel handle before the transport moves into the thread —
+    // recv_bytes blocks until data or cancellation, so the timeout-skip arm
+    // below must cancel or the thread outlives the test (same pattern as
+    // two_rtp_multicast_receivers_deliver_same_datagram).
+    let cancel = recv.cancel_handle();
     let _t = thread::spawn(move || {
         let mut buf = vec![0u8; recv.max_payload() + 64];
         if let Ok(n) = recv.recv_bytes(&mut buf) {
@@ -56,6 +61,9 @@ fn ipv4_multicast_loopback_round_trip() {
     let got = match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(v) => v,
         Err(_) => {
+            if let Some(c) = &cancel {
+                c.cancel();
+            }
             eprintln!("multicast loopback recv timed out — kernel filter on lo");
             return;
         }

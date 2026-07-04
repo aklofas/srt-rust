@@ -4,9 +4,8 @@
 //! Push pre-muxed TS bytes with `tst_rist_sender_send_ts`. Free the
 //! handle with `tst_rist_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/udp/sender.rs` exactly — error
-//! mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref` usage,
-//! and FFI slice handling are identical.
+//! Data-path bodies (send_ts, get_stats, get_socket_stats, reset_stats)
+//! are thin forwarders to generic impls in `crate::transport_impls`.
 //!
 //! **No cancel:** the RIST transport does not expose a `cancel_handle()`,
 //! so there is no `tst_rist_sender_cancel` entry point and no cancel /
@@ -27,7 +26,7 @@ use std::os::raw::c_char;
 use tst_pipeline::{Sender, SenderConfig};
 use tst_rist::{RistTransport, RistTransportBuilder};
 
-use crate::error::{TstError, record_not_available, record_shell_error, set_last_error};
+use crate::error::{TstError, set_last_error};
 use crate::handle::Handle;
 use crate::stats::TstSenderStats;
 
@@ -79,9 +78,6 @@ pub unsafe extern "C" fn tst_rist_sender_open(url: *const c_char) -> *mut TstRis
             None => return std::ptr::null_mut(),
         };
         // RIST uses a move-style builder: new() parses the URL (including
-        // query params for profile/buffer/bandwidth/encryption), then
-        // connect() establishes the librist context + peer.
-        // RIST move-style builder: new() parses the URL (including
         // query params for profile/buffer/bandwidth/encryption), then
         // connect() establishes the librist context + peer.
         // URL parse failures are definitively config errors (RistConfig -39).
@@ -174,14 +170,7 @@ pub unsafe extern "C" fn tst_rist_sender_send_ts(
         set_last_error(TstError::InvalidConfig, "null rist sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(bytes, len, "bytes") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    handle.inner.with_inner_mut(|s| match s.send_ts(slice) {
-        Ok(()) => 0,
-        Err(e) => record_shell_error(&e),
-    })
+    unsafe { crate::transport_impls::sender_send_ts(&handle.inner, bytes, len) }
 }
 
 /// Snapshot stats for a `tst_rist_sender_t` into `*out`.
@@ -202,15 +191,7 @@ pub unsafe extern "C" fn tst_rist_sender_get_stats(
         set_last_error(TstError::InvalidConfig, "null rist sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(&s.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::sender_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying RIST transport.
@@ -236,20 +217,13 @@ pub unsafe extern "C" fn tst_rist_sender_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null rist sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|s| match s.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::sender_get_socket_stats(
+            &handle.inner,
+            out,
             "rist sender socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_rist_sender_t` to zero.
@@ -266,10 +240,7 @@ pub unsafe extern "C" fn tst_rist_sender_reset_stats(p: *mut TstRistSender) -> l
         set_last_error(TstError::InvalidConfig, "null rist sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|s| {
-        s.reset_stats();
-        0
-    })
+    crate::transport_impls::sender_reset_stats(&handle.inner)
 }
 
 // ---------------------------------------------------------------------------

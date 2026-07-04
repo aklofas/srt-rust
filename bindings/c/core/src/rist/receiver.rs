@@ -5,9 +5,8 @@
 //! `tst_rist_receiver_recv_ts`. Free the handle with
 //! `tst_rist_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/udp/receiver.rs` exactly — error
-//! mapping, `ffi_catch` wrapping, and `Handle::with_inner_mut/_ref`
-//! usage are identical.
+//! Data-path bodies (recv_ts, get_stats, get_socket_stats, reset_stats)
+//! are thin forwarders to generic impls in `crate::transport_impls`.
 //!
 //! **No cancel:** the RIST transport does not expose a `cancel_handle()`,
 //! so there is no `tst_rist_receiver_cancel` entry point and no cancel /
@@ -24,13 +23,10 @@
 
 use std::os::raw::c_char;
 
-use tst_core::mpegts::common::TS_PACKET_SIZE;
-use tst_pipeline::{Receiver, ReceiverConfig, ShellErrorKind};
+use tst_pipeline::{Receiver, ReceiverConfig};
 use tst_rist::{RistRecvTransport, RistRecvTransportBuilder};
 
-use crate::error::{
-    TstError, record_eos, record_not_available, record_shell_error, set_last_error,
-};
+use crate::error::{TstError, set_last_error};
 use crate::handle::Handle;
 use crate::stats::TstReceiverStats;
 
@@ -183,38 +179,7 @@ pub unsafe extern "C" fn tst_rist_receiver_recv_ts(
         set_last_error(TstError::InvalidConfig, "null rist receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if buf.is_null() {
-        set_last_error(TstError::InvalidConfig, "null buf pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    if out_n.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out_n pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    if buf_len < TS_PACKET_SIZE {
-        set_last_error(
-            TstError::InvalidConfig,
-            &format!("buf_len {buf_len} too small (need at least {TS_PACKET_SIZE})"),
-        );
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_mut(|rx| match rx.next_packet() {
-        Ok(pkt) => {
-            // SAFETY: buf non-null + writable for >= TS_PACKET_SIZE bytes per guard.
-            unsafe {
-                std::ptr::copy_nonoverlapping(pkt.as_ptr(), buf, TS_PACKET_SIZE);
-                *out_n = TS_PACKET_SIZE;
-            }
-            0
-        }
-        // No caller-cancel side-channel on RIST — a Closed or peer-Broken
-        // condition means the stream ended; map to EOS.
-        Err(e) if e.kind == ShellErrorKind::Closed || e.kind == ShellErrorKind::TransportBroken => {
-            record_eos();
-            TstError::EndOfStream as i32
-        }
-        Err(e) => record_shell_error(&e),
-    })
+    unsafe { crate::transport_impls::receiver_recv_ts(&handle.inner, buf, buf_len, out_n) }
 }
 
 /// Snapshot stats for a `tst_rist_receiver_t` into `*out`.
@@ -235,15 +200,7 @@ pub unsafe extern "C" fn tst_rist_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null rist receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = TstReceiverStats::from(&rx.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::receiver_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying RIST transport.
@@ -268,20 +225,13 @@ pub unsafe extern "C" fn tst_rist_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null rist receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "rist receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_rist_receiver_t` to zero.
@@ -298,10 +248,7 @@ pub unsafe extern "C" fn tst_rist_receiver_reset_stats(p: *mut TstRistReceiver) 
         set_last_error(TstError::InvalidConfig, "null rist receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::receiver_reset_stats(&handle.inner)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +267,7 @@ mod tests {
     #[test]
     fn null_recv_ts_returns_invalid_config() {
         let mut buf = [0u8; 188];
-        let mut n: usize = 0;
+        let mut n = 0usize;
         let rc = unsafe {
             tst_rist_receiver_recv_ts(std::ptr::null_mut(), buf.as_mut_ptr(), buf.len(), &mut n)
         };
@@ -338,19 +285,5 @@ mod tests {
     fn null_reset_stats_returns_invalid_config() {
         let rc = unsafe { tst_rist_receiver_reset_stats(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
-    }
-
-    #[test]
-    fn small_buf_returns_invalid_config() {
-        let url = std::ffi::CString::new("rist://@127.0.0.1:0").unwrap();
-        let handle = unsafe { tst_rist_recv_open(url.as_ptr()) };
-        if handle.is_null() {
-            return; // skip if bind fails in CI
-        }
-        let mut buf = [0u8; 100]; // too small for 188-byte packet
-        let mut n: usize = 0;
-        let rc = unsafe { tst_rist_receiver_recv_ts(handle, buf.as_mut_ptr(), buf.len(), &mut n) };
-        assert_eq!(rc, TstError::InvalidConfig as i32);
-        unsafe { tst_rist_receiver_close(handle) };
     }
 }

@@ -20,8 +20,6 @@
 //! - Receiver (raw TS bytes recv)
 //! - DemuxReceiver (event recv + stats)
 
-#![cfg(feature = "std")]
-
 use std::sync::Mutex;
 
 use tst_core::mpegts::common::{Pts90khz, TS_PACKET_SIZE};

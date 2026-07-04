@@ -4,10 +4,10 @@
 //! Pull typed `TstEvent` items with `tst_rist_demux_receiver_next_event`.
 //! Free with `tst_rist_demux_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/udp/demux_receiver.rs` exactly —
-//! `EventArena` borrowed-buffer lifetime (design §4.5), `ShellErrorKind`
-//! → error-code mapping, and the per-PID stats borrowed buffer are all
-//! identical.
+//! Data-path bodies are thin forwarders to generic impls in
+//! `crate::transport_impls`. The `EventArena` borrowed-buffer lifetime
+//! (design §4.5), `ShellErrorKind` → error-code mapping, and the
+//! per-PID stats borrowed buffer are all handled generically.
 //!
 //! **No cancel:** the RIST transport does not expose a `cancel_handle()`,
 //! so there is no `tst_rist_demux_receiver_cancel` entry point and no
@@ -25,14 +25,11 @@
 use std::os::raw::c_char;
 use std::sync::Mutex;
 
-use tst_pipeline::{DemuxReceiver, ShellErrorKind};
+use tst_pipeline::DemuxReceiver;
 use tst_rist::{RistRecvTransport, RistRecvTransportBuilder};
 
 use crate::demux_config::TstDemuxConfig;
-use crate::error::{
-    TstError, record_eos, record_not_available, record_not_found, record_shell_error,
-    set_last_error,
-};
+use crate::error::{TstError, set_last_error};
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
 
@@ -189,39 +186,13 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_next_event(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_event.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out_event pointer");
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::demux_receiver_next_event_no_cancel(
+            &handle.inner,
+            &handle.arena,
+            out_event,
+        )
     }
-    handle.inner.with_inner_mut(|rx| match rx.recv_event() {
-        Ok(Some(ev)) => {
-            let mut arena = handle.arena.lock().expect("event arena Mutex poisoned");
-            // SAFETY: out_event non-null per guard above. event::convert
-            // writes through the pointer; pointer fields on the result
-            // alias arena Vecs (held under the arena Mutex for this call;
-            // Vec base pointers are stable until the next convert() call —
-            // see design §4.5 lifetime contract).
-            unsafe { crate::event::convert(&mut arena, &ev, &mut *out_event) };
-            0
-        }
-        // No caller-cancel side-channel on RIST — recv_event returning None
-        // means the stream ended; map to EOS.
-        Ok(None) => {
-            record_eos();
-            TstError::EndOfStream as i32
-        }
-        // A Closed / EndOfStream / peer-Broken condition all mean the stream
-        // ended; map to EOS.
-        Err(e)
-            if e.kind == ShellErrorKind::TransportBroken
-                || e.kind == ShellErrorKind::EndOfStream
-                || e.kind == ShellErrorKind::Closed =>
-        {
-            record_eos();
-            TstError::EndOfStream as i32
-        }
-        Err(e) => record_shell_error(&e),
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -250,15 +221,7 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::demux_receiver_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying RIST transport.
@@ -284,20 +247,13 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::demux_receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "rist demux receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Snapshot codec-specific stats for one PID on a
@@ -327,19 +283,14 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_get_stream_codec_stats(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_codec_stats(
+            &handle.inner,
+            pid,
+            out,
+            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rist demux receiver)"),
+        )
     }
-    handle.inner.with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
-        Some(stats) => {
-            unsafe { *out = crate::stats::codec_stats_to_c(stats) };
-            0
-        }
-        None => record_not_found(&format!(
-            "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rist demux receiver)"
-        )),
-    })
 }
 
 /// Reset stats counters for a `tst_rist_demux_receiver_t` to zero.
@@ -361,14 +312,7 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_reset_stats(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    // Clear the stream_stats_buf so any borrowed snapshot is invalidated.
-    if let Ok(mut buf) = handle.stream_stats_buf.lock() {
-        buf.clear();
-    }
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::demux_receiver_reset_stats(&handle.inner, &handle.stream_stats_buf)
 }
 
 /// Snapshot per-PID stats for a `tst_rist_demux_receiver_t` into the
@@ -400,38 +344,14 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_get_stream_stats(
         set_last_error(TstError::InvalidConfig, "null rist demux receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out_array.is_null() || out_count.is_null() {
-        set_last_error(
-            TstError::InvalidConfig,
-            "null out_array or out_count pointer",
-        );
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::demux_receiver_get_stream_stats(
+            &handle.inner,
+            &handle.stream_stats_buf,
+            out_array,
+            out_count,
+        )
     }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = rx.stats();
-        let mut buf = handle
-            .stream_stats_buf
-            .lock()
-            .expect("stream_stats_buf Mutex poisoned");
-        buf.clear();
-        let cap = crate::stats::TST_STATS_MAX_STREAMS;
-        for (pid, ss) in stats.per_stream.iter().take(cap) {
-            let mut c_ss = crate::stats::TstStreamStats {
-                pid: *pid,
-                ..Default::default()
-            };
-            crate::stats::fill_stream_stats(&mut c_ss, ss);
-            buf.push(c_ss);
-        }
-        // SAFETY: out_array / out_count non-null per guard above.
-        // The returned pointer borrows from buf, which lives on the handle
-        // until the next _get_stream_stats / _reset_stats / _close call.
-        unsafe {
-            *out_array = buf.as_ptr();
-            *out_count = buf.len();
-        }
-        0
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -450,15 +370,8 @@ mod tests {
     #[test]
     fn null_next_event_returns_invalid_config() {
         let mut ev = TstEvent::default();
-        let rc = unsafe { tst_rist_demux_receiver_next_event(std::ptr::null_mut(), &mut ev) };
-        assert_eq!(rc, TstError::InvalidConfig as i32);
-    }
-
-    #[test]
-    fn null_out_event_returns_invalid_config() {
-        let rc = unsafe {
-            tst_rist_demux_receiver_next_event(std::ptr::null_mut(), std::ptr::null_mut())
-        };
+        let rc =
+            unsafe { tst_rist_demux_receiver_next_event(std::ptr::null_mut(), &mut ev) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
@@ -480,14 +393,19 @@ mod tests {
         let mut arr: *const crate::stats::TstStreamStats = std::ptr::null();
         let mut count: libc::size_t = 0;
         let rc = unsafe {
-            tst_rist_demux_receiver_get_stream_stats(std::ptr::null_mut(), &mut arr, &mut count)
+            tst_rist_demux_receiver_get_stream_stats(
+                std::ptr::null_mut(),
+                &mut arr,
+                &mut count,
+            )
         };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
     #[test]
     fn open_with_null_url_returns_null() {
-        let p = unsafe { tst_rist_demux_receiver_open(std::ptr::null(), std::ptr::null()) };
+        let p =
+            unsafe { tst_rist_demux_receiver_open(std::ptr::null(), std::ptr::null()) };
         assert!(p.is_null());
     }
 }

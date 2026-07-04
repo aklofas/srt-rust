@@ -39,8 +39,8 @@ import org.tstrans.mpegts.VideoCodec;
  *   <li><b>video.pid</b> — the elementary-stream PID of the video sample.</li>
  *   <li><b>video.pts</b> — the 90&nbsp;kHz presentation timestamp.</li>
  *   <li><b>video.payload_sha256</b> — SHA-256 of the concatenated NAL RBSP
- *       payload bytes. The {@code Video.payload} is now a typed
- *       {@code List<VideoUnit>} (codec wave); this test concatenates every
+ *       payload bytes. {@link DemuxEvent.Video#parse()} returns the typed
+ *       {@code List<VideoUnit>} on demand (codec wave); this test concatenates every
  *       {@code ((NalUnit) unit).payload()} (Annex-B start codes already stripped
  *       by the demuxer) the same way the Rust/Python normalisers do
  *       (see {@code video_payload_bytes()} in the Rust normaliser), so the digest
@@ -116,20 +116,20 @@ class ScenarioReproductionTest {
         GoldenKlv expectedKlv = extractKlvEvent(goldenJson);
 
         // Demux the shared input through the JNI binding, collecting Video events
-        // and Metadata (KLV) events in the same pass. Video.payload and the KLV
+        // and Metadata (KLV) events in the same pass. Video.raw and the KLV
         // payload are JVM-owned heap copies, so reading them inside the loop (or
         // later) is equally safe.
         List<VideoSample> videoSamples = new ArrayList<>();
         List<MetadataSample> metadataSamples = new ArrayList<>();
         // Keep the matched Video EVENT (not just the projected sample) so we can
-        // assert the typed payload structure below — the codec wave's responsibility.
+        // assert the typed payload structure below via parse().
         DemuxEvent.Video matchedVideoEvent = null;
         try (Demuxer d = new Demuxer()) {
             d.feed(tsBytes);
             d.flush();
             for (DemuxEvent e : d) {
                 if (e instanceof DemuxEvent.Video v) {
-                    videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.payload())));
+                    videoSamples.add(new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.parse())));
                     if (matchedVideoEvent == null
                             && v.stream().pid() == expected.pid && v.pts() == expected.pts) {
                         matchedVideoEvent = v;
@@ -165,9 +165,9 @@ class ScenarioReproductionTest {
         assertNotNull(matchedVideoEvent, "matched Video event should have been captured");
         assertEquals(VideoCodec.H264, matchedVideoEvent.codec(),
             "the h264-st0601-mp scenario's video stream must be tagged H264");
-        List<VideoUnit> units = matchedVideoEvent.payload();
+        List<VideoUnit> units = matchedVideoEvent.parse();
         assertFalse(units.isEmpty(),
-            "H264 Video.payload must be a non-empty List<VideoUnit>");
+            "H264 Video.parse() must return a non-empty List<VideoUnit>");
         // First unit is the IDR NAL: synthetic_h264_idr() is `00 00 00 01 65 …`,
         // nal_type = 0x65 & 0x1F = 5 (IDR slice). Downcast via instanceof (no
         // switch-on-sealed; JDK 17).
@@ -179,8 +179,6 @@ class ScenarioReproductionTest {
             "first NAL unit must carry the H264 codec discriminant");
         assertEquals(5, firstNal.nalType(),
             "first NAL unit must be the IDR slice (nal_type 5)");
-        assertNull(matchedVideoEvent.codecParseError(),
-            "video codecParseError must be null — the H.264 payload parses cleanly");
 
         // Assert the klv core subset: a Metadata event exists whose stream PID
         // matches the golden's klv pid AND whose ST0601-UL-derived set matches the
@@ -222,7 +220,7 @@ class ScenarioReproductionTest {
                 DemuxEvent e = it.next();
                 if (e instanceof DemuxEvent.Video v
                         && v.stream().pid() == expected.pid && v.pts() == expected.pts) {
-                    match = new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.payload()));
+                    match = new VideoSample(v.stream().pid(), v.pts(), sha256Units(v.parse()));
                     break;
                 }
             }

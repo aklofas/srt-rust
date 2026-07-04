@@ -180,8 +180,8 @@ class SrtMuxDemuxLoopbackTest {
                 try {
                     for (DemuxEvent e : rx) {
                         if (sha == null && e instanceof DemuxEvent.Video v
-                                && !v.payload().isEmpty()) {
-                            sha = sha256Units(v.payload());
+                                && !v.parse().isEmpty()) {
+                            sha = sha256Units(v.parse());
                         } else if (data == null && e instanceof DemuxEvent.UnknownSample u) {
                             data = u;
                         }
@@ -340,8 +340,8 @@ class SrtMuxDemuxLoopbackTest {
             d.feed(ts);
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
-                    return sha256Units(v.payload());
+                if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+                    return sha256Units(v.parse());
                 }
             }
         }

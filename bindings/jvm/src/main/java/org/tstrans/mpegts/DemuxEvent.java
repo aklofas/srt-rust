@@ -35,54 +35,67 @@ public sealed interface DemuxEvent
     record ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids) implements DemuxEvent {}
 
     /**
-     * A video access unit, carrying the raw encoded bytes and typed codec
-     * units. {@code raw} is the exact encoded access unit; {@code payload}
-     * is its parsed {@link List} of {@link VideoUnit} — {@code NalUnit}s for
+     * A video access unit, carrying the raw encoded bytes. {@code raw} is the
+     * exact encoded access unit; call {@link #parse()} to obtain the typed
+     * {@link List} of {@link VideoUnit} on demand — {@code NalUnit}s for
      * H.264/H.265/H.266, {@code Obu}s for AV1. The {@code codec} field
-     * disambiguates which.
+     * disambiguates which. Mirrors tst-py's raw-first model where
+     * {@code DemuxEvent.Video.parse()} is the opt-in split call.
      *
-     * @param stream                 the elementary stream this sample belongs to
-     * @param pts                    presentation timestamp in 90&nbsp;kHz ticks
-     * @param dts                    decode timestamp in 90&nbsp;kHz ticks, or
-     *                               {@code null} when absent
-     * @param codec                  the video codec (also on {@code stream.kind()})
-     * @param payload                the typed access-unit units —
-     *                               {@code List<NalUnit>} for H.264/H.265/H.266,
-     *                               {@code List<Obu>} for AV1. Each unit's own
-     *                               byte payload is a heap (JVM-owned)
-     *                               {@link ByteBuffer}, safe to retain past the
-     *                               next {@link Demuxer#nextEvent()} or
-     *                               {@link Demuxer#close()}.
-     * @param raw                    the exact encoded access unit — Annex-B byte
-     *                               stream for H.264/H.265/H.266, on-wire PES
-     *                               payload for AV1 — as a heap (JVM-owned)
-     *                               {@link ByteBuffer} copy, safe to retain (true
-     *                               zero-copy is deferred to a JDK&nbsp;22+ FFM
-     *                               path). For H.264/H.265/H.266, feed it back to
-     *                               {@link Muxer#pushVideo(byte[], long, boolean)}
-     *                               for byte-faithful transmux. For AV1, use
-     *                               {@link Muxer#pushVideoWire(byte[], long, boolean)}
-     *                               instead (with a destination muxer configured to
-     *                               the same {@link #av1Carriage()} mode) — {@code
-     *                               pushVideo} would re-wrap the wire bytes and
-     *                               corrupt the stream. Mirrors tst-py's {@code .raw}.
-     * @param randomAccessIndicator  whether this access unit is a random-access
-     *                               point (keyframe)
-     * @param codecParseError        always {@code null} for video — the units in
-     *                               {@code payload} were split by the binding, so
-     *                               typed payload construction cannot fail at
-     *                               this layer
-     * @param av1Carriage            AV1 carriage provenance
-     *                               ({@link Av1CarriageMode#MPEG2_TS_BINDING} or
-     *                               {@link Av1CarriageMode#INTEROP_RAW_OBU});
-     *                               {@code null} for non-AV1 codecs. For
-     *                               byte-faithful re-mux, configure the destination
-     *                               muxer to this carriage mode and push {@code raw}
-     *                               via {@link Muxer#pushVideoWire}.
+     * @param stream                the elementary stream this sample belongs to
+     * @param pts                   presentation timestamp in 90&nbsp;kHz ticks
+     * @param dts                   decode timestamp in 90&nbsp;kHz ticks, or
+     *                              {@code null} when absent
+     * @param codec                 the video codec (also on {@code stream.kind()})
+     * @param raw                   the exact encoded access unit — Annex-B byte
+     *                              stream for H.264/H.265/H.266, on-wire PES
+     *                              payload for AV1 — as a heap (JVM-owned)
+     *                              {@link ByteBuffer} copy, safe to retain (true
+     *                              zero-copy is deferred to a JDK&nbsp;22+ FFM
+     *                              path). For H.264/H.265/H.266, feed it back to
+     *                              {@link Muxer#pushVideo(byte[], long, boolean)}
+     *                              for byte-faithful transmux. For AV1, use
+     *                              {@link Muxer#pushVideoWire(byte[], long, boolean)}
+     *                              instead (with a destination muxer configured to
+     *                              the same {@link #av1Carriage()} mode) — {@code
+     *                              pushVideo} would re-wrap the wire bytes and
+     *                              corrupt the stream. Mirrors tst-py's {@code .raw}.
+     * @param randomAccessIndicator whether this access unit is a random-access
+     *                              point (keyframe)
+     * @param av1Carriage           AV1 carriage provenance
+     *                              ({@link Av1CarriageMode#MPEG2_TS_BINDING} or
+     *                              {@link Av1CarriageMode#INTEROP_RAW_OBU});
+     *                              {@code null} for non-AV1 codecs. For
+     *                              byte-faithful re-mux, configure the destination
+     *                              muxer to this carriage mode and push {@code raw}
+     *                              via {@link Muxer#pushVideoWire}.
      */
     record Video(StreamId stream, long pts, Long dts, VideoCodec codec,
-                 List<VideoUnit> payload, ByteBuffer raw, boolean randomAccessIndicator,
-                 CodecParseException codecParseError, Av1CarriageMode av1Carriage) implements DemuxEvent {}
+                 ByteBuffer raw, boolean randomAccessIndicator,
+                 Av1CarriageMode av1Carriage) implements DemuxEvent {
+
+        /**
+         * Opt-in: parse the raw access unit into typed codec units —
+         * {@link org.tstrans.codec.NalUnit} for H.264/H.265/H.266,
+         * {@link org.tstrans.codec.Obu} for AV1. Mirrors Python's
+         * {@code DemuxEvent.Video.parse()}.
+         *
+         * <p>Each invocation calls the native {@code split_video}; cache the
+         * result if you need it more than once.
+         *
+         * @return the typed codec units (never {@code null}; empty only when
+         *         the access unit contained no parseable units)
+         */
+        public List<VideoUnit> parse() {
+            ByteBuffer r = raw().duplicate();
+            byte[] bytes = new byte[r.remaining()];
+            r.get(bytes);
+            // av1Carriage() null (non-AV1 codec) → ordinal 0 (MPEG2_TS_BINDING default;
+            // split_video ignores the carriage arg for non-AV1 codecs).
+            int carriageOrd = av1Carriage() != null ? av1Carriage().ordinal() : 0;
+            return DemuxEventVideoNatives.nSplitVideo(bytes, codec().ordinal(), carriageOrd);
+        }
+    }
 
     /**
      * An audio access unit. On a clean AAC / MP2 parse the {@code payload} is a
@@ -201,4 +214,20 @@ public sealed interface DemuxEvent
 
     /** Transport-level reconnect occurred between the prior event and this one; all per-stream state was dropped (re-derived from the next PAT/PMT). Mirrors {@code tst_core::...::DemuxEvent::ReconnectDiscontinuity}. */
     record ReconnectDiscontinuity() implements DemuxEvent {}
+}
+
+/**
+ * Package-private JNI entry point for {@link DemuxEvent.Video#parse()}.
+ *
+ * <p>Records cannot declare {@code native} methods (JLS §8.10.3), so the
+ * native declaration lives here and {@code Video.parse()} delegates to it.
+ * The JNI symbol is {@code Java_org_tstrans_mpegts_DemuxEventVideoNatives_nSplitVideo}.
+ */
+final class DemuxEventVideoNatives {
+    private DemuxEventVideoNatives() {}
+
+    static { org.tstrans.NativeLoader.load(); }
+
+    static native java.util.List<org.tstrans.codec.VideoUnit> nSplitVideo(
+            byte[] raw, int codecOrdinal, int av1CarriageOrdinal);
 }

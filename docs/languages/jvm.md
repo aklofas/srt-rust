@@ -246,7 +246,7 @@ A `long` knob of `0` means "use the Rust core's default cap."
 `DemuxEvent` is a JDK-17 `sealed interface` whose variants are `record`s:
 
 - `ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids)` — PSI / PMT.
-- `Video(StreamId stream, long pts, Long dts, VideoCodec codec, List<VideoUnit> payload, ByteBuffer raw, boolean randomAccessIndicator, CodecParseException codecParseError)` — the raw encoded access unit plus typed elementary units (see [Typed sample payloads](#typed-sample-payloads)).
+- `Video(StreamId stream, long pts, Long dts, VideoCodec codec, ByteBuffer raw, boolean randomAccessIndicator, Av1CarriageMode av1Carriage)` — the raw encoded access unit; call `parse()` to obtain typed `List<VideoUnit>` on demand (see [Typed sample payloads](#typed-sample-payloads)).
 - `Audio(StreamId stream, long pts, Long dts, AudioCodec codec, List<AudioFrame> payload, ByteBuffer rawPayload, CodecParseException codecParseError)` — typed audio frames with a raw fallback (see [Typed sample payloads](#typed-sample-payloads)).
 - `Subtitle(StreamId stream, long pts, Long dts, SubtitleCodec codec, ByteBuffer payload)`
 - `UnknownSample(StreamId stream, long pts, Long dts, int streamType, ByteBuffer payload)`
@@ -512,17 +512,18 @@ garbage by scanning for the next sync word instead of throwing.
 
 ## Typed sample payloads
 
-Since the codec wave, the demuxer hands back **typed** elementary units
-(video additionally carries the raw encoded access unit — see below). `DemuxEvent.Video.payload()` is a `List<VideoUnit>` —
-`NalUnit`s for H.264 / H.265 / H.266, `Obu`s for AV1 — and
-`DemuxEvent.Audio.payload()` is a `List<AudioFrame>` — `AdtsFrame`s for AAC,
-`Mpeg2AudioFrame`s for MPEG-2 audio. The `codec()` accessor on each event tags
-the discriminant (`VideoCodec` / `AudioCodec`). Downcast with `instanceof`:
+Since the codec wave, the demuxer hands back **typed** elementary units on
+demand. `DemuxEvent.Video.parse()` returns a `List<VideoUnit>` — `NalUnit`s for
+H.264 / H.265 / H.266, `Obu`s for AV1 — by calling the native `split_video`
+only when the caller opts in. `DemuxEvent.Audio.payload()` is a
+`List<AudioFrame>` — `AdtsFrame`s for AAC, `Mpeg2AudioFrame`s for MPEG-2 audio.
+The `codec()` accessor on each event tags the discriminant (`VideoCodec` /
+`AudioCodec`). Downcast with `instanceof`:
 
 ```java
 for (DemuxEvent e : demuxer) {
     if (e instanceof DemuxEvent.Video v && v.codec() == VideoCodec.H264) {
-        for (VideoUnit u : v.payload()) {
+        for (VideoUnit u : v.parse()) {       // opt-in: calls split_video
             NalUnit nal = (NalUnit) u;        // H.264 -> always NalUnit
             int nalType = nal.nalType();      // 5 == IDR slice
             ByteBuffer rbsp = nal.payload();  // RBSP body, start code stripped
@@ -533,10 +534,9 @@ for (DemuxEvent e : demuxer) {
 
 **Video raw bytes (always populated).** `Video.raw()` carries the exact
 encoded access unit — Annex-B byte stream for H.264/H.265/H.266, on-wire PES
-payload for AV1 — as a heap `ByteBuffer` alongside (not instead of) the typed
-`payload()` list; `codecParseError()` is **always** null for video. Feed
-`raw()` back to `Muxer.pushVideo` for byte-faithful transmux; it mirrors
-tst-py's `.raw`.
+payload for AV1 — as a heap `ByteBuffer`. Call `parse()` when you need the
+typed unit list; it mirrors tst-py's `.parse()`. Feed `raw()` back to
+`Muxer.pushVideo` for byte-faithful transmux; it mirrors tst-py's `.raw`.
 
 **Raw fallback (audio only).** The raw-*fallback* model — bytes appear only
 when typed parsing didn't — applies to audio, in two distinct cases:
@@ -582,7 +582,7 @@ try (var events = Io.parseFile(path)) {
                 + " streams=" + pm.elementaryPids().size());
         } else if (e instanceof DemuxEvent.Video v) {
             System.out.println("Video pts=" + v.pts()
-                + " len=" + v.payload().size() + " units");
+                + " len=" + v.parse().size() + " units");
         } else if (e instanceof DemuxEvent.Metadata m) {
             System.out.println("KLV kind=" + m.kind()
                 + " len=" + m.payload().remaining());
@@ -963,8 +963,8 @@ import org.tstrans.mpegts.DemuxEvent;
 
 try (DemuxReceiver rx = DemuxReceiver.fromUrl("srt://:9000?mode=listener")) {
     for (DemuxEvent e : rx) {
-        if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
-            // v.payload() is List<VideoUnit> (typed NAL / OBU units)
+        if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+            // v.parse() is List<VideoUnit> (typed NAL / OBU units, opt-in)
         }
     }
 }
@@ -1071,7 +1071,7 @@ try (ManagedDemuxReceiver rx = ManagedDemuxReceiver.fromUrl(
     for (DemuxEvent e : rx) {
         if (e instanceof DemuxEvent.ReconnectDiscontinuity) {
             caches.clear();  // transport rebuilt — re-derive from the next ProgramMap
-        } else if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
+        } else if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
             // ... handle video ...
         }
     }
@@ -1384,7 +1384,7 @@ try (Pairer pairer = new Pairer(videoPid, klvPid, cfg)) {
     for (PairerOutput out : outs) {
         if (out instanceof PairerOutput.Paired p) {
             // p.video().codec() (e.g. VideoCodec.H264)
-            // p.video().payload() is List<VideoUnit> (NalUnit / Obu units)
+            // p.video().parse() is List<VideoUnit> (NalUnit / Obu units, opt-in)
             // p.klv().payload() is a ByteBuffer of raw KLV LS bytes
         } else if (out instanceof PairerOutput.PassThrough pt) {
             // pt.event() is a DemuxEvent (ProgramMap, off-PID samples, ...)

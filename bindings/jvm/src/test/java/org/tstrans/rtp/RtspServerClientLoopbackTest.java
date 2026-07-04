@@ -108,8 +108,8 @@ class RtspServerClientLoopbackTest {
                     String sha = null;
                     try {
                         for (DemuxEvent e : rx) {
-                            if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
-                                sha = sha256Units(v.payload());
+                            if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+                                sha = sha256Units(v.parse());
                                 break;
                             }
                         }
@@ -209,8 +209,8 @@ class RtspServerClientLoopbackTest {
             d.feed(acc.toByteArray());
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
-                    return sha256Units(v.payload());
+                if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+                    return sha256Units(v.parse());
                 }
             }
         }

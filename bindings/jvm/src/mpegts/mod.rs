@@ -42,6 +42,7 @@ use tst_core::mpegts::demux::{
     SamplePayload, StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload, split_video,
 };
 use tst_core::mpegts::mux::Av1CarriageMode;
+use tst_core::shared::SharedBytes;
 
 use crate::codec::aac::build_adts_frame;
 use crate::codec::mpegaudio::build_mpeg2_audio_frame;
@@ -267,6 +268,52 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nNextEvent<'local>(
     })
 }
 
+/// `DemuxEventVideoNatives.nSplitVideo(raw, codecOrdinal, av1CarriageOrdinal)` — the
+/// opt-in unit-split native backing [`DemuxEvent.Video.parse()`]. Calls
+/// `tst_core::mpegts::demux::split_video` on `raw` and converts the resulting
+/// [`VideoPayload`] into the same `java.util.List<VideoUnit>` the eager path
+/// formerly produced. The codec ordinal maps the Java `VideoCodec` enum
+/// declaration order; the av1 carriage ordinal maps `Av1CarriageMode`
+/// (0 = MPEG2_TS_BINDING, 1 = INTEROP_RAW_OBU; non-AV1 callers pass 0 and
+/// `split_video` ignores it). Mirrors tst-py's `Video.parse()`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_DemuxEventVideoNatives_nSplitVideo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    raw: jni::objects::JByteArray<'local>,
+    codec_ordinal: jni::sys::jint,
+    av1_carriage_ordinal: jni::sys::jint,
+) -> jni::sys::jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let raw_bytes = match env.convert_byte_array(&raw) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_demux(env, "INTERNAL", "failed to read byte[] argument");
+                return std::ptr::null_mut();
+            }
+        };
+        let codec = match codec_ordinal {
+            0 => VideoCodec::H264,
+            1 => VideoCodec::H265,
+            2 => VideoCodec::H266,
+            _ => VideoCodec::Av1, // 3 (and any out-of-range → AV1 for forward-compat)
+        };
+        let av1_carriage = match av1_carriage_ordinal {
+            1 => Av1CarriageMode::InteropRawObu,
+            _ => Av1CarriageMode::Mpeg2TsBinding,
+        };
+        let shared = SharedBytes::from_vec(raw_bytes);
+        let (payload, _issues) = split_video(&shared, codec, av1_carriage);
+        match build_video_units(env, &payload) {
+            Ok(list) => list.into_raw(),
+            Err(()) => {
+                throw_demux(env, "INTERNAL", "video unit split failed");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
 /// Throw `IllegalStateException` for a leased call that found a closed/absent
 /// handle — the native-side enforcement of the same closed-handle contract the
 /// Java `ensureOpen()` already checks, so the JNI boundary fails closed even if a
@@ -325,17 +372,11 @@ pub(crate) fn convert_event<'local>(
                     av1_carriage,
                     ..
                 } => {
-                    // Raw-first: the demuxer emits the encoded access unit; split
-                    // it into NAL/OBU units here via the opt-in `split_video` so
-                    // the Java VideoUnit list surface is unchanged. ES-conformance
-                    // issues are not surfaced over this binding.
-                    let (video_payload, _issues) =
-                        split_video(raw, *codec, av1_carriage.unwrap_or_default());
-                    let units = build_video_units(env, &video_payload)?;
+                    // Raw-first: emit the encoded AU as a heap-copied ByteBuffer;
+                    // NAL/OBU unit splitting is deferred to Video.parse() (opt-in),
+                    // mirroring tst-py's model. JDK < 22 forbids direct buffers over
+                    // Rust memory, so we copy.
                     let codec_obj = enum_const(env, "VideoCodec", video_codec_name(*codec))?;
-                    // `raw` parity with tst-py: the exact encoded AU as a heap
-                    // (JVM-owned) copy — JDK < 22 forbids direct buffers over
-                    // Rust memory.
                     let raw_buf = wrap_heap_byte_buffer(env, raw.as_slice())?;
                     // av1Carriage: Some(mode) → enum constant; None → null (non-AV1).
                     let av1_carriage_obj = match av1_carriage {
@@ -344,19 +385,14 @@ pub(crate) fn convert_event<'local>(
                     };
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Video",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/util/List;Ljava/nio/ByteBuffer;ZLorg/tstrans/CodecParseException;Lorg/tstrans/mpegts/Av1CarriageMode;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/VideoCodec;Ljava/nio/ByteBuffer;ZLorg/tstrans/mpegts/Av1CarriageMode;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
                             JValue::Object(&codec_obj),
-                            JValue::Object(&units),
                             JValue::Object(&raw_buf),
                             JValue::Bool(*random_access_indicator as u8),
-                            // codec_parse_error: always null for video — the
-                            // binding split the NALs/OBUs itself, so typed
-                            // payload construction cannot fail at this layer.
-                            JValue::Object(&JObject::null()),
                             JValue::Object(&av1_carriage_obj),
                         ],
                     )

@@ -35,7 +35,7 @@ use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSou
 use tst_srt::{Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::handle::HandleRegistry;
-use crate::jutil::checked_u8;
+use crate::jutil::{checked_u8, decode_stream_handle};
 use crate::mpegts::muxer::{build_muxer_config_from_arrays, throw_mux_error};
 
 use super::errors::{connect_error, throw_srt, transport_error};
@@ -342,9 +342,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushVideoTo<'local>(
     key_frame: jboolean,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| VideoStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
         else {
             throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
             return;
@@ -370,10 +368,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushKlvTo<'local>(
     metadata_service_id: jint,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| KlvStreamHandle::try_from_raw(r).ok())
-        else {
+        let Some(h) = decode_stream_handle(stream_handle_raw, KlvStreamHandle::try_from_raw) else {
             throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
             return;
         };
@@ -401,9 +396,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushAudioTo<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| AudioStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, AudioStreamHandle::try_from_raw)
         else {
             throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
             return;
@@ -428,9 +421,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushSubtitleTo<'local>(
     payload: JByteArray<'local>,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| SubtitleStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, SubtitleStreamHandle::try_from_raw)
         else {
             throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
             return;
@@ -458,9 +449,7 @@ pub extern "system" fn Java_org_tstrans_srt_MuxSender_nPushDataTo<'local>(
     pts: jlong,
 ) {
     crate::panic::jni_catch(&mut env, (), |env| {
-        let Some(h) = u32::try_from(stream_handle_raw)
-            .ok()
-            .and_then(|r| DataStreamHandle::try_from_raw(r).ok())
+        let Some(h) = decode_stream_handle(stream_handle_raw, DataStreamHandle::try_from_raw)
         else {
             throw_srt(env, "CONFIG_INVALID", "invalid stream handle");
             return;

@@ -4,8 +4,22 @@
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JObject, JValue};
+use jni::sys::jlong;
 use tst_core::error::KlvFieldError as RustKlvFieldError;
 use tst_core::klv::OwnedRawField;
+
+/// Decode a packed stream-handle `jlong` into a typed stream handle.
+///
+/// Rejects any value outside the packed-`u32` layout (negative, above `u32::MAX`,
+/// or a bit-pattern that `decode` considers invalid) and returns `None`. Used by
+/// every targeted-push native (muxer and MuxSender) to avoid repeating the
+/// `u32::try_from(raw).ok().and_then(|r| H::try_from_raw(r).ok())` chain.
+pub fn decode_stream_handle<H, E>(
+    raw: jlong,
+    decode: impl FnOnce(u32) -> Result<H, E>,
+) -> Option<H> {
+    u32::try_from(raw).ok().and_then(|r| decode(r).ok())
+}
 
 /// Copy `bytes` into a fresh Java `byte[]` and wrap it as a heap `ByteBuffer`
 /// (`java.nio.ByteBuffer.wrap`). The returned buffer is backed by JVM-owned

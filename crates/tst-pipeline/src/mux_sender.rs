@@ -21,12 +21,14 @@
 //! - [`MuxSenderErrorSource::Transport`]: two sub-cases, distinguishable by
 //!   the PREVIOUS call's outcome (a successful `send_*` always leaves the
 //!   pending queue empty):
-//!   - if the previous `send_*` returned `Ok`, the failure happened while
-//!     sending THIS input's TS bytes: the input **was consumed** — muxed
-//!     (continuity counters advanced) and retained in the pending queue,
-//!     which drains first on the next `send_*` call, exactly once, in
-//!     order. Do **not** push the same input again: it would be muxed a
-//!     second time and the stream would carry duplicate access units.
+//!   - if the previous `send_*` returned `Ok` (and the error is not the
+//!     terminal `TransportError::Closed` from an intervening `close()`),
+//!     the failure happened while sending THIS input's TS bytes: the input
+//!     **was consumed** — muxed (continuity counters advanced) and retained
+//!     in the pending queue, which drains first on the next `send_*` call,
+//!     exactly once, in order. Do **not** push the same input again: it
+//!     would be muxed a second time and the stream would carry duplicate
+//!     access units.
 //!   - if the previous `send_*` ALSO returned a transport error, the
 //!     failure may instead have hit the still-undrained retained bytes
 //!     BEFORE this call's input was pushed — in that case this input was
@@ -422,7 +424,12 @@ impl<T: Transport> MuxSender<T> {
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner
     ///   muxer (same variants as [`Self::send_video_to`]).
-    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`].
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_video_to_with_dts(
         &self,
         handle: VideoStreamHandle,
@@ -461,6 +468,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_klv_to(
         &self,
         handle: KlvStreamHandle,

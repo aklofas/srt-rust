@@ -228,10 +228,12 @@ byte-identical payloads.
 - The demuxer's `StrictMode` is now **TS-layer only** — it gates PSI / PES /
   timing conformance and no longer inspects or rejects video/audio ES content.
   Malformed-NAL/OBU rejection moved to the opt-in `split_video_strict`.
-- The JVM binding still returns parsed `List<VideoUnit>` via `v.payload()`
-  (it splits internally); the C `TstNal[]`/`TstObu[]` surface is likewise
-  unchanged. Both additionally expose the raw AU since Wave 5 — see
-  "cross-binding video raw AU" above.
+- The JVM binding is raw-first for both `Video` and `Audio` (Video lazy
+  since WP16/PR #75, Audio lazy since this change): `Video.parse()` returns
+  `List<VideoUnit>` on demand — there is no eager `payload()` accessor.
+  `Audio.parse()` / `Audio.parse(boolean)` likewise return `List<AudioFrame>`
+  on demand. The C `TstNal[]`/`TstObu[]` surface and `TstEventSample.payload`
+  / `payload_len` are unchanged — see "cross-binding video raw AU" above.
 
 ### Fixed — `Muxer.write_file` drain contract documented + overflow hint (Python)
 

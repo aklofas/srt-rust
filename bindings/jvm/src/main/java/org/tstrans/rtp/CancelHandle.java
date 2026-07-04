@@ -1,5 +1,7 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
+
 /**
  * Cross-thread cancel handle for an RTP {@link Sender} / {@link Receiver}.
  * {@link #cancel()} wakes a thread parked in {@code send}/{@code recv} within
@@ -13,27 +15,18 @@ package org.tstrans.rtp;
  * double-free for any native call concurrent with {@code close()} — a
  * use-after-close is a clean {@link IllegalStateException}, never UB.
  */
-public final class CancelHandle implements AutoCloseable {
+public final class CancelHandle extends NativeHandle {
     static { org.tstrans.NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    CancelHandle(long h) { this.handle.set(h); }
+    CancelHandle(long h) { setHandle(h); }
 
     /** Signal cancellation. Idempotent. */
-    public synchronized void cancel() { nCancel(ensureOpen()); }
+    public synchronized void cancel() { nCancel(requireOpen("CancelHandle is closed")); }
 
-    @Override public synchronized void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    // Preserve synchronized semantics for the cancel/close coordination contract.
+    @Override public synchronized void close() { super.close(); }
 
-    private long ensureOpen() {
-        long h = handle.get();
-        if (h == 0) throw new IllegalStateException("CancelHandle is closed");
-        return h;
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native void nCancel(long handle);
     private static native void nClose(long handle);

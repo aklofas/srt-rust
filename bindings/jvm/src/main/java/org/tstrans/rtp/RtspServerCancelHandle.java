@@ -1,5 +1,7 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
+
 /**
  * Hard-cancel handle for an {@link RtspServer}. {@link #cancel()} aborts every
  * in-flight session at its next poll boundary, bypassing the graceful Notice-5402
@@ -14,30 +16,25 @@ package org.tstrans.rtp;
  * remain {@code synchronized} only to keep the per-handle {@code isCancelled()}
  * observation flag consistent.
  */
-public final class RtspServerCancelHandle implements AutoCloseable {
+public final class RtspServerCancelHandle extends NativeHandle {
     static { org.tstrans.NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    RtspServerCancelHandle(long h) { this.handle.set(h); }
+    RtspServerCancelHandle(long h) { setHandle(h); }
 
     /** Signal hard cancellation. Idempotent. */
-    public synchronized void cancel() { nCancel(ensureOpen()); }
+    public synchronized void cancel() {
+        nCancel(requireOpen("RtspServerCancelHandle is closed"));
+    }
 
     /** True once {@link #cancel()} was called on the backing flag. */
-    public synchronized boolean isCancelled() { return nIsCancelled(ensureOpen()); }
-
-    @Override public synchronized void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
+    public synchronized boolean isCancelled() {
+        return nIsCancelled(requireOpen("RtspServerCancelHandle is closed"));
     }
 
-    private long ensureOpen() {
-        long h = handle.get();
-        if (h == 0) throw new IllegalStateException("RtspServerCancelHandle is closed");
-        return h;
-    }
+    // Preserve synchronized semantics for the cancel/isCancelled/close coordination contract.
+    @Override public synchronized void close() { super.close(); }
+
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native void nCancel(long handle);
     private static native boolean nIsCancelled(long handle);

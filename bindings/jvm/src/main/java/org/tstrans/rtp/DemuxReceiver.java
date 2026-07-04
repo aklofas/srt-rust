@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import org.tstrans.DemuxException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtpException;
 import org.tstrans.mpegts.DemuxEvent;
@@ -47,18 +48,10 @@ import org.tstrans.mpegts.DemuxerConfig;
  * }
  * }</pre>
  */
-public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
+public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    // AtomicLong registry key. close() is a sanctioned cross-thread operation on
-    // this class (the watchdog pattern — see the class javadoc): the handle is read
-    // by the iterator thread and claimed (getAndSet) by a closing thread. The leased
-    // HandleRegistry closes the in-flight free race — a racing native call sees the
-    // entry gone and throws IllegalStateException, never UB.
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    DemuxReceiver(long h) { this.handle.set(h); }
+    DemuxReceiver(long h) { setHandle(h); }
 
     /**
      * Bind a receiver to {@code url} with default demux options.
@@ -126,7 +119,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
                 if (done) return false;
                 if (peeked != null) return true;
                 try {
-                    peeked = nNext(handle.get());
+                    peeked = nNext(peekHandle());
                 } catch (RtpException | DemuxException e) {
                     throw new RuntimeException(e);
                 }
@@ -161,8 +154,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public void addByteSink(Consumer<byte[]> callback) {
-        ensureOpen();
-        nAddByteSink(handle.get(), callback);
+        ensureOpen("DemuxReceiver is closed");
+        nAddByteSink(peekHandle(), callback);
     }
 
     /**
@@ -175,8 +168,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public TransportStats stats() {
-        ensureOpen();
-        return nStats(handle.get());
+        ensureOpen("DemuxReceiver is closed");
+        return nStats(peekHandle());
     }
 
     /**
@@ -190,20 +183,15 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * Idempotent.
      */
     @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    public void close() { super.close(); }
 
     /** Whether the receiver owns a live transport. */
     public boolean isAlive() {
-        if (handle.get() == 0) return false;
-        return nIsAlive(handle.get());
+        if (peekHandle() == 0) return false;
+        return nIsAlive(peekHandle());
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("DemuxReceiver is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     // --- Natives ---
 

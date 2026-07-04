@@ -1,6 +1,7 @@
 package org.tstrans.rtp;
 
 import org.tstrans.MuxException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
 import org.tstrans.mpegts.MuxerConfig;
@@ -16,13 +17,10 @@ import org.tstrans.mpegts.MuxerConfig;
  * server. Use try-with-resources. {@link #stop(long)} is the explicit graceful
  * shutdown; {@link #cancelHandle()} returns a cross-thread hard-cancel.
  */
-public final class RtspServer implements AutoCloseable {
+public final class RtspServer extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    RtspServer(long h) { this.handle.set(h); }
+    RtspServer(long h) { setHandle(h); }
 
     /**
      * Build, bind, and start a server from {@code config}.
@@ -63,10 +61,10 @@ public final class RtspServer implements AutoCloseable {
     }
 
     /** Aggregate server stats snapshot. @throws IllegalStateException if closed. */
-    public ServerStats stats() { ensureOpen(); return nStats(handle.get()); }
+    public ServerStats stats() { ensureOpen(); return nStats(peekHandle()); }
 
     /** Bound listener address as {@code "ip:port"}, or {@code null} before bind. */
-    public String localAddr() { ensureOpen(); return nLocalAddr(handle.get()); }
+    public String localAddr() { ensureOpen(); return nLocalAddr(peekHandle()); }
 
     /**
      * Graceful shutdown — fires the Notice 5402 path on each active session, waits
@@ -75,7 +73,7 @@ public final class RtspServer implements AutoCloseable {
      *
      * @throws RtspException {@code SERVER} if the server was never started
      */
-    public void stop(long drainMs) throws RtspException { ensureOpen(); nStop(handle.get(), drainMs); }
+    public void stop(long drainMs) throws RtspException { ensureOpen(); nStop(peekHandle(), drainMs); }
 
     /** {@link #stop(long)} with the default drain hint (1000). */
     public void stop() throws RtspException { stop(1000L); }
@@ -91,7 +89,7 @@ public final class RtspServer implements AutoCloseable {
     public MountHandle addUnicastMount(String path, MuxerConfig programConfig)
             throws RtspException, MuxException {
         ensureOpen();
-        long h = nAddUnicastMount(handle.get(),
+        long h = nAddUnicastMount(peekHandle(),
             path,
             programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
@@ -125,7 +123,7 @@ public final class RtspServer implements AutoCloseable {
     public MountHandle addMulticastMount(String path, String group, int port, int ttl,
             String iface, MuxerConfig programConfig) throws RtspException, MuxException {
         ensureOpen();
-        long h = nAddMulticastMount(handle.get(),
+        long h = nAddMulticastMount(peekHandle(),
             path, group, port, ttl, iface,
             programConfig.programNumber(), programConfig.pmtPid(), programConfig.pcrPid(),
             programConfig.pcrIntervalMs(), programConfig.psiIntervalMs(),
@@ -144,21 +142,17 @@ public final class RtspServer implements AutoCloseable {
     /** Cross-thread hard-cancel handle. @throws IllegalStateException if closed. */
     public RtspServerCancelHandle cancelHandle() {
         ensureOpen();
-        long h = nCancelHandle(handle.get());
+        long h = nCancelHandle(peekHandle());
         if (h == 0) throw new IllegalStateException("RtspServer is closed");
         return new RtspServerCancelHandle(h);
     }
 
     /** Graceful stop (best-effort) then free the native server. Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("RtspServer is closed");
-    }
+    // Package-private: preserves the accessibility level expected by same-package tests
+    // (RtspPanicPoisoningTest calls this before routing panics through mutating natives).
+    void ensureOpen() { ensureOpen("RtspServer is closed"); }
 
     /**
      * Test-only: the raw native handle, for routing a panic through the real
@@ -166,7 +160,9 @@ public final class RtspServer implements AutoCloseable {
      * mutators are wired to {@code with_server_poisoning}). Package-private,
      * mirrors the {@code *ForTest} convention in {@code Klv}.
      */
-    long nativeHandleForTest() { return handle.get(); }
+    long nativeHandleForTest() { return peekHandle(); }
+
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native long nStart(String bindAddr, long maxSessions, long sessionTimeoutSecs,
         long fanoutCapacity, long gracefulShutdownDrainMs, int authScheme, String authRealm,

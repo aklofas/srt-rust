@@ -6,24 +6,22 @@
 //! `tst_rtp_receiver_cancel`. Free the handle with
 //! `tst_rtp_receiver_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/receiver/ts_receiver.rs` exactly —
-//! error mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref`
-//! usage, the `was_cancelled` + cancel side-channel, and the
-//! `ShellErrorKind::Closed` → `TST_E_CLOSED` vs `TST_E_END_OF_STREAM`
-//! discrimination.
+//! Stats bodies (get_stats, get_socket_stats, reset_stats) are thin
+//! forwarders to generic impls in `crate::transport_impls`. `recv_ts`
+//! and cancel stay family-local: `recv_ts` needs `was_cancelled`
+//! discrimination between peer-EOF and caller-cancel; cancel needs the
+//! `cancel` + `was_cancelled` Arc fields.
 
 use std::os::raw::c_char;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tst_core::RecvTransport;
 use tst_core::mpegts::common::TS_PACKET_SIZE;
+use tst_core::RecvTransport;
 use tst_pipeline::{Receiver, ReceiverConfig, ShellErrorKind, TransportCancel};
 use tst_rtp::{RtpRecvSocketBuilder, RtpRecvTransport};
 
-use crate::error::{
-    TstError, record_eos, record_not_available, record_shell_error, set_last_error,
-};
+use crate::error::{TstError, record_eos, record_shell_error, set_last_error};
 use crate::handle::Handle;
 use crate::stats::TstReceiverStats;
 
@@ -254,15 +252,7 @@ pub unsafe extern "C" fn tst_rtp_receiver_get_stats(
         set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|rx| {
-        let stats = TstReceiverStats::from(&rx.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::receiver_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying RTP socket.
@@ -287,20 +277,13 @@ pub unsafe extern "C" fn tst_rtp_receiver_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::receiver_get_socket_stats(
+            &handle.inner,
+            out,
             "rtp receiver socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_rtp_receiver_t` to zero.
@@ -317,10 +300,7 @@ pub unsafe extern "C" fn tst_rtp_receiver_reset_stats(p: *mut TstRtpReceiver) ->
         set_last_error(TstError::InvalidConfig, "null rtp receiver pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|rx| {
-        rx.reset_stats();
-        0
-    })
+    crate::transport_impls::receiver_reset_stats(&handle.inner)
 }
 
 // ---------------------------------------------------------------------------

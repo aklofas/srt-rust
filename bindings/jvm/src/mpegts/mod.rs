@@ -292,15 +292,35 @@ pub extern "system" fn Java_org_tstrans_mpegts_DemuxEventVideoNatives_nSplitVide
                 return std::ptr::null_mut();
             }
         };
+        // Exact ordinal validation: the values come from our own Java enums,
+        // so an out-of-range ordinal means enum drift (a Java variant added
+        // without updating this mapping) or a reflective misuse — fail loudly
+        // rather than silently parsing with the wrong codec/carriage.
         let codec = match codec_ordinal {
             0 => VideoCodec::H264,
             1 => VideoCodec::H265,
             2 => VideoCodec::H266,
-            _ => VideoCodec::Av1, // 3 (and any out-of-range → AV1 for forward-compat)
+            3 => VideoCodec::Av1,
+            other => {
+                throw_demux(
+                    env,
+                    "INTERNAL",
+                    &format!("unknown VideoCodec ordinal {other}"),
+                );
+                return std::ptr::null_mut();
+            }
         };
         let av1_carriage = match av1_carriage_ordinal {
+            0 => Av1CarriageMode::Mpeg2TsBinding,
             1 => Av1CarriageMode::InteropRawObu,
-            _ => Av1CarriageMode::Mpeg2TsBinding,
+            other => {
+                throw_demux(
+                    env,
+                    "INTERNAL",
+                    &format!("unknown Av1CarriageMode ordinal {other}"),
+                );
+                return std::ptr::null_mut();
+            }
         };
         let shared = SharedBytes::from_vec(raw_bytes);
         let (payload, _issues) = split_video(&shared, codec, av1_carriage);

@@ -98,8 +98,16 @@ public sealed interface DemuxEvent
             // VIEW only (the record's buffer is untouched) — guards against a
             // consumer having advanced the shared buffer's position via raw().
             ByteBuffer r = raw().duplicate().clear();
-            byte[] bytes = new byte[r.remaining()];
-            r.get(bytes);
+            byte[] bytes;
+            if (r.hasArray() && r.arrayOffset() == 0 && r.array().length == r.remaining()) {
+                // Common case: the demuxer wraps an exact-size heap array —
+                // hand it to the native directly (it only reads; the JNI side
+                // copies into Rust) instead of paying a second Java-side copy.
+                bytes = r.array();
+            } else {
+                bytes = new byte[r.remaining()];
+                r.get(bytes);
+            }
             // av1Carriage() null (non-AV1 codec) → ordinal 0 (MPEG2_TS_BINDING default;
             // split_video ignores the carriage arg for non-AV1 codecs).
             int carriageOrd = av1Carriage() != null ? av1Carriage().ordinal() : 0;

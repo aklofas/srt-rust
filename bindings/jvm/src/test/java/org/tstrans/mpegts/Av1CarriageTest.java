@@ -157,7 +157,7 @@ class Av1CarriageTest {
     /**
      * parse() in MPEG2_TS_BINDING mode strips the ts_open_bitstream_unit wrapper
      * and returns one {@link Obu} per OBU in synthAv1Au (TD=type 2,
-     * SEQUENCE_HEADER=type 1, FRAME=type 3).  The count and per-unit type are
+     * SEQUENCE_HEADER=type 1, FRAME_HEADER=type 3).  The count and per-unit type are
      * pinned — not just isEmpty() — to catch silent regressions in split_video.
      */
     @Test

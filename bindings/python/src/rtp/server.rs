@@ -119,13 +119,13 @@ impl PyRtspServerCancelHandle {
 
     /// True once `.cancel()` has been observed.
     pub fn is_cancelled(&self) -> bool {
-        self.inner.is_canceled()
+        self.inner.is_cancelled()
     }
 
     fn __repr__(&self) -> String {
         format!(
             "RtspServerCancelHandle(cancelled={})",
-            self.inner.is_canceled()
+            self.inner.is_cancelled()
         )
     }
 }

@@ -765,7 +765,7 @@ mod runtime_tests {
         let h1 = server.cancel_handle();
         let h2 = server.cancel_handle();
         h1.cancel();
-        assert!(h2.is_canceled());
+        assert!(h2.is_cancelled());
     }
 
     #[test]

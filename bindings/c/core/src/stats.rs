@@ -402,7 +402,16 @@ impl Default for TstMuxSenderStats {
 /// Callers own the `TstMuxSenderStats` by value; the per-stream array is
 /// deep-copied from the BTreeMap by `fill_per_stream`. There is no lifetime
 /// tie between the returned struct and the input.
-#[cfg(feature = "std")]
+// Gated on the union of consuming transport features (mirrors the
+// transport_impls module gate): with all transports off nothing calls this
+// and default-build clippy rejects the dead code.
+#[cfg(any(
+    feature = "srt",
+    feature = "rtp",
+    feature = "udp",
+    feature = "tcp",
+    feature = "rist"
+))]
 pub(crate) fn mux_sender_stats_to_c(stats: &tst_pipeline::MuxSenderStats) -> TstMuxSenderStats {
     let mut per_stream = [TstStreamStats::default(); TST_STATS_MAX_STREAMS];
     let (per_stream_count, truncated) = fill_per_stream(&mut per_stream, &stats.per_stream);

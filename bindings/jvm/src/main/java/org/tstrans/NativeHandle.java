@@ -101,6 +101,12 @@ public abstract class NativeHandle implements AutoCloseable {
      * call concurrently with any other operation that reads the handle through the
      * leased {@code HandleRegistry} — a racing read either completes normally or throws
      * a clean {@link IllegalStateException}; neither outcome is undefined behaviour.
+     *
+     * @implSpec Subclasses that override this method (e.g. to add {@code synchronized})
+     *           must call {@code super.close()} exactly once and add no other native
+     *           interaction — the atomic claim in this base implementation is the
+     *           double-free guarantee, and bypassing or duplicating it breaks the
+     *           idempotency contract above.
      */
     @Override
     public void close() {

@@ -50,7 +50,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use pyo3::Py;
-use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -65,39 +64,6 @@ use crate::errors::make_srt_error;
 use crate::srt::errors::{transport_error_to_pyerr, url_error_to_pyerr};
 use crate::srt::policy::PyReconnectPolicy;
 use crate::srt::transport::{PyCancelHandle, PySocketStats, PySrtStats};
-
-// ---------------------------------------------------------------------------
-// Bytes-like extraction (audit #10 two-path) — duplicated from T2's
-// transport.rs to keep each submodule self-contained. Same shape as
-// crate::srt::mux_sender::coerce_bytes_like and crate::srt::transport
-// versions.
-// ---------------------------------------------------------------------------
-
-fn coerce_bytes_like<'py>(
-    py: Python<'py>,
-    obj: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    if let Ok(b) = obj.downcast::<PyBytes>() {
-        return Ok(b.clone());
-    }
-    let coerced: Bound<'py, PyBytes> = py
-        .import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((obj,))?
-        .downcast_into::<PyBytes>()?;
-    Ok(coerced)
-}
-
-/// Build an `addr` string from a parsed `SrtUrl`, bracketing IPv6
-/// literals so `Socket::connect_with` / `Listener::bind_with` accept
-/// them. Mirrors the helper inlined in `transport.rs::from_url`.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
 
 /// Build a fresh caller-mode `SrtTransport` from a URL string. Used by
 /// the reconnect factory closure: every Broken/Closed event reruns
@@ -122,7 +88,7 @@ fn build_sender_transport(url: &str) -> Result<SrtTransport, TransportError> {
     }
     let mut cfg = SocketConfig::default();
     parsed.overlay.apply_to_socket(&mut cfg);
-    let addr = join_host_port(&parsed.host, parsed.port);
+    let addr = crate::util::join_host_port(&parsed.host, parsed.port);
     let socket = Socket::connect_with(&cfg, addr.as_str()).map_err(|e| TransportError::Broken {
         msg: format!("managed sender factory: connect failed: {e}"),
         errno_code: None,
@@ -152,7 +118,7 @@ fn build_receiver_transport(url: &str) -> Result<SrtTransport, TransportError> {
     let addr = if parsed.host.is_empty() {
         format!("0.0.0.0:{}", parsed.port)
     } else {
-        join_host_port(&parsed.host, parsed.port)
+        crate::util::join_host_port(&parsed.host, parsed.port)
     };
     let mut listener =
         Listener::bind_with(&cfg, addr.as_str()).map_err(|e| TransportError::Broken {
@@ -274,7 +240,7 @@ impl PyManagedSender {
             });
         }
         // Fallback for bytearray / memoryview / numpy etc.
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice: &[u8] = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_ts(slice));
         res.map_err(|e| match e.source {

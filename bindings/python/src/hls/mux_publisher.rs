@@ -183,10 +183,10 @@ impl PyMuxPublisher {
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, nal)?;
-        let slice = coerced;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
+        let slice = coerced.as_bytes();
         self.with_inner(py, |mp| {
-            py.allow_threads(|| mp.send_video(&slice, rust_pts, key_frame))
+            py.allow_threads(|| mp.send_video(slice, rust_pts, key_frame))
         })
     }
 
@@ -201,10 +201,10 @@ impl PyMuxPublisher {
         stream_index: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, klv)?;
-        let slice = coerced;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
+        let slice = coerced.as_bytes();
         self.with_inner(py, |mp| {
-            py.allow_threads(|| mp.send_klv(&slice, rust_pts, stream_index))
+            py.allow_threads(|| mp.send_klv(slice, rust_pts, stream_index))
         })
     }
 
@@ -218,11 +218,9 @@ impl PyMuxPublisher {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, frames)?;
-        let slice = coerced;
-        self.with_inner(py, |mp| {
-            py.allow_threads(|| mp.send_audio(&slice, rust_pts))
-        })
+        let coerced = crate::util::coerce_bytes_like(py, frames)?;
+        let slice = coerced.as_bytes();
+        self.with_inner(py, |mp| py.allow_threads(|| mp.send_audio(slice, rust_pts)))
     }
 
     /// Push one subtitle payload.
@@ -234,10 +232,10 @@ impl PyMuxPublisher {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, payload)?;
-        let slice = coerced;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
+        let slice = coerced.as_bytes();
         self.with_inner(py, |mp| {
-            py.allow_threads(|| mp.send_subtitle(&slice, rust_pts))
+            py.allow_threads(|| mp.send_subtitle(slice, rust_pts))
         })
     }
 
@@ -288,27 +286,4 @@ impl PyMuxPublisher {
             "MuxPublisher(finished)".to_string()
         }
     }
-}
-
-/// Coerce a Python bytes-like argument to an owned `Vec<u8>`.
-///
-/// Unlike `rtp/mux_sender.rs` (which pins a `Py<PyBytes>` and borrows
-/// across `allow_threads`), the `MuxPublisher` closure borrows `&self`
-/// through a `Mutex` guard which is not `Send`-friendly to thread across
-/// the `with_inner` closure boundary together with a borrowed slice. An
-/// owned `Vec<u8>` sidesteps the lifetime/Send tangle for one extra copy
-/// (acceptable — HLS pushes are coarse-grained access units, not
-/// per-packet).
-fn coerce_bytes_like(py: Python<'_>, arg: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
-    use pyo3::intern;
-    use pyo3::types::PyBytes;
-    if let Ok(slice) = arg.extract::<&[u8]>() {
-        return Ok(slice.to_vec());
-    }
-    let coerced = py
-        .import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((arg,))?
-        .downcast_into::<PyBytes>()?;
-    Ok(coerced.as_bytes().to_vec())
 }

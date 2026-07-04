@@ -13,6 +13,7 @@ mod klv;
 mod mpegts;
 mod mux;
 mod raw_bytes;
+mod util;
 #[cfg(feature = "rtp")]
 mod rtp;
 #[cfg(feature = "srt")]

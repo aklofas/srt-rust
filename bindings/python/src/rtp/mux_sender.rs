@@ -33,9 +33,7 @@
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
 use pyo3::Py;
-use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
 
 use tst_core::transport::TransportError;
 use tst_pipeline::{MuxSender as RustMuxSender, MuxSenderError, MuxSenderErrorSource};
@@ -53,25 +51,6 @@ use crate::rtp::transport::PySocketStats;
 // ---------------------------------------------------------------------------
 
 /// Coerce a Python bytes-like argument (`bytes`, `bytearray`,
-/// `memoryview`, NumPy `uint8`) to an owned `Py<PyBytes>` strong
-/// reference whose `.as_bytes()` borrows live across a subsequent
-/// `py.allow_threads()` call. Mirrors the same helper in
-/// `bindings/python/src/rtp/server.rs` and the audit-#10 pattern used in
-/// `bindings/python/src/mpegts.rs::PyDemuxer::feed`.
-fn coerce_bytes_like<'py>(
-    py: Python<'py>,
-    arg: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    if let Ok(b) = arg.downcast::<PyBytes>() {
-        return Ok(b.clone());
-    }
-    py.import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((arg,))?
-        .downcast_into::<PyBytes>()
-        .map_err(|e| e.into())
-}
-
 /// Map a `MuxSenderError` raised by any of `send_*` to a Python
 /// exception. `Mux(...)` variants surface as `MuxError`; `Transport(...)`
 /// variants surface as `RtpError(TRANSPORT)` (or `CANCELLED` /
@@ -203,7 +182,7 @@ impl PyMuxSender {
             .as_ref()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, nal)?;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_video(slice, rust_pts, key_frame));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -224,7 +203,7 @@ impl PyMuxSender {
             .as_ref()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, klv)?;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
         let slice = coerced.as_bytes();
         // Note: `tst_pipeline::MuxSender::send_klv` takes
         // (klv, pts, metadata_service_id). The single-stream convenience
@@ -249,7 +228,7 @@ impl PyMuxSender {
             .as_ref()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, adts)?;
+        let coerced = crate::util::coerce_bytes_like(py, adts)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_audio(slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -269,7 +248,7 @@ impl PyMuxSender {
             .as_ref()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, payload)?;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_subtitle(slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -295,7 +274,7 @@ impl PyMuxSender {
             .as_ref()
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_data(slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -319,7 +298,7 @@ impl PyMuxSender {
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, nal)?;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
         let slice = coerced.as_bytes();
         let res =
             py.allow_threads(|| inner.send_video_to(handle_inner, slice, rust_pts, key_frame));
@@ -342,7 +321,7 @@ impl PyMuxSender {
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, klv)?;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| {
             inner.send_klv_to(handle_inner, slice, rust_pts, metadata_service_id)
@@ -365,7 +344,7 @@ impl PyMuxSender {
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, adts)?;
+        let coerced = crate::util::coerce_bytes_like(py, adts)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_audio_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -386,7 +365,7 @@ impl PyMuxSender {
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, payload)?;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_subtitle_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
@@ -408,7 +387,7 @@ impl PyMuxSender {
             .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "MuxSender is closed"))?;
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_data_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))

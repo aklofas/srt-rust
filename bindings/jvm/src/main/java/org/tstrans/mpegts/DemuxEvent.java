@@ -155,8 +155,11 @@ public sealed interface DemuxEvent
          * @throws CodecParseException never in this lenient mode (kept in the
          *         signature so {@link #parse(boolean)} and this overload share
          *         one call shape)
+         * @throws DemuxException on an internal binding failure (e.g. enum
+         *         drift in the native {@code nParseAudio}); mirrors
+         *         {@link DemuxEvent.Video#parse()}
          */
-        public List<AudioFrame> parse() throws CodecParseException {
+        public List<AudioFrame> parse() throws CodecParseException, DemuxException {
             return parse(false);
         }
 
@@ -170,8 +173,11 @@ public sealed interface DemuxEvent
          *               {@code false} to skip past corruption (as {@link #parse()})
          * @return the typed audio frames (never {@code null})
          * @throws CodecParseException in strict mode, on the first malformed frame
+         * @throws DemuxException on an internal binding failure (e.g. enum
+         *         drift in the native {@code nParseAudio}); mirrors
+         *         {@link DemuxEvent.Video#parse()}
          */
-        public List<AudioFrame> parse(boolean strict) throws CodecParseException {
+        public List<AudioFrame> parse(boolean strict) throws CodecParseException, DemuxException {
             // clear() on the duplicate resets position=0/limit=capacity on the
             // VIEW only (the record's buffer is untouched) — guards against a
             // consumer having advanced the shared buffer's position via raw().
@@ -314,5 +320,5 @@ final class DemuxEventAudioNatives {
 
     static native java.util.List<org.tstrans.codec.AudioFrame> nParseAudio(
             byte[] raw, int codecOrdinal, boolean strict)
-            throws org.tstrans.CodecParseException;
+            throws org.tstrans.CodecParseException, org.tstrans.DemuxException;
 }

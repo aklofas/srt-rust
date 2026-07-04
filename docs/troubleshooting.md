@@ -155,7 +155,7 @@ A multi-cell AU reassembly attempt failed on the named PID. `reason` discriminat
 - `Orphan` — a `Middle` or `Last` cell arrived without a prior `First`. Either the stream started mid-AU (e.g. seek into a recording) or a `First` cell was lost upstream. (Note: the producer-side CFI malformation pattern — encoders shipping `0b00` (Middle) on single-cell AUs — is rescued by the default-on `cfi_tolerance` knob and does NOT produce an Orphan event under default config. You will only see Orphan here for legitimate fragmentation losses or if you explicitly set `cfi_tolerance: false`.)
 - `SequenceGap` — a buffered AU's continuation cell had the wrong `sequence_number`. A cell was lost between the buffered `First`/`Middle` and the arriving cell.
 - `ConcurrentFirst` — a new `First` arrived while the previous AU was still buffering (its `Last` never appeared). The partial buffer is dropped before the new `First` is processed.
-- `Overflow` — the accumulated inner-byte total would exceed `DemuxerConfig::au_cell_cap_per_pid` (default 1 MiB). Tune the cap via `DemuxerBuilder::au_cell_cap_per_pid(bytes)`.
+- `Overflow` — the accumulated inner-byte total would exceed `DemuxerConfig::au_cell_cap_per_pid` (default 1 MiB). Tune the cap via `DemuxerConfigBuilder::au_cell_cap_per_pid(bytes)`.
 
 Fix: for `SequenceGap` and `Overflow`, investigate the upstream sender. If `ts-transformer`'s muxer is the sender, this is automatic — `Muxer::push_klv*` always emits `Complete` cells. Legitimate multi-cell streams reassemble transparently into a single `MetadataKind::KlvSyncAuCell` event with `was_reassembled = true` and `cell_count = N`.
 
@@ -164,7 +164,7 @@ Fix: for `SequenceGap` and `Overflow`, investigate the upstream sender. If `ts-t
 This shouldn't happen under default configuration — the producer-side CFI malformation (encoders shipping `0b00` (Middle) on what are actually single complete KLV records) is rescued by the default-on `cfi_tolerance` knob. If you are seeing `Orphan` events with zero KLV, check whether you have explicitly opted into strict mode:
 
 ```rust,ignore
-DemuxerBuilder::new().cfi_tolerance(false).build()  // strict — disables the rescue
+Demuxer::with_config(DemuxerConfig::builder().cfi_tolerance(false).build())  // strict — disables the rescue
 ```
 
 To restore tolerance, either remove the `.cfi_tolerance(false)` call or set it back to `true`. The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::CfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. See [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md#malformed-cell_fragment_indication-tolerance-default-on) for the full contract.

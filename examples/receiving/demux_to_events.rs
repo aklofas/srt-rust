@@ -52,7 +52,7 @@ fn main() {
     // triage lenient is what you want — the demuxer keeps going past
     // every recoverable problem and surfaces what it found as
     // `NonConformant` events. To opt into hard-fail behavior swap to
-    // `DemuxerBuilder::new().strict(StrictMode::Sync).build()`; see
+    // `Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Sync).build())`; see
     // `docs/guides/pipeline.md` for the strict-mode contract.
     let mut d = Demuxer::new();
 
@@ -94,7 +94,7 @@ fn main() {
                 // KLV-to-video links: declared by the PMT's
                 // `metadata_descriptor` (`Declared`), inferred from
                 // single-video + single-KLV topology (`Inferred`), or
-                // forced by the caller via `DemuxerBuilder::link_klv`
+                // forced by the caller via `DemuxerConfigBuilder::link_klv`
                 // (`Override`). `Inferred` is best-effort — treat it as
                 // a hint, not authority.
                 for l in &m.klv_links {

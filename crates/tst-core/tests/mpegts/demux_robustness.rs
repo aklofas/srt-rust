@@ -15,7 +15,7 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, NonConformantIssue, SamplePayload,
+    DemuxEvent, Demuxer, DemuxerConfig, DiscontinuityKind, NonConformantIssue, SamplePayload,
     StrictMode,
 };
 use tst_core::mpegts::mux::{
@@ -705,7 +705,7 @@ fn cc_single_duplicate_accepted_by_strict_full() {
     let clean = build_clean_stream();
     let patched = insert_video_packet_duplicates(&clean, 2, 1);
 
-    let mut d = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut d = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     // With one conformant duplicate, no StrictRejection should be returned.
     let res = d.feed(&patched);
     assert!(

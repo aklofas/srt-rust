@@ -171,9 +171,10 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
             vec![CoreEvent::Error { code }]
         }
         "malformed-psi-strict" => {
-            use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
+            use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StrictMode};
             // Use StrictMode::Full so PsiChecksumMismatch → StrictRejection.
-            let mut demuxer = DemuxerBuilder::new().strict(StrictMode::Full).build();
+            let mut demuxer =
+                Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
             let result = demuxer.feed(input);
             let code = match &result {
                 Err(e) => demux_error_code_pub(e),
@@ -255,8 +256,9 @@ fn run_binding_contract(id: &str, input: &[u8]) -> Vec<CoreEvent> {
             // Same malformation + mechanism as malformed-psi-strict, asserting
             // the SAME stable public code surfaces here. PsiChecksumMismatch
             // under StrictMode::Full → StrictRejection → "STRICT_REJECTION".
-            use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
-            let mut demuxer = DemuxerBuilder::new().strict(StrictMode::Full).build();
+            use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StrictMode};
+            let mut demuxer =
+                Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
             let code = match &demuxer.feed(input) {
                 Err(e) => demux_error_code_pub(e),
                 Ok(()) => panic!(

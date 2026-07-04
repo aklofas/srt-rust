@@ -221,7 +221,7 @@ impl MuxerConfig {
     ///   the muxer never auto-emits descriptors on a data stream). The
     ///   PCR is never copied onto a data PID (see the PCR copy rule
     ///   below). Caveat: a
-    ///   [`DemuxerBuilder::treat_as`](crate::mpegts::demux::DemuxerBuilder::treat_as)
+    ///   [`DemuxerConfigBuilder::treat_as`](crate::mpegts::demux::DemuxerConfigBuilder::treat_as)
     ///   override can force `Unknown` onto a stream whose
     ///   stream_type/descriptors classify as a typed kind; the conversion
     ///   then produces a Data spec that [`validate`](Self::validate)

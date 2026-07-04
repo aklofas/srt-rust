@@ -3,7 +3,7 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, NonConformantIssue, SamplePayload, StreamKind, StrictMode,
+    DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, SamplePayload, StreamKind, StrictMode,
     SubtitleCodec as DemuxSub,
 };
 use tst_core::mpegts::mux::{
@@ -231,7 +231,7 @@ fn demux_dvb_sub_non_conformant_data_identifier_strict_suppresses_sample() {
     );
     raw = patch_dvb_sub_data_identifier(raw, 0x0F, 0x21);
 
-    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut demux = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     // StrictMode::Full converts the first DvbSubDataIdentifier to a fatal —
     // feed() may surface it as Err. Drain events regardless.
     let _ = demux.feed(&raw);

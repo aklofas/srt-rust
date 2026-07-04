@@ -27,7 +27,7 @@
 use tst_core::codec::aac::latm::LatmFramingKind;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, NonConformantIssue, PesHeaderMalformedKind, StrictMode,
+    DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, PesHeaderMalformedKind, StrictMode,
 };
 use tst_core::mpegts::mux::{
     AudioCodec, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
@@ -266,7 +266,7 @@ fn demux_b5_strict_full_escalates_pes_header_malformed() {
     let raw = build_h264_ts_with_one_pes();
     let patched = patch_pes_pts_dts_flags(raw, 0xE0, 0b01);
 
-    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut demux = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     let _ = demux.feed(&patched);
     demux.flush();
     let mut events = Vec::new();
@@ -330,7 +330,7 @@ fn demux_b6_strict_full_suppresses_subtitle_sample() {
     let raw = build_ts_with_dvb_sub_pes();
     let patched = patch_dvb_sub_pes_clear_data_alignment(raw);
 
-    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut demux = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     let _ = demux.feed(&patched);
     demux.flush();
     let mut events = Vec::new();
@@ -626,7 +626,7 @@ fn demux_c11_latm_strict_full_suppresses_sample() {
     let bad_payload = [0xFFu8, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC];
     let bytes = build_ts_with_aac_latm_pes(&bad_payload);
 
-    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut demux = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     let _ = demux.feed(&bytes);
     demux.flush();
     let mut events = Vec::new();

@@ -91,7 +91,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | Type / function | What it is |
 | --- | --- |
 | `Demuxer` | Stateful TS demuxer. `feed` bytes in, `next_event` events out, `flush` at stream end. |
-| `DemuxerBuilder` | Fluent builder for the demuxer's options. |
+| `DemuxerConfigBuilder` | Fluent builder for the demuxer's options. Obtain via `DemuxerConfig::builder()`. |
 | `DemuxerConfig` | Plain struct of options if you'd rather build a config than chain. |
 | `DemuxEvent` | Top-level event enum: `ProgramMap`, `Sample`, `Metadata`, `Discontinuity`, `NonConformant`, `ReconnectDiscontinuity` (emitted only by `ManagedDemuxReceiver` after a reconnect; signals a hard byte-stream discontinuity). |
 | `StreamId` | `{ pid: u16, kind: StreamKind }` — identifies the source stream of every event. |
@@ -107,7 +107,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `ProgramMap` | `{ program_number, pcr_pid, pmt_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. `pmt_pid` is the PAT-declared PID carrying this program's PMT; needed to reconstruct a muxer config via `MuxerConfig::from_program_map`. |
 | `StreamInfo` | `{ pid, stream_type, kind, program_number, raw_descriptors: Vec<RawDescriptor> }` — one row per declared stream in the PMT. `raw_descriptors` carries the raw PMT per-stream descriptor TLVs (tag + data bytes), in PMT loop order. |
 | `KlvLink` | `{ klv_pid, video_pid, source: LinkSource }`. |
-| `LinkSource` | `Declared` (PMT `metadata_descriptor`), `Inferred` (single video + single KLV topology), `Override` (`DemuxerBuilder::link_klv`). |
+| `LinkSource` | `Declared` (PMT `metadata_descriptor`), `Inferred` (single video + single KLV topology), `Override` (`DemuxerConfigBuilder::link_klv`). |
 | `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `PidReusedAcrossPrograms { pid, programs }`, `SubtitleMissingDescriptor { pid }`, `SubtitleDescriptorMalformed { pid, tag }` (reserved — not currently emitted), `Other(String)`. |
 | `DiscontinuityKind` | `ContinuityJump { expected, observed }`, `PesOversize { pid }`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `StrictMode` | `Off` (default), `TimingOnly`, `DescriptorsOnly`, `Full`. |
@@ -202,16 +202,18 @@ check is the opt-in `split_video_strict(&raw, codec, av1_carriage.unwrap_or_defa
 returned by `split_video`).
 
 ```rust,no_run
-use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StrictMode};
 
-let _d = DemuxerBuilder::new()
-    .strict(StrictMode::DescriptorsOnly)
-    .build();
+let _d = Demuxer::with_config(
+    DemuxerConfig::builder()
+        .strict(StrictMode::DescriptorsOnly)
+        .build(),
+);
 ```
 
 ## Override surface
 
-`DemuxerBuilder` exposes four override knobs. Use them when the encoder
+`DemuxerConfigBuilder` exposes four override knobs. Use them when the encoder
 lies, when memory pressure matters, or when topology inference is
 ambiguous.
 
@@ -223,14 +225,16 @@ ambiguous.
 | `pes_cap_total(bytes)` | Aggregate cap across all PIDs. Default 64 MiB. Exceeding this emits `Discontinuity::PesTotalOversize` and drops. | Same as above but at the workspace level. |
 
 ```rust,no_run
-use tst_core::mpegts::demux::{DemuxerBuilder, StreamKind, VideoCodec};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StreamKind, VideoCodec};
 
-let _d = DemuxerBuilder::new()
-    .link_klv(0x1031, 0x1011)                                // klv -> video override
-    .treat_as(0x1011, StreamKind::Video(VideoCodec::H265))   // PMT lied about codec
-    .pes_cap_per_pid(1 << 20)                                // 1 MiB per-PID
-    .pes_cap_total(8 << 20)                                  // 8 MiB total
-    .build();
+let _d = Demuxer::with_config(
+    DemuxerConfig::builder()
+        .link_klv(0x1031, 0x1011)                                // klv -> video override
+        .treat_as(0x1011, StreamKind::Video(VideoCodec::H265))   // PMT lied about codec
+        .pes_cap_per_pid(1 << 20)                                // 1 MiB per-PID
+        .pes_cap_total(8 << 20)                                  // 8 MiB total
+        .build(),
+);
 ```
 
 `DemuxerConfig` is the plain-struct form if you'd rather build a config
@@ -391,7 +395,7 @@ If reassembly fails (orphan continuation, sequence-number gap, a new
 demuxer drops the partial buffer and emits
 `NonConformantIssue::MultiCellAu` with a typed
 `MultiCellAuReason` naming the failure mode. Tune the cap via
-`DemuxerBuilder::au_cell_cap_per_pid(bytes)`.
+`DemuxerConfigBuilder::au_cell_cap_per_pid(bytes)`.
 
 #### Malformed `cell_fragment_indication` tolerance (default on)
 
@@ -434,10 +438,12 @@ against the wire spec rather than consuming real-world traffic),
 disable tolerance explicitly:
 
 ```rust,ignore
-use tst_core::mpegts::demux::DemuxerBuilder;
-let demuxer = DemuxerBuilder::new()
-    .cfi_tolerance(false)
-    .build();
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+let demuxer = Demuxer::with_config(
+    DemuxerConfig::builder()
+        .cfi_tolerance(false)
+        .build(),
+);
 ```
 
 Strict mode then surfaces orphan Middle/Last cells as
@@ -613,7 +619,7 @@ demuxer's default classification surfaces these PIDs as
 `StreamKind::Unknown(0xF1)`.
 
 To route them to typed audio, set `DemuxerConfig::stream_kind_overrides`
-(or use the `DemuxerBuilder::treat_as` one-liner):
+(or use the `DemuxerConfigBuilder::treat_as` one-liner):
 
 ```rust
 let mut config = DemuxerConfig::default();
@@ -700,7 +706,7 @@ config.stream_kind_overrides
 let mut demux = Demuxer::with_config(config);
 ```
 
-Equivalently, `DemuxerBuilder::treat_as(pid, kind)` is a one-liner
+Equivalently, `DemuxerConfigBuilder::treat_as(pid, kind)` is a one-liner
 on the builder form.
 
 When the override routes a PID with no recognized subtitle

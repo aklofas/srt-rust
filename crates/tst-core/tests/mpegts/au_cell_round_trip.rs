@@ -426,8 +426,8 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     // spec-strict orphan path, so opt out explicitly. The muxer's inner
     // payload is a valid KLV record, so under tolerance the orphan Last
     // would otherwise be rescued + emit `CfiTolerated` instead.
-    use tst_core::mpegts::demux::DemuxerBuilder;
-    let mut dem = DemuxerBuilder::new().cfi_tolerance(false).build();
+    use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+    let mut dem = Demuxer::with_config(DemuxerConfig::builder().cfi_tolerance(false).build());
     dem.feed(&ts_bytes).unwrap();
 
     let mut multi_cell_seen = false;

@@ -28,7 +28,8 @@
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, DemuxerBuilder, MetadataKind, NonConformantIssue, event::MultiCellAuReason,
+    DemuxEvent, Demuxer, DemuxerConfig, DemuxerConfigBuilder, MetadataKind, NonConformantIssue,
+    event::MultiCellAuReason,
 };
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
@@ -129,8 +130,8 @@ fn patch_au_cell(
     ts_bytes[offset..offset + buf.len()].copy_from_slice(&buf);
 }
 
-fn collect_events_with(builder: DemuxerBuilder, ts_bytes: &[u8]) -> Vec<DemuxEvent> {
-    let mut dem = builder.build();
+fn collect_events_with(builder: DemuxerConfigBuilder, ts_bytes: &[u8]) -> Vec<DemuxEvent> {
+    let mut dem = Demuxer::with_config(builder.build());
     dem.feed(ts_bytes).unwrap();
     let mut events = Vec::new();
     while let Some(e) = dem.next_event() {
@@ -140,7 +141,7 @@ fn collect_events_with(builder: DemuxerBuilder, ts_bytes: &[u8]) -> Vec<DemuxEve
 }
 
 // `collect_events` (default `Demuxer::new()`) was removed when the strict
-// path was retargeted through `collect_events_with(DemuxerBuilder::new()
+// path was retargeted through `collect_events_with(DemuxerConfig::builder()
 // .cfi_tolerance(false), ...)` after the 2026-05-24 default flip. All
 // callers in this file pass an explicit builder now.
 
@@ -181,7 +182,7 @@ fn strict_mode_orphan_middle_with_complete_klv_stays_orphan() {
 
     // Default is now `cfi_tolerance: true`; this test specifically
     // exercises the strict path, so opt out explicitly.
-    let builder = DemuxerBuilder::new().cfi_tolerance(false);
+    let builder = DemuxerConfig::builder().cfi_tolerance(false);
     let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
@@ -241,7 +242,7 @@ fn tolerance_mode_valid_orphan_middle_emits_metadata_plus_diagnostic() {
     let inner = synth_klv_record(32);
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 7);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
@@ -338,7 +339,7 @@ fn tolerance_mode_valid_orphan_last_emits_metadata_plus_diagnostic() {
     let inner = synth_klv_record(8);
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Last, 3);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -377,7 +378,7 @@ fn tolerance_mode_invalid_payload_stays_orphan() {
     let inner = vec![0xFFu8; 32];
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 5);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -437,7 +438,7 @@ fn tolerance_mode_ber_length_mismatch_stays_orphan() {
     inner[16] = 64; // declares 64 bytes but only 15 follow
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 8);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -487,7 +488,7 @@ fn tolerance_mode_legitimate_fragmentation_unaffected() {
     patch_au_cell(&mut ts, off1, CellFragmentIndication::Middle, 11, part_b);
     patch_au_cell(&mut ts, off2, CellFragmentIndication::Last, 12, part_c);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
@@ -554,7 +555,7 @@ fn tolerance_mode_active_buffer_sequence_gap_still_emits_existing_failure() {
     // Skip seq 11 — go straight to 12 to trigger SequenceGap.
     patch_au_cell(&mut ts, off1, CellFragmentIndication::Middle, 12, part_b);
 
-    let builder = DemuxerBuilder::new().cfi_tolerance(true);
+    let builder = DemuxerConfig::builder().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events

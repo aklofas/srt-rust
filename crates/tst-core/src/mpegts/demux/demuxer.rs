@@ -787,12 +787,12 @@ mod tests {
         stream_type_from_kind,
     };
     use crate::mpegts::demux::types::{
-        DemuxerBuilder, DemuxerConfig, default_pes_cap_per_pid, default_pes_cap_total,
+        DemuxerConfig, default_pes_cap_per_pid, default_pes_cap_total,
     };
 
     #[test]
     fn builder_carries_defaults() {
-        let d = DemuxerBuilder::new().build();
+        let d = Demuxer::with_config(DemuxerConfig::builder().build());
         assert_eq!(d.options.strict, StrictMode::Off);
         assert_eq!(d.options.pes_cap_per_pid, None);
     }
@@ -843,12 +843,14 @@ mod tests {
 
     #[test]
     fn builder_overrides_apply() {
-        let d = DemuxerBuilder::new()
-            .strict(StrictMode::TimingOnly)
-            .pes_cap_per_pid(1 << 20)
-            .pes_cap_total(8 << 20)
-            .link_klv(0x100, 0x101)
-            .build();
+        let d = Demuxer::with_config(
+            DemuxerConfig::builder()
+                .strict(StrictMode::TimingOnly)
+                .pes_cap_per_pid(1 << 20)
+                .pes_cap_total(8 << 20)
+                .link_klv(0x100, 0x101)
+                .build(),
+        );
         assert_eq!(d.options.strict, StrictMode::TimingOnly);
         assert_eq!(d.options.pes_cap_per_pid, Some(1 << 20));
         assert_eq!(d.options.pes_cap_total, Some(8 << 20));
@@ -857,9 +859,11 @@ mod tests {
 
     #[test]
     fn builder_treat_as_override_applies() {
-        let d = DemuxerBuilder::new()
-            .treat_as(0x100, StreamKind::Video(VideoCodec::H265))
-            .build();
+        let d = Demuxer::with_config(
+            DemuxerConfig::builder()
+                .treat_as(0x100, StreamKind::Video(VideoCodec::H265))
+                .build(),
+        );
         assert_eq!(
             d.options.stream_kind_overrides.get(&0x100),
             Some(&StreamKind::Video(VideoCodec::H265))
@@ -3039,9 +3043,11 @@ mod tests {
     fn strict_full_accepts_valid_multi_section_pat() {
         let s0 = pat_packet_with_multi_section(0, 1, &[(1u16, 0x0100u16)]);
         let s1 = pat_packet_with_multi_section(1, 1, &[(2u16, 0x0200u16)]);
-        let mut demuxer = DemuxerBuilder::new()
-            .strict(crate::mpegts::demux::StrictMode::Full)
-            .build();
+        let mut demuxer = Demuxer::with_config(
+            DemuxerConfig::builder()
+                .strict(crate::mpegts::demux::StrictMode::Full)
+                .build(),
+        );
         demuxer.feed(&s0).unwrap();
         let r = demuxer.feed(&s1);
         assert!(
@@ -3371,8 +3377,11 @@ mod tests {
     #[test]
     fn pcr_malformed_strict_timing_rejects() {
         // StrictMode::TimingOnly must escalate PcrMalformed to StrictRejection.
-        use crate::mpegts::demux::DemuxerBuilder;
-        let mut demuxer = DemuxerBuilder::new().strict(StrictMode::TimingOnly).build();
+        let mut demuxer = Demuxer::with_config(
+            DemuxerConfig::builder()
+                .strict(StrictMode::TimingOnly)
+                .build(),
+        );
         demuxer
             .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
             .unwrap();

@@ -12,9 +12,7 @@
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::crc32::crc32_mpeg2;
-use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, NonConformantIssue, StrictMode,
-};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, StrictMode};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Packet / section builders (self-contained, mirrors demux_strict.rs helpers)
@@ -241,7 +239,7 @@ fn pmt_program_number_mismatch_display() {
 #[test]
 fn pmt_program_number_mismatch_strict_full_rejects() {
     let bytes = build_mismatched_stream();
-    let mut d = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let mut d = Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build());
     // PAT may succeed; the PMT is what triggers the rejection.
     // Feed the whole buffer and check for StrictRejection.
     let result = d.feed(&bytes);

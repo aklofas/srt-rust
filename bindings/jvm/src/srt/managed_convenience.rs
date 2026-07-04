@@ -323,11 +323,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
     })
 }
 
-// ── Push family — single-stream variants ───────────────────────────────────
+// ── Send family — single-stream variants ───────────────────────────────────
 
-/// `nPushVideo(handle, nal, pts, keyFrame)`.
+/// `nSendVideo(handle, nal, pts, keyFrame)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendVideo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -345,9 +345,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideo<'local>(
     })
 }
 
-/// `nPushKlv(handle, klv, pts, metadataServiceId)`.
+/// `nSendKlv(handle, klv, pts, metadataServiceId)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendKlv<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -369,9 +369,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlv<'local>(
     })
 }
 
-/// `nPushAudio(handle, frames, pts)`.
+/// `nSendAudio(handle, frames, pts)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudio<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendAudio<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -388,9 +388,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudio<'local>(
     })
 }
 
-/// `nPushSubtitle(handle, pts, payload)` — note the swapped arg order.
+/// `nSendSubtitle(handle, pts, payload)` — note the swapped arg order.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendSubtitle<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -407,9 +407,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitle<'loca
     })
 }
 
-/// `nPushData(handle, data, pts)`.
+/// `nSendData(handle, data, pts)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushData<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendData<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -426,11 +426,11 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushData<'local>(
     })
 }
 
-// ── Push family — handle-targeted variants ─────────────────────────────────
+// ── Send family — handle-targeted variants ─────────────────────────────────
 
-/// `nPushVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
+/// `nSendVideoTo(handle, streamHandleRaw, nal, pts, keyFrame)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendVideoTo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -456,9 +456,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushVideoTo<'local
     })
 }
 
-/// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
+/// `nSendKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendKlvTo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -488,9 +488,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushKlvTo<'local>(
     })
 }
 
-/// `nPushAudioTo(handle, streamHandleRaw, frames, pts)`.
+/// `nSendAudioTo(handle, streamHandleRaw, frames, pts)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendAudioTo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -515,9 +515,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushAudioTo<'local
     })
 }
 
-/// `nPushSubtitleTo(handle, streamHandleRaw, pts, payload)`.
+/// `nSendSubtitleTo(handle, streamHandleRaw, pts, payload)`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendSubtitleTo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -542,12 +542,12 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushSubtitleTo<'lo
     })
 }
 
-/// `nPushDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
+/// `nSendDataTo(handle, streamHandleRaw, data, pts)`. The raw handle is
 /// validated via the strict `u32::try_from` + `DataStreamHandle::try_from_raw`
 /// chain (rejecting negative / out-of-u32 values up front rather than
-/// truncating, mirroring `MuxSender::nPushDataTo`).
+/// truncating, mirroring `MuxSender::nSendDataTo`).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nPushDataTo<'local>(
+pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nSendDataTo<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,

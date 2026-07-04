@@ -102,7 +102,7 @@ class SrtManagedReconnectTest {
                 Socket s1 = listener.accept(null);
                 MuxSender ms1 = s1.intoMuxSender(roundtripConfig());
                 for (int i = 0; i < PUSH_BATCH; i++) {
-                    ms1.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                    ms1.sendVideo(syntheticH264Idr(), i * 3000L, true);
                 }
                 Thread.sleep(1_000);
                 // DROP on a side daemon thread: libsrt's srt_close LINGERS, which would
@@ -122,7 +122,7 @@ class SrtManagedReconnectTest {
                 long pts = (long) PUSH_BATCH * 3000L;
                 for (int round = 0; round < 400 && observed.getCount() > 0; round++) {
                     for (int i = 0; i < 6; i++, pts += 3000L) {
-                        ms2.pushVideo(syntheticH264Idr(), pts, true);
+                        ms2.sendVideo(syntheticH264Idr(), pts, true);
                     }
                     Thread.sleep(50);
                 }

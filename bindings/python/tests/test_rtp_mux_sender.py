@@ -144,7 +144,7 @@ def test_push_video_lands_rtp_framed_ts_at_peer() -> None:
     try:
         program = _video_only_program()
         with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as s:
-            s.push_video(NAL_IDR, pts=Pts90khz.from_raw(0), key_frame=True)
+            s.send_video(NAL_IDR, pts=Pts90khz.from_raw(0), key_frame=True)
             stats = s.stats()
             assert isinstance(stats, tuple)
             assert len(stats) == 2
@@ -164,7 +164,7 @@ def test_push_video_lands_rtp_framed_ts_at_peer() -> None:
         listener.close()
 
 
-def test_push_klv_to_handle() -> None:
+def test_send_klv_to_handle() -> None:
     port = _free_udp_port()
     listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     listener.bind(("127.0.0.1", port))
@@ -175,15 +175,15 @@ def test_push_klv_to_handle() -> None:
             klv_h = s.klv_handle()
             assert klv_h is not None
             # Use the _to variant against the explicit handle.
-            s.push_klv_to(klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(0))
+            s.send_klv_to(klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(0))
             socket_stats, _ = s.stats()
             assert socket_stats.packets_sent >= 1
     finally:
         listener.close()
 
 
-def test_push_data_and_push_data_to_handle() -> None:
-    """W3: `push_data` (single-stream shorthand) + `push_data_to`
+def test_send_data_and_send_data_to_handle() -> None:
+    """W3: `send_data` (single-stream shorthand) + `send_data_to`
     (explicit handle from `data_handle()`) both land bytes on the
     transport. Pass-through contract — no framing, no inspection."""
     port = _free_udp_port()
@@ -196,17 +196,17 @@ def test_push_data_and_push_data_to_handle() -> None:
             data_h = s.data_handle()
             assert data_h is not None
             # Single-stream shorthand.
-            s.push_data(DATA_RECORD, pts=Pts90khz.from_raw(0))
+            s.send_data(DATA_RECORD, pts=Pts90khz.from_raw(0))
             # Explicit-handle variant.
-            s.push_data_to(data_h, DATA_RECORD, pts=Pts90khz.from_raw(3000))
+            s.send_data_to(data_h, DATA_RECORD, pts=Pts90khz.from_raw(3000))
             socket_stats, _ = s.stats()
             assert socket_stats.packets_sent >= 1
     finally:
         listener.close()
 
 
-def test_push_video_to_handle() -> None:
-    """The _to variant takes a handle from `video_handle()` and pushes
+def test_send_video_to_handle() -> None:
+    """The _to variant takes a handle from `video_handle()` and sends
     to it explicitly. Used when multiple video streams are configured
     (here we just demonstrate the surface works on a single-stream
     setup)."""
@@ -219,15 +219,15 @@ def test_push_video_to_handle() -> None:
         with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as s:
             h = s.video_handle()
             assert h is not None
-            s.push_video_to(h, NAL_AUD, pts=Pts90khz.from_raw(0))
+            s.send_video_to(h, NAL_AUD, pts=Pts90khz.from_raw(0))
             socket_stats, _ = s.stats()
             assert socket_stats.packets_sent >= 1
     finally:
         listener.close()
 
 
-def test_push_video_accepts_bytes_like() -> None:
-    """The push family accepts bytes / bytearray / memoryview (the
+def test_send_video_accepts_bytes_like() -> None:
+    """The send family accepts bytes / bytearray / memoryview (the
     audit-#10 two-path bytes-like extraction shared with PySender)."""
     port = _free_udp_port()
     # Bind a UDP listener so the kernel doesn't return ICMP
@@ -241,11 +241,11 @@ def test_push_video_accepts_bytes_like() -> None:
         program = _video_only_program()
         with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as s:
             # bytes — fast path
-            s.push_video(NAL_AUD, pts=Pts90khz.from_raw(0))
+            s.send_video(NAL_AUD, pts=Pts90khz.from_raw(0))
             # bytearray — fallback through `bytes()` builtin
-            s.push_video(bytearray(NAL_AUD), pts=Pts90khz.from_raw(3000))
+            s.send_video(bytearray(NAL_AUD), pts=Pts90khz.from_raw(3000))
             # memoryview — also fallback
-            s.push_video(memoryview(bytearray(NAL_AUD)), pts=Pts90khz.from_raw(6000))
+            s.send_video(memoryview(bytearray(NAL_AUD)), pts=Pts90khz.from_raw(6000))
             socket_stats, _ = s.stats()
             assert socket_stats.packets_sent >= 3
     finally:
@@ -257,23 +257,23 @@ def test_push_video_accepts_bytes_like() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_push_video_on_closed_sender_raises_transport() -> None:
+def test_send_video_on_closed_sender_raises_transport() -> None:
     port = _free_udp_port()
     program = _video_only_program()
     s = tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program)
     s.close()
     with pytest.raises(RtpError) as exc_info:
-        s.push_video(NAL_IDR, pts=Pts90khz.from_raw(0))
+        s.send_video(NAL_IDR, pts=Pts90khz.from_raw(0))
     assert exc_info.value.kind == RtpErrorKind.TRANSPORT
 
 
-def test_push_video_malformed_nal_raises_mux_error() -> None:
+def test_send_video_malformed_nal_raises_mux_error() -> None:
     """Raw bytes without an Annex-B start code → MuxError(INPUT_MALFORMED)."""
     port = _free_udp_port()
     program = _video_only_program()
     with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as s:
         with pytest.raises(MuxError) as exc_info:
-            s.push_video(b"not annex-b bytes", pts=Pts90khz.from_raw(0))
+            s.send_video(b"not annex-b bytes", pts=Pts90khz.from_raw(0))
         assert exc_info.value.kind == MuxErrorKind.INPUT_MALFORMED
 
 

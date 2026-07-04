@@ -244,12 +244,12 @@ class SrtMuxDemuxLoopbackTest {
                 roundtripConfig())) {
             for (int i = 0; i < PUSH_COUNT; i++) {
                 // Increasing PTS so the muxer never rejects a duplicate timestamp.
-                s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                s.sendVideo(syntheticH264Idr(), i * 3000L, true);
                 // One distinctive private-data record early in the stream (the
-                // lone-data-stream pushData shorthand) so the remaining video
-                // pushes flush it through any transport bundling; explicit PES
+                // lone-data-stream sendData shorthand) so the remaining video
+                // sends flush it through any transport bundling; explicit PES
                 // length means the demuxer emits it without waiting for a flush.
-                if (i == 0) s.pushData(DATA_PAYLOAD, 0L);
+                if (i == 0) s.sendData(DATA_PAYLOAD, 0L);
             }
             // Sender handle smoke pin: the config declares one data stream, so
             // the convenience accessor must surface it (exercises the native +

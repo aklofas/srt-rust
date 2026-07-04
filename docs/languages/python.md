@@ -331,7 +331,7 @@ socket.
 
 ### SRT convenience (`MuxSender` / `DemuxReceiver`)
 
-`MuxSender` bundles a `Muxer` + an SRT `Sender`: push encoded elementary
+`MuxSender` bundles a `Muxer` + an SRT `Sender`: send encoded elementary
 streams and it muxes + sends in one call. `DemuxReceiver` bundles a
 `Receiver` + a `Demuxer`: iterate to get the same
 `tstrans.mpegts.DemuxEvent` subclass instances the offline `Demuxer`
@@ -353,17 +353,17 @@ with MuxSender.from_url(
 ) as s:
     pts = 0
     for nal in access_units:
-        s.push_video(nal, pts=Pts90khz.from_raw(pts), key_frame=True)
+        s.send_video(nal, pts=Pts90khz.from_raw(pts), key_frame=True)
         pts += 3000   # 90 kHz ticks per frame
 ```
 
-`pts` is keyword-only on every push method. The push surface mirrors the
-offline muxer: `push_video` / `push_klv` / `push_audio` / `push_subtitle`
-/ `push_data` (raw private-data bytes, passed through verbatim), plus the
-handle-targeted `push_*_to` variants for multi-stream programs and the
-first-of-kind handle accessors (`video_handle()`, `klv_handle()`, …,
-`data_handle()`). `stats()` returns a `(SocketStats, MuxerStats)` tuple.
-There is no `flush()` — bytes flush per-push and again on `close()`.
+`pts` is keyword-only on every send method. The send surface: `send_video`
+/ `send_klv` / `send_audio` / `send_subtitle` / `send_data` (raw
+private-data bytes, passed through verbatim), plus the handle-targeted
+`send_*_to` variants for multi-stream programs and the first-of-kind handle
+accessors (`video_handle()`, `klv_handle()`, …, `data_handle()`). `stats()`
+returns a `(SocketStats, MuxerStats)` tuple. There is no `flush()` — bytes
+flush per-send and again on `close()`.
 
 Receiving:
 
@@ -420,7 +420,7 @@ with ManagedMuxSender.from_url(
     "srt://host:9000?mode=caller&latency=120", program, policy=policy
 ) as s:
     for i, nal in enumerate(access_units):
-        s.push_video(nal, pts=Pts90khz.from_raw(i * 3000), key_frame=True)
+        s.send_video(nal, pts=Pts90khz.from_raw(i * 3000), key_frame=True)
 ```
 
 Passing `policy=None` (or omitting it) uses the defaults
@@ -499,7 +499,7 @@ port.
 
 ### RTP convenience (`MuxSender` / `DemuxReceiver`)
 
-`MuxSender` takes the same elementary-stream push surface as the SRT
+`MuxSender` takes the same elementary-stream send surface as the SRT
 shell, constructed with `MuxSender(url, program_config, *,
 pkt_size=1316)`; `DemuxReceiver` iterates `DemuxEvent`s and is constructed
 with `DemuxReceiver(url, *, demux_config=None)`. Both expose **no
@@ -521,7 +521,7 @@ program = (
     .build()
 )
 with MuxSender("rtp://127.0.0.1:5004", program) as s:
-    s.push_video(nal, pts=Pts90khz.from_raw(0), key_frame=True)
+    s.send_video(nal, pts=Pts90khz.from_raw(0), key_frame=True)
 
 with DemuxReceiver("rtp://0.0.0.0:5004") as rx:
     rx.add_byte_sink(lambda pkt: record(pkt))   # each raw 188-byte TS packet
@@ -576,9 +576,11 @@ with RtspClient.connect(cfg) as session:
 
 `RtspServer.start(config)` hosts a server; `add_unicast_mount(path,
 program_config)` / `add_multicast_mount(path, group, port, *,
-program_config=...)` register mounts, and the returned `MountHandle` takes
-the same elementary-stream push family as `MuxSender` (the `push_*` /
-`push_*_to` family plus per-kind handle accessors). The `MountHandle` is
+program_config=...)` register mounts, and the returned `MountHandle` exposes an
+elementary-stream push family (`push_video` / `push_klv` / … / `push_data`,
+plus handle-targeted `push_*_to` variants and per-kind handle accessors).
+Note that `MountHandle` retains the `push_*` naming convention (buffer op),
+while `MuxSender` uses `send_*` (transport-bound op). The `MountHandle` is
 `Arc`-shared, so multiple producer threads may push concurrently.
 
 ```python

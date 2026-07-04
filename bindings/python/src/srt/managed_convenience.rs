@@ -256,12 +256,12 @@ impl PyManagedMuxSender {
         })
     }
 
-    // ── Push family — single-stream variants ──────────────────────────────
+    // ── Send family — single-stream variants ──────────────────────────────
 
-    /// Push one video access unit onto the lone configured video stream.
+    /// Send one video access unit to the lone configured video stream.
     /// Annex-B framing for H.264/H.265/H.266; raw OBU stream for AV1.
     #[pyo3(signature = (nal, *, pts, key_frame = false))]
-    fn push_video(
+    fn send_video(
         &self,
         py: Python<'_>,
         nal: &Bound<'_, PyAny>,
@@ -279,9 +279,9 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one KLV blob onto the lone configured KLV stream.
+    /// Send one KLV blob to the lone configured KLV stream.
     #[pyo3(signature = (klv, *, pts, metadata_service_id = 0))]
-    fn push_klv(
+    fn send_klv(
         &self,
         py: Python<'_>,
         klv: &Bound<'_, PyAny>,
@@ -299,9 +299,9 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one encoded audio frame onto the lone configured audio stream.
+    /// Send one encoded audio frame to the lone configured audio stream.
     #[pyo3(signature = (adts, *, pts))]
-    fn push_audio(
+    fn send_audio(
         &self,
         py: Python<'_>,
         adts: &Bound<'_, PyAny>,
@@ -318,9 +318,9 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one subtitle payload onto the lone configured subtitle stream.
+    /// Send one subtitle payload to the lone configured subtitle stream.
     #[pyo3(signature = (payload, *, pts))]
-    fn push_subtitle(
+    fn send_subtitle(
         &self,
         py: Python<'_>,
         payload: &Bound<'_, PyAny>,
@@ -337,10 +337,10 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one data payload onto the lone configured data stream.
+    /// Send one data payload to the lone configured data stream.
     /// Pass-through: lands verbatim as one PES packet on stream_id 0xBD.
     #[pyo3(signature = (data, *, pts))]
-    fn push_data(
+    fn send_data(
         &self,
         py: Python<'_>,
         data: &Bound<'_, PyAny>,
@@ -357,10 +357,10 @@ impl PyManagedMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    // ── Push family — handle-targeted variants ────────────────────────────
+    // ── Send family — handle-targeted variants ────────────────────────────
 
     #[pyo3(signature = (handle, nal, *, pts, key_frame = false))]
-    fn push_video_to(
+    fn send_video_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
@@ -382,7 +382,7 @@ impl PyManagedMuxSender {
     }
 
     #[pyo3(signature = (handle, klv, *, pts, metadata_service_id = 0))]
-    fn push_klv_to(
+    fn send_klv_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyKlvStreamHandle>,
@@ -405,7 +405,7 @@ impl PyManagedMuxSender {
     }
 
     #[pyo3(signature = (handle, adts, *, pts))]
-    fn push_audio_to(
+    fn send_audio_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyAudioStreamHandle>,
@@ -425,7 +425,7 @@ impl PyManagedMuxSender {
     }
 
     #[pyo3(signature = (handle, payload, *, pts))]
-    fn push_subtitle_to(
+    fn send_subtitle_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PySubtitleStreamHandle>,
@@ -445,7 +445,7 @@ impl PyManagedMuxSender {
     }
 
     #[pyo3(signature = (handle, data, *, pts))]
-    fn push_data_to(
+    fn send_data_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyDataStreamHandle>,

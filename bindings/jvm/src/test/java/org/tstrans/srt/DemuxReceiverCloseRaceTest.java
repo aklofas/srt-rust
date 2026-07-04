@@ -68,7 +68,7 @@ final class DemuxReceiverCloseRaceTest {
                     "srt://127.0.0.1:" + port + "?mode=caller&latency=" + LATENCY_MS, cfg())) {
                 long pts = 0;
                 while (!stop.get()) {
-                    tx.pushVideo(idr(), pts, true);
+                    tx.sendVideo(idr(), pts, true);
                     pts += 3003;
                     Thread.sleep(5);
                 }

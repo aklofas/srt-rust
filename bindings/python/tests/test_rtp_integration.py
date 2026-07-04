@@ -128,7 +128,7 @@ def test_rtp_loopback_round_trip_mux_sender_to_demux_receiver() -> None:
         # subsequent NALs ride downstream as Sample events. Eight is a
         # comfortable margin without slowing the test.
         for i in range(8):
-            snd.push_video(
+            snd.send_video(
                 _IDR_NAL,
                 pts=Pts90khz.from_raw(i * 3000),
                 key_frame=(i == 0),

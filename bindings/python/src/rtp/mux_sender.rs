@@ -166,11 +166,11 @@ impl PyMuxSender {
     //   - takes `pts` keyword-only (audit #9 normalization),
     //   - releases the GIL during the underlying push.
 
-    /// Push one video access unit onto the lone configured video
+    /// Send one video access unit onto the lone configured video
     /// stream. Annex-B framing for H.264/H.265/H.266; raw OBU stream
     /// for AV1.
     #[pyo3(signature = (nal, *, pts, key_frame = false))]
-    fn push_video(
+    fn send_video(
         &self,
         py: Python<'_>,
         nal: &Bound<'_, PyAny>,
@@ -188,10 +188,10 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one KLV blob onto the lone configured KLV stream.
+    /// Send one KLV blob onto the lone configured KLV stream.
     /// `metadata_service_id` defaults to 0 (single-service case).
     #[pyo3(signature = (klv, *, pts, metadata_service_id = 0))]
-    fn push_klv(
+    fn send_klv(
         &self,
         py: Python<'_>,
         klv: &Bound<'_, PyAny>,
@@ -212,12 +212,12 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one encoded audio frame onto the lone configured audio
+    /// Send one encoded audio frame onto the lone configured audio
     /// stream. `frames` is one or more pre-framed audio frames
     /// concatenated by the caller (ADTS for AAC, MPEG-2 audio frames
     /// for MP2).
     #[pyo3(signature = (adts, *, pts))]
-    fn push_audio(
+    fn send_audio(
         &self,
         py: Python<'_>,
         adts: &Bound<'_, PyAny>,
@@ -234,10 +234,10 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one subtitle payload onto the lone configured subtitle
+    /// Send one subtitle payload onto the lone configured subtitle
     /// stream.
     #[pyo3(signature = (payload, *, pts))]
-    fn push_subtitle(
+    fn send_subtitle(
         &self,
         py: Python<'_>,
         payload: &Bound<'_, PyAny>,
@@ -254,7 +254,7 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push one data payload onto the lone configured data stream.
+    /// Send one data payload onto the lone configured data stream.
     ///
     /// Pass-through contract: no AU-cell wrap, no framing, no payload
     /// inspection — `data` lands verbatim as one PES packet on PES
@@ -263,7 +263,7 @@ impl PyMuxSender {
     /// `carries_pts=True`; it is always used for PSI/PCR pacing
     /// decisions regardless.
     #[pyo3(signature = (data, *, pts))]
-    fn push_data(
+    fn send_data(
         &self,
         py: Python<'_>,
         data: &Bound<'_, PyAny>,
@@ -280,11 +280,11 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    // ── Push family — handle-targeted variants ────────────────────────────
+    // ── Send family — handle-targeted variants ────────────────────────────
 
-    /// Push to a specific video stream handle.
+    /// Send to a specific video stream handle.
     #[pyo3(signature = (handle, nal, *, pts, key_frame = false))]
-    fn push_video_to(
+    fn send_video_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
@@ -305,9 +305,9 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push to a specific KLV stream handle.
+    /// Send to a specific KLV stream handle.
     #[pyo3(signature = (handle, klv, *, pts, metadata_service_id = 0))]
-    fn push_klv_to(
+    fn send_klv_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyKlvStreamHandle>,
@@ -329,9 +329,9 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push to a specific audio stream handle.
+    /// Send to a specific audio stream handle.
     #[pyo3(signature = (handle, adts, *, pts))]
-    fn push_audio_to(
+    fn send_audio_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyAudioStreamHandle>,
@@ -350,9 +350,9 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push to a specific subtitle stream handle.
+    /// Send to a specific subtitle stream handle.
     #[pyo3(signature = (handle, payload, *, pts))]
-    fn push_subtitle_to(
+    fn send_subtitle_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PySubtitleStreamHandle>,
@@ -371,10 +371,10 @@ impl PyMuxSender {
         res.map_err(|e| mux_sender_error_to_pyerr(py, e))
     }
 
-    /// Push to a specific data stream handle. Same pass-through
-    /// contract as `push_data`.
+    /// Send to a specific data stream handle. Same pass-through
+    /// contract as `send_data`.
     #[pyo3(signature = (handle, data, *, pts))]
-    fn push_data_to(
+    fn send_data_to(
         &self,
         py: Python<'_>,
         handle: PyRef<'_, PyDataStreamHandle>,

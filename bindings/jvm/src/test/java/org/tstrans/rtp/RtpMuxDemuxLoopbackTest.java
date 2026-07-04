@@ -179,15 +179,15 @@ class RtpMuxDemuxLoopbackTest {
         // datagrams until the daemon drains them.)
         try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:" + port, roundtripConfig())) {
             for (int i = 0; i < PUSH_COUNT; i++) {
-                s.pushVideo(syntheticH264Idr(), i * 3000L, true);
+                s.sendVideo(syntheticH264Idr(), i * 3000L, true);
                 // A private-data record EVERY iteration (the lone-data-stream
-                // pushData shorthand): RTP/UDP may drop datagrams, so a single
+                // sendData shorthand): RTP/UDP may drop datagrams, so a single
                 // record would make the UnknownSample assertion flaky on loss.
                 // Repeating an identical record gives the data stream the same
-                // loss margin as the video pushes — the first captured sample
+                // loss margin as the video sends — the first captured sample
                 // still equals DATA_PAYLOAD. Explicit PES length means the
                 // demuxer emits each record without waiting for a flush.
-                s.pushData(DATA_PAYLOAD, i * 3000L);
+                s.sendData(DATA_PAYLOAD, i * 3000L);
             }
             Thread.sleep(1_000);
         }

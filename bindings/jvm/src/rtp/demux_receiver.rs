@@ -161,7 +161,8 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nFromUrlWithConfig<'lo
     lenient_psi: jboolean,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
-        let opts = build_demux_config_from_args(
+        let Some(opts) = build_demux_config_from_args(
+            env,
             strict,
             pes_cap_per_pid,
             pes_cap_total,
@@ -169,7 +170,9 @@ pub extern "system" fn Java_org_tstrans_rtp_DemuxReceiver_nFromUrlWithConfig<'lo
             av1,
             au_cell_cap,
             lenient_psi,
-        );
+        ) else {
+            return 0;
+        };
         build_from_url(env, &url, Some(opts))
     })
 }

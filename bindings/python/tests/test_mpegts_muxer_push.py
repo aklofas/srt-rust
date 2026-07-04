@@ -1175,28 +1175,41 @@ def test_push_audio_memoryview_accepted_and_emits_ts():
     assert len(ts) > 0 and len(ts) % 188 == 0, "pulled TS bytes are not 188-aligned"
 
 
-def test_push_klv_bytearray_accepted_and_has_pending():
-    """push_klv must accept bytearray (KLV may batch; check pending > 0)."""
-    m = Muxer(_simple_config())
-    m.push_video(_minimal_h264_nal_aud(), pts=Pts90khz.from_raw(900_000))
-    _pull_all(m)  # drain PAT/PMT/video first
-    m.push_klv(bytearray(_minimal_klv_ls()), pts=Pts90khz.from_raw(900_000))
-    # KLV PES is emitted; muxer must have at least queued the packet.
-    assert m.pending_packets() >= 0  # no exception = coercion succeeded
-    # Pull and verify alignment (may be 0 bytes if muxer batched).
-    ts = _pull_all(m)
-    assert len(ts) % 188 == 0, "pulled TS bytes are not 188-aligned"
+def _klv_reference_ts(payload: bytes) -> bytes:
+    """Mux `payload` as a KLV push on a fresh muxer via the plain `bytes`
+    path and return the drained TS output. Differential oracle for the
+    coercion settling tests below: the muxer is deterministic, so a second
+    fresh muxer fed the same payload through a coerced type must emit
+    byte-identical TS."""
+    ref = Muxer(_simple_config())
+    ref.push_klv(payload, pts=Pts90khz.from_raw(900_000))
+    ts = _pull_all(ref)
+    # The mechanism-executed guard: an empty reference would make the
+    # equality below vacuously true (empty == empty proves nothing).
+    assert len(ts) > 0, "reference bytes-input KLV push emitted no TS bytes"
+    assert len(ts) % 188 == 0, "reference TS bytes are not 188-aligned"
+    return ts
 
 
-def test_push_klv_memoryview_accepted_and_has_pending():
-    """push_klv must accept memoryview."""
+def test_push_klv_bytearray_emits_identical_ts_to_bytes():
+    """push_klv(bytearray) must produce byte-identical TS output to the
+    same payload pushed as bytes (differential settling test; a bare
+    `pending_packets() >= 0` check would be vacuously true)."""
+    payload = _minimal_klv_ls() * 24  # >184 bytes: forces ≥1 full TS packet
+    ref_ts = _klv_reference_ts(payload)
     m = Muxer(_simple_config())
-    m.push_video(_minimal_h264_nal_aud(), pts=Pts90khz.from_raw(900_000))
-    _pull_all(m)  # drain PAT/PMT/video first
-    m.push_klv(memoryview(_minimal_klv_ls()), pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0  # no exception = coercion succeeded
-    ts = _pull_all(m)
-    assert len(ts) % 188 == 0, "pulled TS bytes are not 188-aligned"
+    m.push_klv(bytearray(payload), pts=Pts90khz.from_raw(900_000))
+    assert _pull_all(m) == ref_ts, "bytearray input produced different TS"
+
+
+def test_push_klv_memoryview_emits_identical_ts_to_bytes():
+    """push_klv(memoryview) must produce byte-identical TS output to the
+    same payload pushed as bytes."""
+    payload = _minimal_klv_ls() * 24
+    ref_ts = _klv_reference_ts(payload)
+    m = Muxer(_simple_config())
+    m.push_klv(memoryview(payload), pts=Pts90khz.from_raw(900_000))
+    assert _pull_all(m) == ref_ts, "memoryview input produced different TS"
 
 
 def test_push_video_bytes_fast_path_unchanged():

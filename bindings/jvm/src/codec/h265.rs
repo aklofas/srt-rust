@@ -33,7 +33,9 @@ use tst_core::codec::h265::{
 };
 use tst_core::mpegts::demux::event::NalUnit;
 
-use crate::codec::shared::{build_color_info, build_rational};
+use crate::codec::shared::{
+    build_color_info, build_rational, builder_set_bool, builder_set_int, builder_set_long,
+};
 use crate::error::map_codec_parse_error;
 use crate::jutil::{read_byte_buffer, wrap_heap_byte_buffer};
 
@@ -72,80 +74,89 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H265Sps) -> Result<JObject<
         .new_object("org/tstrans/codec/H265Sps$Builder", "()V", &[])
         .map_err(|_| ())?;
 
-    let set_int = |env: &mut JNIEnv<'local>, name: &str, v: i32| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(I)Lorg/tstrans/codec/H265Sps$Builder;",
-            &[JValue::Int(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_long = |env: &mut JNIEnv<'local>, name: &str, v: i64| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(J)Lorg/tstrans/codec/H265Sps$Builder;",
-            &[JValue::Long(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_bool = |env: &mut JNIEnv<'local>, name: &str, v: bool| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(Z)Lorg/tstrans/codec/H265Sps$Builder;",
-            &[JValue::Bool(u8::from(v))],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
+    const RET_SPS: &str = "Lorg/tstrans/codec/H265Sps$Builder;";
 
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET_SPS,
         "spsSeqParameterSetId",
         i32::from(sps.sps_seq_parameter_set_id),
     )?;
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET_SPS,
         "spsVideoParameterSetId",
         i32::from(sps.sps_video_parameter_set_id),
     )?;
-    set_long(env, "width", i64::from(sps.width))?;
-    set_long(env, "height", i64::from(sps.height))?;
-    set_int(env, "generalProfileIdc", i32::from(sps.general_profile_idc))?;
-    set_bool(env, "generalTierFlag", sps.general_tier_flag)?;
-    set_int(env, "generalLevelIdc", i32::from(sps.general_level_idc))?;
-    // general_profile_compatibility_flags is u32 → widen to i64 unsigned.
-    set_long(
+    builder_set_long(env, &b, RET_SPS, "width", i64::from(sps.width))?;
+    builder_set_long(env, &b, RET_SPS, "height", i64::from(sps.height))?;
+    builder_set_int(
         env,
+        &b,
+        RET_SPS,
+        "generalProfileIdc",
+        i32::from(sps.general_profile_idc),
+    )?;
+    builder_set_bool(env, &b, RET_SPS, "generalTierFlag", sps.general_tier_flag)?;
+    builder_set_int(
+        env,
+        &b,
+        RET_SPS,
+        "generalLevelIdc",
+        i32::from(sps.general_level_idc),
+    )?;
+    // general_profile_compatibility_flags is u32 → widen to i64 unsigned.
+    builder_set_long(
+        env,
+        &b,
+        RET_SPS,
         "generalProfileCompatibilityFlags",
         i64::from(sps.general_profile_compatibility_flags),
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_SPS,
         "generalProgressiveSourceFlag",
         sps.general_progressive_source_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_SPS,
         "generalInterlacedSourceFlag",
         sps.general_interlaced_source_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_SPS,
         "generalNonPackedConstraintFlag",
         sps.general_non_packed_constraint_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_SPS,
         "generalFrameOnlyConstraintFlag",
         sps.general_frame_only_constraint_flag,
     )?;
-    set_int(env, "bitDepthLuma", i32::from(sps.bit_depth_luma))?;
-    set_int(env, "bitDepthChroma", i32::from(sps.bit_depth_chroma))?;
+    builder_set_int(
+        env,
+        &b,
+        RET_SPS,
+        "bitDepthLuma",
+        i32::from(sps.bit_depth_luma),
+    )?;
+    builder_set_int(
+        env,
+        &b,
+        RET_SPS,
+        "bitDepthChroma",
+        i32::from(sps.bit_depth_chroma),
+    )?;
 
     {
         let cf = crate::codec::shared::build_chroma_format(env, sps.chroma_format)?;
@@ -158,8 +169,10 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H265Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET_SPS,
         "maxSubLayersMinus1",
         i32::from(sps.max_sub_layers_minus1),
     )?;
@@ -186,12 +199,14 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H265Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_long(env, "cropLeft", i64::from(sps.crop_left))?;
-    set_long(env, "cropRight", i64::from(sps.crop_right))?;
-    set_long(env, "cropTop", i64::from(sps.crop_top))?;
-    set_long(env, "cropBottom", i64::from(sps.crop_bottom))?;
-    set_int(
+    builder_set_long(env, &b, RET_SPS, "cropLeft", i64::from(sps.crop_left))?;
+    builder_set_long(env, &b, RET_SPS, "cropRight", i64::from(sps.crop_right))?;
+    builder_set_long(env, &b, RET_SPS, "cropTop", i64::from(sps.crop_top))?;
+    builder_set_long(env, &b, RET_SPS, "cropBottom", i64::from(sps.crop_bottom))?;
+    builder_set_int(
         env,
+        &b,
+        RET_SPS,
         "log2MaxPicOrderCntLsbMinus4",
         i32::from(sps.log2_max_pic_order_cnt_lsb_minus4),
     )?;
@@ -222,74 +237,83 @@ fn build_vps<'local>(env: &mut JNIEnv<'local>, vps: &H265Vps) -> Result<JObject<
         .new_object("org/tstrans/codec/H265Vps$Builder", "()V", &[])
         .map_err(|_| ())?;
 
-    let set_int = |env: &mut JNIEnv<'local>, name: &str, v: i32| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(I)Lorg/tstrans/codec/H265Vps$Builder;",
-            &[JValue::Int(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_long = |env: &mut JNIEnv<'local>, name: &str, v: i64| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(J)Lorg/tstrans/codec/H265Vps$Builder;",
-            &[JValue::Long(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_bool = |env: &mut JNIEnv<'local>, name: &str, v: bool| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(Z)Lorg/tstrans/codec/H265Vps$Builder;",
-            &[JValue::Bool(u8::from(v))],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
+    const RET_VPS: &str = "Lorg/tstrans/codec/H265Vps$Builder;";
 
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET_VPS,
         "vpsVideoParameterSetId",
         i32::from(vps.vps_video_parameter_set_id),
     )?;
-    set_int(env, "maxLayersMinus1", i32::from(vps.max_layers_minus1))?;
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET_VPS,
+        "maxLayersMinus1",
+        i32::from(vps.max_layers_minus1),
+    )?;
+    builder_set_int(
+        env,
+        &b,
+        RET_VPS,
         "maxSubLayersMinus1",
         i32::from(vps.max_sub_layers_minus1),
     )?;
-    set_bool(env, "temporalIdNestingFlag", vps.temporal_id_nesting_flag)?;
-    set_int(env, "generalProfileIdc", i32::from(vps.general_profile_idc))?;
-    set_bool(env, "generalTierFlag", vps.general_tier_flag)?;
-    set_int(env, "generalLevelIdc", i32::from(vps.general_level_idc))?;
-    set_long(
+    builder_set_bool(
         env,
+        &b,
+        RET_VPS,
+        "temporalIdNestingFlag",
+        vps.temporal_id_nesting_flag,
+    )?;
+    builder_set_int(
+        env,
+        &b,
+        RET_VPS,
+        "generalProfileIdc",
+        i32::from(vps.general_profile_idc),
+    )?;
+    builder_set_bool(env, &b, RET_VPS, "generalTierFlag", vps.general_tier_flag)?;
+    builder_set_int(
+        env,
+        &b,
+        RET_VPS,
+        "generalLevelIdc",
+        i32::from(vps.general_level_idc),
+    )?;
+    builder_set_long(
+        env,
+        &b,
+        RET_VPS,
         "generalProfileCompatibilityFlags",
         i64::from(vps.general_profile_compatibility_flags),
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_VPS,
         "generalProgressiveSourceFlag",
         vps.general_progressive_source_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_VPS,
         "generalInterlacedSourceFlag",
         vps.general_interlaced_source_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_VPS,
         "generalNonPackedConstraintFlag",
         vps.general_non_packed_constraint_flag,
     )?;
-    set_bool(
+    builder_set_bool(
         env,
+        &b,
+        RET_VPS,
         "generalFrameOnlyConstraintFlag",
         vps.general_frame_only_constraint_flag,
     )?;

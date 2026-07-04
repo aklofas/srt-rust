@@ -276,3 +276,47 @@ pub(crate) fn build_obu<'local>(env: &mut JNIEnv<'local>, o: &Obu) -> Result<JOb
     )
     .map_err(|_| ())
 }
+
+/// Call a fluent Builder setter that takes an `int` parameter and returns the
+/// builder (discarded — caller chains via `?`). The full JNI descriptor is
+/// assembled from `ret_desc` (e.g. `"Lorg/tstrans/codec/H264Sps$Builder;"`).
+pub(crate) fn builder_set_int<'local>(
+    env: &mut JNIEnv<'local>,
+    b: &JObject<'local>,
+    ret_desc: &str,
+    method: &str,
+    v: i32,
+) -> Result<(), ()> {
+    let sig = format!("(I){ret_desc}");
+    env.call_method(b, method, &sig, &[JValue::Int(v)])
+        .map_err(|_| ())?;
+    Ok(())
+}
+
+/// Like [`builder_set_int`] but for a `long` parameter.
+pub(crate) fn builder_set_long<'local>(
+    env: &mut JNIEnv<'local>,
+    b: &JObject<'local>,
+    ret_desc: &str,
+    method: &str,
+    v: i64,
+) -> Result<(), ()> {
+    let sig = format!("(J){ret_desc}");
+    env.call_method(b, method, &sig, &[JValue::Long(v)])
+        .map_err(|_| ())?;
+    Ok(())
+}
+
+/// Like [`builder_set_int`] but for a `boolean` parameter.
+pub(crate) fn builder_set_bool<'local>(
+    env: &mut JNIEnv<'local>,
+    b: &JObject<'local>,
+    ret_desc: &str,
+    method: &str,
+    v: bool,
+) -> Result<(), ()> {
+    let sig = format!("(Z){ret_desc}");
+    env.call_method(b, method, &sig, &[JValue::Bool(u8::from(v))])
+        .map_err(|_| ())?;
+    Ok(())
+}

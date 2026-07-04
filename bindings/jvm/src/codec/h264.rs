@@ -32,7 +32,9 @@ use tst_core::codec::h264::{
 };
 use tst_core::mpegts::demux::event::NalUnit;
 
-use crate::codec::shared::{build_color_info, build_rational};
+use crate::codec::shared::{
+    build_color_info, build_rational, builder_set_bool, builder_set_int, builder_set_long,
+};
 use crate::error::map_codec_parse_error;
 use crate::jutil::{read_byte_buffer, wrap_heap_byte_buffer};
 
@@ -93,53 +95,34 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H264Sps) -> Result<JObject<
         .new_object("org/tstrans/codec/H264Sps$Builder", "()V", &[])
         .map_err(|_| ())?;
 
-    let set_int = |env: &mut JNIEnv<'local>, name: &str, v: i32| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(I)Lorg/tstrans/codec/H264Sps$Builder;",
-            &[JValue::Int(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_long = |env: &mut JNIEnv<'local>, name: &str, v: i64| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(J)Lorg/tstrans/codec/H264Sps$Builder;",
-            &[JValue::Long(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_bool = |env: &mut JNIEnv<'local>, name: &str, v: bool| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(Z)Lorg/tstrans/codec/H264Sps$Builder;",
-            &[JValue::Bool(u8::from(v))],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
+    const RET: &str = "Lorg/tstrans/codec/H264Sps$Builder;";
 
-    set_int(
+    builder_set_int(
         env,
+        &b,
+        RET,
         "seqParameterSetId",
         i32::from(sps.seq_parameter_set_id),
     )?;
-    set_long(env, "width", i64::from(sps.width))?;
-    set_long(env, "height", i64::from(sps.height))?;
-    set_int(env, "profileIdc", i32::from(sps.profile_idc))?;
-    set_int(env, "levelIdc", i32::from(sps.level_idc))?;
-    set_int(
+    builder_set_long(env, &b, RET, "width", i64::from(sps.width))?;
+    builder_set_long(env, &b, RET, "height", i64::from(sps.height))?;
+    builder_set_int(env, &b, RET, "profileIdc", i32::from(sps.profile_idc))?;
+    builder_set_int(env, &b, RET, "levelIdc", i32::from(sps.level_idc))?;
+    builder_set_int(
         env,
+        &b,
+        RET,
         "constraintSetFlags",
         i32::from(sps.constraint_set_flags),
     )?;
-    set_int(env, "bitDepthLuma", i32::from(sps.bit_depth_luma))?;
-    set_int(env, "bitDepthChroma", i32::from(sps.bit_depth_chroma))?;
+    builder_set_int(env, &b, RET, "bitDepthLuma", i32::from(sps.bit_depth_luma))?;
+    builder_set_int(
+        env,
+        &b,
+        RET,
+        "bitDepthChroma",
+        i32::from(sps.bit_depth_chroma),
+    )?;
 
     {
         let cf = crate::codec::shared::build_chroma_format(env, sps.chroma_format)?;
@@ -152,9 +135,9 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H264Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_bool(env, "frameMbsOnly", sps.frame_mbs_only)?;
-    set_bool(env, "fixedFrameRate", sps.fixed_frame_rate)?;
-    set_bool(env, "hasBFrames", sps.has_b_frames)?;
+    builder_set_bool(env, &b, RET, "frameMbsOnly", sps.frame_mbs_only)?;
+    builder_set_bool(env, &b, RET, "fixedFrameRate", sps.fixed_frame_rate)?;
+    builder_set_bool(env, &b, RET, "hasBFrames", sps.has_b_frames)?;
 
     if let Some(ref r) = sps.frame_rate {
         let jr = build_rational(env, r)?;
@@ -178,12 +161,14 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H264Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_long(env, "cropLeft", i64::from(sps.crop_left))?;
-    set_long(env, "cropRight", i64::from(sps.crop_right))?;
-    set_long(env, "cropTop", i64::from(sps.crop_top))?;
-    set_long(env, "cropBottom", i64::from(sps.crop_bottom))?;
-    set_int(
+    builder_set_long(env, &b, RET, "cropLeft", i64::from(sps.crop_left))?;
+    builder_set_long(env, &b, RET, "cropRight", i64::from(sps.crop_right))?;
+    builder_set_long(env, &b, RET, "cropTop", i64::from(sps.crop_top))?;
+    builder_set_long(env, &b, RET, "cropBottom", i64::from(sps.crop_bottom))?;
+    builder_set_int(
         env,
+        &b,
+        RET,
         "log2MaxFrameNumMinus4",
         i32::from(sps.log2_max_frame_num_minus4),
     )?;

@@ -41,7 +41,7 @@ use tst_core::codec::h266::{
 };
 use tst_core::mpegts::demux::event::NalUnit;
 
-use crate::codec::shared::{build_color_info, build_rational};
+use crate::codec::shared::{build_color_info, build_rational, builder_set_int, builder_set_long};
 use crate::error::map_codec_parse_error;
 use crate::jutil::{read_byte_buffer, wrap_heap_byte_buffer};
 
@@ -98,29 +98,10 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H266Sps) -> Result<JObject<
         .new_object("org/tstrans/codec/H266Sps$Builder", "()V", &[])
         .map_err(|_| ())?;
 
-    let set_int = |env: &mut JNIEnv<'local>, name: &str, v: i32| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(I)Lorg/tstrans/codec/H266Sps$Builder;",
-            &[JValue::Int(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
-    let set_long = |env: &mut JNIEnv<'local>, name: &str, v: i64| -> Result<(), ()> {
-        env.call_method(
-            &b,
-            name,
-            "(J)Lorg/tstrans/codec/H266Sps$Builder;",
-            &[JValue::Long(v)],
-        )
-        .map_err(|_| ())?;
-        Ok(())
-    };
+    const RET: &str = "Lorg/tstrans/codec/H266Sps$Builder;";
 
-    set_int(env, "spsId", i32::from(sps.sps_id))?;
-    set_int(env, "vpsId", i32::from(sps.vps_id))?;
+    builder_set_int(env, &b, RET, "spsId", i32::from(sps.sps_id))?;
+    builder_set_int(env, &b, RET, "vpsId", i32::from(sps.vps_id))?;
 
     {
         let ptl = build_ptl(env, &sps.profile_tier_level)?;
@@ -133,8 +114,8 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H266Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_long(env, "width", i64::from(sps.width))?;
-    set_long(env, "height", i64::from(sps.height))?;
+    builder_set_long(env, &b, RET, "width", i64::from(sps.width))?;
+    builder_set_long(env, &b, RET, "height", i64::from(sps.height))?;
 
     {
         let cf = crate::codec::shared::build_chroma_format(env, sps.chroma_format)?;
@@ -147,8 +128,14 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H266Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_int(env, "bitDepthLuma", i32::from(sps.bit_depth_luma))?;
-    set_int(env, "bitDepthChroma", i32::from(sps.bit_depth_chroma))?;
+    builder_set_int(env, &b, RET, "bitDepthLuma", i32::from(sps.bit_depth_luma))?;
+    builder_set_int(
+        env,
+        &b,
+        RET,
+        "bitDepthChroma",
+        i32::from(sps.bit_depth_chroma),
+    )?;
 
     if let Some(ref c) = sps.color_info {
         let jc = build_color_info(env, c)?;
@@ -172,10 +159,10 @@ fn build_sps<'local>(env: &mut JNIEnv<'local>, sps: &H266Sps) -> Result<JObject<
         .map_err(|_| ())?;
     }
 
-    set_long(env, "cropLeft", i64::from(sps.crop_left))?;
-    set_long(env, "cropRight", i64::from(sps.crop_right))?;
-    set_long(env, "cropTop", i64::from(sps.crop_top))?;
-    set_long(env, "cropBottom", i64::from(sps.crop_bottom))?;
+    builder_set_long(env, &b, RET, "cropLeft", i64::from(sps.crop_left))?;
+    builder_set_long(env, &b, RET, "cropRight", i64::from(sps.crop_right))?;
+    builder_set_long(env, &b, RET, "cropTop", i64::from(sps.crop_top))?;
+    builder_set_long(env, &b, RET, "cropBottom", i64::from(sps.crop_bottom))?;
 
     {
         let buf = wrap_heap_byte_buffer(env, &sps.raw_rbsp)?;

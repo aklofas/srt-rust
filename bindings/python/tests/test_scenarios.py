@@ -23,7 +23,7 @@ stream_type
   approach as the Rust normaliser.
 
 KLV set identity
-  Detected from the first 13 bytes of ``DemuxEvent.Klv.payload`` using the
+  Detected from the first 13 bytes of ``DemuxEvent.Metadata.payload`` using the
   MISB ST 0601 UAS Datalink LS UL prefix.  Returns ``"st0601"`` or
   ``"unknown"``.
 
@@ -279,7 +279,7 @@ def _demux_to_core_events(ts_bytes: bytes) -> list[dict[str, Any]]:
                 "codec": _SUBTITLE_CODEC_TAG[ev.codec],
             })
 
-        elif isinstance(ev, DemuxEvent.Klv):
+        elif isinstance(ev, DemuxEvent.Metadata):
             events.append({
                 "event": "klv",
                 "program": ev.stream.program_number,

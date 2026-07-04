@@ -240,7 +240,7 @@ def extract_klv(
     from tstrans.klv import parse_klv_universal
 
     for ev in parse_file(path, config=config):
-        if not isinstance(ev, DemuxEvent.Klv):
+        if not isinstance(ev, DemuxEvent.Metadata):
             continue
         if parsed:
             try:
@@ -267,7 +267,7 @@ def iter_uas_datalink(
     `tstrans.klv.UasDatalinkLs`.
 
     `klv_index` is the 0-based ordinal of the KLV event within the
-    file's full KLV event sequence — it counts EVERY `DemuxEvent.Klv`
+    file's full KLV event sequence — it counts EVERY `DemuxEvent.Metadata`
     (including the non-ST-0601 records this iterator skips), so
     indices line up with `extract_klv(path)` output and with the KLV
     events seen during a re-mux pass over the same file.
@@ -297,7 +297,7 @@ def iter_uas_datalink(
 
     klv_index = -1
     for ev in parse_file(path, config=config):
-        if not isinstance(ev, DemuxEvent.Klv):
+        if not isinstance(ev, DemuxEvent.Metadata):
             continue
         klv_index += 1
         if len(ev.payload) < 16:
@@ -330,7 +330,7 @@ def transmux(
 
         with tio.transmux("in.ts", "out.ts") as tx:
             for ev in tx:
-                if isinstance(ev, DemuxEvent.Klv):
+                if isinstance(ev, DemuxEvent.Metadata):
                     tx.write_klv(ev, klv.patch_uas_datalink(ev.payload, {...}))
                 else:
                     tx.write(ev)
@@ -657,7 +657,7 @@ class Transmuxer:
 
         if isinstance(ev, Transmuxer._SKIP_EVENTS):
             return
-        if isinstance(ev, DemuxEvent.Klv):
+        if isinstance(ev, DemuxEvent.Metadata):
             self._push_klv(ev, ev.payload)
         elif isinstance(ev, DemuxEvent.Video):
             handle = self._handle_for(ev)
@@ -705,9 +705,9 @@ class Transmuxer:
         tag edits). `new_bytes` is raw KLV LS bytes; sync-metadata
         AU-cell wrapping is the muxer's job — never pre-wrap."""
 
-        if not isinstance(ev, DemuxEvent.Klv):
+        if not isinstance(ev, DemuxEvent.Metadata):
             raise TypeError(
-                f"transmux.write_klv: expected a DemuxEvent.Klv, got "
+                f"transmux.write_klv: expected a DemuxEvent.Metadata, got "
                 f"{type(ev).__name__!r}"
             )
         self._push_klv(ev, new_bytes)

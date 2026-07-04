@@ -38,7 +38,7 @@ a.parse(strict=False)
 
 # Klv.parse() decode-on-event sugar — UL-dispatched Optional[union], the KLV
 # counterpart of the raw-first Video/Audio parse(). strict= is keyword-only.
-k: DemuxEvent.Klv
+k: DemuxEvent.Metadata
 assert_type(k.payload, bytes)
 assert_type(
     k.parse(strict=True),

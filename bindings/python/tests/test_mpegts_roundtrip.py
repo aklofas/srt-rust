@@ -92,7 +92,7 @@ def test_synthetic_round_trip_event_counts_within_tolerance():
         for ev in parse_file(path):
             if isinstance(ev, DemuxEvent.Video):
                 video_evs.append(ev)
-            elif isinstance(ev, DemuxEvent.Klv):
+            elif isinstance(ev, DemuxEvent.Metadata):
                 klv_evs.append(ev)
 
     # Structural-equivalence bar: counts within tolerance.
@@ -150,7 +150,7 @@ def test_full_synthetic_round_trip_event_by_event():
                 pmap_evs.append(ev)
             elif isinstance(ev, DemuxEvent.Video):
                 video_evs.append(ev)
-            elif isinstance(ev, DemuxEvent.Klv):
+            elif isinstance(ev, DemuxEvent.Metadata):
                 klv_evs.append(ev)
 
     assert pmap_evs, "expected at least one ProgramMap event"

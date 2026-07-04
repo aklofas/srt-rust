@@ -37,5 +37,5 @@ with transmux("a.ts", "b.ts", drop=(StreamKindTag.KLV_SYNC,), atomic=True) as tx
     for ev in tx:
         assert_type(ev, DemuxEvent)
         tx.write(ev)
-        if isinstance(ev, DemuxEvent.Klv):
+        if isinstance(ev, DemuxEvent.Metadata):
             tx.write_klv(ev, b"replacement")

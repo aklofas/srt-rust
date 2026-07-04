@@ -424,7 +424,7 @@ def test_transmux_edit_klv_copy_video_byte_faithful():
                         dts=ev.dts,
                         key_frame=ev.random_access_indicator,
                     )
-                elif isinstance(ev, DemuxEvent.Klv):
+                elif isinstance(ev, DemuxEvent.Metadata):
                     # Decode, patch one field, re-encode.
                     original = decode_uas_datalink(bytes(ev.payload))
                     edited = dataclasses.replace(
@@ -441,7 +441,7 @@ def test_transmux_edit_klv_copy_video_byte_faithful():
         for ev in tio.parse_file(out_path):
             if isinstance(ev, DemuxEvent.Video):
                 out_video_aus.append(bytes(ev.raw))
-            elif isinstance(ev, DemuxEvent.Klv):
+            elif isinstance(ev, DemuxEvent.Metadata):
                 out_klv_recs.append(decode_uas_datalink(bytes(ev.payload)))
 
         # Structural sanity: we must have recovered events for both streams.

@@ -1,4 +1,4 @@
-"""DemuxEvent.Klv.parse() decode-on-event sugar + parse_klv_universal strict knob."""
+"""DemuxEvent.Metadata.parse() decode-on-event sugar + parse_klv_universal strict knob."""
 
 import pytest
 
@@ -21,8 +21,8 @@ from tstrans.mpegts import (
 )
 
 
-def _klv_event(payload: bytes) -> "DemuxEvent.Klv":
-    return DemuxEvent.Klv(
+def _klv_event(payload: bytes) -> "DemuxEvent.Metadata":
+    return DemuxEvent.Metadata(
         stream=StreamId(
             pid=0x102,
             kind=StreamKindTag.KLV_SYNC,

@@ -119,7 +119,7 @@ for event in parse_file("capture.ts"):
             # raw-first: `raw` is the exact encoded access unit. Splitting
             # it into typed NAL/OBU units is opt-in via `ev.parse()`.
             print(f"Video {c.name} pts={p.ms}ms len={len(b)} units={len(ev.parse())}")
-        case DemuxEvent.Klv(pts=p, payload=b):
+        case DemuxEvent.Metadata(pts=p, payload=b):
             print(f"KLV pts={p.ms}ms len={len(b)} (use tstrans.klv to decode)")
 ```
 
@@ -168,7 +168,7 @@ for pts, klv_index, record in iter_uas_datalink("capture.ts"):
 ```
 
 KLV demux events decode in place too: `ev.parse()` on a
-`DemuxEvent.Klv` dispatches by universal label — the KLV counterpart
+`DemuxEvent.Metadata` dispatches by universal label — the KLV counterpart
 of the raw-first `Video.parse()` / `Audio.parse()`.
 
 All 4 MISB typed sets (ST 0601 UAS Datalink, ST 0102 Security,
@@ -196,7 +196,7 @@ from tstrans.mpegts import DemuxEvent
 
 with tio.transmux("in.ts", "out.ts", atomic=True) as tx:
     for ev in tx:
-        if isinstance(ev, DemuxEvent.Klv):
+        if isinstance(ev, DemuxEvent.Metadata):
             patched = klv.patch_uas_datalink(
                 ev.payload, {"frame_center_lat_deg": 37.7749}
             )
@@ -376,7 +376,7 @@ with DemuxReceiver.from_url("srt://:9000?mode=listener") as rx:
         match event:
             case DemuxEvent.Video(pts=p, raw=b):
                 ...   # one encoded access unit
-            case DemuxEvent.Klv(payload=b):
+            case DemuxEvent.Metadata(payload=b):
                 ...
 ```
 

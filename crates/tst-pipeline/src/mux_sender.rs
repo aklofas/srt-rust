@@ -18,13 +18,22 @@
 //! - [`MuxSenderErrorSource::Mux`]: the push is atomic — the muxer state is
 //!   unchanged and none of the input's TS packets were produced. The caller
 //!   MAY retry the same input after fixing the cause.
-//! - [`MuxSenderErrorSource::Transport`]: the input **was consumed** — it was
-//!   muxed (continuity counters advanced) and its TS bytes are retained in
-//!   the pending queue, which drains first on the next `send_*` call. Do
-//!   **not** push the same input again: it would be muxed a second time and
-//!   the stream would carry duplicate access units. Recovery is the next
-//!   `send_*` call with NEW data (the retained bytes drain first, exactly
-//!   once, in order).
+//! - [`MuxSenderErrorSource::Transport`]: two sub-cases, distinguishable by
+//!   the PREVIOUS call's outcome (a successful `send_*` always leaves the
+//!   pending queue empty):
+//!   - if the previous `send_*` returned `Ok`, the failure happened while
+//!     sending THIS input's TS bytes: the input **was consumed** — muxed
+//!     (continuity counters advanced) and retained in the pending queue,
+//!     which drains first on the next `send_*` call, exactly once, in
+//!     order. Do **not** push the same input again: it would be muxed a
+//!     second time and the stream would carry duplicate access units.
+//!   - if the previous `send_*` ALSO returned a transport error, the
+//!     failure may instead have hit the still-undrained retained bytes
+//!     BEFORE this call's input was pushed — in that case this input was
+//!     **not** consumed, and pushing different data next would lose it.
+//!     Callers that must not drop access units across repeated transport
+//!     failures should wrap the transport in [`crate::ManagedTransport`] rather
+//!     than hand-rolling recovery on the bare shell.
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
@@ -262,9 +271,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     ///
     /// # Example
     /// ```
@@ -339,9 +348,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_klv(
         &self,
         klv: &[u8],
@@ -373,9 +382,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_video_to(
         &self,
         handle: VideoStreamHandle,
@@ -490,9 +499,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_audio"))?;
@@ -518,9 +527,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_audio_to(
         &self,
         handle: AudioStreamHandle,
@@ -560,9 +569,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
         let mut inner = self
@@ -591,9 +600,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_subtitle_to(
         &self,
         handle: SubtitleStreamHandle,
@@ -634,9 +643,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         // Mutex-poisoning policy — see send_video for rationale.
         let mut inner = self.inner.lock().map_err(|_| lock_poisoned("send_data"))?;
@@ -668,9 +677,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    ///   The input was already muxed — do **not** resend it (see the
-    ///   module-level *Input consumption and retry* section); recover by
-    ///   sending new data.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
     pub fn send_data_to(
         &self,
         handle: DataStreamHandle,

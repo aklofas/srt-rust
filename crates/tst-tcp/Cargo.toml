@@ -8,11 +8,15 @@ repository.workspace = true
 description = "Raw MPEG-TS over TCP (caller + listener, plain + TLS via rustls) for the tstrans pipeline"
 
 [features]
-default = ["tls", "hls"]
+# tls stays default-on: TCP transport security is tst-tcp's core value
+# proposition (tcps:// encrypted streams out of the box). HLS is experimental
+# and security-gated (path-traversal CWE-22, unauthenticated HTTP server) —
+# see docs/project/deferred-features.md. Opt in with --features hls.
+default = ["tls"]
 tls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile"]
-# hls: EXPERIMENTAL — not shipped in v0.1.0 published wheels/JAR; see
-# docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
-# floor + VOD-never-served, all on an unauthenticated all-interfaces server).
+# hls: EXPERIMENTAL — not shipped in published wheels/JAR; security-gated
+# (path-traversal CWE-22 + TARGETDURATION floor + VOD-never-served, all on an
+# unauthenticated all-interfaces server); see docs/project/deferred-features.md.
 hls = [
     "dep:tokio",
     "dep:tokio-util",

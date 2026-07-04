@@ -562,9 +562,10 @@ jobs:
           # PINNED nightly: cargo-public-api renders rustdoc JSON with this
           # toolchain; an unpinned `nightly` caused 4 false std::io<->core::io
           # baseline-drift incidents (2026-06/07) when the channel moved or a
-          # local install rolled back. Installing ONLY the dated toolchain
-          # makes any internal `+nightly` fallback fail loudly instead of
-          # silently using an unpinned render. To bump: pick a new date,
+          # local install rolled back. The explicit +nightly-2026-07-03 on the invocation below is what pins
+          # cargo-public-api's internal rustdoc render — this job also carries a
+          # rolling nightly (doc lints), so a bare +nightly would silently unpin.
+          # To bump: pick a new date,
           # re-render all 8 baselines with it, and land both together.
           rustup toolchain install nightly-2026-07-03 --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet

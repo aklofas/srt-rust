@@ -2,6 +2,7 @@ package org.tstrans.srt;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 
@@ -25,27 +26,12 @@ import org.tstrans.SrtException;
  * }
  * }</pre>
  */
-public final class Listener implements AutoCloseable, Iterable<Socket> {
+public final class Listener extends NativeHandle implements Iterable<Socket> {
 
     static { NativeLoader.load(); }
 
-    /**
-     * Registry key for the native listener; 0 = closed.
-     *
-     * <p>An {@link java.util.concurrent.atomic.AtomicLong} because {@link #close()}
-     * may be called from a different thread than the one parked in
-     * {@link #accept(Integer)} / iterating. {@code close()} claims the id atomically
-     * with {@code getAndSet(0)}; the leased {@code HandleRegistry} guarantees no
-     * use-after-free/double-free for any native call concurrent with {@code close()}.
-     * See {@link #close()} for the threading contract.
-     */
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong();
-
     /** Package-private: constructed by Builder only. */
-    Listener(long h) {
-        this.handle.set(h);
-    }
+    Listener(long h) { setHandle(h); }
 
     /**
      * Block until an incoming peer completes the SRT handshake, then return the
@@ -57,8 +43,8 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      *                      with {@code Kind.ACCEPT_FAILED} for other accept errors.
      */
     public Socket accept(Integer timeoutMs) throws SrtException {
-        ensureOpen();
-        return new Socket(nAccept(handle.get(), timeoutMs == null ? -1L : (long) timeoutMs));
+        ensureOpen("Listener is closed");
+        return new Socket(nAccept(peekHandle(), timeoutMs == null ? -1L : (long) timeoutMs));
     }
 
     /**
@@ -68,8 +54,8 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      * end-of-iteration.
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        return new CancelHandle(nCancelHandle(handle.get()));
+        ensureOpen("Listener is closed");
+        return new CancelHandle(nCancelHandle(peekHandle()));
     }
 
     /**
@@ -79,13 +65,13 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      * @throws SrtException if the handle is invalid ({@code IO}).
      */
     public HostPort localAddr() throws SrtException {
-        ensureOpen();
-        return nLocalAddr(handle.get());
+        ensureOpen("Listener is closed");
+        return nLocalAddr(peekHandle());
     }
 
     /** {@code true} while this listener still owns the native handle. */
     public boolean isAlive() {
-        return handle.get() != 0;
+        return peekHandle() != 0;
     }
 
     /**
@@ -112,11 +98,7 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
      * owning thread still calls {@code close()} (typically via try-with-resources) to
      * release the native handle.
      */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
     /**
      * Return an iterator over accepted {@link Socket}s.
@@ -167,9 +149,7 @@ public final class Listener implements AutoCloseable, Iterable<Socket> {
         };
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Listener is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     // --- Natives ---
 

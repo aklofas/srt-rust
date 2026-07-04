@@ -1,5 +1,7 @@
 package org.tstrans.srt;
 
+import org.tstrans.NativeHandle;
+
 /**
  * Cancel handle for a {@link Sender} / {@link Receiver} / {@link Listener}.
  * {@link #cancel()} wakes a thread parked in {@code sendBytes}/{@code recvBytes}/
@@ -17,30 +19,23 @@ package org.tstrans.srt;
  * remain {@code synchronized} only to keep the per-handle {@code isCancelled()}
  * observation flag consistent.
  */
-public final class CancelHandle implements AutoCloseable {
+public final class CancelHandle extends NativeHandle {
     static { org.tstrans.NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    CancelHandle(long h) { this.handle.set(h); }
+    CancelHandle(long h) { setHandle(h); }
 
     /** Signal cancellation. Idempotent. */
-    public synchronized void cancel() { nCancel(ensureOpen()); }
+    public synchronized void cancel() { nCancel(requireOpen("CancelHandle is closed")); }
 
     /** True once {@link #cancel()} was called on this handle (advisory). */
-    public synchronized boolean isCancelled() { return nIsCancelled(ensureOpen()); }
-
-    @Override public synchronized void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
+    public synchronized boolean isCancelled() {
+        return nIsCancelled(requireOpen("CancelHandle is closed"));
     }
 
-    private long ensureOpen() {
-        long h = handle.get();
-        if (h == 0) throw new IllegalStateException("CancelHandle is closed");
-        return h;
-    }
+    // Preserve synchronized semantics for the cancel/isCancelled/close coordination contract.
+    @Override public synchronized void close() { super.close(); }
+
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native void nCancel(long handle);
     private static native boolean nIsCancelled(long handle);

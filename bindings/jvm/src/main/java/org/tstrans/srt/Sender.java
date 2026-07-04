@@ -1,5 +1,6 @@
 package org.tstrans.srt;
 
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 
@@ -31,14 +32,11 @@ import org.tstrans.SrtException;
  *
  * <p>Mirrors {@code tstrans.srt.Sender} in tst-py.
  */
-public final class Sender implements AutoCloseable {
+public final class Sender extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
     /** Package-private constructor from a native handle returned by {@link #nFromUrl}. */
-    Sender(long h) { this.handle.set(h); }
+    Sender(long h) { setHandle(h); }
 
     /**
      * Construct a sender by connecting to the given SRT caller-mode URL.
@@ -75,8 +73,8 @@ public final class Sender implements AutoCloseable {
      *     {@code BROKEN} if the transport is broken; {@code IO} on other errors
      */
     public void sendBytes(byte[] data) throws SrtException {
-        ensureOpen();
-        nSendBytes(handle.get(), data);
+        ensureOpen("Sender is closed");
+        nSendBytes(peekHandle(), data);
     }
 
     /**
@@ -87,8 +85,8 @@ public final class Sender implements AutoCloseable {
      * @throws SrtException {@code BROKEN} on transport failure
      */
     public void flush() throws SrtException {
-        ensureOpen();
-        nFlush(handle.get());
+        ensureOpen("Sender is closed");
+        nFlush(peekHandle());
     }
 
     /**
@@ -100,8 +98,8 @@ public final class Sender implements AutoCloseable {
      *     the shared underlying libsrt socket
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        long ch = nCancelHandle(handle.get());
+        ensureOpen("Sender is closed");
+        long ch = nCancelHandle(peekHandle());
         return new CancelHandle(ch);
     }
 
@@ -116,8 +114,8 @@ public final class Sender implements AutoCloseable {
      * @return the 16-field wire-stats snapshot (never null in normal operation)
      */
     public SocketStats socketStats() {
-        ensureOpen();
-        return nSocketStats(handle.get());
+        ensureOpen("Sender is closed");
+        return nSocketStats(peekHandle());
     }
 
     /**
@@ -131,8 +129,8 @@ public final class Sender implements AutoCloseable {
      *     {@code SrtTransport::stats()} call fails
      */
     public SrtStats srtStats() throws SrtException {
-        ensureOpen();
-        return nSrtStats(handle.get());
+        ensureOpen("Sender is closed");
+        return nSrtStats(peekHandle());
     }
 
     /**
@@ -141,11 +139,7 @@ public final class Sender implements AutoCloseable {
      * no-ops. After close, further {@link #sendBytes}/{@link #flush} calls
      * throw {@code IllegalStateException}.
      */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
     /**
      * Return {@code true} while the sender owns a live transport.
@@ -153,13 +147,11 @@ public final class Sender implements AutoCloseable {
      * @return liveness state of the underlying SRT socket
      */
     public boolean isAlive() {
-        if (handle.get() == 0) return false;
-        return nIsAlive(handle.get());
+        if (peekHandle() == 0) return false;
+        return nIsAlive(peekHandle());
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Sender is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native long    nFromUrl(String url) throws SrtException;
     private static native void    nSendBytes(long handle, byte[] data) throws SrtException;

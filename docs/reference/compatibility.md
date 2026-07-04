@@ -123,6 +123,27 @@ on (default).
 | Built-in (libsrt's "internal" cryptolib) | ❌ Out of scope | Not used. |
 | Encryption disabled (`--no-default-features`) | ✅ Full | Builds without mbedTLS; `ENABLE_ENCRYPTION=OFF`. |
 
+**`mbedtls` vs `tls` — two distinct security mechanisms.** The workspace uses
+two Cargo features with similar-sounding names that operate at different layers
+and must not be confused:
+
+- **`mbedtls`** (`srt-sys` feature, default-on) — links the vendored mbedTLS
+  3.6.x LTS library into libsrt to provide AES-128/192/256-CTR encryption of
+  the SRT channel itself (data-plane wire encryption via `SRTO_PASSPHRASE` /
+  `SRTO_PBKEYLEN`). Also used by `tst-rist` for RIST channel encryption. This
+  is compile-time link-time crypto built into the SRT/RIST stack; it has
+  nothing to do with TLS certificates or the TCP transport layer.
+
+- **`tls`** (`tst-tcp` / `tst-rtp` feature) — wires in rustls 0.23 to provide
+  TLS 1.2/1.3 on top of the raw TCP transport layer (`tcps://` and `rtsps://`
+  URL schemes). This is a *transport-layer* security feature — it authenticates
+  the TCP connection and encrypts the TCP byte stream. It is independent of any
+  SRT or RIST encryption. In `tst-tcp` the `tls` feature is **default-on**
+  because TCP transport security is the crate's core value; in `tst-rtp` the
+  `tls` feature is **default-off** because RTSP commonly runs plaintext
+  (`rtsps://` is an explicit opt-in). The two feature names are deliberately
+  distinct; no alias links them.
+
 ### Tunables (`SocketConfig` / `ListenerConfig`)
 
 Each row maps a libsrt option to its safe-Rust accessor. Accessors that

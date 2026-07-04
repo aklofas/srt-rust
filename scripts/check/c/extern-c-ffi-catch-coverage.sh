@@ -146,3 +146,31 @@ fi
 echo "OK: ${#ENTRIES[@]} extern \"C\" entry points wrap panic isolation"
 echo "    ${checked} via ffi_catch / with_inner_{mut,ref}"
 echo "    ${allowlisted} via allowlist (trivially infallible)"
+
+# Companion assertion for the `crate::transport_impls::` pattern above: the
+# pattern trusts the WHOLE module, so enforce the module's isolation contract
+# here — every pub(crate) fn in transport_impls.rs must itself route through
+# with_inner_mut / with_inner_ref (or ffi_catch). Without this loop, a future
+# fn added to the module without isolation would be silently accepted.
+TI_FILE="bindings/c/core/src/transport_impls.rs"
+if [[ -f "$TI_FILE" ]]; then
+    ti_missing=0
+    ti_total=0
+    while IFS= read -r sig_entry; do
+        ti_lineno="${sig_entry%%:*}"
+        ti_total=$((ti_total + 1))
+        # Body = from the signature line to the next top-level closing brace.
+        ti_body=$(awk -v start="$ti_lineno" \
+            'NR>=start{print; if(NR>start && $0=="}"){exit}}' "$TI_FILE")
+        # Here-string, not a pipe (same SIGPIPE rationale as the main loop).
+        if ! grep -qE 'with_inner_(mut|ref)\(|ffi_catch\(' <<<"$ti_body"; then
+            echo "MISSING isolation in transport_impls.rs fn at line $ti_lineno"
+            ti_missing=$((ti_missing + 1))
+        fi
+    done < <(grep -nE '^pub\(crate\) (unsafe )?fn ' "$TI_FILE")
+    if [[ $ti_missing -gt 0 ]]; then
+        echo "FAIL: $ti_missing of $ti_total transport_impls fns lack internal isolation"
+        exit 1
+    fi
+    echo "    ${ti_total} transport_impls generic bodies verified isolated"
+fi

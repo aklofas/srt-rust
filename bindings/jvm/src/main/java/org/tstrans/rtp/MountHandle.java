@@ -3,6 +3,7 @@ package org.tstrans.rtp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
 import org.tstrans.mpegts.AudioStreamHandle;
@@ -34,33 +35,30 @@ import org.tstrans.mpegts.VideoStreamHandle;
  * (the failure originates in the mount push path) — this differs from
  * {@link MuxSender}, whose muxer errors are {@code MuxException}.
  */
-public final class MountHandle implements AutoCloseable {
+public final class MountHandle extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    MountHandle(long h) { this.handle.set(h); }
+    MountHandle(long h) { setHandle(h); }
 
     // ── Identity / introspection ──────────────────────────────────────────
-    public String mountPath() { ensureOpen(); return nMountPath(handle.get()); }
-    public long peerCount() { ensureOpen(); return nPeerCount(handle.get()); }
+    public String mountPath() { ensureOpen("MountHandle is closed"); return nMountPath(peekHandle()); }
+    public long peerCount() { ensureOpen("MountHandle is closed"); return nPeerCount(peekHandle()); }
     /** {@code "unicast"} / {@code "multicast"} / {@code "unknown"}. */
-    public String mountKind() { ensureOpen(); return nMountKind(handle.get()); }
-    public MountStats stats() { ensureOpen(); return nStats(handle.get()); }
+    public String mountKind() { ensureOpen("MountHandle is closed"); return nMountKind(peekHandle()); }
+    public MountStats stats() { ensureOpen("MountHandle is closed"); return nStats(peekHandle()); }
 
     // ── Push family — single stream ───────────────────────────────────────
     public void pushVideo(byte[] nal, long pts, boolean keyFrame) throws RtspException {
-        ensureOpen(); nPushVideo(handle.get(), nal, pts, keyFrame);
+        ensureOpen("MountHandle is closed"); nPushVideo(peekHandle(), nal, pts, keyFrame);
     }
     public void pushKlv(byte[] klv, long pts, int metadataServiceId) throws RtspException {
-        ensureOpen(); nPushKlv(handle.get(), klv, pts, metadataServiceId);
+        ensureOpen("MountHandle is closed"); nPushKlv(peekHandle(), klv, pts, metadataServiceId);
     }
     public void pushAudio(byte[] frames, long pts) throws RtspException {
-        ensureOpen(); nPushAudio(handle.get(), frames, pts);
+        ensureOpen("MountHandle is closed"); nPushAudio(peekHandle(), frames, pts);
     }
     public void pushSubtitle(byte[] payload, long pts) throws RtspException {
-        ensureOpen(); nPushSubtitle(handle.get(), pts, payload);
+        ensureOpen("MountHandle is closed"); nPushSubtitle(peekHandle(), pts, payload);
     }
     /**
      * Push one private-data payload onto the lone configured data stream
@@ -69,24 +67,24 @@ public final class MountHandle implements AutoCloseable {
      * PES header only when the stream was configured with {@code carriesPts = true}.
      */
     public void pushData(byte[] data, long pts) throws RtspException {
-        ensureOpen(); nPushData(handle.get(), data, pts);
+        ensureOpen("MountHandle is closed"); nPushData(peekHandle(), data, pts);
     }
 
     // ── Push family — handle-targeted ─────────────────────────────────────
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws RtspException {
-        ensureOpen(); nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
+        ensureOpen("MountHandle is closed"); nPushVideoTo(peekHandle(), h.raw(), nal, pts, keyFrame);
     }
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws RtspException {
-        ensureOpen(); nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
+        ensureOpen("MountHandle is closed"); nPushKlvTo(peekHandle(), h.raw(), klv, pts, metadataServiceId);
     }
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws RtspException {
-        ensureOpen(); nPushAudioTo(handle.get(), h.raw(), frames, pts);
+        ensureOpen("MountHandle is closed"); nPushAudioTo(peekHandle(), h.raw(), frames, pts);
     }
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws RtspException {
-        ensureOpen(); nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
+        ensureOpen("MountHandle is closed"); nPushSubtitleTo(peekHandle(), h.raw(), pts, payload);
     }
     /**
      * Push one private-data payload to a specific configured data stream. Same
@@ -94,77 +92,71 @@ public final class MountHandle implements AutoCloseable {
      * raises {@link RtspException} of kind {@code MOUNT}.
      */
     public void pushDataTo(DataStreamHandle h, byte[] data, long pts) throws RtspException {
-        ensureOpen(); nPushDataTo(handle.get(), h.raw(), data, pts);
+        ensureOpen("MountHandle is closed"); nPushDataTo(peekHandle(), h.raw(), data, pts);
     }
 
     // ── Stream-handle accessors (first-of-kind + all-of-kind) ─────────────
     public Optional<VideoStreamHandle> videoHandle() {
-        ensureOpen(); long r = nVideoHandle(handle.get());
+        ensureOpen("MountHandle is closed"); long r = nVideoHandle(peekHandle());
         return r < 0 ? Optional.empty() : Optional.of(VideoStreamHandle.fromRaw(r));
     }
     public Optional<KlvStreamHandle> klvHandle() {
-        ensureOpen(); long r = nKlvHandle(handle.get());
+        ensureOpen("MountHandle is closed"); long r = nKlvHandle(peekHandle());
         return r < 0 ? Optional.empty() : Optional.of(KlvStreamHandle.fromRaw(r));
     }
     public Optional<AudioStreamHandle> audioHandle() {
-        ensureOpen(); long r = nAudioHandle(handle.get());
+        ensureOpen("MountHandle is closed"); long r = nAudioHandle(peekHandle());
         return r < 0 ? Optional.empty() : Optional.of(AudioStreamHandle.fromRaw(r));
     }
     public Optional<SubtitleStreamHandle> subtitleHandle() {
-        ensureOpen(); long r = nSubtitleHandle(handle.get());
+        ensureOpen("MountHandle is closed"); long r = nSubtitleHandle(peekHandle());
         return r < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(r));
     }
     public Optional<DataStreamHandle> dataHandle() {
-        ensureOpen(); long r = nDataHandle(handle.get());
+        ensureOpen("MountHandle is closed"); long r = nDataHandle(peekHandle());
         return r < 0 ? Optional.empty() : Optional.of(DataStreamHandle.fromRaw(r));
     }
     public List<VideoStreamHandle> videoHandles() {
-        ensureOpen();
+        ensureOpen("MountHandle is closed");
         List<VideoStreamHandle> out = new ArrayList<>();
-        for (long r : nVideoHandles(handle.get())) out.add(VideoStreamHandle.fromRaw(r));
+        for (long r : nVideoHandles(peekHandle())) out.add(VideoStreamHandle.fromRaw(r));
         return out;
     }
     public List<KlvStreamHandle> klvHandles() {
-        ensureOpen();
+        ensureOpen("MountHandle is closed");
         List<KlvStreamHandle> out = new ArrayList<>();
-        for (long r : nKlvHandles(handle.get())) out.add(KlvStreamHandle.fromRaw(r));
+        for (long r : nKlvHandles(peekHandle())) out.add(KlvStreamHandle.fromRaw(r));
         return out;
     }
     public List<AudioStreamHandle> audioHandles() {
-        ensureOpen();
+        ensureOpen("MountHandle is closed");
         List<AudioStreamHandle> out = new ArrayList<>();
-        for (long r : nAudioHandles(handle.get())) out.add(AudioStreamHandle.fromRaw(r));
+        for (long r : nAudioHandles(peekHandle())) out.add(AudioStreamHandle.fromRaw(r));
         return out;
     }
     public List<SubtitleStreamHandle> subtitleHandles() {
-        ensureOpen();
+        ensureOpen("MountHandle is closed");
         List<SubtitleStreamHandle> out = new ArrayList<>();
-        for (long r : nSubtitleHandles(handle.get())) out.add(SubtitleStreamHandle.fromRaw(r));
+        for (long r : nSubtitleHandles(peekHandle())) out.add(SubtitleStreamHandle.fromRaw(r));
         return out;
     }
     public List<DataStreamHandle> dataHandles() {
-        ensureOpen();
+        ensureOpen("MountHandle is closed");
         List<DataStreamHandle> out = new ArrayList<>();
-        for (long r : nDataHandles(handle.get())) out.add(DataStreamHandle.fromRaw(r));
+        for (long r : nDataHandles(peekHandle())) out.add(DataStreamHandle.fromRaw(r));
         return out;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     /** Drain buffered TS and broadcast to subscribers. Always safe. */
-    public void flush() { ensureOpen(); nFlush(handle.get()); }
+    public void flush() { ensureOpen("MountHandle is closed"); nFlush(peekHandle()); }
     /** Reset all flow counters to zero. */
-    public void resetStats() { ensureOpen(); nResetStats(handle.get()); }
+    public void resetStats() { ensureOpen("MountHandle is closed"); nResetStats(peekHandle()); }
 
     /** Free this handle wrapper (the mount itself persists in the server). Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("MountHandle is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     /**
      * Test-only: the raw native handle, for routing a panic through the real
@@ -172,7 +164,7 @@ public final class MountHandle implements AutoCloseable {
      * mutators are wired to {@code with_mount_poisoning}). Package-private,
      * mirrors the {@code *ForTest} convention in {@code Klv}.
      */
-    long nativeHandleForTest() { return handle.get(); }
+    long nativeHandleForTest() { return peekHandle(); }
 
     // --- Natives ---
     private static native String nMountPath(long handle);

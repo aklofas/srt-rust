@@ -1,5 +1,6 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtpException;
 
@@ -14,13 +15,10 @@ import org.tstrans.RtpException;
  *
  * <p>Mirrors {@code tstrans.rtp.Receiver} in tst-py.
  */
-public final class Receiver implements AutoCloseable {
+public final class Receiver extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    Receiver(long h) { this.handle.set(h); }
+    Receiver(long h) { setHandle(h); }
 
     /** Bind a receiver to {@code url} with the default recv scratch size. */
     public static Receiver fromUrl(String url) throws RtpException {
@@ -51,14 +49,14 @@ public final class Receiver implements AutoCloseable {
      * @throws RtpException {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise
      */
     public byte[] recv() throws RtpException {
-        ensureOpen();
-        return nRecv(handle.get());
+        ensureOpen("Receiver is closed");
+        return nRecv(peekHandle());
     }
 
     /** Snapshot of wire-level statistics (never null in normal operation). */
     public SocketStats socketStats() {
-        ensureOpen();
-        return nSocketStats(handle.get());
+        ensureOpen("Receiver is closed");
+        return nSocketStats(peekHandle());
     }
 
     /**
@@ -67,20 +65,14 @@ public final class Receiver implements AutoCloseable {
      * {@code RtpException(CANCELLED)}.
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        return new CancelHandle(nCancelHandle(handle.get()));
+        ensureOpen("Receiver is closed");
+        return new CancelHandle(nCancelHandle(peekHandle()));
     }
 
     /** Close the receiver. Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Receiver is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native long   nFromUrl(String url, int pktSize) throws RtpException;
     private static native byte[] nRecv(long handle) throws RtpException;

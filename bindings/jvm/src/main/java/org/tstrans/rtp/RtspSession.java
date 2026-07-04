@@ -1,5 +1,6 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtspException;
 import org.tstrans.mpegts.DemuxerConfig;
@@ -25,25 +26,22 @@ import org.tstrans.mpegts.DemuxerConfig;
  * any native call concurrent with {@code close()} — a racing call either runs or
  * throws a clean {@link IllegalStateException}.
  */
-public final class RtspSession implements AutoCloseable {
+public final class RtspSession extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    RtspSession(long h) { this.handle.set(h); }
+    RtspSession(long h) { setHandle(h); }
 
     /** Send PAUSE. Server stops emitting RTP; the session stays valid for {@link #play()}. */
-    public void pause() throws RtspException { ensureOpen(); nPause(handle.get()); }
+    public void pause() throws RtspException { ensureOpen("RtspSession is closed"); nPause(peekHandle()); }
 
     /** Send PLAY (resume after {@link #pause()}). */
-    public void play() throws RtspException { ensureOpen(); nPlay(handle.get()); }
+    public void play() throws RtspException { ensureOpen("RtspSession is closed"); nPlay(peekHandle()); }
 
     /**
      * Send TEARDOWN. Closes the server session; subsequent {@code pause}/{@code play}
      * raise {@link RtspException}. Idempotent on the wrapper (a second call is a no-op).
      */
-    public void teardown() throws RtspException { ensureOpen(); nTeardown(handle.get()); }
+    public void teardown() throws RtspException { ensureOpen("RtspSession is closed"); nTeardown(peekHandle()); }
 
     /**
      * Obtain a cross-thread cancel handle. Obtain it BEFORE a blocking control call;
@@ -53,8 +51,8 @@ public final class RtspSession implements AutoCloseable {
      * @throws IllegalStateException if the session is closed or already torn down
      */
     public RtspCancelHandle cancelHandle() {
-        ensureOpen();
-        long h = nCancelHandle(handle.get());
+        ensureOpen("RtspSession is closed");
+        long h = nCancelHandle(peekHandle());
         if (h == 0) throw new IllegalStateException("RtspSession is torn down");
         return new RtspCancelHandle(h);
     }
@@ -66,14 +64,14 @@ public final class RtspSession implements AutoCloseable {
      * @throws IllegalStateException if the session is closed
      */
     public RtspStats stats() {
-        ensureOpen();
+        ensureOpen("RtspSession is closed");
         return new RtspStats(0L, 0L, 0L, 0L, 0L, 0);
     }
 
     /** Consume the data plane with default demux options. See {@link #intoDemuxReceiver(DemuxerConfig)}. */
     public DemuxReceiver intoDemuxReceiver() throws RtspException {
-        ensureOpen();
-        long h = nIntoDemuxReceiver(handle.get(), false, 0, 0L, 0L, false, 0, 0L, false);
+        ensureOpen("RtspSession is closed");
+        long h = nIntoDemuxReceiver(peekHandle(), false, 0, 0L, 0L, false, 0, 0L, false);
         if (h == 0) {
             throw new RtspException(RtspException.Kind.PROTOCOL,
                 "nIntoDemuxReceiver returned 0 without throwing");
@@ -91,8 +89,8 @@ public final class RtspSession implements AutoCloseable {
      *     {@link #intoDemuxReceiver()} for defaults)
      */
     public DemuxReceiver intoDemuxReceiver(DemuxerConfig demuxConfig) throws RtspException {
-        ensureOpen();
-        long h = nIntoDemuxReceiver(handle.get(), true,
+        ensureOpen("RtspSession is closed");
+        long h = nIntoDemuxReceiver(peekHandle(), true,
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
             demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
@@ -106,20 +104,14 @@ public final class RtspSession implements AutoCloseable {
 
     /** Whether {@link #teardown()} (or {@link #close()}) has fired. */
     public boolean isTornDown() {
-        if (handle.get() == 0) return true;
-        return nIsTornDown(handle.get());
+        if (peekHandle() == 0) return true;
+        return nIsTornDown(peekHandle());
     }
 
     /** Best-effort teardown, then free the native session. Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("RtspSession is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native void nPause(long handle) throws RtspException;
     private static native void nPlay(long handle) throws RtspException;

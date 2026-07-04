@@ -2,6 +2,7 @@ package org.tstrans.rtp;
 
 import java.util.Optional;
 import org.tstrans.MuxException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtpException;
 import org.tstrans.mpegts.AudioStreamHandle;
@@ -41,16 +42,13 @@ import org.tstrans.mpegts.VideoStreamHandle;
  * }
  * }</pre>
  */
-public final class MuxSender implements AutoCloseable {
+public final class MuxSender extends NativeHandle {
     static { NativeLoader.load(); }
 
     /** Default UDP datagram payload size (7 × 188 TS packets). Matches tst-py. */
     public static final int DEFAULT_PKT_SIZE = 1316;
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    MuxSender(long h) { this.handle.set(h); }
+    MuxSender(long h) { setHandle(h); }
 
     /**
      * Build a {@code MuxSender} targeting {@code url} with the default packet size
@@ -116,8 +114,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushVideo(byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushVideo(handle.get(), nal, pts, keyFrame);
+        ensureOpen("MuxSender is closed");
+        nPushVideo(peekHandle(), nal, pts, keyFrame);
     }
 
     /**
@@ -135,8 +133,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushKlv(byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushKlv(handle.get(), klv, pts, metadataServiceId);
+        ensureOpen("MuxSender is closed");
+        nPushKlv(peekHandle(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -151,8 +149,8 @@ public final class MuxSender implements AutoCloseable {
      * @throws RtpException on transport failure
      */
     public void pushAudio(byte[] frames, long pts) throws MuxException, RtpException {
-        ensureOpen();
-        nPushAudio(handle.get(), frames, pts);
+        ensureOpen("MuxSender is closed");
+        nPushAudio(peekHandle(), frames, pts);
     }
 
     /**
@@ -165,8 +163,8 @@ public final class MuxSender implements AutoCloseable {
      * @throws RtpException on transport failure
      */
     public void pushSubtitle(byte[] payload, long pts) throws MuxException, RtpException {
-        ensureOpen();
-        nPushSubtitle(handle.get(), pts, payload);
+        ensureOpen("MuxSender is closed");
+        nPushSubtitle(peekHandle(), pts, payload);
     }
 
     /**
@@ -188,8 +186,8 @@ public final class MuxSender implements AutoCloseable {
      * @throws RtpException on transport failure
      */
     public void pushData(byte[] data, long pts) throws MuxException, RtpException {
-        ensureOpen();
-        nPushData(handle.get(), data, pts);
+        ensureOpen("MuxSender is closed");
+        nPushData(peekHandle(), data, pts);
     }
 
     // ── Push family — handle-targeted variants ────────────────────────────
@@ -209,8 +207,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
+        ensureOpen("MuxSender is closed");
+        nPushVideoTo(peekHandle(), h.raw(), nal, pts, keyFrame);
     }
 
     /**
@@ -230,8 +228,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
+        ensureOpen("MuxSender is closed");
+        nPushKlvTo(peekHandle(), h.raw(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -248,8 +246,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushAudioTo(handle.get(), h.raw(), frames, pts);
+        ensureOpen("MuxSender is closed");
+        nPushAudioTo(peekHandle(), h.raw(), frames, pts);
     }
 
     /**
@@ -266,8 +264,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
+        ensureOpen("MuxSender is closed");
+        nPushSubtitleTo(peekHandle(), h.raw(), pts, payload);
     }
 
     /**
@@ -286,8 +284,8 @@ public final class MuxSender implements AutoCloseable {
      */
     public void pushDataTo(DataStreamHandle h, byte[] data, long pts)
             throws MuxException, RtpException {
-        ensureOpen();
-        nPushDataTo(handle.get(), h.raw(), data, pts);
+        ensureOpen("MuxSender is closed");
+        nPushDataTo(peekHandle(), h.raw(), data, pts);
     }
 
     // ── Handle getters ────────────────────────────────────────────────────
@@ -295,40 +293,40 @@ public final class MuxSender implements AutoCloseable {
     /** First configured video stream handle, or {@link Optional#empty()}.
      *  @throws IllegalStateException if the sender is closed */
     public Optional<VideoStreamHandle> videoHandle() {
-        ensureOpen();
-        long raw = nVideoHandle(handle.get());
+        ensureOpen("MuxSender is closed");
+        long raw = nVideoHandle(peekHandle());
         return raw < 0 ? Optional.empty() : Optional.of(VideoStreamHandle.fromRaw(raw));
     }
 
     /** First configured KLV stream handle, or {@link Optional#empty()}.
      *  @throws IllegalStateException if the sender is closed */
     public Optional<KlvStreamHandle> klvHandle() {
-        ensureOpen();
-        long raw = nKlvHandle(handle.get());
+        ensureOpen("MuxSender is closed");
+        long raw = nKlvHandle(peekHandle());
         return raw < 0 ? Optional.empty() : Optional.of(KlvStreamHandle.fromRaw(raw));
     }
 
     /** First configured audio stream handle, or {@link Optional#empty()}.
      *  @throws IllegalStateException if the sender is closed */
     public Optional<AudioStreamHandle> audioHandle() {
-        ensureOpen();
-        long raw = nAudioHandle(handle.get());
+        ensureOpen("MuxSender is closed");
+        long raw = nAudioHandle(peekHandle());
         return raw < 0 ? Optional.empty() : Optional.of(AudioStreamHandle.fromRaw(raw));
     }
 
     /** First configured subtitle stream handle, or {@link Optional#empty()}.
      *  @throws IllegalStateException if the sender is closed */
     public Optional<SubtitleStreamHandle> subtitleHandle() {
-        ensureOpen();
-        long raw = nSubtitleHandle(handle.get());
+        ensureOpen("MuxSender is closed");
+        long raw = nSubtitleHandle(peekHandle());
         return raw < 0 ? Optional.empty() : Optional.of(SubtitleStreamHandle.fromRaw(raw));
     }
 
     /** First configured data stream handle, or {@link Optional#empty()}.
      *  @throws IllegalStateException if the sender is closed */
     public Optional<DataStreamHandle> dataHandle() {
-        ensureOpen();
-        long raw = nDataHandle(handle.get());
+        ensureOpen("MuxSender is closed");
+        long raw = nDataHandle(peekHandle());
         return raw < 0 ? Optional.empty() : Optional.of(DataStreamHandle.fromRaw(raw));
     }
 
@@ -343,27 +341,21 @@ public final class MuxSender implements AutoCloseable {
      * @throws IllegalStateException if the sender is closed
      */
     public TransportStats stats() {
-        ensureOpen();
-        return nStats(handle.get());
+        ensureOpen("MuxSender is closed");
+        return nStats(peekHandle());
     }
 
     /** Close the sender. Best-effort drains pending bytes, then drops the RTP
      * transport. Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
     /** Whether the sender owns a live transport. */
     public boolean isAlive() {
-        if (handle.get() == 0) return false;
-        return nIsAlive(handle.get());
+        if (peekHandle() == 0) return false;
+        return nIsAlive(peekHandle());
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("MuxSender is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     // --- Natives ---
 

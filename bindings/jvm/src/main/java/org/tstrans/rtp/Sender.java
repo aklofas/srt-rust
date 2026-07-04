@@ -1,5 +1,6 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtpException;
 
@@ -15,16 +16,13 @@ import org.tstrans.RtpException;
  *
  * <p>Mirrors {@code tstrans.rtp.Sender} in tst-py.
  */
-public final class Sender implements AutoCloseable {
+public final class Sender extends NativeHandle {
     static { NativeLoader.load(); }
 
     /** Default UDP datagram size (RTP header + TS payload); matches tst-py. */
     public static final int DEFAULT_PKT_SIZE = 1316;
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    Sender(long h) { this.handle.set(h); }
+    Sender(long h) { setHandle(h); }
 
     /** Construct a sender bound to {@code url} with default packet size and a random SSRC. */
     public static Sender fromUrl(String url) throws RtpException {
@@ -58,14 +56,14 @@ public final class Sender implements AutoCloseable {
      *     datagram cap; {@code CANCELLED} if a cancel fired; {@code TRANSPORT} otherwise
      */
     public void send(byte[] data) throws RtpException {
-        ensureOpen();
-        nSend(handle.get(), data);
+        ensureOpen("Sender is closed");
+        nSend(peekHandle(), data);
     }
 
     /** Snapshot of wire-level statistics (never null in normal operation). */
     public SocketStats socketStats() {
-        ensureOpen();
-        return nSocketStats(handle.get());
+        ensureOpen("Sender is closed");
+        return nSocketStats(peekHandle());
     }
 
     /**
@@ -74,20 +72,14 @@ public final class Sender implements AutoCloseable {
      * {@code RtpException(CANCELLED)}.
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        return new CancelHandle(nCancelHandle(handle.get()));
+        ensureOpen("Sender is closed");
+        return new CancelHandle(nCancelHandle(peekHandle()));
     }
 
     /** Close the sender. Idempotent. */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Sender is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native long   nFromUrl(String url, int pktSize, Long ssrc) throws RtpException;
     private static native void   nSend(long handle, byte[] data) throws RtpException;

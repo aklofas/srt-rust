@@ -1,5 +1,7 @@
 package org.tstrans.rtp;
 
+import org.tstrans.NativeHandle;
+
 /**
  * RTSP control-plane cancel handle. {@link #cancel()} breaks any in-flight
  * {@code connect}/{@code pause}/{@code play}/{@code teardown} on the originating
@@ -16,30 +18,23 @@ package org.tstrans.rtp;
  * remain {@code synchronized} only to keep the per-handle {@code isCancelled()}
  * observation flag consistent.
  */
-public final class RtspCancelHandle implements AutoCloseable {
+public final class RtspCancelHandle extends NativeHandle {
     static { org.tstrans.NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
-    RtspCancelHandle(long h) { this.handle.set(h); }
+    RtspCancelHandle(long h) { setHandle(h); }
 
     /** Signal cancellation. Idempotent. */
-    public synchronized void cancel() { nCancel(ensureOpen()); }
+    public synchronized void cancel() { nCancel(requireOpen("RtspCancelHandle is closed")); }
 
     /** True once {@link #cancel()} was called on the backing flag. */
-    public synchronized boolean isCancelled() { return nIsCancelled(ensureOpen()); }
-
-    @Override public synchronized void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
+    public synchronized boolean isCancelled() {
+        return nIsCancelled(requireOpen("RtspCancelHandle is closed"));
     }
 
-    private long ensureOpen() {
-        long h = handle.get();
-        if (h == 0) throw new IllegalStateException("RtspCancelHandle is closed");
-        return h;
-    }
+    // Preserve synchronized semantics for the cancel/isCancelled/close coordination contract.
+    @Override public synchronized void close() { super.close(); }
+
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native void nCancel(long handle);
     private static native boolean nIsCancelled(long handle);

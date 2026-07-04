@@ -172,8 +172,8 @@ pub tst_srt::error::AcceptError::System(core::io::error::Error)
 pub tst_srt::error::AcceptError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
+impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::AcceptError
@@ -222,8 +222,8 @@ impl core::convert::From<core::io::error::Error> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
-impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
+impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::BindError
@@ -257,8 +257,8 @@ impl core::convert::From<core::io::error::Error> for tst_srt::error::ConnectErro
 pub fn tst_srt::error::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
-impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
+impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::ConnectError
@@ -274,59 +274,6 @@ impl core::marker::Unpin for tst_srt::error::ConnectError
 impl core::marker::UnsafeUnpin for tst_srt::error::ConnectError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::ConnectError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::ConnectError
-#[non_exhaustive] pub enum tst_srt::error::Error
-pub tst_srt::error::Error::Accept(tst_srt::error::AcceptError)
-pub tst_srt::error::Error::Bind(tst_srt::error::BindError)
-pub tst_srt::error::Error::Connect(tst_srt::error::ConnectError)
-pub tst_srt::error::Error::Demux(tst_core::error::DemuxError)
-pub tst_srt::error::Error::Io(tst_srt::error::IoError)
-pub tst_srt::error::Error::KlvDecode(tst_core::error::KlvDecodeError)
-pub tst_srt::error::Error::KlvEncode(tst_core::error::KlvEncodeError)
-pub tst_srt::error::Error::KlvField(tst_core::error::KlvFieldError)
-pub tst_srt::error::Error::Mux(tst_core::error::MuxError)
-pub tst_srt::error::Error::Option(tst_srt::error::OptionError)
-pub tst_srt::error::Error::Recv(tst_srt::error::RecvError)
-pub tst_srt::error::Error::Send(tst_srt::error::SendError)
-pub tst_srt::error::Error::Transport(tst_core::transport::TransportError)
-impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::DemuxError) -> Self
-impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvDecodeError) -> Self
-impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvEncodeError) -> Self
-impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvFieldError) -> Self
-impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::MuxError) -> Self
-impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::transport::TransportError) -> Self
-impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
-impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
-impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
-impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
-impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
-impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
-impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
-impl core::error::Error for tst_srt::error::Error
-pub fn tst_srt::error::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl core::fmt::Debug for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_srt::error::Error
-impl core::marker::Send for tst_srt::error::Error
-impl core::marker::Sync for tst_srt::error::Error
-impl core::marker::Unpin for tst_srt::error::Error
-impl core::marker::UnsafeUnpin for tst_srt::error::Error
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::Error
-impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::Error
 #[non_exhaustive] pub enum tst_srt::error::IoError
 pub tst_srt::error::IoError::Other
 pub tst_srt::error::IoError::Other::kind: tst_srt::error::SrtErrno
@@ -335,8 +282,8 @@ pub tst_srt::error::IoError::SocketClosed
 pub tst_srt::error::IoError::System(core::io::error::Error)
 impl core::convert::From<core::io::error::Error> for tst_srt::error::IoError
 pub fn tst_srt::error::IoError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
+impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::IoError) -> Self
 impl core::error::Error for tst_srt::error::IoError
 pub fn tst_srt::error::IoError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::IoError
@@ -363,8 +310,8 @@ impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindEr
 pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
-impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
+impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::PacketFilterError> for tst_srt::error::OptionError
 pub fn tst_srt::error::OptionError::from(tst_srt::error::PacketFilterError) -> Self
 impl core::convert::From<tst_srt::error::PassphraseError> for tst_srt::error::OptionError
@@ -435,8 +382,8 @@ pub tst_srt::error::RecvError::System(core::io::error::Error)
 pub tst_srt::error::RecvError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
+impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::RecvError
@@ -520,8 +467,8 @@ pub tst_srt::error::SendError::System(core::io::error::Error)
 pub tst_srt::error::SendError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
+impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::SendError
@@ -564,6 +511,59 @@ impl core::marker::Unpin for tst_srt::error::SrtErrno
 impl core::marker::UnsafeUnpin for tst_srt::error::SrtErrno
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::SrtErrno
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::error::SrtErrno
+#[non_exhaustive] pub enum tst_srt::error::SrtError
+pub tst_srt::error::SrtError::Accept(tst_srt::error::AcceptError)
+pub tst_srt::error::SrtError::Bind(tst_srt::error::BindError)
+pub tst_srt::error::SrtError::Connect(tst_srt::error::ConnectError)
+pub tst_srt::error::SrtError::Demux(tst_core::error::DemuxError)
+pub tst_srt::error::SrtError::Io(tst_srt::error::IoError)
+pub tst_srt::error::SrtError::KlvDecode(tst_core::error::KlvDecodeError)
+pub tst_srt::error::SrtError::KlvEncode(tst_core::error::KlvEncodeError)
+pub tst_srt::error::SrtError::KlvField(tst_core::error::KlvFieldError)
+pub tst_srt::error::SrtError::Mux(tst_core::error::MuxError)
+pub tst_srt::error::SrtError::Option(tst_srt::error::OptionError)
+pub tst_srt::error::SrtError::Recv(tst_srt::error::RecvError)
+pub tst_srt::error::SrtError::Send(tst_srt::error::SendError)
+pub tst_srt::error::SrtError::Transport(tst_core::transport::TransportError)
+impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::DemuxError) -> Self
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvDecodeError) -> Self
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvEncodeError) -> Self
+impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvFieldError) -> Self
+impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::MuxError) -> Self
+impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::transport::TransportError) -> Self
+impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::AcceptError) -> Self
+impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::BindError) -> Self
+impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::ConnectError) -> Self
+impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::IoError) -> Self
+impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::OptionError) -> Self
+impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::RecvError) -> Self
+impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::SendError) -> Self
+impl core::error::Error for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_srt::error::SrtError
+impl core::marker::Send for tst_srt::error::SrtError
+impl core::marker::Sync for tst_srt::error::SrtError
+impl core::marker::Unpin for tst_srt::error::SrtError
+impl core::marker::UnsafeUnpin for tst_srt::error::SrtError
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::SrtError
+impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::SrtError
 #[non_exhaustive] pub enum tst_srt::error::StreamIdError
 pub tst_srt::error::StreamIdError::NonAscii
 pub tst_srt::error::StreamIdError::TooLong(usize)
@@ -962,8 +962,8 @@ pub tst_srt::AcceptError::System(core::io::error::Error)
 pub tst_srt::AcceptError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
+impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::AcceptError
@@ -990,8 +990,8 @@ impl core::convert::From<core::io::error::Error> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
-impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
+impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::BindError
@@ -1048,8 +1048,8 @@ impl core::convert::From<core::io::error::Error> for tst_srt::error::ConnectErro
 pub fn tst_srt::error::ConnectError::from(core::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
-impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
+impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::ConnectError
@@ -1065,59 +1065,6 @@ impl core::marker::Unpin for tst_srt::error::ConnectError
 impl core::marker::UnsafeUnpin for tst_srt::error::ConnectError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::ConnectError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::ConnectError
-#[non_exhaustive] pub enum tst_srt::Error
-pub tst_srt::Error::Accept(tst_srt::error::AcceptError)
-pub tst_srt::Error::Bind(tst_srt::error::BindError)
-pub tst_srt::Error::Connect(tst_srt::error::ConnectError)
-pub tst_srt::Error::Demux(tst_core::error::DemuxError)
-pub tst_srt::Error::Io(tst_srt::error::IoError)
-pub tst_srt::Error::KlvDecode(tst_core::error::KlvDecodeError)
-pub tst_srt::Error::KlvEncode(tst_core::error::KlvEncodeError)
-pub tst_srt::Error::KlvField(tst_core::error::KlvFieldError)
-pub tst_srt::Error::Mux(tst_core::error::MuxError)
-pub tst_srt::Error::Option(tst_srt::error::OptionError)
-pub tst_srt::Error::Recv(tst_srt::error::RecvError)
-pub tst_srt::Error::Send(tst_srt::error::SendError)
-pub tst_srt::Error::Transport(tst_core::transport::TransportError)
-impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::DemuxError) -> Self
-impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvDecodeError) -> Self
-impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvEncodeError) -> Self
-impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::KlvFieldError) -> Self
-impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::error::MuxError) -> Self
-impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_core::transport::TransportError) -> Self
-impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
-impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
-impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
-impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
-impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
-impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
-impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
-impl core::error::Error for tst_srt::error::Error
-pub fn tst_srt::error::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl core::fmt::Debug for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_srt::error::Error
-impl core::marker::Send for tst_srt::error::Error
-impl core::marker::Sync for tst_srt::error::Error
-impl core::marker::Unpin for tst_srt::error::Error
-impl core::marker::UnsafeUnpin for tst_srt::error::Error
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::Error
-impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::Error
 pub enum tst_srt::KeyLength
 pub tst_srt::KeyLength::Aes128
 pub tst_srt::KeyLength::Aes192
@@ -1174,8 +1121,8 @@ pub tst_srt::RecvError::System(core::io::error::Error)
 pub tst_srt::RecvError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
+impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::RecvError
@@ -1223,8 +1170,8 @@ pub tst_srt::SendError::System(core::io::error::Error)
 pub tst_srt::SendError::TimedOut
 impl core::convert::From<core::io::error::Error> for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::from(core::io::error::Error) -> Self
-impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
+impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::SendError
@@ -1238,6 +1185,59 @@ impl core::marker::Unpin for tst_srt::error::SendError
 impl core::marker::UnsafeUnpin for tst_srt::error::SendError
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::SendError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::SendError
+#[non_exhaustive] pub enum tst_srt::SrtError
+pub tst_srt::SrtError::Accept(tst_srt::error::AcceptError)
+pub tst_srt::SrtError::Bind(tst_srt::error::BindError)
+pub tst_srt::SrtError::Connect(tst_srt::error::ConnectError)
+pub tst_srt::SrtError::Demux(tst_core::error::DemuxError)
+pub tst_srt::SrtError::Io(tst_srt::error::IoError)
+pub tst_srt::SrtError::KlvDecode(tst_core::error::KlvDecodeError)
+pub tst_srt::SrtError::KlvEncode(tst_core::error::KlvEncodeError)
+pub tst_srt::SrtError::KlvField(tst_core::error::KlvFieldError)
+pub tst_srt::SrtError::Mux(tst_core::error::MuxError)
+pub tst_srt::SrtError::Option(tst_srt::error::OptionError)
+pub tst_srt::SrtError::Recv(tst_srt::error::RecvError)
+pub tst_srt::SrtError::Send(tst_srt::error::SendError)
+pub tst_srt::SrtError::Transport(tst_core::transport::TransportError)
+impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::DemuxError) -> Self
+impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvDecodeError) -> Self
+impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvEncodeError) -> Self
+impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::KlvFieldError) -> Self
+impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::error::MuxError) -> Self
+impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_core::transport::TransportError) -> Self
+impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::AcceptError) -> Self
+impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::BindError) -> Self
+impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::ConnectError) -> Self
+impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::IoError) -> Self
+impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::OptionError) -> Self
+impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::RecvError) -> Self
+impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::from(tst_srt::error::SendError) -> Self
+impl core::error::Error for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_srt::error::SrtError
+pub fn tst_srt::error::SrtError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_srt::error::SrtError
+impl core::marker::Send for tst_srt::error::SrtError
+impl core::marker::Sync for tst_srt::error::SrtError
+impl core::marker::Unpin for tst_srt::error::SrtError
+impl core::marker::UnsafeUnpin for tst_srt::error::SrtError
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::SrtError
+impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::SrtError
 #[non_exhaustive] pub enum tst_srt::UrlError
 pub tst_srt::UrlError::FfmpegAliasNotExposed
 pub tst_srt::UrlError::FfmpegAliasNotExposed::canonical: &'static str

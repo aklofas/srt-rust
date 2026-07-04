@@ -36,7 +36,7 @@ pub mod url;
 // Top-level re-exports for the most common types.
 pub use builder::{ListenerBuilder, SocketBuilder};
 pub use config::{ListenerConfig, SocketConfig};
-pub use error::{AcceptError, BindError, ConnectError, Error, RecvError, SendError};
+pub use error::{AcceptError, BindError, ConnectError, RecvError, SendError, SrtError};
 pub use listener::Listener;
 pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId};
 pub use socket::{Socket, Stats};

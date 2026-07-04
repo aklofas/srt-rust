@@ -545,9 +545,11 @@ typed unit list; it mirrors tst-py's `.parse()`. Feed `raw()` back to
 audio elementary-stream bytes as a heap `ByteBuffer`. Call `parse()` (or
 `parse(strict)`) when you need the typed frame list; it mirrors tst-py's
 `.parse()`. `parse()` is **lenient** — it skips past corruption to the next
-valid frame and never throws; `parse(true)` is **strict** — it throws
-`CodecParseException` on the first malformed frame. Both are opt-in, so the
-demuxer never pays the parse cost for audio you don't inspect.
+valid frame and never throws `CodecParseException`; `parse(true)` is **strict**
+— it throws `CodecParseException` on the first malformed frame. Both methods
+can also throw `DemuxException` on an internal binding failure (e.g. enum
+drift). Both are opt-in, so the demuxer never pays the parse cost for audio
+you don't inspect.
 
 **Codecs with no typed parser (AAC-LATM, AC-3).** These codecs are carried
 (AC-3 is additionally sync-validated by the demuxer), but per-frame typed
@@ -555,9 +557,10 @@ parsing isn't implemented yet, so `parse()` returns an **empty list** in both
 modes — read `raw()` directly for the encoded bytes.
 
 ```java
-// parse() throws the checked CodecParseException — declare it on the
-// enclosing method (or catch it). Use a plain for-loop, not a forEach
-// lambda, since a lambda cannot propagate the checked exception.
+// parse() throws checked CodecParseException (strict mode) and DemuxException
+// (internal failure) — declare both on the enclosing method (or catch them).
+// Use a plain for-loop, not a forEach lambda, since a lambda cannot propagate
+// checked exceptions.
 for (DemuxEvent e : demuxer) {
     if (e instanceof DemuxEvent.Audio a && a.codec() == AudioCodec.AAC) {
         for (AudioFrame f : a.parse()) {          // opt-in: parses the raw ES

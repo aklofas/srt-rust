@@ -42,7 +42,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use pyo3::Py;
-use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -56,41 +55,6 @@ use crate::srt::errors::{
     accept_error_to_pyerr, bind_error_to_pyerr, connect_error_to_pyerr, io_error_to_pyerr,
     transport_error_to_pyerr, url_error_to_pyerr,
 };
-
-// ---------------------------------------------------------------------------
-// Bytes-like extraction (audit #10 two-path)
-// ---------------------------------------------------------------------------
-
-/// Extract a `&[u8]` view from any bytes-like Python object.
-///
-/// Fast path: real `bytes` extracts to a borrowed `&[u8]` zero-copy.
-/// Fallback: pass `bytearray` / `memoryview` / `numpy.uint8` / etc.
-/// through Python's `bytes()` builtin to materialize an immutable
-/// `PyBytes`. One C-level copy.
-///
-/// PyBuffer would skip the fallback copy but is gated under
-/// `not(Py_LIMITED_API)` in PyO3 0.22; tst-py builds with abi3-py310
-/// for one-wheel coverage of 3.10+.
-///
-/// Returns a `Py<PyBytes>` holding the storage (either the original
-/// `bytes` or the coerced copy) plus a `&[u8]` view tied to the
-/// returned PyBytes' lifetime. Callers detach the GIL by reading the
-/// slice through `Py<PyBytes>::as_bytes(py)` rather than holding the
-/// `&[u8]` directly.
-fn coerce_bytes_like<'py>(
-    py: Python<'py>,
-    obj: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    if let Ok(b) = obj.downcast::<PyBytes>() {
-        return Ok(b.clone());
-    }
-    let coerced: Bound<'py, PyBytes> = py
-        .import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((obj,))?
-        .downcast_into::<PyBytes>()?;
-    Ok(coerced)
-}
 
 // ---------------------------------------------------------------------------
 // PySocketStats — frozen mirror of tst_core::transport::SocketStats
@@ -376,7 +340,7 @@ impl PySender {
             });
         }
         // Fallback for bytearray / memoryview / numpy etc.
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice: &[u8] = coerced.as_bytes();
         let res = py.allow_threads(|| inner.send_ts(slice));
         res.map_err(|e| match e.source {

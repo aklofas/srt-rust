@@ -654,16 +654,19 @@ impl PyMuxerProgramConfigBuilder {
         mut slf: PyRefMut<'py, Self>,
         pid: u16,
         codec: &Bound<'_, PyAny>,
-        language: &[u8],
+        language: &Bound<'_, PyAny>,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        if language.len() != 3 {
+        let py = language.py();
+        let coerced = crate::util::coerce_bytes_like(py, language)?;
+        let language_bytes = coerced.as_bytes();
+        if language_bytes.len() != 3 {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "language must be 3 bytes (ISO 639-2), got {}",
-                language.len()
+                language_bytes.len()
             )));
         }
         let mut lang = [0u8; 3];
-        lang.copy_from_slice(language);
+        lang.copy_from_slice(language_bytes);
         let rust_codec = py_audio_codec(codec)?;
         slf.get_mut()?
             .add_audio_with_language(pid, rust_codec, lang);
@@ -1229,17 +1232,19 @@ impl PyMuxer {
     pub fn push_video(
         &mut self,
         py: Python<'_>,
-        nal: &[u8],
+        nal: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        // GIL-release rationale (audit #11): `nal` borrows from a
-        // `Py<PyBytes>` held by the caller's frame; safe to access
-        // without the GIL because GC cannot collect a referenced
-        // object during the call. The Rust `push_video` is pure
-        // computation — no Python object construction.
-        let res = py.allow_threads(|| self.inner.push_video(nal, rust_pts, key_frame));
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
+        let nal_slice = coerced.as_bytes();
+        // GIL-release rationale (audit #11): `nal_slice` borrows from
+        // `coerced`, a `Bound<'_, PyBytes>` held on the Rust stack for
+        // the duration of this call. Python GC cannot collect it while
+        // we hold a strong reference. `push_video` is pure computation
+        // — no Python object construction.
+        let res = py.allow_threads(|| self.inner.push_video(nal_slice, rust_pts, key_frame));
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1268,18 +1273,20 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
-        nal: &[u8],
+        nal: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
+        let nal_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`. `handle.0`
         // is a `Copy` u32 newtype; capturing it does not retain the
-        // `PyRef`. `nal` is GIL-safe per the `push_video` argument.
+        // `PyRef`. `nal_slice` is GIL-safe per the `push_video` argument.
         let handle_inner = handle.0;
         let res = py.allow_threads(|| {
             self.inner
-                .push_video_to(handle_inner, nal, rust_pts, key_frame)
+                .push_video_to(handle_inner, nal_slice, rust_pts, key_frame)
         });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
@@ -1312,7 +1319,7 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
-        nal: &[u8],
+        nal: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         dts: Option<&Bound<'_, PyAny>>,
         key_frame: bool,
@@ -1327,17 +1334,22 @@ impl PyMuxer {
             Some(v) => Some(py_pts90khz(v)?),
             None => None,
         };
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
+        let nal_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`. `handle.0`
-        // copied out before release; `nal` is GIL-safe.
+        // copied out before release; `nal_slice` is GIL-safe.
         let handle_inner = handle.0;
         let res = py.allow_threads(|| match rust_dts {
             None => self
                 .inner
-                .push_video_to(handle_inner, nal, rust_pts, key_frame),
-            Some(rust_dts) => {
-                self.inner
-                    .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)
-            }
+                .push_video_to(handle_inner, nal_slice, rust_pts, key_frame),
+            Some(rust_dts) => self.inner.push_video_to_with_dts(
+                handle_inner,
+                nal_slice,
+                rust_pts,
+                rust_dts,
+                key_frame,
+            ),
         });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
@@ -1363,7 +1375,7 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyVideoStreamHandle>,
-        wire: &[u8],
+        wire: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         dts: Option<&Bound<'_, PyAny>>,
         key_frame: bool,
@@ -1373,14 +1385,16 @@ impl PyMuxer {
             Some(v) => Some(py_pts90khz(v)?),
             None => None,
         };
+        let coerced = crate::util::coerce_bytes_like(py, wire)?;
+        let wire_slice = coerced.as_bytes();
         let handle_inner = handle.0;
         let res = py.allow_threads(|| match rust_dts {
             None => self
                 .inner
-                .push_video_wire_to(handle_inner, wire, rust_pts, key_frame),
+                .push_video_wire_to(handle_inner, wire_slice, rust_pts, key_frame),
             Some(rust_dts) => self.inner.push_video_wire_to_with_dts(
                 handle_inner,
-                wire,
+                wire_slice,
                 rust_pts,
                 rust_dts,
                 key_frame,
@@ -1420,13 +1434,15 @@ impl PyMuxer {
     pub fn push_audio(
         &mut self,
         py: Python<'_>,
-        frames: &[u8],
+        frames: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        // GIL-release rationale (audit #11): see `push_video` — `frames`
-        // borrows from a `Py<PyBytes>` held by the caller's frame.
-        let res = py.allow_threads(|| self.inner.push_audio(frames, rust_pts));
+        let coerced = crate::util::coerce_bytes_like(py, frames)?;
+        let frames_slice = coerced.as_bytes();
+        // GIL-release rationale (audit #11): see `push_video` — `frames_slice`
+        // borrows from `coerced`, a `Bound<'_, PyBytes>` on the Rust stack.
+        let res = py.allow_threads(|| self.inner.push_audio(frames_slice, rust_pts));
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1448,13 +1464,18 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyAudioStreamHandle>,
-        frames: &[u8],
+        frames: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
+        let coerced = crate::util::coerce_bytes_like(py, frames)?;
+        let frames_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`.
         let handle_inner = handle.0;
-        let res = py.allow_threads(|| self.inner.push_audio_to(handle_inner, rust_pts, frames));
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_audio_to(handle_inner, rust_pts, frames_slice)
+        });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1482,14 +1503,19 @@ impl PyMuxer {
     pub fn push_klv(
         &mut self,
         py: Python<'_>,
-        klv: &[u8],
+        klv: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         metadata_service_id: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        // GIL-release rationale (audit #11): see `push_video` — `klv`
-        // borrows from a `Py<PyBytes>` held by the caller's frame.
-        let res = py.allow_threads(|| self.inner.push_klv(klv, rust_pts, metadata_service_id));
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
+        let klv_slice = coerced.as_bytes();
+        // GIL-release rationale (audit #11): see `push_video` — `klv_slice`
+        // borrows from `coerced`, a `Bound<'_, PyBytes>` on the Rust stack.
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_klv(klv_slice, rust_pts, metadata_service_id)
+        });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1511,16 +1537,18 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyKlvStreamHandle>,
-        klv: &[u8],
+        klv: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
         metadata_service_id: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
+        let klv_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`.
         let handle_inner = handle.0;
         let res = py.allow_threads(|| {
             self.inner
-                .push_klv_to(handle_inner, klv, rust_pts, metadata_service_id)
+                .push_klv_to(handle_inner, klv_slice, rust_pts, metadata_service_id)
         });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
@@ -1548,13 +1576,15 @@ impl PyMuxer {
     pub fn push_subtitle(
         &mut self,
         py: Python<'_>,
-        payload: &[u8],
+        payload: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        // GIL-release rationale (audit #11): see `push_video` — `payload`
-        // borrows from a `Py<PyBytes>` held by the caller's frame.
-        let res = py.allow_threads(|| self.inner.push_subtitle(rust_pts, payload));
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
+        let payload_slice = coerced.as_bytes();
+        // GIL-release rationale (audit #11): see `push_video` — `payload_slice`
+        // borrows from `coerced`, a `Bound<'_, PyBytes>` on the Rust stack.
+        let res = py.allow_threads(|| self.inner.push_subtitle(rust_pts, payload_slice));
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1574,13 +1604,18 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PySubtitleStreamHandle>,
-        payload: &[u8],
+        payload: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
+        let payload_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`.
         let handle_inner = handle.0;
-        let res = py.allow_threads(|| self.inner.push_subtitle_to(handle_inner, rust_pts, payload));
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_subtitle_to(handle_inner, rust_pts, payload_slice)
+        });
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1614,13 +1649,15 @@ impl PyMuxer {
     pub fn push_data(
         &mut self,
         py: Python<'_>,
-        data: &[u8],
+        data: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        // GIL-release rationale (audit #11): see `push_video` — `data`
-        // borrows from a `Py<PyBytes>` held by the caller's frame.
-        let res = py.allow_threads(|| self.inner.push_data(data, rust_pts));
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
+        let data_slice = coerced.as_bytes();
+        // GIL-release rationale (audit #11): see `push_video` — `data_slice`
+        // borrows from `coerced`, a `Bound<'_, PyBytes>` on the Rust stack.
+        let res = py.allow_threads(|| self.inner.push_data(data_slice, rust_pts));
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
@@ -1644,13 +1681,15 @@ impl PyMuxer {
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyDataStreamHandle>,
-        data: &[u8],
+        data: &Bound<'_, PyAny>,
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
+        let data_slice = coerced.as_bytes();
         // GIL-release rationale (audit #11): see `push_video`.
         let handle_inner = handle.0;
-        let res = py.allow_threads(|| self.inner.push_data_to(handle_inner, data, rust_pts));
+        let res = py.allow_threads(|| self.inner.push_data_to(handle_inner, data_slice, rust_pts));
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 

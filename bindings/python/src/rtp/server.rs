@@ -34,35 +34,6 @@ use crate::mux::{
 };
 
 // ---------------------------------------------------------------------------
-// Bytes-like extraction.
-// ---------------------------------------------------------------------------
-
-/// Coerce a Python bytes-like argument (`bytes`, `bytearray`,
-/// `memoryview`, NumPy `uint8`) to an owned `Py<PyBytes>` strong
-/// reference whose `.as_bytes()` borrows live across a subsequent
-/// `py.allow_threads()` call. Same pattern as
-/// `bindings/python/src/mpegts.rs::PyDemuxer::feed`.
-///
-/// Fast path: a real `bytes` value already satisfies the buffer
-/// requirement and is returned as-is (no copy).
-/// Fallback: invoke `bytes(arg)` to coerce — one C-level copy.
-///
-/// Raises `TypeError` if `arg` cannot be passed to `bytes()`.
-fn coerce_bytes_like<'py>(
-    py: Python<'py>,
-    arg: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    if let Ok(b) = arg.downcast::<PyBytes>() {
-        return Ok(b.clone());
-    }
-    py.import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((arg,))?
-        .downcast_into::<PyBytes>()
-        .map_err(|e| e.into())
-}
-
-// ---------------------------------------------------------------------------
 // Module registration.
 // ---------------------------------------------------------------------------
 
@@ -324,7 +295,7 @@ impl PyMountHandle {
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, nal)?;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_video(slice, rust_pts, key_frame));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -342,7 +313,7 @@ impl PyMountHandle {
         metadata_service_id: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, klv)?;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_klv(slice, rust_pts, metadata_service_id));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -358,7 +329,7 @@ impl PyMountHandle {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, frames)?;
+        let coerced = crate::util::coerce_bytes_like(py, frames)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_audio(slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -374,7 +345,7 @@ impl PyMountHandle {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, payload)?;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_subtitle(slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -390,7 +361,7 @@ impl PyMountHandle {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_data(slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -416,7 +387,7 @@ impl PyMountHandle {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, nal)?;
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| {
             self.inner
@@ -437,7 +408,7 @@ impl PyMountHandle {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, klv)?;
+        let coerced = crate::util::coerce_bytes_like(py, klv)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| {
             self.inner
@@ -457,7 +428,7 @@ impl PyMountHandle {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, frames)?;
+        let coerced = crate::util::coerce_bytes_like(py, frames)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_audio_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -474,7 +445,7 @@ impl PyMountHandle {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, payload)?;
+        let coerced = crate::util::coerce_bytes_like(py, payload)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_subtitle_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))
@@ -490,7 +461,7 @@ impl PyMountHandle {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let handle_inner = handle.0;
-        let coerced = coerce_bytes_like(py, data)?;
+        let coerced = crate::util::coerce_bytes_like(py, data)?;
         let slice = coerced.as_bytes();
         let res = py.allow_threads(|| self.inner.push_data_to(handle_inner, slice, rust_pts));
         res.map_err(|e| mount_error_to_pyerr(py, e))

@@ -96,15 +96,6 @@ fn io_error_to_pyerr(py: Python<'_>, e: IoError) -> PyErr {
     }
 }
 
-/// Brackets an IPv6 literal so it parses through `SocketAddr` / `ToSocketAddrs`.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Builder mode tracking
 // ---------------------------------------------------------------------------
@@ -410,7 +401,7 @@ impl PyBuilder {
         // unconditional overwrite, so URL wins on conflict (Q4-A).
         let mut cfg = self.socket_cfg.clone();
         parsed.overlay.apply_to_socket(&mut cfg);
-        let addr = join_host_port(&parsed.host, parsed.port);
+        let addr = crate::util::join_host_port(&parsed.host, parsed.port);
         let socket = py
             .allow_threads(|| SrtSocket::connect_with(&cfg, addr.as_str()))
             .map_err(|e| connect_error_to_pyerr(py, e))?;
@@ -451,7 +442,7 @@ impl PyBuilder {
         let addr = if parsed.host.is_empty() {
             format!("0.0.0.0:{}", parsed.port)
         } else {
-            join_host_port(&parsed.host, parsed.port)
+            crate::util::join_host_port(&parsed.host, parsed.port)
         };
         let listener = py
             .allow_threads(|| SrtListener::bind_with(&cfg, addr.as_str()))

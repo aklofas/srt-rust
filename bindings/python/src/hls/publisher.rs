@@ -29,7 +29,6 @@ use std::time::Duration;
 
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
 
 use tst_core::publisher::Publisher;
 use tst_tcp::hls::{HlsMode, HlsPublisher, HlsPublisherBuilder};
@@ -92,7 +91,7 @@ impl PyHlsPublisher {
     /// Push pre-muxed MPEG-TS bytes (must be a whole multiple of 188).
     /// Raises `HlsError(UNALIGNED_PUSH_TS)` otherwise.
     fn push_ts(&self, py: Python<'_>, ts_bytes: &Bound<'_, PyAny>) -> PyResult<()> {
-        let coerced = coerce_bytes_like(py, ts_bytes)?;
+        let coerced = crate::util::coerce_bytes_like(py, ts_bytes)?;
         // Bind the &[u8] before the closure: the `Bound<PyBytes>` stays on
         // the stack pinning the bytes; the borrowed slice is `Ungil` even
         // though the `Bound` itself is not.
@@ -370,22 +369,4 @@ impl PyHlsPublisherBuilder {
     fn __repr__(&self) -> &'static str {
         "HlsPublisherBuilder(...)"
     }
-}
-
-/// Coerce a Python bytes-like argument to an owned `Py<PyBytes>` whose
-/// `.as_bytes()` borrow lives across a subsequent `py.allow_threads`
-/// call. Mirrors the rtp/mux_sender.rs helper.
-fn coerce_bytes_like<'py>(
-    py: Python<'py>,
-    arg: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    use pyo3::intern;
-    if let Ok(b) = arg.downcast::<PyBytes>() {
-        return Ok(b.clone());
-    }
-    py.import_bound("builtins")?
-        .getattr(intern!(py, "bytes"))?
-        .call1((arg,))?
-        .downcast_into::<PyBytes>()
-        .map_err(|e| e.into())
 }

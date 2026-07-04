@@ -93,16 +93,6 @@ fn demux_recv_error_to_pyerr(py: Python<'_>, e: DemuxReceiverError) -> PyErr {
     }
 }
 
-/// Brackets an IPv6 literal so it parses through `SocketAddr` /
-/// `ToSocketAddrs`. Mirror of the helper in `srt/lowlevel.rs`.
-fn join_host_port(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // PyDemuxReceiver — wraps tst_pipeline::DemuxReceiver<SrtTransport>.
 // ---------------------------------------------------------------------------
@@ -184,7 +174,7 @@ impl PyDemuxReceiver {
         let addr = if parsed.host.is_empty() {
             format!("0.0.0.0:{}", parsed.port)
         } else {
-            join_host_port(&parsed.host, parsed.port)
+            crate::util::join_host_port(&parsed.host, parsed.port)
         };
 
         // 2. Optionally translate the DemuxerConfig dataclass (must

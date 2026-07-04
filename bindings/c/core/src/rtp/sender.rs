@@ -5,10 +5,10 @@
 //! blocked send (or the caller thread) with `tst_rtp_sender_cancel`.
 //! Free the handle with `tst_rtp_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/sender/ts_sender.rs` exactly —
-//! error mapping, `ffi_catch` wrapping, `Handle::with_inner_mut/_ref`
-//! usage, FFI slice handling, and the cancel + `was_cancelled`
-//! side-channel are all identical.
+//! `send_ts` and stats bodies are thin forwarders to generic impls in
+//! `crate::transport_impls`. Cancel stays family-local because it needs
+//! the `cancel` + `was_cancelled` Arc fields not part of the generic
+//! `Handle<Sender<T>>` interface.
 
 use std::os::raw::c_char;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use tst_core::Transport;
 use tst_pipeline::{Sender, SenderConfig, TransportCancel};
 use tst_rtp::{RtpSocketBuilder, RtpTransport};
 
-use crate::error::{TstError, record_not_available, record_shell_error, set_last_error};
+use crate::error::{TstError, set_last_error};
 use crate::handle::Handle;
 use crate::stats::TstSenderStats;
 
@@ -150,14 +150,7 @@ pub unsafe extern "C" fn tst_rtp_sender_send_ts(
         set_last_error(TstError::InvalidConfig, "null rtp sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(bytes, len, "bytes") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    handle.inner.with_inner_mut(|s| match s.send_ts(slice) {
-        Ok(()) => 0,
-        Err(e) => record_shell_error(&e),
-    })
+    unsafe { crate::transport_impls::sender_send_ts(&handle.inner, bytes, len) }
 }
 
 /// Cancel a `tst_rtp_sender_t`. Signals the underlying RTP socket to
@@ -207,15 +200,7 @@ pub unsafe extern "C" fn tst_rtp_sender_get_stats(
         set_last_error(TstError::InvalidConfig, "null rtp sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(&s.stats());
-        unsafe { *out = stats };
-        0
-    })
+    unsafe { crate::transport_impls::sender_get_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying RTP socket.
@@ -241,20 +226,13 @@ pub unsafe extern "C" fn tst_rtp_sender_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null rtp sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|s| match s.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::sender_get_socket_stats(
+            &handle.inner,
+            out,
             "rtp sender socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Reset stats counters for a `tst_rtp_sender_t` to zero.
@@ -271,10 +249,7 @@ pub unsafe extern "C" fn tst_rtp_sender_reset_stats(p: *mut TstRtpSender) -> lib
         set_last_error(TstError::InvalidConfig, "null rtp sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_mut(|s| {
-        s.reset_stats();
-        0
-    })
+    crate::transport_impls::sender_reset_stats(&handle.inner)
 }
 
 // ---------------------------------------------------------------------------

@@ -839,7 +839,7 @@ impl PyMuxerProgramConfigBuilder {
 // buffer / AV1 carriage knobs) and its chainable builder. The
 // builder's `build()` runs Rust-side `MuxerConfig::validate` — the
 // returned `MuxError` is mapped through the 5-variant
-// `MuxSenderErrorKind` classifier into a Python `MuxError` carrying
+// `MuxErrorKind` classifier into a Python `MuxError` carrying
 // the right `MuxErrorKind`.
 
 /// Prepend stream-identifying context to a per-stream conversion
@@ -1120,7 +1120,7 @@ impl PyMuxerConfigBuilder {
 
     /// Finalize. Runs Rust-side `MuxerConfig::validate` and surfaces
     /// the first failed rule as a Python `MuxError` (kind chosen via
-    /// `MuxSenderErrorKind` — typically `CONFIG_INVALID`).
+    /// `MuxErrorKind` — typically `CONFIG_INVALID`).
     pub fn build(slf: PyRef<'_, Self>) -> PyResult<PyMuxerConfig> {
         let py = slf.py();
         let b = slf.inner.as_ref().ok_or_else(|| {
@@ -1708,7 +1708,7 @@ impl PyMuxer {
     // `_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
     // surfaces `ProgramNotFound` for an unknown program number; the
     // wraps below propagate that error through the standard
-    // MuxSenderErrorKind classifier so callers see a Python
+    // MuxErrorKind classifier so callers see a Python
     // `MuxError(INVALID_USAGE)`. The list getters and the
     // by-index getters never fail — empty / `None` mean "no match".
 

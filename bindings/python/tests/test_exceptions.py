@@ -72,7 +72,7 @@ def test_klv_error_carries_kind_and_message():
 
 def test_mux_error_class_exists_and_is_tst_error():
     assert issubclass(MuxError, TstError)
-    # Mirrors Rust `tst_core::error::MuxSenderErrorKind` — 5 variants.
+    # Mirrors Rust `tst_core::error::MuxErrorKind` — 5 variants.
     assert len(list(MuxErrorKind)) >= 5
     assert MuxErrorKind.CONFIG_INVALID.value >= 0
 

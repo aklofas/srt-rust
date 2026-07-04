@@ -66,7 +66,7 @@ pub fn throw_demux(env: &mut JNIEnv, kind: &str, message: &str) {
 
 /// Construct + throw `org.tstrans.MuxException(Kind.<kind>, message)`.
 /// `kind` MUST be one of the `MuxException.Kind` enum constant names
-/// (SCREAMING_SNAKE_CASE), matching the 5-variant `MuxSenderErrorKind` buckets.
+/// (SCREAMING_SNAKE_CASE), matching the 5-variant `MuxErrorKind` buckets.
 pub fn throw_mux(env: &mut JNIEnv, kind: &str, message: &str) {
     if env.exception_check().unwrap_or(false) {
         return; // don't clobber an already-pending exception

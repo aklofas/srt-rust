@@ -91,7 +91,7 @@ if [[ $missing -gt 0 ]]; then
     echo ""
     echo "FAIL: $missing MuxError variant(s) not classified in MuxError::kind()"
     echo "Add an explicit arm to fn kind() in $ERROR_FILE BEFORE the wildcard _ => arm."
-    echo "Route each new variant to the appropriate MuxSenderErrorKind category — see"
+    echo "Route each new variant to the appropriate MuxErrorKind category — see"
     echo "docs/plans/2026-05-19-wave-6-muxerror-reshape.md Pre-flight Fact D4 for"
     echo "the canonical routing table."
     exit 1

@@ -572,7 +572,7 @@ pub enum MuxError {
 /// (6 variants, shell-agnostic). The two tiers complement each other:
 /// `ShellErrorKind` is the binding-canonical action category at the shell
 /// boundary (`MuxSender`, `Sender`, `RawSender`, `DemuxReceiver`,
-/// `Receiver`, `RawReceiver`); `MuxSenderErrorKind` is the muxer-specific
+/// `Receiver`, `RawReceiver`); `MuxErrorKind` is the muxer-specific
 /// inner category exposing the runtime-API-misuse-vs-construction-rejection
 /// distinction that `ShellErrorKind::ConfigInvalid` collapses.
 ///
@@ -584,23 +584,23 @@ pub enum MuxError {
 /// # Example
 ///
 /// ```
-/// use tst_core::error::{MuxError, MuxSenderErrorKind};
+/// use tst_core::error::{MuxError, MuxErrorKind};
 ///
 /// let err = MuxError::InvalidNal;
 /// match err.kind() {
-///     MuxSenderErrorKind::InputMalformed => {
+///     MuxErrorKind::InputMalformed => {
 ///         eprintln!("caller pushed malformed input: {err}");
 ///     }
-///     MuxSenderErrorKind::ConfigInvalid => {
+///     MuxErrorKind::ConfigInvalid => {
 ///         eprintln!("muxer config is invalid: {err}");
 ///     }
-///     MuxSenderErrorKind::InvalidUsage => {
+///     MuxErrorKind::InvalidUsage => {
 ///         eprintln!("caller is using the muxer API incorrectly: {err}");
 ///     }
-///     MuxSenderErrorKind::Backpressure => {
+///     MuxErrorKind::Backpressure => {
 ///         eprintln!("muxer queue full; back off and retry");
 ///     }
-///     MuxSenderErrorKind::Internal => {
+///     MuxErrorKind::Internal => {
 ///         eprintln!("muxer hit a bug-path invariant: {err}");
 ///     }
 ///     _ => {
@@ -610,7 +610,7 @@ pub enum MuxError {
 /// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MuxSenderErrorKind {
+pub enum MuxErrorKind {
     /// Caller pushed input bytes that don't conform to the expected
     /// shape. Includes non-Annex-B NAL units
     /// ([`MuxError::InvalidNal`]), non-well-formed AV1 OBU streams
@@ -676,7 +676,7 @@ pub enum MuxSenderErrorKind {
 impl MuxError {
     /// Categorize this error for binding-author pattern matching.
     ///
-    /// Returns the coarse-tier [`MuxSenderErrorKind`] (5 stable
+    /// Returns the coarse-tier [`MuxErrorKind`] (5 stable
     /// categories) corresponding to this variant. Use this when
     /// writing a generic binding that maps muxer failures to a
     /// language-native exception hierarchy without enumerating the
@@ -695,19 +695,19 @@ impl MuxError {
     /// A new variant added without a corresponding arm here will fail
     /// the ratchet in CI.
     ///
-    /// See [`MuxSenderErrorKind`] for the per-variant rationale.
+    /// See [`MuxErrorKind`] for the per-variant rationale.
     ///
     /// # Example
     ///
     /// ```
-    /// use tst_core::error::{MuxError, MuxSenderErrorKind};
+    /// use tst_core::error::{MuxError, MuxErrorKind};
     ///
     /// let err = MuxError::InvalidNal;
-    /// assert_eq!(err.kind(), MuxSenderErrorKind::InputMalformed);
+    /// assert_eq!(err.kind(), MuxErrorKind::InputMalformed);
     /// ```
     #[must_use]
-    pub fn kind(&self) -> MuxSenderErrorKind {
-        use MuxSenderErrorKind::*;
+    pub fn kind(&self) -> MuxErrorKind {
+        use MuxErrorKind::*;
         // The match is exhaustive in-crate (MuxError is #[non_exhaustive]
         // but defined here), so the trailing wildcard would be flagged
         // unreachable. We keep it intentionally as an anchor for the CI

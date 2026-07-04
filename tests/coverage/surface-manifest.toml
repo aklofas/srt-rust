@@ -1990,19 +1990,19 @@ item = "tst_core::error::MuxError::kind"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::error::MuxSenderErrorKind::clone"
+item = "tst_core::error::MuxErrorKind::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::error::MuxSenderErrorKind::eq"
+item = "tst_core::error::MuxErrorKind::eq"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::error::MuxSenderErrorKind::fmt"
+item = "tst_core::error::MuxErrorKind::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_core::error::MuxSenderErrorKind::hash"
+item = "tst_core::error::MuxErrorKind::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
@@ -8424,15 +8424,15 @@ item = "tst_srt::error::ConnectError::source"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::error::Error::fmt"
+item = "tst_srt::error::SrtError::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::error::Error::from"
+item = "tst_srt::error::SrtError::from"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_srt::error::Error::source"
+item = "tst_srt::error::SrtError::source"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

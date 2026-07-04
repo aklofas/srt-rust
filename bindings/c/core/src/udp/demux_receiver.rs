@@ -261,7 +261,9 @@ pub unsafe extern "C" fn tst_udp_demux_receiver_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this udp demux receiver)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this udp demux receiver)"
+            ),
         )
     }
 }

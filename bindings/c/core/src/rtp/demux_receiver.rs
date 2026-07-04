@@ -339,7 +339,9 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rtp demux receiver)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rtp demux receiver)"
+            ),
         )
     }
 }

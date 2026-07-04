@@ -647,7 +647,15 @@ pub(crate) struct EventArena {
     /// aliased input `DemuxEvent` storage. After all `convert()` extends
     /// complete, `payload_buf.as_ptr()` is the stable base for `base +
     /// offset` pointer resolution.
+    ///
+    /// For H.26x video samples the AU copy is skipped; `last_payload`
+    /// retains the Arc instead and NAL/payload pointers point directly
+    /// into its backing (DA-PERF-11).
     pub(crate) payload_buf: Vec<u8>,
+    /// Retained `SharedBytes` Arc for the H.26x zero-copy AU path.
+    /// Cleared (Arc dropped) at the start of each `convert()` call so
+    /// NAL pointers from the previous event are no longer valid.
+    pub(crate) last_payload: Option<tst_core::shared::SharedBytes>,
 }
 
 #[allow(dead_code)]
@@ -663,6 +671,7 @@ impl EventArena {
             programs_buf: [0; 2],
             tags_buf: Vec::new(),
             payload_buf: Vec::new(),
+            last_payload: None,
         }
     }
 
@@ -676,6 +685,9 @@ impl EventArena {
         self.programs_buf = [0; 2];
         self.tags_buf.clear();
         self.payload_buf.clear();
+        // Drop any retained Arc so H.26x NAL pointers from the previous
+        // event are immediately invalidated.
+        self.last_payload = None;
     }
 }
 
@@ -865,42 +877,45 @@ fn fill_sample(
                 Some(tst_core::mpegts::mux::Av1CarriageMode::InteropRawObu) => 1,
                 Some(_) | None => TST_AV1_CARRIAGE_NA,
             };
-            // Raw-first: copy the encoded access unit once; `payload`/
-            // `payload_len` expose it (parity with tst-py's `.raw` and the
-            // JVM's `DemuxEvent.Video.raw`). Then split into NAL/OBU units
-            // (the opt-in parse) so the TstNal[]/TstObu[] surface keeps
-            // working; ES-conformance issues are not surfaced over this C
-            // ABI. Unit slots point INTO the AU copy when the split units
-            // are subslices of the AU (H.26x always; AV1 binding-mode
-            // unwraps into a fresh buffer → per-unit-copy fallback in
-            // `unit_arena_offset`).
-            let raw_off = arena.payload_buf.len();
-            arena.payload_buf.extend_from_slice(raw);
+            // Split into NAL/OBU units (the opt-in parse) so the
+            // TstNal[]/TstObu[] surface keeps working; ES-conformance
+            // issues are not surfaced over this C ABI.
+            //
+            // H.26x (Nals arm): zero-copy path — retain the SharedBytes
+            // Arc in `arena.last_payload` and point payload_ptr / each NAL
+            // slot directly into its backing. No copy into payload_buf.
+            //
+            // AV1 (Obus arm): keep the arena copy. Binding-mode OBUs are
+            // unwrapped into a fresh buffer (not subslices of the AU), so
+            // `unit_arena_offset` needs a stable arena base to fall back to.
             let raw_base = raw.as_ptr() as usize;
             let raw_len = raw.len();
             let (vp, _issues) = split_video(raw, *vc, av1_carriage.unwrap_or_default());
             match &vp {
                 VideoPayload::Nals(nals) => {
-                    // Two-pass: collect each NAL's offset, resolve to
-                    // `payload_buf.as_ptr() + offset` after all extends
-                    // are done so the base pointer is stable.
-                    let mut records: Vec<usize> = Vec::with_capacity(nals.len());
+                    // Retain Arc so NAL pointers remain valid until the next
+                    // convert() call drops last_payload via clear().
+                    arena.last_payload = Some(raw.clone());
                     for n in nals {
                         let bytes = nal_payload_bytes(n);
-                        records.push(unit_arena_offset(arena, raw_off, raw_base, raw_len, bytes));
-                        arena.nals.push(nal_to_c(n));
-                    }
-                    let base = arena.payload_buf.as_ptr();
-                    for (slot, offset) in arena.nals.iter_mut().zip(records.iter()) {
-                        // SAFETY: offset is either inside the AU copy
-                        // (subslice case) or was returned by len() before
-                        // the contributing extend; base+offset is in-bounds.
-                        slot.payload = unsafe { base.add(*offset) };
+                        let mut c = nal_to_c(n);
+                        // SAFETY: bytes is a subslice of the SharedBytes
+                        // retained in arena.last_payload; valid until the
+                        // next arena.clear() call.
+                        c.payload = bytes.as_ptr();
+                        arena.nals.push(c);
                     }
                     nals_ptr = arena.nals.as_ptr();
                     nal_count = arena.nals.len();
+                    // SAFETY: raw is retained via arena.last_payload above;
+                    // the pointer is valid until the next convert() call.
+                    payload_ptr = raw.as_ptr();
+                    payload_len = raw_len;
                 }
                 VideoPayload::Obus(obus) => {
+                    // Copy the AU once; OBU slots point into the copy.
+                    let raw_off = arena.payload_buf.len();
+                    arena.payload_buf.extend_from_slice(raw);
                     let mut records: Vec<usize> = Vec::with_capacity(obus.len());
                     for o in obus {
                         records.push(unit_arena_offset(
@@ -910,18 +925,18 @@ fn fill_sample(
                     }
                     let base = arena.payload_buf.as_ptr();
                     for (slot, offset) in arena.obus.iter_mut().zip(records.iter()) {
-                        // SAFETY: as above.
+                        // SAFETY: offset is within payload_buf (see unit_arena_offset).
                         slot.payload = unsafe { base.add(*offset) };
                     }
                     obus_ptr = arena.obus.as_ptr();
                     obu_count = arena.obus.len();
+                    // Resolve the AU pointer only after every extend is done
+                    // (Vec base pointer is stable from here until the next
+                    // convert()). SAFETY: raw_len bytes appended at raw_off.
+                    payload_ptr = unsafe { arena.payload_buf.as_ptr().add(raw_off) };
+                    payload_len = raw_len;
                 }
             }
-            // Resolve the AU pointer only after every extend is done (the
-            // Vec base pointer is stable from here until the next convert()).
-            // SAFETY: raw_len bytes were appended at raw_off above.
-            payload_ptr = unsafe { arena.payload_buf.as_ptr().add(raw_off) };
-            payload_len = raw_len;
         }
         SamplePayload::Audio { codec: ac, frames } => {
             codec = crate::config::TstAudioCodec::from_core(*ac) as i32;
@@ -1719,19 +1734,12 @@ mod tests {
     }
 
     #[test]
-    fn h264_nal_payload_is_arena_owned() {
-        // Raw-first: the demuxer emits the encoded AU; `convert` `split_video`s
-        // it internally. Build a one-NAL Annex-B AU (start code + NAL body
-        // 0x67 0x42 0x00 0x1E). The split yields a zero-copy view into the
-        // SharedBytes backing; the arena copy must NOT alias that backing.
-        //
-        // The alias check compares against the LIVE SharedBytes backing (it
-        // stays alive inside `ev` across the assert) and rejects any overlap
-        // with the whole backing range. Capturing the pre-`from_vec` Vec
-        // pointer instead is a flake: `from_vec` copies into a fresh Arc
-        // allocation and frees the Vec buffer, so the allocator may later hand
-        // the arena that SAME freed address even though the deep-copy property
-        // holds (seen on windows-msvc under nextest, 2026-06-10).
+    fn h264_nal_payload_points_into_sharedbytes_backing() {
+        // DA-PERF-11 zero-copy path: the demuxer emits the encoded AU;
+        // `convert` `split_video`s it and retains the SharedBytes Arc in
+        // `arena.last_payload`. NAL payloads are subslices of that Arc —
+        // their pointers MUST fall within the live SharedBytes backing range,
+        // not alias a separate arena copy.
         let shared = SharedBytes::from_vec(vec![0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E]);
         let backing = shared.as_ptr() as usize;
         let backing_len = shared.len();
@@ -1752,12 +1760,12 @@ mod tests {
         assert_eq!(arena.nals.len(), 1);
         let nal_ptr = arena.nals[0].payload as usize;
         let nal_len = arena.nals[0].payload_len;
+        // Zero-copy proof: NAL payload MUST be within the SharedBytes backing.
         assert!(
-            nal_ptr + nal_len <= backing || nal_ptr >= backing + backing_len,
-            "H.264 NAL payload range must NOT overlap the live input AU backing"
+            nal_ptr >= backing && nal_ptr + nal_len <= backing + backing_len,
+            "H.264 NAL payload range must be within the retained SharedBytes backing"
         );
-        // Deep-copy proof: the arena copy carries the NAL body bytes (the
-        // 1-byte NAL header 0x67 is stripped — it travels in nal_type/ref_idc).
+        // Content check: NAL body bytes (1-byte header 0x67 stripped).
         let nal_bytes = unsafe { core::slice::from_raw_parts(arena.nals[0].payload, nal_len) };
         assert_eq!(nal_bytes, &[0x42, 0x00, 0x1E]);
     }
@@ -1805,8 +1813,8 @@ mod tests {
     fn h264_video_sample_payload_is_raw_au() {
         // v0.2.0 Wave 5: video samples expose the raw encoded AU via
         // `payload`/`payload_len` (NULL for video before). Two-NAL Annex-B
-        // AU (SPS + PPS, 4-byte start codes) so the subslice optimization
-        // is exercised across multiple units.
+        // AU (SPS + PPS, 4-byte start codes) so the zero-copy path is
+        // exercised across multiple units (DA-PERF-11).
         let au = vec![
             0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, // SPS
             0x00, 0x00, 0x00, 0x01, 0x68, 0xCE, 0x38, 0x80, // PPS
@@ -1836,22 +1844,21 @@ mod tests {
         );
         let raw_bytes = unsafe { core::slice::from_raw_parts(payload_ptr, payload_len) };
         assert_eq!(raw_bytes, &au[..], "payload must be the exact encoded AU");
-        // Arena-owned: range must not overlap the LIVE input backing (held
-        // alive by `ev`) — content + range, never raw-address equality
-        // (allocator address reuse made that a windows-msvc flake).
+        // DA-PERF-11: payload_ptr must point INTO the live SharedBytes
+        // backing (zero-copy — no separate arena copy for H.26x).
         let p = payload_ptr as usize;
         assert!(
-            p + payload_len <= backing || p >= backing + backing_len,
-            "raw AU copy must not overlap the live input backing"
+            p >= backing && p + payload_len <= backing + backing_len,
+            "video payload must point into the retained SharedBytes backing"
         );
-        // Subslice optimization: each NAL slot points INTO the single
-        // raw-AU arena copy (H.26x split units are views into the AU).
+        // Each NAL slot must also be within the SharedBytes backing range
+        // (they are subslices of the same Arc allocation).
         assert_eq!(arena.nals.len(), 2);
         for slot in &arena.nals {
             let sp = slot.payload as usize;
             assert!(
-                sp >= p && sp + slot.payload_len <= p + payload_len,
-                "NAL slot must point into the raw-AU arena copy"
+                sp >= backing && sp + slot.payload_len <= backing + backing_len,
+                "NAL slot must point into the retained SharedBytes backing"
             );
         }
         let nal0 = unsafe {

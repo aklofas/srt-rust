@@ -169,13 +169,15 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
             cfg,
             video,
             |raw| {
-                VideoStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid video stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                VideoStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid video stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Video { .. }),
             "invalid video stream handle (program out of range)",
@@ -219,13 +221,15 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
             cfg,
             klv,
             |raw| {
-                KlvStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid klv stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                KlvStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid klv stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Klv { .. }),
             "invalid klv stream handle (program out of range)",
@@ -269,13 +273,15 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_data(
             cfg,
             data,
             |raw| {
-                DataStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid data stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                DataStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid data stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Data { .. }),
             "invalid data stream handle (program out of range)",
@@ -377,13 +383,15 @@ pub unsafe extern "C" fn tst_mux_config_add_video_descriptor(
             cfg,
             stream,
             |raw| {
-                VideoStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid video stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                VideoStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid video stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Video { .. }),
             "invalid video stream handle (program out of range)",
@@ -426,13 +434,15 @@ pub unsafe extern "C" fn tst_mux_config_add_klv_descriptor(
             cfg,
             stream,
             |raw| {
-                KlvStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid klv stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                KlvStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid klv stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Klv { .. }),
             "invalid klv stream handle (program out of range)",
@@ -475,13 +485,15 @@ pub unsafe extern "C" fn tst_mux_config_add_audio_descriptor(
             cfg,
             stream,
             |raw| {
-                AudioStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid audio stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                AudioStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid audio stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Audio { .. }),
             "invalid audio stream handle (program out of range)",
@@ -528,13 +540,15 @@ pub unsafe extern "C" fn tst_mux_config_add_subtitle_descriptor(
             cfg,
             stream,
             |raw| {
-                SubtitleStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid subtitle stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                SubtitleStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid subtitle stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Subtitle { .. }),
             "invalid subtitle stream handle (program out of range)",
@@ -580,13 +594,15 @@ pub unsafe extern "C" fn tst_mux_config_add_data_descriptor(
             cfg,
             stream,
             |raw| {
-                DataStreamHandle::try_from_raw(raw).map(|h| h.unpack()).map_err(|_| {
-                    set_last_error(
-                        TstError::InvalidUsage,
-                        "invalid data stream handle (non-canonical raw bits set)",
-                    );
-                    TstError::InvalidUsage as i32
-                })
+                DataStreamHandle::try_from_raw(raw)
+                    .map(|h| h.unpack())
+                    .map_err(|_| {
+                        set_last_error(
+                            TstError::InvalidUsage,
+                            "invalid data stream handle (non-canonical raw bits set)",
+                        );
+                        TstError::InvalidUsage as i32
+                    })
             },
             |s| matches!(s, StreamSpec::Data { .. }),
             "invalid data stream handle (program out of range)",
@@ -707,7 +723,7 @@ mod tests {
                 cfg,
                 prog,
                 byte.as_ptr(),
-                2,           // tlv_total_len = 2
+                2,             // tlv_total_len = 2
                 2_000_000_000, // tlv_count = absurd
             );
             tst_mux_config_free(cfg);
@@ -729,15 +745,19 @@ mod tests {
         unsafe {
             let cfg = tst_mux_config_new();
             let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
-            let real_handle = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            let real_handle =
+                tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
             // Forge a handle by setting a high bit that try_from_raw rejects.
             let forged = real_handle | 0x100;
 
             // add-family
-            let null_desc =
-                TstDescriptor { tag: 0x02, _reserved: [0; 7], data: core::ptr::null(), data_len: 0 };
-            let rc_add =
-                tst_mux_config_add_video_descriptor(cfg, forged, &null_desc as *const _);
+            let null_desc = TstDescriptor {
+                tag: 0x02,
+                _reserved: [0; 7],
+                data: core::ptr::null(),
+                data_len: 0,
+            };
+            let rc_add = tst_mux_config_add_video_descriptor(cfg, forged, &null_desc as *const _);
             assert_eq!(
                 rc_add,
                 TstError::InvalidUsage as i32,
@@ -746,13 +766,8 @@ mod tests {
 
             // set-family
             let byte = zero_body_tlv(0x28);
-            let rc_set = tst_mux_config_set_stream_descriptors_for_video(
-                cfg,
-                forged,
-                byte.as_ptr(),
-                2,
-                1,
-            );
+            let rc_set =
+                tst_mux_config_set_stream_descriptors_for_video(cfg, forged, byte.as_ptr(), 2, 1);
             assert_eq!(
                 rc_set,
                 TstError::InvalidUsage as i32,
@@ -771,7 +786,12 @@ mod tests {
             let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
             let handle = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
             let body = [0xDE, 0xAD];
-            let desc = TstDescriptor { tag: 0x52, _reserved: [0; 7], data: body.as_ptr(), data_len: 2 };
+            let desc = TstDescriptor {
+                tag: 0x52,
+                _reserved: [0; 7],
+                data: body.as_ptr(),
+                data_len: 2,
+            };
             let rc = tst_mux_config_add_video_descriptor(cfg, handle, &desc as *const _);
             assert_eq!(rc, 0, "valid add-video-descriptor must return 0");
             tst_mux_config_free(cfg);
@@ -781,8 +801,12 @@ mod tests {
     /// Null config pointer → `TST_E_INVALID_CONFIG`.
     #[test]
     fn null_cfg_returns_invalid_config() {
-        let desc =
-            TstDescriptor { tag: 0x02, _reserved: [0; 7], data: core::ptr::null(), data_len: 0 };
+        let desc = TstDescriptor {
+            tag: 0x02,
+            _reserved: [0; 7],
+            data: core::ptr::null(),
+            data_len: 0,
+        };
         let rc = unsafe {
             tst_mux_config_add_video_descriptor(core::ptr::null_mut(), 0, &desc as *const _)
         };

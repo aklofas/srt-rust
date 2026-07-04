@@ -224,9 +224,9 @@ def test_full_pipeline_via_builder_socket_promotion() -> None:
     # Surface event types to make a failure report tractable.
     type_names = sorted({type(e).__name__ for e in events})
     assert any(
-        isinstance(e, (DemuxEvent.Video, DemuxEvent.ProgramMap, DemuxEvent.Klv))
+        isinstance(e, (DemuxEvent.Video, DemuxEvent.ProgramMap, DemuxEvent.Metadata))
         for e in events
-    ), f"none of Video/ProgramMap/Klv seen; got: {type_names}"
+    ), f"none of Video/ProgramMap/Metadata seen; got: {type_names}"
 
 
 # --------------------------------------------------------------------------- #

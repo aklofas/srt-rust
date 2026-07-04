@@ -7,7 +7,7 @@ NonConformantEvent cases.
 
 Plan-vs-Rust drift notes (from Task 5 pre-flight):
   - Plan referenced `_KlvMetadataEvent` / `_NonConformantIssueEvent` /
-    `_PatEvent` — actual classes are `_KlvEvent` / `_NonConformantEvent`,
+    `_PatEvent` — actual classes are `_MetadataEvent` / `_NonConformantEvent`,
     and there is no separate `_PatEvent` (PAT data lives on
     `_ProgramMapEvent.programs`). The adapter `kind_map` reflects the real
     names.
@@ -41,7 +41,7 @@ from tstrans.mpegts import (  # noqa: E402
     StreamKindTag,
     VideoCodec,
     _DiscontinuityEvent,
-    _KlvEvent,
+    _MetadataEvent,
     _NonConformantEvent,
     _ReconnectDiscontinuityEvent,
     _UnknownSampleEvent,
@@ -156,14 +156,14 @@ def test_events_to_dataframe_reconnect_discontinuity_has_kind_only():
 
 
 def test_events_to_dataframe_klv_event_has_metadata_kind():
-    """Hand-built _KlvEvent — verify kind=Metadata, payload_len set, nal_count is None."""
+    """Hand-built _MetadataEvent — verify kind=Metadata, payload_len set, nal_count is None."""
     sid = StreamId(
         pid=257,
         kind=StreamKindTag.KLV_SYNC,
         codec=None,
         program_number=1,
     )
-    klv = _KlvEvent(
+    klv = _MetadataEvent(
         stream=sid,
         pts=Pts90khz(raw=900000),  # 10 seconds
         kind=MetadataKindTag.KLV_SYNC_AU_CELL,

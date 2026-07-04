@@ -2,7 +2,7 @@
 
 End-to-end reassembly behavior is verified in the Rust integration tests
 (Task 5). Python tests here cover only the binding surface — that the new
-fields exist on `_KlvEvent`, that `MultiCellAuReason` is importable as a
+fields exist on `_MetadataEvent`, that `MultiCellAuReason` is importable as a
 PyO3 `eq_int` enum, and that `_NonConformantEvent` carries the optional
 typed reason.
 """
@@ -43,9 +43,9 @@ def test_multi_cell_au_reason_equality_uses_eq_int_semantics() -> None:
     assert MultiCellAuReason.TOO_MANY_PIDS != MultiCellAuReason.OVERFLOW_TOTAL
 
 
-def test_klv_event_has_was_reassembled_and_cell_count_with_defaults() -> None:
-    """Reassembly fields exist on `_KlvEvent` with backward-compat defaults."""
-    from tstrans.mpegts import MetadataKindTag, _KlvEvent
+def test_metadata_event_has_was_reassembled_and_cell_count_with_defaults() -> None:
+    """Reassembly fields exist on `_MetadataEvent` with backward-compat defaults."""
+    from tstrans.mpegts import MetadataKindTag, _MetadataEvent
 
     stream = StreamId(
         pid=0x100,
@@ -54,7 +54,7 @@ def test_klv_event_has_was_reassembled_and_cell_count_with_defaults() -> None:
         program_number=1,
     )
     # Construct without the new fields — defaults must keep the call working.
-    ev = _KlvEvent(
+    ev = _MetadataEvent(
         stream=stream,
         pts=Pts90khz.from_raw(90000),
         kind=MetadataKindTag.KLV_SYNC_AU_CELL,
@@ -64,9 +64,9 @@ def test_klv_event_has_was_reassembled_and_cell_count_with_defaults() -> None:
     assert ev.cell_count == 1
 
 
-def test_klv_event_accepts_explicit_reassembly_fields() -> None:
+def test_metadata_event_accepts_explicit_reassembly_fields() -> None:
     """Multi-cell reassembled AU populates the new fields."""
-    from tstrans.mpegts import MetadataKindTag, _KlvEvent
+    from tstrans.mpegts import MetadataKindTag, _MetadataEvent
 
     stream = StreamId(
         pid=0x100,
@@ -74,7 +74,7 @@ def test_klv_event_accepts_explicit_reassembly_fields() -> None:
         codec=None,
         program_number=1,
     )
-    ev = _KlvEvent(
+    ev = _MetadataEvent(
         stream=stream,
         pts=Pts90khz.from_raw(90000),
         kind=MetadataKindTag.KLV_SYNC_AU_CELL,
@@ -122,12 +122,17 @@ def test_multi_cell_au_reason_in_module_all() -> None:
     assert "MultiCellAuReason" in mpegts.__all__
 
 
-def test_klv_event_via_demuxevent_namespace_attribute() -> None:
-    """`DemuxEvent.Klv` is the same class as `_KlvEvent` and has the new fields."""
-    from tstrans.mpegts import _KlvEvent
+def test_klv_alias_is_same_object_as_metadata() -> None:
+    """`DemuxEvent.Klv` is the same class object as `DemuxEvent.Metadata` (deprecated alias).
 
-    assert DemuxEvent.Klv is _KlvEvent
+    The alias exists so existing `isinstance(e, DemuxEvent.Klv)` and
+    `case DemuxEvent.Klv(...)` patterns continue to work unchanged. Remove at 1.0.
+    """
+    from tstrans.mpegts import _MetadataEvent
+
+    assert DemuxEvent.Klv is DemuxEvent.Metadata
+    assert DemuxEvent.Klv is _MetadataEvent
     # dataclass field set — sanity check on the public surface.
-    field_names = {f.name for f in DemuxEvent.Klv.__dataclass_fields__.values()}
+    field_names = {f.name for f in DemuxEvent.Metadata.__dataclass_fields__.values()}
     assert "was_reassembled" in field_names
     assert "cell_count" in field_names

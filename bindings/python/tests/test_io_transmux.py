@@ -79,7 +79,7 @@ def _collect(path: Path):
     for ev in tio.parse_file(path):
         if isinstance(ev, DemuxEvent.Video):
             videos.append(bytes(ev.raw))
-        elif isinstance(ev, DemuxEvent.Klv):
+        elif isinstance(ev, DemuxEvent.Metadata):
             klvs.append(bytes(ev.payload))
     return videos, klvs
 
@@ -164,7 +164,7 @@ def test_transmux_acceptance_patch_corner_tags_video_byte_faithful(tmp_path):
     src_klvs: list[bytes] = []
     with tio.transmux(src, dst) as tx:
         for ev in tx:
-            if isinstance(ev, DemuxEvent.Klv):
+            if isinstance(ev, DemuxEvent.Metadata):
                 src_klvs.append(bytes(ev.payload))
                 patched = patch_uas_datalink(
                     bytes(ev.payload),
@@ -386,7 +386,7 @@ def test_transmux_mixed_klv_and_data_streams_survive(tmp_path):
     for ev in tio.parse_file(dst):
         if isinstance(ev, DemuxEvent.Video):
             out_videos.append(bytes(ev.raw))
-        elif isinstance(ev, DemuxEvent.Klv):
+        elif isinstance(ev, DemuxEvent.Metadata):
             out_klvs.append((ev.pts.raw, bytes(ev.payload)))
         elif isinstance(ev, DemuxEvent.UnknownSample):
             out_data.append((ev.pts.raw, bytes(ev.payload)))
@@ -426,7 +426,7 @@ def test_transmux_drop_klv_skips_dropped_stream_events(tmp_path):
     with tio.transmux(src, dst, drop=(StreamKindTag.KLV_SYNC,)) as tx:
         for ev in tx:
             tx.write(ev)  # KLV events hit the no-handle path → skipped
-            if isinstance(ev, DemuxEvent.Klv):
+            if isinstance(ev, DemuxEvent.Metadata):
                 # Substituted writes for dropped streams are no-ops too.
                 tx.write_klv(ev, bytes(ev.payload))
     out_videos, out_klvs = _collect(dst)
@@ -467,7 +467,7 @@ def test_transmux_write_rejects_non_events(tmp_path):
             tx.write(ev)
         with pytest.raises(TypeError, match="unsupported event type"):
             tx.write(b"not an event")
-        with pytest.raises(TypeError, match="expected a DemuxEvent.Klv"):
+        with pytest.raises(TypeError, match="expected a DemuxEvent.Metadata"):
             tx.write_klv(b"not an event", b"payload")
 
 

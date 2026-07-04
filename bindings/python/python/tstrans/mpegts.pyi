@@ -373,6 +373,22 @@ class DemuxEvent:
         payload: bytes
 
     @dataclass(frozen=True, slots=True)
+    class Metadata(DemuxEvent):
+        stream: StreamId
+        pts: Pts90khz
+        kind: MetadataKindTag
+        payload: bytes
+        was_reassembled: bool = ...
+        cell_count: int = ...
+        def parse(
+            self, *, strict: bool = ...
+        ) -> Optional[
+            Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]
+        ]: ...
+
+    # Deprecated alias for Metadata — same class object at runtime; remove at 1.0.
+    # Declared as a full class so stubtest can check the runtime attribute.
+    @dataclass(frozen=True, slots=True)
     class Klv(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
@@ -417,6 +433,7 @@ _ProgramMapEvent = DemuxEvent.ProgramMap
 _VideoEvent = DemuxEvent.Video
 _AudioEvent = DemuxEvent.Audio
 _SubtitleEvent = DemuxEvent.Subtitle
+_MetadataEvent = DemuxEvent.Metadata
 _KlvEvent = DemuxEvent.Klv
 _UnknownSampleEvent = DemuxEvent.UnknownSample
 _DiscontinuityEvent = DemuxEvent.Discontinuity

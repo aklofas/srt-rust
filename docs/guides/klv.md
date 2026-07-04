@@ -190,7 +190,7 @@ caller doesn't have to spell out the partial-presence cases.
 > `dataclasses.replace` wrapper on all four sets; unknown names raise
 > `TypeError` and construction-time validation re-runs on the copy).
 > To stream typed ST 0601 records straight from a file with their PTS,
-> use `tstrans.io.iter_uas_datalink(path)`; on a `DemuxEvent.Klv`
+> use `tstrans.io.iter_uas_datalink(path)`; on a `DemuxEvent.Metadata`
 > demux event, `ev.parse()` dispatches by universal label.
 
 Unknown-tag pass-through. Any tag not in the typed table lives in

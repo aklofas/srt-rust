@@ -808,7 +808,7 @@ fn convert_metadata_event(
     };
     let cls = mpegts
         .getattr(intern!(py, "DemuxEvent"))?
-        .getattr(intern!(py, "Klv"))?;
+        .getattr(intern!(py, "Metadata"))?;
     let kwargs = PyDict::new_bound(py);
     kwargs.set_item("stream", stream_py)?;
     kwargs.set_item("pts", pts_py)?;

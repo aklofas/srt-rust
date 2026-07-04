@@ -56,7 +56,7 @@ for ev in tio.parse_file("input.ts"):
         for frame in dec.decode(pkt):
             img = frame.to_ndarray(format="bgr24")  # HxWx3 uint8, OpenCV-compatible
             t_ms = frame.pts * 1000 / 90000          # true presentation timestamp (ms)
-    elif isinstance(ev, DemuxEvent.Klv):
+    elif isinstance(ev, DemuxEvent.Metadata):
         ls = klv.decode_uas_datalink(ev.payload)     # PTS-aligned to the frames above
 
 for frame in dec.decode(None):                       # flush the decoder reorder buffer at EOF

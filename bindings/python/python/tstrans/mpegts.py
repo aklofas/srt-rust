@@ -427,7 +427,7 @@ class StreamKindTag(enum.Enum):
 
 
 class MetadataKindTag(enum.Enum):
-    """Discriminator for `DemuxEvent.Klv.kind`. Mirrors Rust
+    """Discriminator for `DemuxEvent.Metadata.kind`. Mirrors Rust
     `MetadataKind` collapsed to its variant tag."""
     KLV_SYNC_AU_CELL = "klv_sync_au_cell"
     KLV_ASYNC = "klv_async"
@@ -581,7 +581,7 @@ class DemuxEvent:
     """Top-level event emitted by `Demuxer.next_event()`.
 
     `DemuxEvent` is a namespace base class — instantiate one of its
-    subclasses (`DemuxEvent.Video(...)`, `DemuxEvent.Klv(...)`, etc.)
+    subclasses (`DemuxEvent.Video(...)`, `DemuxEvent.Metadata(...)`, etc.)
     or let `Demuxer` construct them for you. Pattern-match with
     Python 3.10+:
 
@@ -590,7 +590,7 @@ class DemuxEvent:
         match ev:
             case DemuxEvent.Video(stream=s, pts=p, raw=b):
                 units = ev.parse()  # opt-in NAL/OBU split
-            case DemuxEvent.Klv(payload=b):
+            case DemuxEvent.Metadata(payload=b):
                 ...
     ```
 
@@ -606,7 +606,8 @@ class DemuxEvent:
     Video: ClassVar[type["_VideoEvent"]]
     Audio: ClassVar[type["_AudioEvent"]]
     Subtitle: ClassVar[type["_SubtitleEvent"]]
-    Klv: ClassVar[type["_KlvEvent"]]
+    Metadata: ClassVar[type["_MetadataEvent"]]
+    Klv: ClassVar[type["_MetadataEvent"]]  # deprecated alias for Metadata, remove at 1.0
     UnknownSample: ClassVar[type["_UnknownSampleEvent"]]
     Discontinuity: ClassVar[type["_DiscontinuityEvent"]]
     NonConformant: ClassVar[type["_NonConformantEvent"]]
@@ -835,7 +836,7 @@ class _SubtitleEvent(DemuxEvent):
 
 
 @dataclass(frozen=True, slots=True)
-class _KlvEvent(DemuxEvent):
+class _MetadataEvent(DemuxEvent):
     stream: StreamId
     pts: Pts90khz
     kind: MetadataKindTag
@@ -843,7 +844,7 @@ class _KlvEvent(DemuxEvent):
     # Multi-cell AU reassembly surface (H.222.0 §2.12.4.2). `False` + `1`
     # on single-cell (Complete) AUs and on non-KlvSyncAuCell metadata
     # events. Defaults preserve backward compatibility for any callers
-    # that construct `_KlvEvent` directly (the Rust converter always
+    # that construct `_MetadataEvent` directly (the Rust converter always
     # populates these explicitly).
     was_reassembled: bool = False
     cell_count: int = 1
@@ -916,7 +917,11 @@ DemuxEvent.ProgramMap = _ProgramMapEvent
 DemuxEvent.Video = _VideoEvent
 DemuxEvent.Audio = _AudioEvent
 DemuxEvent.Subtitle = _SubtitleEvent
-DemuxEvent.Klv = _KlvEvent
+DemuxEvent.Metadata = _MetadataEvent
+# DemuxEvent.Klv is a deprecated alias for DemuxEvent.Metadata — it is the
+# SAME class object, so `isinstance(e, DemuxEvent.Klv)` and
+# `case DemuxEvent.Klv(...)` keep working unchanged. Remove at 1.0.
+DemuxEvent.Klv = _MetadataEvent  # deprecated alias, remove at 1.0
 DemuxEvent.UnknownSample = _UnknownSampleEvent
 DemuxEvent.Discontinuity = _DiscontinuityEvent
 DemuxEvent.NonConformant = _NonConformantEvent

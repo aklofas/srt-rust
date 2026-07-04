@@ -237,7 +237,7 @@ def test_strict_mode_orphan_middle_emits_orphan_diagnostic_only() -> None:
     ts = _build_ts_with_orphan_middle_cell()
     events = _collect_events(Demuxer(DemuxerConfig(cfi_tolerance=False)), ts)
 
-    klv_events = [e for e in events if isinstance(e, DemuxEvent.Klv)]
+    klv_events = [e for e in events if isinstance(e, DemuxEvent.Metadata)]
     assert len(klv_events) == 0, "strict mode: no KLV metadata events"
 
     nonconf_events = [e for e in events if isinstance(e, DemuxEvent.NonConformant)]
@@ -257,14 +257,14 @@ def test_strict_mode_orphan_middle_emits_orphan_diagnostic_only() -> None:
 
 def test_tolerance_mode_orphan_middle_emits_klv_plus_typed_diagnostic() -> None:
     """Tolerance config (tolerance True): orphan Middle with valid KLV
-    surfaces as one `DemuxEvent.Klv` (Complete) plus one
+    surfaces as one `DemuxEvent.Metadata` (Complete) plus one
     `DemuxEvent.NonConformant` with `kind=CFI_TOLERATED`
     and typed `observed_cfi=MIDDLE` / `treated_as=COMPLETE`."""
     ts = _build_ts_with_orphan_middle_cell()
     cfg = DemuxerConfig(cfi_tolerance=True)
     events = _collect_events(Demuxer(cfg), ts)
 
-    klv_events = [e for e in events if isinstance(e, DemuxEvent.Klv)]
+    klv_events = [e for e in events if isinstance(e, DemuxEvent.Metadata)]
     assert len(klv_events) == 1, (
         f"tolerance mode: 1 KLV event expected, got {len(klv_events)}"
     )

@@ -33,7 +33,7 @@ for event in parse_file("capture.ts"):
     match event:
         case DemuxEvent.Video(pts=p, codec=c, payload=b):
             print(f"Video {c.name} pts={p.ms}ms len={len(b)}")
-        case DemuxEvent.Klv(pts=p, payload=b):
+        case DemuxEvent.Metadata(pts=p, payload=b):
             print(f"KLV pts={p.ms}ms len={len(b)}")
 ```
 
@@ -161,7 +161,7 @@ def consumer() -> None:
         for event in rx:
             if isinstance(event, DemuxEvent.Video):
                 print(f"video pts={event.pts.ms}ms nals={len(event.payload)}")
-            elif isinstance(event, DemuxEvent.Klv):
+            elif isinstance(event, DemuxEvent.Metadata):
                 print(f"klv pts={event.pts.ms}ms len={event.byte_len}")
 
 threading.Thread(target=consumer, daemon=True).start()

@@ -71,7 +71,7 @@ def test_subtitle_event():
 
 
 def test_klv_event_sync_au_cell():
-    ev = DemuxEvent.Klv(
+    ev = DemuxEvent.Metadata(
         stream=StreamId(pid=257, kind=StreamKindTag.KLV_SYNC,
                         codec=None, program_number=1),
         pts=Pts90khz.from_ms(100),

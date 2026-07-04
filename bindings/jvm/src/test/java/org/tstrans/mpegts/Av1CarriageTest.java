@@ -25,7 +25,7 @@ class Av1CarriageTest {
         return unsigned(
             0x12, 0x00,                          // TD OBU (type 2), empty body
             0x0A, 0x04, 0x00, 0x00, 0x01, 0xAA, // SEQUENCE_HEADER (type 1), 4-byte body
-            0x1A, 0x02, 0x00, 0xFF               // FRAME (type 3), 2-byte body
+            0x1A, 0x02, 0x00, 0xFF               // FRAME_HEADER (type 3), 2-byte body
         );
     }
 
@@ -175,7 +175,7 @@ class Av1CarriageTest {
         assertEquals(Av1CarriageMode.MPEG2_TS_BINDING, video.av1Carriage());
 
         List<VideoUnit> units = video.parse();
-        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME (type 3).
+        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME_HEADER (type 3).
         assertEquals(3, units.size(),
             "binding-mode parse() must yield exactly 3 OBUs from synthAv1Au");
         assertAll("OBU types in synthAv1Au order (binding mode)",
@@ -184,7 +184,7 @@ class Av1CarriageTest {
             () -> assertInstanceOf(Obu.class, units.get(1)),
             () -> assertEquals(1, ((Obu) units.get(1)).obuType(), "OBU 1: SEQUENCE_HEADER (type 1)"),
             () -> assertInstanceOf(Obu.class, units.get(2)),
-            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME (type 3)")
+            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME_HEADER (type 3)")
         );
     }
 
@@ -219,7 +219,7 @@ class Av1CarriageTest {
         assertEquals(Av1CarriageMode.INTEROP_RAW_OBU, video.av1Carriage());
 
         List<VideoUnit> units = video.parse();
-        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME (type 3).
+        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME_HEADER (type 3).
         assertEquals(3, units.size(),
             "interop-mode parse() must yield exactly 3 OBUs from synthAv1Au");
         assertAll("OBU types in synthAv1Au order (interop mode)",
@@ -228,7 +228,7 @@ class Av1CarriageTest {
             () -> assertInstanceOf(Obu.class, units.get(1)),
             () -> assertEquals(1, ((Obu) units.get(1)).obuType(), "OBU 1: SEQUENCE_HEADER (type 1)"),
             () -> assertInstanceOf(Obu.class, units.get(2)),
-            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME (type 3)")
+            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME_HEADER (type 3)")
         );
     }
 

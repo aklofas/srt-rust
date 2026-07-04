@@ -3,6 +3,7 @@ package org.tstrans.mpegts;
 import java.nio.ByteBuffer;
 import java.util.List;
 import org.tstrans.CodecParseException;
+import org.tstrans.DemuxException;
 import org.tstrans.codec.AudioFrame;
 import org.tstrans.codec.VideoUnit;
 
@@ -81,13 +82,22 @@ public sealed interface DemuxEvent
          * {@code DemuxEvent.Video.parse()}.
          *
          * <p>Each invocation calls the native {@code split_video}; cache the
-         * result if you need it more than once.
+         * result if you need it more than once. Position-independent: the
+         * stored {@code raw} buffer's current position/limit are ignored, so
+         * a consumer that read {@code raw()} directly beforehand does not
+         * truncate the parse.
          *
          * @return the typed codec units (never {@code null}; empty only when
          *         the access unit contained no parseable units)
+         * @throws DemuxException on an internal binding failure (e.g. JNI
+         *         allocation); never for merely-malformed access units, which
+         *         yield an empty list
          */
-        public List<VideoUnit> parse() {
-            ByteBuffer r = raw().duplicate();
+        public List<VideoUnit> parse() throws DemuxException {
+            // clear() on the duplicate resets position=0/limit=capacity on the
+            // VIEW only (the record's buffer is untouched) — guards against a
+            // consumer having advanced the shared buffer's position via raw().
+            ByteBuffer r = raw().duplicate().clear();
             byte[] bytes = new byte[r.remaining()];
             r.get(bytes);
             // av1Carriage() null (non-AV1 codec) → ordinal 0 (MPEG2_TS_BINDING default;
@@ -229,5 +239,6 @@ final class DemuxEventVideoNatives {
     static { org.tstrans.NativeLoader.load(); }
 
     static native java.util.List<org.tstrans.codec.VideoUnit> nSplitVideo(
-            byte[] raw, int codecOrdinal, int av1CarriageOrdinal);
+            byte[] raw, int codecOrdinal, int av1CarriageOrdinal)
+            throws org.tstrans.DemuxException;
 }

@@ -27,11 +27,11 @@ class DemuxerTest {
                 }
                 if (e instanceof DemuxEvent.Audio a) {
                     assertTrue(a.stream().pid() > 0);
-                    // mp2.ts is a clean MP2 stream → typed frame list, no
-                    // bytes-fallback, no parse error.
-                    assertNotNull(a.payload());
-                    assertNull(a.rawPayload(), "clean MP2 parse has no rawPayload");
-                    assertNull(a.codecParseError(), "clean MP2 parse has no codecParseError");
+                    // mp2.ts is a clean MP2 stream → raw ES bytes are present,
+                    // and opt-in parse() yields the typed Mpeg2AudioFrame list.
+                    assertNotNull(a.raw(), "audio events carry the raw encoded ES");
+                    assertTrue(a.raw().remaining() > 0, "expected non-empty raw audio ES");
+                    assertFalse(a.parse().isEmpty(), "clean MP2 parse() yields typed frames");
                 }
             }
         }
@@ -41,10 +41,10 @@ class DemuxerTest {
 
     @Test
     void samplePayloadIsRetainableHeapCopy() throws Exception {
-        // mp2.ts yields DemuxEvent.Audio events with typed Mpeg2AudioFrame
-        // payloads. Each frame's payload is a JVM-owned heap copy (not a direct
-        // buffer over Rust memory), so it stays valid even after further pulls
-        // and close().
+        // mp2.ts yields DemuxEvent.Audio events; opt-in parse() gives typed
+        // Mpeg2AudioFrames. Each frame's payload is a JVM-owned heap copy (not a
+        // direct buffer over Rust memory), so it stays valid even after further
+        // pulls and close().
         byte[] ts = Files.readAllBytes(FIXTURE);
         java.nio.ByteBuffer retained = null;
         byte[] snapshot = null;
@@ -52,9 +52,13 @@ class DemuxerTest {
             d.feed(ts);
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Audio a && !a.payload().isEmpty()) {
+                if (e instanceof DemuxEvent.Audio a) {
+                    java.util.List<org.tstrans.codec.AudioFrame> frames = a.parse();
+                    if (frames.isEmpty()) {
+                        continue;
+                    }
                     org.tstrans.codec.Mpeg2AudioFrame frame =
-                        (org.tstrans.codec.Mpeg2AudioFrame) a.payload().get(0);
+                        (org.tstrans.codec.Mpeg2AudioFrame) frames.get(0);
                     retained = frame.payload();
                     assertFalse(retained.isDirect(),
                         "frame payload is a copied heap ByteBuffer, safe to retain");

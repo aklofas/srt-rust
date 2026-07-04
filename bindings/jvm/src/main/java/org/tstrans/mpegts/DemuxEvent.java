@@ -116,30 +116,79 @@ public sealed interface DemuxEvent
     }
 
     /**
-     * An audio access unit. On a clean AAC / MP2 parse the {@code payload} is a
-     * typed {@link List} of {@link AudioFrame} ({@code AdtsFrame} for AAC,
-     * {@code Mpeg2AudioFrame} for MP2), {@code rawPayload} and
-     * {@code codecParseError} are {@code null}. On a mid-stream parse failure the
-     * {@code payload} is an empty list, {@code rawPayload} carries the raw frame
-     * bytes (heap {@link ByteBuffer}), and {@code codecParseError} describes the
-     * failure. For deferred codecs (AAC-LATM, AC-3) the {@code payload} is empty,
-     * {@code rawPayload} carries the bytes, and {@code codecParseError} is
-     * {@code null} (silent fallback). Mirrors tst-py's audio event.
+     * An audio access unit, carrying the raw encoded elementary-stream bytes.
+     * {@code raw} is the exact encoded audio ES; call {@link #parse()} to obtain
+     * the typed {@link List} of {@link AudioFrame} on demand — {@code AdtsFrame}s
+     * for AAC, {@code Mpeg2AudioFrame}s for MP2, and an <b>empty list</b> for
+     * codecs with no typed parser (AAC-LATM, AC-3 — read {@link #raw()} directly).
+     * The {@code codec} field disambiguates which. Mirrors tst-py's raw-first
+     * model where {@code DemuxEvent.Audio.parse()} is the opt-in parse call, and
+     * the WP16 {@link Video} shape.
      *
-     * @param stream          the elementary stream this sample belongs to
-     * @param pts             presentation timestamp in 90&nbsp;kHz ticks
-     * @param dts             decode timestamp in 90&nbsp;kHz ticks, or {@code null} when absent
-     * @param codec           the audio codec (also on {@code stream.kind()})
-     * @param payload         typed frames on a clean parse, else an empty list
-     * @param rawPayload      raw frame bytes (heap {@link ByteBuffer}) on a
-     *                        bytes-fallback path, else {@code null}
-     * @param codecParseError the parse failure on a mid-stream error, else
-     *                        {@code null} (also {@code null} for the silent
-     *                        deferred-codec fallback)
+     * @param stream the elementary stream this sample belongs to
+     * @param pts    presentation timestamp in 90&nbsp;kHz ticks
+     * @param dts    decode timestamp in 90&nbsp;kHz ticks, or {@code null} when absent
+     * @param codec  the audio codec (also on {@code stream.kind()})
+     * @param raw    the exact encoded audio elementary-stream bytes as a heap
+     *               (JVM-owned) {@link ByteBuffer} copy, safe to retain (true
+     *               zero-copy is deferred to a JDK&nbsp;22+ FFM path). Mirrors
+     *               tst-py's {@code .raw}.
      */
     record Audio(StreamId stream, long pts, Long dts, AudioCodec codec,
-                 List<AudioFrame> payload, ByteBuffer rawPayload,
-                 CodecParseException codecParseError) implements DemuxEvent {}
+                 ByteBuffer raw) implements DemuxEvent {
+
+        /**
+         * Opt-in: parse the raw audio elementary-stream bytes into typed audio
+         * frames — {@link org.tstrans.codec.AdtsFrame} for AAC,
+         * {@link org.tstrans.codec.Mpeg2AudioFrame} for MP2; an <b>empty list</b>
+         * for codecs with no typed parser (AAC-LATM, AC-3 — read {@link #raw()}
+         * directly). Lenient: skips past corruption to the next valid frame.
+         * Mirrors Python's {@code DemuxEvent.Audio.parse()}.
+         *
+         * <p>Each invocation re-parses {@code raw}; cache the result if you need
+         * it more than once. Position-independent: the stored {@code raw}
+         * buffer's current position/limit are ignored, so a consumer that read
+         * {@code raw()} directly beforehand does not truncate the parse.
+         *
+         * @return the typed audio frames (never {@code null}; empty for codecs
+         *         with no typed parser, or when the ES held no parseable frame)
+         * @throws CodecParseException never in this lenient mode (kept in the
+         *         signature so {@link #parse(boolean)} and this overload share
+         *         one call shape)
+         */
+        public List<AudioFrame> parse() throws CodecParseException {
+            return parse(false);
+        }
+
+        /**
+         * Strict variant: throws {@link CodecParseException} on the first
+         * malformed frame instead of resyncing past it. Codecs with no typed
+         * parser (AAC-LATM, AC-3) still return an empty list. Mirrors Python's
+         * {@code DemuxEvent.Audio.parse(strict=True)}.
+         *
+         * @param strict {@code true} to throw on the first malformed frame,
+         *               {@code false} to skip past corruption (as {@link #parse()})
+         * @return the typed audio frames (never {@code null})
+         * @throws CodecParseException in strict mode, on the first malformed frame
+         */
+        public List<AudioFrame> parse(boolean strict) throws CodecParseException {
+            // clear() on the duplicate resets position=0/limit=capacity on the
+            // VIEW only (the record's buffer is untouched) — guards against a
+            // consumer having advanced the shared buffer's position via raw().
+            ByteBuffer r = raw().duplicate().clear();
+            byte[] bytes;
+            if (r.hasArray() && r.arrayOffset() == 0 && r.array().length == r.remaining()) {
+                // Common case: the demuxer wraps an exact-size heap array — hand
+                // it to the native directly (it only reads; the JNI side copies
+                // into Rust) instead of paying a second Java-side copy.
+                bytes = r.array();
+            } else {
+                bytes = new byte[r.remaining()];
+                r.get(bytes);
+            }
+            return DemuxEventAudioNatives.nParseAudio(bytes, codec().ordinal(), strict);
+        }
+    }
 
     /**
      * A subtitle access unit.
@@ -249,4 +298,21 @@ final class DemuxEventVideoNatives {
     static native java.util.List<org.tstrans.codec.VideoUnit> nSplitVideo(
             byte[] raw, int codecOrdinal, int av1CarriageOrdinal)
             throws org.tstrans.DemuxException;
+}
+
+/**
+ * Package-private JNI entry point for {@link DemuxEvent.Audio#parse()}.
+ *
+ * <p>Records cannot declare {@code native} methods (JLS §8.10.3), so the
+ * native declaration lives here and {@code Audio.parse()} delegates to it.
+ * The JNI symbol is {@code Java_org_tstrans_mpegts_DemuxEventAudioNatives_nParseAudio}.
+ */
+final class DemuxEventAudioNatives {
+    private DemuxEventAudioNatives() {}
+
+    static { org.tstrans.NativeLoader.load(); }
+
+    static native java.util.List<org.tstrans.codec.AudioFrame> nParseAudio(
+            byte[] raw, int codecOrdinal, boolean strict)
+            throws org.tstrans.CodecParseException;
 }

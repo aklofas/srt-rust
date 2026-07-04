@@ -353,11 +353,11 @@ class ScenarioReproductionTest {
         assertNotNull(firstAudio, "no DemuxEvent.Audio found in " + inputPath);
         assertEquals(AudioCodec.AAC, firstAudio.codec(),
             "the aac-audio-only scenario's audio stream must be tagged AAC");
-        assertNull(firstAudio.codecParseError(),
-            "audio codecParseError must be null — the ADTS payload parses cleanly");
-        List<AudioFrame> frames = firstAudio.payload();
-        assertNotNull(frames, "AAC Audio.payload must be a typed List<AudioFrame>, not raw");
-        assertFalse(frames.isEmpty(), "AAC Audio.payload must be non-empty");
+        // Opt-in parse() yields the typed frames; the clean ADTS payload parses
+        // without throwing (lenient mode).
+        List<AudioFrame> frames = firstAudio.parse();
+        assertNotNull(frames, "AAC Audio.parse() must return a typed List<AudioFrame>, not null");
+        assertFalse(frames.isEmpty(), "AAC Audio.parse() must be non-empty");
         // Downcast via instanceof (no switch-on-sealed; JDK 17).
         AudioFrame first = frames.get(0);
         assertTrue(first instanceof AdtsFrame,

@@ -47,7 +47,7 @@ use tst_core::shared::SharedBytes;
 use crate::codec::aac::build_adts_frame;
 use crate::codec::mpegaudio::build_mpeg2_audio_frame;
 use crate::codec::shared::{build_nal_unit, build_obu};
-use crate::error::{build_codec_exception, throw_demux};
+use crate::error::{map_codec_parse_error, throw_demux};
 use crate::handle::HandleRegistry;
 
 /// Per-type leased-handle registry for `org.tstrans.mpegts.Demuxer`.
@@ -351,6 +351,123 @@ pub extern "system" fn Java_org_tstrans_mpegts_DemuxEventVideoNatives_nSplitVide
     })
 }
 
+/// `DemuxEventAudioNatives.nParseAudio(raw, codecOrdinal, strict)` — the opt-in
+/// frame-parse native backing [`DemuxEvent.Audio.parse()`]. Parses the raw audio
+/// elementary-stream bytes into the same `java.util.List<AudioFrame>` the eager
+/// path formerly produced — `AdtsFrame`s for AAC, `Mpeg2AudioFrame`s for MP2, and
+/// an EMPTY list for codecs with no typed parser (AAC-LATM, AC-3). `strict=false`
+/// uses `frames_with_resync` (skips past corruption to the next valid frame, never
+/// throws); `strict=true` uses `frames` (throws `CodecParseException` on the first
+/// malformed frame). Mirrors tst-py's `codec.parse_audio(raw, codec, strict=...)`
+/// decision-for-decision (the strict codec labels `"aac"` / `"mpeg2audio"` match
+/// tst-py's `parse_audio`, not the muxer-side `"mp2"` short name).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_DemuxEventAudioNatives_nParseAudio<'local>(
+    mut env: JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    raw: jni::objects::JByteArray<'local>,
+    codec_ordinal: jni::sys::jint,
+    strict: jni::sys::jboolean,
+) -> jni::sys::jobject {
+    use tst_core::codec::aac::{frames as aac_frames, frames_with_resync as aac_resync};
+    use tst_core::codec::mpegaudio::{frames as mp2_frames, frames_with_resync as mp2_resync};
+
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let raw_bytes = match env.convert_byte_array(&raw) {
+            Ok(b) => b,
+            Err(_) => {
+                throw_demux(env, "INTERNAL", "failed to read byte[] argument");
+                return std::ptr::null_mut();
+            }
+        };
+        let strict = strict != 0;
+        // Exact ordinal validation, mirroring nSplitVideo: an out-of-range value
+        // means AudioCodec enum drift (a Java variant added without updating this
+        // mapping) or a reflective misuse — fail loudly.
+        let codec = match codec_ordinal {
+            0 => AudioCodec::Mp2,
+            1 => AudioCodec::Aac,
+            2 => AudioCodec::AacLatm,
+            3 => AudioCodec::Ac3,
+            other => {
+                throw_demux(
+                    env,
+                    "INTERNAL",
+                    &format!("unknown AudioCodec ordinal {other}"),
+                );
+                return std::ptr::null_mut();
+            }
+        };
+        // Dispatch on codec + strict, mirroring tst-py's `parse_audio`:
+        // AAC/MP2 → typed frames (strict `frames` vs lenient `frames_with_resync`);
+        // AAC-LATM/AC-3 → empty list (no typed parser — read raw() directly).
+        match codec {
+            AudioCodec::Aac => {
+                if strict {
+                    // STRICT: the first Err throws + returns null.
+                    let owned: Result<Vec<_>, _> = aac_frames(&raw_bytes)
+                        .map(|res| res.map(|f| f.to_owned()))
+                        .collect();
+                    let owned = match owned {
+                        Ok(v) => v,
+                        Err(e) => {
+                            map_codec_parse_error(env, &e, "aac");
+                            return std::ptr::null_mut();
+                        }
+                    };
+                    match build_adts_frame_list(env, &owned) {
+                        Ok(list) => list.into_raw(),
+                        Err(()) => std::ptr::null_mut(),
+                    }
+                } else {
+                    // BEST-EFFORT: Err items are silently skipped (resync).
+                    let owned: Vec<_> = aac_resync(&raw_bytes)
+                        .filter_map(|res| res.ok())
+                        .map(|f| f.to_owned())
+                        .collect();
+                    match build_adts_frame_list(env, &owned) {
+                        Ok(list) => list.into_raw(),
+                        Err(()) => std::ptr::null_mut(),
+                    }
+                }
+            }
+            AudioCodec::Mp2 => {
+                if strict {
+                    let owned: Result<Vec<_>, _> = mp2_frames(&raw_bytes)
+                        .map(|res| res.map(|f| f.to_owned()))
+                        .collect();
+                    let owned = match owned {
+                        Ok(v) => v,
+                        Err(e) => {
+                            map_codec_parse_error(env, &e, "mpeg2audio");
+                            return std::ptr::null_mut();
+                        }
+                    };
+                    match build_mpeg2_frame_list(env, &owned) {
+                        Ok(list) => list.into_raw(),
+                        Err(()) => std::ptr::null_mut(),
+                    }
+                } else {
+                    let owned: Vec<_> = mp2_resync(&raw_bytes)
+                        .filter_map(|res| res.ok())
+                        .map(|f| f.to_owned())
+                        .collect();
+                    match build_mpeg2_frame_list(env, &owned) {
+                        Ok(list) => list.into_raw(),
+                        Err(()) => std::ptr::null_mut(),
+                    }
+                }
+            }
+            // AAC-LATM + AC-3 typed parsing is deferred — empty list (no typed
+            // parser). Matches tst-py's `_ =>` arm.
+            _ => match env.new_object("java/util/ArrayList", "()V", &[]) {
+                Ok(list) => list.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+        }
+    })
+}
+
 /// Throw `IllegalStateException` for a leased call that found a closed/absent
 /// handle — the native-side enforcement of the same closed-handle contract the
 /// Java `ensureOpen()` already checks, so the JNI boundary fails closed even if a
@@ -393,11 +510,11 @@ pub(crate) fn convert_event<'local>(
             dts,
             payload,
         } => {
-            // Typed-payload sample records. Mirrors tst-py's `convert_sample_event`
-            // decision-for-decision: video → typed NAL/OBU lists; audio → typed
-            // frame lists on a clean parse, raw bytes + a `CodecParseException`
-            // on a mid-stream parse failure, raw bytes (silent) for deferred
-            // codecs; subtitle/unknown → raw heap `ByteBuffer`.
+            // Raw-first sample records. Mirrors tst-py's `convert_sample_event`
+            // decision-for-decision: video + audio surface the exact encoded
+            // access-unit bytes as a heap `ByteBuffer`; typed unit/frame parsing
+            // is deferred to the opt-in `Video.parse()` / `Audio.parse()` calls.
+            // subtitle/unknown → raw heap `ByteBuffer`.
             let stream_obj = build_stream_id(env, stream)?;
             let pts_ticks = pts.as_ticks();
             let dts_obj = opt_long(env, *dts)?;
@@ -436,20 +553,21 @@ pub(crate) fn convert_event<'local>(
                     .map_err(|_| ())?
                 }
                 SamplePayload::Audio { codec, frames } => {
-                    let (typed_list, raw_buf, parse_err) =
-                        build_audio_payload(env, *codec, frames.as_slice())?;
+                    // Raw-first: emit the encoded audio ES as a heap-copied
+                    // ByteBuffer; typed-frame parsing is deferred to Audio.parse()
+                    // (opt-in), mirroring tst-py's model and the WP16 Video shape.
+                    // JDK < 22 forbids direct buffers over Rust memory, so we copy.
                     let codec_obj = enum_const(env, "AudioCodec", audio_codec_name(*codec))?;
+                    let raw_buf = wrap_heap_byte_buffer(env, frames.as_slice())?;
                     env.new_object(
                         "org/tstrans/mpegts/DemuxEvent$Audio",
-                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/AudioCodec;Ljava/util/List;Ljava/nio/ByteBuffer;Lorg/tstrans/CodecParseException;)V",
+                        "(Lorg/tstrans/mpegts/StreamId;JLjava/lang/Long;Lorg/tstrans/mpegts/AudioCodec;Ljava/nio/ByteBuffer;)V",
                         &[
                             JValue::Object(&stream_obj),
                             JValue::Long(pts_ticks),
                             JValue::Object(&dts_obj),
                             JValue::Object(&codec_obj),
-                            JValue::Object(&typed_list),
                             JValue::Object(&raw_buf),
-                            JValue::Object(&parse_err),
                         ],
                     )
                     .map_err(|_| ())?
@@ -864,128 +982,59 @@ pub(crate) fn build_video_units<'local>(
     Ok(list)
 }
 
-/// Build the audio payload triple for a `DemuxEvent.Audio` record:
-/// `(typedList, rawPayload, codecParseError)`. Mirrors tst-py's
-/// `convert_sample_event` audio arm EXACTLY:
-///
-/// * AAC / MP2 clean parse (every `frames_with_resync` item `Ok`) →
-///   `(List<AudioFrame>, null, null)`.
-/// * AAC / MP2 mid-stream parse failure (first `Err`) →
-///   `(empty List, ByteBuffer raw, CodecParseException)` with codec label
-///   `"aac"` / `"mp2"`.
-/// * AAC-LATM / AC-3 / other (typed parse deferred) →
-///   `(empty List, ByteBuffer raw, null)` — silent bytes fallback.
-///
-/// Each typed frame is built inside a per-element local frame (unbounded frame
-/// counts per AU). Returns an empty list (never null) on the bytes-fallback
-/// paths so the Java `payload` field is always a `List`.
-fn build_audio_payload<'local>(
+/// Build a `java.util.ArrayList<AdtsFrame>` from owned AAC frames; each frame is
+/// constructed inside a per-element local frame so its refs are reclaimed
+/// (unbounded frame counts per AU). Reuses [`build_adts_frame`] — the same
+/// frame→jobject construction the eager audio path used. Backs
+/// [`DemuxEvent.Audio.parse()`] for AAC.
+fn build_adts_frame_list<'local>(
     env: &mut JNIEnv<'local>,
-    codec: AudioCodec,
-    frames: &[u8],
-) -> Result<(JObject<'local>, JObject<'local>, JObject<'local>), ()> {
-    use tst_core::codec::aac::frames_with_resync as aac_frames;
-    use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
-
-    match codec {
-        AudioCodec::Aac => {
-            // Collect owned frames, early-returning on the first Err (strict —
-            // matches tst-py's `for res in aac_frames(..) { Ok => push, Err => return }`).
-            let mut owned = Vec::new();
-            let mut parse_err = None;
-            for res in aac_frames(frames) {
-                match res {
-                    Ok(f) => owned.push(f.to_owned()),
-                    Err(e) => {
-                        parse_err = Some(e);
-                        break;
-                    }
-                }
-            }
-            match parse_err {
-                None => {
-                    let list = env
-                        .new_object("java/util/ArrayList", "()V", &[])
-                        .map_err(|_| ())?;
-                    for f in &owned {
-                        env.with_local_frame(24, |inner| {
-                            let val = build_adts_frame(inner, f)
-                                .map_err(|()| jni::errors::Error::JavaException)?;
-                            inner.call_method(
-                                &list,
-                                "add",
-                                "(Ljava/lang/Object;)Z",
-                                &[JValue::Object(&val)],
-                            )?;
-                            Ok::<(), jni::errors::Error>(())
-                        })
-                        .map_err(|_| ())?;
-                    }
-                    Ok((list, JObject::null(), JObject::null()))
-                }
-                Some(e) => {
-                    let list = env
-                        .new_object("java/util/ArrayList", "()V", &[])
-                        .map_err(|_| ())?;
-                    let raw = wrap_heap_byte_buffer(env, frames)?;
-                    let exc = build_codec_exception(env, &e, "aac")?;
-                    Ok((list, raw, exc))
-                }
-            }
-        }
-        AudioCodec::Mp2 => {
-            let mut owned = Vec::new();
-            let mut parse_err = None;
-            for res in mpegaudio_frames(frames) {
-                match res {
-                    Ok(f) => owned.push(f.to_owned()),
-                    Err(e) => {
-                        parse_err = Some(e);
-                        break;
-                    }
-                }
-            }
-            match parse_err {
-                None => {
-                    let list = env
-                        .new_object("java/util/ArrayList", "()V", &[])
-                        .map_err(|_| ())?;
-                    for f in &owned {
-                        env.with_local_frame(24, |inner| {
-                            let val = build_mpeg2_audio_frame(inner, f)
-                                .map_err(|()| jni::errors::Error::JavaException)?;
-                            inner.call_method(
-                                &list,
-                                "add",
-                                "(Ljava/lang/Object;)Z",
-                                &[JValue::Object(&val)],
-                            )?;
-                            Ok::<(), jni::errors::Error>(())
-                        })
-                        .map_err(|_| ())?;
-                    }
-                    Ok((list, JObject::null(), JObject::null()))
-                }
-                Some(e) => {
-                    let list = env
-                        .new_object("java/util/ArrayList", "()V", &[])
-                        .map_err(|_| ())?;
-                    let raw = wrap_heap_byte_buffer(env, frames)?;
-                    let exc = build_codec_exception(env, &e, "mp2")?;
-                    Ok((list, raw, exc))
-                }
-            }
-        }
-        // AAC-LATM + AC-3 typed parsing is deferred — silent bytes fallback
-        // (empty list, raw bytes, no parse error). Matches tst-py's `_ =>` arm.
-        _ => {
-            let list = env
-                .new_object("java/util/ArrayList", "()V", &[])
-                .map_err(|_| ())?;
-            let raw = wrap_heap_byte_buffer(env, frames)?;
-            Ok((list, raw, JObject::null()))
-        }
+    frames: &[tst_core::codec::aac::AdtsFrameOwned],
+) -> Result<JObject<'local>, ()> {
+    let list = env
+        .new_object("java/util/ArrayList", "()V", &[])
+        .map_err(|_| ())?;
+    for f in frames {
+        env.with_local_frame(24, |inner| {
+            let val = build_adts_frame(inner, f).map_err(|()| jni::errors::Error::JavaException)?;
+            inner.call_method(
+                &list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&val)],
+            )?;
+            Ok::<(), jni::errors::Error>(())
+        })
+        .map_err(|_| ())?;
     }
+    Ok(list)
+}
+
+/// Build a `java.util.ArrayList<Mpeg2AudioFrame>` from owned MP2 frames. The MP2
+/// twin of [`build_adts_frame_list`]; reuses [`build_mpeg2_audio_frame`]. Backs
+/// [`DemuxEvent.Audio.parse()`] for MP2.
+fn build_mpeg2_frame_list<'local>(
+    env: &mut JNIEnv<'local>,
+    frames: &[tst_core::codec::mpegaudio::FrameOwned],
+) -> Result<JObject<'local>, ()> {
+    let list = env
+        .new_object("java/util/ArrayList", "()V", &[])
+        .map_err(|_| ())?;
+    for f in frames {
+        env.with_local_frame(24, |inner| {
+            let val = build_mpeg2_audio_frame(inner, f)
+                .map_err(|()| jni::errors::Error::JavaException)?;
+            inner.call_method(
+                &list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&val)],
+            )?;
+            Ok::<(), jni::errors::Error>(())
+        })
+        .map_err(|_| ())?;
+    }
+    Ok(list)
 }
 
 /// Build the Java `org.tstrans.mpegts.StreamId` record from a `tst_core`

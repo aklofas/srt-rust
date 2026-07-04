@@ -247,7 +247,7 @@ A `long` knob of `0` means "use the Rust core's default cap."
 
 - `ProgramMap(int programNumber, int pcrPid, int pmtPid, List<Integer> elementaryPids)` — PSI / PMT.
 - `Video(StreamId stream, long pts, Long dts, VideoCodec codec, ByteBuffer raw, boolean randomAccessIndicator, Av1CarriageMode av1Carriage)` — the raw encoded access unit; call `parse()` to obtain typed `List<VideoUnit>` on demand (see [Typed sample payloads](#typed-sample-payloads)).
-- `Audio(StreamId stream, long pts, Long dts, AudioCodec codec, List<AudioFrame> payload, ByteBuffer rawPayload, CodecParseException codecParseError)` — typed audio frames with a raw fallback (see [Typed sample payloads](#typed-sample-payloads)).
+- `Audio(StreamId stream, long pts, Long dts, AudioCodec codec, ByteBuffer raw)` — the raw encoded audio ES; call `parse()` to obtain typed `List<AudioFrame>` on demand (see [Typed sample payloads](#typed-sample-payloads)).
 - `Subtitle(StreamId stream, long pts, Long dts, SubtitleCodec codec, ByteBuffer payload)`
 - `UnknownSample(StreamId stream, long pts, Long dts, int streamType, ByteBuffer payload)`
 - `Metadata(StreamId stream, long pts, MetadataKind kind, ByteBuffer payload, boolean wasReassembled, int cellCount)` — KLV.
@@ -515,10 +515,11 @@ garbage by scanning for the next sync word instead of throwing.
 Since the codec wave, the demuxer hands back **typed** elementary units on
 demand. `DemuxEvent.Video.parse()` returns a `List<VideoUnit>` — `NalUnit`s for
 H.264 / H.265 / H.266, `Obu`s for AV1 — by calling the native `split_video`
-only when the caller opts in. `DemuxEvent.Audio.payload()` is a
-`List<AudioFrame>` — `AdtsFrame`s for AAC, `Mpeg2AudioFrame`s for MPEG-2 audio.
-The `codec()` accessor on each event tags the discriminant (`VideoCodec` /
-`AudioCodec`). Downcast with `instanceof`:
+only when the caller opts in. `DemuxEvent.Audio.parse()` likewise returns a
+`List<AudioFrame>` — `AdtsFrame`s for AAC, `Mpeg2AudioFrame`s for MPEG-2 audio —
+parsing the raw ES bytes only when the caller opts in. The `codec()` accessor on
+each event tags the discriminant (`VideoCodec` / `AudioCodec`). Downcast with
+`instanceof`:
 
 ```java
 // parse() throws the checked DemuxException — declare it on the
@@ -540,22 +541,32 @@ payload for AV1 — as a heap `ByteBuffer`. Call `parse()` when you need the
 typed unit list; it mirrors tst-py's `.parse()`. Feed `raw()` back to
 `Muxer.pushVideo` for byte-faithful transmux; it mirrors tst-py's `.raw`.
 
-**Raw fallback (audio only).** The raw-*fallback* model — bytes appear only
-when typed parsing didn't — applies to audio, in two distinct cases:
+**Audio raw bytes (always populated).** `Audio.raw()` carries the exact encoded
+audio elementary-stream bytes as a heap `ByteBuffer`. Call `parse()` (or
+`parse(strict)`) when you need the typed frame list; it mirrors tst-py's
+`.parse()`. `parse()` is **lenient** — it skips past corruption to the next
+valid frame and never throws; `parse(true)` is **strict** — it throws
+`CodecParseException` on the first malformed frame. Both are opt-in, so the
+demuxer never pays the parse cost for audio you don't inspect.
 
-- **Mid-stream malformation** — a parser hits a bad frame partway through the
-  stream. `payload()` is empty, `rawPayload()` carries the original bytes as a
-  heap `ByteBuffer`, and `codecParseError()` holds the `CodecParseException`
-  describing the failure.
-- **Deferred typed parsing (AAC-LATM, AC-3)** — these codecs are carried
-  (AC-3 is additionally sync-validated by the demuxer), but per-frame typed
-  parsing isn't implemented yet, so the binding falls back silently.
-  `payload()` is empty, `rawPayload()` carries the original bytes, but
-  `codecParseError()` is **null** (no error — the bytes simply weren't
-  parsed into typed frames).
+**Codecs with no typed parser (AAC-LATM, AC-3).** These codecs are carried
+(AC-3 is additionally sync-validated by the demuxer), but per-frame typed
+parsing isn't implemented yet, so `parse()` returns an **empty list** in both
+modes — read `raw()` directly for the encoded bytes.
 
-A clean audio parse leaves `payload()` populated with `List<AudioFrame>`,
-`rawPayload()` null, and `codecParseError()` null.
+```java
+// parse() throws the checked CodecParseException — declare it on the
+// enclosing method (or catch it). Use a plain for-loop, not a forEach
+// lambda, since a lambda cannot propagate the checked exception.
+for (DemuxEvent e : demuxer) {
+    if (e instanceof DemuxEvent.Audio a && a.codec() == AudioCodec.AAC) {
+        for (AudioFrame f : a.parse()) {          // opt-in: parses the raw ES
+            AdtsFrame adts = (AdtsFrame) f;       // AAC -> always AdtsFrame
+            long sampleRate = adts.sampleRateHz();
+        }
+    }
+}
+```
 
 ## File I/O (`org.tstrans.io`)
 

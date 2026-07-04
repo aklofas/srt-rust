@@ -27,6 +27,27 @@ class TstError(Exception):
     handle anything from this package."""
 
 
+class _KindMessageError(TstError):
+    """Private base for the nine transport/domain error classes that share
+    an identical ``(*, kind, message: str)`` constructor.  Rust raises
+    these via ``cls.call((), Some(&kwargs))`` with ``{kind=...,
+    message=...}``, so the constructor must accept exactly those two
+    keyword-only arguments.
+
+    Not exported (absent from ``__all__``); do not instantiate directly.
+    Subclasses redeclare ``kind`` with the concrete ``*Kind`` type so
+    static type checkers see the narrower annotation.
+    """
+
+    kind: object
+    message: str
+
+    def __init__(self, *, kind: object, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
 class MuxErrorKind(enum.IntEnum):
     """Mirrors Rust `tst_core::error::MuxSenderErrorKind` — the
     coarse-tier 5-variant classification of muxer-side failures
@@ -189,30 +210,18 @@ class MuxError(TstError):
         self.pid = pid
 
 
-class DemuxError(TstError):
+class DemuxError(_KindMessageError):
     """Raised by `tstrans.mpegts.Demuxer` operations."""
 
     kind: DemuxErrorKind
-    message: str
-
-    def __init__(self, *, kind: DemuxErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
-class KlvError(TstError):
+class KlvError(_KindMessageError):
     """Raised by `tstrans.klv` set-level decoders. Field-level warnings
     appear as `field_errors` on the returned typed-set object, not
     raised."""
 
     kind: KlvErrorKind
-    message: str
-
-    def __init__(self, *, kind: KlvErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class KlvEncodeError(TstError):
@@ -269,18 +278,12 @@ class RtspErrorKind(enum.IntEnum):
     MOUNT = 10
 
 
-class RtspError(TstError):
+class RtspError(_KindMessageError):
     """Raised by `tstrans.rtp.RtspClient` / `RtspServer` / `MountHandle`
     operations. Carries a typed `.kind` (`RtspErrorKind`) plus a
     free-text message on `.message` / `.args[0]`."""
 
     kind: RtspErrorKind
-    message: str
-
-    def __init__(self, *, kind: RtspErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class RtpErrorKind(enum.IntEnum):
@@ -297,16 +300,10 @@ class RtpErrorKind(enum.IntEnum):
     CANCELLED = 3
 
 
-class RtpError(TstError):
+class RtpError(_KindMessageError):
     """Raised by `tstrans.rtp` transport operations."""
 
     kind: RtpErrorKind
-    message: str
-
-    def __init__(self, *, kind: RtpErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class SrtErrorKind(enum.IntEnum):
@@ -329,16 +326,10 @@ class SrtErrorKind(enum.IntEnum):
     IO = 7
 
 
-class SrtError(TstError):
+class SrtError(_KindMessageError):
     """Raised by `tstrans.srt` operations. Discriminate via `.kind`."""
 
     kind: SrtErrorKind
-    message: str
-
-    def __init__(self, *, kind: SrtErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 # ── Plan A5b — udp / tcp / hls / rist transport error classes ────────────
@@ -360,16 +351,10 @@ class UdpErrorKind(enum.IntEnum):
     INVALID_CONFIG = 6
 
 
-class UdpError(TstError):
+class UdpError(_KindMessageError):
     """Raised by `tstrans.udp` operations. Discriminate via `.kind`."""
 
     kind: UdpErrorKind
-    message: str
-
-    def __init__(self, *, kind: UdpErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class TcpErrorKind(enum.IntEnum):
@@ -386,16 +371,10 @@ class TcpErrorKind(enum.IntEnum):
     TLS_DISABLED = 7
 
 
-class TcpError(TstError):
+class TcpError(_KindMessageError):
     """Raised by `tstrans.tcp` operations. Discriminate via `.kind`."""
 
     kind: TcpErrorKind
-    message: str
-
-    def __init__(self, *, kind: TcpErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class HlsErrorKind(enum.IntEnum):
@@ -413,16 +392,10 @@ class HlsErrorKind(enum.IntEnum):
     INTERNAL = 8
 
 
-class HlsError(TstError):
+class HlsError(_KindMessageError):
     """Raised by `tstrans.hls` operations. Discriminate via `.kind`."""
 
     kind: HlsErrorKind
-    message: str
-
-    def __init__(self, *, kind: HlsErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class RistErrorKind(enum.IntEnum):
@@ -441,16 +414,10 @@ class RistErrorKind(enum.IntEnum):
     IO = 9
 
 
-class RistError(TstError):
+class RistError(_KindMessageError):
     """Raised by `tstrans.rist` operations. Discriminate via `.kind`."""
 
     kind: RistErrorKind
-    message: str
-
-    def __init__(self, *, kind: RistErrorKind, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
-        self.message = message
 
 
 class CodecError(TstError):

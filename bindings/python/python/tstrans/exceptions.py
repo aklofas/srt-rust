@@ -19,7 +19,7 @@ mirror their owning Rust enums.
 """
 
 import enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class TstError(Exception):
@@ -39,10 +39,13 @@ class _KindMessageError(TstError):
     static type checkers see the narrower annotation.
     """
 
-    kind: object
+    # `Any` (not `object`): subclasses redeclare `kind` with their concrete
+    # `*Kind` enum, and narrowing a mutable `object` attribute would be an
+    # invalid override to type checkers; `Any` permits the narrowing.
+    kind: Any
     message: str
 
-    def __init__(self, *, kind: object, message: str) -> None:
+    def __init__(self, *, kind: Any, message: str) -> None:
         super().__init__(message)
         self.kind = kind
         self.message = message

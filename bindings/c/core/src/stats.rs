@@ -397,6 +397,27 @@ impl Default for TstMuxSenderStats {
     }
 }
 
+/// Convert a Rust [`tst_pipeline::MuxSenderStats`] to its `repr(C)` mirror.
+///
+/// Callers own the `TstMuxSenderStats` by value; the per-stream array is
+/// deep-copied from the BTreeMap by `fill_per_stream`. There is no lifetime
+/// tie between the returned struct and the input.
+#[cfg(feature = "std")]
+pub(crate) fn mux_sender_stats_to_c(stats: &tst_pipeline::MuxSenderStats) -> TstMuxSenderStats {
+    let mut per_stream = [TstStreamStats::default(); TST_STATS_MAX_STREAMS];
+    let (per_stream_count, truncated) = fill_per_stream(&mut per_stream, &stats.per_stream);
+    TstMuxSenderStats {
+        bytes_sent: stats.bytes_sent,
+        packets_sent: stats.packets_sent,
+        pending_bytes_queued: stats.pending_bytes_queued,
+        pending_chunks_queued: stats.pending_chunks_queued,
+        programs_configured: stats.programs_configured,
+        per_stream_count,
+        per_stream_truncated: if truncated { 1 } else { 0 },
+        per_stream,
+    }
+}
+
 /// Fill a fixed-size C per-stream array from a `BTreeMap<u16, StreamStats>`.
 /// Returns `(count, truncated)`. Sorted by PID (BTreeMap iteration order).
 pub fn fill_per_stream(

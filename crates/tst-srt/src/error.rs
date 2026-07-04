@@ -2,7 +2,7 @@
 //!
 //! Per-call-category enums (`ConnectError`, `BindError`, etc.) are the
 //! Rust-idiomatic surface — exhaustive `match` is meaningful at every call
-//! site. The umbrella `Error` exists for callers who want one type to
+//! site. The umbrella `SrtError` exists for callers who want one type to
 //! propagate across categories.
 
 use std::io;
@@ -319,7 +319,7 @@ pub enum RecvError {
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum Error {
+pub enum SrtError {
     #[error(transparent)]
     Connect(#[from] ConnectError),
     #[error(transparent)]
@@ -694,9 +694,9 @@ mod tests {
 
     #[test]
     fn umbrella_from_per_call() {
-        let e: Error = ConnectError::TimedOut.into();
+        let e: SrtError = ConnectError::TimedOut.into();
         match e {
-            Error::Connect(ConnectError::TimedOut) => {}
+            SrtError::Connect(ConnectError::TimedOut) => {}
             _ => panic!("expected Connect(TimedOut)"),
         }
     }
@@ -1024,22 +1024,25 @@ mod tests {
 
     #[test]
     fn umbrella_from_klv_decode() {
-        let e: Error = KlvDecodeError::Truncated {
+        let e: SrtError = KlvDecodeError::Truncated {
             offset: 42,
             needed: 8,
             have: 3,
         }
         .into();
         match e {
-            Error::KlvDecode(KlvDecodeError::Truncated { offset: 42, .. }) => {}
+            SrtError::KlvDecode(KlvDecodeError::Truncated { offset: 42, .. }) => {}
             _ => panic!("expected KlvDecode(Truncated{{offset:42, ...}})"),
         }
     }
 
     #[test]
     fn umbrella_from_klv_field() {
-        let e: Error = KlvFieldError::InvalidUtf8 { tag: 50 }.into();
-        matches!(e, Error::KlvField(KlvFieldError::InvalidUtf8 { tag: 50 }));
+        let e: SrtError = KlvFieldError::InvalidUtf8 { tag: 50 }.into();
+        matches!(
+            e,
+            SrtError::KlvField(KlvFieldError::InvalidUtf8 { tag: 50 })
+        );
     }
 
     #[test]
@@ -1064,9 +1067,9 @@ mod tests {
 
     #[test]
     fn umbrella_from_mux() {
-        let e: Error = MuxError::InvalidNal.into();
+        let e: SrtError = MuxError::InvalidNal.into();
         match e {
-            Error::Mux(MuxError::InvalidNal) => {}
+            SrtError::Mux(MuxError::InvalidNal) => {}
             _ => panic!("expected Mux(InvalidNal)"),
         }
     }

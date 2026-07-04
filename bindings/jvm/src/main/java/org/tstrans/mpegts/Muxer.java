@@ -3,6 +3,7 @@ package org.tstrans.mpegts;
 import java.io.IOException;
 import java.nio.file.Path;
 import org.tstrans.MuxException;
+import org.tstrans.NativeHandle;
 
 /**
  * Stateful MPEG-TS multiplexer (sender side). Mirrors {@code tstrans.mpegts.Muxer}.
@@ -31,11 +32,8 @@ import org.tstrans.MuxException;
  * in a loop until it returns 0 — a single call writes at most {@code out.length /
  * 188 * 188} bytes.
  */
-public final class Muxer implements AutoCloseable {
+public final class Muxer extends NativeHandle {
     static { org.tstrans.NativeLoader.load(); }
-
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
 
     /**
      * Build a muxer from {@code cfg}. The whole single-program config is
@@ -45,7 +43,7 @@ public final class Muxer implements AutoCloseable {
      *     the config (PID collisions, PMT over budget, sync-KLV without PTS, …).
      */
     public Muxer(MuxerConfig cfg) throws MuxException {
-        this.handle.set(nOpen(
+        setHandle(nOpen(
             cfg.programNumber(), cfg.pmtPid(), cfg.pcrPid(),
             cfg.pcrIntervalMs(), cfg.psiIntervalMs(), cfg.bufferPackets(),
             cfg.av1Carriage().ordinal(),
@@ -68,8 +66,8 @@ public final class Muxer implements AutoCloseable {
      *     (queue full — drain via {@link #pull}).
      */
     public void pushVideo(byte[] nal, long pts, boolean keyFrame) throws MuxException {
-        ensureOpen();
-        nPushVideo(handle.get(), nal, pts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideo(peekHandle(), nal, pts, keyFrame);
     }
 
     /**
@@ -93,8 +91,8 @@ public final class Muxer implements AutoCloseable {
      *     {@link #pull}).
      */
     public void pushVideoWire(byte[] wire, long pts, boolean keyFrame) throws MuxException {
-        ensureOpen();
-        nPushVideoWire(handle.get(), wire, pts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideoWire(peekHandle(), wire, pts, keyFrame);
     }
 
     /**
@@ -109,8 +107,8 @@ public final class Muxer implements AutoCloseable {
      *     {@code INVALID_USAGE} (zero or &gt;1 KLV stream), or {@code BACKPRESSURE}.
      */
     public void pushKlv(byte[] klv, long pts, int metadataServiceId) throws MuxException {
-        ensureOpen();
-        nPushKlv(handle.get(), klv, pts, metadataServiceId);
+        ensureOpen("Muxer is closed");
+        nPushKlv(peekHandle(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -123,8 +121,8 @@ public final class Muxer implements AutoCloseable {
      *     (zero or &gt;1 audio stream), or {@code BACKPRESSURE}.
      */
     public void pushAudio(byte[] frames, long pts) throws MuxException {
-        ensureOpen();
-        nPushAudio(handle.get(), frames, pts);
+        ensureOpen("Muxer is closed");
+        nPushAudio(peekHandle(), frames, pts);
     }
 
     /**
@@ -137,8 +135,8 @@ public final class Muxer implements AutoCloseable {
      *     (zero or &gt;1 subtitle stream), or {@code BACKPRESSURE}.
      */
     public void pushSubtitle(long pts, byte[] payload) throws MuxException {
-        ensureOpen();
-        nPushSubtitle(handle.get(), pts, payload);
+        ensureOpen("Muxer is closed");
+        nPushSubtitle(peekHandle(), pts, payload);
     }
 
     /**
@@ -165,8 +163,8 @@ public final class Muxer implements AutoCloseable {
      *     ambiguous, use {@link #pushDataTo}), or {@code BACKPRESSURE}.
      */
     public void pushData(byte[] data, long pts) throws MuxException {
-        ensureOpen();
-        nPushData(handle.get(), data, pts);
+        ensureOpen("Muxer is closed");
+        nPushData(peekHandle(), data, pts);
     }
 
     /**
@@ -183,8 +181,8 @@ public final class Muxer implements AutoCloseable {
      *     {@code BACKPRESSURE}.
      */
     public void pushDataTo(DataStreamHandle h, byte[] data, long pts) throws MuxException {
-        ensureOpen();
-        nPushDataTo(handle.get(), h.raw(), data, pts);
+        ensureOpen("Muxer is closed");
+        nPushDataTo(peekHandle(), h.raw(), data, pts);
     }
 
     /**
@@ -200,8 +198,8 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException {
-        ensureOpen();
-        nPushVideoTo(handle.get(), h.raw(), nal, pts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideoTo(peekHandle(), h.raw(), nal, pts, keyFrame);
     }
 
     /**
@@ -219,8 +217,8 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushVideoWireTo(VideoStreamHandle h, byte[] wire, long pts, boolean keyFrame)
             throws MuxException {
-        ensureOpen();
-        nPushVideoWireTo(handle.get(), h.raw(), wire, pts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideoWireTo(peekHandle(), h.raw(), wire, pts, keyFrame);
     }
 
     /**
@@ -240,8 +238,8 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushVideoToWithDts(VideoStreamHandle h, byte[] nal, long pts, long dts,
             boolean keyFrame) throws MuxException {
-        ensureOpen();
-        nPushVideoToWithDts(handle.get(), h.raw(), nal, pts, dts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideoToWithDts(peekHandle(), h.raw(), nal, pts, dts, keyFrame);
     }
 
     /**
@@ -261,8 +259,8 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushVideoWireToWithDts(VideoStreamHandle h, byte[] wire, long pts, long dts,
             boolean keyFrame) throws MuxException {
-        ensureOpen();
-        nPushVideoWireToWithDts(handle.get(), h.raw(), wire, pts, dts, keyFrame);
+        ensureOpen("Muxer is closed");
+        nPushVideoWireToWithDts(peekHandle(), h.raw(), wire, pts, dts, keyFrame);
     }
 
     /**
@@ -279,8 +277,8 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException {
-        ensureOpen();
-        nPushKlvTo(handle.get(), h.raw(), klv, pts, metadataServiceId);
+        ensureOpen("Muxer is closed");
+        nPushKlvTo(peekHandle(), h.raw(), klv, pts, metadataServiceId);
     }
 
     /**
@@ -295,8 +293,8 @@ public final class Muxer implements AutoCloseable {
      *     {@code INPUT_MALFORMED}, or {@code BACKPRESSURE}.
      */
     public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts) throws MuxException {
-        ensureOpen();
-        nPushAudioTo(handle.get(), h.raw(), frames, pts);
+        ensureOpen("Muxer is closed");
+        nPushAudioTo(peekHandle(), h.raw(), frames, pts);
     }
 
     /**
@@ -312,15 +310,15 @@ public final class Muxer implements AutoCloseable {
      */
     public void pushSubtitleTo(SubtitleStreamHandle h, long pts, byte[] payload)
             throws MuxException {
-        ensureOpen();
-        nPushSubtitleTo(handle.get(), h.raw(), pts, payload);
+        ensureOpen("Muxer is closed");
+        nPushSubtitleTo(peekHandle(), h.raw(), pts, payload);
     }
 
     /** All configured video-stream handles, in {@code addVideo} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<VideoStreamHandle> videoHandles() {
-        ensureOpen();
-        long[] raws = nVideoHandles(handle.get());
+        ensureOpen("Muxer is closed");
+        long[] raws = nVideoHandles(peekHandle());
         java.util.List<VideoStreamHandle> out = new java.util.ArrayList<>(raws.length);
         for (long r : raws) out.add(VideoStreamHandle.fromRaw(r));
         return java.util.List.copyOf(out);
@@ -337,8 +335,8 @@ public final class Muxer implements AutoCloseable {
     /** All configured audio-stream handles, in {@code addAudio} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<AudioStreamHandle> audioHandles() {
-        ensureOpen();
-        long[] raws = nAudioHandles(handle.get());
+        ensureOpen("Muxer is closed");
+        long[] raws = nAudioHandles(peekHandle());
         java.util.List<AudioStreamHandle> out = new java.util.ArrayList<>(raws.length);
         for (long r : raws) out.add(AudioStreamHandle.fromRaw(r));
         return java.util.List.copyOf(out);
@@ -355,8 +353,8 @@ public final class Muxer implements AutoCloseable {
     /** All configured KLV-stream handles, in {@code addKlv} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<KlvStreamHandle> klvHandles() {
-        ensureOpen();
-        long[] raws = nKlvHandles(handle.get());
+        ensureOpen("Muxer is closed");
+        long[] raws = nKlvHandles(peekHandle());
         java.util.List<KlvStreamHandle> out = new java.util.ArrayList<>(raws.length);
         for (long r : raws) out.add(KlvStreamHandle.fromRaw(r));
         return java.util.List.copyOf(out);
@@ -373,8 +371,8 @@ public final class Muxer implements AutoCloseable {
     /** All configured subtitle-stream handles, in {@code addSubtitle} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<SubtitleStreamHandle> subtitleHandles() {
-        ensureOpen();
-        long[] raws = nSubtitleHandles(handle.get());
+        ensureOpen("Muxer is closed");
+        long[] raws = nSubtitleHandles(peekHandle());
         java.util.List<SubtitleStreamHandle> out = new java.util.ArrayList<>(raws.length);
         for (long r : raws) out.add(SubtitleStreamHandle.fromRaw(r));
         return java.util.List.copyOf(out);
@@ -391,8 +389,8 @@ public final class Muxer implements AutoCloseable {
     /** All configured data-stream handles, in {@code addData} order.
      *  @throws IllegalStateException if the muxer is closed */
     public java.util.List<DataStreamHandle> dataHandles() {
-        ensureOpen();
-        long[] raws = nDataHandles(handle.get());
+        ensureOpen("Muxer is closed");
+        long[] raws = nDataHandles(peekHandle());
         java.util.List<DataStreamHandle> out = new java.util.ArrayList<>(raws.length);
         for (long r : raws) out.add(DataStreamHandle.fromRaw(r));
         return java.util.List.copyOf(out);
@@ -412,20 +410,20 @@ public final class Muxer implements AutoCloseable {
      * {@code out.length < 188}. Call in a loop until it returns 0.
      */
     public int pull(byte[] out) {
-        ensureOpen();
-        return nPull(handle.get(), out);
+        ensureOpen("Muxer is closed");
+        return nPull(peekHandle(), out);
     }
 
     /** Number of 188-byte TS packets currently queued awaiting {@link #pull}. */
     public long pendingPackets() {
-        ensureOpen();
-        return nPending(handle.get());
+        ensureOpen("Muxer is closed");
+        return nPending(peekHandle());
     }
 
     /** Configured queue capacity in 188-byte TS packets (snapshot of {@code bufferPackets}). */
     public long capacityPackets() {
-        ensureOpen();
-        return nCapacity(handle.get());
+        ensureOpen("Muxer is closed");
+        return nCapacity(peekHandle());
     }
 
     /**
@@ -437,7 +435,7 @@ public final class Muxer implements AutoCloseable {
      * (reusable after the sink closes).
      */
     public MuxerFileSink writeFile(Path path) throws IOException {
-        ensureOpen();
+        ensureOpen("Muxer is closed");
         return new MuxerFileSink(this, path, false);
     }
 
@@ -449,19 +447,12 @@ public final class Muxer implements AutoCloseable {
      * {@link MuxerFileSink} for the {@code commit()} contract).
      */
     public MuxerFileSink writeFile(Path path, boolean atomic) throws IOException {
-        ensureOpen();
+        ensureOpen("Muxer is closed");
         return new MuxerFileSink(this, path, atomic);
     }
 
     @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
-
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("Muxer is closed");
-    }
+    protected void nativeClose(long h) { nClose(h); }
 
     private static native long nOpen(int programNumber, int pmtPid, int pcrPid,
             int pcrIntervalMs, int psiIntervalMs, int bufferPackets, int av1Carriage,

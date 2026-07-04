@@ -110,6 +110,19 @@ anything.
 See `docs/reference/binding-authors.md` for the full C-ABI error-mapping
 contract and the Python/JVM/Swift binding-shape conventions.
 
+### Regenerating baselines
+
+Baselines are rendered by `cargo public-api` on the **pinned nightly toolchain**
+declared in the CI public-api step (see `.github/workflows/ci.yml`, currently
+`nightly-2026-07-03`). Nightly rustdoc occasionally changes how re-exported
+`std`/`core` paths render, which shows up as spurious whole-baseline drift, so
+an unpinned nightly cannot be trusted for rendering. To regenerate:
+
+    cargo +nightly-2026-07-03 public-api -p <crate> --simplified > crates/<crate>/public-api.txt
+
+To bump the pin: pick a new date, re-render all 8 baselines with it, and land
+the pin bump and the re-rendered baselines in the same commit.
+
 ## Cross-references
 
 - `docs/reference/conventions.md` — naming, constructor verbs, builder rules.

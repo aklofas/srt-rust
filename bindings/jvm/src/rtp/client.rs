@@ -359,7 +359,8 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
         };
         let transport = session.into_recv_transport();
         let opts: Option<DemuxerConfig> = if with_config != 0 {
-            Some(build_demux_config_from_args(
+            let Some(cfg) = build_demux_config_from_args(
+                env,
                 strict,
                 pes_cap_per_pid,
                 pes_cap_total,
@@ -367,7 +368,10 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
                 av1,
                 au_cell_cap,
                 lenient_psi,
-            ))
+            ) else {
+                return 0;
+            };
+            Some(cfg)
         } else {
             None
         };

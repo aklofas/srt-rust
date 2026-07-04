@@ -189,7 +189,8 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nFromUrlWithConfig<'lo
     lenient_psi: jboolean,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
-        let opts = build_demux_config_from_args(
+        let Some(opts) = build_demux_config_from_args(
+            env,
             strict,
             pes_cap_per_pid,
             pes_cap_total,
@@ -197,7 +198,9 @@ pub extern "system" fn Java_org_tstrans_srt_DemuxReceiver_nFromUrlWithConfig<'lo
             av1,
             au_cell_cap,
             lenient_psi,
-        );
+        ) else {
+            return 0;
+        };
         build_from_url(env, &url, Some(opts))
     })
 }
@@ -519,7 +522,8 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoDemuxReceiverWithConfig(
             crate::error::throw_closed(env, "Socket");
             return 0;
         };
-        let opts = build_demux_config_from_args(
+        let Some(opts) = build_demux_config_from_args(
+            env,
             strict,
             pes_cap_per_pid,
             pes_cap_total,
@@ -527,7 +531,9 @@ pub extern "system" fn Java_org_tstrans_srt_Socket_nIntoDemuxReceiverWithConfig(
             av1,
             au_cell_cap,
             lenient_psi,
-        );
+        ) else {
+            return 0;
+        };
         REGISTRY.insert(make_receiver(socket, Some(opts))) as jlong
     })
 }

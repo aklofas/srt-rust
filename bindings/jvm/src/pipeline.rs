@@ -83,7 +83,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    crate::panic::jni_catch(&mut env, 0, |_env| {
+    crate::panic::jni_catch(&mut env, 0, |env| {
         let mode = if buffered != 0 {
             PairerMode::Buffered {
                 max_lag: Duration::from_nanos(max_lag_nanos as u64),
@@ -99,7 +99,8 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
         pairer.max_buffered_video = max_buffered_video as u64;
 
         let demuxer = if has_demuxer_config != 0 {
-            build_demux_config_from_args(
+            let Some(cfg) = build_demux_config_from_args(
+                env,
                 strict,
                 pes_cap_per_pid,
                 pes_cap_total,
@@ -107,7 +108,10 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
                 av1,
                 au_cell_cap,
                 lenient_psi,
-            )
+            ) else {
+                return 0;
+            };
+            cfg
         } else {
             DemuxerConfig::default()
         };

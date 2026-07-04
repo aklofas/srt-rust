@@ -81,8 +81,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     au_cell_cap: jlong,
     lenient_psi: jboolean,
 ) -> jlong {
-    crate::panic::jni_catch(&mut env, 0, |_env| {
-        let opts = build_demux_config_from_args(
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let Some(opts) = build_demux_config_from_args(
+            env,
             strict,
             pes_cap_per_pid,
             pes_cap_total,
@@ -90,7 +91,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
             av1,
             au_cell_cap,
             lenient_psi,
-        );
+        ) else {
+            return 0;
+        };
         REGISTRY.insert(Demuxer::with_config(opts)) as jlong
     })
 }
@@ -104,7 +107,9 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
 ///
 /// Shared by `nOpenWithConfig` and the srt `DemuxReceiver.nFromUrlWithConfig` /
 /// `Socket.nIntoDemuxReceiverWithConfig` paths so the config assembly is DRY.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_demux_config_from_args(
+    env: &mut jni::JNIEnv,
     strict: jint,
     pes_cap_per_pid: jlong,
     pes_cap_total: jlong,
@@ -112,7 +117,7 @@ pub(crate) fn build_demux_config_from_args(
     av1: jint,
     au_cell_cap: jlong,
     lenient_psi: jboolean,
-) -> tst_core::mpegts::demux::DemuxerConfig {
+) -> Option<tst_core::mpegts::demux::DemuxerConfig> {
     use tst_core::mpegts::demux::{DemuxerConfig, StrictMode};
 
     // `DemuxerConfig` is non-exhaustive in `tst_core`, so it can't be built with
@@ -127,8 +132,20 @@ pub(crate) fn build_demux_config_from_args(
         _ => StrictMode::Full,            // 3 (and any out-of-range → strictest, safe)
     };
     opts.av1_carriage = match av1 {
+        0 => Av1CarriageMode::Mpeg2TsBinding,
         1 => Av1CarriageMode::InteropRawObu,
-        _ => Av1CarriageMode::Mpeg2TsBinding,
+        other => {
+            // Exact ordinal validation, mirroring nSplitVideo: the value
+            // comes from our own Java enum, so out-of-range means enum
+            // drift — fail loudly rather than silently demuxing with the
+            // wrong carriage.
+            throw_demux(
+                env,
+                "INTERNAL",
+                &format!("unknown Av1CarriageMode ordinal {other}"),
+            );
+            return None;
+        }
     };
     if pes_cap_per_pid > 0 {
         opts.pes_cap_per_pid = Some(pes_cap_per_pid as usize);
@@ -141,7 +158,7 @@ pub(crate) fn build_demux_config_from_args(
     }
     opts.cfi_tolerance = cfi != 0;
     opts.lenient_psi_reassembly = lenient_psi != 0;
-    opts
+    Some(opts)
 }
 
 /// `nClose(handle)` — take + drop the registered [`Demuxer`]. Atomic +

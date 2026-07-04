@@ -215,8 +215,8 @@ class RtpLoopbackScenarioTest {
             d.feed(tsBytes);
             d.flush();
             for (DemuxEvent e : d) {
-                if (e instanceof DemuxEvent.Video v && !v.payload().isEmpty()) {
-                    return sha256Units(v.payload());
+                if (e instanceof DemuxEvent.Video v && !v.parse().isEmpty()) {
+                    return sha256Units(v.parse());
                 }
             }
         }

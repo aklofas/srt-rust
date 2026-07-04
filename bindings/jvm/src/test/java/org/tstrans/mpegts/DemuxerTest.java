@@ -129,7 +129,7 @@ class DemuxerTest {
         // Demuxer is closed; the heap copy must still be intact (and equal
         // to the pushed AU — the byte-faithful transmux property).
         assertArrayEquals(au, got, "raw must be the exact pushed encoded AU");
-        // The typed unit list is still populated alongside raw.
-        assertFalse(video.payload().isEmpty(), "typed units coexist with raw");
+        // Opt-in parse() yields the typed NAL units; verify non-empty.
+        assertFalse(video.parse().isEmpty(), "parse() yields typed units from raw");
     }
 }

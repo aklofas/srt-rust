@@ -293,22 +293,7 @@ pub(crate) unsafe fn mux_sender_get_mux_sender_stats<T: Transport>(
         return TstError::InvalidConfig as i32;
     }
     h.with_inner_ref(|s| {
-        let stats = s.stats();
-        let mut per_stream =
-            [crate::stats::TstStreamStats::default(); crate::stats::TST_STATS_MAX_STREAMS];
-        let (per_stream_count, truncated) =
-            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
-        let dst = crate::stats::TstMuxSenderStats {
-            bytes_sent: stats.bytes_sent,
-            packets_sent: stats.packets_sent,
-            pending_bytes_queued: stats.pending_bytes_queued,
-            pending_chunks_queued: stats.pending_chunks_queued,
-            programs_configured: stats.programs_configured,
-            per_stream_count,
-            per_stream_truncated: if truncated { 1 } else { 0 },
-            per_stream,
-        };
-        unsafe { *out = dst };
+        unsafe { *out = crate::stats::mux_sender_stats_to_c(&s.stats()) };
         0
     })
 }

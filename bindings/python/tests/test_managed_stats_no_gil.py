@@ -21,7 +21,7 @@ The fix:
 
   `ManagedMuxSender.stats()` received the same treatment: its `socket_stats()`
   and `stats()` calls both acquire the internal `MuxSender` mutex, which
-  `push_*` methods also hold inside `allow_threads`.
+  `send_*` methods also hold inside `allow_threads`.
 
 What this test verifies:
   - `socket_stats()` and `srt_stats()` on `ManagedDemuxReceiver` return
@@ -128,7 +128,7 @@ def test_managed_demux_receiver_socket_stats_no_gil_block_with_iter() -> None:
         try:
             i = 0
             while not feeder_stop.is_set():
-                sender.push_video(
+                sender.send_video(
                     NAL_IDR,
                     pts=Pts90khz.from_raw(i * 3000),
                     key_frame=(i % 4 == 0),

@@ -211,13 +211,13 @@ class SrtManagedLiveTest {
                     round < 200 && (!shaFuture.isDone() || !dataFuture.isDone());
                     round++) {
                 for (int i = 0; i < 6; i++, pts += 3000L) {
-                    s.pushVideo(syntheticH264Idr(), pts, true);
+                    s.sendVideo(syntheticH264Idr(), pts, true);
                 }
                 // One distinctive private-data record per round (lone-data-stream
-                // pushData shorthand) so it deterministically flows under continuous
-                // streaming — identical bytes each push; the receiver captures the
-                // first. The following round's video pushes flush its PES.
-                s.pushData(DATA_PAYLOAD, pts);
+                // sendData shorthand) so it deterministically flows under continuous
+                // streaming — identical bytes each send; the receiver captures the
+                // first. The following round's video sends flush its PES.
+                s.sendData(DATA_PAYLOAD, pts);
                 Thread.sleep(50);
             }
             // Convenience accessor: the config declares one data stream, so the
@@ -227,10 +227,10 @@ class SrtManagedLiveTest {
                 "config declares one data stream → dataHandle() must surface it");
             // Strict handle decode: a forged/negative handle is rejected with
             // SrtException(CONFIG_INVALID) in the JNI shim before reaching the
-            // muxer (DIFFERS from Muxer.pushDataTo, which maps it to MuxException).
-            // Thrown before any push, so the live sender's state is untouched.
+            // muxer (DIFFERS from Muxer.sendDataTo, which maps it to MuxException).
+            // Thrown before any send, so the live sender's state is untouched.
             SrtException forged = assertThrows(SrtException.class,
-                () -> s.pushDataTo(DataStreamHandle.fromRaw(-1L), DATA_PAYLOAD, 0L));
+                () -> s.sendDataTo(DataStreamHandle.fromRaw(-1L), DATA_PAYLOAD, 0L));
             assertEquals(SrtException.Kind.CONFIG_INVALID, forged.kind(),
                 "forged DataStreamHandle must raise SrtException(CONFIG_INVALID)");
             long attempts = s.reconnectAttempts();
@@ -382,7 +382,7 @@ class SrtManagedLiveTest {
                 long pts = 0;
                 for (int round = 0; round < 400 && observed.getCount() > 0; round++) {
                     for (int i = 0; i < 6; i++, pts += 3000L) {
-                        ms.pushVideo(syntheticH264Idr(), pts, true);
+                        ms.sendVideo(syntheticH264Idr(), pts, true);
                     }
                     Thread.sleep(50);
                 }

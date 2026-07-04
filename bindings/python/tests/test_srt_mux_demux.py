@@ -214,7 +214,7 @@ def test_from_url_round_trip_via_loopback() -> None:
     # the demuxer crosses several PSI+sample cycles before close.
     try:
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
         # Let libsrt drain the send queue before close() — close races
@@ -239,12 +239,12 @@ def test_from_url_round_trip_via_loopback() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Test 2: push_klv via loopback + KLV handle accessor                         #
+# Test 2: send_klv via loopback + KLV handle accessor                         #
 # --------------------------------------------------------------------------- #
 
 
-def test_push_klv_via_loopback() -> None:
-    """Push a KLV blob through a video+klv program; assert the KLV
+def test_send_klv_via_loopback() -> None:
+    """Send a KLV blob through a video+klv program; assert the KLV
     handle accessor returns something + the demux side sees the event
     (Metadata or ProgramMap before stopping)."""
     port = _free_tcp_port()
@@ -272,10 +272,10 @@ def test_push_klv_via_loopback() -> None:
         # Drive enough PSI+video+klv triplets that libsrt has streamed
         # several full bundles before close() can race.
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
-            sender.push_klv_to(klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(i * 3000))
+            sender.send_klv_to(klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(i * 3000))
         time.sleep(0.3)
     finally:
         sender.close()
@@ -287,15 +287,15 @@ def test_push_klv_via_loopback() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Test 2b: push_data via loopback + data handle accessor (W3)                 #
+# Test 2b: send_data via loopback + data handle accessor (W3)                 #
 # --------------------------------------------------------------------------- #
 
 
-def test_push_data_via_loopback() -> None:
-    """Push opaque private-data records through a video+data program;
+def test_send_data_via_loopback() -> None:
+    """Send opaque private-data records through a video+data program;
     assert the data handle accessor returns something + the demux side
     sees an event (UnknownSample or Video before stopping). Exercises
-    both `push_data` (single-stream shorthand) and `push_data_to`."""
+    both `send_data` (single-stream shorthand) and `send_data_to`."""
     port = _free_tcp_port()
     sender, receiver = _make_mux_demux_pair(port, program=_video_data_program())
 
@@ -321,15 +321,15 @@ def test_push_data_via_loopback() -> None:
         # Drive enough PSI+video+data triplets that libsrt has streamed
         # several full bundles before close() can race.
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
             # Alternate the single-stream shorthand and the explicit
             # handle variant so both code paths see traffic.
             if i % 2 == 0:
-                sender.push_data(DATA_RECORD, pts=Pts90khz.from_raw(i * 3000))
+                sender.send_data(DATA_RECORD, pts=Pts90khz.from_raw(i * 3000))
             else:
-                sender.push_data_to(
+                sender.send_data_to(
                     data_h, DATA_RECORD, pts=Pts90khz.from_raw(i * 3000)
                 )
         time.sleep(0.3)
@@ -343,12 +343,12 @@ def test_push_data_via_loopback() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Test 3: handle getters + push_video_to + bytes-like extraction              #
+# Test 3: handle getters + send_video_to + bytes-like extraction              #
 # --------------------------------------------------------------------------- #
 
 
-def test_handle_getters_and_push_to() -> None:
-    """Verify handle accessors + the `_to` push variants on the SRT
+def test_handle_getters_and_send_to() -> None:
+    """Verify handle accessors + the `_to` send variants on the SRT
     MuxSender side. We don't need a live receiver for this — the
     listener thread accepts then the receiver sits idle while we
     exercise the sender API surface."""
@@ -363,11 +363,11 @@ def test_handle_getters_and_push_to() -> None:
         assert sender.subtitle_handle() is None
         assert sender.data_handle() is None
         # _to variant works.
-        sender.push_video_to(vh, NAL_AUD, pts=Pts90khz.from_raw(0))
+        sender.send_video_to(vh, NAL_AUD, pts=Pts90khz.from_raw(0))
         # bytes-like coercion: bytearray + memoryview both round-trip
         # through the audit-#10 two-path bytes-like helper.
-        sender.push_video(bytearray(NAL_AUD), pts=Pts90khz.from_raw(3000))
-        sender.push_video(memoryview(bytearray(NAL_AUD)), pts=Pts90khz.from_raw(6000))
+        sender.send_video(bytearray(NAL_AUD), pts=Pts90khz.from_raw(3000))
+        sender.send_video(memoryview(bytearray(NAL_AUD)), pts=Pts90khz.from_raw(6000))
         # libsrt does not flush its `pktSentTotal` counter synchronously
         # with `srt_send`; on a fast loopback the stats snapshot can race
         # the send queue and read 0. Give the send path a moment to drain
@@ -461,7 +461,7 @@ def test_socket_into_mux_sender_promotion() -> None:
     # Socket should now be closed (consumed).
     assert not sock.is_alive()
     # Pushing should work via the promoted sender.
-    sender.push_video(NAL_AUD, pts=Pts90khz.from_raw(0))
+    sender.send_video(NAL_AUD, pts=Pts90khz.from_raw(0))
     sender.close()
     t.join(timeout=5.0)
     if rx_box:
@@ -517,7 +517,7 @@ def test_mux_sender_context_manager_closes_cleanly() -> None:
     try:
         with sender as s:
             assert "open" in repr(s)
-            s.push_video(NAL_AUD, pts=Pts90khz.from_raw(0))
+            s.send_video(NAL_AUD, pts=Pts90khz.from_raw(0))
         # After __exit__, sender is closed.
         assert "closed" in repr(sender)
         # Idempotent close.
@@ -555,24 +555,24 @@ def test_demux_receiver_iter_returns_self() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_push_video_on_closed_sender_raises_closed() -> None:
-    """Pushing on a closed MuxSender raises `SrtError(CLOSED)`."""
+def test_send_video_on_closed_sender_raises_closed() -> None:
+    """Sending on a closed MuxSender raises `SrtError(CLOSED)`."""
     port = _free_tcp_port()
     sender, receiver = _make_mux_demux_pair(port)
     sender.close()
     receiver.close()
     with pytest.raises(SrtError) as exc_info:
-        sender.push_video(NAL_IDR, pts=Pts90khz.from_raw(0))
+        sender.send_video(NAL_IDR, pts=Pts90khz.from_raw(0))
     assert exc_info.value.kind == SrtErrorKind.CLOSED
 
 
-def test_push_video_malformed_nal_raises_mux_error() -> None:
+def test_send_video_malformed_nal_raises_mux_error() -> None:
     """Raw bytes without an Annex-B start code → MuxError(INPUT_MALFORMED)."""
     port = _free_tcp_port()
     sender, receiver = _make_mux_demux_pair(port)
     try:
         with pytest.raises(MuxError) as exc_info:
-            sender.push_video(b"not annex-b bytes", pts=Pts90khz.from_raw(0))
+            sender.send_video(b"not annex-b bytes", pts=Pts90khz.from_raw(0))
         assert exc_info.value.kind == MuxErrorKind.INPUT_MALFORMED
     finally:
         sender.close()

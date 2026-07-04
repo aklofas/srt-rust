@@ -211,7 +211,7 @@ def test_mux_sender_to_demux_receiver_round_trip() -> None:
     with tstrans.rtp.MuxSender(f"rtp://127.0.0.1:{port}", program) as snd:
         nal_idr = b"\x00\x00\x00\x01\x65\xBB"
         for i in range(8):
-            snd.push_video(
+            snd.send_video(
                 nal_idr, pts=Pts90khz.from_raw(i * 3000), key_frame=(i == 0)
             )
     # Wait for the consumer to see a video Sample.

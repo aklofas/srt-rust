@@ -15,20 +15,20 @@ import org.tstrans.mpegts.VideoStreamHandle;
 /**
  * Single-call convenience wrapper that owns a {@code Muxer} + an RTP
  * {@code RtpTransport}. Construct with an {@code rtp://host:port} URL and a built
- * {@link MuxerConfig}; push elementary streams via the {@code push*} family and
+ * {@link MuxerConfig}; send elementary streams via the {@code send*} family and
  * the wrapper assembles MPEG-TS packets and sends them over RTP/UDP in one step.
  *
  * <p>Mirrors {@code tstrans.rtp.MuxSender}. Wraps
  * {@code tst_pipeline::MuxSender<tst_rtp::RtpTransport>}.
  *
- * <p><b>Thread safety:</b> the underlying Rust shell serialises pushes through an
- * internal mutex, so concurrent pushes are safe, but for predictable PTS ordering
- * callers typically push from one thread.
+ * <p><b>Thread safety:</b> the underlying Rust shell serialises sends through an
+ * internal mutex, so concurrent sends are safe, but for predictable PTS ordering
+ * callers typically send from one thread.
  *
  * <p><b>Closing:</b> use try-with-resources or call {@link #close()} explicitly.
  * After close, further calls throw {@code IllegalStateException}.
  *
- * <p><b>Byte-copy posture (JDK 17):</b> every {@code push*} method copies the
+ * <p><b>Byte-copy posture (JDK 17):</b> every {@code send*} method copies the
  * supplied {@code byte[]} across the JNI boundary; a zero-copy path (FFM
  * {@code MemorySegment}) is JDK-22+ only and will be added in a future release.
  *
@@ -38,7 +38,7 @@ import org.tstrans.mpegts.VideoStreamHandle;
  *     .addVideo(0x1011, VideoCodec.H264)
  *     .build();
  * try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:5004", program)) {
- *     s.pushVideo(annexBNal, 0L, true);
+ *     s.sendVideo(annexBNal, 0L, true);
  * }
  * }</pre>
  */
@@ -99,10 +99,10 @@ public final class MuxSender extends NativeHandle {
         return new MuxSender(h);
     }
 
-    // ── Push family — single-stream variants ──────────────────────────────
+    // ── Send family — single-stream variants ──────────────────────────────
 
     /**
-     * Push one video access unit onto the lone configured video stream.
+     * Send one video access unit onto the lone configured video stream.
      * Annex-B framing for H.264/H.265/H.266; raw OBU stream for AV1.
      *
      * @param nal      the access unit bytes
@@ -112,14 +112,14 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer/framing failure
      * @throws RtpException on transport failure
      */
-    public void pushVideo(byte[] nal, long pts, boolean keyFrame)
+    public void sendVideo(byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushVideo(peekHandle(), nal, pts, keyFrame);
+        nSendVideo(peekHandle(), nal, pts, keyFrame);
     }
 
     /**
-     * Push one KLV blob onto the lone configured KLV stream. Pass raw KLV LS
+     * Send one KLV blob onto the lone configured KLV stream. Pass raw KLV LS
      * bytes — the muxer auto-wraps the AU-cell header for synchronous-metadata
      * streams; do not pre-wrap.
      *
@@ -131,14 +131,14 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure
      * @throws RtpException on transport failure
      */
-    public void pushKlv(byte[] klv, long pts, int metadataServiceId)
+    public void sendKlv(byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushKlv(peekHandle(), klv, pts, metadataServiceId);
+        nSendKlv(peekHandle(), klv, pts, metadataServiceId);
     }
 
     /**
-     * Push one encoded audio frame onto the lone configured audio stream.
+     * Send one encoded audio frame onto the lone configured audio stream.
      * {@code frames} is one or more pre-framed audio frames concatenated by the
      * caller (ADTS for AAC, MPEG-2 audio frames for MP2).
      *
@@ -148,13 +148,13 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure
      * @throws RtpException on transport failure
      */
-    public void pushAudio(byte[] frames, long pts) throws MuxException, RtpException {
+    public void sendAudio(byte[] frames, long pts) throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushAudio(peekHandle(), frames, pts);
+        nSendAudio(peekHandle(), frames, pts);
     }
 
     /**
-     * Push one subtitle payload onto the lone configured subtitle stream.
+     * Send one subtitle payload onto the lone configured subtitle stream.
      *
      * @param payload the subtitle access-unit bytes
      * @param pts     90&nbsp;kHz presentation timestamp
@@ -162,16 +162,16 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure
      * @throws RtpException on transport failure
      */
-    public void pushSubtitle(byte[] payload, long pts) throws MuxException, RtpException {
+    public void sendSubtitle(byte[] payload, long pts) throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushSubtitle(peekHandle(), pts, payload);
+        nSendSubtitle(peekHandle(), pts, payload);
     }
 
     /**
-     * Push one private-data payload onto the lone configured data stream.
+     * Send one private-data payload onto the lone configured data stream.
      * Pass-through: the muxer applies no AU-cell wrap and no framing (UNLIKE
-     * {@link #pushKlv}) — {@code data} lands verbatim as the PES payload, and
-     * one push produces exactly one PES packet on stream_id {@code 0xBD}
+     * {@link #sendKlv}) — {@code data} lands verbatim as the PES payload, and
+     * one send produces exactly one PES packet on stream_id {@code 0xBD}
      * ({@code private_stream_1}). {@code pts} is written into the PES header
      * only when the stream was configured with {@code carriesPts = true}, but
      * it ALWAYS drives PSI/PCR pacing.
@@ -182,18 +182,18 @@ public final class MuxSender extends NativeHandle {
      * @throws IllegalStateException if the sender is closed
      * @throws MuxException {@code INPUT_MALFORMED} (payload over the PES
      *     ceiling), or {@code INVALID_USAGE} (zero data streams, or &gt;1 —
-     *     ambiguous, use {@link #pushDataTo})
+     *     ambiguous, use {@link #sendDataTo})
      * @throws RtpException on transport failure
      */
-    public void pushData(byte[] data, long pts) throws MuxException, RtpException {
+    public void sendData(byte[] data, long pts) throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushData(peekHandle(), data, pts);
+        nSendData(peekHandle(), data, pts);
     }
 
-    // ── Push family — handle-targeted variants ────────────────────────────
+    // ── Send family — handle-targeted variants ────────────────────────────
 
     /**
-     * Push one video access unit to a specific configured video stream.
+     * Send one video access unit to a specific configured video stream.
      *
      * @param h        the target stream handle (from {@link #videoHandle()})
      * @param nal      the access unit bytes
@@ -205,14 +205,14 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer/framing failure (incl. a handle not configured
      *     for this muxer)
      */
-    public void pushVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
+    public void sendVideoTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushVideoTo(peekHandle(), h.raw(), nal, pts, keyFrame);
+        nSendVideoTo(peekHandle(), h.raw(), nal, pts, keyFrame);
     }
 
     /**
-     * Push one KLV blob to a specific configured KLV stream. Pass raw KLV LS
+     * Send one KLV blob to a specific configured KLV stream. Pass raw KLV LS
      * bytes — the muxer auto-wraps the AU-cell header; do not pre-wrap.
      *
      * @param h                 the target stream handle (from {@link #klvHandle()})
@@ -226,14 +226,14 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure (incl. a handle not configured for
      *     this muxer)
      */
-    public void pushKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
+    public void sendKlvTo(KlvStreamHandle h, byte[] klv, long pts, int metadataServiceId)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushKlvTo(peekHandle(), h.raw(), klv, pts, metadataServiceId);
+        nSendKlvTo(peekHandle(), h.raw(), klv, pts, metadataServiceId);
     }
 
     /**
-     * Push one encoded audio frame to a specific configured audio stream.
+     * Send one encoded audio frame to a specific configured audio stream.
      *
      * @param h      the target stream handle (from {@link #audioHandle()})
      * @param frames the encoded audio bytes
@@ -244,14 +244,14 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure (incl. a handle not configured for
      *     this muxer)
      */
-    public void pushAudioTo(AudioStreamHandle h, byte[] frames, long pts)
+    public void sendAudioTo(AudioStreamHandle h, byte[] frames, long pts)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushAudioTo(peekHandle(), h.raw(), frames, pts);
+        nSendAudioTo(peekHandle(), h.raw(), frames, pts);
     }
 
     /**
-     * Push one subtitle payload to a specific configured subtitle stream.
+     * Send one subtitle payload to a specific configured subtitle stream.
      *
      * @param h       the target stream handle (from {@link #subtitleHandle()})
      * @param payload the subtitle access-unit bytes
@@ -262,15 +262,15 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure (incl. a handle not configured for
      *     this muxer)
      */
-    public void pushSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
+    public void sendSubtitleTo(SubtitleStreamHandle h, byte[] payload, long pts)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushSubtitleTo(peekHandle(), h.raw(), pts, payload);
+        nSendSubtitleTo(peekHandle(), h.raw(), pts, payload);
     }
 
     /**
-     * Push one private-data payload to a specific configured data stream. Same
-     * pass-through and PTS semantics as {@link #pushData}.
+     * Send one private-data payload to a specific configured data stream. Same
+     * pass-through and PTS semantics as {@link #sendData}.
      *
      * @param h    the target stream handle (from {@link #dataHandle()})
      * @param data raw payload bytes (caller's framing convention; at most
@@ -282,10 +282,10 @@ public final class MuxSender extends NativeHandle {
      * @throws MuxException on muxer failure (incl. a handle not configured for
      *     this muxer)
      */
-    public void pushDataTo(DataStreamHandle h, byte[] data, long pts)
+    public void sendDataTo(DataStreamHandle h, byte[] data, long pts)
             throws MuxException, RtpException {
         ensureOpen("MuxSender is closed");
-        nPushDataTo(peekHandle(), h.raw(), data, pts);
+        nSendDataTo(peekHandle(), h.raw(), data, pts);
     }
 
     // ── Handle getters ────────────────────────────────────────────────────
@@ -365,26 +365,26 @@ public final class MuxSender extends NativeHandle {
         boolean[] streamCarriesPts,
         byte[] dataDescBytes, int[] dataDescLens, int pktSize) throws RtpException, MuxException;
 
-    private static native void nPushVideo(long handle, byte[] nal, long pts, boolean keyFrame)
+    private static native void nSendVideo(long handle, byte[] nal, long pts, boolean keyFrame)
         throws MuxException, RtpException;
-    private static native void nPushKlv(long handle, byte[] klv, long pts, int metadataServiceId)
+    private static native void nSendKlv(long handle, byte[] klv, long pts, int metadataServiceId)
         throws MuxException, RtpException;
-    private static native void nPushAudio(long handle, byte[] frames, long pts)
+    private static native void nSendAudio(long handle, byte[] frames, long pts)
         throws MuxException, RtpException;
-    private static native void nPushSubtitle(long handle, long pts, byte[] payload)
+    private static native void nSendSubtitle(long handle, long pts, byte[] payload)
         throws MuxException, RtpException;
-    private static native void nPushData(long handle, byte[] data, long pts)
+    private static native void nSendData(long handle, byte[] data, long pts)
         throws MuxException, RtpException;
 
-    private static native void nPushVideoTo(long handle, long streamHandleRaw, byte[] nal,
+    private static native void nSendVideoTo(long handle, long streamHandleRaw, byte[] nal,
         long pts, boolean keyFrame) throws MuxException, RtpException;
-    private static native void nPushKlvTo(long handle, long streamHandleRaw, byte[] klv,
+    private static native void nSendKlvTo(long handle, long streamHandleRaw, byte[] klv,
         long pts, int metadataServiceId) throws MuxException, RtpException;
-    private static native void nPushAudioTo(long handle, long streamHandleRaw, byte[] frames,
+    private static native void nSendAudioTo(long handle, long streamHandleRaw, byte[] frames,
         long pts) throws MuxException, RtpException;
-    private static native void nPushSubtitleTo(long handle, long streamHandleRaw, long pts,
+    private static native void nSendSubtitleTo(long handle, long streamHandleRaw, long pts,
         byte[] payload) throws MuxException, RtpException;
-    private static native void nPushDataTo(long handle, long streamHandleRaw, byte[] data,
+    private static native void nSendDataTo(long handle, long streamHandleRaw, byte[] data,
         long pts) throws MuxException, RtpException;
 
     private static native long nVideoHandle(long handle);

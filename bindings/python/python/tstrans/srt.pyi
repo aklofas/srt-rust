@@ -343,27 +343,27 @@ class MuxSender:
         program_config: MuxerProgramConfig,
     ) -> MuxSender: ...
 
-    # Push surface — single stream.
-    def push_video(
+    # Send surface — single stream.
+    def send_video(
         self,
         nal: BytesLike,
         *,
         pts: Pts90khz,
         key_frame: bool = ...,
     ) -> None: ...
-    def push_klv(
+    def send_klv(
         self,
         klv: BytesLike,
         *,
         pts: Pts90khz,
         metadata_service_id: int = ...,
     ) -> None: ...
-    def push_audio(self, adts: BytesLike, *, pts: Pts90khz) -> None: ...
-    def push_subtitle(self, payload: BytesLike, *, pts: Pts90khz) -> None: ...
-    def push_data(self, data: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_audio(self, adts: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_subtitle(self, payload: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_data(self, data: BytesLike, *, pts: Pts90khz) -> None: ...
 
-    # Push surface — multi-stream variants (explicit handle).
-    def push_video_to(
+    # Send surface — multi-stream variants (explicit handle).
+    def send_video_to(
         self,
         handle: VideoStreamHandle,
         nal: BytesLike,
@@ -371,7 +371,7 @@ class MuxSender:
         pts: Pts90khz,
         key_frame: bool = ...,
     ) -> None: ...
-    def push_klv_to(
+    def send_klv_to(
         self,
         handle: KlvStreamHandle,
         klv: BytesLike,
@@ -379,21 +379,21 @@ class MuxSender:
         pts: Pts90khz,
         metadata_service_id: int = ...,
     ) -> None: ...
-    def push_audio_to(
+    def send_audio_to(
         self,
         handle: AudioStreamHandle,
         adts: BytesLike,
         *,
         pts: Pts90khz,
     ) -> None: ...
-    def push_subtitle_to(
+    def send_subtitle_to(
         self,
         handle: SubtitleStreamHandle,
         payload: BytesLike,
         *,
         pts: Pts90khz,
     ) -> None: ...
-    def push_data_to(
+    def send_data_to(
         self,
         handle: DataStreamHandle,
         data: BytesLike,
@@ -645,27 +645,27 @@ class ManagedMuxSender:
         policy: Optional[ReconnectPolicy] = ...,
     ) -> ManagedMuxSender: ...
 
-    # Push surface — single stream.
-    def push_video(
+    # Send surface — single stream.
+    def send_video(
         self,
         nal: BytesLike,
         *,
         pts: Pts90khz,
         key_frame: bool = ...,
     ) -> None: ...
-    def push_klv(
+    def send_klv(
         self,
         klv: BytesLike,
         *,
         pts: Pts90khz,
         metadata_service_id: int = ...,
     ) -> None: ...
-    def push_audio(self, adts: BytesLike, *, pts: Pts90khz) -> None: ...
-    def push_subtitle(self, payload: BytesLike, *, pts: Pts90khz) -> None: ...
-    def push_data(self, data: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_audio(self, adts: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_subtitle(self, payload: BytesLike, *, pts: Pts90khz) -> None: ...
+    def send_data(self, data: BytesLike, *, pts: Pts90khz) -> None: ...
 
-    # Push surface — multi-stream variants.
-    def push_video_to(
+    # Send surface — multi-stream variants.
+    def send_video_to(
         self,
         handle: VideoStreamHandle,
         nal: BytesLike,
@@ -673,7 +673,7 @@ class ManagedMuxSender:
         pts: Pts90khz,
         key_frame: bool = ...,
     ) -> None: ...
-    def push_klv_to(
+    def send_klv_to(
         self,
         handle: KlvStreamHandle,
         klv: BytesLike,
@@ -681,21 +681,21 @@ class ManagedMuxSender:
         pts: Pts90khz,
         metadata_service_id: int = ...,
     ) -> None: ...
-    def push_audio_to(
+    def send_audio_to(
         self,
         handle: AudioStreamHandle,
         adts: BytesLike,
         *,
         pts: Pts90khz,
     ) -> None: ...
-    def push_subtitle_to(
+    def send_subtitle_to(
         self,
         handle: SubtitleStreamHandle,
         payload: BytesLike,
         *,
         pts: Pts90khz,
     ) -> None: ...
-    def push_data_to(
+    def send_data_to(
         self,
         handle: DataStreamHandle,
         data: BytesLike,

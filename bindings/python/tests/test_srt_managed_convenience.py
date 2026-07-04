@@ -171,7 +171,7 @@ def test_managed_loopback_round_trip() -> None:
     time.sleep(0.2)
     try:
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
         # Drain in-flight before close.
@@ -271,7 +271,7 @@ def test_managed_context_manager_closes_cleanly() -> None:
     try:
         with sender as s:
             assert "open" in repr(s)
-            s.push_video(NAL_IDR, pts=Pts90khz.from_raw(0))
+            s.send_video(NAL_IDR, pts=Pts90khz.from_raw(0))
         # After __exit__, sender is closed.
         assert "closed" in repr(sender)
         # Idempotent close.
@@ -316,7 +316,7 @@ def test_managed_push_on_closed_sender_raises_closed() -> None:
     sender.close()
     receiver.close()
     with pytest.raises(SrtError) as exc_info:
-        sender.push_video(NAL_IDR, pts=Pts90khz.from_raw(0))
+        sender.send_video(NAL_IDR, pts=Pts90khz.from_raw(0))
     assert exc_info.value.kind == SrtErrorKind.CLOSED
 
 
@@ -414,7 +414,7 @@ def test_push_data_on_closed_sender_raises_closed() -> None:
         rx_box[0].close()
     sender.close()
     with pytest.raises(SrtError) as exc_info:
-        sender.push_data(b"\x01\x02\x03", pts=Pts90khz.from_raw(0))
+        sender.send_data(b"\x01\x02\x03", pts=Pts90khz.from_raw(0))
     assert exc_info.value.kind == SrtErrorKind.CLOSED
 
 
@@ -494,9 +494,9 @@ def test_push_data_round_trips_payload_fidelity() -> None:
         assert data_h is not None
         for i in range(N):
             pts = Pts90khz.from_raw(PTS_BASE + i * PTS_STEP)
-            sender.push_video(NAL_IDR_DATA, pts=pts, key_frame=(i % 4 == 0))
-            sender.push_data(PAYLOAD_SHORTHAND, pts=pts)
-            sender.push_data_to(data_h, PAYLOAD_HANDLE, pts=pts)
+            sender.send_video(NAL_IDR_DATA, pts=pts, key_frame=(i % 4 == 0))
+            sender.send_data(PAYLOAD_SHORTHAND, pts=pts)
+            sender.send_data_to(data_h, PAYLOAD_HANDLE, pts=pts)
         # Give TSBPD time to release the buffered packets to the consumer.
         time.sleep(0.5)
     finally:

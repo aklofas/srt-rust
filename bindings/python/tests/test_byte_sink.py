@@ -148,7 +148,7 @@ def test_srt_byte_sink_fanout_sees_ts_packets() -> None:
     time.sleep(0.2)
     try:
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
         time.sleep(0.3)
@@ -201,7 +201,7 @@ def test_srt_byte_sink_failure_propagates_fail_loud() -> None:
     time.sleep(0.2)
     try:
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
         time.sleep(0.3)
@@ -254,7 +254,7 @@ def test_srt_two_byte_sinks_fire_in_registration_order() -> None:
     time.sleep(0.2)
     try:
         for i in range(32):
-            sender.push_video(
+            sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 4 == 0)
             )
         time.sleep(0.3)

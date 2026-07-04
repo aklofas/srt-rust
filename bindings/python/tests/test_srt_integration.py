@@ -192,11 +192,11 @@ def test_full_pipeline_via_builder_socket_promotion() -> None:
     assert klv_h is not None, "KLV handle should resolve given a klv program stream"
     try:
         for i in range(8):
-            mux_sender.push_video(
+            mux_sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 2 == 0)
             )
             if i < 3:
-                mux_sender.push_klv_to(
+                mux_sender.send_klv_to(
                     klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(i * 3000)
                 )
         # Let libsrt drain the send queue so close doesn't race in-flight
@@ -286,11 +286,11 @@ def test_from_url_shortcut_equivalent_to_builder_path() -> None:
     assert klv_h is not None
     try:
         for i in range(8):
-            mux_sender.push_video(
+            mux_sender.send_video(
                 NAL_IDR, pts=Pts90khz.from_raw(i * 3000), key_frame=(i % 2 == 0)
             )
             if i < 3:
-                mux_sender.push_klv_to(
+                mux_sender.send_klv_to(
                     klv_h, KLV_UL_ZERO, pts=Pts90khz.from_raw(i * 3000)
                 )
         time.sleep(0.3)

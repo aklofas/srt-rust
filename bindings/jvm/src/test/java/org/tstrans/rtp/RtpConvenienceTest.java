@@ -61,8 +61,8 @@ class RtpConvenienceTest {
             String url = "rtp://127.0.0.1:" + peer.getLocalPort();
             try (MuxSender s = MuxSender.fromUrl(url, videoConfig())) {
                 assertTrue(s.isAlive());
-                s.pushVideo(idr(), 0L, true);
-                s.pushVideo(idr(), 3000L, true);
+                s.sendVideo(idr(), 0L, true);
+                s.sendVideo(idr(), 3000L, true);
 
                 TransportStats st = s.stats();
                 assertNotNull(st);
@@ -70,7 +70,7 @@ class RtpConvenienceTest {
                 assertNotNull(st.muxerStats());
                 // The muxer emitted at least the PAT/PMT + video PES packets.
                 assertTrue(st.muxerStats().tsPacketsEmitted() > 0,
-                    "muxer should have emitted TS packets after two video pushes");
+                    "muxer should have emitted TS packets after two video sends");
 
                 assertTrue(s.videoHandle().isPresent());
                 assertTrue(s.klvHandle().isEmpty());
@@ -85,7 +85,7 @@ class RtpConvenienceTest {
             String url = "rtp://127.0.0.1:" + peer.getLocalPort();
             try (MuxSender s = MuxSender.fromUrl(url, videoConfig(), 188)) {
                 assertTrue(s.isAlive());
-                s.pushVideo(idr(), 0L, true);
+                s.sendVideo(idr(), 0L, true);
             }
         }
     }
@@ -101,7 +101,7 @@ class RtpConvenienceTest {
         MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:5007", videoConfig());
         s.close();
         assertFalse(s.isAlive());
-        assertThrows(IllegalStateException.class, () -> s.pushVideo(idr(), 0L, true));
+        assertThrows(IllegalStateException.class, () -> s.sendVideo(idr(), 0L, true));
         assertThrows(IllegalStateException.class, s::stats);
         s.close(); // idempotent
     }

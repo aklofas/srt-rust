@@ -122,7 +122,7 @@ def test_srt_demux_receiver_stats_no_deadlock_with_byte_sink() -> None:
         try:
             i = 0
             while not feeder_stop.is_set():
-                sender.push_video(
+                sender.send_video(
                     NAL_IDR,
                     pts=Pts90khz.from_raw(i * 3000),
                     key_frame=(i % 4 == 0),

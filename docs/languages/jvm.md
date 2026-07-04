@@ -935,14 +935,14 @@ closes the underlying libsrt socket; subsequent calls are no-ops.
 
 The `org.tstrans.srt` package also exposes the high-level convenience shells that
 own a muxer / demuxer and a transport in one object, so you never touch raw TS
-bytes: `MuxSender` wraps `tst_pipeline::MuxSender<SrtTransport>` (push elementary
+bytes: `MuxSender` wraps `tst_pipeline::MuxSender<SrtTransport>` (send elementary
 streams → it muxes + sends) and `DemuxReceiver` wraps
 `tst_pipeline::DemuxReceiver<SrtTransport>` (it recvs + demuxes → you iterate
 typed `DemuxEvent`s).
 
 ### Send: `MuxSender`
 
-Build a `MuxerConfig`, connect in caller mode, and push elementary streams:
+Build a `MuxerConfig`, connect in caller mode, and send elementary streams:
 
 ```java
 import org.tstrans.srt.MuxSender;
@@ -958,17 +958,17 @@ try (MuxSender s = MuxSender.fromUrl(
         "srt://host:9000?mode=caller&latency=120", program)) {
     long pts = 0;
     for (byte[] annexBNal : accessUnits) {
-        s.pushVideo(annexBNal, pts, /*keyFrame=*/ true);
+        s.sendVideo(annexBNal, pts, /*keyFrame=*/ true);
         pts += 3000;  // 90 kHz PTS; advance per frame
     }
 }
-// MuxSender has NO flush(): bytes flush per-push and again on close().
+// MuxSender has NO flush(): bytes flush per-send and again on close().
 ```
 
-`pushKlv`, `pushAudio`, `pushSubtitle`, and `pushData` (raw private-data
+`sendKlv`, `sendAudio`, `sendSubtitle`, and `sendData` (raw private-data
 bytes, passed through verbatim — same PTS / ceiling semantics as
 `Muxer.pushData`) cover the other elementary-stream kinds; the handle-targeted
-`push*To` variants (including `pushDataTo` with the handle from `dataHandle()`)
+`send*To` variants (including `sendDataTo` with the handle from `dataHandle()`)
 address a specific stream in a multi-stream program.
 
 ### Receive: `DemuxReceiver`
@@ -1052,9 +1052,8 @@ policy argument.
 
 ### Send with auto-reconnect: `ManagedMuxSender`
 
-Same push API as the plain `MuxSender` (minus the data push family —
-`pushData` / `pushDataTo` / `dataHandle()` are not yet on `ManagedMuxSender`,
-a recorded follow-up), but the transport silently rebuilds on a peer drop:
+Same `send*` API as the plain `MuxSender`, but the transport silently
+rebuilds on a peer drop:
 
 ```java
 import org.tstrans.srt.ManagedMuxSender;
@@ -1070,7 +1069,7 @@ try (ManagedMuxSender s = ManagedMuxSender.fromUrl(
         "srt://host:9000?mode=caller&latency=120", program, policy)) {
     long pts = 0;
     for (byte[] annexBNal : accessUnits) {
-        s.pushVideo(annexBNal, pts, /*keyFrame=*/ true);  // auto-reconnects on Broken/Closed
+        s.sendVideo(annexBNal, pts, /*keyFrame=*/ true);  // auto-reconnects on Broken/Closed
         pts += 3000;
     }
 }
@@ -1219,11 +1218,11 @@ See [`/docs/languages/python.md`](/docs/languages/python.md) for the canonical
 
 ### RTP convenience: MuxSender / DemuxReceiver
 
-`org.tstrans.rtp.MuxSender` bundles a `Muxer` + an RTP transport — push encoded
+`org.tstrans.rtp.MuxSender` bundles a `Muxer` + an RTP transport — send encoded
 video/KLV/audio/subtitle/private-data and it muxes to MPEG-TS and sends over
-RTP/UDP in one call. The push surface matches the srt `MuxSender`: the per-kind
-`push*` shorthands (including `pushData`), the handle-targeted `push*To`
-variants (including `pushDataTo`), and the per-kind handle accessors
+RTP/UDP in one call. The send surface matches the srt `MuxSender`: the per-kind
+`send*` shorthands (including `sendData`), the handle-targeted `send*To`
+variants (including `sendDataTo`), and the per-kind handle accessors
 (including `dataHandle()`). `org.tstrans.rtp.DemuxReceiver` bundles a `Demuxer`
 + an RTP recv transport and iterates `DemuxEvent`s.
 
@@ -1233,7 +1232,7 @@ MuxerConfig program = MuxerConfig.builder()
     .addVideo(0x1011, VideoCodec.H264)
     .build();
 try (MuxSender s = MuxSender.fromUrl("rtp://127.0.0.1:5004", program)) {
-    s.pushVideo(annexBNal, /*pts*/ 0L, /*keyFrame*/ true);
+    s.sendVideo(annexBNal, /*pts*/ 0L, /*keyFrame*/ true);
 }
 
 try (DemuxReceiver rx = DemuxReceiver.fromUrl("rtp://0.0.0.0:5004")) {
@@ -1342,10 +1341,11 @@ try (RtspServer server = RtspServer.start(cfg);
   `pushAudio`/`pushSubtitle` calls on `MountHandle` throw `RtspException` of kind
   `MOUNT` on failure (e.g. invalid config, server already stopped). This differs
   from `MuxSender`, which throws `MuxException`.
-- **No data push family yet.** `MountHandle` does not expose `pushData` /
-  `pushDataTo` (and neither does the srt `ManagedMuxSender`) — a recorded
-  follow-up. Private-data streams currently push through the offline `Muxer` /
-  `MuxerFileSink` or the plain srt / rtp `MuxSender`s only.
+- **No data push family yet on `MountHandle`.** `MountHandle` does not expose
+  `pushData` / `pushDataTo` — a recorded follow-up. Private-data streams on
+  the RTSP path currently push through the offline `Muxer` / `MuxerFileSink`.
+  The srt `ManagedMuxSender` and the plain srt / rtp `MuxSender`s do expose
+  the full `sendData` / `sendDataTo` family.
 - **`MountHandle` is `Arc`-backed and thread-safe** on the push path (`&self`
   internally). Multiple producer threads may call `push*` concurrently. Do not
   race `close()` against a concurrent push — coordinate closes at the producer

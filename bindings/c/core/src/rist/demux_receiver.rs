@@ -288,7 +288,9 @@ pub unsafe extern "C" fn tst_rist_demux_receiver_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rist demux receiver)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rist demux receiver)"
+            ),
         )
     }
 }
@@ -370,8 +372,7 @@ mod tests {
     #[test]
     fn null_next_event_returns_invalid_config() {
         let mut ev = TstEvent::default();
-        let rc =
-            unsafe { tst_rist_demux_receiver_next_event(std::ptr::null_mut(), &mut ev) };
+        let rc = unsafe { tst_rist_demux_receiver_next_event(std::ptr::null_mut(), &mut ev) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
@@ -393,19 +394,14 @@ mod tests {
         let mut arr: *const crate::stats::TstStreamStats = std::ptr::null();
         let mut count: libc::size_t = 0;
         let rc = unsafe {
-            tst_rist_demux_receiver_get_stream_stats(
-                std::ptr::null_mut(),
-                &mut arr,
-                &mut count,
-            )
+            tst_rist_demux_receiver_get_stream_stats(std::ptr::null_mut(), &mut arr, &mut count)
         };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
     #[test]
     fn open_with_null_url_returns_null() {
-        let p =
-            unsafe { tst_rist_demux_receiver_open(std::ptr::null(), std::ptr::null()) };
+        let p = unsafe { tst_rist_demux_receiver_open(std::ptr::null(), std::ptr::null()) };
         assert!(p.is_null());
     }
 }

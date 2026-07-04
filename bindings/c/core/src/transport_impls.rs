@@ -30,8 +30,8 @@ use tst_core::transport::{RecvTransport, Transport};
 use tst_pipeline::{DemuxReceiver, MuxSender, Receiver, Sender, ShellErrorKind};
 
 use crate::error::{
-    record_eos, record_mux_error, record_not_available, record_not_found, record_shell_error,
-    set_last_error, tst_get_last_error, TstError,
+    TstError, record_eos, record_mux_error, record_not_available, record_not_found,
+    record_shell_error, set_last_error, tst_get_last_error,
 };
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
@@ -469,10 +469,7 @@ pub(crate) unsafe fn receiver_recv_ts<R: RecvTransport>(
             }
             0
         }
-        Err(e)
-            if e.kind == ShellErrorKind::Closed
-                || e.kind == ShellErrorKind::TransportBroken =>
-        {
+        Err(e) if e.kind == ShellErrorKind::Closed || e.kind == ShellErrorKind::TransportBroken => {
             record_eos();
             TstError::EndOfStream as i32
         }

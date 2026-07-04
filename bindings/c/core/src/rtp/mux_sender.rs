@@ -214,13 +214,7 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_video(
         return TstError::InvalidConfig as i32;
     };
     unsafe {
-        crate::transport_impls::mux_sender_push_video(
-            &handle.inner,
-            nal,
-            len,
-            pts_90khz,
-            key_frame,
-        )
+        crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame)
     }
 }
 
@@ -273,9 +267,7 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_push_audio(
         set_last_error(TstError::InvalidConfig, "null rtp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe {
-        crate::transport_impls::mux_sender_push_audio(&handle.inner, frames, len, pts_90khz)
-    }
+    unsafe { crate::transport_impls::mux_sender_push_audio(&handle.inner, frames, len, pts_90khz) }
 }
 
 /// Push one subtitle PES unit through the muxer's single subtitle stream
@@ -530,7 +522,9 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rtp mux sender)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this rtp mux sender)"
+            ),
         )
     }
 }

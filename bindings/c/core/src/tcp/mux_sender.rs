@@ -172,7 +172,9 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_video(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame)
+    }
 }
 
 /// Push one raw KLV blob through the muxer's single KLV stream and out
@@ -248,7 +250,9 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_subtitle(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +285,16 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_video_to(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_video_to(&handle.inner, stream_handle, nal, len, pts_90khz, key_frame) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_video_to(
+            &handle.inner,
+            stream_handle,
+            nal,
+            len,
+            pts_90khz,
+            key_frame,
+        )
+    }
 }
 
 /// Push one KLV blob targeting a specific KLV elementary stream.
@@ -306,7 +319,15 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_klv_to(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_klv_to(&handle.inner, stream_handle, klv, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_klv_to(
+            &handle.inner,
+            stream_handle,
+            klv,
+            len,
+            pts_90khz,
+        )
+    }
 }
 
 /// Push one audio frame buffer targeting a specific audio elementary stream.
@@ -329,7 +350,15 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_audio_to(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_audio_to(&handle.inner, stream_handle, frames, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_audio_to(
+            &handle.inner,
+            stream_handle,
+            frames,
+            len,
+            pts_90khz,
+        )
+    }
 }
 
 /// Push one subtitle PES unit targeting a specific subtitle elementary stream.
@@ -352,7 +381,15 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_push_subtitle_to(
         set_last_error(TstError::InvalidConfig, "null tcp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_subtitle_to(&handle.inner, stream_handle, payload, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_subtitle_to(
+            &handle.inner,
+            stream_handle,
+            payload,
+            len,
+            pts_90khz,
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -444,7 +481,9 @@ pub unsafe extern "C" fn tst_tcp_mux_sender_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this tcp mux sender)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this tcp mux sender)"
+            ),
         )
     }
 }

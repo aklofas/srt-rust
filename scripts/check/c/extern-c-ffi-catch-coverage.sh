@@ -112,12 +112,16 @@ for entry in "${ENTRIES[@]}"; do
     # `with_mux_publisher(` HLS helper (bindings/c/core/src/hls/mux_publisher.rs)
     # wraps its closure in crate::panic::ffi_catch internally — same contract
     # as Handle::with_inner_mut — so callers delegating through it are isolated.
+    # `crate::transport_impls::` calls (WP18 genericization) forward directly
+    # to generic bodies in transport_impls.rs, which route through with_inner_mut
+    # / with_inner_ref internally; the isolation guarantee is preserved
+    # one hop away but is still unconditional.
     # Here-string, NOT `echo "$body" | grep -q`: `grep -q` closes the pipe on
     # first match, `echo` then dies with SIGPIPE, and under `set -o pipefail`
     # that turns a MATCH into a pipeline failure → a bogus MISSING. The race is
     # timing-dependent (flaky; surfaced on the macOS runner). A here-string has
     # no pipe, so there is no SIGPIPE to mask the match.
-    if grep -qE 'crate::panic::ffi_catch\(|^\s*ffi_catch\(|\.with_inner_(mut|ref)\(|with_mux_publisher\(' <<<"$body"; then
+    if grep -qE 'crate::panic::ffi_catch\(|^\s*ffi_catch\(|\.with_inner_(mut|ref)\(|with_mux_publisher\(|crate::transport_impls::' <<<"$body"; then
         checked=$((checked + 1))
         continue
     fi

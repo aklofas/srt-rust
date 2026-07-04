@@ -110,7 +110,9 @@ pub unsafe extern "C" fn tst_mux_sender_send_video(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame)
+    }
 }
 
 /// Send one KLV blob through the muxer's single KLV stream and out the
@@ -410,7 +412,9 @@ pub unsafe extern "C" fn tst_mux_sender_send_subtitle(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz)
+    }
 }
 
 /// Send one subtitle PES unit targeting a specific subtitle elementary
@@ -530,7 +534,9 @@ pub unsafe extern "C" fn tst_mux_sender_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            ),
         )
     }
 }
@@ -768,7 +774,9 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame)
+    }
 }
 
 /// Send one KLV blob through the managed mux sender's single KLV stream
@@ -932,7 +940,9 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    unsafe { crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz) }
+    unsafe {
+        crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz)
+    }
 }
 
 /// Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
@@ -1119,7 +1129,9 @@ pub unsafe extern "C" fn tst_managed_mux_sender_get_stream_codec_stats(
             &handle.inner,
             pid,
             out,
-            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"),
+            &format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            ),
         )
     }
 }

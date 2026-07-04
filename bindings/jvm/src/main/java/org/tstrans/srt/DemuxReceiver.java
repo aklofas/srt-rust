@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import org.tstrans.DemuxException;
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 import org.tstrans.mpegts.DemuxEvent;
@@ -45,14 +46,11 @@ import org.tstrans.mpegts.DemuxerConfig;
  * callbacks deliver heap {@code byte[]} copies; a zero-copy path (FFM
  * {@code MemorySegment}) is JDK-22+ only and will be added in a future release.
  */
-public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> {
+public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxEvent> {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
     /** Package-private constructor from a native handle. */
-    DemuxReceiver(long h) { this.handle.set(h); }
+    DemuxReceiver(long h) { setHandle(h); }
 
     /**
      * Bind a listener-mode SRT receiver on {@code url}, accept the first
@@ -119,7 +117,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
                 if (done) return false;
                 if (peeked != null) return true;
                 try {
-                    peeked = nNext(handle.get());
+                    peeked = nNext(peekHandle());
                 } catch (SrtException | DemuxException e) {
                     throw new RuntimeException(e);
                 }
@@ -159,8 +157,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public void addByteSink(Consumer<byte[]> callback) {
-        ensureOpen();
-        nAddByteSink(handle.get(), callback);
+        ensureOpen("DemuxReceiver is closed");
+        nAddByteSink(peekHandle(), callback);
     }
 
     /**
@@ -171,8 +169,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        long ch = nCancelHandle(handle.get());
+        ensureOpen("DemuxReceiver is closed");
+        long ch = nCancelHandle(peekHandle());
         return new CancelHandle(ch);
     }
 
@@ -187,8 +185,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public SocketStats socketStats() {
-        ensureOpen();
-        return nSocketStats(handle.get());
+        ensureOpen("DemuxReceiver is closed");
+        return nSocketStats(peekHandle());
     }
 
     /**
@@ -206,8 +204,8 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @throws IllegalStateException if the receiver is closed
      */
     public TransportStats stats() {
-        ensureOpen();
-        return nStats(handle.get());
+        ensureOpen("DemuxReceiver is closed");
+        return nStats(peekHandle());
     }
 
     /**
@@ -220,11 +218,7 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * does NOT itself wake a parked recv; to unblock it from another thread, call
      * {@link #cancelHandle()}{@code .cancel()} first.
      */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
     /**
      * Return {@code true} while the receiver owns a live transport.
@@ -232,13 +226,11 @@ public final class DemuxReceiver implements AutoCloseable, Iterable<DemuxEvent> 
      * @return liveness state of the underlying SRT socket
      */
     public boolean isAlive() {
-        if (handle.get() == 0) return false;
-        return nIsAlive(handle.get());
+        if (peekHandle() == 0) return false;
+        return nIsAlive(peekHandle());
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("DemuxReceiver is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     // --- Natives ---
 

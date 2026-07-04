@@ -1,5 +1,6 @@
 package org.tstrans.srt;
 
+import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.SrtException;
 
@@ -27,14 +28,11 @@ import org.tstrans.SrtException;
  *
  * <p>Mirrors {@code tstrans.srt.ManagedSender} in tst-py.
  */
-public final class ManagedSender implements AutoCloseable {
+public final class ManagedSender extends NativeHandle {
     static { NativeLoader.load(); }
 
-    private final java.util.concurrent.atomic.AtomicLong handle =
-        new java.util.concurrent.atomic.AtomicLong(); // registry key; 0 = closed
-
     /** Package-private constructor from a native handle returned by {@link #nFromUrl}. */
-    ManagedSender(long h) { this.handle.set(h); }
+    ManagedSender(long h) { setHandle(h); }
 
     /**
      * Construct a managed sender by connecting to the given SRT caller-mode URL
@@ -88,8 +86,8 @@ public final class ManagedSender implements AutoCloseable {
      *     if the transport is broken past the reconnect budget; {@code IO} otherwise
      */
     public void sendBytes(byte[] data) throws SrtException {
-        ensureOpen();
-        nSendBytes(handle.get(), data);
+        ensureOpen("ManagedSender is closed");
+        nSendBytes(peekHandle(), data);
     }
 
     /**
@@ -99,8 +97,8 @@ public final class ManagedSender implements AutoCloseable {
      * @throws SrtException {@code BROKEN} on transport failure
      */
     public void flush() throws SrtException {
-        ensureOpen();
-        nFlush(handle.get());
+        ensureOpen("ManagedSender is closed");
+        nFlush(peekHandle());
     }
 
     /**
@@ -111,8 +109,8 @@ public final class ManagedSender implements AutoCloseable {
      * @return a new {@link CancelHandle}
      */
     public CancelHandle cancelHandle() {
-        ensureOpen();
-        long ch = nCancelHandle(handle.get());
+        ensureOpen("ManagedSender is closed");
+        long ch = nCancelHandle(peekHandle());
         return new CancelHandle(ch);
     }
 
@@ -124,8 +122,8 @@ public final class ManagedSender implements AutoCloseable {
      * @return the 16-field wire-stats snapshot (never null in normal operation)
      */
     public SocketStats socketStats() {
-        ensureOpen();
-        return nSocketStats(handle.get());
+        ensureOpen("ManagedSender is closed");
+        return nSocketStats(peekHandle());
     }
 
     /**
@@ -139,19 +137,15 @@ public final class ManagedSender implements AutoCloseable {
      * @throws SrtException always ({@code IO}) — documented stats drift
      */
     public SrtStats srtStats() throws SrtException {
-        ensureOpen();
-        return nSrtStats(handle.get());
+        ensureOpen("ManagedSender is closed");
+        return nSrtStats(peekHandle());
     }
 
     /**
      * Close the sender. Latches the cancel flag (so any in-flight reconnect loop
      * exits) and tears down the inner transport. Idempotent.
      */
-    @Override
-    public void close() {
-        long h = handle.getAndSet(0);
-        if (h != 0) nClose(h);
-    }
+    @Override public void close() { super.close(); }
 
     /**
      * Return {@code true} while the managed sender holds a live transport.
@@ -159,13 +153,11 @@ public final class ManagedSender implements AutoCloseable {
      * @return liveness state of the underlying managed transport
      */
     public boolean isAlive() {
-        if (handle.get() == 0) return false;
-        return nIsAlive(handle.get());
+        if (peekHandle() == 0) return false;
+        return nIsAlive(peekHandle());
     }
 
-    private void ensureOpen() {
-        if (handle.get() == 0) throw new IllegalStateException("ManagedSender is closed");
-    }
+    @Override protected void nativeClose(long h) { nClose(h); }
 
     private static native long nFromUrl(
         String url,

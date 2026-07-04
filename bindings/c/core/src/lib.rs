@@ -87,6 +87,10 @@ pub mod muxer;
 pub mod stats;
 mod ffi_slice;
 mod panic;
+// Generic transport body impls shared across the family modules (requires std;
+// all transport features gate on std, so this is never needed in bare-metal).
+#[cfg(feature = "std")]
+pub(crate) mod transport_impls;
 
 // Sender-side surface (requires SRT transport):
 #[cfg(feature = "srt")]

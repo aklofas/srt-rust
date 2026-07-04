@@ -1,0 +1,723 @@
+//! Generic transport body implementations (SIMP-CBIND-1).
+//!
+//! Each function here implements one logical C entry-point body, generic over
+//! a pipeline shell type (`MuxSender<T>`, `Sender<T>`, `Receiver<R>`,
+//! `DemuxReceiver<R>`). The transport-family-specific `*.rs` files contain
+//! the literal `#[unsafe(no_mangle)] pub unsafe extern "C" fn …` wrappers
+//! that do the null-check with the protocol-specific error string and then
+//! call into this module.
+//!
+//! **Governing constraints:**
+//! - No `extern "C"` declarations here — cbindgen must see them at their
+//!   literal call sites in the family modules.
+//! - This module requires `std` (all transport features gate on it).
+//! - The functions are generic via monomorphization; they do NOT add new
+//!   symbols to the ABI.
+//!
+//! Organization:
+//! - MuxSender (push/stats)
+//! - Sender (raw TS bytes)
+//! - Receiver (raw TS bytes recv)
+//! - DemuxReceiver (event recv + stats)
+
+#![cfg(feature = "std")]
+
+use std::sync::Mutex;
+
+use tst_core::mpegts::common::{Pts90khz, TS_PACKET_SIZE};
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+};
+use tst_core::transport::{RecvTransport, Transport};
+use tst_pipeline::{DemuxReceiver, MuxSender, Receiver, Sender, ShellErrorKind};
+
+use crate::error::{
+    record_eos, record_mux_error, record_not_available, record_not_found, record_shell_error,
+    set_last_error, tst_get_last_error, TstError,
+};
+use crate::event::{EventArena, TstEvent};
+use crate::handle::Handle;
+
+// ============================================================================
+// MuxSender<T> generic push impls
+// ============================================================================
+//
+// Each function receives a `&Handle<MuxSender<T>>` (after null-check in the
+// family forwarder) and raw FFI parameters. No null-check on the handle itself
+// (already done by caller); null-checks on pointer args remain here.
+
+/// Generic body for `tst_*_mux_sender_push_video`.
+///
+/// # Safety
+/// `nal` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_video<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_klv`.
+///
+/// # Safety
+/// `klv` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_klv<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_klv(slice, pts, 0x00) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_audio`.
+///
+/// # Safety
+/// `frames` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_audio<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_audio(slice, pts) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_subtitle`.
+///
+/// # Safety
+/// `payload` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_subtitle<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_subtitle(slice, pts) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_video_to`.
+///
+/// Includes the `try_from_raw` trust-boundary guard (rejects forged
+/// stream handles before they reach the push-time range check).
+///
+/// # Safety
+/// `nal` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_video_to<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    stream_handle: u32,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(stream_handle) {
+        Ok(s) => s,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_klv_to`.
+///
+/// # Safety
+/// `klv` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_klv_to<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    stream_handle: u32,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match KlvStreamHandle::try_from_raw(stream_handle) {
+        Ok(s) => s,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_klv_to(stream, slice, pts, 0x00) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_audio_to`.
+///
+/// # Safety
+/// `frames` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_audio_to<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    stream_handle: u32,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match AudioStreamHandle::try_from_raw(stream_handle) {
+        Ok(s) => s,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_push_subtitle_to`.
+///
+/// # Safety
+/// `payload` must be readable for `len` bytes.
+pub(crate) unsafe fn mux_sender_push_subtitle_to<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    stream_handle: u32,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match SubtitleStreamHandle::try_from_raw(stream_handle) {
+        Ok(s) => s,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { tst_get_last_error() };
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
+        Ok(()) => 0,
+        Err(e) => {
+            record_shell_error(&e);
+            unsafe { tst_get_last_error() }
+        }
+    })
+}
+
+// ============================================================================
+// MuxSender<T> generic stats impls
+// ============================================================================
+
+/// Generic body for `tst_*_mux_sender_get_mux_sender_stats`.
+///
+/// Handles the null-check on `out`; the handle null-check is already done by
+/// the family forwarder.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstMuxSenderStats` when non-null.
+pub(crate) unsafe fn mux_sender_get_mux_sender_stats<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    out: *mut crate::stats::TstMuxSenderStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|s| {
+        let stats = s.stats();
+        let mut per_stream =
+            [crate::stats::TstStreamStats::default(); crate::stats::TST_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::TstMuxSenderStats {
+            bytes_sent: stats.bytes_sent,
+            packets_sent: stats.packets_sent,
+            pending_bytes_queued: stats.pending_bytes_queued,
+            pending_chunks_queued: stats.pending_chunks_queued,
+            programs_configured: stats.programs_configured,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_get_socket_stats`.
+///
+/// Zeros `*out` before the inner call so callers see a defined value on error.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn mux_sender_get_socket_stats<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_get_stream_codec_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstStreamCodecStats` when non-null.
+pub(crate) unsafe fn mux_sender_get_stream_codec_stats<T: Transport>(
+    h: &Handle<MuxSender<T>>,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+    not_found_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|s| match s.stream_codec_stats(pid) {
+        Some(stats) => {
+            unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+            0
+        }
+        None => record_not_found(not_found_msg),
+    })
+}
+
+/// Generic body for `tst_*_mux_sender_reset_stats`.
+pub(crate) fn mux_sender_reset_stats<T: Transport>(h: &Handle<MuxSender<T>>) -> i32 {
+    h.with_inner_ref(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+// ============================================================================
+// Sender<T> (raw TS) generic impls
+// ============================================================================
+
+/// Generic body for `tst_*_sender_send_ts`.
+///
+/// # Safety
+/// `bytes` must be readable for `len` bytes.
+pub(crate) unsafe fn sender_send_ts<T: Transport>(
+    h: &Handle<Sender<T>>,
+    bytes: *const u8,
+    len: usize,
+) -> i32 {
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(bytes, len, "bytes") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    h.with_inner_mut(|s| match s.send_ts(slice) {
+        Ok(()) => 0,
+        Err(e) => record_shell_error(&e),
+    })
+}
+
+/// Generic body for `tst_*_sender_get_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSenderStats` when non-null.
+pub(crate) unsafe fn sender_get_stats<T: Transport>(
+    h: &Handle<Sender<T>>,
+    out: *mut crate::stats::TstSenderStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|s| {
+        let stats = crate::stats::TstSenderStats::from(&s.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_*_sender_get_socket_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn sender_get_socket_stats<T: Transport>(
+    h: &Handle<Sender<T>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_sender_reset_stats`.
+pub(crate) fn sender_reset_stats<T: Transport>(h: &Handle<Sender<T>>) -> i32 {
+    h.with_inner_mut(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+// ============================================================================
+// Receiver<R> (raw TS recv) generic impls
+// ============================================================================
+
+/// Generic body for `tst_*_receiver_recv_ts` (blocking 188-byte packet read).
+///
+/// Validates that `buf` is non-null and `buf_len ≥ TS_PACKET_SIZE (188)`. Maps
+/// `Closed` / `TransportBroken` to `TST_E_END_OF_STREAM` (no cancel surface
+/// on non-RTP families; RTP receivers keep this logic family-local).
+///
+/// # Safety
+/// `buf` must be writable for `buf_len` bytes; `out_n` must be non-null.
+pub(crate) unsafe fn receiver_recv_ts<R: RecvTransport>(
+    h: &Handle<Receiver<R>>,
+    buf: *mut u8,
+    buf_len: usize,
+    out_n: *mut usize,
+) -> i32 {
+    if buf.is_null() {
+        set_last_error(TstError::InvalidConfig, "null buf pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    if out_n.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_n pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    if buf_len < TS_PACKET_SIZE {
+        set_last_error(
+            TstError::InvalidConfig,
+            &format!("buf_len {buf_len} too small (need at least {TS_PACKET_SIZE})"),
+        );
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_mut(|rx| match rx.next_packet() {
+        Ok(pkt) => {
+            // SAFETY: buf non-null + writable for >= TS_PACKET_SIZE bytes per guard above.
+            unsafe {
+                std::ptr::copy_nonoverlapping(pkt.as_ptr(), buf, TS_PACKET_SIZE);
+                *out_n = TS_PACKET_SIZE;
+            }
+            0
+        }
+        Err(e)
+            if e.kind == ShellErrorKind::Closed
+                || e.kind == ShellErrorKind::TransportBroken =>
+        {
+            record_eos();
+            TstError::EndOfStream as i32
+        }
+        Err(e) => record_shell_error(&e),
+    })
+}
+
+/// Generic body for `tst_*_receiver_get_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstReceiverStats` when non-null.
+pub(crate) unsafe fn receiver_get_stats<R: RecvTransport>(
+    h: &Handle<Receiver<R>>,
+    out: *mut crate::stats::TstReceiverStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = crate::stats::TstReceiverStats::from(&rx.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_*_receiver_get_socket_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn receiver_get_socket_stats<R: RecvTransport>(
+    h: &Handle<Receiver<R>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_receiver_reset_stats`.
+pub(crate) fn receiver_reset_stats<R: RecvTransport>(h: &Handle<Receiver<R>>) -> i32 {
+    h.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
+// ============================================================================
+// DemuxReceiver<R> generic impls
+// ============================================================================
+
+/// Generic body for `tst_*_demux_receiver_next_event` (no-cancel families).
+///
+/// Applies to UDP, TCP, and RIST (which expose no `cancel_handle()`). For RTP,
+/// the cancel surface makes the body family-local.
+///
+/// `Ok(None)` from `recv_event` means stream ended — maps to
+/// `TST_E_END_OF_STREAM`. `Closed` / `TransportBroken` / `EndOfStream` errors
+/// similarly map to EOS (no cancel side-channel ⇒ no `TST_E_CLOSED` vs EOS
+/// discrimination).
+///
+/// # Safety
+/// `out_event` must be a valid writable `*mut TstEvent` when non-null.
+pub(crate) unsafe fn demux_receiver_next_event_no_cancel<R: RecvTransport>(
+    inner: &Handle<DemuxReceiver<R>>,
+    arena: &Mutex<EventArena>,
+    out_event: *mut TstEvent,
+) -> i32 {
+    if out_event.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_event pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    inner.with_inner_mut(|rx| match rx.recv_event() {
+        Ok(Some(ev)) => {
+            let mut arena = arena.lock().expect("event arena Mutex poisoned");
+            // SAFETY: out_event non-null per guard above. event::convert writes
+            // through the pointer; pointer fields on the result alias arena Vecs
+            // (held under the arena Mutex for this call — stable until next call).
+            unsafe { crate::event::convert(&mut arena, &ev, &mut *out_event) };
+            0
+        }
+        Ok(None) => {
+            record_eos();
+            TstError::EndOfStream as i32
+        }
+        Err(e)
+            if e.kind == ShellErrorKind::TransportBroken
+                || e.kind == ShellErrorKind::EndOfStream
+                || e.kind == ShellErrorKind::Closed =>
+        {
+            record_eos();
+            TstError::EndOfStream as i32
+        }
+        Err(e) => record_shell_error(&e),
+    })
+}
+
+/// Generic body for `tst_*_demux_receiver_get_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstDemuxReceiverStats` when non-null.
+pub(crate) unsafe fn demux_receiver_get_stats<R: RecvTransport>(
+    h: &Handle<DemuxReceiver<R>>,
+    out: *mut crate::stats::TstDemuxReceiverStats,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| {
+        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Generic body for `tst_*_demux_receiver_get_socket_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstSocketStats` when non-null.
+pub(crate) unsafe fn demux_receiver_get_socket_stats<R: RecvTransport>(
+    h: &Handle<DemuxReceiver<R>>,
+    out: *mut crate::stats::TstSocketStats,
+    not_available_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    h.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => record_not_available(not_available_msg),
+    })
+}
+
+/// Generic body for `tst_*_demux_receiver_get_stream_codec_stats`.
+///
+/// # Safety
+/// `out` must be a valid writable `*mut TstStreamCodecStats` when non-null.
+pub(crate) unsafe fn demux_receiver_get_stream_codec_stats<R: RecvTransport>(
+    h: &Handle<DemuxReceiver<R>>,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+    not_found_msg: &str,
+) -> i32 {
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    h.with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
+        Some(stats) => {
+            unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+            0
+        }
+        None => record_not_found(not_found_msg),
+    })
+}
+
+/// Generic body for `tst_*_demux_receiver_reset_stats`.
+///
+/// Clears the borrowed `stream_stats_buf` snapshot before resetting to ensure
+/// any pointer previously returned by `_get_stream_stats` is no longer valid.
+pub(crate) fn demux_receiver_reset_stats<R: RecvTransport>(
+    inner: &Handle<DemuxReceiver<R>>,
+    stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
+) -> i32 {
+    if let Ok(mut buf) = stream_stats_buf.lock() {
+        buf.clear();
+    }
+    inner.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
+/// Generic body for `tst_*_demux_receiver_get_stream_stats` (borrowed-buffer design §4.5).
+///
+/// # Safety
+/// `out_array` and `out_count` must be valid non-null pointers.
+pub(crate) unsafe fn demux_receiver_get_stream_stats<R: RecvTransport>(
+    inner: &Handle<DemuxReceiver<R>>,
+    stream_stats_buf: &Mutex<Vec<crate::stats::TstStreamStats>>,
+    out_array: *mut *const crate::stats::TstStreamStats,
+    out_count: *mut libc::size_t,
+) -> i32 {
+    if out_array.is_null() || out_count.is_null() {
+        set_last_error(
+            TstError::InvalidConfig,
+            "null out_array or out_count pointer",
+        );
+        return TstError::InvalidConfig as i32;
+    }
+    inner.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let mut buf = stream_stats_buf
+            .lock()
+            .expect("stream_stats_buf Mutex poisoned");
+        buf.clear();
+        let cap = crate::stats::TST_STATS_MAX_STREAMS;
+        for (pid, ss) in stats.per_stream.iter().take(cap) {
+            let mut c_ss = crate::stats::TstStreamStats {
+                pid: *pid,
+                ..Default::default()
+            };
+            crate::stats::fill_stream_stats(&mut c_ss, ss);
+            buf.push(c_ss);
+        }
+        // SAFETY: out_array / out_count non-null per guard above. The returned
+        // pointer borrows from buf which lives on the handle until the next
+        // _get_stream_stats / _reset_stats / _close call.
+        unsafe {
+            *out_array = buf.as_ptr();
+            *out_count = buf.len();
+        }
+        0
+    })
+}

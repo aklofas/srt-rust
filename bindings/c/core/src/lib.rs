@@ -87,9 +87,17 @@ pub mod muxer;
 pub mod stats;
 mod ffi_slice;
 mod panic;
-// Generic transport body impls shared across the family modules (requires std;
-// all transport features gate on std, so this is never needed in bare-metal).
-#[cfg(feature = "std")]
+// Generic transport body impls shared across the family modules. Gated on the
+// UNION of the consuming transport features (not just `std`): with all
+// transports off, nothing calls these generic bodies and `-D warnings` clippy
+// rejects the dead code in the default (transport-less) build.
+#[cfg(any(
+    feature = "srt",
+    feature = "rtp",
+    feature = "udp",
+    feature = "tcp",
+    feature = "rist"
+))]
 pub(crate) mod transport_impls;
 
 // Sender-side surface (requires SRT transport):

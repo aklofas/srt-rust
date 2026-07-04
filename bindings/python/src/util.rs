@@ -11,6 +11,14 @@ use pyo3::types::PyBytes;
 /// Fallback: calls Python's `bytes()` built-in to coerce the argument,
 /// which copies the data once into an immutable `bytes` object.
 ///
+/// The `bytes()` fallback accepts strictly more than the stubs'
+/// `_BytesLike` promise: an `int` yields that many zero bytes and any
+/// iterable of ints is materialized (`bytes(5)`, `bytes([1, 2, 3])`).
+/// That widening is deliberate — every transport sender has coerced this
+/// way since the pattern was introduced, and narrowing here would make
+/// `Muxer.push_*` reject inputs its wrapping senders accept. The stubs'
+/// `_BytesLike` annotation is the static-analysis guard against misuse.
+///
 /// PyO3 0.22 abi3-py310 cannot extract `&[u8]` from `bytearray` or
 /// `memoryview` — only from `bytes`. This helper bridges that gap by
 /// accepting any bytes-like and returning a `PyBytes` whose `.as_bytes()`

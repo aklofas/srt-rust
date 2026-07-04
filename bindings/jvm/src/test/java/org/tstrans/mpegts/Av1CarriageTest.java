@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.tstrans.codec.Obu;
+import org.tstrans.codec.VideoUnit;
 
 /**
  * JVM surface tests for AV1 carriage provenance (AV1-01):
@@ -149,6 +152,84 @@ class Av1CarriageTest {
         // Payload fixpoint: pushVideoWire must not alter the wire bytes.
         assertArrayEquals(raw1, raw2,
             "AV1 binding-mode remux via pushVideoWire must be a payload fixpoint");
+    }
+
+    /**
+     * parse() in MPEG2_TS_BINDING mode strips the ts_open_bitstream_unit wrapper
+     * and returns one {@link Obu} per OBU in synthAv1Au (TD=type 2,
+     * SEQUENCE_HEADER=type 1, FRAME=type 3).  The count and per-unit type are
+     * pinned — not just isEmpty() — to catch silent regressions in split_video.
+     */
+    @Test
+    void parseMpeg2TsBindingModeReturnsThreeObus() throws Exception {
+        // pushVideo wraps raw OBUs in MPEG2-TS binding framing; split_video
+        // (called by parse()) reverses that framing before splitting OBUs.
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.AV1)
+            .build();
+        byte[] ts = muxAndDrain(cfg, synthAv1Au(), 90_000L);
+
+        DemuxEvent.Video video = firstVideo(ts, Av1CarriageMode.MPEG2_TS_BINDING);
+        assertNotNull(video, "expected AV1 Video event from binding-mode mux");
+        assertEquals(Av1CarriageMode.MPEG2_TS_BINDING, video.av1Carriage());
+
+        List<VideoUnit> units = video.parse();
+        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME (type 3).
+        assertEquals(3, units.size(),
+            "binding-mode parse() must yield exactly 3 OBUs from synthAv1Au");
+        assertAll("OBU types in synthAv1Au order (binding mode)",
+            () -> assertInstanceOf(Obu.class, units.get(0)),
+            () -> assertEquals(2, ((Obu) units.get(0)).obuType(), "OBU 0: TD (type 2)"),
+            () -> assertInstanceOf(Obu.class, units.get(1)),
+            () -> assertEquals(1, ((Obu) units.get(1)).obuType(), "OBU 1: SEQUENCE_HEADER (type 1)"),
+            () -> assertInstanceOf(Obu.class, units.get(2)),
+            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME (type 3)")
+        );
+    }
+
+    /**
+     * parse() in INTEROP_RAW_OBU mode splits raw OBUs directly (no binding-framing
+     * unwrap — that is correct for interop carriage per AV1-03).  Same 3-OBU
+     * structural assertion as the binding-mode test pins this as a distinct code
+     * path through split_video.
+     */
+    @Test
+    void parseInteropRawObuModeReturnsThreeObus() throws Exception {
+        // pushVideoWire passes the raw OBU bytes through without binding framing;
+        // demuxing with INTEROP_RAW_OBU tells split_video to parse them as-is.
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.AV1)
+            .build();
+
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] pullBuf = new byte[8192];
+        try (Muxer m = new Muxer(cfg)) {
+            m.pushVideoWire(synthAv1Au(), 90_000L, true);
+            int n;
+            while ((n = m.pull(pullBuf)) > 0) {
+                acc.write(pullBuf, 0, n);
+            }
+        }
+        byte[] ts = acc.toByteArray();
+
+        DemuxEvent.Video video = firstVideo(ts, Av1CarriageMode.INTEROP_RAW_OBU);
+        assertNotNull(video, "expected AV1 Video event after raw-wire mux");
+        assertEquals(Av1CarriageMode.INTEROP_RAW_OBU, video.av1Carriage());
+
+        List<VideoUnit> units = video.parse();
+        // synthAv1Au() encodes: TD (type 2), SEQUENCE_HEADER (type 1), FRAME (type 3).
+        assertEquals(3, units.size(),
+            "interop-mode parse() must yield exactly 3 OBUs from synthAv1Au");
+        assertAll("OBU types in synthAv1Au order (interop mode)",
+            () -> assertInstanceOf(Obu.class, units.get(0)),
+            () -> assertEquals(2, ((Obu) units.get(0)).obuType(), "OBU 0: TD (type 2)"),
+            () -> assertInstanceOf(Obu.class, units.get(1)),
+            () -> assertEquals(1, ((Obu) units.get(1)).obuType(), "OBU 1: SEQUENCE_HEADER (type 1)"),
+            () -> assertInstanceOf(Obu.class, units.get(2)),
+            () -> assertEquals(3, ((Obu) units.get(2)).obuType(), "OBU 2: FRAME (type 3)")
+        );
     }
 
     @Test

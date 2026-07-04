@@ -4,9 +4,10 @@
 //! Push encoded video/KLV/audio/subtitle with the `push_*` family.
 //! Free with `tst_udp_mux_sender_close`.
 //!
-//! Pattern mirrors `bindings/c/core/src/rtp/mux_sender.rs` exactly — error
-//! mapping, `ffi_catch` wrapping, `Handle::with_inner_ref`, and
-//! `try_from_raw` trust-boundary validation are identical.
+//! Data-path bodies (push_*, get_*_stats, reset_stats) are thin
+//! forwarders to generic impls in `crate::transport_impls`. The
+//! literal `extern "C"` signature and doc-comment are preserved here
+//! so cbindgen can see and emit them to `tstrans.h`.
 //!
 //! **No cancel:** the UDP transport does not expose a `cancel_handle()`,
 //! so there is no `tst_udp_mux_sender_cancel` entry point and no cancel /
@@ -16,18 +17,11 @@
 
 use std::os::raw::c_char;
 
-use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
-};
 use tst_pipeline::MuxSender;
 use tst_udp::{UdpTransport, UdpTransportBuilder};
 
 use crate::config::TstMuxConfig;
-use crate::error::{
-    TstError, record_mux_error, record_not_available, record_not_found, record_shell_error,
-    set_last_error, tst_get_last_error,
-};
+use crate::error::{TstError, record_mux_error, set_last_error};
 use crate::handle::{
     Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
 };
@@ -173,20 +167,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_video(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    handle
-        .inner
-        .with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_video(&handle.inner, nal, len, pts_90khz, key_frame) }
 }
 
 /// Push one raw KLV blob through the muxer's single KLV stream and out
@@ -213,20 +194,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_klv(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    handle
-        .inner
-        .with_inner_ref(|s| match s.send_klv(slice, pts, 0x00) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_klv(&handle.inner, klv, len, pts_90khz) }
 }
 
 /// Push one audio frame buffer through the muxer's single audio stream
@@ -251,20 +219,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_audio(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    handle
-        .inner
-        .with_inner_ref(|s| match s.send_audio(slice, pts) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_audio(&handle.inner, frames, len, pts_90khz) }
 }
 
 /// Push one subtitle PES unit through the muxer's single subtitle stream
@@ -288,20 +243,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    handle
-        .inner
-        .with_inner_ref(|s| match s.send_subtitle(slice, pts) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_subtitle(&handle.inner, payload, len, pts_90khz) }
 }
 
 // ---------------------------------------------------------------------------
@@ -330,34 +272,11 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_video_to(
     pts_90khz: i64,
     key_frame: bool,
 ) -> libc::c_int {
-    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    // Trust-boundary validation — forged stream_handle values are rejected
-    // before they reach the push-time range check (which only sees masked
-    // indices and can't detect high-byte contamination).
-    let stream = match VideoStreamHandle::try_from_raw(stream_handle) {
-        Ok(h) => h,
-        Err(e) => {
-            crate::error::record_mux_error(&e);
-            return unsafe { tst_get_last_error() };
-        }
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    wrapper
-        .inner
-        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_video_to(&handle.inner, stream_handle, nal, len, pts_90khz, key_frame) }
 }
 
 /// Push one KLV blob targeting a specific KLV elementary stream.
@@ -378,31 +297,11 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_klv_to(
     len: usize,
     pts_90khz: i64,
 ) -> libc::c_int {
-    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let stream = match KlvStreamHandle::try_from_raw(stream_handle) {
-        Ok(h) => h,
-        Err(e) => {
-            crate::error::record_mux_error(&e);
-            return unsafe { tst_get_last_error() };
-        }
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    wrapper
-        .inner
-        .with_inner_ref(|s| match s.send_klv_to(stream, slice, pts, 0x00) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_klv_to(&handle.inner, stream_handle, klv, len, pts_90khz) }
 }
 
 /// Push one audio frame buffer targeting a specific audio elementary stream.
@@ -421,31 +320,11 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_audio_to(
     len: usize,
     pts_90khz: i64,
 ) -> libc::c_int {
-    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let stream = match AudioStreamHandle::try_from_raw(stream_handle) {
-        Ok(h) => h,
-        Err(e) => {
-            crate::error::record_mux_error(&e);
-            return unsafe { tst_get_last_error() };
-        }
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    wrapper
-        .inner
-        .with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_audio_to(&handle.inner, stream_handle, frames, len, pts_90khz) }
 }
 
 /// Push one subtitle PES unit targeting a specific subtitle elementary stream.
@@ -464,31 +343,11 @@ pub unsafe extern "C" fn tst_udp_mux_sender_push_subtitle_to(
     len: usize,
     pts_90khz: i64,
 ) -> libc::c_int {
-    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let stream = match SubtitleStreamHandle::try_from_raw(stream_handle) {
-        Ok(h) => h,
-        Err(e) => {
-            crate::error::record_mux_error(&e);
-            return unsafe { tst_get_last_error() };
-        }
-    };
-    let pts = Pts90khz::new(pts_90khz);
-    wrapper
-        .inner
-        .with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
-            Ok(()) => 0,
-            Err(e) => {
-                record_shell_error(&e);
-                unsafe { tst_get_last_error() }
-            }
-        })
+    unsafe { crate::transport_impls::mux_sender_push_subtitle_to(&handle.inner, stream_handle, payload, len, pts_90khz) }
 }
 
 // ---------------------------------------------------------------------------
@@ -514,29 +373,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_mux_sender_stats(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    handle.inner.with_inner_ref(|s| {
-        let stats = s.stats();
-        let mut per_stream =
-            [crate::stats::TstStreamStats::default(); crate::stats::TST_STATS_MAX_STREAMS];
-        let (per_stream_count, truncated) =
-            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
-        let dst = crate::stats::TstMuxSenderStats {
-            bytes_sent: stats.bytes_sent,
-            packets_sent: stats.packets_sent,
-            pending_bytes_queued: stats.pending_bytes_queued,
-            pending_chunks_queued: stats.pending_chunks_queued,
-            programs_configured: stats.programs_configured,
-            per_stream_count,
-            per_stream_truncated: if truncated { 1 } else { 0 },
-            per_stream,
-        };
-        unsafe { *out = dst };
-        0
-    })
+    unsafe { crate::transport_impls::mux_sender_get_mux_sender_stats(&handle.inner, out) }
 }
 
 /// Read wire-level transport stats for the underlying UDP socket.
@@ -562,20 +399,13 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_socket_stats(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
-    }
-    unsafe { *out = crate::stats::TstSocketStats::default() };
-    handle.inner.with_inner_ref(|s| match s.socket_stats() {
-        Some(stats) => {
-            unsafe { *out = (&stats).into() };
-            0
-        }
-        None => record_not_available(
+    unsafe {
+        crate::transport_impls::mux_sender_get_socket_stats(
+            &handle.inner,
+            out,
             "udp mux sender socket stats unavailable (transport not connected or closed)",
-        ),
-    })
+        )
+    }
 }
 
 /// Snapshot codec-specific stats for one PID on a `tst_udp_mux_sender_t`.
@@ -604,19 +434,14 @@ pub unsafe extern "C" fn tst_udp_mux_sender_get_stream_codec_stats(
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if out.is_null() {
-        set_last_error(TstError::InvalidConfig, "null out pointer");
-        return TstError::InvalidConfig as i32;
+    unsafe {
+        crate::transport_impls::mux_sender_get_stream_codec_stats(
+            &handle.inner,
+            pid,
+            out,
+            &format!("codec stats not available for pid 0x{pid:04x} (pid has never been observed on this udp mux sender)"),
+        )
     }
-    handle.inner.with_inner_ref(|s| match s.stream_codec_stats(pid) {
-        Some(stats) => {
-            unsafe { *out = crate::stats::codec_stats_to_c(stats) };
-            0
-        }
-        None => record_not_found(&format!(
-            "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this udp mux sender)"
-        )),
-    })
 }
 
 /// Reset stats counters for a `tst_udp_mux_sender_t` to zero.
@@ -634,10 +459,7 @@ pub unsafe extern "C" fn tst_udp_mux_sender_reset_stats(p: *mut TstUdpMuxSender)
         set_last_error(TstError::InvalidConfig, "null udp mux sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    handle.inner.with_inner_ref(|s| {
-        s.reset_stats();
-        0
-    })
+    crate::transport_impls::mux_sender_reset_stats(&handle.inner)
 }
 
 // ---------------------------------------------------------------------------

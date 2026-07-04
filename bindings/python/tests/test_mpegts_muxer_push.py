@@ -177,7 +177,9 @@ def _minimal_klv_ls() -> bytes:
 def test_push_audio_works_with_single_audio_stream():
     m = Muxer(_simple_config())
     m.push_audio(_minimal_aac_frame(), pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ts = _pull_all(m)
+    assert len(ts) > 0, "audio push emitted no TS bytes"
+    assert len(ts) % 188 == 0
 
 
 def test_push_klv_works_with_single_klv_stream():
@@ -185,15 +187,21 @@ def test_push_klv_works_with_single_klv_stream():
     m.push_klv(
         _minimal_klv_ls(), pts=Pts90khz.from_raw(900_000), metadata_service_id=0
     )
-    assert m.pending_packets() >= 0
+    ts = _pull_all(m)
+    assert len(ts) > 0, "klv push emitted no TS bytes"
+    assert len(ts) % 188 == 0
 
 
 def test_push_klv_default_metadata_service_id():
     """metadata_service_id defaults to 0 — the most common single-service
     case. Callers needing a non-zero value pass it explicitly."""
+    ref = Muxer(_simple_config())
+    ref.push_klv(_minimal_klv_ls(), pts=Pts90khz.from_raw(900_000), metadata_service_id=0)
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "explicit metadata_service_id=0 push emitted no TS"
     m = Muxer(_simple_config())
     m.push_klv(_minimal_klv_ls(), pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    assert _pull_all(m) == ref_ts, "default metadata_service_id differs from explicit 0"
 
 
 def test_push_audio_invalid_handle_raises():
@@ -868,7 +876,11 @@ def test_push_audio_pts_positional_raises_type_error():
         m.push_audio(frames, Pts90khz.from_raw(900_000))  # positional pts
     # Kw form works.
     m.push_audio(frames, pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ref = Muxer(_simple_config())
+    ref.push_audio(frames, pts=Pts90khz.from_raw(900_000))
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference audio push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts
 
 
 def test_push_audio_to_normalized_arg_order_and_kwonly_pts():
@@ -880,7 +892,11 @@ def test_push_audio_to_normalized_arg_order_and_kwonly_pts():
     frames = _minimal_aac_frame()
     # New normalized form works.
     m.push_audio_to(handle, frames, pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ref = Muxer(_simple_config())
+    ref.push_audio(frames, pts=Pts90khz.from_raw(900_000))
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference audio push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts
     # Old (handle, pts, frames) shape must now raise. A Pts90khz handed
     # as the second positional (where `frames` lives now) fails byte
     # extraction at the PyO3 boundary → TypeError.
@@ -896,7 +912,11 @@ def test_push_klv_pts_positional_raises_type_error():
         m.push_klv(klv, Pts90khz.from_raw(900_000))  # positional pts
     # Kw form works (including the default metadata_service_id).
     m.push_klv(klv, pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ref = Muxer(_simple_config())
+    ref.push_klv(klv, pts=Pts90khz.from_raw(900_000))
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference klv push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts
 
 
 def test_push_klv_to_pts_positional_raises_type_error():
@@ -908,7 +928,11 @@ def test_push_klv_to_pts_positional_raises_type_error():
         m.push_klv_to(handle, klv, Pts90khz.from_raw(900_000))  # positional pts
     # Kw form works.
     m.push_klv_to(handle, klv, pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ref = Muxer(_simple_config())
+    ref.push_klv(klv, pts=Pts90khz.from_raw(900_000))
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference klv push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts
 
 
 # ---------------------------------------------------------------------------
@@ -1087,7 +1111,12 @@ def test_push_data_pts_positional_raises_type_error():
     with pytest.raises(TypeError):
         m.push_data_to(handle, b"\x42", Pts90khz.from_raw(900_000))  # positional pts
     m.push_data_to(handle, b"\x42", pts=Pts90khz.from_raw(900_000))
-    assert m.pending_packets() >= 0
+    ref = Muxer(_data_config())
+    ref_handle = ref.data_handles()[0]
+    ref.push_data_to(ref_handle, b"\x42", pts=Pts90khz.from_raw(900_000))
+    ref_ts = _pull_all(ref)
+    assert len(ref_ts) > 0, "reference data push emitted no TS bytes"
+    assert _pull_all(m) == ref_ts
 
 
 def test_push_video_to_with_dts_signature_unchanged():

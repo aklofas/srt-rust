@@ -161,7 +161,7 @@ ALLOWLIST=(
     "tst_managed_receiver_reset_stats"
 
     # --- Phase 3 demux-config-builder C wrappers (Rust uses
-    #     DemuxerBuilder methods, not 1:1 names) ---
+    #     DemuxerConfigBuilder methods, not 1:1 names) ---
     "tst_demux_config_new"
     "tst_demux_config_free"
     "tst_demux_config_set_strict_mode"

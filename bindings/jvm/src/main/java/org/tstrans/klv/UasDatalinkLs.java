@@ -106,8 +106,8 @@ public record UasDatalinkLs(
          * Tags whose wire value was the INT_MIN sentinel for their signed
          * linear mapping. INT_MIN is a spec-defined signal, not an error;
          * the corresponding typed field is {@code null} and the tag number
-         * is recorded here. Use {@code st0601SentinelMeaning(tag)} (when
-         * available) to look up the spec-defined meaning per ST 0601.19.
+         * is recorded here. Consult the special-value assignments table in
+         * ST 0601.19 to look up the spec-defined meaning for each tag number.
          */
         List<Long> sentinelTags
 ) implements KlvSet {

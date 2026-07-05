@@ -4,7 +4,7 @@ package org.tstrans.mpegts;
  * Opaque handle for a KLV metadata stream within a configured muxer.
  *
  * <p>Obtain one from {@code MuxSender.klvHandle()} and pass it to
- * {@code MuxSender.pushKlvTo(...)} to target a specific stream. The {@code raw}
+ * {@code MuxSender.sendKlvTo(...)} to target a specific stream. The {@code raw}
  * value is the muxer's packed {@code u32} stream identifier widened to
  * {@code long}; it is meaningful only to the muxer that minted it. A handle from
  * a different muxer (or an out-of-range raw value) is rejected by the native

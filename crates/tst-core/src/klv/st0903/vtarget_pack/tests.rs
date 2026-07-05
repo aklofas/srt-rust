@@ -521,3 +521,118 @@ fn centroid_pix_col_at_v4_cap_round_trips() {
     assert_eq!(n, buf.len());
     assert_eq!(decoded.centroid_pix_col, Some(V4_MAX));
 }
+
+// -------- Strictwire follow-up: completeness pinning test --------
+//
+// All u64-typed VTargetPack fields (enumerated by grep for `u64` in
+// vtarget_pack/model.rs):
+//
+//   target_id             — BER-OID var-len, lossless (10 bytes ≥ u64::MAX)
+//   centroid_pixel        — V6_MAX cap, OutOfRange above cap
+//   bbox_top_left_pixel   — V6_MAX cap, OutOfRange above cap
+//   bbox_bottom_right_pixel — V6_MAX cap, OutOfRange above cap
+//   centroid_pix_row      — V4_MAX cap, OutOfRange above cap
+//   centroid_pix_col      — V4_MAX cap, OutOfRange above cap
+//
+// The default (lenient) encode path in write_pack enforces all caps, so
+// both lenient and strict paths are covered — encode_strict_compliance
+// calls encode_to_vec which calls write_pack.
+//
+// VmtiLs::precision_time_stamp (u64) is trivially lossless (8-byte
+// big-endian raw bytes); see `precision_time_stamp_u64_max_round_trips`
+// in st0903/tests.rs for the companion encode round-trip probe.
+
+/// Pins the invariant: every u64-typed VTargetPack field either
+/// encodes losslessly (target_id via BER-OID) or returns a structured
+/// OutOfRange error when the value exceeds its wire cap — no field
+/// silently truncates at u64::MAX.
+///
+/// This is the PT-KLV-strictwire follow-up closed as subsumed by
+/// WP10/DA-KLVC-1: the caps are verified complete for all u64 fields.
+#[test]
+fn u64_typed_fields_never_silently_truncate_on_encode() {
+    use super::decode::read_pack;
+    use super::encode::write_pack;
+
+    // ── target_id at u64::MAX: BER-OID lossless ──────────────────────
+    // write_ber_oid_u64(u64::MAX) needs exactly 10 bytes (ceil(64/7));
+    // the buf in write_pack is [0u8; 10] — fits exactly.
+    {
+        let p = VTargetPack {
+            target_id: u64::MAX,
+            centroid_pixel: Some(1), // ≥1 TLV item required beyond targetId
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        write_pack(&p, &mut buf).unwrap();
+        let (decoded, n) = read_pack(&buf).unwrap();
+        assert_eq!(n, buf.len());
+        assert_eq!(
+            decoded.target_id,
+            u64::MAX,
+            "target_id u64::MAX must round-trip losslessly via BER-OID"
+        );
+    }
+
+    // ── V6 cap fields (tags 1, 2, 3): OutOfRange at u64::MAX ─────────
+    let v6_cases: &[(&str, VTargetPack)] = &[
+        (
+            "centroid_pixel (tag 1)",
+            VTargetPack {
+                target_id: 1,
+                centroid_pixel: Some(u64::MAX),
+                ..Default::default()
+            },
+        ),
+        (
+            "bbox_top_left_pixel (tag 2)",
+            VTargetPack {
+                target_id: 1,
+                bbox_top_left_pixel: Some(u64::MAX),
+                ..Default::default()
+            },
+        ),
+        (
+            "bbox_bottom_right_pixel (tag 3)",
+            VTargetPack {
+                target_id: 1,
+                bbox_bottom_right_pixel: Some(u64::MAX),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (name, pack) in v6_cases {
+        let err = write_pack(pack, &mut Vec::new()).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::OutOfRange { .. }),
+            "{name} at u64::MAX: expected OutOfRange, got {err:?}"
+        );
+    }
+
+    // ── V4 cap fields (tags 19, 20): OutOfRange at u64::MAX ──────────
+    let v4_cases: &[(&str, VTargetPack)] = &[
+        (
+            "centroid_pix_row (tag 19)",
+            VTargetPack {
+                target_id: 1,
+                centroid_pix_row: Some(u64::MAX),
+                ..Default::default()
+            },
+        ),
+        (
+            "centroid_pix_col (tag 20)",
+            VTargetPack {
+                target_id: 1,
+                centroid_pix_col: Some(u64::MAX),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (name, pack) in v4_cases {
+        let err = write_pack(pack, &mut Vec::new()).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::OutOfRange { .. }),
+            "{name} at u64::MAX: expected OutOfRange, got {err:?}"
+        );
+    }
+}

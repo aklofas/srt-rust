@@ -1144,3 +1144,23 @@ fn st0903_lenient_encode_still_accepts_partial() {
         "lenient encode_standalone must accept sparse records"
     );
 }
+
+/// PT-KLV-strictwire companion: VmtiLs::precision_time_stamp (u64) encodes
+/// as 8 raw big-endian bytes — the full u64 range is always losslessly
+/// representable. Probe at u64::MAX confirms no truncation on encode→decode.
+#[test]
+fn precision_time_stamp_u64_max_round_trips() {
+    let ls = VmtiLs {
+        precision_time_stamp: Some(u64::MAX),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        ..Default::default()
+    };
+    let encoded = encode_to_vec(&ls).unwrap();
+    let decoded = super::decode::decode(&encoded).unwrap();
+    assert_eq!(
+        decoded.precision_time_stamp,
+        Some(u64::MAX),
+        "precision_time_stamp u64::MAX must round-trip losslessly as 8-byte BE"
+    );
+}

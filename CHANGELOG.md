@@ -101,6 +101,12 @@ layout changed.
   descriptor-cache emitter that writes the section, structurally eliminating
   the estimator/emitter drift class (and the prior AC-3 under-estimate panic)
   (DA-MUX-2, PR #65).
+- Muxer config: descriptor bodies of 254 or 255 bytes are no longer
+  incorrectly rejected. H.222.0 §2.6 defines `descriptor_length` as an 8-bit
+  field, so 0..=255 bytes are all valid; the old `declared > 253` guard was
+  without documented basis. Such descriptors are still rejected by the separate
+  `PmtTooLarge` check if they would make the PMT section exceed 183 bytes
+  (DA-MUX-3).
 
 ### Changed — pipeline send semantics
 

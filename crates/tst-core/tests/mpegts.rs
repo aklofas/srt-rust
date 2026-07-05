@@ -54,6 +54,8 @@ mod mux_demux_audio_roundtrip;
 mod mux_demux_subtitle_roundtrip;
 #[path = "mpegts/mux_demux_video_raw_roundtrip.rs"]
 mod mux_demux_video_raw_roundtrip;
+#[path = "mpegts/mux_descriptor_body_length.rs"]
+mod mux_descriptor_body_length;
 #[path = "mpegts/mux_descriptor_invariant.rs"]
 mod mux_descriptor_invariant;
 #[path = "mpegts/mux_descriptors_roundtrip.rs"]

@@ -723,13 +723,11 @@ impl MuxerConfig {
                             reason: "length byte does not match payload length",
                         });
                     }
-                    if declared > 253 {
-                        return Err(MuxError::MalformedDescriptor {
-                            stream_index: si,
-                            descriptor_index: di,
-                            reason: "descriptor body length must fit in u8 (max 253 useful bytes)",
-                        });
-                    }
+                    // No body-size guard here: `declared = tlv[1] as usize`
+                    // is always 0..=255 (H.222.0 §2.6 — `descriptor_length`
+                    // is an 8-bit field). Configs whose descriptor makes the
+                    // PMT section exceed 183 bytes are caught below by the
+                    // `PmtTooLarge` check (DA-MUX-3).
                 }
             }
 

@@ -3,7 +3,8 @@
 //! server (Phase 3) for negotiated unicast / multicast / TCP-interleaved
 //! sessions. RTSP/2.0 (RFC 7826) requests are handled on the RFC 7826-
 //! compatible subset shared with RTSP/1.0; the server does not implement
-//! RTSP/2.0-only features (e.g. pipelining, REDIRECT, per-request timeouts). As of Phase 4 Stage 3, RTCP RR/SR ingest is
+//! RTSP/2.0-only features (e.g. pipelining, REDIRECT, per-request timeouts).
+//! As of Phase 4 Stage 3, RTCP RR/SR ingest is
 //! wired on the TCP-interleaved (RFC 7826 §14) client path: peer RR
 //! populates `socket_stats().packets_lost_send` from the cumulative-lost
 //! field and `socket_stats().rtt_us` from the RR-after-SR calculation

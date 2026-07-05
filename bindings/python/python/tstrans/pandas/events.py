@@ -62,13 +62,13 @@ def _event_to_row(event: Any) -> dict:
         kind = kind[1:]
     # Normalize to the design-doc kind labels. Video/Audio/Subtitle all
     # collapse to "Sample" because they share the same shape (stream,
-    # pts, dts, codec, + raw/payload bytes). KlvEvent maps to
+    # pts, dts, codec, + raw/payload bytes). MetadataEvent maps to
     # "Metadata" per the design contract.
     kind_map = {
         "VideoEvent": "Sample",
         "AudioEvent": "Sample",
         "SubtitleEvent": "Sample",
-        "KlvEvent": "Metadata",
+        "MetadataEvent": "Metadata",
         "UnknownSampleEvent": "unknown_sample",
         "ProgramMapEvent": "ProgramMap",
         "NonConformantEvent": "NonConformant",
@@ -149,7 +149,7 @@ def _event_to_row(event: Any) -> dict:
     # (parsing is now opt-in via `.parse()`), so this is always None.
 
     # NonConformantEvent fields (issue str + kind enum). DiscontinuityEvent
-    # and KlvEvent also have `.kind` but no `.issue`; the issue check gates
+    # and MetadataEvent also have `.kind` but no `.issue`; the issue check gates
     # the issue_kind assignment so we only populate it on NonConformant.
     issue = getattr(event, "issue", None)
     if issue is not None:

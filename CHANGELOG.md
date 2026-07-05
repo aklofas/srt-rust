@@ -195,6 +195,10 @@ layout changed.
   and Digest auth compares the response attribute with constant-time equality,
   removing timing side-channels that could reveal whether credentials are
   partially correct (PR #82).
+- RTCP: the reporter thread no longer panics when the OS RNG is unavailable
+  (`getrandom` failure). It now warns once and falls back to a deterministic
+  wrapping-counter jitter, keeping RTCP emissions at ~`RTCP_BASE_INTERVAL`
+  (PR #82).
 
 ### Changed — internal refactors and dependencies (behavior-preserving)
 

@@ -818,6 +818,24 @@ impl RtpRecvTransport {
 }
 
 impl RecvTransport for RtpRecvTransport {
+    /// Receive the next valid MP2T bundle from the RTP stream.
+    ///
+    /// # MP2T shape enforcement (DA-RTP-5)
+    ///
+    /// After stripping and validating the RTP header (V=2, PT=33), the payload
+    /// is checked against RFC 2250 shape requirements before being returned:
+    ///
+    /// - Non-empty
+    /// - `len % 188 == 0` — integral number of 188-byte TS packets
+    /// - First byte is `0x47` — the TS sync byte of the leading packet
+    ///
+    /// Payloads that fail any of these checks are **silently dropped**
+    /// (the `malformed_packets` counter in [`RtpStats`] is incremented, and the
+    /// recv loop continues to the next datagram). The same check applies to the
+    /// TCP-interleaved mpsc path.
+    ///
+    /// The demuxer's own resync logic remains defense-in-depth and is
+    /// unchanged.
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
         let source = self.source.as_ref().ok_or(TransportError::Closed)?;
         match source {
@@ -849,6 +867,21 @@ impl RecvTransport for RtpRecvTransport {
                                         ),
                                         errno_code: None,
                                     });
+                                }
+                                // DA-RTP-5: RFC 2250 shape guard — payload must be
+                                // non-empty, 188-byte aligned, and begin with 0x47.
+                                // RTP-header validation above already pinned PT=33
+                                // (MP2T); this catches a corrupt or misaligned bundle.
+                                if !is_valid_mp2t_payload(payload) {
+                                    self.malformed_packets =
+                                        self.malformed_packets.saturating_add(1);
+                                    tracing::debug!(
+                                        payload_len = payload.len(),
+                                        first_byte = payload.first().copied().unwrap_or(0),
+                                        "MP2T payload shape invalid (len%188≠0 or no 0x47 \
+                                         sync byte); packet dropped",
+                                    );
+                                    continue;
                                 }
                                 buf[..payload.len()].copy_from_slice(payload);
                                 return Ok(payload.len());
@@ -899,6 +932,19 @@ impl RecvTransport for RtpRecvTransport {
                                 ),
                                 errno_code: None,
                             });
+                        }
+                        // DA-RTP-5: same RFC 2250 shape guard as the UDP path.
+                        // The InterleavedReader already stripped the RTP header, so
+                        // `payload` here is the raw TS bundle — validate its shape.
+                        if !is_valid_mp2t_payload(&payload) {
+                            self.malformed_packets = self.malformed_packets.saturating_add(1);
+                            tracing::debug!(
+                                payload_len = payload.len(),
+                                first_byte = payload.first().copied().unwrap_or(0),
+                                "MP2T payload shape invalid on mpsc path (len%188≠0 or \
+                                 no 0x47 sync byte); packet dropped",
+                            );
+                            continue;
                         }
                         self.bytes_received =
                             self.bytes_received.saturating_add(payload.len() as u64);
@@ -962,6 +1008,17 @@ impl Drop for RtpRecvTransport {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// Returns `true` iff `payload` is a well-formed RFC 2250 MP2T bundle:
+/// non-empty, an integral number of 188-byte TS packets, and the first
+/// byte is the TS sync byte `0x47`.
+///
+/// Used by [`RtpRecvTransport::recv_bytes`] to gate payloads before they
+/// reach the demuxer. A failed check ticks `malformed_packets`.
+#[inline]
+fn is_valid_mp2t_payload(payload: &[u8]) -> bool {
+    !payload.is_empty() && payload.len() % 188 == 0 && payload[0] == 0x47
 }
 
 /// Spawn the `rtsp-rtcp-ingest` background thread.
@@ -1244,5 +1301,151 @@ mod tests {
     #[test]
     fn rtp_listen_port_65535_does_not_panic() {
         let _ = RtpRecvTransport::listen("rtp://127.0.0.1:65535");
+    }
+
+    // --- DA-RTP-5: MP2T payload shape validation ---
+    //
+    // These tests drive the recv path via the mpsc seam (from_mpsc_placeholder),
+    // which bypasses the RTP header parse and pushes raw payload bytes directly.
+    // This is the cheapest honest seam: no network I/O, no threading. The mpsc
+    // path is representative because the UDP path shares is_valid_mp2t_payload.
+
+    /// A 100-byte payload that doesn't start with 0x47 must be dropped and
+    /// must tick malformed_packets. Currently (before DA-RTP-5 fix) this
+    /// payload is passed through — this test is the failing anchor.
+    #[test]
+    fn mp2t_shape_invalid_non_aligned_drops_and_ticks_counter() {
+        use tst_core::transport::RecvTransport;
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        // Push a 100-byte non-0x47 payload (not 188-aligned, wrong sync byte).
+        let malformed = bytes::Bytes::from(vec![0xAAu8; 100]);
+        data_tx.send(malformed).expect("send malformed payload");
+
+        // Push a valid 188-byte TS packet (0x47 sync) so recv_bytes has
+        // something to return after discarding the malformed one.
+        let mut valid_pkt = vec![0x00u8; 188];
+        valid_pkt[0] = 0x47;
+        data_tx
+            .send(bytes::Bytes::from(valid_pkt.clone()))
+            .expect("send valid payload");
+
+        let mut buf = vec![0u8; 4096];
+        // recv_bytes must skip the malformed payload and return the valid one.
+        let n = t.recv_bytes(&mut buf).expect("expected valid packet");
+        assert_eq!(n, 188, "valid 188-byte packet must be returned");
+        assert_eq!(buf[0], 0x47, "returned packet must start with TS sync byte");
+
+        // Counter must be 1 — exactly the malformed payload that was dropped.
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            1,
+            "malformed_packets must be 1 after one shape-invalid payload"
+        );
+    }
+
+    /// A valid 188-byte TS payload (starts with 0x47) must pass through
+    /// unchanged and must NOT tick malformed_packets.
+    #[test]
+    fn mp2t_shape_valid_single_packet_passes_through() {
+        use tst_core::transport::RecvTransport;
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        let mut pkt = vec![0xABu8; 188];
+        pkt[0] = 0x47;
+        data_tx
+            .send(bytes::Bytes::from(pkt.clone()))
+            .expect("send valid payload");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t.recv_bytes(&mut buf).expect("valid packet must not error");
+        assert_eq!(n, 188);
+        assert_eq!(&buf[..188], pkt.as_slice());
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            0,
+            "valid payload must not tick malformed_packets"
+        );
+    }
+
+    /// A multi-packet 188*7=1316 byte bundle (all starting with 0x47 at
+    /// offset 0) must pass through — RFC 2250 allows up to 7 TS packets
+    /// per RTP datagram.
+    #[test]
+    fn mp2t_shape_valid_bundle_passes_through() {
+        use tst_core::transport::RecvTransport;
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        // 7-packet bundle: only the FIRST byte must be 0x47 for the shape check.
+        let mut bundle = vec![0x00u8; 188 * 7];
+        bundle[0] = 0x47;
+        data_tx
+            .send(bytes::Bytes::from(bundle.clone()))
+            .expect("send valid bundle");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t.recv_bytes(&mut buf).expect("valid bundle must not error");
+        assert_eq!(n, 188 * 7);
+        assert_eq!(t.rtp_stats().malformed_packets, 0);
+    }
+
+    /// An empty payload must be dropped and tick malformed_packets.
+    #[test]
+    fn mp2t_shape_empty_payload_drops_and_ticks_counter() {
+        use tst_core::transport::RecvTransport;
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        // Empty payload — not a valid MP2T bundle.
+        data_tx
+            .send(bytes::Bytes::new())
+            .expect("send empty payload");
+
+        // Follow with a valid packet so recv_bytes can return.
+        let mut valid_pkt = vec![0u8; 188];
+        valid_pkt[0] = 0x47;
+        data_tx
+            .send(bytes::Bytes::from(valid_pkt))
+            .expect("send valid payload");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t.recv_bytes(&mut buf).expect("must return valid packet");
+        assert_eq!(n, 188);
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            1,
+            "empty payload must tick malformed_packets"
+        );
+    }
+
+    /// is_valid_mp2t_payload covers the helper directly.
+    #[test]
+    fn is_valid_mp2t_payload_covers_edge_cases() {
+        // Empty — invalid.
+        assert!(!is_valid_mp2t_payload(&[]));
+        // 100 bytes, 0x47 start — not 188-aligned, invalid.
+        let mut v = vec![0x47u8; 100];
+        assert!(!is_valid_mp2t_payload(&v));
+        // 188 bytes, wrong sync — invalid.
+        v = vec![0xAAu8; 188];
+        assert!(!is_valid_mp2t_payload(&v));
+        // 188 bytes, correct sync — valid.
+        v = vec![0u8; 188];
+        v[0] = 0x47;
+        assert!(is_valid_mp2t_payload(&v));
+        // 376 bytes (2 packets), correct sync — valid.
+        v = vec![0u8; 376];
+        v[0] = 0x47;
+        assert!(is_valid_mp2t_payload(&v));
+        // 189 bytes — not 188-aligned, invalid.
+        v = vec![0x47u8; 189];
+        assert!(!is_valid_mp2t_payload(&v));
     }
 }

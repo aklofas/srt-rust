@@ -38,8 +38,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   registration "GA94"   → Cea708Standalone
     //   registration "KLVA"   → KlvAsync
     //   metadata_descriptor   → KlvSync
-    //   (none of the above)   → Unknown(0x06) (lenient) /
-    //                           strict-rejected on `StrictMode::Sync`+
+    //   (none of the above)   → Unknown(0x06), surfaced with a
+    //                           `SubtitleMissingDescriptor` issue —
+    //                           fatal under `StrictMode::DescriptorsOnly`
+    //                           and `StrictMode::Full`
     //
     // For non-conformant streams (e.g. WebVTT-shaped bytes on a
     // PID with no VTTC descriptor — encoder bug), use

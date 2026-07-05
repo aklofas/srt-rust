@@ -132,17 +132,24 @@ fn verify_basic(
     let (user, pass) = s
         .split_once(':')
         .ok_or_else(|| AuthVerifyError::BadBasic("missing colon".to_string()))?;
-    // Constant-time comparison for both user and pass. Bitwise `&` (not
-    // short-circuit `&&`) ensures the pass comparison always executes even
-    // when the user check would fail, avoiding a timing oracle that reveals
-    // whether the username is correct.
+    // Constant-time comparison for both user and pass. The two `Choice`
+    // values are combined with `&` *before* converting to `bool` so that
+    // subtle's optimizer barriers remain in effect across the entire
+    // combined check — converting each to `bool` first would allow the
+    // compiler to reason about branch-free composition in its own terms,
+    // potentially breaking subtle's guarantees.
+    //
+    // Length-timing residual: subtle's slice `ct_eq` short-circuits when
+    // the byte lengths differ, so a timing observer can infer whether the
+    // submitted credential *length* matches the configured one. Lengths are
+    // not treated as secret here (accepted residual; padding or hashing was
+    // deliberately not applied).
     use subtle::ConstantTimeEq;
-    let user_ok: bool = user.as_bytes().ct_eq(expected_user.as_bytes()).into();
-    let pass_ok: bool = pass
-        .as_bytes()
-        .ct_eq(expected_pass.expose_secret().as_bytes())
-        .into();
-    if user_ok & pass_ok {
+    let ok = user.as_bytes().ct_eq(expected_user.as_bytes())
+        & pass
+            .as_bytes()
+            .ct_eq(expected_pass.expose_secret().as_bytes());
+    if bool::from(ok) {
         Ok(())
     } else {
         Err(AuthVerifyError::WrongCredentials)

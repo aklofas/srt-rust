@@ -52,7 +52,7 @@ fn main() {
     // triage lenient is what you want — the demuxer keeps going past
     // every recoverable problem and surfaces what it found as
     // `NonConformant` events. To opt into hard-fail behavior swap to
-    // `Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Sync).build())`; see
+    // `Demuxer::with_config(DemuxerConfig::builder().strict(StrictMode::Full).build())`; see
     // `docs/guides/pipeline.md` for the strict-mode contract.
     let mut d = Demuxer::new();
 

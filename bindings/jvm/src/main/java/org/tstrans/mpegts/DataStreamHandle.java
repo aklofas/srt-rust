@@ -7,7 +7,7 @@ package org.tstrans.mpegts;
  * {@link Muxer#dataStreamHandle(int)} (or a sender's {@code dataHandle()}) and
  * pass it to the handle-targeted push family
  * ({@link Muxer#pushDataTo(DataStreamHandle, byte[], long)} and the senders'
- * {@code pushDataTo}). The
+ * {@code sendDataTo}). The
  * {@code raw} value is the muxer's packed {@code u32} stream identifier widened
  * to {@code long}; it is meaningful only to the muxer that minted it.
  *

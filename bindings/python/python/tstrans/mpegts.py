@@ -922,6 +922,7 @@ DemuxEvent.Metadata = _MetadataEvent
 # SAME class object, so `isinstance(e, DemuxEvent.Klv)` and
 # `case DemuxEvent.Klv(...)` keep working unchanged. Remove at 1.0.
 DemuxEvent.Klv = _MetadataEvent  # deprecated alias, remove at 1.0
+_KlvEvent = _MetadataEvent  # deprecated alias, remove at 1.0
 DemuxEvent.UnknownSample = _UnknownSampleEvent
 DemuxEvent.Discontinuity = _DiscontinuityEvent
 DemuxEvent.NonConformant = _NonConformantEvent

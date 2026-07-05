@@ -559,7 +559,7 @@ cfg = RtspClientConfig(
 with RtspClient.connect(cfg) as session:
     with session.into_demux_receiver() as rx:
         for event in rx:
-            ...     # DemuxEvent.Video / .Klv / ...
+            ...     # DemuxEvent.Video / .Metadata / ...
     # session.play() / session.pause() / session.teardown() drive RTSP state.
 ```
 

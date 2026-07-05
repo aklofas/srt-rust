@@ -21,7 +21,7 @@ use crate::transport::TcpTransport;
 /// `TcpTransport`. `TcpListener::from_url` is the URL-style alternative to
 /// `TcpListener::bind`; pass a `tcp://host:port?listen=1` URL to construct the
 /// listener without a raw `SocketAddr`. See
-/// [the compatibility table](/docs/reference/compatibility.md#receive-side-entry-points)
+/// See the receive-side entry-points table in `docs/reference/compatibility.md`
 /// for a side-by-side comparison of all transport receive-entry patterns.
 pub struct TcpListener {
     inner: StdTcpListener,

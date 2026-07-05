@@ -4,7 +4,7 @@ package org.tstrans.mpegts;
  * Opaque handle for a video elementary stream within a configured muxer.
  *
  * <p>Obtain one from {@code MuxSender.videoHandle()} (or the per-program handle
- * accessors) and pass it to {@code MuxSender.pushVideoTo(...)} to target a
+ * accessors) and pass it to {@code MuxSender.sendVideoTo(...)} to target a
  * specific stream. The {@code raw} value is the muxer's packed {@code u32}
  * stream identifier widened to {@code long}; it is meaningful only to the muxer
  * that minted it. A handle from a different muxer (or an out-of-range raw value)

@@ -4,7 +4,7 @@ package org.tstrans.mpegts;
  * Opaque handle for a subtitle elementary stream within a configured muxer.
  *
  * <p>Obtain one from {@code MuxSender.subtitleHandle()} and pass it to
- * {@code MuxSender.pushSubtitleTo(...)} to target a specific stream. The
+ * {@code MuxSender.sendSubtitleTo(...)} to target a specific stream. The
  * {@code raw} value is the muxer's packed {@code u32} stream identifier widened
  * to {@code long}; it is meaningful only to the muxer that minted it. A handle
  * from a different muxer (or an out-of-range raw value) is rejected by the

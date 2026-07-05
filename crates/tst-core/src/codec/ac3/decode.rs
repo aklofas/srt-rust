@@ -96,7 +96,24 @@ pub fn parse_syncframe(bytes: &[u8]) -> Result<Ac3SyncInfo, CodecParseError> {
 
     // bytes[2..4] = crc1 (16 bits) — not validated here.
 
+    // bytes[5]: bsid(5 bits MSB) + bsmod(3 bits LSB).
+    // Read bsid BEFORE validating fscod/frmsizecod: an E-AC-3 frame (bsid
+    // 11..=16) may have fscod/frmsizecod values that are illegal in AC-3 but
+    // valid in E-AC-3's different bitstream syntax. Classifying such a frame
+    // as Forbidden or ReservedValue (from the AC-3 field constraints) instead
+    // of UnsupportedProfile would be a diagnostic misclassification —
+    // ATSC A/52 §5.4.2.1 establishes bsid as the authoritative bitstream-type
+    // indicator (DA-AV-3).
+    let bsid = (bytes[5] >> 3) & 0b1_1111;
+    let bsmod = bytes[5] & 0b0000_0111;
+    if bsid >= 9 {
+        // Annex E (E-AC-3) uses bsid 16; alternative bitstreams use 9/10.
+        return Err(CodecParseError::UnsupportedProfile { profile_idc: bsid });
+    }
+
     // bytes[4]: fscod(2 bits MSB) + frmsizecod(6 bits LSB).
+    // Validated after bsid so that E-AC-3 frames are classified by bitstream
+    // type rather than by AC-3-specific field constraints.
     let fscod = (bytes[4] >> 6) & 0b11;
     let frmsizecod = bytes[4] & 0b0011_1111;
 
@@ -112,14 +129,6 @@ pub fn parse_syncframe(bytes: &[u8]) -> Result<Ac3SyncInfo, CodecParseError> {
     };
 
     let (frame_length_bytes, bit_rate_kbps) = frame_size_lookup(fscod, frmsizecod)?;
-
-    // bytes[5]: bsid(5 bits MSB) + bsmod(3 bits LSB).
-    let bsid = (bytes[5] >> 3) & 0b1_1111;
-    let bsmod = bytes[5] & 0b0000_0111;
-    if bsid >= 9 {
-        // Annex E (E-AC-3) uses bsid 16; alternative bitstreams use 9/10.
-        return Err(CodecParseError::UnsupportedProfile { profile_idc: bsid });
-    }
 
     // Remaining fields (acmod, optional mixlev fields, dsurmod, lfeon)
     // are bit-packed past byte 6. AC-3 has no emulation-prevention bytes

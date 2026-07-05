@@ -123,6 +123,15 @@ layout changed.
   error after it consumed the input; an error after an error may not have).
   Loss-sensitive callers are pointed at `ManagedTransport` (PR #78).
 
+### Fixed — codec parsing (AC-3)
+
+- `codec::ac3` now reads and classifies `bsid` before validating
+  `fscod`/`frmsizecod`. An E-AC-3 frame (bsid 11..=16) whose `fscod` or
+  `frmsizecod` bits happen to be invalid under AC-3 field constraints now
+  correctly returns `UnsupportedProfile` rather than `Forbidden` or
+  `ReservedValue` — the AC-3 field constraints are inapplicable once the
+  bitstream is identified as E-AC-3 (DA-AV-3).
+
 ### Fixed — codec parsing (H.264)
 
 - `codec::h264` now enforces H.264 spec bounds on VUI fields:

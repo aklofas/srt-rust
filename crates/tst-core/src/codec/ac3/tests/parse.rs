@@ -163,3 +163,33 @@ fn parse_returned_struct_is_pub_struct() {
     let info: Ac3SyncInfo = parse_syncframe(&h).unwrap();
     assert_eq!(info.bsmod, 1);
 }
+
+#[test]
+fn parse_eac3_bsid_16_with_invalid_fscod_returns_unsupported_profile_not_forbidden() {
+    // DA-AV-3: bsid must be read and classified BEFORE fscod/frmsizecod are
+    // validated. An E-AC-3 frame (bsid=16) whose fscod bits happen to equal
+    // 0b11 (reserved for AC-3) must still return UnsupportedProfile, not
+    // Forbidden — the AC-3 field constraints are irrelevant once we know
+    // the bitstream is E-AC-3.
+    //
+    // fscod=3 (reserved per A/52 Table 5.6), frmsizecod=20 (valid), bsid=16.
+    let h = build_syncinfo(3, 20, 16, 0, 2, false);
+    let err = parse_syncframe(&h).unwrap_err();
+    assert!(
+        matches!(err, CodecParseError::UnsupportedProfile { profile_idc: 16 }),
+        "expected UnsupportedProfile(16), got {err:?}"
+    );
+}
+
+#[test]
+fn parse_eac3_bsid_11_with_reserved_frmsizecod_returns_unsupported_profile_not_reserved() {
+    // DA-AV-3: companion to the fscod case — frmsizecod validation also must
+    // not run before the bsid check. bsid=11 (E-AC-3 range 11..=16),
+    // frmsizecod=38 (reserved per A/52 Table 5.18).
+    let h = build_syncinfo(0, 38, 11, 0, 2, false);
+    let err = parse_syncframe(&h).unwrap_err();
+    assert!(
+        matches!(err, CodecParseError::UnsupportedProfile { profile_idc: 11 }),
+        "expected UnsupportedProfile(11), got {err:?}"
+    );
+}

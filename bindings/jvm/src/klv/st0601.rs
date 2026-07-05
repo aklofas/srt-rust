@@ -815,8 +815,15 @@ fn read_uas_datalink(
                 .call_method(&st_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
                 .l()?;
             let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
-            if let Ok(tag) = u32::try_from(v) {
-                r.sentinel_tags.push(tag);
+            match u32::try_from(v) {
+                Ok(tag) => r.sentinel_tags.push(tag),
+                Err(_) => {
+                    let _ = env.throw_new(
+                        "java/lang/IllegalArgumentException",
+                        format!("sentinelTags entry out of u32 range: {v}"),
+                    );
+                    return Err(jni::errors::Error::JavaException);
+                }
             }
         }
     }

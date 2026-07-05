@@ -454,4 +454,20 @@ class St0601Test {
         assertFalse(rec2.sentinelTags().contains(7L),
                 "tag 7 must NOT be a sentinel after value-wins encoding");
     }
+
+    /**
+     * A {@code sentinelTags} entry above the u32 range must throw
+     * {@link IllegalArgumentException} instead of being silently dropped
+     * (regression test for the silent-drop path in the JNI translator).
+     */
+    @Test
+    void sentinelTagsOutOfU32RangeThrows() {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .sentinelTags(java.util.List.of(0x1_0000_0000L))
+                .build();
+        assertThrows(IllegalArgumentException.class, () -> Klv.encodeUasDatalink(rec));
+    }
 }

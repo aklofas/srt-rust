@@ -7,7 +7,178 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Raw-first demuxer for video + audio (v0.2.0)
+## [Unreleased] — Post-v0.2.0 audit remediation + API consistency
+
+Remediation of the two 2026-07-01 audits (correctness/spec/safety and
+simplification/refactor/dependency), landed as PRs #58–#79. The C ABI stayed
+frozen at minor **17** the entire time — no C symbol, signature, or struct
+layout changed.
+
+### Changed (breaking, pre-1.0) — SRT buffer-size options are now byte-valued
+
+- `SocketBuilder`'s `recv_buf_packets` / `send_buf_packets` are renamed to
+  `recv_buf_bytes` / `send_buf_bytes`. The values were always passed straight
+  through to libsrt's `SRTO_RCVBUF` / `SRTO_SNDBUF`, which are byte-valued —
+  the old names implied a packet count they never had. Values above
+  `i32::MAX` are now rejected instead of silently wrapping (PR #61).
+
+### Changed (breaking, pre-1.0) — Rust type and builder renames for cross-binding consistency
+
+- `tst_srt::Error` → `SrtError` (PR #79).
+- `tst_core`'s `MuxSenderErrorKind` → `MuxErrorKind` (PR #79). Note: the
+  `tst_pipeline::MuxSenderError` family is intentionally **not** renamed.
+- `tst_rtp`'s cancel-handle predicate `is_canceled` → `is_cancelled`, matching
+  the spelling already used elsewhere (also exposed through the Python
+  binding; the Java binding was already correct) (PR #79).
+- `DemuxerBuilder` → `DemuxerConfigBuilder`; its `build()` is now infallible
+  and returns a `DemuxerConfig` (previously a `Result`). A new
+  `DemuxerConfig::builder()` entry point is added (PR #79).
+
+### Changed (breaking, pre-1.0) — Python and JVM binding surface
+
+- Python and JVM `MuxSender` — and the srt `ManagedMuxSender` — rename their
+  live-push methods from `push_*` to `send_*` (`send_video`, `send_audio`,
+  `send_klv`, `send_data`, …), matching the underlying Rust `send_*` shape.
+  `Muxer`, the RTSP `MountHandle`, and `MuxerFileSink` deliberately keep
+  `push_*` (buffer/file operations, at Rust parity) (PR #79).
+- Python `DemuxEvent.Klv` → `DemuxEvent.Metadata`. `DemuxEvent.Klv` remains as
+  a deprecated same-object alias and will be removed at 1.0; the pandas
+  adapter now reports these events under the `"Metadata"` kind (PR #79).
+- JVM `DemuxEvent.Video` is now raw-first: its elementary-stream units are
+  parsed lazily via `parse()` (which throws `DemuxException`) rather than
+  eagerly on decode, so there is no eager `payload()` / units accessor
+  (PR #75).
+- JVM `DemuxEvent.Audio` is likewise raw-first, with lazy `parse()` /
+  `parse(boolean strict)` (throwing `CodecParseException` /
+  `DemuxException`) (PR #78).
+
+### Removed (breaking, pre-1.0)
+
+- `PairerConfig::link_klv_to_video` (the dead pairing knob) is removed across
+  Rust, Python, and JVM. It was never wired to behavior; no deprecated alias
+  is kept. The demuxer's unrelated `link_klv` API is untouched (PR #69).
+- `KlvFieldError::InvalidSentinel` is removed. ST 0601 sentinel values are now
+  modeled explicitly rather than rejected — see the Added entry below (PR #79).
+
+### Added
+
+- ST 0601 INT_MIN "sentinel" values (out-of-range / reserved / not-available)
+  are now modeled explicitly instead of being rejected. `UasDatalinkLs` gains a
+  `sentinel_tags` field, plus `St0601SentinelMeaning` and
+  `st0601_sentinel_meaning()` covering the full ST 0601.19 sentinel table.
+  Encoding re-emits INT_MIN for listed-but-`None` fields (a present value still
+  wins). Mirrored in the bindings as a Python tuple and a JVM `List<Long>`
+  (PR #79).
+- `tst_tcp` gains a `TcpCancelHandle` with `cancel_handle()`, giving the TCP
+  transport a cooperative cancellation path; the Python TCP transport exposes
+  it too (PR #62).
+
+### Changed — default features and transport behavior
+
+- `tst-tcp`'s default features drop the experimental `hls` feature:
+  `default = ["tls"]`. Consumers relying on HLS being on by default must now
+  request it explicitly (PR #79).
+- TCP transports now default `TCP_NODELAY` to `true` for low-latency streaming
+  (PR #71).
+- RTP/RTSP statistics now report `rtt_us` as `0` rather than a misleading
+  cross-domain computation; a real RTT is not available on that path (PR #73).
+- SRT statistics preserve sub-millisecond RTT precision in `perf_to_stats`
+  instead of truncating to whole milliseconds (PR #61).
+
+### Fixed — MPEG-TS mux/demux conformance
+
+- Muxer: the PCR-only heartbeat packet now repeats the last payload continuity
+  counter instead of advancing it, per H.222.0 (DA-MUX-1, PR #66).
+- Demuxer: spec-legal duplicate TS packets (H.222.0 §2.4.3.3 — a packet
+  repeated bit-for-bit, optionally with a refreshed PCR) are now recognized and
+  suppressed instead of being reported as continuity-counter jumps. A
+  same-CC-but-different-payload packet still routes through the discontinuity
+  path (DA-DEMUX-1, PR #66).
+- Demuxer: a stale PCR-tracking entry is dropped when a PMT moves the PCR PID,
+  and PES/CC/PTS state is flushed for a PID that changes stream kind across a
+  PMT update (DA-DEMUX-2 / DA-DEMUX-3, PR #66).
+- Muxer: the PMT section-size estimator is now derived from the same
+  descriptor-cache emitter that writes the section, structurally eliminating
+  the estimator/emitter drift class (and the prior AC-3 under-estimate panic)
+  (DA-MUX-2, PR #65).
+
+### Changed — pipeline send semantics
+
+- The pre-muxed `Sender` now retains framed bundles across a mid-loop transport
+  error and drains them first on the next call, so a transient failure no
+  longer drops the framed prefix. This clarifies the send contract: an `Err`
+  from `send_ts` means the input **was** consumed (framed and queued) — callers
+  must not re-send the same bytes; recover by backing off and calling `flush()`
+  or the next `send_ts` with new data (DA-PIPE-3, PR #69).
+- `MuxSender`'s input-consumption / retry contract is now documented across the
+  full `send_*` family: because a pre-push `drain_pending()` can fail before the
+  push, "did the transport error consume my input?" is answered by the *previous*
+  call's outcome (a success means the pending queue was empty, so the first
+  error after it consumed the input; an error after an error may not have).
+  Loss-sensitive callers are pointed at `ManagedTransport` (PR #78).
+
+### Fixed — codec parsing (H.264)
+
+- `codec::h264` now enforces H.264 spec bounds on VUI fields:
+  `log2_max_frame_num_minus4` / `log2_max_pic_order_cnt_lsb_minus4` are
+  range-checked, `chroma_sample_loc_type` is bounded to `[0, 5]`, and a
+  `num_units_in_tick == 0` VUI (which would divide by zero when deriving the
+  frame rate) is rejected. Malformed or hostile bitstreams are now rejected
+  rather than silently mis-parsed (PR #67).
+
+### Fixed — KLV encoding conformance
+
+- ST 0107.5 empty-string vs. absent handling (§6.3.3.2): decode maps `[0x00]`
+  to `Some("")` and a zero-length value to `None`, and encode mirrors the
+  distinction (PR #68).
+- The strict-compliance encode path now trims leading/trailing whitespace
+  (ST 0107.3-12) and strips control characters; the default (lenient) encode
+  path is unchanged (DA-KLV-1 / DA-KLV-2, PR #68).
+- ST 0903 `VTargetPack` encoding now enforces the wire-width caps on its
+  fields (DA-KLVC-1, PR #68).
+
+### Fixed — transport and bindings
+
+- Python: the TCP transport no longer freezes the interpreter. Native TCP
+  calls (`stats`, `close`, `peer_addr`, `repr`, recv) now release the GIL, and
+  the GIL-held-lock that could block all Python threads is gone (DA-PY-1,
+  PR #62). The srt `ManagedDemuxReceiver.socket_stats` / `ManagedMuxSender.stats`
+  calls also release the GIL (DA-PY-2, PR #62).
+- Python: byte-like inputs (`bytearray`, `memoryview`) are now accepted wherever
+  `bytes` are, instead of being rejected (DA-PY-3, PR #74).
+- JVM: decoding an ST 0903 VMTI packet with many targets no longer leaks/exhausts
+  JNI local references — per-target local refs are reclaimed in `build_vmti`
+  (DA-JVM-1, PR #63).
+- SRT: a connect that times out is now classified as `ConnectError::TimedOut`
+  instead of a generic setup failure, so that variant is actually reachable
+  (DA-SRT-2, PR #61).
+- UDP: `max_payload` now returns 65535 so a full-size datagram is not silently
+  truncated; multicast receive binds set `SO_REUSEADDR` (and `SO_REUSEPORT`
+  on BSD/macOS) so multiple receivers can join a group (DA-NET-7 / DA-NET-8,
+  PR #71).
+- RTSP: the server's Digest-auth checks are hardened against realm / nonce-count
+  / qop-downgrade abuse (DA-RTP-4); the `PLAY` response reports the actual
+  initial sequence number and RTP timestamp in `RTP-Info`; and IPv6 hosts are
+  bracketed correctly in rendered request URIs (PR #73).
+
+### Changed — internal refactors and dependencies (behavior-preserving)
+
+- Removed unused dependencies: `log`, `rtsp-types`, the `cc` dev-dependency, and
+  the `tokio` `fs` feature (PR #58).
+- Large behavior-preserving deduplication across the tree: mux/demux/codec/KLV
+  helper consolidation (PRs #65–#69), pipeline `ShellSpan` and scaffolding
+  cleanup (PRs #69, #70), JVM `NativeHandle` base class and handle/builder
+  dedup (PRs #75–#76), and a ~2000-LOC C-binding transport-clone dedup behind
+  byte-frozen forwarders plus a shared descriptor-slot resolver and zero-copy
+  arena path (PR #77). Public API and generated C header were held byte-stable
+  where surfaces were untouched.
+- The CI `cargo public-api` toolchain is pinned to `nightly-2026-07-03` to stop
+  a recurring `std::io` / `core::io` render false-drift; render baselines with
+  `cargo +nightly-2026-07-03 public-api` (PR #78).
+
+---
+
+## [0.2.0] — 2026-06-23
 
 ### Fixed — H.265 parameter-set IDs validated instead of silently truncated
 
@@ -228,12 +399,10 @@ byte-identical payloads.
 - The demuxer's `StrictMode` is now **TS-layer only** — it gates PSI / PES /
   timing conformance and no longer inspects or rejects video/audio ES content.
   Malformed-NAL/OBU rejection moved to the opt-in `split_video_strict`.
-- The JVM binding is raw-first for both `Video` and `Audio` (Video lazy
-  since WP16/PR #75, Audio lazy since this change): `Video.parse()` returns
-  `List<VideoUnit>` on demand — there is no eager `payload()` accessor.
-  `Audio.parse()` / `Audio.parse(boolean)` likewise return `List<AudioFrame>`
-  on demand. The C `TstNal[]`/`TstObu[]` surface and `TstEventSample.payload`
-  / `payload_len` are unchanged — see "cross-binding video raw AU" above.
+- The JVM binding still returns parsed `List<VideoUnit>` via `v.payload()`
+  (it splits internally); the C `TstNal[]`/`TstObu[]` surface is likewise
+  unchanged. Both additionally expose the raw AU since Wave 5 — see
+  "cross-binding video raw AU" above.
 
 ### Fixed — `Muxer.write_file` drain contract documented + overflow hint (Python)
 
@@ -356,9 +525,11 @@ now in code, and documented as a table in the mux guide.
 
 ---
 
-## [Unreleased]
+## [0.1.0] — 2026-06-08
 
-### Changed — tst-c ABI minor 8 → 9: offline `tst_muxer_*` un-gated (2026-05-31)
+### tst-c-core split + offline muxer un-gated (2026-05-31)
+
+#### Changed — tst-c ABI minor 8 → 9: offline `tst_muxer_*` un-gated (2026-05-31)
 
 - tst-c ABI minor 8 → 9: the offline `tst_muxer_*` surface is now
   unconditional (previously gated behind the `srt` feature), matching the
@@ -376,9 +547,9 @@ now in code, and documented as a table in the mux guide.
 
 ---
 
-## [Unreleased] — tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
+### tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
 
-### Added — tst-py bindings for UDP / TCP / HLS / RIST (Plan A5b, 2026-05-27)
+#### Added — tst-py bindings for UDP / TCP / HLS / RIST (Plan A5b, 2026-05-27)
 
 Four new Python submodules on the `tstrans` extension, all behind cargo
 features default-**ON** (matching `rtp`/`srt`; PyPI wheels ship everything).
@@ -416,7 +587,7 @@ directly, not through `tst-c`).
   `-Wl,--allow-multiple-definition` (Linux, scoped srt&&rist) to collapse
   onto one mbedTLS — same fix as `tst-c`. Verified link + runtime.
 
-### Added — tst-c bindings for UDP / TCP / HLS / RIST (Plan A5a, 2026-05-27)
+#### Added — tst-c bindings for UDP / TCP / HLS / RIST (Plan A5a, 2026-05-27)
 
 Four new cargo features on `tst-c`: `udp`, `tcp`, `hls`, `rist` — all
 **default-OFF** (keeps embedded `libtstrans.so` size unchanged for existing
@@ -445,7 +616,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   + `check-publisher-trait-mirror.sh`.
 - 8 new C examples (2 per protocol) + 4 new smoke-test integration tests.
 
-### Changed
+#### Changed
 
 - `tst-c` ABI version bumped: `TST_ABI_VERSION_MINOR` 6 → 7 (additive; no
   breaking C-side change — existing consumers do not need to rebuild).
@@ -457,7 +628,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   link + runtime). A clean single-mbedTLS build (cross-crate reuse) is a
   follow-up. Most consumers enable a single transport and are unaffected.
 
-### Added — new transport: RIST (Plan A4, 2026-05-27)
+#### Added — new transport: RIST (Plan A4, 2026-05-27)
 
 - **New crates `rist-sys` + `tst-rist`** — VideoLAN librist 0.2.10 bindings
   for the RIST (Reliable Internet Stream Transport) protocol. Mirrors the
@@ -487,7 +658,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   4c ([receiving/rist.md](docs/cookbook/receiving/rist.md)).
 - Examples: `cargo run -p tst-examples --example send_rist` and `recv_rist`.
 
-### Added — second transport binding in Python (after RTP in Phase 4 Stage 2)
+#### Added — second transport binding in Python (after RTP in Phase 4 Stage 2)
 
 - New crate `tst-tcp` — raw MPEG-TS over TCP with optional TLS (rustls 0.23).
   Single `TcpTransport` impls both `Transport` and `RecvTransport`, supporting
@@ -515,7 +686,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   Kind variants: `CONFIG_INVALID`, `CONNECT_FAILED`, `TIMEOUT`, `CLOSED`,
   `BROKEN`, `IO`, `INTERNAL`.
 
-### Per-wave breakdown
+#### Per-wave breakdown
 
 - **T1 — bootstrap.** New `bindings/python/Cargo.toml` `srt` feature gated on
   `tst-srt`. Empty `bindings/python/python/tstrans/srt.py` shim with the
@@ -590,7 +761,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   with `ReconnectPolicy`). README extended with a SRT section mirroring
   the RTP section structure. CHANGELOG entry (this entry).
 
-### Notable design decisions
+#### Notable design decisions
 
 - **Hybrid fluent + kwargs `Builder`.** All 12 SRT knobs are accepted as
   both `__init__` kwargs and as chainable setter methods. URL-provided
@@ -619,7 +790,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   `into_sender()` / `into_receiver()` which produce the typed `Sender` /
   `Receiver` wrappers.
 
-### Drifts caught + resolved during execution
+#### Drifts caught + resolved during execution
 
 - **`SrtTransport` implements both `Transport` and `RecvTransport`.**
   The plan assumed a separate `SrtRecvTransport` type would exist (by
@@ -654,7 +825,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   isinstance check passes on the Video branch first so the bug is
   masked. Flagged for a follow-up fix outside this commit.
 
-### Numbers
+#### Numbers
 
 - **pytest**: 818 → 928 (+110 across the phase: Wave A T2/T3/T4 added
   ~56 tests, Wave B T5/T6 added ~31, Wave C T7/T8 added ~18, T10
@@ -671,7 +842,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
   the existing `tst-srt` + `tst-pipeline` surfaces. (Verify with `cargo
   public-api -p tst-srt --simplified` before push.)
 
-### References
+#### References
 
 - Spec: `docs/specs/2026-05-27-tst-py-srt-design.md` (approved 2026-05-27,
   10 design decisions Q1-Q10).
@@ -680,7 +851,7 @@ SRT-only / RTP-only consumers). Build the new transports explicitly, e.g.
 - Memory anchor: `project_phase_8_tst_py_srt_planned.md` (transitions to
   `project_phase_8_tst_py_srt_shipped.md` after this commit).
 
-### Phase 7 unblock
+#### Phase 7 unblock
 
 Phase 7 (PyPI wheels CI) was paused at false-start before Phase 8 —
 the drafted `.github/workflows/python-wheels.yml` sits uncommitted on
@@ -691,9 +862,9 @@ transports out of the box.
 
 ---
 
-## [Unreleased] — tst-tcp HLS publisher with HTTP server (2026-05-27)
+### tst-tcp HLS publisher with HTTP server (2026-05-27)
 
-### Added
+#### Added
 
 - New `tst_core::publisher::Publisher` trait (sibling to `Transport`/`RecvTransport`) for
   outbound-only, segment-aware sinks. First impl: `HlsPublisher` in `tst-tcp`.
@@ -706,9 +877,9 @@ transports out of the box.
 
 ---
 
-## [Unreleased] — tst-udp: raw MPEG-TS over UDP (2026-05-27)
+### tst-udp: raw MPEG-TS over UDP (2026-05-27)
 
-### Added
+#### Added
 
 - New crate `tst-udp` — raw MPEG-TS over UDP unicast + multicast
   (IPv4 + IPv6). `UdpTransport` (sender) + `UdpRecvTransport` (receiver)
@@ -724,9 +895,9 @@ transports out of the box.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 4 Stage 3 follow-up: RtspServer::stop FIN on write halves (2026-05-26)
+### tst-rtp Phase 4 Stage 3 follow-up: RtspServer::stop FIN on write halves (2026-05-26)
 
-### Fixed
+#### Fixed
 
 - **`RtspServer::stop` now explicitly shuts down each per-session TCP
   write half.** Prior to this fix, `stop()` only signaled per-session
@@ -751,7 +922,7 @@ transports out of the box.
   now runs in ~1.1 s wall (was 2.97 s with only the client-side fix in
   place).
 
-### Tests
+#### Tests
 
 - New regression test
   `rtsp_server_notice_5402::stop_shuts_down_per_session_write_half_so_client_sees_eof_promptly`
@@ -761,9 +932,9 @@ transports out of the box.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 4 Stage 3: TCP-aware RTCP ingest (2026-05-26)
+### tst-rtp Phase 4 Stage 3: TCP-aware RTCP ingest (2026-05-26)
 
-### Fixed
+#### Fixed
 
 - **TCP-interleaved RTCP RR/SR now surface on `socket_stats()`.**
   Prior to this stage, peer RTCP arriving on the RTSP control channel
@@ -804,7 +975,7 @@ transports out of the box.
   worktree reported pass but the merged state hung in the drop sequence.
   Now passes in ~3 s.
 
-### Added
+#### Added
 
 - **`RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx)`** — `pub(crate)`
   constructor used by the TCP-interleaved RTSP client path. Spawns the
@@ -816,7 +987,7 @@ transports out of the box.
 - **`RtspClient::send_and_read_via_pump_with_deadline`** — `pub(crate)`
   underlying primitive supporting the bounded-teardown path.
 
-### Tests
+#### Tests
 
 - Three new transport unit tests verify the ingest pipeline end-to-end:
   `rr_on_rtcp_rx_populates_packets_lost_send` (RR → cumulative_lost_send →
@@ -825,16 +996,16 @@ transports out of the box.
   `malformed_rr_increments_parse_error_counter` (truncated PT=201 →
   rr_parse_errors increment, no panic).
 
-### Public API
+#### Public API
 
 - `RtcpStats` field additions are additive — no removals; pre-1.0
   policy. cargo-public-api baseline regen needed for tst-rtp.
 
 ---
 
-## [Unreleased] — tst-py Phase 4 Stage 2: `tstrans.rtp.*` (2026-05-26)
+### tst-py Phase 4 Stage 2: `tstrans.rtp.*` (2026-05-26)
 
-### Added — first transport bindings in Python
+#### Added — first transport bindings in Python
 
 - **New `tstrans.rtp` submodule** behind cargo feature `rtp = ["dep:tst-rtp"]`,
   default-on. Wheels published to PyPI always include RTP; source builds via
@@ -897,7 +1068,7 @@ transports out of the box.
 - **README updates**: top-level `README.md` Python row + `bindings/python/README.md`
   new "RTP + RTSP transport" section with 10-line client + server snippets.
 
-### Added — tst-rtp internal (T27, partial Stage 3)
+#### Added — tst-rtp internal (T27, partial Stage 3)
 
 - `RtspSession::activate_interleaved_pump` now returns the RTCP mpsc
   receiver alongside the RTP data receiver instead of black-holing RTCP
@@ -907,7 +1078,7 @@ transports out of the box.
   RTCP RR/SR is observable on `socket_stats()`). No public-API delta —
   `activate_interleaved_pump` is `pub(crate)`. No C ABI delta.
 
-### Stats
+#### Stats
 
 - pytest: 813 passed, 6 skipped, 67 deselected — up from 707 + 2 at
   Stage 2 start.
@@ -915,7 +1086,7 @@ transports out of the box.
   types: `PyTransportPref`, `PyRtspVersion`, `PyDigestAlgorithm`, plus
   PyMuxSender + PyDemuxReceiver propagation).
 
-### Deferred — Stage 3 (T28-T30)
+#### Deferred — Stage 3 (T28-T30)
 
 - T28: feed `rtcp_rx` into `RtcpReporterHandle` so socket stats report
   RTCP RR/SR-derived loss + RTT on the TCP-interleaved path.
@@ -925,9 +1096,9 @@ transports out of the box.
 
 ---
 
-## [Unreleased] — tst-c Phase 4 Stage 1: RTP + RTSP C ABI surface (2026-05-26)
+### tst-c Phase 4 Stage 1: RTP + RTSP C ABI surface (2026-05-26)
 
-### Added — full Phase 4 Stage 1 C ABI
+#### Added — full Phase 4 Stage 1 C ABI
 
 - **Cargo feature flags** `srt` + `rtp` on `tst-c` (both default-on); `mbedtls`
   retained. `--no-default-features` builds a file-I/O-only `tstrans` library.
@@ -969,7 +1140,7 @@ transports out of the box.
   surfaced (needed for C-side mount lifecycle parity); `RtspServerBuilder::with_url`
   added so tst-c can pass a pre-parsed `RtspUrl` from its accumulator builder.
 
-### Changed — tst-c ABI minor bump 5 → 6
+#### Changed — tst-c ABI minor bump 5 → 6
 
 `TST_ABI_VERSION_MINOR` 5 → 6 covering all Stage 1 additions. All changes
 are additive (no breaking renames on existing symbols); existing consumers
@@ -978,9 +1149,9 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 3 Wave H follow-up (2026-05-26)
+### tst-rtp Phase 3 Wave H follow-up (2026-05-26)
 
-### Fixed — Phase 3 Wave H deferrals closed (4 of 5)
+#### Fixed — Phase 3 Wave H deferrals closed (4 of 5)
 
 - **Client-side `spawn_client_pump` wire-up into `RtspClient` (T4).**
   Activated at SETUP via `RtspClient::activate_interleaved_pump`: spawns
@@ -1026,7 +1197,7 @@ any new C entry point triggers an ABI minor bump.
   is unchanged (still takes an IP literal — `IP_MULTICAST_IF`'s wire
   shape).
 
-### Fixed — incomplete hotfix from `848f0b5f`
+#### Fixed — incomplete hotfix from `848f0b5f`
 
 - **Windows clippy `unused_variable: iface_str` in
   `server/multicast.rs`.** The hotfix in `848f0b5f` gated the inner
@@ -1038,7 +1209,7 @@ any new C entry point triggers an ABI minor bump.
   message of both arms (also useful diagnostic info — "requested iface
   'eth0'" vs the generic message).
 
-### Tests
+#### Tests
 
 - 3 new `#[cfg(unix)]` unit tests in `server/multicast.rs` covering
   `if_nametoindex("lo")` resolution success, bogus-name error path,
@@ -1063,7 +1234,7 @@ any new C entry point triggers an ABI minor bump.
   pump thread + `Drop` ordering. Documented as a known issue inline in
   the test file.
 
-### Internal
+#### Internal
 
 - `RtspClient` and `RtspSession` lose the `Sync` auto-trait (they now
   hold `mpsc::Receiver<Bytes>`). `Send` retained. No `pub` items added;
@@ -1080,7 +1251,7 @@ any new C entry point triggers an ABI minor bump.
 - `tst-c` ABI minor unchanged (no new C entry points; Phase 4 still
   lands the C ABI binding for the RTSP server).
 
-### Deferred — Phase 4
+#### Deferred — Phase 4
 
 - **C ABI exposure of the RTSP server** (`tst_rtsp_server_*` symbols +
   `TST_HAS_RTP` define in cbindgen output) — the one remaining item
@@ -1088,9 +1259,9 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 3: RTSP server (2026-05-26)
+### tst-rtp Phase 3: RTSP server (2026-05-26)
 
-### Added — Phase 3 (RTSP server)
+#### Added — Phase 3 (RTSP server)
 
 - `RtspServer` sync facade hiding an internal tokio Runtime — accepts
   client connections, manages sessions, fans out one Muxer's TS bytes
@@ -1145,7 +1316,7 @@ any new C entry point triggers an ABI minor bump.
   (21st in `scripts/check-*.sh`) — verifies every `RtspServerError`
   variant is constructed somewhere under `rtsp/server/` or `builder.rs`.
 
-### Fixed — Phase 2 deferred items closed in Phase 3
+#### Fixed — Phase 2 deferred items closed in Phase 3
 
 - **Phase 2 deferred fix 2 (TLS-side keepalive):** `RtspClient::stream`
   refactored from raw `Stream` to `Arc<Mutex<Stream>>`. Phase 2's
@@ -1161,7 +1332,7 @@ any new C entry point triggers an ABI minor bump.
   `RtpRecvTransport::from_mpsc_placeholder` still returns an unfed
   channel until that lands.
 
-### Fixed — bugs surfaced by Wave F integration tests
+#### Fixed — bugs surfaced by Wave F integration tests
 
 - Server `extract_mount_path` now strips trailing per-media control
   segments (`/trackID=N`, `/streamid=N`) so SETUP URIs built by
@@ -1175,7 +1346,7 @@ any new C entry point triggers an ABI minor bump.
   `options_describe` picks them up; TLS roots threaded through to
   `TlsStream::connect` via the new `connect_with_roots` method.
 
-### Internal
+#### Internal
 
 - tokio + tokio-util promoted from dev-dep to production dep on `tst-rtp`
   for the `RtspServer` Runtime.
@@ -1193,7 +1364,7 @@ any new C entry point triggers an ABI minor bump.
 - **`tst-c` ABI minor:** unchanged. No new C entry points; the C ABI
   bindings for the RTSP server land in Phase 4.
 
-### Deferred to Wave H follow-up / Phase 4
+#### Deferred to Wave H follow-up / Phase 4
 
 - ~~Client-side `spawn_client_pump` wire-up into `RtspClient::play()`~~
   **— Closed by Wave H T4 (2026-05-26).** See the Wave H entry above.
@@ -1208,9 +1379,9 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 2: RTSP client + RTCP (2026-05-26)
+### tst-rtp Phase 2: RTSP client + RTCP (2026-05-26)
 
-### Added
+#### Added
 
 - `RtspClient` sync facade for `rtsp://` and `rtsps://` URLs with the
   full OPTIONS / DESCRIBE / SETUP / PLAY / PAUSE / TEARDOWN state
@@ -1263,7 +1434,7 @@ any new C entry point triggers an ABI minor bump.
   (manual best-effort; 6 target rows).
 - Teaching example at `examples/receiving/rtsp_client_camera.rs`.
 
-### Changed
+#### Changed
 
 - Phase 1's `RtpRecvSocketBuilder::build()` and `RtpSocketBuilder::build()`
   now open a second UDP socket for RTCP by default (RTP port + 1 per
@@ -1277,7 +1448,7 @@ any new C entry point triggers an ABI minor bump.
   between UDP and mpsc (mpsc variant feeds the TCP-interleaved
   pipeline; producer wiring still deferred).
 
-### Phase 2 implementation notes
+#### Phase 2 implementation notes
 
 - 25 plan tasks shipped across 7 stages (Bootstrap + Waves A-F).
 - Wave parallelism: up to 6 worktrees per wave; merge coordination
@@ -1289,9 +1460,9 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — tst-rtp Phase 1: RTP data plane (2026-05-25)
+### tst-rtp Phase 1: RTP data plane (2026-05-25)
 
-### Added
+#### Added
 
 - New crate `tst-rtp` ships the RTP-over-UDP data plane carrying MPEG-TS
   per RFC 2250 — sender + receiver, unicast + multicast (IPv4 + IPv6),
@@ -1316,7 +1487,7 @@ any new C entry point triggers an ABI minor bump.
 - Examples: `examples/sending/rtp_basic.rs`,
   `examples/receiving/rtp_recv_basic.rs`.
 
-### Scope
+#### Scope
 
 - **No RTSP yet** — Phase 2 lands `RtspClient` (DESCRIBE / SETUP / PLAY)
   and TCP-interleaved transport; the master design doc at
@@ -1335,7 +1506,7 @@ any new C entry point triggers an ABI minor bump.
   compile-and-link only (per plan #65); the multicast knobs return
   `ConnectError::IfaceUnsupported` on non-unix.
 
-### Compatibility
+#### Compatibility
 
 - No breaking change to `tst-core`, `tst-pipeline`, `tst-srt`, or
   `tst-c`. `tst-py` is unaffected (Phase 1 doesn't expose RTP to
@@ -1344,9 +1515,9 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — tst-srt refactor groundwork (2026-05-25)
+### tst-srt refactor groundwork (2026-05-25)
 
-### Refactor (no behavior change)
+#### Refactor (no behavior change)
 - Planned binding crates renamed: `srt-jni` → `tst-jni`,
   `srt-uniffi` → `tst-uniffi`. The crates remain PLANNED (not shipped);
   this is paperwork to align names with the `tst-*` workspace prefix
@@ -1359,7 +1530,7 @@ any new C entry point triggers an ABI minor bump.
   rustdoc rewritten to be transport-neutral; the libsrt
   `CBytePerfMon` / `MJ_*` mapping now lives on `SrtTransport` itself.
 
-### Changed
+#### Changed
 - **Behavior change in `tst_srt::url::SrtUrl` URL parsing:** percent-encoding
   is now strict — malformed `%XY` (truncated or non-hex digits) returns
   `Err` rather than passing through, and percent-decoded bytes must be
@@ -1377,13 +1548,13 @@ any new C entry point triggers an ABI minor bump.
 
 ---
 
-## [Unreleased] — docs/ framing pass (Phase 2 of polish) (2026-05-25)
+### docs/ framing pass (Phase 2 of polish) (2026-05-25)
 
 Content + structure changes to the user-facing `docs/` surface. No code,
 ABI, or API changes — BASELINE stays at 162, public-api baselines
 unchanged, no ABI bump.
 
-### Docs
+#### Docs
 
 - **NEW: `docs/index.md`** — six-box landing routing 5 reader audiences
   (cold-domain reader, evaluator, language integrator, domain expert,
@@ -1425,7 +1596,7 @@ unchanged, no ABI bump.
   updated to the new `docs/cookbook/index.md` or specific recipe paths
   in the same commit that performed the split.
 
-### Process
+#### Process
 
 - Phase 2 closes the docs polish initiated by spec
   `docs/specs/2026-05-24-docs-polish-design.md`. Both phases are
@@ -1433,13 +1604,13 @@ unchanged, no ABI bump.
 
 ---
 
-## [Unreleased] — docs/ folder restructure (Phase 1 of polish) (2026-05-24)
+### docs/ folder restructure (Phase 1 of polish) (2026-05-24)
 
 **BREAKING (docs paths only).** Restructured `docs/` from a flat 18-file tree
 into a folder hierarchy. No code, ABI, or API surface changes — BASELINE
 stays at 162, public-api baselines unchanged, no ABI bump.
 
-### Docs
+#### Docs
 
 - `docs/getting-started.md` → `docs/start/quickstart.md`
 - `docs/guide-*.md` → `docs/guides/*.md` (drops `guide-` prefix; 6 files)
@@ -1466,12 +1637,12 @@ stays at 162, public-api baselines unchanged, no ABI bump.
 
 ---
 
-## [Unreleased] — Phase 1 scoped test infrastructure (2026-05-25)
+### Phase 1 scoped test infrastructure (2026-05-25)
 
 Tests-only / docs-only. No public API changes, no `#[non_exhaustive]` count
 change (BASELINE stays at 162), no ABI bump.
 
-### Tests
+#### Tests
 - Closed 15 dead-weight Python skip sites in `tst-py` (10 `@pytest.mark.skipif`
   decorators + 5 runtime `pytest.skip` calls). Every gated fixture was already
   checked into `crates/tst-core/tests/fixtures/`; the skips were leftover
@@ -1494,7 +1665,7 @@ change (BASELINE stays at 162), no ABI bump.
   straddles the 33-bit PTS boundary by ~3s on the post-wrap side and stays
   well under the jitter thresholds (median ≤ 67ms, p95 ≤ 100ms).
 
-### Docs
+#### Docs
 - Updated `docs/python-1/python-bindings-skip-backlog.md` — moved 15 closed
   rows to a "Closed by Phase 1" section. The 3 remaining runtime skips in
   `test_sample_payload_audio_fallback.py` require deterministic
@@ -1503,7 +1674,7 @@ change (BASELINE stays at 162), no ABI bump.
 
 ---
 
-## [Unreleased] — `cfi_tolerance` default flipped `false` → `true` (2026-05-24)
+### `cfi_tolerance` default flipped `false` → `true` (2026-05-24)
 
 Behavior change: the `DemuxerConfig::cfi_tolerance` default flips from
 `false` (strict-by-default per H.222.0 V9 §2.12.4.2 Table 2-157) to
@@ -1517,7 +1688,7 @@ fires under tolerance — producer malformation stays visible to
 validators and telemetry; only the metadata-emission behavior
 differs.
 
-### Rationale: this is an industry-wide encoder bug, not a vendor defect
+#### Rationale: this is an industry-wide encoder bug, not a vendor defect
 
 Corpus-wide validation against the local 251-file / 37 GB STANAG 4609
 local corpus (multiple platforms and captures) found ~99% of demuxer
@@ -1566,7 +1737,7 @@ under tolerance mode. Tolerance becomes the pragmatic default for
 real-world traffic; strict mode remains available for conformance
 testing of a producer against the wire spec.
 
-### Asymmetry with `lenient_psi_reassembly`
+#### Asymmetry with `lenient_psi_reassembly`
 
 The sibling `lenient_psi_reassembly` knob still defaults `false`
 (strict). The asymmetry is calibrated to corpus evidence — we have
@@ -1645,7 +1816,7 @@ crates (tst-core / tst-pipeline / tst-srt) are unaffected.
 
 ---
 
-## [Unreleased] — Plan #96 closeout-audit validation follow-ups (2026-05-25)
+### Plan #96 closeout-audit validation follow-ups (2026-05-25)
 
 Static-validation review of the plan #96 closeout commits (see `docs/analysis/2026-05-25-closeout-fixes-validation.md`) surfaced 6 follow-up findings: 2 release-blocking (ABI minor not bumped despite new C entry points; stale `_close` lifecycle docs), 1 medium (subtitle config validation less strict than `DemuxerConfig`), 3 low (docstring + field-comment + test-helper-stability wording drifts). All 6 closed via 6-worktree parallel SDD; no Rust functional changes (Finding 6 was doc-only by design). BASELINE 162 unchanged. **C ABI minor bumped 4 → 5** per `docs/binding-authors.md` policy.
 
@@ -1677,7 +1848,7 @@ Validation report: `docs/analysis/2026-05-25-closeout-fixes-validation.md`.
 
 ---
 
-## [Unreleased] — Core + C ABI + Python closeout audit fixes (2026-05-25)
+### Core + C ABI + Python closeout audit fixes (2026-05-25)
 
 Plan #96. 16 of 17 findings from `docs/analysis/2026-05-25-core-c-python-closeout-audit.md` closed (F13 invalidated during validation — no actual double-insert in `codec_parse_error_to_pyerr`'s `ReservedValue` arm). Shipped via 8-worktree parallel SDD (Waves A–H) + 1 sequential scaffold cleanup (Wave I) + 1 cross-wave fix + 1 H+B coordination follow-up. `#[non_exhaustive]` BASELINE stays at **162**; bash ratchet count goes from 14 to **20**.
 
@@ -1748,7 +1919,7 @@ All 4 Python-error ratchets use word-boundary matching (`grep -qE "Type::${v}\b"
 
 ---
 
-## [Unreleased] — `klv::pack::Iter` tightened to `pub(crate)` + Universal Set machinery retired (2026-05-24)
+### `klv::pack::Iter` tightened to `pub(crate)` + Universal Set machinery retired (2026-05-24)
 
 Closes the Phase 1 SemVer-ratchet deferral on `tst_core::klv::pack::Iter`
 (`docs/deferred-features.md` entry removed). The iterator was already
@@ -1809,7 +1980,7 @@ closure was deleting the fuzz binary, not relocating it.
 
 ---
 
-## [Unreleased] — Python bindings audit-2 closeout (2026-05-24)
+### Python bindings audit-2 closeout (2026-05-24)
 
 10 findings from `docs/python-1/python-bindings-deep-dive-audit-2.md` + 1
 hygiene item from the Codex CFI follow-up validation memo, shipped via
@@ -1899,7 +2070,7 @@ ratchet count goes from 13 to **14**.
 
 ---
 
-## [Unreleased] — rename: `malformed_au_cell_cfi_tolerance` → `cfi_tolerance` (BREAKING) (2026-05-24)
+### rename: `malformed_au_cell_cfi_tolerance` → `cfi_tolerance` (BREAKING) (2026-05-24)
 
 Pre-1.0 ergonomic rename across the whole AU-cell-CFI tolerance API
 surface. The original identifier (34 chars) read awkwardly in Python
@@ -1928,7 +2099,7 @@ names change. `tst-core/public-api.txt` baseline rebumped accordingly.
 
 ---
 
-## [Unreleased] — follow-up: codex CFI review fixes + python audit findings + 13th ratchet (2026-05-24)
+### follow-up: codex CFI review fixes + python audit findings + 13th ratchet (2026-05-24)
 
 Three small fixes from review feedback landing after the original work
 shipped.
@@ -1968,7 +2139,7 @@ shipped.
 
 ---
 
-## [Unreleased] — au-cell CFI tolerance mode (opt-in receive-side compatibility) (2026-05-24)
+### au-cell CFI tolerance mode (opt-in receive-side compatibility) (2026-05-24)
 
 **Added:**
 
@@ -2044,7 +2215,7 @@ The library now supports both spec-strict reception (default) and
 opt-in tolerance for malformed producers — see
 `docs/guide-mpegts-demux.md` and `docs/troubleshooting.md`.
 
-## [Unreleased] — tst-py: audit #11 — release the GIL around heavy Rust work (2026-05-24)
+### tst-py: audit #11 — release the GIL around heavy Rust work (2026-05-24)
 
 **Performance:**
 
@@ -2084,7 +2255,7 @@ opt-in tolerance for malformed producers — see
   worker-thread concurrency probes verifying the wrapped methods let
   other threads progress.
 
-## [Unreleased] — tst-py: audit #9 — pythonic muxer arg order + keyword-only pts (2026-05-24)
+### tst-py: audit #9 — pythonic muxer arg order + keyword-only pts (2026-05-24)
 
 **Changed (BREAKING — pre-1.0):**
 
@@ -2132,7 +2303,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: audit #14 — remove unimplemented subtitle muxing surface (2026-05-24)
+### tst-py: audit #14 — remove unimplemented subtitle muxing surface (2026-05-24)
 
 **Removed:**
 
@@ -2153,7 +2324,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: audit #7 — NumPy "zero-copy" rewritten as "snapshot view" (2026-05-24)
+### tst-py: audit #7 — NumPy "zero-copy" rewritten as "snapshot view" (2026-05-24)
 
 **Docs:**
 
@@ -2177,7 +2348,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: audit #5 — KLV unknown TLV round-trip preservation (2026-05-24)
+### tst-py: audit #5 — KLV unknown TLV round-trip preservation (2026-05-24)
 
 **Fixed:**
 
@@ -2219,7 +2390,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
+### tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
 
 **Docs:**
 
@@ -2236,7 +2407,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: audit #3 — split `skip_unknown` from `skip_malformed` (2026-05-24)
+### tst-py: audit #3 — split `skip_unknown` from `skip_malformed` (2026-05-24)
 
 **Changed:**
 
@@ -2259,7 +2430,7 @@ Closes audit #9. See
 
 ---
 
-## [Unreleased] — tst-py: Python bindings audit small wave (2026-05-24)
+### tst-py: Python bindings audit small wave (2026-05-24)
 
 Small carry-forward batch from the 2026-05-24 Python bindings audit
 (`docs/python-1/python-bindings-audit.md`). Three independent fixes
@@ -2346,7 +2517,7 @@ plan.
   `abi3-py310` so the coercion is unavoidable on Python 3.10. Closes
   audit #10.
 
-## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
+### mpegts: multi-cell AU cell reassembly (2026-05-24)
 
 **`mpegts::demux` now reassembles fragmented Metadata AU cells per
 H.222.0 V9 §2.12.4.2.** Two flavors covered: multiple AU cells back-to-back
@@ -2408,7 +2579,7 @@ modes surface as typed `MultiCellAuReason` on
 
 ---
 
-## [Unreleased] — tst-py Phase 6 — pandas + NumPy adapters (2026-05-23)
+### tst-py Phase 6 — pandas + NumPy adapters (2026-05-23)
 
 **`tstrans.pandas` DataFrame adapters + zero-copy NumPy views via optional
 [pandas] extra.** Python-only; no Rust changes. Existing `pip install
@@ -2480,7 +2651,7 @@ appear only when `pip install 'tstrans[pandas]'` activates the extra.
 
 ---
 
-## [Unreleased] — tst-py Phase 5 — Codec parsers (2026-05-23)
+### tst-py Phase 5 — Codec parsers (2026-05-23)
 
 **`tstrans.codec` module fully populated; `Sample.payload` typed-replaced.**
 (`b8aa957..a9d1634`). Exposes ~50 classes and ~25 functions covering
@@ -2539,7 +2710,7 @@ changes from `bytes` to a typed list — first breaking change since Phase 2
 
 ---
 
-## [Unreleased] — tst-py Phase 4 — Muxer wrap + KLV encoders (2026-05-23)
+### tst-py Phase 4 — Muxer wrap + KLV encoders (2026-05-23)
 
 **Python bindings build path complete via 15 subagent-driven tasks**
 (`8912bf5..aa09777`). Wraps the full `tst_core::mpegts::mux::Muxer`
@@ -2638,7 +2809,7 @@ deliberately non-uniform across stream kinds):**
 
 ---
 
-## [Unreleased] — Validate-1 act-now batch (plan #94, docs/plans/2026-05-22-validate-1-act-now-batch.md)
+### Validate-1 act-now batch (plan #94, docs/plans/2026-05-22-validate-1-act-now-batch.md)
 
 **Ten validate-1 carry-forward items closed via 7-worktree parallel SDD,
 2026-05-22.** Shipped as 7 cherry-picks on `main` (`707f447..dc3a4b6`);
@@ -2698,7 +2869,7 @@ pattern (bash 3.2 / macOS), unblocking `macos-arm64` from gating
 promotion (target 2026-05-30). First post-fix CI run had `macos-arm64`
 pass cleanly for the first time since Sprint 3 D1.
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 4-5 follow-ups (docs/validate-1/15-sprint-4-5-review-codex.md)
+### Validate-1 Phase 2 Sprint 4-5 follow-ups (docs/validate-1/15-sprint-4-5-review-codex.md)
 
 **Five follow-up fixes from a 2026-05-20 Codex review of Sprints 4-5.**
 Closed by 4 commits on `main` (`a0b0f8f`, `feffff8`, `361242a`, `d711ecb`).
@@ -2732,7 +2903,7 @@ Codex review at `docs/validate-1/15-sprint-4-5-review-codex.md`.
   SHIPPED status blocks, 99-audit-summary.md H5/H6/H7/H8/H10/H11 cells
   closed, 13-interop-results.md acceptance-criterion correction.
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 5: Wave I empirical interop (docs/validate-1/11-phase-2-plan.md §2.6)
+### Validate-1 Phase 2 Sprint 5: Wave I empirical interop (docs/validate-1/11-phase-2-plan.md §2.6)
 
 **Four empirical-interop fixtures from the Validate-1 audit's "validate
 in the world" wave.** Shipped as 4 commits on `main`
@@ -2765,7 +2936,7 @@ in the world" wave.** Shipped as 4 commits on `main`
   incremental-update flows. If a different MISB doc was intended, file
   as a follow-up plan.
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 4: Waves F + G + H pipeline/codec/docs sweep (docs/validate-1/11-phase-2-plan.md §2.4 + §2.5)
+### Validate-1 Phase 2 Sprint 4: Waves F + G + H pipeline/codec/docs sweep (docs/validate-1/11-phase-2-plan.md §2.4 + §2.5)
 
 **Twenty-one fixes (5 F + 3 G + 13 H docs sweep) from the Validate-1
 audit's pipeline-correctness + codec-conformance + documentation
@@ -2832,7 +3003,7 @@ slices.** Shipped as 10 commits on `main` (`7275ae8..6182f02`) on
   `ManagedDemuxReceiver` + `ManagedDemuxReceiverConfig` + new variant on
   `DemuxEvent`).
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 1-3 review follow-ups (docs/validate-1/14-sprint-1-3-review-codex.md)
+### Validate-1 Phase 2 Sprint 1-3 review follow-ups (docs/validate-1/14-sprint-1-3-review-codex.md)
 
 **Three follow-up fixes from a 2026-05-20 Codex review of Sprints 1-3.**
 Codex re-reviewed the response and corrected the Sprint 3 BASELINE wave
@@ -2855,7 +3026,7 @@ attribution per `feedback_baseline_attribution_verify_via_ci_yml_diff.md`.
 **Workspace updates:** BASELINE `#[non_exhaustive]` stays at 134 (no
 new variants).
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 3: Waves D + E FFI hardening + KLV strict-compliance (docs/validate-1/11-phase-2-plan.md §2.4)
+### Validate-1 Phase 2 Sprint 3: Waves D + E FFI hardening + KLV strict-compliance (docs/validate-1/11-phase-2-plan.md §2.4)
 
 **Twelve FFI + KLV-encode fixes from the Validate-1 audit.** Shipped as
 19 commits on `main` (`5813c72..566789b`) on 2026-05-20 via 11-worktree
@@ -2922,7 +3093,7 @@ new variants).
 
 ---
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 2: Waves B + C demux & mux conformance (docs/validate-1/11-phase-2-plan.md §2.2 + §2.3)
+### Validate-1 Phase 2 Sprint 2: Waves B + C demux & mux conformance (docs/validate-1/11-phase-2-plan.md §2.2 + §2.3)
 
 **Sixteen demux-correctness, mux-conformance, and FFI-hardening fixes from the
 Validate-1 Phase 1 audit (Codex + Claude reports at `docs/validate-1/`).**
@@ -3074,7 +3245,7 @@ Closeout memory: `project_validate_1_sprint_2_shipped.md`.
 
 ---
 
-## [Previous-Unreleased] — Validate-1 Phase 2 Sprint 1: Wave A wire-format & UB fixes (docs/validate-1/11-phase-2-plan.md §2.1)
+### Validate-1 Phase 2 Sprint 1: Wave A wire-format & UB fixes (docs/validate-1/11-phase-2-plan.md §2.1)
 
 **Eight wire-format / UB / parser-correctness fixes from the Validate-1
 Phase 1 audit (20 Claude slices + 8 Codex reports at `docs/validate-1/`).**
@@ -3166,7 +3337,7 @@ Shipped as 8 commits on `main` (`3cd175e..9c29400`) on 2026-05-19/20.
 items end-to-end. Sprints 2-5 (Waves B-I) cover the remaining ~62
 Medium + ~110 Low findings + the empirical interop test suite.
 
-## [Unreleased] — Codex Waves 1-6 re-review fixes (docs/plans/2026-05-19-codex-waves-1-6-rereview-fixes.md)
+### Codex Waves 1-6 re-review fixes (docs/plans/2026-05-19-codex-waves-1-6-rereview-fixes.md)
 
 **Three follow-up fixes from a 2026-05-19 Codex comprehensive re-review of
 Waves 1-6** (`docs/refactor-1/_codex-waves-1-6-comprehensive-rereview-report.md`),
@@ -3233,7 +3404,7 @@ ratchets green. All 3 cargo-public-api baselines clean.
 
 ---
 
-## [Unreleased] — Codex Wave 6 validation fixes (docs/plans/2026-05-19-codex-wave-6-validation-fixes.md)
+### Codex Wave 6 validation fixes (docs/plans/2026-05-19-codex-wave-6-validation-fixes.md)
 
 **Three follow-up fixes to Wave 6 sign-off**, surfaced by a 2026-05-19 Codex static
 review of the shipped Wave 5.B + 6.A + 6.D implementations
@@ -3312,7 +3483,7 @@ all 3 cargo-public-api baselines clean.
 
 ---
 
-## [Unreleased] — Wave 6.D `MuxError` two-tier reshape (docs/plans/2026-05-19-wave-6-muxerror-reshape.md)
+### Wave 6.D `MuxError` two-tier reshape (docs/plans/2026-05-19-wave-6-muxerror-reshape.md)
 
 **Breaking change (tst-core / tst-c — new public surface, C routing simplified):**
 
@@ -3362,7 +3533,7 @@ variant routing plus 2 kind-property tests. All 8 bash ratchets green.
 
 ---
 
-## [Unreleased] — Wave 6.B `mpegts/demux/demuxer.rs` god-module split (docs/plans/2026-05-19-wave-6b-demuxer-split.md)
+### Wave 6.B `mpegts/demux/demuxer.rs` god-module split (docs/plans/2026-05-19-wave-6b-demuxer-split.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
 
@@ -3404,7 +3575,7 @@ variant routing plus 2 kind-property tests. All 8 bash ratchets green.
 
 ---
 
-## [Unreleased] — Wave 6.C-KLV typed-set module reorg (docs/plans/2026-05-19-wave-6-klv-reorg.md)
+### Wave 6.C-KLV typed-set module reorg (docs/plans/2026-05-19-wave-6-klv-reorg.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
 
@@ -3447,7 +3618,7 @@ bash ratchets green.
 
 ---
 
-## [Unreleased] — Wave 6.A `mpegts/mux/mod.rs` god-module split (docs/plans/2026-05-19-wave-6-mux-mod-split.md)
+### Wave 6.A `mpegts/mux/mod.rs` god-module split (docs/plans/2026-05-19-wave-6-mux-mod-split.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
 
@@ -3484,7 +3655,7 @@ bash ratchets green.
 
 ---
 
-## [Unreleased] — Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
+### Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
 
@@ -3551,7 +3722,7 @@ and the project moves to `tst-jni` binding work.
 
 ---
 
-## [Unreleased] — Wave 5.C C examples retrofit + tst-c structural reorg + sender-side audio/subtitle C ABI (docs/plans/2026-05-21-c-abi-examples-and-tst-c-reorg.md)
+### Wave 5.C C examples retrofit + tst-c structural reorg + sender-side audio/subtitle C ABI (docs/plans/2026-05-21-c-abi-examples-and-tst-c-reorg.md)
 
 **Added (purely additive — no breaking changes):**
 
@@ -3652,7 +3823,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 5.A C ABI versioning + last-error clear (docs/plans/2026-05-21-c-abi-versioning-and-last-error-clear.md)
+### Wave 5.A C ABI versioning + last-error clear (docs/plans/2026-05-21-c-abi-versioning-and-last-error-clear.md)
 
 **Added (purely additive — no breaking changes):**
 
@@ -3707,7 +3878,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 5.B C ABI symbol hygiene + layout asserts + release-validation (docs/plans/2026-05-21-c-abi-symbol-hygiene-and-release-validation.md)
+### Wave 5.B C ABI symbol hygiene + layout asserts + release-validation (docs/plans/2026-05-21-c-abi-symbol-hygiene-and-release-validation.md)
 
 **Tooling / build:**
 
@@ -3795,7 +3966,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (docs/plans/2026-05-20-cancelhandle-pairing-and-polish.md)
+### Wave 4.C CancelHandle rename + pairing relocate + polish (docs/plans/2026-05-20-cancelhandle-pairing-and-polish.md)
 
 **Breaking (pre-1.0):**
 
@@ -3864,7 +4035,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 4.A shell error kind fold (docs/plans/2026-05-20-shell-error-kind-fold.md)
+### Wave 4.A shell error kind fold (docs/plans/2026-05-20-shell-error-kind-fold.md)
 
 **Breaking (pre-1.0):**
 
@@ -3933,7 +4104,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 4.B Transport semantics + mutex policy (docs/plans/2026-05-20-transport-semantics-and-mutex-policy.md)
+### Wave 4.B Transport semantics + mutex policy (docs/plans/2026-05-20-transport-semantics-and-mutex-policy.md)
 
 **Breaking (pre-1.0):**
 
@@ -3977,7 +4148,7 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 3.2 naming consistency + Stats typing (docs/plans/2026-05-19-naming-renames-and-stats-typing.md)
+### Wave 3.2 naming consistency + Stats typing (docs/plans/2026-05-19-naming-renames-and-stats-typing.md)
 
 **Breaking (pre-1.0):**
 
@@ -4012,9 +4183,9 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — Wave 2.3 config conventions and symmetry (plan #72)
+### Wave 2.3 config conventions and symmetry (plan #72)
 
-### Added
+#### Added
 
 - New `docs/conventions.md` codifies workspace-wide policies for
   Config/Options naming, constructor naming, builder-vs-Default, public
@@ -4034,7 +4205,7 @@ same struct layouts, same sizeof asserts):**
   required because `MuxerProgramConfig` gained `#[non_exhaustive]` and
   has no `Default` impl).
 
-### Changed (BREAKING — pre-1.0)
+#### Changed (BREAKING — pre-1.0)
 
 - `tst_core::mpegts::demux::DemuxerOptions` renamed to
   `tst_core::mpegts::demux::DemuxerConfig`; also gained
@@ -4064,7 +4235,7 @@ same struct layouts, same sizeof asserts):**
   See `docs/conventions.md` § "Public field policy for `*Config`
   structs" for the canonical construction patterns.
 
-### CI
+#### CI
 
 - `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` bumped
   from 58 to 71 (+13 observed by the `rg -c` count CI uses; reflects
@@ -4080,9 +4251,9 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — demux event fixes (plan #69)
+### demux event fixes (plan #69)
 
-### Changed (BREAKING — pre-1.0)
+#### Changed (BREAKING — pre-1.0)
 
 - **`tst_core::mpegts::demux::StreamId` gained `program_number: u16`
   field.** All construction sites must supply it. The `Demuxer`
@@ -4097,7 +4268,7 @@ same struct layouts, same sizeof asserts):**
   that depended on the always-zero behavior must update.
 - **`tst_event_metadata_t.program_number` (C ABI)** same as above.
 
-### Added
+#### Added
 
 - **`NonConformantIssue::MalformedPes { pid, reason }` (Rust API)** —
   malformed PES headers now surface as a non-conformant event in
@@ -4124,7 +4295,7 @@ same struct layouts, same sizeof asserts):**
   C-side discriminator for the new `NonConformantIssue::MalformedPes`
   Rust variant; surfaces in `tst_event_nonconformant_t.code`.
 
-### Fixed
+#### Fixed
 
 - **`Muxer::push_video()` and `Muxer::push_klv()` now route to the
   correct program in multi-program configs** when the lone stream of
@@ -4143,9 +4314,9 @@ same struct layouts, same sizeof asserts):**
 
 ---
 
-## [Unreleased] — codec-specific per-stream stats (plan #68)
+### codec-specific per-stream stats (plan #68)
 
-### Added
+#### Added
 
 - **`tst_core::stats::StreamCodecStats`** — `#[non_exhaustive]` tagged
   enum carrying per-PID codec-specific counters. Variants (each
@@ -4195,7 +4366,7 @@ same struct layouts, same sizeof asserts):**
   walk) inside a single AU buffer. Shared between the muxer-side
   push-time count and the demuxer-side parse-time count.
 
-### Changed
+#### Changed
 
 - **BREAKING** — `SamplePayload::Video` gains a new field
   `random_access_indicator: bool`. `SamplePayload` is already
@@ -4225,9 +4396,9 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ---
 
-## [Unreleased] — tst-srt Windows MSVC port (plan #65)
+### tst-srt Windows MSVC port (plan #65)
 
-### Changed
+#### Changed
 - **`tst-srt`: internal sockaddr handling switched from
   `libc::sockaddr_*` to `os_socketaddr::OsSocketAddr`.** Public API
   surface unchanged — `Socket::connect` / `Socket::peer_addr` /
@@ -4242,7 +4413,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   `Result<_, AddrError>` with a Result that was vestigial); callers
   in `socket.rs` / `listener.rs` simplified accordingly.
 
-### Added
+#### Added
 - **`os_socketaddr = "0.2"` workspace dep** for cross-platform
   sockaddr abstraction. Used only by `tst-srt` today. Tiny crate
   (~400 LoC); deps are `libc` on Unix + `winapi` cfg-gated on
@@ -4270,7 +4441,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   diagnostic plan at
   `project_plan_65_windows_runtime_test_deferral.md`.
 
-### Skipped on windows-msvc (pending deferred follow-up)
+#### Skipped on windows-msvc (pending deferred follow-up)
 - **`cargo test --doc`, `cargo test` (default / no-default /
   all-features) gated on `if: matrix.name != 'windows-msvc'`**
   in `.github/workflows/ci.yml`. Windows MSVC matrix entry now
@@ -4278,7 +4449,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   compile + link regressions; runtime test coverage falls to
   Linux x86_64 + Linux aarch64 + macOS arm64.
 
-### Fixed
+#### Fixed
 - **`tst-srt/tests/socket_stats::socket_stats_returns_none_after_close`:
   50ms pause before close to win the accept/close race.** Same
   fast-hardware race fixed for `lifecycle.rs::explicit_close_succeeds`
@@ -4289,7 +4460,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   until peer-close), so `accept.join()` before close would
   deadlock; 50 ms pause covers the connect/accept window instead.
 
-### Allow
+#### Allow
 - **`#[allow(clippy::unnecessary_cast)]` on the
   `crates/tst-srt/src/error.rs` tests module.** bindgen emits the
   `SRT_REJECT_REASON_*` and `SRT_REJX_*` constants as `u32` on
@@ -4301,9 +4472,9 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ---
 
-## [Unreleased] — macOS arm64 phase-in stabilization (plan #66)
+### macOS arm64 phase-in stabilization (plan #66)
 
-### Changed
+#### Changed
 - **Loopback integration tests stabilized for Darwin scheduling.**
   Six tests across `bindings/c/tests/` and `crates/tst-srt/tests/`
   had hardcoded `thread::sleep` drain pauses (100-500 ms) that worked
@@ -4332,7 +4503,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   order: `accept.join()` first, then `socket.close()`. Same
   verification intent; no race.
 
-### Cfg-gated
+#### Cfg-gated
 - **`bindings/c/tests/symbol_audit`: `#[cfg_attr(not(all(target_os =
   "linux", target_env = "gnu")), ignore = "..."]`.** The test uses
   GNU nm with ELF-specific flags and filters ELF housekeeping
@@ -4346,9 +4517,9 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ---
 
-## [Unreleased] — Linux aarch64 promoted to gating (plan #67)
+### Linux aarch64 promoted to gating (plan #67)
 
-### Changed
+#### Changed
 - **`.github/workflows/ci.yml`: linux-aarch64 flipped from
   `continue-on-error: true` to `continue: false`.** Aarch64 was
   green on every post-ship run since the plan #64 matrix expansion
@@ -4363,9 +4534,9 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ---
 
-## [Unreleased] — tst-c Tier 1 multi-platform (plan #64)
+### tst-c Tier 1 multi-platform (plan #64)
 
-### Added
+#### Added
 
 - **CI: Tier 1 multi-platform matrix.** `.github/workflows/ci.yml`
   refactored from a single `test-linux` job into a matrix-strategy
@@ -4395,9 +4566,9 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
 
 ---
 
-## [Unreleased] — libsrt wire-stats at the C ABI (plan #63)
+### libsrt wire-stats at the C ABI (plan #63)
 
-### Added
+#### Added
 
 - **`tst_core::transport::SocketStats`** — abstract wire-level transport
   stats (RTT µs, send/recv/link bandwidth bps, sent/received bytes +
@@ -4434,7 +4605,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   (RTT, bytes_sent, packets_sent, loss, retransmits, send-buffer
   depth). First entry under the new C-side `operations/` subfolder.
 
-### Changed
+#### Changed
 
 - **`#[non_exhaustive]` workspace count guard `BASELINE`** bumped from
   42 to 47 in `.github/workflows/ci.yml` (absorbs `SocketStats` +
@@ -4454,9 +4625,9 @@ See the wire-stats plan at
 
 ---
 
-## [Unreleased] — Phase 3 of tst-c receiver surface (plan #62)
+### Phase 3 of tst-c receiver surface (plan #62)
 
-### Added
+#### Added
 
 - **`tst-c` receiver surface Phase 3** — `tst_demux_receiver_t` and
   `tst_managed_demux_receiver_t` opaque handles wrapping
@@ -4496,9 +4667,9 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
 
 ---
 
-## [Unreleased] — Phase 2 of tst-c receiver surface
+### Phase 2 of tst-c receiver surface
 
-### Added
+#### Added
 
 - **`tst-c` receiver surface Phase 2** — `tst_receiver_t` and
   `tst_managed_receiver_t` opaque handles wrapping
@@ -4515,9 +4686,9 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
 
 ---
 
-## [Unreleased] — Phase 1 of tst-c receiver surface
+### Phase 1 of tst-c receiver surface
 
-### Added
+#### Added
 
 - New `TstError::EndOfStream = -12` error code distinguishing peer
   graceful disconnect (FIN) from caller-side `Closed = -7` cancel/close.
@@ -4542,7 +4713,7 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
   `?mode=listener` query parameter.
 - New C example `recv_raw_to_file.c` (`bindings/c/examples/c/receiving/`).
 
-### Fixed
+#### Fixed
 
 - `tst_raw_receiver_recv` now maps `TransportError::Broken` on a
   non-cancelled handle to `TST_E_END_OF_STREAM` (was incorrectly
@@ -4550,7 +4721,7 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
   `Broken` at the transport layer to support managed-reconnect; the
   plain C ABI semantically translates this to "end of stream".
 
-### Internal
+#### Internal
 
 - Sender handle structs (`TstRawSender`, `TstManagedRawSender`,
   `TstSender`, `TstManagedSender`, `TstMuxSender`, `TstManagedMuxSender`)
@@ -4563,7 +4734,7 @@ shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
 
 ---
 
-## Unreleased
+### Rust quality + DX + FFI refactor, phases 1-6 (plans #39-#50 ride along)
 
 Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
 (FFI-readiness), Phase 4 (performance hot paths), Phase 5
@@ -4578,7 +4749,7 @@ plan #48 (video codec parser robustness fixes), plan #49
 (SRT RejectReason mapping fix), and plan #50 (tst-c FFI panic
 isolation) also ride this release.
 
-### Added
+#### Added
 
 - **OSS-Fuzz onboarding artifacts** (`oss-fuzz/`): `project.yaml`, `Dockerfile`,
   `build.sh`, and `README.md` configure continuous Google-compute fuzzing for
@@ -4589,7 +4760,7 @@ isolation) also ride this release.
   `google/oss-fuzz` is a separate manual step documented in
   `oss-fuzz/README.md`.
 
-### Fixed
+#### Fixed
 
 - **`parse_pat` / `parse_pmt` OOB on short section_length** — surfaced by
   OSS-Fuzz local smoke (plan #53). Both parsers now reject `section_length`
@@ -4607,7 +4778,7 @@ isolation) also ride this release.
   surfaced by the `DBLK_A_MAIN10_VIXS_4` fixture (plan #55); its entry
   is now removed from the test runner's `KNOWN_PARSER_BUGS` allow-list.
 
-### Testing
+#### Testing
 
 - `scripts/release-validation.sh` steps 3-5 (`tsanalyze` / `tspsi` / `ffprobe`)
   now diff against committed golden files at `tests/golden/baseline-*.{txt,json}`
@@ -4626,7 +4797,7 @@ isolation) also ride this release.
   `ts2headers.sh` capture-then-commit pattern. Invoke via
   `cargo run -p tst-core --bin corpus_to_fixture -- --help`.
 
-### Internal
+#### Internal
 
 - Test infrastructure: new `common::Loopback` + `AcceptHandle<R>` helper
   in `crates/tst-srt/tests/common/mod.rs` consolidates the 15-line
@@ -4649,7 +4820,7 @@ isolation) also ride this release.
 
 ---
 
-### tst-c FFI panic isolation (2026-05-11) — plan #50
+#### tst-c FFI panic isolation (2026-05-11) — plan #50
 
 CABI-04 from the 2026-05-10 audit
 (`docs/analysis/2026-05-10-audit-slices/15-tst-c-abi.md`). Phase 0
@@ -4663,7 +4834,7 @@ inside `tst-c`'s extern "C" boundaries is caught, recorded as
 `TstError::PanicCaught` (-11) in the thread-local last-error, and
 translated to a sentinel return for the entry point's return type.
 
-#### Fixed (panic-safety hardening)
+##### Fixed (panic-safety hardening)
 
 - **New `bindings/c/src/panic.rs` module** with `pub(crate) fn
   ffi_catch<R, F>(default: R, f: F) -> R` helper. Wraps
@@ -4713,7 +4884,7 @@ with existing linked C consumers.
 
 ---
 
-### SRT RejectReason mapping fix (2026-05-11) — plan #49
+#### SRT RejectReason mapping fix (2026-05-11) — plan #49
 
 SRT-01 from the 2026-05-10 audit
 (`docs/analysis/2026-05-10-audit-slices/14-srt-bindings.md`).
@@ -4733,7 +4904,7 @@ category entirely. Effects:
 - Conversely, an extension code 1001 (`SRT_REJX_KEY_NOTSUP` —
   StreamID key not supported) was being reported as `BadSecret`.
 
-#### Fixed (breaking — `tst-srt`)
+##### Fixed (breaking — `tst-srt`)
 
 - **`tst_srt::error::RejectReason`** rewritten per `srt.h:535-558`
   (internal `SRT_REJC_INTERNAL`, ordinals 0..=17) and
@@ -4779,7 +4950,7 @@ category entirely. Effects:
 
 ---
 
-### Video codec parser robustness fixes (2026-05-11) — plan #48
+#### Video codec parser robustness fixes (2026-05-11) — plan #48
 
 Three decoder-side robustness fixes from the 2026-05-10 audit
 (`docs/analysis/2026-05-10-audit-slices/07-codec-h264.md` H264-01,
@@ -4788,7 +4959,7 @@ encode H.264 or H.266, so the only behavior change is decoder-side:
 malformed input that previously surfaced as `Ok(garbage)` now surfaces
 as a typed `CodecParseError`.
 
-#### Fixed (decoder behavior on malformed input)
+##### Fixed (decoder behavior on malformed input)
 
 - **`codec::h264::parse_sps`** — When the underlying `h264-reader`
   decoder surfaces `chroma_format_idc` outside the spec range (H.264
@@ -4820,7 +4991,7 @@ as a typed `CodecParseError`.
   `CodecParseError::ReservedValue` with the original `u32` value
   preserved.
 
-#### Docs
+##### Docs
 
 - **`ColorInfo::chroma_loc`** rustdoc — H.274 V4 §7.3 (p. 20)
   inference rule documented: when `vui_chroma_loc_info_present_flag
@@ -4832,20 +5003,20 @@ as a typed `CodecParseError`.
 
 ---
 
-### MPEG-TS PSI multi-section reject + AV1 binding docs (2026-05-11) — plan #47
+#### MPEG-TS PSI multi-section reject + AV1 binding docs (2026-05-11) — plan #47
 
 Two audit-driven fixes at the MPEG-TS layer from
 `docs/analysis/2026-05-10-audit-slices/05-mpegts-demux.md` (DEMUX-01)
 and `docs/analysis/2026-05-10-audit-slices/10-codec-av1.md` (AV1-05).
 
-#### Public API
+##### Public API
 
 - **`klv::st0903`** unchanged. New variants additive on
   `#[non_exhaustive]` enums:
   - `mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported { pid, table_id, last_section_number }`
   - `mpegts::demux::psi::PsiParseError::MultiSectionUnsupported { table_id, last_section_number }`
 
-#### Fixed
+##### Fixed
 
 - **`mpegts::demux::psi`** — multi-section PSI tables
   (`last_section_number > 0` per H.222.0 §2.4.4.5) are now rejected
@@ -4859,7 +5030,7 @@ and `docs/analysis/2026-05-10-audit-slices/10-codec-av1.md` (AV1-05).
   into a single section well under the 1021-byte short-form cap).
   Audit slice 05 finding DEMUX-01.
 
-#### Docs
+##### Docs
 
 - **AV1 binding deviations** — `docs/deferred-features.md` AV1
   binding-§3.2/§3.4 carriage entry corrected: prior entry claimed
@@ -4873,11 +5044,11 @@ and `docs/analysis/2026-05-10-audit-slices/10-codec-av1.md` (AV1-05).
 
 ---
 
-### KLV follow-up — VMTI checksum + Security LS UL (2026-05-10) — plan #46
+#### KLV follow-up — VMTI checksum + Security LS UL (2026-05-10) — plan #46
 
 Two High-severity audit findings from `docs/analysis/2026-05-10-audit-slices/03-klv-other-sets.md` closed in this slice.
 
-#### Public API
+##### Public API
 
 - **`klv::universal_label::UniversalLabel::SECURITY_LS_UL`** — new
   16-byte UL constant per MISB ST 0102.12 §6.7
@@ -4895,7 +5066,7 @@ Two High-severity audit findings from `docs/analysis/2026-05-10-audit-slices/03-
 - **`klv::st0903::encoded_len_standalone(&VmtiLs) -> usize`** — sizing
   helper for the standalone path.
 
-#### Changed (wire-format)
+##### Changed (wire-format)
 
 - **`klv::st0903::encode` / `encode_to_vec`** is now exclusively the
   **embedded-VMTI body** entry — Tag 1 (checkSum) is silently dropped
@@ -4906,19 +5077,19 @@ Two High-severity audit findings from `docs/analysis/2026-05-10-audit-slices/03-
   unchanged: `VmtiLs::checksum` still captures the Tag 1 value when
   present on the wire.
 
-#### Tests
+##### Tests
 
 - Eight new regression tests pin the new contracts: `encode_omits_tag1_checksum_per_st0903_6_120`, `encode_drops_caller_supplied_checksum`, `encode_standalone_emits_tag1_last_per_st0903_4_17`, `encode_standalone_checksum_matches_running_sum_16`, `encode_standalone_round_trips_via_decode`, `encoded_len_standalone_matches_encode_standalone`, `security_ls_ul_canonical_bytes`, `security_ls_ul_reexport_matches_universal_label`.
 
 ---
 
-### Pipeline close-flush and pairer PTS saturation fixes (2026-05-10) — plan #45
+#### Pipeline close-flush and pairer PTS saturation fixes (2026-05-10) — plan #45
 
 Three High-severity correctness fixes in `tst-pipeline` from the 2026-05-10
 spec-validation audit (slice 13). No wire-format change — behavioral +
 arithmetic fixes only.
 
-#### Fixed (lifecycle / arithmetic)
+##### Fixed (lifecycle / arithmetic)
 
 - **`tst_pipeline::Sender::close`** — now best-effort flushes the
   buffered partial bundle before marking closed, matching `Drop`
@@ -4944,7 +5115,7 @@ arithmetic fixes only.
   bounded `0..(2^33 − 1)` per H.222.0 §2.4.3.7, with explicit
   semantics across the 33-bit rollover boundary.
 
-#### Tests
+##### Tests
 
 - `close_flushes_buffered_partial_packets` pins the PIPE-01 contract
   via a Recorder transport.
@@ -4959,13 +5130,13 @@ arithmetic fixes only.
 
 ---
 
-### KLV wire-format critical fixes (2026-05-10) — plan #44
+#### KLV wire-format critical fixes (2026-05-10) — plan #44
 
 Two wire-format-incompatible KLV defects from the 2026-05-10 spec-validation
 audit. Both defects predate any external consumer; pre-1.0 break per the
 break-freely policy.
 
-#### Fixed (wire-format breaking)
+##### Fixed (wire-format breaking)
 
 - **`klv::imapb`** — encoder now writes unsigned big-endian per ST 1201.5
   §7.2.3 Table 1; previously emitted signed two's-complement, MSB-flipping
@@ -4987,7 +5158,7 @@ break-freely policy.
   name but now serializes to Tag 59. The `KlvEncodeError::StringTooLong`
   emitted for an over-length call sign now reports `tag: 59`.
 
-#### Tests
+##### Tests
 
 - New ST 1201.5 spec-vector tests in `klv::imapb`: Appendix A Tests 2 + 3,
   ST 0903.6 §10.1.11 worked example (FOV 12.5° / 10.0° / 90.0°), and an
@@ -4997,7 +5168,7 @@ break-freely policy.
 - Synthetic fixture `synthetic_full.klv` regenerated to exercise both
   Tag 50 and Tag 59 in the integration-test fixture-decode path.
 
-#### Substrate cleanup
+##### Substrate cleanup
 
 - `klv::imapb::ImapbParams` lost private `scale()` + `signed_offset()`
   methods; gained `sf()` + `z_offset()` per ST 1201.5 §8.9 Summary.
@@ -5006,12 +5177,12 @@ break-freely policy.
 
 ---
 
-### Phase 6 — Test infrastructure (2026-05-10)
+#### Phase 6 — Test infrastructure (2026-05-10)
 
 Test-infrastructure improvements and two latent-bug fixes surfaced
 by the new property tests. 12 commits `c94881d..016c3e4`.
 
-#### Public API
+##### Public API
 
 Two latent substrate issues surfaced by Phase 6's new property tests
 fixed at the type level (pre-1.0 break per the break-freely policy):
@@ -5033,7 +5204,7 @@ fixed at the type level (pre-1.0 break per the break-freely policy):
   error enums are `#[non_exhaustive]`; the addition is
   forwards-compatible.
 
-#### Test infrastructure
+##### Test infrastructure
 
 - **Loopback probe + atomic-signal helpers** in `crates/tst-srt/tests/common/mod.rs`:
   `loopback_probe()`, `require_loopback!()` macro, `wait_for_ready(&AtomicBool)`.
@@ -5071,12 +5242,12 @@ proptests).
 
 ---
 
-### Phase 5 — Internal hygiene (2026-05-10)
+#### Phase 5 — Internal hygiene (2026-05-10)
 
 God-module splits, test-helper de-duplication, fuzz-target relocation,
 focused dead-code sweep. 15 commits `7ab2ffb..2709572`.
 
-#### Public API
+##### Public API
 
 The four moved-types' canonical paths shifted (user-facing re-exports
 preserved):
@@ -5104,7 +5275,7 @@ structurally incorrect — `cargo-fuzz` creates a separate crate; tightening
 remains gated on either a `#[cfg(fuzzing)] iter_for_fuzz` entry point or
 deletion of the `klv_iter` fuzz target).
 
-#### Internal restructure (Phase 5)
+##### Internal restructure (Phase 5)
 
 - **`mpegts::mux::types`** (NEW, ~485 LoC): codec/stream-class enums,
   `StreamSpec`, four opaque stream-handle types extracted from
@@ -5154,14 +5325,14 @@ deletion of the `klv_iter` fuzz target).
   and `crates/tst-srt/fuzz/corpus/klv_st1910_unwrap/` (target deleted
   in plan #25's AU cell rework; corpus subdir was missed).
 
-#### File size deltas
+##### File size deltas
 
 - `mpegts/mux/mod.rs`: 5489 → 4151 LoC (-1338, -24%).
 - `mpegts/demux/demuxer.rs`: 3290 → 3158 LoC (-132).
 - `codec/h265/bitreader.rs` (219 LoC) → `codec/bitreader.rs` (211 LoC,
   -8 from dead-item deletions).
 
-#### Tests
+##### Tests
 
 - 1320 passing on default features (matches pre-Phase-5 baseline).
 - 1319 passing on `--no-default-features` (matches prior Phase 3-Phase 4
@@ -5178,13 +5349,13 @@ deletion of the `klv_iter` fuzz target).
 
 ---
 
-### Phase 4 — Performance hot paths (2026-05-10)
+#### Phase 4 — Performance hot paths (2026-05-10)
 
 Bench-driven receiver + sender optimizations. 6 bench targets / 21
 sub-benches established (Tasks 1–7); 5 optimization candidates committed
 (Tasks 8–10, 12–13); 3 dropped per decision rule (Tasks 11, 14, 15).
 
-#### Added (Phase 4)
+##### Added (Phase 4)
 
 - **`Demuxer::feed_aligned(&[u8; 188]) -> Result<...>`** — fast path
   that skips the sync-search buffer entirely when the caller guarantees
@@ -5193,7 +5364,7 @@ sub-benches established (Tasks 1–7); 5 optimization candidates committed
   Eliminates the slice-copy-into-sync-buf round-trip on the common
   in-sync case. **-12 to -13%** on the `demux_feed_per_188` bench.
 
-#### Performance (Phase 4)
+##### Performance (Phase 4)
 
 - **Syncer ring buffer** (`tst-pipeline::pipeline::syncer`): replaced
   `buf: Vec<u8>` + `to_vec() + drain()` per-packet pattern with a
@@ -5236,7 +5407,7 @@ sub-benches established (Tasks 1–7); 5 optimization candidates committed
 
 ---
 
-### Phase 3 — FFI-readiness (2026-05-09)
+#### Phase 3 — FFI-readiness (2026-05-09)
 
 Final phase of the quality + DX + FFI refactor. Six sub-phases:
 3.1 (pipeline shell aliases + `Box<dyn>` blanket impls + binding-author
@@ -5246,7 +5417,7 @@ inventory), 3.3 (stream handle opacity), 3.4 (builder reshape to
 `usize → u64`, `CancelHandle` relocation), 3.6 (visibility + close
 contracts + Rust↔C ABI cross-references + three CI ratchets).
 
-#### Added (Phase 3 / sub-phase 3.1 — pipeline shell aliases)
+##### Added (Phase 3 / sub-phase 3.1 — pipeline shell aliases)
 
 - **Six `BoxedXxx` dyn-erased aliases** in `tst-pipeline` for binding
   generators (UniFFI / JNI / PyO3) that need a single concrete type
@@ -5265,7 +5436,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   Worked Kotlin/Swift/Python/C examples plus builder + cancel-handle +
   threading + versioning sections.
 
-#### Added (Phase 3 / sub-phase 3.2 — audio frame `Owned` siblings)
+##### Added (Phase 3 / sub-phase 3.2 — audio frame `Owned` siblings)
 
 - **`codec::aac::AdtsFrameOwned`** — 11-field owned mirror of
   `AdtsFrame<'a>` with symmetric `to_owned()` / `as_ref()` round-trip.
@@ -5281,7 +5452,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   `tests/av1_no_panic.rs` exercising the production paths under
   truncation / oversized-leb128 / bit-overflow inputs.
 
-#### Changed (Phase 3 / sub-phase 3.3 — stream handle opacity)
+##### Changed (Phase 3 / sub-phase 3.3 — stream handle opacity)
 
 - **`VideoStreamHandle::{pack, unpack, raw, from_raw}` and
   `KlvStreamHandle::{pack, unpack, raw, from_raw}` are now
@@ -5302,7 +5473,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   at the C ABI boundary yet). The `from_raw` / `raw` helpers on these
   types were test-only; they are now `#[cfg(test)] pub(crate)`.
 
-#### Changed (Phase 3 / sub-phase 3.4 — builder reshape)
+##### Changed (Phase 3 / sub-phase 3.4 — builder reshape)
 
 - **Breaking:** Every public builder converted to `&mut self -> &mut Self`
   chainable shape:
@@ -5330,7 +5501,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   opaque-handle binding patterns. See
   [`docs/binding-authors.md`](./docs/binding-authors.md).
 
-#### Changed (Phase 3 / sub-phase 3.5 — targeted API reshape)
+##### Changed (Phase 3 / sub-phase 3.5 — targeted API reshape)
 
 - **Breaking:** `Pairer::nearest_pts(video_pid, klv_pid, tolerance_ticks,
   max_klv_history, mode)` removed. Use
@@ -5359,7 +5530,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   from the no-SRT `tst-pipeline` crate while preserving the established
   import sites.
 
-#### Added (Phase 3 / sub-phase 3.5)
+##### Added (Phase 3 / sub-phase 3.5)
 
 - `PairerOptions` struct (`#[non_exhaustive]`) — field-style
   construction with explicit `Duration` units; `Default` impl exposes
@@ -5377,7 +5548,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   thread via `CancelHandle`.
 - Architecture doc section: cross-thread shutdown via `CancelHandle`.
 
-#### Changed (Phase 3 / sub-phase 3.6 — visibility + close contracts)
+##### Changed (Phase 3 / sub-phase 3.6 — visibility + close contracts)
 
 - **`klv::pack::Iter` is now `#[doc(hidden)]`.** The iterator is still
   `pub` (a downstream fuzz target depends on it — see Phase 1 Task
@@ -5385,7 +5556,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   over KLV packs goes through `klv::pack::iter()` and the typed
   `klv::st0601` / `klv::st0102` / `klv::st0903` decoders.
 
-#### Added (Phase 3 / sub-phase 3.6)
+##### Added (Phase 3 / sub-phase 3.6)
 
 - **Close-contract rustdoc on 11 long-lived public types.** Each type
   now carries a `# Closing` section spelling out the resource-cleanup
@@ -5417,9 +5588,9 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
 
 ---
 
-### Examples reorganization (2026-05-09)
+#### Examples reorganization (2026-05-09)
 
-#### Changed (examples)
+##### Changed (examples)
 
 - **Examples now live in a workspace-level `tst-examples` crate** at
   `examples/`, organized into 8 task-oriented subfolders
@@ -5449,7 +5620,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   `bindings/c/examples/c/{getting-started,muxing}/`. Build commands
   in each file's header updated to the new paths.
 
-#### Added (examples)
+##### Added (examples)
 
 - **`getting-started/hello_world.rs`** (Rust) and
   `bindings/c/examples/c/getting-started/hello_world.c` (C) — the
@@ -5465,9 +5636,9 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
 
 ---
 
-### Phase 2 — DX + observability (2026-05-09)
+#### Phase 2 — DX + observability (2026-05-09)
 
-#### Added (Phase 2)
+##### Added (Phase 2)
 
 - **CI rail: broken intra-doc links block PRs.** New
   `cargo doc --workspace --no-deps --all-features` step with
@@ -5539,7 +5710,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   subscriber wiring + `RUST_LOG` filter target reference table
   documenting all the targets introduced in sub-phase 2.4.
 
-#### Changed (Phase 2)
+##### Changed (Phase 2)
 
 - **`tst-srt::init` migrated from `log` to `tracing`.** Single
   facade workspace-wide. libsrt-internal syslog levels now flow into
@@ -5580,7 +5751,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   `tstrans.h` regenerated to match the rustdoc edits cbindgen
   propagates into the C header.
 
-#### Breaking (Phase 2)
+##### Breaking (Phase 2)
 
 - **`tst-srt`: optional `log` Cargo feature removed.** Replaced by
   unconditional `tracing` facade. Consumers wiring `log` should
@@ -5606,9 +5777,9 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
 
 ---
 
-### Phase 1 — SemVer ratchet (2026-05-08)
+#### Phase 1 — SemVer ratchet (2026-05-08)
 
-#### Breaking (Phase 1)
+##### Breaking (Phase 1)
 
 - **`MuxError` field-tag retypes:** `AmbiguousTarget.kind` and
   `InvalidStreamHandle.kind` changed from `&'static str` to `StreamKind`;
@@ -5699,7 +5870,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   use the higher-level typed-set decoders (`klv::st0601`, `klv::st0102`,
   `klv::st0903`).
 
-#### Internal (Phase 1)
+##### Internal (Phase 1)
 
 - 44 `#[allow(dead_code)]` annotations swept across 15 files. 40 were
   cascade-pattern artifacts (helpers landed before consumers in earlier plans;
@@ -5719,7 +5890,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   Externally-observable `Display` strings are unchanged (verified by
   regression tests).
 
-#### CI (Phase 1)
+##### CI (Phase 1)
 
 - **`cargo public-api` baselines committed** for `tst-core`, `tst-pipeline`,
   and `tst-srt` (`crates/<name>/public-api.txt`). A new CI step diffs the

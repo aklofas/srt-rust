@@ -175,22 +175,39 @@ mod tests {
         assert_ne!(w1, w3, "first and third fallback words must differ");
     }
 
-    /// Fallback words must produce jitter_interval output within the
-    /// documented [0.5, 1.5] × base band.
+    /// Knuth-step fallback words are well-spread across the jitter band.
+    ///
+    /// The bounds check (`interval ∈ [0.5, 1.5] × base`) is already
+    /// guaranteed by `jitter_interval`'s own construction — asserting it
+    /// would be vacuous. Instead this test checks the "well-distributed"
+    /// property the comment claims: the spread of the 16 deterministic words
+    /// across the `[0.5, 1.5] × base` band must exceed half the band width.
+    ///
+    /// The Knuth multiplicative step (0x9E3779B1) produces values that span
+    /// ~91 % of the u32 range in the first 16 iterations, yielding a spread
+    /// of ~91 % of the band. The threshold (50 %) is generous enough to
+    /// tolerate small changes to the constant while still failing a constant
+    /// or slowly-incrementing counter generator.
     #[test]
-    fn fallback_words_in_jitter_interval_bounds() {
+    fn fallback_words_spread_across_jitter_band() {
         let base = RTCP_BASE_INTERVAL;
-        let lo = base.as_secs_f64() * 0.5;
-        let hi = base.as_secs_f64() * 1.5;
+        let band_width = base.as_secs_f64(); // (1.5 - 0.5) × base
         let mut state = FallbackState::new();
-        for _ in 0..16 {
-            let word = apply_jitter_word(None, &mut state);
-            let interval = jitter_interval(base, word).as_secs_f64();
-            assert!(
-                interval >= lo && interval <= hi,
-                "fallback interval {interval:.3} s out of [{lo:.3}, {hi:.3}]"
-            );
-        }
+        let intervals: Vec<f64> = (0..16)
+            .map(|_| {
+                let word = apply_jitter_word(None, &mut state);
+                jitter_interval(base, word).as_secs_f64()
+            })
+            .collect();
+        let min = intervals.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max = intervals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let spread = max - min;
+        assert!(
+            spread > band_width * 0.5,
+            "fallback jitter spread {spread:.3} s is less than 50 % \
+             of the band width {band_width:.3} s — \
+             the Knuth-step counter is not well-distributed"
+        );
     }
 
     /// The warn-once guard: `warned` is false before the first failure and

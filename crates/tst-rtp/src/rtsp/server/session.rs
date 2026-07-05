@@ -369,12 +369,14 @@ where
                     );
                     return Ok(());
                 }
-            } else if response.status < 400 {
-                // Only reset the failure counter on a successful response
+            } else if (200..=299).contains(&response.status) {
+                // Only reset the failure counter on a successful (2xx) response
                 // from an auth-gated method. OPTIONS and GET_PARAMETER are
                 // never auth-gated (they always return 200), so resetting on
                 // them would let an attacker alternate OPTIONS with bad-auth
                 // requests to bypass the 3-strike limit indefinitely.
+                // 3xx is excluded: no handler emits a redirect on a gated method,
+                // and a redirect is not an auth success.
                 match req.method {
                     RtspMethod::Describe
                     | RtspMethod::Setup
@@ -760,7 +762,7 @@ mod session_tests {
     /// response, causing the distinguishing assertion to fail.
     ///
     /// A real mount is registered so the auth-passing DESCRIBE returns 200
-    /// (status < 400 on an auth-gated method) rather than 404.
+    /// (a 2xx on an auth-gated method) rather than 404.
     #[tokio::test]
     async fn auth_failures_reset_on_successful_auth() {
         use crate::rtsp::server::mount::{MountKind, MountState};
@@ -776,7 +778,7 @@ mod session_tests {
             // handle_connection runs.
             *state.local_addr.lock().unwrap() = Some("127.0.0.1:8554".parse().unwrap());
             // Register a real mount at /test so an auth-passing DESCRIBE
-            // returns 200 (status < 400), triggering the counter reset.
+            // returns 200 (2xx), triggering the counter reset.
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
             prog.add_video(0x1011, VideoCodec::H264);
             let mut b = MuxerConfig::builder();
@@ -825,7 +827,7 @@ mod session_tests {
 
         // Step 2: DESCRIBE with correct Basic auth → 200.
         // "user:secret" base64 = "dXNlcjpzZWNyZXQ=".
-        // DESCRIBE is auth-gated; status 200 < 400 → failures reset to 0.
+        // DESCRIBE is auth-gated; status 200 (2xx) → failures reset to 0.
         client
             .write_all(
                 b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\n\

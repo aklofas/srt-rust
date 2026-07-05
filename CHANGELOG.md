@@ -149,10 +149,11 @@ layout changed.
   a float epsilon. The old epsilon-based upper-bound admitted the integer
   immediately above `y_max` as `Value` at coarse grids (L=1), because the
   tolerance was exactly one quantization step and the comparison was not
-  strictly greater. This was unreachable at any shipped ST 0903 IMAPB tag
-  (all use L=2 or L=3 where the nearest reserved integer decodes far past
-  `max + epsilon`), but is now correctly classified as `OutOfRange` at all L
-  (audit finding F-02, `crates/tst-core/src/klv/imapb.rs`).
+  strictly greater. At the shipped ST 0903 shapes (L=2/L=3), exactly one
+  reserved integer (`y_max + 1`) was likewise admitted as a `Value` decoding
+  to `max + epsilon`; it is now classified `OutOfRange`. Legitimately-encoded
+  values are unaffected at every length (audit finding F-02,
+  `crates/tst-core/src/klv/imapb.rs`).
 
 ### Fixed — KLV encoding conformance
 

@@ -225,3 +225,83 @@ fn rtcp_stats_accessor_exists() {
     assert_eq!(stats.rr_packets_sent, 0);
     drop(r);
 }
+
+// --- DA-RTP-5: UDP-path MP2T shape validation (loopback) ---
+//
+// Sends a crafted raw UDP datagram carrying a valid RTP header (V=2, PT=33)
+// but a non-188-aligned payload to confirm the shape guard fires on the real
+// UDP recv path, not just the mpsc unit-test seam.
+
+/// Build a raw RTP datagram: 12-byte header (V=2, P=0, X=0, CC=0, M=0,
+/// PT=33, seq=1, ts=0, ssrc=0xDEAD_BEEF) followed by `payload`.
+fn make_rtp_datagram(payload: &[u8]) -> Vec<u8> {
+    let mut pkt = Vec::with_capacity(12 + payload.len());
+    pkt.push(0x80); // V=2, P=0, X=0, CC=0
+    pkt.push(33); // M=0, PT=33 (MP2T)
+    pkt.extend_from_slice(&1u16.to_be_bytes()); // seq
+    pkt.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+    pkt.extend_from_slice(&0xDEAD_BEEFu32.to_be_bytes()); // ssrc
+    pkt.extend_from_slice(payload);
+    pkt
+}
+
+/// DA-RTP-5: a datagram with a valid RTP header (PT=33) but a 100-byte
+/// non-0x47 payload must be dropped. The recv transport returns only the
+/// subsequent valid packet and ticks malformed_packets=1.
+#[test]
+fn udp_path_malformed_mp2t_payload_dropped_and_counted() {
+    use std::net::UdpSocket;
+    use tst_core::transport::RecvTransport;
+
+    let base = free_rtp_port_base();
+    let url = format!("rtp://127.0.0.1:{base}");
+    let mut recv = RtpRecvTransport::listen(&url).unwrap();
+    let cancel = recv.cancel_handle().expect("cancel handle");
+
+    // Recv thread: wait for exactly one valid payload.
+    let (result_tx, result_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let recv_thread = thread::spawn(move || {
+        let mut buf = vec![0u8; 4096];
+        // Block until one packet arrives (or an error). The shape guard
+        // drops the malformed datagram internally and continues the inner
+        // loop; recv_bytes only returns once a valid packet passes.
+        if let Ok(n) = recv.recv_bytes(&mut buf) {
+            result_tx.send(buf[..n].to_vec()).ok();
+        }
+        recv // return transport so caller can inspect stats
+    });
+
+    // Allow the recv thread to enter the socket.
+    thread::sleep(Duration::from_millis(20));
+
+    // Send 1: crafted raw RTP with 100-byte non-0x47 payload — should be
+    // dropped by the shape guard.
+    let malformed_payload = vec![0xAAu8; 100];
+    let malformed_dgram = make_rtp_datagram(&malformed_payload);
+    let raw = UdpSocket::bind("127.0.0.1:0").unwrap();
+    raw.send_to(&malformed_dgram, format!("127.0.0.1:{base}"))
+        .expect("send malformed datagram");
+
+    // Send 2: valid 188-byte TS packet via the real RtpTransport (which
+    // always emits PT=33 + correct 188-byte aligned payloads).
+    thread::sleep(Duration::from_millis(5));
+    let mut send = RtpTransport::connect(&url).unwrap();
+    let valid_pkt = synthetic_ts_packet(0x42);
+    send.send_bytes(&valid_pkt).unwrap();
+
+    // The recv thread should surface the valid packet and return.
+    let got = result_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("recv timed out — valid packet not delivered");
+    assert_eq!(got.as_slice(), valid_pkt.as_slice(), "payload mismatch");
+
+    // Retrieve the transport from the thread to inspect its stats.
+    let recv_transport = recv_thread.join().expect("recv thread panicked");
+    assert_eq!(
+        recv_transport.rtp_stats().malformed_packets,
+        1,
+        "malformed_packets must be 1 after one shape-invalid UDP datagram"
+    );
+
+    drop(cancel); // avoid unused-variable warning
+}

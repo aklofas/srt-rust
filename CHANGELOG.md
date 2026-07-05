@@ -199,6 +199,13 @@ layout changed.
   (`getrandom` failure). It now warns once and falls back to a deterministic
   wrapping-counter jitter, keeping RTCP emissions at ~`RTCP_BASE_INTERVAL`
   (PR #82).
+- RTP: the recv path now validates RFC 2250 MP2T payload shape after a
+  successful RTP header parse (PT=33 confirmed). Payloads that are empty,
+  not an integral multiple of 188 bytes, or do not start with the TS sync
+  byte `0x47` are silently dropped and counted in `RtpStats::malformed_packets`
+  instead of being forwarded to the demuxer. The same check applies to the
+  TCP-interleaved mpsc path. The demuxer's own resync logic is unchanged and
+  remains defense-in-depth (DA-RTP-5, PR #82).
 
 ### Changed — internal refactors and dependencies (behavior-preserving)
 

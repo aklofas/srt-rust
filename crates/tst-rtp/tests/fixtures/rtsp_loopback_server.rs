@@ -43,11 +43,14 @@ impl Default for FixtureConfig {
             force_461_on_udp: false,
             username: "admin".into(),
             password: "secret".into(),
+            // RFC 2250 §2: MP2T uses m=video; RFC 7826 App. D: session-level
+            // a=control:* lets clients resolve the aggregate control URL.
             sdp_body: br#"v=0
 o=- 0 0 IN IP4 127.0.0.1
 s=tst-rtp test
 t=0 0
-m=application 0 RTP/AVP 33
+a=control:*
+m=video 0 RTP/AVP 33
 a=control:trackID=0
 "#
             .to_vec(),

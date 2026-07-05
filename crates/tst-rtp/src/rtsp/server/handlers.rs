@@ -179,6 +179,14 @@ pub(crate) fn handle_describe(
     headers.insert("server".into(), server_header());
     headers.insert("content-type".into(), "application/sdp".into());
     headers.insert("content-length".into(), body.len().to_string());
+    // RFC 7826 §D: Content-Base anchors relative a=control: URIs in the SDP
+    // body so third-party clients (VLC, ffplay) resolve SETUP URLs correctly.
+    // The value is the request URI with a trailing slash appended.
+    let content_base = {
+        let uri = req.uri.trim_end_matches('/');
+        format!("{uri}/")
+    };
+    headers.insert("content-base".into(), content_base);
     RtspResponse {
         version: req.version,
         status: 200,
@@ -966,6 +974,23 @@ mod tests {
         assert_eq!(resp.reason, "Not Found");
         assert_eq!(resp.headers.get("cseq").map(String::as_str), Some("1"));
         assert!(resp.headers.contains_key("server"));
+    }
+
+    // ── DESCRIBE Content-Base test (DA-RTP-8) ────────────────────────────
+
+    #[test]
+    fn describe_response_includes_content_base_with_trailing_slash() {
+        let state = make_state_with_mount();
+        let req = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live");
+        let mut session = ServerSessionState::new();
+        let resp = handle_describe(&req, &state, &mut session);
+        assert_eq!(resp.status, 200);
+        // RFC 7826 §D: DESCRIBE response MUST include Content-Base so
+        // third-party clients resolve relative a=control: URIs correctly.
+        assert_eq!(
+            resp.headers.get("content-base").map(String::as_str),
+            Some("rtsp://127.0.0.1:8554/live/"),
+        );
     }
 
     // ── SETUP handler tests (T16) ─────────────────────────────────────────

@@ -44,8 +44,10 @@ mod tests {
         }
     }
 
+    /// Backward compat: servers that still emit `m=application` (old shape)
+    /// are accepted; pick_mp2t selects by PT=33, not by media type name.
     #[test]
-    fn picks_unique_mp2t() {
+    fn picks_unique_mp2t_application_shape() {
         let sdp = Sdp {
             media: vec![
                 make_media("video", &[96]),
@@ -57,6 +59,20 @@ mod tests {
         };
         let m = pick_mp2t(&sdp).unwrap();
         assert_eq!(m.media, "application");
+    }
+
+    /// RFC 2250 §2 shape: `m=video` with PT=33 (emitted by tst-rtp server
+    /// since DA-RTP-8). pick_mp2t must accept this too.
+    #[test]
+    fn picks_unique_mp2t_video_shape() {
+        let sdp = Sdp {
+            media: vec![make_media("video", &[33]), make_media("audio", &[97])],
+            session_connection: None,
+            session_name: String::new(),
+        };
+        let m = pick_mp2t(&sdp).unwrap();
+        assert_eq!(m.media, "video");
+        assert_eq!(m.payload_types, vec![33]);
     }
 
     #[test]

@@ -385,4 +385,73 @@ class St0601Test {
         assertEquals(rec.timestampUs(), decoded.timestampUs());
         assertEquals(rec.uasLsVersion(), decoded.uasLsVersion());
     }
+
+    // -----------------------------------------------------------------------
+    // DA-KLV-4: sentinel round-trip tests
+    // -----------------------------------------------------------------------
+
+    /**
+     * Tag 6 (Platform Pitch) INT_MIN must decode with a null {@code platformPitchDeg},
+     * tag 6 in {@code sentinelTags}, and no field errors.
+     *
+     * <p>Encodes a record with {@code sentinelTags=(6)} and no typed pitch field, which
+     * causes the encoder to emit {@code 0x8000} (i16::MIN) per ST 0601.19 §8.6.
+     * Decoding the result must record the sentinel without reporting an error.
+     */
+    @Test
+    void sentinelDecodePopulatesSentinelTagsNotFieldError() throws KlvDecodeException, KlvEncodeException {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .sentinelTags(java.util.List.of(6L))
+                .build();
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs rec2 = Klv.decodeUasDatalink(wire);
+        assertNull(rec2.platformPitchDeg(), "INT_MIN sentinel must leave typed field null");
+        assertTrue(rec2.sentinelTags().contains(6L), "tag 6 must appear in sentinelTags");
+        assertTrue(rec2.fieldErrors().isEmpty(), "sentinel must not produce a field error");
+    }
+
+    /**
+     * A sentinel record survives two encode/decode cycles with the sentinel preserved.
+     */
+    @Test
+    void sentinelRoundTripsThroughEncode() throws KlvDecodeException, KlvEncodeException {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .sentinelTags(java.util.List.of(6L))
+                .build();
+        byte[] wire1 = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs rec2 = Klv.decodeUasDatalink(wire1);
+        byte[] wire2 = Klv.encodeUasDatalink(rec2);
+        UasDatalinkLs rec3 = Klv.decodeUasDatalink(wire2);
+        assertNull(rec3.platformPitchDeg(), "sentinel field must remain null after re-encode");
+        assertTrue(rec3.sentinelTags().contains(6L), "tag 6 must still be a sentinel after re-encode");
+        assertTrue(rec3.fieldErrors().isEmpty(), "no field errors after re-encode");
+    }
+
+    /**
+     * Value-wins: if a typed field is set AND its tag also appears in
+     * {@code sentinelTags}, the value must be encoded — not INT_MIN.
+     * Re-decoded record must carry the real roll value, not a sentinel.
+     */
+    @Test
+    void sentinelValueWinsOverSentinelTagsEntry() throws KlvDecodeException, KlvEncodeException {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .platformRollDeg(25.0)
+                .sentinelTags(java.util.List.of(7L))
+                .build();
+        byte[] encoded = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs rec2 = Klv.decodeUasDatalink(encoded);
+        assertNotNull(rec2.platformRollDeg(), "value must survive (not replaced by sentinel)");
+        assertEquals(25.0, rec2.platformRollDeg(), 0.5, "value must be close to 25.0");
+        assertFalse(rec2.sentinelTags().contains(7L),
+                "tag 7 must NOT be a sentinel after value-wins encoding");
+    }
 }

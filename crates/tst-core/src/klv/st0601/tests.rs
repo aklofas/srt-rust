@@ -1568,7 +1568,7 @@ fn wrap_st0601_single_tlv(tlv: &[u8]) -> Vec<u8> {
     wrap_st0601(tlv)
 }
 
-/// Tag 6 (Platform Heading Angle) is I16Range: meaning = OutOfRange.
+/// Tag 6 (Platform Pitch Angle) is I16Range: meaning = OutOfRange.
 /// INT_MIN for 2 bytes = 0x8000.
 #[test]
 fn sentinel_tag6_out_of_range_round_trips() {
@@ -1581,7 +1581,7 @@ fn sentinel_tag6_out_of_range_round_trips() {
     let record = decode(&buf).expect("decode must succeed");
 
     assert_eq!(
-        record.platform_heading_deg, None,
+        record.platform_pitch_deg, None,
         "INT_MIN sentinel must leave typed field None",
     );
     assert!(
@@ -1709,6 +1709,81 @@ fn sentinel_value_wins_over_sentinel_tags_entry() {
         redecoded.sentinel_tags.is_empty(),
         "re-decoded record must not flag tag 7 as a sentinel",
     );
+}
+
+/// Invariant pin: every signed-range tag modelled in the TAGS table must have
+/// a `Some(_)` entry in `st0601_sentinel_meaning`. Guards future tag additions
+/// — a new signed tag without a table entry will fail here.
+#[test]
+fn every_modelled_signed_tag_has_a_sentinel_meaning() {
+    use super::mapping::st0601_sentinel_meaning;
+    use super::tags::{Encoding, TAGS};
+
+    let signed_tags: Vec<u8> = TAGS
+        .iter()
+        .filter(|t| matches!(t.encoding, Encoding::I16Range | Encoding::I32Range))
+        .map(|t| t.id)
+        .collect();
+
+    // Confirm the set is non-empty (guards against TAGS becoming empty).
+    assert!(
+        !signed_tags.is_empty(),
+        "TAGS must contain signed-range entries"
+    );
+
+    for id in signed_tags {
+        assert!(
+            st0601_sentinel_meaning(u32::from(id)).is_some(),
+            "tag {id} is a signed-range tag in TAGS but has no sentinel meaning — \
+             add it to st0601_sentinel_meaning()"
+        );
+    }
+}
+
+/// Multi-field ordering: a sentinel tag numerically BETWEEN two populated
+/// tags must decode-encode-decode as a fixpoint. Verifies that the sentinel
+/// value is preserved alongside neighbouring typed fields.
+///
+/// Setup: tag 5 (Platform Heading, unsigned, populated) < tag 6 (Platform
+/// Pitch, signed, INT_MIN sentinel) < tag 7 (Platform Roll, signed, populated).
+#[test]
+fn sentinel_between_populated_tags_is_fixpoint() {
+    // Build a packet with tags 5 (heading), 6 (sentinel), 7 (roll).
+    let mut tlv_bytes = Vec::new();
+    // Tag 5: Platform Heading = 180.0° → U16Range 0-360 → 0x8000
+    tlv_bytes.extend_from_slice(&[0x05u8, 0x02, 0x80, 0x00]);
+    // Tag 6: Platform Pitch sentinel → I16MIN = 0x8000
+    tlv_bytes.extend_from_slice(&[0x06u8, 0x02, 0x80, 0x00]);
+    // Tag 7: Platform Roll = 10.0° → I16Range -50..50 → positive value
+    tlv_bytes.extend_from_slice(&[0x07u8, 0x02, 0x19, 0x99]);
+    let buf = wrap_st0601(&tlv_bytes);
+
+    let record = decode(&buf).expect("decode must succeed");
+    assert!(
+        record.platform_heading_deg.is_some(),
+        "tag 5 (heading) must decode to Some"
+    );
+    assert_eq!(
+        record.platform_pitch_deg, None,
+        "tag 6 sentinel must leave pitch None"
+    );
+    assert!(
+        record.platform_roll_deg.is_some(),
+        "tag 7 (roll) must decode to Some"
+    );
+    assert_eq!(
+        record.sentinel_tags,
+        vec![6u32],
+        "tag 6 must be recorded as a sentinel"
+    );
+
+    // Encode and re-decode: sentinel tag and surrounding typed fields must survive.
+    let encoded = encode_to_vec(&record).expect("encode must succeed");
+    let redecoded = decode(&encoded).expect("re-decode must succeed");
+    assert!(redecoded.platform_heading_deg.is_some(), "heading survives");
+    assert_eq!(redecoded.platform_pitch_deg, None, "pitch stays None");
+    assert!(redecoded.platform_roll_deg.is_some(), "roll survives");
+    assert_eq!(redecoded.sentinel_tags, vec![6u32], "sentinel tag survives");
 }
 
 /// Normal decode of a non-sentinel signed field does not populate sentinel_tags.

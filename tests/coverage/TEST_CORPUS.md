@@ -341,9 +341,10 @@ Cross-checked against MISB ST 0601 (UAS Datalink LS), MISB ST 0102.12
   (`checksum_running_sum_16`) matches the example algorithm in
   ST 0601 §6.8.
 - Big-endian byte and bit ordering throughout (ST 0601 §6.5.1).
-- Linear-range int↔float mapping with `INT_MIN`-as-error sentinel
-  (`decode_fixed_range`) matches ST 0601 §7.5 (e.g., Tag 6/7 use
-  `0x8000` to indicate out-of-range, rejected as `InvalidSentinel`).
+- Linear-range int↔float mapping (`decode_fixed_range`) matches ST 0601
+  §7.5. Tags that define INT_MIN as a special value (e.g., Tag 6/7 use
+  `0x8000` for "Out of Range") produce `Ok(None)` and the tag number is
+  recorded in `UasDatalinkLs::sentinel_tags` rather than `field_errors`.
 - KLV-in-MPEG-TS detection via stream_type 0x06 + `registration_descriptor`
   (tag 0x05) with `format_identifier = "KLVA"` (`0x4B4C5641`) matches
   ST 1402.2-03/-19/-25 (Asynchronous Metadata Multiplex Method).

@@ -102,12 +102,14 @@ pub struct UasDatalinkLs {
     /// Use [`crate::klv::st0601::st0601_sentinel_meaning`] to look up the
     /// spec-defined meaning for each tag (Out of Range / Reserved / N/A).
     ///
-    /// **Encode precedence:** if a tag appears in `sentinel_tags` AND its
-    /// typed field is `Some(v)`, the value `v` is encoded — the sentinel
-    /// applies only to absent (`None`) fields. This lets a caller build a
-    /// sentinel-carrying record by setting the field to `None` and listing
-    /// the tag here, while still allowing a non-sentinel override by
-    /// setting the field to `Some(v)`.
+    /// **Encode semantics:** encoding a record that carries sentinel tags
+    /// re-emits the INT_MIN bytes for each sentinel tag whose typed field is
+    /// `None`. If the typed field is `Some(v)`, the value `v` is encoded
+    /// instead — a non-None field always wins over a `sentinel_tags` entry.
+    /// The encoder also auto-injects Tag 65 (version) and the trailing
+    /// checksum, so the output byte sequence is not guaranteed to match the
+    /// original wire input byte-for-byte; the sentinel *value* round-trips,
+    /// but byte position follows the encoder's canonical tag order.
     pub sentinel_tags: Vec<u32>,
 }
 

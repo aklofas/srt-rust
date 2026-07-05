@@ -204,6 +204,13 @@ pub(crate) fn handle_describe(
 /// URI. We strip the trailing per-media segment if it's recognized
 /// (RFC 7826 §C.1.1 trackID convention) — otherwise the mount lookup
 /// misses the registered base path.
+///
+/// A trailing `/` is also stripped (except on the bare root `"/"`) so
+/// that `rtsp://host/live/` and `rtsp://host/live` both resolve to the
+/// same mount registered at `"/live"`. Without this, a client that
+/// appends a trailing slash to the DESCRIBE URI would get a 404 for a
+/// perfectly valid mount. DESCRIBE, SETUP, and PLAY all go through this
+/// function, so the normalization is consistent across the whole session.
 fn extract_mount_path(uri: &str) -> String {
     // Strip scheme + authority if present.
     let path_start = if let Some(after_scheme) = uri.strip_prefix("rtsp://") {
@@ -240,6 +247,13 @@ fn extract_mount_path(uri: &str) -> String {
         } else {
             path
         }
+    } else {
+        path
+    };
+    // Normalize: strip a single trailing '/' unless the path is just "/".
+    // This makes "/live/" and "/live" resolve to the same registered mount.
+    let path = if path.len() > 1 && path.ends_with('/') {
+        &path[..path.len() - 1]
     } else {
         path
     };
@@ -936,6 +950,12 @@ mod tests {
         assert_eq!(extract_mount_path("rtsp://host:8554/live?x=1"), "/live");
         // No path → root.
         assert_eq!(extract_mount_path("rtsp://host:8554"), "/");
+        // Trailing slash is normalized away (except root).
+        assert_eq!(extract_mount_path("rtsp://host:8554/live/"), "/live");
+        assert_eq!(extract_mount_path("/live/"), "/live");
+        // Root path ("/") keeps its slash.
+        assert_eq!(extract_mount_path("rtsp://host:8554/"), "/");
+        assert_eq!(extract_mount_path("/"), "/");
     }
 
     #[test]
@@ -993,37 +1013,42 @@ mod tests {
         );
     }
 
-    /// Content-Base idempotency: when the request URI already ends with `/`,
-    /// the response must contain exactly one trailing slash — not `//`.
-    /// This pins the `trim_end_matches('/') + "/"` normalization in
-    /// `handle_describe`.
+    /// Content-Base idempotency: a request URI that already ends with `/`
+    /// must resolve to the same mount as the slash-free form, and the
+    /// response Content-Base must have exactly one trailing slash — not `//`.
     ///
-    /// `extract_mount_path("rtsp://…/live/")` yields `/live/`, so the mount
-    /// is registered under that key so the handler reaches the Content-Base
-    /// code path.
+    /// `extract_mount_path` normalizes trailing slashes, so both
+    /// `rtsp://…/live` and `rtsp://…/live/` map to the same mount registered
+    /// at `"/live"`.
     #[test]
     fn describe_content_base_no_double_slash_when_uri_already_has_trailing_slash() {
-        // Build a state with the mount registered at the path that
-        // extract_mount_path returns for a trailing-slash URI ("/live/"),
-        // so the DESCRIBE lookup succeeds and we reach the Content-Base path.
-        let state = make_state();
-        let mount_state = MountState::new("/live/", MountKind::Unicast, make_muxer_cfg(), 256)
-            .expect("mount state constructs");
-        state
-            .mounts
-            .lock()
-            .unwrap()
-            .insert("/live/".into(), mount_state);
+        // Mount is registered at "/live" (no trailing slash).
+        // Both "/live" and "/live/" URIs must find it after normalization.
+        let state = make_state_with_mount();
 
-        let req = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live/");
+        // Non-trailing-slash form.
+        let req_no_slash = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live");
         let mut session = ServerSessionState::new();
-        let resp = handle_describe(&req, &state, &mut session);
-        assert_eq!(resp.status, 200);
-        // Must be exactly "…/live/" — not "…/live//".
+        let resp = handle_describe(&req_no_slash, &state, &mut session);
+        assert_eq!(resp.status, 200, "no-slash form must find mount");
         assert_eq!(
             resp.headers.get("content-base").map(String::as_str),
             Some("rtsp://127.0.0.1:8554/live/"),
-            "Content-Base must have exactly one trailing slash even when request URI already ends with '/'"
+            "Content-Base must append exactly one trailing slash"
+        );
+
+        // Trailing-slash form: same mount, same Content-Base (not "…/live//").
+        let req_slash = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live/");
+        let mut session2 = ServerSessionState::new();
+        let resp2 = handle_describe(&req_slash, &state, &mut session2);
+        assert_eq!(
+            resp2.status, 200,
+            "trailing-slash form must find the same mount"
+        );
+        assert_eq!(
+            resp2.headers.get("content-base").map(String::as_str),
+            Some("rtsp://127.0.0.1:8554/live/"),
+            "Content-Base must have exactly one trailing slash, not '//'"
         );
     }
 

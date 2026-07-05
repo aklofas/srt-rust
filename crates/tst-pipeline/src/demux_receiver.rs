@@ -183,11 +183,14 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     ///
     /// # C ABI
     ///
-    /// **Single-consumer contract:** `tst_event_t` pointer fields returned by
-    /// the underlying `tst_demuxer_next_event` call are valid only until the
-    /// next `recv_event` (or `close`) call on the same handle **from any
-    /// thread**. Concurrent pulls on one handle silently invalidate the first
-    /// caller's borrowed pointers; use one consumer thread per handle.
+    /// **Single-consumer contract (C ABI):** `tst_event_t` pointer fields
+    /// returned by `tst_demux_receiver_recv_event` are valid only until the
+    /// next `tst_demux_receiver_recv_event` (or `tst_demux_receiver_close`)
+    /// call on the same handle **from any thread**. Concurrent pulls on one
+    /// handle silently invalidate the first caller's borrowed pointers; use
+    /// one consumer thread per handle. Rust callers are unaffected — this
+    /// method returns an owned [`DemuxEvent`] and `&mut self` already
+    /// serializes access.
     ///
     /// # Errors
     ///

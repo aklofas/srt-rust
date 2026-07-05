@@ -441,8 +441,12 @@ fn apply_typed_tag(
         | Encoding::U32Range
         | Encoding::I32Range => {
             let r = spec.range.as_ref().expect("ranged tag has range");
-            let v = decode_fixed_range(r, tag, f.value)?;
-            assign_ranged(record, tag, v);
+            match decode_fixed_range(r, tag, f.value)? {
+                Some(v) => assign_ranged(record, tag, v),
+                // INT_MIN sentinel: spec-defined signal, not an error.
+                // Field stays None; tag is recorded for encode round-trip.
+                None => record.sentinel_tags.push(tag),
+            }
         }
     }
     Ok(())

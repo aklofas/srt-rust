@@ -1271,8 +1271,6 @@ pub tst_core::error::KlvFieldError::InvalidLength
 pub tst_core::error::KlvFieldError::InvalidLength::expected: usize
 pub tst_core::error::KlvFieldError::InvalidLength::got: usize
 pub tst_core::error::KlvFieldError::InvalidLength::tag: u32
-pub tst_core::error::KlvFieldError::InvalidSentinel
-pub tst_core::error::KlvFieldError::InvalidSentinel::tag: u32
 pub tst_core::error::KlvFieldError::InvalidUtf16
 pub tst_core::error::KlvFieldError::InvalidUtf16::tag: u32
 pub tst_core::error::KlvFieldError::InvalidUtf8
@@ -1806,6 +1804,28 @@ pub fn tst_core::klv::st0102::encode_strict_compliance(&tst_core::klv::SecurityL
 pub fn tst_core::klv::st0102::encode_to_vec(&tst_core::klv::SecurityLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0102::encoded_len(&tst_core::klv::SecurityLs) -> usize
 pub mod tst_core::klv::st0601
+#[non_exhaustive] pub enum tst_core::klv::st0601::St0601SentinelMeaning
+pub tst_core::klv::st0601::St0601SentinelMeaning::NotAvailable
+pub tst_core::klv::st0601::St0601SentinelMeaning::OutOfRange
+pub tst_core::klv::st0601::St0601SentinelMeaning::Reserved
+impl core::clone::Clone for tst_core::klv::st0601::St0601SentinelMeaning
+pub fn tst_core::klv::st0601::St0601SentinelMeaning::clone(&self) -> tst_core::klv::st0601::St0601SentinelMeaning
+impl core::cmp::Eq for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::cmp::PartialEq for tst_core::klv::st0601::St0601SentinelMeaning
+pub fn tst_core::klv::st0601::St0601SentinelMeaning::eq(&self, &tst_core::klv::st0601::St0601SentinelMeaning) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::St0601SentinelMeaning
+pub fn tst_core::klv::st0601::St0601SentinelMeaning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::klv::st0601::St0601SentinelMeaning
+pub fn tst_core::klv::st0601::St0601SentinelMeaning::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::Freeze for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::Send for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::Sync for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::Unpin for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::St0601SentinelMeaning
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::St0601SentinelMeaning
 pub struct tst_core::klv::st0601::Attitude
 pub tst_core::klv::st0601::Attitude::heading_deg: f64
 pub tst_core::klv::st0601::Attitude::pitch_deg: f64
@@ -1950,6 +1970,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_az_deg: core::option::Optio
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_el_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_roll_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_vfov_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sentinel_tags: alloc::vec::Vec<u32>
 pub tst_core::klv::st0601::UasDatalinkLs::slant_range_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_width_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::timestamp_us: core::option::Option<u64>
@@ -1991,6 +2012,7 @@ pub fn tst_core::klv::st0601::encode_with(&tst_core::UasDatalinkLs, &tst_core::k
 pub fn tst_core::klv::st0601::encoded_len(&tst_core::UasDatalinkLs) -> usize
 pub fn tst_core::klv::st0601::encoded_len_with(&tst_core::UasDatalinkLs, &tst_core::klv::st0601::EncodeConfig) -> usize
 pub fn tst_core::klv::st0601::patch(&[u8], &tst_core::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvPatchError>
+pub fn tst_core::klv::st0601::st0601_sentinel_meaning(u32) -> core::option::Option<tst_core::klv::st0601::St0601SentinelMeaning>
 pub mod tst_core::klv::st0605
 pub struct tst_core::klv::st0605::PrecisionTimeStampPack
 pub tst_core::klv::st0605::PrecisionTimeStampPack::time_status: tst_core::klv::TimeStatus
@@ -5836,8 +5858,6 @@ pub tst_core::KlvFieldError::InvalidLength
 pub tst_core::KlvFieldError::InvalidLength::expected: usize
 pub tst_core::KlvFieldError::InvalidLength::got: usize
 pub tst_core::KlvFieldError::InvalidLength::tag: u32
-pub tst_core::KlvFieldError::InvalidSentinel
-pub tst_core::KlvFieldError::InvalidSentinel::tag: u32
 pub tst_core::KlvFieldError::InvalidUtf16
 pub tst_core::KlvFieldError::InvalidUtf16::tag: u32
 pub tst_core::KlvFieldError::InvalidUtf8
@@ -6185,6 +6205,7 @@ pub tst_core::UasDatalinkLs::sensor_rel_az_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_rel_el_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_rel_roll_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_vfov_deg: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sentinel_tags: alloc::vec::Vec<u32>
 pub tst_core::UasDatalinkLs::slant_range_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_width_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::timestamp_us: core::option::Option<u64>

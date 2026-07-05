@@ -40,7 +40,6 @@ class KlvFieldErrorKind(enum.Enum):
     INVALID_UTF8 = "invalid_utf8"
     INVALID_UTF16 = "invalid_utf16"
     INVALID_LENGTH = "invalid_length"
-    INVALID_SENTINEL = "invalid_sentinel"
     INVALID_CODEPOINT = "invalid_codepoint"
     TRUNCATED_FIELD = "truncated_field"
     UNSUPPORTED_IMAPB_LENGTH = "unsupported_imapb_length"
@@ -585,6 +584,7 @@ class UasDatalinkLs:
     # Pass-through
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
+    sentinel_tags: tuple[int, ...] = ()
 
     def with_(self, **changes: object) -> "UasDatalinkLs":
         """Return a copy with the named fields replaced. The typed sets

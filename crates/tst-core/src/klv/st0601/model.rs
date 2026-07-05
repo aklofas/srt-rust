@@ -93,6 +93,22 @@ pub struct UasDatalinkLs {
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
     pub field_errors: Vec<KlvFieldError>,
+
+    /// Tags whose wire value was the INT_MIN sentinel for their signed linear
+    /// mapping. INT_MIN is a spec-defined signal (not an error), so the
+    /// corresponding typed field is left as `None` and the tag is recorded
+    /// here instead of in `field_errors`.
+    ///
+    /// Use [`crate::klv::st0601::st0601_sentinel_meaning`] to look up the
+    /// spec-defined meaning for each tag (Out of Range / Reserved / N/A).
+    ///
+    /// **Encode precedence:** if a tag appears in `sentinel_tags` AND its
+    /// typed field is `Some(v)`, the value `v` is encoded — the sentinel
+    /// applies only to absent (`None`) fields. This lets a caller build a
+    /// sentinel-carrying record by setting the field to `None` and listing
+    /// the tag here, while still allowing a non-sentinel override by
+    /// setting the field to `Some(v)`.
+    pub sentinel_tags: Vec<u32>,
 }
 
 impl Default for UasDatalinkLs {
@@ -152,6 +168,7 @@ impl Default for UasDatalinkLs {
             vmti: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
+            sentinel_tags: Vec::new(),
         }
     }
 }

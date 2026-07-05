@@ -27,7 +27,6 @@ def test_klv_field_error_kind_variants():
         "INVALID_UTF8",
         "INVALID_UTF16",
         "INVALID_LENGTH",
-        "INVALID_SENTINEL",
         "INVALID_CODEPOINT",
         "TRUNCATED_FIELD",
         "UNSUPPORTED_IMAPB_LENGTH",

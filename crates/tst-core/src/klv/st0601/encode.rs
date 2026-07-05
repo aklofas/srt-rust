@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
 use super::model::{EncodeConfig, UasDatalinkLs};
-use super::tags::{Encoding, TAGS, TagSpec};
+use super::tags::{Encoding, TAGS, TagSpec, lookup as lookup_tag};
 
 /// Encode a UAS Datalink Local Set into the caller-provided buffer per
 /// MISB ST 0601. Returns the number of bytes written.
@@ -159,11 +159,44 @@ pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeConfig) -> usize {
     each_typed_field(record, opts, |tag, value_len| {
         body_len += ber_oid_len(tag as u32) + ber_len(value_len) + value_len;
     });
+    // Sentinel tags: each tag in `sentinel_tags` whose typed field is None
+    // re-emits INT_MIN bytes. Value wins: a populated field is already
+    // counted by `each_typed_field` above.
+    for &st in &record.sentinel_tags {
+        body_len += sentinel_field_len(record, st);
+    }
     for f in &record.unknown {
         body_len += ber_oid_len(f.tag) + ber_len(f.value.len()) + f.value.len();
     }
     let body_len_with_checksum = body_len + 4; // tag 1 (1 byte) + len byte (1) + value (2 bytes)
     16 + ber_len(body_len_with_checksum) + body_len_with_checksum
+}
+
+/// Return the TLV byte size that a sentinel entry for `tag` contributes, or
+/// 0 if the tag is not a signed ranged field, is unrecognized, or its typed
+/// field is already populated (value wins over the sentinel).
+fn sentinel_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
+    let Ok(tag_u8) = u8::try_from(tag) else {
+        return 0;
+    };
+    let Some(spec) = lookup_tag(tag_u8) else {
+        return 0;
+    };
+    let Some(ref range) = spec.range else {
+        return 0;
+    };
+    if !range.signed {
+        return 0;
+    }
+    // Value wins: if the typed field is populated, it is already counted.
+    if super::decode::ranged_entry(tag_u8)
+        .and_then(|e| (e.get)(record))
+        .is_some()
+    {
+        return 0;
+    }
+    let vlen = range.byte_length;
+    ber_oid_len(tag) + ber_len(vlen) + vlen
 }
 
 /// Visit each typed field that will be emitted, calling `visit(tag_id, value_len)`.
@@ -297,6 +330,44 @@ fn write_typed_fields(
         if let Some(value) = encode_tag_value(record, spec, Some(opts.version))? {
             emit_ber_oid_tlv(spec.id as u32, &value, body)?;
         }
+    }
+    write_sentinel_tags(record, body)?;
+    Ok(())
+}
+
+/// Emit INT_MIN bytes for each tag in `record.sentinel_tags` whose typed
+/// field is currently `None`. If the typed field is `Some(v)`, `encode_tag_value`
+/// has already emitted it above (value wins over the sentinel entry).
+fn write_sentinel_tags(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    for &st in &record.sentinel_tags {
+        let Ok(tag_u8) = u8::try_from(st) else {
+            continue;
+        };
+        let Some(spec) = lookup_tag(tag_u8) else {
+            continue;
+        };
+        let Some(ref range) = spec.range else {
+            continue;
+        };
+        if !range.signed {
+            continue;
+        }
+        // Value wins: only re-emit the sentinel when the typed field is absent.
+        if super::decode::ranged_entry(tag_u8)
+            .and_then(|e| (e.get)(record))
+            .is_some()
+        {
+            continue;
+        }
+        // INT_MIN for this field width: 2-byte → 0x8000, 4-byte → 0x80000000.
+        let int_min_value: i64 = match range.byte_length {
+            2 => i64::from(i16::MIN),
+            4 => i64::from(i32::MIN),
+            _ => continue,
+        };
+        let all_bytes = int_min_value.to_be_bytes();
+        let sentinel_bytes = &all_bytes[8 - range.byte_length..];
+        emit_ber_oid_tlv(st, sentinel_bytes, body)?;
     }
     Ok(())
 }

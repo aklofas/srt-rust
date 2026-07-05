@@ -100,7 +100,16 @@ public record UasDatalinkLs(
 
         // Pass-through
         List<KlvUnknownField> unknown,
-        List<KlvFieldError> fieldErrors
+        List<KlvFieldError> fieldErrors,
+
+        /**
+         * Tags whose wire value was the INT_MIN sentinel for their signed
+         * linear mapping. INT_MIN is a spec-defined signal, not an error;
+         * the corresponding typed field is {@code null} and the tag number
+         * is recorded here. Use {@code st0601SentinelMeaning(tag)} (when
+         * available) to look up the spec-defined meaning per ST 0601.19.
+         */
+        List<Long> sentinelTags
 ) implements KlvSet {
 
     /**
@@ -115,6 +124,7 @@ public record UasDatalinkLs(
         }
         unknown = unknown == null ? Collections.emptyList() : Collections.unmodifiableList(unknown);
         fieldErrors = fieldErrors == null ? Collections.emptyList() : Collections.unmodifiableList(fieldErrors);
+        sentinelTags = sentinelTags == null ? Collections.emptyList() : Collections.unmodifiableList(sentinelTags);
     }
 
     // -----------------------------------------------------------------------
@@ -289,6 +299,7 @@ public record UasDatalinkLs(
         private ByteBuffer vmti;
         private List<KlvUnknownField> unknown = Collections.emptyList();
         private List<KlvFieldError> fieldErrors = Collections.emptyList();
+        private List<Long> sentinelTags = Collections.emptyList();
 
         public Builder() {}
 
@@ -346,6 +357,7 @@ public record UasDatalinkLs(
         public Builder vmti(ByteBuffer v) { this.vmti = v; return this; }
         public Builder unknown(List<KlvUnknownField> v) { this.unknown = v; return this; }
         public Builder fieldErrors(List<KlvFieldError> v) { this.fieldErrors = v; return this; }
+        public Builder sentinelTags(List<Long> v) { this.sentinelTags = v; return this; }
 
         /** Build an immutable {@link UasDatalinkLs}. */
         public UasDatalinkLs build() {
@@ -374,7 +386,8 @@ public record UasDatalinkLs(
                     cornerLatP4Deg, cornerLonP4Deg,
                     genericFlagData,
                     securityLocalSet, vmti,
-                    unknown, fieldErrors
+                    unknown, fieldErrors,
+                    sentinelTags
             );
         }
     }

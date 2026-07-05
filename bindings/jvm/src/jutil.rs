@@ -48,7 +48,6 @@ fn field_error_kind_and_tag(fe: &RustKlvFieldError) -> (&'static str, u32) {
         RustKlvFieldError::OutOfRange { tag, .. } => ("OUT_OF_RANGE", *tag),
         RustKlvFieldError::InvalidUtf8 { tag } => ("INVALID_UTF8", *tag),
         RustKlvFieldError::InvalidLength { tag, .. } => ("INVALID_LENGTH", *tag),
-        RustKlvFieldError::InvalidSentinel { tag } => ("INVALID_SENTINEL", *tag),
         RustKlvFieldError::InvalidUtf16 { tag } => ("INVALID_UTF16", *tag),
         RustKlvFieldError::InvalidCodepoint { tag, .. } => ("INVALID_CODEPOINT", *tag),
         RustKlvFieldError::TruncatedField { tag } => ("TRUNCATED_FIELD", *tag),
@@ -141,6 +140,29 @@ pub fn build_unknown_list<'local>(
                 "add",
                 "(Ljava/lang/Object;)Z",
                 &[JValue::Object(&obj)],
+            )?;
+            Ok(())
+        })?;
+    }
+    Ok(list)
+}
+
+/// Build a `java.util.List<Long>` (an `ArrayList`) from an iterator of `i64`
+/// values. Used to expose `sentinel_tags` to callers.
+pub fn build_long_list<'local>(
+    env: &mut JNIEnv<'local>,
+    values: impl Iterator<Item = i64>,
+) -> jni::errors::Result<JObject<'local>> {
+    let list = env.new_object("java/util/ArrayList", "()V", &[])?;
+    for v in values {
+        // Box the long into java.lang.Long, then add to the list.
+        env.with_local_frame(4, |env| -> jni::errors::Result<()> {
+            let boxed = env.new_object("java/lang/Long", "(J)V", &[JValue::Long(v)])?;
+            env.call_method(
+                &list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&boxed)],
             )?;
             Ok(())
         })?;

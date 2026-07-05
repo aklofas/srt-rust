@@ -1557,3 +1557,179 @@ fn patch_propagated_decode_error_offsets_are_absolute() {
         other => panic!("expected Truncated at offset 18, got {other:?}"),
     }
 }
+
+// ============================================================================
+// Sentinel (INT_MIN) round-trip tests
+// ============================================================================
+
+/// Build a minimal ST 0601 wire packet containing exactly one TLV field.
+/// The caller supplies the raw TLV bytes (tag + len + value, no checksum).
+fn wrap_st0601_single_tlv(tlv: &[u8]) -> Vec<u8> {
+    wrap_st0601(tlv)
+}
+
+/// Tag 6 (Platform Heading Angle) is I16Range: meaning = OutOfRange.
+/// INT_MIN for 2 bytes = 0x8000.
+#[test]
+fn sentinel_tag6_out_of_range_round_trips() {
+    use super::mapping::St0601SentinelMeaning;
+
+    // Wire: tag=6, len=2, value=0x8000 (i16::MIN)
+    let tlv = [0x06u8, 0x02, 0x80, 0x00];
+    let buf = wrap_st0601_single_tlv(&tlv);
+
+    let record = decode(&buf).expect("decode must succeed");
+
+    assert_eq!(
+        record.platform_heading_deg, None,
+        "INT_MIN sentinel must leave typed field None",
+    );
+    assert!(
+        record.field_errors.is_empty(),
+        "sentinel must not produce a field_error; got {:?}",
+        record.field_errors,
+    );
+    assert_eq!(
+        record.sentinel_tags,
+        vec![6u32],
+        "tag 6 must appear in sentinel_tags",
+    );
+
+    // Verify the meaning lookup.
+    let meaning = super::mapping::st0601_sentinel_meaning(6)
+        .expect("tag 6 must have a known sentinel meaning");
+    assert_eq!(meaning, St0601SentinelMeaning::OutOfRange);
+
+    // Encode the decoded record and verify the INT_MIN bytes re-appear in the output.
+    let encoded = encode_to_vec(&record).expect("encode must succeed");
+    let (tag6_vstart, tag6_vlen) = find_tag(&encoded, 6).expect("tag 6 must appear in encoded");
+    assert_eq!(
+        &encoded[tag6_vstart..tag6_vstart + tag6_vlen],
+        &[0x80, 0x00],
+        "tag 6 encoded value must be INT_MIN (0x8000)",
+    );
+}
+
+/// Tag 13 (Sensor Latitude) is I32Range: meaning = Reserved.
+/// INT_MIN for 4 bytes = 0x80000000.
+#[test]
+fn sentinel_tag13_reserved_round_trips() {
+    use super::mapping::St0601SentinelMeaning;
+
+    // Wire: tag=13, len=4, value=0x80000000 (i32::MIN)
+    let tlv = [0x0Du8, 0x04, 0x80, 0x00, 0x00, 0x00];
+    let buf = wrap_st0601_single_tlv(&tlv);
+
+    let record = decode(&buf).expect("decode must succeed");
+
+    assert_eq!(
+        record.sensor_lat_deg, None,
+        "INT_MIN sentinel must leave typed field None",
+    );
+    assert!(
+        record.field_errors.is_empty(),
+        "sentinel must not produce a field_error"
+    );
+    assert_eq!(record.sentinel_tags, vec![13u32]);
+
+    let meaning = super::mapping::st0601_sentinel_meaning(13)
+        .expect("tag 13 must have a known sentinel meaning");
+    assert_eq!(meaning, St0601SentinelMeaning::Reserved);
+
+    // Re-encode and verify INT_MIN bytes survive.
+    let encoded = encode_to_vec(&record).expect("encode must succeed");
+    let (vstart, vlen) = find_tag(&encoded, 13).expect("tag 13 must appear in encoded");
+    assert_eq!(&encoded[vstart..vstart + vlen], &[0x80, 0x00, 0x00, 0x00],);
+}
+
+/// Tag 26 (Corner Latitude Offset P1) is I16Range: meaning = NotAvailable.
+/// INT_MIN for 2 bytes = 0x8000.
+#[test]
+fn sentinel_tag26_not_available_round_trips() {
+    use super::mapping::St0601SentinelMeaning;
+
+    // Wire: tag=26, len=2, value=0x8000 (i16::MIN)
+    let tlv = [0x1Au8, 0x02, 0x80, 0x00];
+    let buf = wrap_st0601_single_tlv(&tlv);
+
+    let record = decode(&buf).expect("decode must succeed");
+
+    assert_eq!(
+        record.corner_lat_offset_p1_deg, None,
+        "INT_MIN sentinel must leave typed field None",
+    );
+    assert!(
+        record.field_errors.is_empty(),
+        "sentinel must not produce a field_error"
+    );
+    assert_eq!(record.sentinel_tags, vec![26u32]);
+
+    let meaning = super::mapping::st0601_sentinel_meaning(26)
+        .expect("tag 26 must have a known sentinel meaning");
+    assert_eq!(meaning, St0601SentinelMeaning::NotAvailable);
+
+    let encoded = encode_to_vec(&record).expect("encode must succeed");
+    let (vstart, vlen) = find_tag(&encoded, 26).expect("tag 26 must appear in encoded");
+    assert_eq!(&encoded[vstart..vstart + vlen], &[0x80, 0x00]);
+}
+
+/// Value-wins: if a typed field is Some(v) and its tag also appears in
+/// sentinel_tags, the value v is encoded — not the sentinel bytes.
+///
+/// Tag 7 = Platform Roll Angle (I16Range, -50..50°, signed, byte_length=2).
+/// Putting a real value in `platform_roll_deg` while listing tag 7 in
+/// sentinel_tags must produce the real value bytes, not INT_MIN (0x8000).
+#[test]
+fn sentinel_value_wins_over_sentinel_tags_entry() {
+    // Tag 7 in sentinel_tags + platform_roll_deg populated: value must win.
+    let record = UasDatalinkLs {
+        platform_roll_deg: Some(25.0),
+        sentinel_tags: vec![7],
+        ..UasDatalinkLs::default()
+    };
+
+    let encoded = encode_to_vec(&record).expect("encode must succeed");
+    let (vstart, vlen) = find_tag(&encoded, 7).expect("tag 7 must appear in encoded");
+    let value_bytes = &encoded[vstart..vstart + vlen];
+
+    // 25.0° maps to a positive i16 value; it must NOT be 0x8000 (INT_MIN).
+    assert_ne!(
+        value_bytes,
+        [0x80u8, 0x00],
+        "value Some(25.0) must win over sentinel_tags entry; got {value_bytes:?}",
+    );
+
+    // Re-decode and confirm the value is present, not flagged as sentinel.
+    let redecoded = decode(&encoded).expect("decode must succeed");
+    assert!(
+        redecoded.platform_roll_deg.is_some(),
+        "re-decoded record must carry the roll value, not a sentinel",
+    );
+    assert!(
+        redecoded.sentinel_tags.is_empty(),
+        "re-decoded record must not flag tag 7 as a sentinel",
+    );
+}
+
+/// Normal decode of a non-sentinel signed field does not populate sentinel_tags.
+///
+/// Tag 7 = Platform Roll Angle (I16Range, -50..50°). Wire value 0x0000 = 0.0°
+/// (the midpoint). Zero is NOT INT_MIN, so it must decode to Some(0.0) and
+/// sentinel_tags must remain empty.
+#[test]
+fn normal_signed_field_does_not_populate_sentinel_tags() {
+    let tlv = [0x07u8, 0x02, 0x00, 0x00];
+    let buf = wrap_st0601_single_tlv(&tlv);
+
+    let record = decode(&buf).expect("decode must succeed");
+
+    assert!(
+        record.platform_roll_deg.is_some(),
+        "zero must decode to Some(0.0), not a sentinel",
+    );
+    assert!(
+        record.sentinel_tags.is_empty(),
+        "sentinel_tags must be empty for a non-sentinel wire value",
+    );
+    assert!(record.field_errors.is_empty());
+}

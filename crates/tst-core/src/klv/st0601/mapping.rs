@@ -1,13 +1,83 @@
-//! Fixed-range linear int↔float helpers used by ST 0601 typed tags.
+//! Fixed-range linear int↔float helpers used by ST 0601 typed tags, plus the
+//! `St0601SentinelMeaning` enum and `st0601_sentinel_meaning` lookup.
 //!
 //! Two flavors per `LinearRange`:
-//! - Signed: integer in `[INT_MIN+1, INT_MAX]`, `INT_MIN` reserved as INVALID.
-//! - Unsigned: integer in `[0, UINT_MAX]`, no INVALID.
+//! - Signed: integer in `[INT_MIN+1, INT_MAX]`; `INT_MIN` is a spec-defined
+//!   sentinel whose meaning varies by tag (see [`st0601_sentinel_meaning`]).
+//! - Unsigned: integer in `[0, UINT_MAX]`, no sentinel.
 
 use crate::error::{KlvEncodeError, KlvFieldError};
 #[cfg(not(feature = "std"))]
 use crate::float_ext::FloatExt;
 use crate::klv::st0601::tags::LinearRange;
+
+/// Spec-defined meaning of the INT_MIN sentinel wire value for a given
+/// ST 0601 signed-mapping tag. Derived from ST 0601.19 per-tag "Special
+/// Values" table entries; not all signed tags reserve INT_MIN — only the
+/// tags listed in [`st0601_sentinel_meaning`] do.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum St0601SentinelMeaning {
+    /// INT_MIN signals that the value exceeded the mapped range.
+    ///
+    /// Tags: 6 (Platform Pitch — ST 0601.19 §8.6 p.41),
+    /// 7 (Platform Roll — §8.7 p.43),
+    /// 50 (Platform Angle of Attack — §8.50 p.95),
+    /// 90 (Platform Pitch Full — §8.90 p.141),
+    /// 91 (Platform Roll Full — §8.91 p.143).
+    OutOfRange,
+
+    /// INT_MIN is explicitly reserved with no assigned meaning.
+    ///
+    /// Tags: 13 (Sensor Latitude — ST 0601.19 §8.13 p.50),
+    /// 14 (Sensor Longitude — §8.14 p.51),
+    /// 19 (Sensor Relative Elevation — §8.19 p.58).
+    Reserved,
+
+    /// INT_MIN signals that the value is not available, typically because
+    /// the sensor is pointing off-Earth and no ground intersection exists.
+    ///
+    /// Tags: 23 (Frame Center Latitude — ST 0601.19 §8.23 p.62),
+    /// 24 (Frame Center Longitude — §8.24 p.63),
+    /// 26–33 (Offset Corner Lat/Lon — §8.26–8.33 pp.65–76),
+    /// 82–89 (Full Corner Lat/Lon — §8.82–8.89 pp.133–140).
+    NotAvailable,
+}
+
+/// Return the spec-defined meaning of the INT_MIN sentinel for `tag`, or
+/// `None` if the tag has no signed linear mapping (no sentinel is defined).
+///
+/// The table is derived directly from the "Special Values" column in the
+/// ST 0601.19 per-tag summary tables. Tags whose spec entry does **not**
+/// reserve INT_MIN are absent from this table; their signed decode path is
+/// unchanged (INT_MIN is treated as the ordinary minimum representable
+/// value, and no sentinel is pushed).
+///
+/// # Spec quotes (ST 0601.19, 02 March 2023)
+///
+/// | Tag | Special Values column |
+/// |-----|----------------------|
+/// | 6   | `0x8000 = "Out of Range" indicator` |
+/// | 7   | `0x8000 = "Out of Range" indicator` |
+/// | 13  | `0x80000000 = "Reserved"` |
+/// | 14  | `0x80000000 = "Reserved"` |
+/// | 19  | `0x80000000 = "Reserved"` |
+/// | 23  | `0x80000000 = "N/A (Off-Earth)" indicator` |
+/// | 24  | `0x80000000 = "N/A (Off-Earth)" indicator` |
+/// | 26–33 | `0x8000 = "N/A (Off-Earth)" indicator` |
+/// | 50  | `0x8000 = "Out of Range" indicator` |
+/// | 82–89 | `0x80000000 = "N/A (Off-Earth)" indicator` |
+/// | 90  | `0x80000000 = "Out of Range" indicator` |
+/// | 91  | `0x80000000 = "Out of Range" indicator` |
+#[must_use]
+pub fn st0601_sentinel_meaning(tag: u32) -> Option<St0601SentinelMeaning> {
+    match tag {
+        6 | 7 | 50 | 90 | 91 => Some(St0601SentinelMeaning::OutOfRange),
+        13 | 14 | 19 => Some(St0601SentinelMeaning::Reserved),
+        23 | 24 | 26..=33 | 82..=89 => Some(St0601SentinelMeaning::NotAvailable),
+        _ => None,
+    }
+}
 
 /// Encode a float value into `out` according to `range`.
 /// `tag` is for error reporting only.
@@ -65,13 +135,22 @@ pub(crate) fn encode_fixed_range(
     Ok(())
 }
 
-/// Decode bytes into a float value according to `range`.
-/// `tag` is for error reporting only.
+/// Decode bytes into a float value according to `range`, or `None` if the
+/// bytes encode the INT_MIN sentinel on a signed range.
+///
+/// Returns `Ok(None)` when `range.signed` is true and the wire value is
+/// INT_MIN (e.g. `0x8000` for 2-byte, `0x80000000` for 4-byte). The caller
+/// is responsible for recording the sentinel tag and meaning via
+/// [`st0601_sentinel_meaning`]; this function never returns an error for a
+/// spec-defined sentinel — a sentinel is a valid signal, not a malformed
+/// field.
+///
+/// `tag` is for error-reporting on `InvalidLength` only.
 pub(crate) fn decode_fixed_range(
     range: &LinearRange,
     tag: u32,
     bytes: &[u8],
-) -> Result<f64, KlvFieldError> {
+) -> Result<Option<f64>, KlvFieldError> {
     if bytes.len() != range.byte_length {
         return Err(KlvFieldError::InvalidLength {
             tag,
@@ -84,19 +163,20 @@ pub(crate) fn decode_fixed_range(
         let int_max = signed_max(range.byte_length);
         let int_min = -int_max - 1;
         if i == int_min {
-            return Err(KlvFieldError::InvalidSentinel { tag });
+            // Spec-defined sentinel — not an error. Caller handles meaning.
+            return Ok(None);
         }
         let int_min_plus_one = int_min + 1;
         let span = range.max - range.min;
         let scale = span / (int_max as f64 - int_min_plus_one as f64);
         let midpoint = (range.min + range.max) / 2.0;
-        Ok(i as f64 * scale + midpoint)
+        Ok(Some(i as f64 * scale + midpoint))
     } else {
         let i = read_unsigned_be(bytes);
         let int_max = unsigned_max(range.byte_length);
         let span = range.max - range.min;
         let scale = span / int_max as f64;
-        Ok(i as f64 * scale + range.min)
+        Ok(Some(i as f64 * scale + range.min))
     }
 }
 
@@ -206,13 +286,17 @@ mod tests {
         for v in [-89.999, -45.0, 0.0, 45.0, 89.999] {
             let mut buf = [0u8; 4];
             encode_fixed_range(&r, 13, v, &mut buf).unwrap();
-            let back = decode_fixed_range(&r, 13, &buf).unwrap();
+            let back = decode_fixed_range(&r, 13, &buf)
+                .unwrap()
+                .expect("non-sentinel round-trip");
             assert!((back - v).abs() < 1e-6, "v={v} back={back}");
         }
     }
 
     #[test]
-    fn signed_invalid_sentinel_decodes_to_error() {
+    fn sentinel_decodes_to_none() {
+        // RED → GREEN: ST 0601.19 §8.6 says 0x8000 = "Out of Range" indicator
+        // for Tag 6. decode_fixed_range must return Ok(None), not an error.
         let r = LinearRange {
             signed: true,
             byte_length: 2,
@@ -220,8 +304,24 @@ mod tests {
             max: 20.0,
         };
         let buf = [0x80, 0x00]; // INT16_MIN
-        let err = decode_fixed_range(&r, 6, &buf).unwrap_err();
-        matches!(err, KlvFieldError::InvalidSentinel { tag: 6 });
+        let result = decode_fixed_range(&r, 6, &buf).expect("sentinel is not a decode error");
+        assert!(
+            result.is_none(),
+            "INT16_MIN on a signed tag must decode as sentinel (None)"
+        );
+    }
+
+    #[test]
+    fn sentinel_meaning_table() {
+        use super::St0601SentinelMeaning::*;
+        // Tag 6 — "Out of Range" indicator (ST 0601.19 §8.6, p.41)
+        assert_eq!(super::st0601_sentinel_meaning(6), Some(OutOfRange));
+        // Tag 13 — "Reserved" (ST 0601.19 §8.13, p.50)
+        assert_eq!(super::st0601_sentinel_meaning(13), Some(Reserved));
+        // Tag 26 — "N/A (Off-Earth)" indicator (ST 0601.19 §8.26, p.65)
+        assert_eq!(super::st0601_sentinel_meaning(26), Some(NotAvailable));
+        // Tag 5 is unsigned — no sentinel
+        assert_eq!(super::st0601_sentinel_meaning(5), None);
     }
 
     #[test]
@@ -235,7 +335,8 @@ mod tests {
         for v in [0.0, 90.0, 180.0, 270.0, 359.99] {
             let mut buf = [0u8; 2];
             encode_fixed_range(&r, 5, v, &mut buf).unwrap();
-            let back = decode_fixed_range(&r, 5, &buf).unwrap();
+            // Unsigned ranges never return None; the inner unwrap is infallible.
+            let back = decode_fixed_range(&r, 5, &buf).unwrap().unwrap();
             assert!((back - v).abs() < 0.01, "v={v} back={back}");
         }
     }
@@ -251,7 +352,7 @@ mod tests {
         for v in [-900.0, -500.0, 0.0, 1000.0, 18000.0, 19000.0] {
             let mut buf = [0u8; 2];
             encode_fixed_range(&r, 15, v, &mut buf).unwrap();
-            let back = decode_fixed_range(&r, 15, &buf).unwrap();
+            let back = decode_fixed_range(&r, 15, &buf).unwrap().unwrap();
             assert!((back - v).abs() < 1.0, "v={v} back={back}");
         }
     }
@@ -280,7 +381,9 @@ mod tests {
         for v in [-0.075, -0.05, 0.0, 0.05, 0.075] {
             let mut buf = [0u8; 2];
             encode_fixed_range(&r, 26, v, &mut buf).unwrap();
-            let back = decode_fixed_range(&r, 26, &buf).unwrap();
+            let back = decode_fixed_range(&r, 26, &buf)
+                .unwrap()
+                .expect("non-sentinel round-trip");
             assert!((back - v).abs() < 1e-5, "v={v} back={back}");
         }
     }

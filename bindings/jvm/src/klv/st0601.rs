@@ -31,7 +31,7 @@ use tst_core::klv::universal_label::UniversalLabel;
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_unknown_list, checked_u8, read_byte_buffer,
+    build_field_errors, build_long_list, build_unknown_list, checked_u8, read_byte_buffer,
     read_nullable_byte_buffer, read_nullable_double, read_nullable_int, read_nullable_long,
     read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
@@ -578,6 +578,15 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         &[JValue::Object(&fe_list)],
     )?;
 
+    // --- sentinelTags — always set (even if empty) ---
+    let sentinel_list = build_long_list(env, r.sentinel_tags.iter().map(|&t| t as i64))?;
+    env.call_method(
+        &b,
+        "sentinelTags",
+        BUILDER_SIG_LIST,
+        &[JValue::Object(&sentinel_list)],
+    )?;
+
     // --- unknown — always set (even if empty) ---
     let unk_list = build_unknown_list(env, &r.unknown)?;
     env.call_method(
@@ -793,6 +802,23 @@ fn read_uas_datalink(
             .call_method(rec, "unknown", "()Ljava/util/List;", &[])?
             .l()?;
         r.unknown = read_unknown_list(env, &unk_obj, is_st0601_typed_tag)?;
+    }
+
+    // --- sentinelTags: List<Long> → Vec<u32> ---
+    {
+        let st_obj = env
+            .call_method(rec, "sentinelTags", "()Ljava/util/List;", &[])?
+            .l()?;
+        let size = env.call_method(&st_obj, "size", "()I", &[])?.i()?;
+        for i in 0..size {
+            let item = env
+                .call_method(&st_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                .l()?;
+            let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+            if let Ok(tag) = u32::try_from(v) {
+                r.sentinel_tags.push(tag);
+            }
+        }
     }
 
     // field_errors is a decoder-only diagnostic; not round-tripped (mirrors tst-py).

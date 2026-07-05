@@ -11,6 +11,66 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+/// State for the deterministic-jitter fallback path used when `getrandom`
+/// fails. The counter uses the Knuth multiplicative hash step (golden-ratio
+/// constant) so successive values are well-distributed across the u32 range,
+/// keeping the jitter behaviour close to the uniform distribution that the
+/// RFC 3550 §6.3.1 interval algorithm expects.
+struct FallbackState {
+    /// Set on the first `getrandom` failure; prevents the warning from
+    /// flooding the log on every subsequent iteration.
+    warned: bool,
+    /// Wrapping counter advanced each time the fallback path is taken.
+    counter: u32,
+}
+
+impl FallbackState {
+    const fn new() -> Self {
+        Self {
+            warned: false,
+            counter: 0,
+        }
+    }
+}
+
+/// Core jitter-word selection, split out so tests can drive the fallback
+/// branch without making `getrandom` fail globally.
+///
+/// - `getrandom_word` is `Some(word)` when `getrandom` succeeded, `None`
+///   when it failed.
+/// - On `None`: emits a `tracing::warn!` the first time (guarded by
+///   `state.warned`), then advances the wrapping counter and returns it.
+fn apply_jitter_word(getrandom_word: Option<u32>, state: &mut FallbackState) -> u32 {
+    match getrandom_word {
+        Some(w) => w,
+        None => {
+            if !state.warned {
+                tracing::warn!(
+                    target: "tst_rtp",
+                    "getrandom failed in RTCP reporter; \
+                     falling back to deterministic jitter — \
+                     RTCP will keep running but intervals are not cryptographically random"
+                );
+                state.warned = true;
+            }
+            // Knuth multiplicative hash step: maps sequential integers to
+            // well-spread u32 values, giving jitter behaviour that spans the
+            // full [0.5, 1.5] × base range across iterations.
+            state.counter = state.counter.wrapping_add(2_654_435_761);
+            state.counter
+        }
+    }
+}
+
+/// Obtain the next jitter word, falling back gracefully if `getrandom` fails.
+fn next_jitter_word(state: &mut FallbackState) -> u32 {
+    let mut buf = [0u8; 4];
+    let word = getrandom::getrandom(&mut buf)
+        .ok()
+        .map(|()| u32::from_le_bytes(buf));
+    apply_jitter_word(word, state)
+}
+
 /// Base RTCP transmission interval, RFC 3550 §6.2 says 5 s for the
 /// reduced minimum (after the initial RTCP_BANDWIDTH backoff). We
 /// don't scale by session size in v1.
@@ -43,10 +103,10 @@ impl RtcpReporterHandle {
             .name("rtcp-reporter".to_string())
             .spawn(move || {
                 let mut last_emit = std::time::Instant::now();
+                let mut fallback = FallbackState::new();
                 while !cancel_thread.load(Ordering::Relaxed) {
-                    let mut urandom = [0u8; 4];
-                    getrandom::getrandom(&mut urandom).expect("getrandom failed");
-                    let interval = jitter_interval(RTCP_BASE_INTERVAL, u32::from_le_bytes(urandom));
+                    let interval =
+                        jitter_interval(RTCP_BASE_INTERVAL, next_jitter_word(&mut fallback));
                     // Wake every 100 ms to check the cancel flag — same shape as
                     // the transport's cancel-handle pattern.
                     let deadline = last_emit + interval;
@@ -99,6 +159,75 @@ impl Drop for RtcpReporterHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── apply_jitter_word fallback path ────────────────────────────────────
+
+    /// Successive fallback words (getrandom_word=None) must differ from each
+    /// other, confirming the counter actually advances.
+    #[test]
+    fn fallback_successive_words_differ() {
+        let mut state = FallbackState::new();
+        let w1 = apply_jitter_word(None, &mut state);
+        let w2 = apply_jitter_word(None, &mut state);
+        let w3 = apply_jitter_word(None, &mut state);
+        assert_ne!(w1, w2, "first and second fallback words must differ");
+        assert_ne!(w2, w3, "second and third fallback words must differ");
+        assert_ne!(w1, w3, "first and third fallback words must differ");
+    }
+
+    /// Fallback words must produce jitter_interval output within the
+    /// documented [0.5, 1.5] × base band.
+    #[test]
+    fn fallback_words_in_jitter_interval_bounds() {
+        let base = RTCP_BASE_INTERVAL;
+        let lo = base.as_secs_f64() * 0.5;
+        let hi = base.as_secs_f64() * 1.5;
+        let mut state = FallbackState::new();
+        for _ in 0..16 {
+            let word = apply_jitter_word(None, &mut state);
+            let interval = jitter_interval(base, word).as_secs_f64();
+            assert!(
+                interval >= lo && interval <= hi,
+                "fallback interval {interval:.3} s out of [{lo:.3}, {hi:.3}]"
+            );
+        }
+    }
+
+    /// The warn-once guard: `warned` is false before the first failure and
+    /// true afterwards; calling apply_jitter_word with Some(_) never sets it.
+    #[test]
+    fn warn_once_guard_transitions() {
+        let mut state = FallbackState::new();
+        assert!(!state.warned, "warned must start false");
+
+        // Some(_) path must not touch the warned flag.
+        apply_jitter_word(Some(42), &mut state);
+        assert!(!state.warned, "Some(_) must not set warned");
+
+        // First None: warned becomes true.
+        apply_jitter_word(None, &mut state);
+        assert!(state.warned, "first None must set warned");
+
+        // Second None: still true (no toggle).
+        apply_jitter_word(None, &mut state);
+        assert!(state.warned, "subsequent None must leave warned true");
+    }
+
+    /// When getrandom succeeds (Some path), apply_jitter_word returns the
+    /// exact word passed in and does not touch the fallback counter.
+    #[test]
+    fn success_path_returns_exact_word() {
+        let mut state = FallbackState::new();
+        let counter_before = state.counter;
+        let result = apply_jitter_word(Some(0xDEAD_BEEF), &mut state);
+        assert_eq!(result, 0xDEAD_BEEF);
+        assert_eq!(
+            state.counter, counter_before,
+            "counter must be unchanged on success path"
+        );
+    }
+
+    // ── jitter_interval contract ───────────────────────────────────────────
 
     #[test]
     fn jitter_interval_min_max_bounds() {

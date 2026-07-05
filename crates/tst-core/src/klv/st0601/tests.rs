@@ -1714,14 +1714,30 @@ fn sentinel_value_wins_over_sentinel_tags_entry() {
 /// Invariant pin: every signed-range tag modelled in the TAGS table must have
 /// a `Some(_)` entry in `st0601_sentinel_meaning`. Guards future tag additions
 /// — a new signed tag without a table entry will fail here.
+///
+/// The decode/encode paths key sentinel handling off `range.signed`, so the
+/// signed set is derived from that same predicate; a per-tag cross-check
+/// pins `Encoding::I*Range` to `range.signed` so the two ways of expressing
+/// signedness cannot silently diverge on a future tag addition.
 #[test]
 fn every_modelled_signed_tag_has_a_sentinel_meaning() {
     use super::mapping::st0601_sentinel_meaning;
     use super::tags::{Encoding, TAGS};
 
+    for t in TAGS.iter() {
+        let by_encoding = matches!(t.encoding, Encoding::I16Range | Encoding::I32Range);
+        let by_range = t.range.is_some_and(|r| r.signed);
+        assert_eq!(
+            by_encoding, by_range,
+            "tag {}: Encoding::I*Range ({by_encoding}) disagrees with \
+             range.signed ({by_range}) — decode keys off range.signed",
+            t.id
+        );
+    }
+
     let signed_tags: Vec<u8> = TAGS
         .iter()
-        .filter(|t| matches!(t.encoding, Encoding::I16Range | Encoding::I32Range))
+        .filter(|t| t.range.is_some_and(|r| r.signed))
         .map(|t| t.id)
         .collect();
 

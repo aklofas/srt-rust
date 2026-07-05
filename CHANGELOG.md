@@ -219,6 +219,21 @@ layout changed.
   instead of being forwarded to the demuxer. The same check applies to the
   TCP-interleaved mpsc path. The demuxer's own resync logic is unchanged and
   remains defense-in-depth (DA-RTP-5, PR #82).
+- RTP: `RtpRecvTransport`'s `bytes_received` / `packets_received` counters
+  (surfaced via `socket_stats()`) are now incremented at wire-level — before
+  RTP header or MP2T shape validation — on both the UDP and TCP-interleaved
+  mpsc paths. Previously the mpsc path incremented only after the MP2T shape
+  guard, so malformed-but-received chunks were undercounted relative to the
+  UDP path. Both paths now consistently count every received datagram or
+  channel chunk; malformed drops remain separately tracked in
+  `RtpStats::malformed_packets` (PR #82).
+- RTSP: `extract_mount_path` now strips a single trailing `/` from the
+  resolved path (except for the root `"/"`) so `rtsp://host/live/` and
+  `rtsp://host/live` resolve to the same registered mount. Previously, a
+  DESCRIBE with a trailing slash would get a 404 for a valid mount, and a
+  client that DESCRIBE'd at `/live/` but then SETUP'd at `/live` would find
+  different mounts. The normalization is applied consistently across DESCRIBE
+  and SETUP (PR #82).
 
 ### Changed — internal refactors and dependencies (behavior-preserving)
 

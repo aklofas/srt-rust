@@ -441,7 +441,7 @@ pub(crate) enum Source {
 ///
 /// | [`SocketStats`] field | Source |
 /// |---|---|
-/// | `bytes_received` / `packets_received` | Local counters, tick per `recv_bytes` |
+/// | `bytes_received` / `packets_received` | Local counters; incremented on every received datagram/chunk before RTP-header or MP2T-shape validation. Malformed-but-received packets are counted here; their drops are separately tracked in [`RtpStats::malformed_packets`]. |
 /// | `rtt_us` | Always 0. RTT computation is deferred; see `docs/project/deferred-features.md` (RTCP statistics reporting). |
 /// | `packets_lost_send` | RTCP RR cumulative-lost field. Populates on the same paths as `rtt_us`; `0` otherwise |
 /// | `bytes_sent` / `packets_sent` | 0 (this is the receive half) |
@@ -926,6 +926,13 @@ impl RecvTransport for RtpRecvTransport {
                 // elapsing — the latter just loops to re-check cancel.
                 match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
                     Ok(payload) => {
+                        // Count at wire-level, before validation — consistent with
+                        // the UDP path which increments on Ok(n) before RTP-header
+                        // or MP2T-shape checks. Malformed-but-received packets are
+                        // counted here; drops are tracked in `malformed_packets`.
+                        self.bytes_received =
+                            self.bytes_received.saturating_add(payload.len() as u64);
+                        self.packets_received = self.packets_received.saturating_add(1);
                         if payload.len() > buf.len() {
                             return Err(TransportError::Broken {
                                 msg: format!(
@@ -949,9 +956,6 @@ impl RecvTransport for RtpRecvTransport {
                             );
                             continue;
                         }
-                        self.bytes_received =
-                            self.bytes_received.saturating_add(payload.len() as u64);
-                        self.packets_received = self.packets_received.saturating_add(1);
                         buf[..payload.len()].copy_from_slice(&payload);
                         return Ok(payload.len());
                     }
@@ -1425,6 +1429,52 @@ mod tests {
             t.rtp_stats().malformed_packets,
             1,
             "empty payload must tick malformed_packets"
+        );
+    }
+
+    /// Wire-level counter semantics on the mpsc path: `bytes_received` and
+    /// `packets_received` must increment before MP2T-shape validation, so a
+    /// malformed payload still advances the counters (same as the UDP path,
+    /// which increments on `Ok(n)` before any header or shape check).
+    ///
+    /// We send one malformed (100-byte, wrong sync) + one valid (188-byte,
+    /// 0x47 sync) payload. After recv_bytes returns the valid one we expect
+    /// packets_received == 2 and bytes_received == 100 + 188 == 288.
+    #[test]
+    fn mpsc_bytes_packets_received_counted_at_wire_level() {
+        use tst_core::transport::RecvTransport;
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        // Malformed: not 188-aligned, wrong sync byte.
+        let malformed = bytes::Bytes::from(vec![0xAAu8; 100]);
+        data_tx.send(malformed).expect("send malformed payload");
+
+        // Valid: exactly one 188-byte TS packet.
+        let mut valid_pkt = vec![0x00u8; 188];
+        valid_pkt[0] = 0x47;
+        data_tx
+            .send(bytes::Bytes::from(valid_pkt))
+            .expect("send valid payload");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t.recv_bytes(&mut buf).expect("valid packet must not error");
+        assert_eq!(n, 188);
+
+        let s = t.socket_stats().expect("alive transport reports stats");
+        assert_eq!(
+            s.packets_received, 2,
+            "both malformed and valid packets must be counted at wire-level"
+        );
+        assert_eq!(
+            s.bytes_received, 288,
+            "bytes_received must sum both malformed (100) and valid (188) payloads"
+        );
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            1,
+            "malformed_packets must be 1 for the one dropped payload"
         );
     }
 

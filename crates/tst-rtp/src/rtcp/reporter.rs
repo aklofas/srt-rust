@@ -12,10 +12,11 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 /// State for the deterministic-jitter fallback path used when `getrandom`
-/// fails. The counter uses the Knuth multiplicative hash step (golden-ratio
-/// constant) so successive values are well-distributed across the u32 range,
-/// keeping the jitter behaviour close to the uniform distribution that the
-/// RFC 3550 §6.3.1 interval algorithm expects.
+/// fails. The counter advances by the golden-ratio additive constant
+/// (0x9E3779B1 ≈ 2³²/φ, a Weyl-sequence step) so successive values are
+/// well-distributed across the u32 range, keeping the jitter behaviour close
+/// to the uniform distribution that the RFC 3550 §6.3.1 interval algorithm
+/// expects.
 struct FallbackState {
     /// Set on the first `getrandom` failure; prevents the warning from
     /// flooding the log on every subsequent iteration.
@@ -53,7 +54,8 @@ fn apply_jitter_word(getrandom_word: Option<u32>, state: &mut FallbackState) -> 
                 );
                 state.warned = true;
             }
-            // Knuth multiplicative hash step: maps sequential integers to
+            // Golden-ratio (Weyl sequence) additive step: adding 0x9E3779B1
+            // (≈ 2³²/φ) each iteration maps sequential counters to
             // well-spread u32 values, giving jitter behaviour that spans the
             // full [0.5, 1.5] × base range across iterations.
             state.counter = state.counter.wrapping_add(2_654_435_761);
@@ -175,7 +177,7 @@ mod tests {
         assert_ne!(w1, w3, "first and third fallback words must differ");
     }
 
-    /// Knuth-step fallback words are well-spread across the jitter band.
+    /// Weyl-sequence fallback words are well-spread across the jitter band.
     ///
     /// The bounds check (`interval ∈ [0.5, 1.5] × base`) is already
     /// guaranteed by `jitter_interval`'s own construction — asserting it
@@ -183,7 +185,7 @@ mod tests {
     /// property the comment claims: the spread of the 16 deterministic words
     /// across the `[0.5, 1.5] × base` band must exceed half the band width.
     ///
-    /// The Knuth multiplicative step (0x9E3779B1) produces values that span
+    /// The golden-ratio additive step (0x9E3779B1) produces values that span
     /// ~91 % of the u32 range in the first 16 iterations, yielding a spread
     /// of ~91 % of the band. The threshold (50 %) is generous enough to
     /// tolerate small changes to the constant while still failing a constant
@@ -206,7 +208,7 @@ mod tests {
             spread > band_width * 0.5,
             "fallback jitter spread {spread:.3} s is less than 50 % \
              of the band width {band_width:.3} s — \
-             the Knuth-step counter is not well-distributed"
+             the Weyl-sequence counter is not well-distributed"
         );
     }
 

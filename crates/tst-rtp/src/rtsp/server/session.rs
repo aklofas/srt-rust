@@ -77,12 +77,13 @@ pub struct ServerSessionState {
     /// subsequently fails (see `verify_digest`), so a captured header
     /// can never be replayed. Reset to 0 whenever the nonce is rotated.
     pub(crate) auth_nc_hwm: u32,
-    /// Cumulative count of 401-bounced auth requests on this connection.
-    /// Increments on every 401; resets ONLY on a successful (2xx) response
-    /// from an auth-gated method (DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN).
-    /// Non-auth-gated methods (OPTIONS, GET_PARAMETER) never reset it, so
-    /// an attacker cannot bypass the 3-strike limit by interleaving OPTIONS
-    /// between bad-auth requests. After 3 failures the session closes.
+    /// Count of consecutive 401-bounced auth requests on this connection
+    /// since the last successful authentication. Increments on every 401;
+    /// resets to 0 on a successful (2xx) response from an auth-gated method
+    /// (DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN). Non-auth-gated methods
+    /// (OPTIONS, GET_PARAMETER) never reset it, so an attacker cannot bypass
+    /// the 3-strike limit by interleaving OPTIONS between bad-auth requests.
+    /// After 3 consecutive failures the session closes.
     pub auth_failures: u8,
     /// Transport negotiation result from SETUP. None pre-SETUP.
     pub transport: Option<crate::rtsp::client::transport_negotiation::TransportResponse>,

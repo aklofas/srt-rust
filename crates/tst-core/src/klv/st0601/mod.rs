@@ -65,5 +65,6 @@ pub use encode::{
     _mandatory_tags, encode, encode_strict_compliance, encode_to_vec, encode_with, encoded_len,
     encoded_len_with,
 };
+pub use mapping::{St0601SentinelMeaning, st0601_sentinel_meaning};
 pub use model::{Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, UasDatalinkLs};
 pub use patch::patch;

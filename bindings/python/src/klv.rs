@@ -144,7 +144,6 @@ fn convert_field_error(py: Python<'_>, fe: &RustKlvFieldError) -> PyResult<PyObj
         RustKlvFieldError::OutOfRange { tag, .. } => ("OUT_OF_RANGE", *tag),
         RustKlvFieldError::InvalidUtf8 { tag } => ("INVALID_UTF8", *tag),
         RustKlvFieldError::InvalidLength { tag, .. } => ("INVALID_LENGTH", *tag),
-        RustKlvFieldError::InvalidSentinel { tag } => ("INVALID_SENTINEL", *tag),
         RustKlvFieldError::InvalidUtf16 { tag } => ("INVALID_UTF16", *tag),
         RustKlvFieldError::InvalidCodepoint { tag, .. } => ("INVALID_CODEPOINT", *tag),
         RustKlvFieldError::TruncatedField { tag } => ("TRUNCATED_FIELD", *tag),
@@ -1043,6 +1042,9 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
 
     kwargs.set_item("unknown", convert_unknown(py, &r.unknown)?)?;
     kwargs.set_item("field_errors", convert_field_errors(py, &r.field_errors)?)?;
+    let sentinel_tuple =
+        pyo3::types::PyTuple::new_bound(py, r.sentinel_tags.iter().map(|&t| t as u64));
+    kwargs.set_item("sentinel_tags", sentinel_tuple)?;
 
     Ok(cls.call((), Some(&kwargs))?.unbind())
 }
@@ -1212,6 +1214,12 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     ob!(vmti);
 
     r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
+
+    // sentinel_tags: tuple[int, ...] → Vec<u32>
+    let py_sentinel: Vec<u64> = p
+        .getattr(intern!(p.py(), "sentinel_tags"))?
+        .extract::<Vec<u64>>()?;
+    r.sentinel_tags = py_sentinel.into_iter().map(|t| t as u32).collect();
 
     Ok(r)
 }

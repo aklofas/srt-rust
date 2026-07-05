@@ -238,9 +238,6 @@ pub enum KlvFieldError {
         got: usize,
     },
 
-    #[error("tag {tag}: value reserved as INVALID by spec")]
-    InvalidSentinel { tag: u32 },
-
     /// Tag value declared as RFC 2781 UTF-16 contains malformed code
     /// units (lone surrogate, odd-length buffer). Reusable for any
     /// future UTF-16 / UCS-2 fields beyond ST 0102 Tag 13.

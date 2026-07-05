@@ -9819,3 +9819,23 @@ reason = "derive impl; no direct binding method (REF-TS-02 WP-D)"
 item = "tst_core::mpegts::demux::AdaptationFieldKind::fmt"
 reason = "derive impl; no direct binding method (REF-TS-02 WP-D)"
 
+[[exempt]]
+item = "tst_core::klv::st0601::St0601SentinelMeaning::clone"
+reason = "derive impl for DA-KLV-4 sentinel enum; covered by mapping tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::St0601SentinelMeaning::eq"
+reason = "derive impl for DA-KLV-4 sentinel enum; covered by mapping tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::St0601SentinelMeaning::fmt"
+reason = "derive impl for DA-KLV-4 sentinel enum; covered by mapping tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::St0601SentinelMeaning::hash"
+reason = "derive impl for DA-KLV-4 sentinel enum; covered by mapping tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::st0601_sentinel_meaning"
+reason = "DA-KLV-4 sentinel meaning lookup; exercised by mapping::tests::sentinel_meaning_table"
+

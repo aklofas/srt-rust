@@ -23,6 +23,10 @@ md-5       = { version = "0.10", default-features = false }
 sdp-types  = "0.1"
 secrecy    = { workspace = true }
 sha2       = { version = "0.10", default-features = false }
+# Constant-time byte comparison for RTSP auth credential verification.
+# Already in the workspace lockfile via rustls; declared direct so auth.rs
+# can use ConstantTimeEq without a feature gate.
+subtle     = "2"
 # Phase 3: tokio drives the RtspServer Runtime (internal-only sync facade).
 # Same feature set Phase 2 used as a dev-dep — features carry over.
 tokio      = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }

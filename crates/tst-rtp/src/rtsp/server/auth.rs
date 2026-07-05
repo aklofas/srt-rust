@@ -132,7 +132,17 @@ fn verify_basic(
     let (user, pass) = s
         .split_once(':')
         .ok_or_else(|| AuthVerifyError::BadBasic("missing colon".to_string()))?;
-    if user == expected_user && pass == expected_pass.expose_secret() {
+    // Constant-time comparison for both user and pass. Bitwise `&` (not
+    // short-circuit `&&`) ensures the pass comparison always executes even
+    // when the user check would fail, avoiding a timing oracle that reveals
+    // whether the username is correct.
+    use subtle::ConstantTimeEq;
+    let user_ok: bool = user.as_bytes().ct_eq(expected_user.as_bytes()).into();
+    let pass_ok: bool = pass
+        .as_bytes()
+        .ct_eq(expected_pass.expose_secret().as_bytes())
+        .into();
+    if user_ok & pass_ok {
         Ok(())
     } else {
         Err(AuthVerifyError::WrongCredentials)
@@ -237,7 +247,14 @@ fn verify_digest(
         cnonce,
         qop,
     );
-    if response_attr == expected_response {
+    // Constant-time comparison for the Digest response to prevent timing
+    // attacks that could reveal partial information about the expected hash.
+    use subtle::ConstantTimeEq;
+    let response_ok: bool = response_attr
+        .as_bytes()
+        .ct_eq(expected_response.as_bytes())
+        .into();
+    if response_ok {
         Ok(())
     } else {
         Err(AuthVerifyError::WrongDigestResponse)
@@ -446,6 +463,61 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(e, AuthVerifyError::WrongCredentials));
+    }
+
+    // ── Behavior-pinning tests for constant-time comparison ───────────────
+    // These must pass both before and after the ct-comparison refactor.
+
+    /// Both username and password wrong → still `WrongCredentials` (not panic,
+    /// not a different variant).
+    #[test]
+    fn verify_basic_wrong_both_returns_wrong_credentials() {
+        let cfg = basic_cfg();
+        use base64::Engine;
+        let auth = format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD.encode(b"nobody:badpass")
+        );
+        let e = verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            "",
+            &mut 0,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::WrongCredentials),
+            "wrong user+pass must give WrongCredentials, got {e:?}"
+        );
+    }
+
+    /// Credentials whose byte lengths differ from the expected values must
+    /// not panic and must produce `WrongCredentials`.
+    #[test]
+    fn verify_basic_differing_length_no_panic() {
+        let cfg = basic_cfg(); // password = "secret" (6 bytes)
+        use base64::Engine;
+        // Pass a much longer password so the length comparison is exercised.
+        let auth = format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD
+                .encode(b"admin:this-is-a-much-longer-password-than-expected")
+        );
+        let e = verify_authorization(
+            Some(&auth),
+            "DESCRIBE",
+            "rtsp://server/live",
+            &cfg,
+            "",
+            &mut 0,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(e, AuthVerifyError::WrongCredentials),
+            "longer-than-expected password must give WrongCredentials without panic, got {e:?}"
+        );
     }
 
     #[test]

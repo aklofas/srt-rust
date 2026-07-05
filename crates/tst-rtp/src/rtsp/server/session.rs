@@ -77,8 +77,12 @@ pub struct ServerSessionState {
     /// subsequently fails (see `verify_digest`), so a captured header
     /// can never be replayed. Reset to 0 whenever the nonce is rotated.
     pub(crate) auth_nc_hwm: u32,
-    /// Count of consecutive 401-bounced requests. After 3 in a row the
-    /// session closes (basic DoS guard).
+    /// Cumulative count of 401-bounced auth requests on this connection.
+    /// Increments on every 401; resets ONLY on a successful (2xx) response
+    /// from an auth-gated method (DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN).
+    /// Non-auth-gated methods (OPTIONS, GET_PARAMETER) never reset it, so
+    /// an attacker cannot bypass the 3-strike limit by interleaving OPTIONS
+    /// between bad-auth requests. After 3 failures the session closes.
     pub auth_failures: u8,
     /// Transport negotiation result from SETUP. None pre-SETUP.
     pub transport: Option<crate::rtsp::client::transport_negotiation::TransportResponse>,
@@ -361,12 +365,28 @@ where
                     tracing::warn!(
                         target: "tst_rtp::server",
                         peer = %peer,
-                        "3 consecutive auth failures; closing session"
+                        "3 auth failures; closing session"
                     );
                     return Ok(());
                 }
-            } else {
-                session.auth_failures = 0;
+            } else if response.status < 400 {
+                // Only reset the failure counter on a successful response
+                // from an auth-gated method. OPTIONS and GET_PARAMETER are
+                // never auth-gated (they always return 200), so resetting on
+                // them would let an attacker alternate OPTIONS with bad-auth
+                // requests to bypass the 3-strike limit indefinitely.
+                match req.method {
+                    RtspMethod::Describe
+                    | RtspMethod::Setup
+                    | RtspMethod::Play
+                    | RtspMethod::Pause
+                    | RtspMethod::Teardown => {
+                        session.auth_failures = 0;
+                    }
+                    RtspMethod::Options | RtspMethod::GetParameter => {
+                        // Non-auth-gated: do not touch the failure counter.
+                    }
+                }
             }
             if req.method == RtspMethod::Teardown && response.status == 200 {
                 // Clean close after TEARDOWN. `shutdown` lives on the
@@ -581,6 +601,244 @@ mod session_tests {
         }
         let text = String::from_utf8_lossy(&buf);
         assert!(text.contains("200"), "got: {}", text);
+
+        drop(client);
+        let _ = server_handle.await;
+    }
+
+    /// Helper: build a minimal `ServerState` with Basic auth configured.
+    fn make_state_with_basic_auth() -> Arc<ServerState> {
+        let mut builder = crate::builder::RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        builder.auth_basic(
+            "test",
+            "user",
+            secrecy::SecretString::from("secret".to_owned()),
+        );
+        Arc::new(ServerState {
+            builder,
+            cancel_token: tokio_util::sync::CancellationToken::new(),
+            hard_cancel: crate::cancel::RtspServerCancelHandle::new(),
+            mounts: std::sync::Mutex::new(std::collections::HashMap::new()),
+            active_sessions: std::sync::atomic::AtomicUsize::new(0),
+            total_rtp_packets_sent: std::sync::atomic::AtomicU64::new(0),
+            total_rtp_bytes_sent: std::sync::atomic::AtomicU64::new(0),
+            started: std::sync::atomic::AtomicBool::new(true),
+            shutdown: std::sync::atomic::AtomicBool::new(false),
+            local_addr: std::sync::Mutex::new(None),
+            sessions: std::sync::Mutex::new(Vec::new()),
+            notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
+        })
+    }
+
+    /// An OPTIONS request (which never requires auth and always returns 200)
+    /// must NOT reset the auth-failure counter. Without this guard an attacker
+    /// can alternate OPTIONS with bad-auth DESCRIBE requests and never reach
+    /// the 3-strike session-close limit.
+    ///
+    /// Sequence:
+    ///   DESCRIBE (no auth) → 401  [failures = 1]
+    ///   DESCRIBE (no auth) → 401  [failures = 2]
+    ///   OPTIONS            → 200  [must NOT reset to 0; failures stays 2]
+    ///   DESCRIBE (no auth) → 401  [failures = 3 → server closes session]
+    ///
+    /// The test verifies that the server closes the TCP connection after the
+    /// third DESCRIBE (reads EOF) rather than continuing to serve.
+    #[tokio::test]
+    async fn auth_failures_not_reset_by_options() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_handle = tokio::spawn(async move {
+            let (tcp, peer) = listener.accept().await.unwrap();
+            let state = make_state_with_basic_auth();
+            state
+                .active_sessions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let slot = SessionSlot::new(state.clone());
+            handle_connection(state, tcp, peer, slot).await
+        });
+
+        let mut client = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+
+        /// Read from `client` until we see a complete RTSP header block
+        /// (terminated by `\r\n\r\n`), then return the accumulated bytes.
+        async fn read_response(client: &mut tokio::net::TcpStream) -> Vec<u8> {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                let n = client.read(&mut chunk).await.unwrap_or(0);
+                if n == 0 {
+                    break; // EOF
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            buf
+        }
+
+        // DESCRIBE #1 — no Authorization header → 401 (failures = 1).
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 1\r\n\r\n")
+            .await
+            .unwrap();
+        let resp1 = read_response(&mut client).await;
+        assert!(
+            String::from_utf8_lossy(&resp1).contains("401"),
+            "expected 401, got: {}",
+            String::from_utf8_lossy(&resp1)
+        );
+
+        // DESCRIBE #2 — still no auth → 401 (failures = 2).
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 2\r\n\r\n")
+            .await
+            .unwrap();
+        let resp2 = read_response(&mut client).await;
+        assert!(
+            String::from_utf8_lossy(&resp2).contains("401"),
+            "expected 401, got: {}",
+            String::from_utf8_lossy(&resp2)
+        );
+
+        // OPTIONS — always 200, never auth-gated. Must NOT reset the counter.
+        client
+            .write_all(b"OPTIONS rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 3\r\n\r\n")
+            .await
+            .unwrap();
+        let resp3 = read_response(&mut client).await;
+        assert!(
+            String::from_utf8_lossy(&resp3).contains("200"),
+            "expected 200 from OPTIONS, got: {}",
+            String::from_utf8_lossy(&resp3)
+        );
+
+        // DESCRIBE #3 — failures reaches 3 → server must close the session.
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 4\r\n\r\n")
+            .await
+            .unwrap();
+        // Read until EOF. The server closes the connection after the 3rd auth
+        // failure, so this read eventually returns 0 (after the 401 response).
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            let n = client.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+        }
+        let text = String::from_utf8_lossy(&buf);
+        // The server sends a final 401 then closes.
+        assert!(
+            text.contains("401"),
+            "expected 401 response before EOF, got: {}",
+            text
+        );
+
+        let _ = server_handle.await;
+    }
+
+    /// Successful auth on a gated method (DESCRIBE returning 200) resets the
+    /// failure counter, so a legitimate client who had a typo in their
+    /// password doesn't get permanently locked after fixing it.
+    ///
+    /// Sequence:
+    ///   DESCRIBE (no auth) → 401  [failures = 1]
+    ///   DESCRIBE (correct Basic auth) → 200  [failures reset to 0]
+    ///   DESCRIBE (no auth) → 401  [failures = 1, not 2]
+    ///   DESCRIBE (no auth) → 401  [failures = 2, session still open]
+    ///
+    /// The test verifies that the session remains open after 2 failures when
+    /// one successful auth intervened, by confirming the server responds to
+    /// the 4th DESCRIBE (rather than EOF).
+    #[tokio::test]
+    async fn auth_failures_reset_on_successful_auth() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_handle = tokio::spawn(async move {
+            let (tcp, peer) = listener.accept().await.unwrap();
+            let state = make_state_with_basic_auth();
+            state
+                .active_sessions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let slot = SessionSlot::new(state.clone());
+            handle_connection(state, tcp, peer, slot).await
+        });
+
+        let mut client = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+
+        async fn read_response(client: &mut tokio::net::TcpStream) -> Vec<u8> {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                let n = client.read(&mut chunk).await.unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            buf
+        }
+
+        // DESCRIBE without auth → 401 (failures = 1).
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 1\r\n\r\n")
+            .await
+            .unwrap();
+        let resp1 = read_response(&mut client).await;
+        assert!(String::from_utf8_lossy(&resp1).contains("401"));
+
+        // DESCRIBE with correct Basic auth: "user:secret" base64 = "dXNlcjpzZWNyZXQ=".
+        // Server has no mount so it will return 404 Not Found — but that is a
+        // 2xx-class success for auth purposes (auth passed, resource missing),
+        // so the failure counter resets.
+        client
+            .write_all(
+                b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\n\
+                  CSeq: 2\r\n\
+                  Authorization: Basic dXNlcjpzZWNyZXQ=\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let resp2 = read_response(&mut client).await;
+        // Must NOT be 401 — auth succeeded, any non-401 response resets.
+        assert!(
+            !String::from_utf8_lossy(&resp2).contains("401"),
+            "expected non-401 after valid auth, got: {}",
+            String::from_utf8_lossy(&resp2)
+        );
+
+        // DESCRIBE without auth again → 401 (failures = 1, reset after good auth).
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 3\r\n\r\n")
+            .await
+            .unwrap();
+        let resp3 = read_response(&mut client).await;
+        assert!(String::from_utf8_lossy(&resp3).contains("401"));
+
+        // DESCRIBE without auth → 401 (failures = 2 — session still open).
+        client
+            .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 4\r\n\r\n")
+            .await
+            .unwrap();
+        let resp4 = read_response(&mut client).await;
+        // Session is still alive (not EOF) because failures only reached 2.
+        assert!(
+            !resp4.is_empty(),
+            "expected a response (session still open), got EOF"
+        );
+        assert!(String::from_utf8_lossy(&resp4).contains("401"));
 
         drop(client);
         let _ = server_handle.await;

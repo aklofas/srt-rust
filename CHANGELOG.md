@@ -205,6 +205,13 @@ layout changed.
   (`getrandom` failure). It now warns once and falls back to a deterministic
   wrapping-counter jitter, keeping RTCP emissions at ~`RTCP_BASE_INTERVAL`
   (PR #82).
+- RTSP: the server's auth-failure counter (3-strike session-close guard) no
+  longer resets when the client sends an OPTIONS or GET_PARAMETER request.
+  Previously, an attacker could interleave OPTIONS (always 200, never
+  auth-gated) between bad-auth DESCRIBE/SETUP/PLAY requests to keep the
+  counter ≤ 1 indefinitely. The counter now resets only on a successful (2xx)
+  response from an auth-gated method; OPTIONS and GET_PARAMETER leave it
+  untouched (PR #82).
 - RTP: the recv path now validates RFC 2250 MP2T payload shape after a
   successful RTP header parse (PT=33 confirmed). Payloads that are empty,
   not an integral multiple of 188 bytes, or do not start with the TS sync

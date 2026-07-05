@@ -394,6 +394,18 @@ impl Socket {
     /// Clone-able close handle. Calling `cancel()` from any thread
     /// closes the underlying SRT socket — wakes a peer thread parked in
     /// `send` or `recv` with a Broken-class error. Idempotent.
+    ///
+    /// # Post-cancel fd-reuse note
+    ///
+    /// After `cancel()` fires, this `Socket` still holds the integer
+    /// libsrt handle. `&self` methods (`stats`, `peer_addr`, `local_addr`)
+    /// called on the still-live `Socket` after cross-thread cancel may
+    /// operate on a reused fd if libsrt has reassigned that integer to a
+    /// new socket in the interim. The transport layer guards against this
+    /// by nulling the socket on `Broken`, but callers that retain bare
+    /// `Socket` values past a cancel should treat any post-cancel `&self`
+    /// results as advisory. No memory unsafety results; libsrt validates
+    /// handles internally.
     pub fn cancel_handle(&self) -> tst_core::SrtCancelHandle {
         self.cancel.clone()
     }

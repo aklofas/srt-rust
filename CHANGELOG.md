@@ -190,6 +190,11 @@ layout changed.
   / qop-downgrade abuse (DA-RTP-4); the `PLAY` response reports the actual
   initial sequence number and RTP timestamp in `RTP-Info`; and IPv6 hosts are
   bracketed correctly in rendered request URIs (PR #73).
+- RTSP: server credential checks are constant-time — Basic auth compares
+  username and password unconditionally (no early-exit on username mismatch),
+  and Digest auth compares the response attribute with constant-time equality,
+  removing timing side-channels that could reveal whether credentials are
+  partially correct (PR #82).
 
 ### Changed — internal refactors and dependencies (behavior-preserving)
 

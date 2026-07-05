@@ -1220,6 +1220,75 @@ mod tests {
         );
     }
 
+    /// In-range decode guard for the three shipped ST 0903 IMAPB shapes.
+    ///
+    /// Each pinning sweep skips `y <= y_max`. This test fills that gap: it
+    /// encodes `max` (the boundary value mapping to `y_max`) and one
+    /// mid-range value for each shape and asserts both decode as `Value`.
+    #[test]
+    fn imapb_shipped_shapes_in_range_values_decode_as_value() {
+        // FOV: IMAPB(0, 180, 2) — sF=128, sR=1/128≈0.0078
+        {
+            let p = ImapbParams {
+                min: 0.0,
+                max: 180.0,
+                length: 2,
+            };
+            let tol = 0.01;
+            for &v in &[90.0_f64, 180.0] {
+                let mut buf = [0u8; 2];
+                encode_imapb(&p, v, &mut buf).unwrap();
+                match decode_imapb(&p, &buf).unwrap() {
+                    DecodedImapb::Value(d) => assert!(
+                        (d - v).abs() <= tol,
+                        "FOV: encode({v}) round-trip: expected ~{v}, got {d}"
+                    ),
+                    other => panic!("FOV: expected Value for {v}, got {other:?}"),
+                }
+            }
+        }
+        // Offsets: IMAPB(-19.2, 19.2, 3) — sF=131072, sR≈7.6e-6
+        {
+            let p = ImapbParams {
+                min: -19.2,
+                max: 19.2,
+                length: 3,
+            };
+            let tol = 1e-4;
+            for &v in &[0.0_f64, 19.2] {
+                let mut buf = [0u8; 3];
+                encode_imapb(&p, v, &mut buf).unwrap();
+                match decode_imapb(&p, &buf).unwrap() {
+                    DecodedImapb::Value(d) => assert!(
+                        (d - v).abs() <= tol,
+                        "offsets: encode({v}) round-trip: expected ~{v}, got {d}"
+                    ),
+                    other => panic!("offsets: expected Value for {v}, got {other:?}"),
+                }
+            }
+        }
+        // TargetHae: IMAPB(-900, 19000, 2) — sF=1, sR=1.0
+        {
+            let p = ImapbParams {
+                min: -900.0,
+                max: 19000.0,
+                length: 2,
+            };
+            let tol = 1.1;
+            for &v in &[9000.0_f64, 19000.0] {
+                let mut buf = [0u8; 2];
+                encode_imapb(&p, v, &mut buf).unwrap();
+                match decode_imapb(&p, &buf).unwrap() {
+                    DecodedImapb::Value(d) => assert!(
+                        (d - v).abs() <= tol,
+                        "targetHae: encode({v}) round-trip: expected ~{v}, got {d}"
+                    ),
+                    other => panic!("targetHae: expected Value for {v}, got {other:?}"),
+                }
+            }
+        }
+    }
+
     #[test]
     fn special_value_round_trips_through_encode_decode() {
         let p = ImapbParams {

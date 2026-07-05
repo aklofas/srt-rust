@@ -536,7 +536,8 @@ fn centroid_pix_col_at_v4_cap_round_trips() {
 //
 // The default (lenient) encode path in write_pack enforces all caps, so
 // both lenient and strict paths are covered — encode_strict_compliance
-// calls encode_to_vec which calls write_pack.
+// calls encode_to_vec which calls write_pack. The test below also has an
+// explicit smoke-call through the strict entry point to confirm this.
 //
 // VmtiLs::precision_time_stamp (u64) is trivially lossless (8-byte
 // big-endian raw bytes); see `precision_time_stamp_u64_max_round_trips`
@@ -633,6 +634,27 @@ fn u64_typed_fields_never_silently_truncate_on_encode() {
         assert!(
             matches!(err, KlvEncodeError::OutOfRange { .. }),
             "{name} at u64::MAX: expected OutOfRange, got {err:?}"
+        );
+    }
+
+    // ── Strict path smoke-call: encode_strict_compliance delegates to
+    // encode_to_vec → write_pack, so the same OutOfRange fires through it. ──
+    {
+        use crate::klv::st0903::{VmtiLs, encode_strict_compliance};
+        let ls = VmtiLs {
+            version_number: Some(6),
+            num_targets_reported: Some(1),
+            targets: vec![VTargetPack {
+                target_id: 1,
+                centroid_pixel: Some(V6_MAX + 1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = encode_strict_compliance(&ls).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::OutOfRange { tag: 1, .. }),
+            "strict path: expected OutOfRange tag 1 for over-cap centroid_pixel, got {err:?}"
         );
     }
 }

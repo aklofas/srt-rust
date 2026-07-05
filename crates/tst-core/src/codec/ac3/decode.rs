@@ -71,9 +71,10 @@ pub struct Ac3SyncInfo {
 /// - [`CodecParseError::BadSyncWord`] when the first 16 bits are not
 ///   `0x0B77`.
 /// - [`CodecParseError::Forbidden`] when `fscod == 3` (reserved sample
-///   rate per A/52 Table 5.6).
+///   rate per A/52 Table 5.6); applies only to AC-3 frames (`bsid ≤ 8`).
 /// - [`CodecParseError::ReservedValue`] when `frmsizecod > 37`
-///   (reserved frame-size code per A/52 Table 5.18).
+///   (reserved frame-size code per A/52 Table 5.18); applies only to
+///   AC-3 frames (`bsid ≤ 8`).
 /// - [`CodecParseError::UnsupportedProfile`] when `bsid >= 9`
 ///   (E-AC-3 or alternative bitstream — needs a separate parser).
 pub fn parse_syncframe(bytes: &[u8]) -> Result<Ac3SyncInfo, CodecParseError> {
@@ -107,7 +108,8 @@ pub fn parse_syncframe(bytes: &[u8]) -> Result<Ac3SyncInfo, CodecParseError> {
     let bsid = (bytes[5] >> 3) & 0b1_1111;
     let bsmod = bytes[5] & 0b0000_0111;
     if bsid >= 9 {
-        // Annex E (E-AC-3) uses bsid 16; alternative bitstreams use 9/10.
+        // bsid 16 is Annex E (E-AC-3); bsid 11..=15 are the reserved backward-compatible
+        // range; bsid 9 and 10 are alternative bitstreams. All are rejected here.
         return Err(CodecParseError::UnsupportedProfile { profile_idc: bsid });
     }
 

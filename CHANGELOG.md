@@ -104,9 +104,10 @@ layout changed.
 - Muxer config: descriptor bodies of 254 or 255 bytes are no longer
   incorrectly rejected. H.222.0 §2.6 defines `descriptor_length` as an 8-bit
   field, so 0..=255 bytes are all valid; the old `declared > 253` guard was
-  without documented basis. Such descriptors are still rejected by the separate
-  `PmtTooLarge` check if they would make the PMT section exceed 183 bytes
-  (DA-MUX-3).
+  without documented basis. A 254- or 255-byte body necessarily exceeds the
+  183-byte single-packet PMT limit, so such descriptors are always rejected by
+  the separate `PmtTooLarge` check — the practical change is error
+  classification only (DA-MUX-3, PR #81).
 
 ### Changed — pipeline send semantics
 
@@ -130,7 +131,7 @@ layout changed.
   `frmsizecod` bits happen to be invalid under AC-3 field constraints now
   correctly returns `UnsupportedProfile` rather than `Forbidden` or
   `ReservedValue` — the AC-3 field constraints are inapplicable once the
-  bitstream is identified as E-AC-3 (DA-AV-3).
+  bitstream is identified as E-AC-3 (DA-AV-3, PR #81).
 
 ### Fixed — codec parsing (H.264)
 
@@ -153,7 +154,7 @@ layout changed.
   reserved integer (`y_max + 1`) was likewise admitted as a `Value` decoding
   to `max + epsilon`; it is now classified `OutOfRange`. Legitimately-encoded
   values are unaffected at every length (audit finding F-02,
-  `crates/tst-core/src/klv/imapb.rs`).
+  `crates/tst-core/src/klv/imapb.rs`, PR #81).
 
 ### Fixed — KLV encoding conformance
 

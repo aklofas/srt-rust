@@ -447,7 +447,7 @@ pub enum MuxError {
     PmtTooLarge { used_bytes: usize, max_bytes: usize },
 
     /// Caller-supplied descriptor TLV bytes are not well-formed.
-    /// Length byte must equal `data.len() - 2` and must not exceed 253.
+    /// Length byte must equal `data.len() - 2`.
     #[error(
         "malformed descriptor for stream {stream_index} descriptor {descriptor_index}: {reason}"
     )]

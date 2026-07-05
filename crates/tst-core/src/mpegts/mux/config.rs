@@ -1289,11 +1289,14 @@ impl MuxerProgramConfigBuilder {
 /// hand-built `ProgramMap` can exceed that (`RawDescriptor` fields are
 /// public), which errors rather than truncating the length byte.
 ///
-/// The bound enforced here is only the length-byte cast — downstream
-/// validation is tighter still: `validate()` caps a TLV body at 253
-/// bytes (`MuxError::MalformedDescriptor`) and the whole PMT section at
-/// one TS packet (`MuxError::PmtTooLarge`), so a near-255-byte body
-/// that passes here can still fail at build time.
+/// The bound enforced here is only the length-byte cast — a body that
+/// does not fit in a `u8` (> 255 bytes) is rejected here with
+/// `MuxError::ConfigInvalid`. Bodies of ≤ 255 bytes pass this check;
+/// the length-byte mismatch check in `validate()` then catches any
+/// descriptor where `tlv[1] != actual_body_len`, emitting
+/// `MuxError::MalformedDescriptor`. The `MuxError::PmtTooLarge`
+/// backstop rejects descriptors (including 254/255-byte bodies) whose
+/// total PMT section would exceed one TS packet.
 fn raw_descriptor_to_tlv(
     pid: u16,
     d: &crate::mpegts::descriptors::RawDescriptor,

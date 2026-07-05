@@ -181,6 +181,14 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// `StrictMode::Full`), the error propagates with `kind` `InputMalformed`
     /// and terminates the loop.
     ///
+    /// # C ABI
+    ///
+    /// **Single-consumer contract:** `tst_event_t` pointer fields returned by
+    /// the underlying `tst_demuxer_next_event` call are valid only until the
+    /// next `recv_event` (or `close`) call on the same handle **from any
+    /// thread**. Concurrent pulls on one handle silently invalidate the first
+    /// caller's borrowed pointers; use one consumer thread per handle.
+    ///
     /// # Errors
     ///
     /// Returns [`DemuxReceiverError`] with `kind` one of:

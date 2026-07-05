@@ -282,7 +282,7 @@ plain `[UL][len][body]`:
 | ST 0601.8-11 (Tag 1 last) | ⚙️ Partial | Wire format accepts any order; `decode_strict_compliance` enforces. |
 | ST 0601.8-12 (Tag 65 required) | ⚙️ Partial | Wire format treats as `Option<u8>`; `decode_strict_compliance` enforces. |
 | ST 0601 ISO 646 / 7-bit ASCII string fields (Tags 3, 4, 10–12) | 🟡 Permissive | UTF-8 accepted; corpus is plain ASCII. |
-| Linear-range int↔float mapping (§7.5) | ✅ Full | `INT_MIN` sentinel correctly rejected as `InvalidSentinel`. |
+| Linear-range int↔float mapping (§7.5) | ✅ Full | INT_MIN special values produce `Ok(None)`; tag recorded in `sentinel_tags`, not `field_errors`. |
 | Big-endian byte / bit ordering (§6.5.1) | ✅ Full | Throughout. |
 
 ### Typed ST 0601 items (49 of 143)

@@ -20,38 +20,53 @@ use crate::klv::st0601::tags::LinearRange;
 pub enum St0601SentinelMeaning {
     /// INT_MIN signals that the value exceeded the mapped range.
     ///
-    /// Tags: 6 (Platform Pitch — ST 0601.19 §8.6 p.41),
-    /// 7 (Platform Roll — §8.7 p.43),
-    /// 50 (Platform Angle of Attack — §8.50 p.95),
-    /// 90 (Platform Pitch Full — §8.90 p.141),
-    /// 91 (Platform Roll Full — §8.91 p.143).
+    /// Tags: 6 (Platform Pitch — ST 0601.19 §8.6),
+    /// 7 (Platform Roll — §8.7),
+    /// 50 (Platform Angle of Attack — §8.50),
+    /// 51 (Platform Vertical Speed — §8.51),
+    /// 52 (Platform Sideslip Angle — §8.52),
+    /// 79 (Sensor North Velocity — §8.79),
+    /// 80 (Sensor East Velocity — §8.80),
+    /// 90 (Platform Pitch Full — §8.90),
+    /// 91 (Platform Roll Full — §8.91),
+    /// 92 (Platform Angle of Attack Full — §8.92),
+    /// 93 (Platform Sideslip Angle Full — §8.93).
     OutOfRange,
 
     /// INT_MIN is explicitly reserved with no assigned meaning.
     ///
-    /// Tags: 13 (Sensor Latitude — ST 0601.19 §8.13 p.50),
-    /// 14 (Sensor Longitude — §8.14 p.51),
-    /// 19 (Sensor Relative Elevation — §8.19 p.58).
+    /// Tags: 13 (Sensor Latitude — ST 0601.19 §8.13),
+    /// 14 (Sensor Longitude — §8.14),
+    /// 19 (Sensor Relative Elevation — §8.19),
+    /// 67 (Alternate Platform Latitude — §8.67),
+    /// 68 (Alternate Platform Longitude — §8.68).
     Reserved,
 
     /// INT_MIN signals that the value is not available, typically because
     /// the sensor is pointing off-Earth and no ground intersection exists.
     ///
-    /// Tags: 23 (Frame Center Latitude — ST 0601.19 §8.23 p.62),
-    /// 24 (Frame Center Longitude — §8.24 p.63),
-    /// 26–33 (Offset Corner Lat/Lon — §8.26–8.33 pp.65–76),
-    /// 82–89 (Full Corner Lat/Lon — §8.82–8.89 pp.133–140).
+    /// Tags: 23 (Frame Center Latitude — ST 0601.19 §8.23),
+    /// 24 (Frame Center Longitude — §8.24),
+    /// 26–33 (Offset Corner Lat/Lon — §8.26–8.33),
+    /// 40 (Target Location Latitude — §8.40),
+    /// 41 (Target Location Longitude — §8.41),
+    /// 82–89 (Full Corner Lat/Lon — §8.82–8.89).
     NotAvailable,
 }
 
 /// Return the spec-defined meaning of the INT_MIN sentinel for `tag`, or
-/// `None` if the tag has no signed linear mapping (no sentinel is defined).
+/// `None` if the spec defines no INT_MIN special value for that tag.
 ///
-/// The table is derived directly from the "Special Values" column in the
-/// ST 0601.19 per-tag summary tables. Tags whose spec entry does **not**
-/// reserve INT_MIN are absent from this table; their signed decode path is
-/// unchanged (INT_MIN is treated as the ordinary minimum representable
-/// value, and no sentinel is pushed).
+/// This is the **complete** ST 0601.19 INT_MIN special-value assignment
+/// table, derived from the "Special Values" column in every per-tag
+/// summary table in the document. `None` means the spec does not assign
+/// any meaning to INT_MIN for that tag; it does **not** mean the tag is
+/// unsigned or that INT_MIN is valid for that tag.
+///
+/// Note: `decode_fixed_range` treats INT_MIN as a sentinel for every
+/// signed range tag regardless of this table — it returns `Ok(None)` and
+/// the caller records the tag in `sentinel_tags`. This function is a
+/// pure reference lookup; the decoder never calls it during decode.
 ///
 /// # Spec quotes (ST 0601.19, 02 March 2023)
 ///
@@ -65,16 +80,28 @@ pub enum St0601SentinelMeaning {
 /// | 23  | `0x80000000 = "N/A (Off-Earth)" indicator` |
 /// | 24  | `0x80000000 = "N/A (Off-Earth)" indicator` |
 /// | 26–33 | `0x8000 = "N/A (Off-Earth)" indicator` |
+/// | 40  | `0x80000000 = "N/A (Off-Earth)" indicator` |
+/// | 41  | `0x80000000 = "N/A (Off-Earth)" indicator` |
 /// | 50  | `0x8000 = "Out of Range" indicator` |
+/// | 51  | `0x8000 = "Out of Range" indicator` |
+/// | 52  | `0x8000 = "Out of Range" indicator` |
+/// | 67  | `0x80000000 = "Reserved"` |
+/// | 68  | `0x80000000 = "Reserved"` |
+/// | 79  | `0x8000 = "Out of Range" indicator` |
+/// | 80  | `0x8000 = "Out of Range" indicator` |
 /// | 82–89 | `0x80000000 = "N/A (Off-Earth)" indicator` |
 /// | 90  | `0x80000000 = "Out of Range" indicator` |
 /// | 91  | `0x80000000 = "Out of Range" indicator` |
+/// | 92  | `0x80000000 = "Out of Range" indicator` |
+/// | 93  | `0x80000000 = "Out of Range" indicator` |
 #[must_use]
 pub fn st0601_sentinel_meaning(tag: u32) -> Option<St0601SentinelMeaning> {
     match tag {
-        6 | 7 | 50 | 90 | 91 => Some(St0601SentinelMeaning::OutOfRange),
-        13 | 14 | 19 => Some(St0601SentinelMeaning::Reserved),
-        23 | 24 | 26..=33 | 82..=89 => Some(St0601SentinelMeaning::NotAvailable),
+        6 | 7 | 50 | 51 | 52 | 79 | 80 | 90 | 91 | 92 | 93 => {
+            Some(St0601SentinelMeaning::OutOfRange)
+        }
+        13 | 14 | 19 | 67 | 68 => Some(St0601SentinelMeaning::Reserved),
+        23 | 24 | 26..=33 | 40 | 41 | 82..=89 => Some(St0601SentinelMeaning::NotAvailable),
         _ => None,
     }
 }

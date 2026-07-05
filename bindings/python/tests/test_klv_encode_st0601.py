@@ -94,3 +94,53 @@ def test_encode_universal_label_16_bytes_ok():
     rec = UasDatalinkLs(universal_label=b"\x00" * 16)
     out = encode_uas_datalink(rec)
     assert isinstance(out, bytes)
+
+
+# ---------------------------------------------------------------------------
+# DA-KLV-4: sentinel round-trip tests
+# ---------------------------------------------------------------------------
+
+
+def test_sentinel_encode_then_decode_produces_sentinel_tags_not_field_error():
+    """Tag 6 (Platform Pitch) sentinel → sentinel_tags=(6,), field=None, no error.
+
+    Construct a record with sentinel_tags=(6,) and no typed pitch field.  The
+    encoder emits INT_MIN (0x8000) for tag 6 per ST 0601.19 §8.6.  Decoding the
+    result must give platform_pitch_deg=None, sentinel_tags containing 6, and an
+    empty field_errors — the INT_MIN value is a spec-defined signal, not an error.
+    """
+    rec = UasDatalinkLs(sentinel_tags=(6,))
+    wire = encode_uas_datalink(rec)
+    rec2 = decode_uas_datalink(wire)
+    assert rec2.platform_pitch_deg is None, "INT_MIN sentinel must leave typed field None"
+    assert 6 in rec2.sentinel_tags, "tag 6 must appear in sentinel_tags"
+    assert rec2.field_errors == (), "sentinel must not produce a field_error"
+
+
+def test_sentinel_round_trips_through_encode():
+    """A decoded sentinel record re-encodes and re-decodes with the sentinel preserved."""
+    rec = UasDatalinkLs(sentinel_tags=(6,))
+    wire1 = encode_uas_datalink(rec)
+    rec2 = decode_uas_datalink(wire1)
+    wire2 = encode_uas_datalink(rec2)
+    rec3 = decode_uas_datalink(wire2)
+    assert rec3.platform_pitch_deg is None, "sentinel field must remain None after re-encode"
+    assert 6 in rec3.sentinel_tags, "tag 6 must still be a sentinel after re-encode"
+    assert rec3.field_errors == (), "no field_errors after re-encode"
+
+
+def test_sentinel_value_wins_over_sentinel_tags():
+    """If sentinel_tags lists a tag whose typed field is also set, the value wins.
+
+    Build a record with platform_roll_deg=25.0 AND sentinel_tags=(7,) — tag 7
+    is Platform Roll.  The encoder must emit the real value, not INT_MIN (0x8000).
+    """
+    rec = UasDatalinkLs(
+        platform_roll_deg=25.0,
+        sentinel_tags=(7,),
+    )
+    encoded = encode_uas_datalink(rec)
+    rec2 = decode_uas_datalink(encoded)
+    assert rec2.platform_roll_deg is not None, "value must survive (not replaced by sentinel)"
+    assert abs(rec2.platform_roll_deg - 25.0) < 0.5, "value must be close to 25.0"
+    assert 7 not in rec2.sentinel_tags, "tag 7 must NOT be a sentinel after value-wins encoding"

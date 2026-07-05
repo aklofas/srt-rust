@@ -113,13 +113,17 @@ impl Sdp {
         };
         // Strip leading slash from mount path for the session-name (s=) line.
         let session_name = mount_path.trim_start_matches('/');
+        // RFC 2250 §2: MP2T uses `m=video` (not `m=application`).
+        // RFC 7826 App. D: session-level `a=control:*` lets third-party
+        // clients resolve the aggregate control URL correctly.
         let body = format!(
             "v=0\r\n\
              o=- 0 0 IN {family} {host}\r\n\
              s=tst-rtp {name}\r\n\
              t=0 0\r\n\
              c=IN {family} {host}\r\n\
-             m=application {port} RTP/AVP 33\r\n\
+             a=control:*\r\n\
+             m=video {port} RTP/AVP 33\r\n\
              a=control:trackID=0\r\n",
             family = ip_family,
             host = host,
@@ -241,7 +245,7 @@ mod phase3_build_for_mount_tests {
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("IN IP6"));
         assert!(text.contains("ff02::1"));
-        assert!(text.contains("m=application 5004 RTP/AVP 33"));
+        assert!(text.contains("m=video 5004 RTP/AVP 33"));
     }
 
     #[test]
@@ -251,7 +255,38 @@ mod phase3_build_for_mount_tests {
         let text = std::str::from_utf8(&body).unwrap();
         // Each declarative line ends with CRLF per RFC 4566 §5.
         let crlf_count = text.matches("\r\n").count();
-        // v= o= s= t= c= m= a=control → 7 CRLFs.
-        assert_eq!(crlf_count, 7);
+        // v= o= s= t= c= a=control:* m= a=control:trackID=0 → 8 CRLFs.
+        assert_eq!(crlf_count, 8);
+    }
+
+    // --- DA-RTP-8 conventional SDP shape tests ---
+
+    /// RFC 2250 §2 mandates `m=video` for MP2T streams; `m=application`
+    /// is non-standard and breaks many third-party RTSP players.
+    #[test]
+    fn build_for_mount_emits_m_video() {
+        let addr: SocketAddr = "127.0.0.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(
+            text.contains("m=video 0 RTP/AVP 33\r\n"),
+            "expected m=video 0 RTP/AVP 33, got:\n{text}"
+        );
+    }
+
+    /// RFC 7826 App. D requires a session-level `a=control:*` so third-party
+    /// clients (VLC, ffplay) can resolve the aggregate control URL correctly.
+    #[test]
+    fn build_for_mount_has_session_level_control() {
+        let addr: SocketAddr = "127.0.0.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        // Must appear BEFORE the first m= line (i.e. at session level).
+        let control_star_pos = text.find("a=control:*\r\n").expect("a=control:* missing");
+        let media_line_pos = text.find("m=video").expect("m=video missing");
+        assert!(
+            control_star_pos < media_line_pos,
+            "a=control:* must be at session level (before m=)"
+        );
     }
 }

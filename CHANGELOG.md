@@ -195,6 +195,12 @@ layout changed.
   and Digest auth compares the response attribute with constant-time equality,
   removing timing side-channels that could reveal whether credentials are
   partially correct (PR #82).
+- RTSP: the DESCRIBE response now emits the conventional SDP shape for
+  third-party client interop: `m=video <port> RTP/AVP 33` (RFC 2250 §2,
+  replacing `m=application`), a session-level `a=control:*` (RFC 7826
+  App. D), and a `Content-Base` header with trailing slash (RFC 7826 §D).
+  The in-tree `RtspClient` accepts both the old and new shapes (selection
+  is PT=33-based, not media-type-name-based) (DA-RTP-8, PR #82).
 - RTCP: the reporter thread no longer panics when the OS RNG is unavailable
   (`getrandom` failure). It now warns once and falls back to a deterministic
   wrapping-counter jitter, keeping RTCP emissions at ~`RTCP_BASE_INTERVAL`

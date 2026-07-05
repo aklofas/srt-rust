@@ -141,6 +141,19 @@ layout changed.
   frame rate) is rejected. Malformed or hostile bitstreams are now rejected
   rather than silently mis-parsed (PR #67).
 
+### Fixed — KLV codec (IMAPB reserved-space detection)
+
+- `decode_imapb` now detects inter-band reserved integers using an exact
+  integer-domain comparison (`y > y_max`, where `y_max = floor(sF·(b−a) +
+  Zoffset)` matches what the encoder produces for `value = max`) rather than
+  a float epsilon. The old epsilon-based upper-bound admitted the integer
+  immediately above `y_max` as `Value` at coarse grids (L=1), because the
+  tolerance was exactly one quantization step and the comparison was not
+  strictly greater. This was unreachable at any shipped ST 0903 IMAPB tag
+  (all use L=2 or L=3 where the nearest reserved integer decodes far past
+  `max + epsilon`), but is now correctly classified as `OutOfRange` at all L
+  (audit finding F-02, `crates/tst-core/src/klv/imapb.rs`).
+
 ### Fixed — KLV encoding conformance
 
 - ST 0107.5 empty-string vs. absent handling (§6.3.3.2): decode maps `[0x00]`

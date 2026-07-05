@@ -491,6 +491,9 @@ pub struct RtpStats {
     /// Number of UDP datagrams received whose RTP header was invalid
     /// (wrong V, wrong PT, truncated, CSRC overflow). Cumulative since
     /// `listen()`.
+    /// Also counts datagrams with a valid RTP header (PT=33) whose
+    /// MP2T payload fails RFC 2250 shape checks (not 188-byte aligned,
+    /// missing `0x47` sync byte, or empty).
     pub malformed_packets: u64,
 }
 

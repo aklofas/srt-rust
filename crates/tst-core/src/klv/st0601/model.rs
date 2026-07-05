@@ -109,7 +109,8 @@ pub struct UasDatalinkLs {
     /// The encoder also auto-injects Tag 65 (version) and the trailing
     /// checksum, so the output byte sequence is not guaranteed to match the
     /// original wire input byte-for-byte; the sentinel *value* round-trips,
-    /// but byte position follows the encoder's canonical tag order.
+    /// but the emission order is: typed fields in ascending tag order, then
+    /// `sentinel_tags` entries, then `unknown` fields in caller order.
     pub sentinel_tags: Vec<u32>,
 }
 

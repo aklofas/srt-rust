@@ -1215,11 +1215,11 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
 
     r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
 
-    // sentinel_tags: tuple[int, ...] → Vec<u32>
-    let py_sentinel: Vec<u64> = p
+    // sentinel_tags: tuple[int, ...] → Vec<u32>. Extracting u32 directly
+    // raises OverflowError on out-of-range values instead of truncating.
+    r.sentinel_tags = p
         .getattr(intern!(p.py(), "sentinel_tags"))?
-        .extract::<Vec<u64>>()?;
-    r.sentinel_tags = py_sentinel.into_iter().map(|t| t as u32).collect();
+        .extract::<Vec<u32>>()?;
 
     Ok(r)
 }

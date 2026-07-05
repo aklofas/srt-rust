@@ -144,3 +144,14 @@ def test_sentinel_value_wins_over_sentinel_tags():
     assert rec2.platform_roll_deg is not None, "value must survive (not replaced by sentinel)"
     assert abs(rec2.platform_roll_deg - 25.0) < 0.5, "value must be close to 25.0"
     assert 7 not in rec2.sentinel_tags, "tag 7 must NOT be a sentinel after value-wins encoding"
+
+
+def test_sentinel_tags_out_of_u32_range_raises_overflow():
+    """A sentinel_tags entry above u32::MAX must raise OverflowError, not truncate.
+
+    Regression test for a silent `as u32` truncation: 2**33 would have wrapped
+    to 0 and encoded the wrong (or no) sentinel tag.
+    """
+    rec = UasDatalinkLs(sentinel_tags=(2**33,))
+    with pytest.raises(OverflowError):
+        encode_uas_datalink(rec)

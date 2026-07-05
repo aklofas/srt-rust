@@ -254,35 +254,39 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     }
 
     // Normal-range reverse map: x = sR * (y - Zoffset) + min.
-    let s_r = 1.0 / p.sf();
-    let value = s_r * (y as f64 - p.z_offset()) + p.min;
+    // Cache sf and z_offset to avoid redundant powf/floor calls.
+    let sf = p.sf();
+    let z_offset = p.z_offset();
+    let s_r = 1.0 / sf;
+    let value = s_r * (y as f64 - z_offset) + p.min;
 
-    // ST 1201.5 §8.6 Eq.12 / §7.2.3 Table 1 row 2: integer values past
-    // `floor(sF * (b - a))` are reserved (inter-band) — they arithmetic-
-    // decode past `max` but the bit pattern isn't in the §7.2.3 special-
-    // value space. Surface as OutOfRange so strict callers can reject and
-    // lenient callers can inspect the decoded value.
+    // ST 1201.5 §8.6 Eq.12 / §7.2.3 Table 1: upper-bound reserved-space
+    // detection in the integer domain. The exact max wire integer is
     //
-    // The bounds check tolerance has TWO components:
+    //   y_max = floor(sF·(b−a) + Zoffset)
     //
-    //   (1) IMAPB quantization step `scale = 2^ceil(log2(span)) / 2^(8L-1)`
-    //       — at small L (L=1, L=2) the grid spacing is coarse enough that
-    //       round-trip error against the input value can exceed `span * EPS`.
-    //       The Zoffset rounding term in `decode = sR*(y - Zoffset) + min`
-    //       can push decoded by up to one quantization step outside `min`/
-    //       `max` even when the encoded integer is exactly 0 or
-    //       `floor(sF*span)`. Proptest at L=1 surfaced this.
-    //   (2) f64 ULP propagated through `sR * (y as f64 - Zoffset) + min`.
+    // which is identical to the wire integer the encoder produces for
+    // value = max (see `encode_imapb`). Any normal-pattern integer y > y_max
+    // is in the inter-band reserved space and MUST decode as OutOfRange —
+    // using the float-epsilon upper bound here admitted y_max+1 as Value at
+    // coarse grids (L=1) because the tolerance was exactly one quantization
+    // step and the comparison was not strictly greater (F-02).
+    let y_max = (sf * (p.max - p.min) + z_offset).floor() as u64;
+    if y > y_max {
+        return Ok(DecodedImapb::OutOfRange { decoded: value });
+    }
+
+    // Lower-bound check: Zoffset rounding may push decode of y=0 slightly
+    // below min by up to one quantization step. Keep a float-epsilon
+    // tolerance here (the integer-domain fix above covers the upper side).
     //
-    // Mirrors the tolerance derivation in `tests/common::imapb_tol`.
-    let span = p.max - p.min;
-    // `s_r = 1 / sF = 1 / 2^(dPow-bPow) = 2^(bPow-dPow)` (ST 1201.5 §8.9),
-    // which equals the quantization step `scale = 2^ceil(log2(span)) / 2^(8L-1)`
-    // described in the comment above. No second `powf` call needed.
+    // `s_r = 1 / sF = 2^(bPow−dPow)` (ST 1201.5 §8.9), which equals the
+    // quantization step. f64 ULP propagation through sR*(y−Zoffset)+min
+    // is covered by the fp_eps term.
     let scale = s_r;
-    let fp_eps = span.abs() * f64::EPSILON * 8.0;
+    let fp_eps = (p.max - p.min).abs() * f64::EPSILON * 8.0;
     let epsilon = scale.max(fp_eps);
-    if value < p.min - epsilon || value > p.max + epsilon {
+    if value < p.min - epsilon {
         return Ok(DecodedImapb::OutOfRange { decoded: value });
     }
 
@@ -1003,6 +1007,216 @@ mod tests {
         assert_eq!(
             decode_imapb(&p, &[0xC8, 0xFF, 0xFF]).unwrap(),
             DecodedImapb::ReservedSpecial { raw: 0x00C8_FFFF }
+        );
+    }
+
+    // --- PT-KLV-imapb-epsilon: exact reserved-space detection (F-02) ---
+
+    /// IMAPB(0,180,1): sF=0.5, y_max=90. The integer y=91 (top bits `01`,
+    /// NOT in the §7.2.3 special-value space) arithmetic-decodes to 182.0,
+    /// which is past max. The old float-epsilon code admitted it as
+    /// Value(182.0) because the tolerance was exactly scale=2.0 and
+    /// `182.0 > 180.0 + 2.0` is FALSE (equal). After the fix, the
+    /// integer-domain check `y > y_max` (91 > 90) correctly returns
+    /// OutOfRange.
+    ///
+    /// This test is RED on the unmodified code (Value) and GREEN after
+    /// the fix (OutOfRange).
+    #[test]
+    fn imapb_l1_reserved_integer_above_ymax_is_out_of_range() {
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 1,
+        };
+        // y_max = floor(sF*(max-min)+Zoffset) = floor(0.5*180+0) = 90 = 0x5A.
+        // y = 91 = 0x5B: the first reserved integer above y_max.
+        let decoded = decode_imapb(&p, &[0x5B]).unwrap();
+        match decoded {
+            DecodedImapb::OutOfRange { decoded } => {
+                // arithmetic decode of 91 via sR=2.0: 2.0*91+0 = 182.0
+                assert!(
+                    (decoded - 182.0).abs() < 1e-9,
+                    "expected 182.0 in OutOfRange, got {decoded}"
+                );
+            }
+            other => panic!("expected OutOfRange for y=91 (above y_max=90), got {other:?}"),
+        }
+    }
+
+    /// Guard against off-by-one in y_max: encode max=180.0 at L=1, decode
+    /// it, and assert Value (not OutOfRange). y_max must equal the encoder's
+    /// max wire integer exactly, or a legitimately-encoded max would
+    /// misclassify.
+    #[test]
+    fn imapb_l1_max_value_encodes_to_ymax_and_decodes_as_value() {
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 1,
+        };
+        let mut buf = [0u8; 1];
+        encode_imapb(&p, 180.0, &mut buf).unwrap();
+        // Encoder: y = floor(0.5*(180-0)+0) = floor(90) = 90 = 0x5A.
+        assert_eq!(buf, [0x5A], "encoder must produce y_max=90=0x5A for max");
+        let decoded = decode_imapb(&p, &buf).unwrap();
+        match decoded {
+            DecodedImapb::Value(v) => {
+                assert!(
+                    (v - 180.0).abs() < 1e-6,
+                    "max must decode to ~180.0, got {v}"
+                );
+            }
+            other => panic!("max wire integer must decode as Value, got {other:?}"),
+        }
+    }
+
+    /// Pinning test: IMAPB(0,180,2) — the ST 0903 FOV shape (L=2, 65536 integers).
+    ///
+    /// Exhaustively iterates ALL 65536 two-byte wire integers. For each
+    /// normal-pattern integer (top two bits != `11`) that is above y_max,
+    /// asserts it decodes as `OutOfRange` (not `Value`).
+    ///
+    /// Pre-fix counts (computed analytically, unmodified code):
+    /// - y=23041 (= y_max+1) was admitted as `Value(180.0078125)` because the
+    ///   float tolerance `epsilon = 1/128 = 0.0078125` made `180.0078125 >
+    ///   180.0078125` evaluate to FALSE (not strictly greater). All 26110 other
+    ///   reserved integers (23042..=49151) were already `OutOfRange`.
+    ///
+    /// Post-fix: all 26111 reserved integers are `OutOfRange` (0 `Value`).
+    #[test]
+    fn imapb_l2_fov_all_reserved_integers_are_out_of_range() {
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 2,
+        };
+        // y_max = floor(128.0 * 180.0 + 0.0) = 23040.
+        let y_max: u64 = 23040;
+        let mut value_count = 0u32;
+        let mut out_of_range_count = 0u32;
+        for y in 0u64..=0xFFFFu64 {
+            // Skip special-value space (top two bits `11`).
+            if (y >> 14) == 0b11 {
+                continue;
+            }
+            if y <= y_max {
+                continue; // valid range — not reserved
+            }
+            let bytes = [(y >> 8) as u8, (y & 0xFF) as u8];
+            match decode_imapb(&p, &bytes).unwrap() {
+                DecodedImapb::Value(_) => value_count += 1,
+                DecodedImapb::OutOfRange { .. } => out_of_range_count += 1,
+                other => panic!("unexpected variant for y={y}: {other:?}"),
+            }
+        }
+        assert_eq!(
+            value_count, 0,
+            "expected 0 reserved integers as Value, got {value_count}"
+        );
+        // 49151 (= 0xBFFF, last normal-pattern 16-bit integer) - 23040 (y_max) = 26111.
+        assert_eq!(
+            out_of_range_count, 26111,
+            "expected 26111 reserved integers as OutOfRange, got {out_of_range_count}"
+        );
+    }
+
+    /// Pinning test: IMAPB(-900,19000,2) — the ST 0903 targetHae shape (L=2).
+    ///
+    /// Same structure as the FOV test. sF=1.0, y_max=19900.
+    ///
+    /// Pre-fix: y=19901 was `Value(19001.0)` (epsilon=1.0 so 19001.0 > 19001.0
+    /// was FALSE); 29250 other reserved integers were `OutOfRange`.
+    /// Post-fix: all 29251 are `OutOfRange`.
+    #[test]
+    fn imapb_l2_target_hae_all_reserved_integers_are_out_of_range() {
+        let p = ImapbParams {
+            min: -900.0,
+            max: 19000.0,
+            length: 2,
+        };
+        // sF=1.0, Zoffset=0 (min<0, max>0 but sF*min=-900 is an integer so frac=0).
+        // y_max = floor(1.0 * 19900 + 0) = 19900.
+        let y_max: u64 = 19900;
+        let mut value_count = 0u32;
+        let mut out_of_range_count = 0u32;
+        for y in 0u64..=0xFFFFu64 {
+            if (y >> 14) == 0b11 {
+                continue;
+            }
+            if y <= y_max {
+                continue;
+            }
+            let bytes = [(y >> 8) as u8, (y & 0xFF) as u8];
+            match decode_imapb(&p, &bytes).unwrap() {
+                DecodedImapb::Value(_) => value_count += 1,
+                DecodedImapb::OutOfRange { .. } => out_of_range_count += 1,
+                other => panic!("unexpected variant for y={y}: {other:?}"),
+            }
+        }
+        assert_eq!(
+            value_count, 0,
+            "expected 0 reserved integers as Value, got {value_count}"
+        );
+        // 49151 - 19900 = 29251.
+        assert_eq!(
+            out_of_range_count, 29251,
+            "expected 29251 reserved integers as OutOfRange, got {out_of_range_count}"
+        );
+    }
+
+    /// Pinning test: IMAPB(-19.2,19.2,3) — the ST 0903 offsets shape (L=3).
+    ///
+    /// Exhaustive at L=3 is 2^24 ≈ 16.7M iterations (~4s per core). This
+    /// test uses a boundary-band sample around y_max ± 4096 instead, which
+    /// covers the critical transition and avoids long test runtimes.
+    ///
+    /// sF=131072, Zoffset=0.6, y_max=5033165.
+    ///
+    /// Pre-fix: y=5033166 was `Value` (decoded 19.2+4.58e-6, epsilon=7.63e-6
+    /// so `19.2+4.58e-6 > 19.2+7.63e-6` was FALSE); 4095 band integers
+    /// (5033167..5037261) were `OutOfRange`.
+    /// Post-fix: all 4096 band reserved integers are `OutOfRange`.
+    #[test]
+    fn imapb_l3_offsets_boundary_band_reserved_integers_are_out_of_range() {
+        let p = ImapbParams {
+            min: -19.2,
+            max: 19.2,
+            length: 3,
+        };
+        // sF=131072, Zoffset=0.6, y_max=floor(131072*38.4+0.6)=floor(5033165.4)=5033165.
+        let y_max: u64 = 5033165;
+        let band_start = y_max.saturating_sub(4096);
+        let band_end = y_max + 4096;
+        let mut value_count = 0u32;
+        let mut out_of_range_count = 0u32;
+        for y in band_start..=band_end {
+            // Top two bits of 24-bit integer: bits 23-22.
+            if (y >> 22) == 0b11 {
+                continue;
+            }
+            if y <= y_max {
+                continue;
+            }
+            let bytes = [
+                ((y >> 16) & 0xFF) as u8,
+                ((y >> 8) & 0xFF) as u8,
+                (y & 0xFF) as u8,
+            ];
+            match decode_imapb(&p, &bytes).unwrap() {
+                DecodedImapb::Value(_) => value_count += 1,
+                DecodedImapb::OutOfRange { .. } => out_of_range_count += 1,
+                other => panic!("unexpected variant for y={y}: {other:?}"),
+            }
+        }
+        assert_eq!(
+            value_count, 0,
+            "expected 0 reserved integers in band as Value, got {value_count}"
+        );
+        // band reserved integers: y_max+1 .. y_max+4096 = 4096 integers.
+        assert_eq!(
+            out_of_range_count, 4096,
+            "expected 4096 reserved integers in band as OutOfRange, got {out_of_range_count}"
         );
     }
 

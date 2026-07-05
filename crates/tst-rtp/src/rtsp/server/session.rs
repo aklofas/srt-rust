@@ -743,27 +743,47 @@ mod session_tests {
         let _ = server_handle.await;
     }
 
-    /// Successful auth on a gated method (DESCRIBE returning 200) resets the
-    /// failure counter, so a legitimate client who had a typo in their
-    /// password doesn't get permanently locked after fixing it.
+    /// A successful auth on a gated method (DESCRIBE returning 200) resets the
+    /// failure counter, letting a client who had temporary bad credentials
+    /// recover without losing their session.
     ///
     /// Sequence:
-    ///   DESCRIBE (no auth) → 401  [failures = 1]
-    ///   DESCRIBE (correct Basic auth) → 200  [failures reset to 0]
-    ///   DESCRIBE (no auth) → 401  [failures = 1, not 2]
-    ///   DESCRIBE (no auth) → 401  [failures = 2, session still open]
+    ///   DESCRIBE (no auth)      → 401  [failures = 1]
+    ///   DESCRIBE (correct auth) → 200  [failures reset to 0]
+    ///   DESCRIBE (no auth)      → 401  [failures = 1, not 2]
+    ///   DESCRIBE (no auth)      → 401  [failures = 2; below the 3-strike limit]
+    ///   OPTIONS                 → 200  [session still alive]
     ///
-    /// The test verifies that the session remains open after 2 failures when
-    /// one successful auth intervened, by confirming the server responds to
-    /// the 4th DESCRIBE (rather than EOF).
+    /// No-reset trace (hypothetical buggy code): without the reset, failures
+    /// would be 1→(no change on 200)→2→3 at the 4th DESCRIBE, closing the
+    /// session. The 5th request would receive EOF instead of a 200 OPTIONS
+    /// response, causing the distinguishing assertion to fail.
+    ///
+    /// A real mount is registered so the auth-passing DESCRIBE returns 200
+    /// (status < 400 on an auth-gated method) rather than 404.
     #[tokio::test]
     async fn auth_failures_reset_on_successful_auth() {
+        use crate::rtsp::server::mount::{MountKind, MountState};
+        use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
         let server_handle = tokio::spawn(async move {
             let (tcp, peer) = listener.accept().await.unwrap();
             let state = make_state_with_basic_auth();
+            // DESCRIBE reads local_addr to build the SDP; set it before
+            // handle_connection runs.
+            *state.local_addr.lock().unwrap() = Some("127.0.0.1:8554".parse().unwrap());
+            // Register a real mount at /test so an auth-passing DESCRIBE
+            // returns 200 (status < 400), triggering the counter reset.
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            let mux_cfg = b.build().unwrap();
+            let mount = MountState::new("/test", MountKind::Unicast, mux_cfg, 16).unwrap();
+            state.mounts.lock().unwrap().insert("/test".into(), mount);
             state
                 .active_sessions
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -791,18 +811,21 @@ mod session_tests {
             buf
         }
 
-        // DESCRIBE without auth → 401 (failures = 1).
+        // Step 1: DESCRIBE without auth → 401 (failures = 1).
         client
             .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 1\r\n\r\n")
             .await
             .unwrap();
         let resp1 = read_response(&mut client).await;
-        assert!(String::from_utf8_lossy(&resp1).contains("401"));
+        assert!(
+            String::from_utf8_lossy(&resp1).contains("401"),
+            "step 1: expected 401, got: {}",
+            String::from_utf8_lossy(&resp1)
+        );
 
-        // DESCRIBE with correct Basic auth: "user:secret" base64 = "dXNlcjpzZWNyZXQ=".
-        // Server has no mount so it will return 404 Not Found — but that is a
-        // 2xx-class success for auth purposes (auth passed, resource missing),
-        // so the failure counter resets.
+        // Step 2: DESCRIBE with correct Basic auth → 200.
+        // "user:secret" base64 = "dXNlcjpzZWNyZXQ=".
+        // DESCRIBE is auth-gated; status 200 < 400 → failures reset to 0.
         client
             .write_all(
                 b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\n\
@@ -812,33 +835,56 @@ mod session_tests {
             .await
             .unwrap();
         let resp2 = read_response(&mut client).await;
-        // Must NOT be 401 — auth succeeded, any non-401 response resets.
         assert!(
-            !String::from_utf8_lossy(&resp2).contains("401"),
-            "expected non-401 after valid auth, got: {}",
+            String::from_utf8_lossy(&resp2).contains("200"),
+            "step 2: expected 200 OK from auth-passing DESCRIBE to real mount, got: {}",
             String::from_utf8_lossy(&resp2)
         );
 
-        // DESCRIBE without auth again → 401 (failures = 1, reset after good auth).
+        // Step 3: DESCRIBE without auth → 401 (failures = 1, not 2 — reset fired).
         client
             .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 3\r\n\r\n")
             .await
             .unwrap();
         let resp3 = read_response(&mut client).await;
-        assert!(String::from_utf8_lossy(&resp3).contains("401"));
+        assert!(
+            String::from_utf8_lossy(&resp3).contains("401"),
+            "step 3: expected 401, got: {}",
+            String::from_utf8_lossy(&resp3)
+        );
 
-        // DESCRIBE without auth → 401 (failures = 2 — session still open).
+        // Step 4: DESCRIBE without auth → 401 (failures = 2; still below the limit).
+        // Without the reset, this would be the 3rd failure → server closes.
         client
             .write_all(b"DESCRIBE rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 4\r\n\r\n")
             .await
             .unwrap();
         let resp4 = read_response(&mut client).await;
-        // Session is still alive (not EOF) because failures only reached 2.
         assert!(
-            !resp4.is_empty(),
-            "expected a response (session still open), got EOF"
+            String::from_utf8_lossy(&resp4).contains("401"),
+            "step 4: expected 401, got: {}",
+            String::from_utf8_lossy(&resp4)
         );
-        assert!(String::from_utf8_lossy(&resp4).contains("401"));
+
+        // Step 5 — distinguishing assertion.
+        // With reset:    failures = 2; session still open → OPTIONS returns 200.
+        // Without reset: failures = 3 after step 4 → server closed after sending
+        //   the step-4 401; this read returns EOF, failing the is_empty check.
+        client
+            .write_all(b"OPTIONS rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 5\r\n\r\n")
+            .await
+            .unwrap();
+        let resp5 = read_response(&mut client).await;
+        assert!(
+            !resp5.is_empty(),
+            "step 5: session must still be open after only 2 post-reset failures \
+             (got EOF — reset on step 2 did not fire)"
+        );
+        assert!(
+            String::from_utf8_lossy(&resp5).contains("200"),
+            "step 5: expected 200 from OPTIONS on live session, got: {}",
+            String::from_utf8_lossy(&resp5)
+        );
 
         drop(client);
         let _ = server_handle.await;

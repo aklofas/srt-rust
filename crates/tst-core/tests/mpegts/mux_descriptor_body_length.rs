@@ -112,8 +112,13 @@ fn descriptor_length_byte_mismatch_is_malformed() {
 /// This test exercises the full Muxer → Demuxer pipeline: the descriptor
 /// must survive byte-for-byte through the PMT section.
 ///
-/// Note: a 255-byte body is not achievable in a single-packet PMT (it would
-/// require a 278-byte section). The body-size guard fix matters for the error
+/// Note: this test was GREEN before the DA-MUX-3 fix (160 ≤ 253, so the old
+/// guard never triggered here). It exists to pin the pipeline contract —
+/// a descriptor within the PMT budget must round-trip verbatim — not as TDD
+/// RED evidence of the bug. The RED evidence is in the 254/255-byte tests above.
+///
+/// A 255-byte body is not achievable in a single-packet PMT (it would require
+/// a 278-byte section). The body-size guard fix matters for the error
 /// classification at the config-validation step; the PMT budget is the binding
 /// operational constraint.
 #[test]
@@ -124,7 +129,7 @@ fn large_descriptor_body_round_trips_through_demuxer() {
 
     let mut mux = Muxer::new(cfg).unwrap();
     mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], Pts90khz::new(9000), true)
-        .ok();
+        .expect("push_video must succeed for the round-trip payload path");
     let mut buf = vec![0u8; 188 * 32];
     let n = mux.pull(&mut buf);
     buf.truncate(n);

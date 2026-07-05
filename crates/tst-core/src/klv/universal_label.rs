@@ -78,7 +78,7 @@ impl UniversalLabel {
     ///
     /// The name "SMPTE 336M generic local set key prefix" was a documentation
     /// error: all 16 bytes match the ST 0601 canonical UL exactly (MISB ST
-    /// 0601.19 §6.2). This constant has no in-tree consumers; prefer
+    /// 0601.19 §6.2). This constant has no in-tree Rust code consumers; prefer
     /// [`Self::ST_0601_LS`] for new code. It may be removed at 1.0.
     pub const SMPTE_336M_LS_KEY: UniversalLabel = UniversalLabel([
         0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,

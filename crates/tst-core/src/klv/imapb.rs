@@ -254,7 +254,10 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     }
 
     // Normal-range reverse map: x = sR * (y - Zoffset) + min.
-    // Cache sf and z_offset to avoid redundant powf/floor calls.
+    // `sf` is cached because it is used again for y_max below. `z_offset` is
+    // called through its accessor (not derived from the cached `sf`) so its
+    // value stays byte-identical to the encoder's own computation — single
+    // source of truth, no formula duplication.
     let sf = p.sf();
     let z_offset = p.z_offset();
     let s_r = 1.0 / sf;

@@ -289,19 +289,19 @@ fn udp_path_malformed_mp2t_payload_dropped_and_counted() {
     let valid_pkt = synthetic_ts_packet(0x42);
     send.send_bytes(&valid_pkt).unwrap();
 
-    // The recv thread should surface the valid packet and return.
-    let got = result_rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("recv timed out — valid packet not delivered");
-    assert_eq!(got.as_slice(), valid_pkt.as_slice(), "payload mismatch");
+    // Wait for the recv thread to surface the valid packet.
+    let got = result_rx.recv_timeout(Duration::from_secs(5));
 
-    // Retrieve the transport from the thread to inspect its stats.
+    // Cancel the recv transport before joining so the thread is reaped on
+    // every code path — including a timeout where recv_bytes is still blocked.
+    cancel.cancel();
     let recv_transport = recv_thread.join().expect("recv thread panicked");
+
+    let got = got.expect("recv timed out — valid packet not delivered");
+    assert_eq!(got.as_slice(), valid_pkt.as_slice(), "payload mismatch");
     assert_eq!(
         recv_transport.rtp_stats().malformed_packets,
         1,
         "malformed_packets must be 1 after one shape-invalid UDP datagram"
     );
-
-    drop(cancel); // avoid unused-variable warning
 }

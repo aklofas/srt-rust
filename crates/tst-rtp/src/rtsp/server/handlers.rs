@@ -993,6 +993,40 @@ mod tests {
         );
     }
 
+    /// Content-Base idempotency: when the request URI already ends with `/`,
+    /// the response must contain exactly one trailing slash — not `//`.
+    /// This pins the `trim_end_matches('/') + "/"` normalization in
+    /// `handle_describe`.
+    ///
+    /// `extract_mount_path("rtsp://…/live/")` yields `/live/`, so the mount
+    /// is registered under that key so the handler reaches the Content-Base
+    /// code path.
+    #[test]
+    fn describe_content_base_no_double_slash_when_uri_already_has_trailing_slash() {
+        // Build a state with the mount registered at the path that
+        // extract_mount_path returns for a trailing-slash URI ("/live/"),
+        // so the DESCRIBE lookup succeeds and we reach the Content-Base path.
+        let state = make_state();
+        let mount_state = MountState::new("/live/", MountKind::Unicast, make_muxer_cfg(), 256)
+            .expect("mount state constructs");
+        state
+            .mounts
+            .lock()
+            .unwrap()
+            .insert("/live/".into(), mount_state);
+
+        let req = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live/");
+        let mut session = ServerSessionState::new();
+        let resp = handle_describe(&req, &state, &mut session);
+        assert_eq!(resp.status, 200);
+        // Must be exactly "…/live/" — not "…/live//".
+        assert_eq!(
+            resp.headers.get("content-base").map(String::as_str),
+            Some("rtsp://127.0.0.1:8554/live/"),
+            "Content-Base must have exactly one trailing slash even when request URI already ends with '/'"
+        );
+    }
+
     // ── SETUP handler tests (T16) ─────────────────────────────────────────
 
     use crate::rtsp::server::mount::{MountKind, MountState};

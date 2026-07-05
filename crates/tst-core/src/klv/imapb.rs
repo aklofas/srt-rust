@@ -298,6 +298,16 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
 /// Returns `None` for reserved / non-zero-filled patterns (caller maps
 /// those to [`DecodedImapb::ReservedSpecial`]). `y` is the L-byte big-endian
 /// integer already accumulated by the caller.
+///
+/// **Forward-compat asymmetry (audit F-03):** NaN families
+/// (`PositiveQuietNaN`, `NegativeQuietNaN`, `PositiveSignalingNaN`,
+/// `NegativeSignalingNaN`) surface non-zero `nan_id` / `signal` payloads
+/// verbatim. ST 1201.5 Table 2 defines only the zero NaN-Id, but its
+/// developer note says to "handle unknown special cases … preventing a
+/// software failure," so future NaN identifiers are preserved rather than
+/// demoted to [`DecodedImapb::ReservedSpecial`]. By contrast, ±Infinity
+/// with a non-zero low-bit payload is demoted to `ReservedSpecial` (the
+/// spec provides no equivalent forward-compat note for infinity payloads).
 fn classify_imapb_special(bytes: &[u8], y: u64) -> Option<ImapbSpecial> {
     let len = bytes.len();
     let top = bytes[0];

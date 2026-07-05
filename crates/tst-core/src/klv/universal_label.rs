@@ -74,8 +74,12 @@ impl UniversalLabel {
         0x00,
     ]);
 
-    /// SMPTE 336M generic local set key prefix (used by various MISB sets;
-    /// concrete labels override byte 14 for version + final bytes for set-id).
+    /// ST 0601 UAS Datalink Local Set UL — byte-identical to [`Self::ST_0601_LS`].
+    ///
+    /// The name "SMPTE 336M generic local set key prefix" was a documentation
+    /// error: all 16 bytes match the ST 0601 canonical UL exactly (MISB ST
+    /// 0601.19 §6.2). This constant has no in-tree consumers; prefer
+    /// [`Self::ST_0601_LS`] for new code. It may be removed at 1.0.
     pub const SMPTE_336M_LS_KEY: UniversalLabel = UniversalLabel([
         0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
         0x00,
@@ -241,6 +245,18 @@ mod tests {
         // Non-validating constructor — every byte combination is legal.
         let ul = UniversalLabel::new([0xFF; 16]);
         assert_eq!(ul.0, [0xFF; 16]);
+    }
+
+    /// Pin: SMPTE_336M_LS_KEY is byte-identical to ST_0601_LS (the doc
+    /// correction above is accurate; removing or changing either would
+    /// require revisiting the public-api baseline).
+    #[test]
+    fn smpte_336m_ls_key_equals_st0601_ls() {
+        assert_eq!(
+            UniversalLabel::SMPTE_336M_LS_KEY.0,
+            UniversalLabel::ST_0601_LS.0,
+            "SMPTE_336M_LS_KEY must stay byte-identical to ST_0601_LS",
+        );
     }
 
     #[test]

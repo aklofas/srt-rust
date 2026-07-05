@@ -468,6 +468,12 @@ impl Demuxer {
     ///
     /// `tst_demuxer_next_event` — see `bindings/c/include/tstrans.h`.
     /// The `None` case maps to the `TST_E_NOT_AVAILABLE` sentinel (-13).
+    ///
+    /// **Single-consumer contract (C ABI):** `tst_event_t` pointer fields
+    /// are valid until the next `tst_demuxer_next_event` or
+    /// `tst_demuxer_close` call on the same handle **from any thread**.
+    /// Concurrent pulls on one handle silently invalidate the first
+    /// caller's borrowed pointers; use one consumer thread per handle.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         self.queue.pop_front()
     }

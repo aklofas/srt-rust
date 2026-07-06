@@ -4,7 +4,7 @@
  * change for FreeRTOS is the vector table: the kernel's ARM_CM4F port installs
  * the context-switch + tick machinery via the SVC, PendSV and SysTick exception
  * vectors. Their handler symbols are vPortSVCHandler / xPortPendSVHandler /
- * xPortSysTickHandler (see vendor/freertos-kernel/portable/GCC/ARM_CM4F/port.c).
+ * xPortSysTickHandler (see embedded/vendor/freertos-kernel/portable/GCC/ARM_CM4F/port.c).
  * We wire them into vector slots 11 (SVCall), 14 (PendSV) and 15 (SysTick).
  *
  * Root-cause notes carried over from c-1:

@@ -8,11 +8,11 @@
 	path = vendor/librist
 	url = https://code.videolan.org/rist/librist.git
 [submodule "vendor/freertos-kernel"]
-	path = vendor/freertos-kernel
+	path = embedded/vendor/freertos-kernel
 	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
 [submodule "vendor/freertos-plus-posix"]
-	path = vendor/freertos-plus-posix
+	path = embedded/vendor/freertos-plus-posix
 	url = https://github.com/FreeRTOS/Lab-Project-FreeRTOS-POSIX.git
 [submodule "vendor/lwip"]
-	path = vendor/lwip
+	path = embedded/vendor/lwip
 	url = https://github.com/lwip-tcpip/lwip.git

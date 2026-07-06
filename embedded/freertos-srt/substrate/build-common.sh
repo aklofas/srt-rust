@@ -24,10 +24,10 @@ OBJ="$BUILD/obj"
 GEN="$BUILD/generated"
 mkdir -p "$BUILD" "$OBJ" "$GEN"
 
-K=$ROOT/vendor/freertos-kernel
-P=$ROOT/vendor/freertos-plus-posix
+K=$ROOT/embedded/vendor/freertos-kernel
+P=$ROOT/embedded/vendor/freertos-plus-posix
 PS=$P/FreeRTOS-Plus-POSIX/source
-L=$ROOT/vendor/lwip
+L=$ROOT/embedded/vendor/lwip
 SRT=$ROOT/vendor/srt
 MBED=$ROOT/vendor/mbedtls
 CC=arm-none-eabi-gcc; CXX=arm-none-eabi-g++

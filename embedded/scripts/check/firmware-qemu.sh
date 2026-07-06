@@ -3,7 +3,7 @@
 # built no_std) and run it under QEMU mps2-an386, asserting it byte-matches the
 # committed video-roundtrip golden through the C ABI. Skips when the ARM C
 # cross-toolchain or QEMU is absent (same optional-tool pattern as
-# scripts/check/embedded/qemu-runtime.sh).
+# embedded/scripts/check/qemu-runtime.sh).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build + run one freertos-srt target under QEMU mps2-an386 and assert its PASS
-# token(s). Usage: scripts/check/embedded/freertos-srt.sh <target>.
+# token(s). Usage: embedded/scripts/check/freertos-srt.sh <target>.
 #
 # Missing prerequisites (ARM cross-toolchain / QEMU / cmake / cargo) skip cleanly
 # by default so a local box without the toolchain is green. Set
@@ -9,7 +9,7 @@
 # reducing coverage to a no-op pass.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-t="${1:?usage: scripts/check/embedded/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example>}"
+t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example>}"
 D=embedded/freertos-srt
 REQUIRE="${FREERTOS_SRT_REQUIRE_TOOLS:-0}"
 
@@ -52,7 +52,7 @@ case "$t" in
                  assert_pass 150 'PASS: s3_srt_aes' "$t aes" ;;
   example)       need cmake cmake
                  need cargo cargo
-                 bash "$(dirname "$0")/../../lib/run-freertos-srt-example.sh" || exit 1 ;;
+                 bash "$(dirname "$0")/../lib/run-freertos-srt-example.sh" || exit 1 ;;
   *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

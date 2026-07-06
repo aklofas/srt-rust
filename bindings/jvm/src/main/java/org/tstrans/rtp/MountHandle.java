@@ -34,6 +34,14 @@ import org.tstrans.mpegts.VideoStreamHandle;
  * <p><b>Push errors</b> surface as {@link RtspException} of kind {@code MOUNT}
  * (the failure originates in the mount push path) — this differs from
  * {@link MuxSender}, whose muxer errors are {@code MuxException}.
+ *
+ * <p><b>Server failure isolation (rare):</b> {@code MountHandle} objects live in their
+ * own registry, independent of their originating {@link RtspServer}. If the server is
+ * internally invalidated by a panic in a mutating server operation, previously obtained
+ * {@code MountHandle} objects are not immediately closed — their next push operation
+ * will fail with a closed-channel error rather than throwing at the moment the server is
+ * torn down. This is memory-safe; close retained handles when done to ensure timely
+ * cleanup.
  */
 public final class MountHandle extends NativeHandle {
     static { NativeLoader.load(); }

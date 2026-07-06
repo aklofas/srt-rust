@@ -259,6 +259,20 @@ fn with_server<R>(env: &mut JNIEnv, handle: jlong, f: impl FnOnce(&ServerInner) 
 /// non-poisoning [`with_server`]. `RtspServer`'s `Drop` is the hard-cancel +
 /// runtime-shutdown path (NOT the graceful `stop()`), so poisoning a torn
 /// mutator drops the server without a double-panic-in-Drop hazard.
+///
+/// # Mixed-use poisoning contract (FFI audit F-03)
+///
+/// Poisoning the server drops its `REGISTRY_SERVER` entry and shuts down its tokio
+/// runtime via `Drop`. [`MountHandle`](super::server)s already created from this
+/// server live in the **separate** `REGISTRY_MOUNT` and are **not** poisoned at
+/// that point. After a server-side panic, those handles remain leasable — their
+/// next `push*` / `flush` / `reset_stats` call will no-op or surface a closed-channel
+/// error (e.g. `MountError::Closed`) rather than throwing an `IllegalStateException`
+/// at server-invalidation time. This is **memory-safe** (no use-after-free; the
+/// `Arc`-shared mount wrapper outlives the server's runtime). The failure surfaces at
+/// the next mount operation rather than at poison time. This scenario requires an
+/// internal panic mid-mutation, which is rare in normal operation. The gap is
+/// documented here and in the Java Javadoc on `RtspServer` / `MountHandle`.
 fn with_server_poisoning<R>(
     env: &mut JNIEnv,
     handle: jlong,

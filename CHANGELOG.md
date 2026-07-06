@@ -240,19 +240,22 @@ layout changed.
   different mounts. The normalization is applied consistently across DESCRIBE
   and SETUP (PR #82).
 - JVM: the muxer config-enum ordinal decode helpers (`VideoCodec`, `AudioCodec`,
-  `KlvStreamType`, `Av1CarriageMode`) now throw `MuxException(CONFIG_INVALID)`
-  on any ordinal outside the valid range instead of silently falling back to a
-  default. In normal usage ordinals flow only through the typed Java enums, so
-  the valid range is always respected; this rejection catches version-skew where
-  a caller compiled against a newer binding passes an ordinal unknown to the
-  native library (DA-JVM-3, PR #83).
+  `KlvStreamType`, `Av1CarriageMode`) and the SRT reconnect-policy ordinals
+  (`BackoffStrategy`, `OverflowPolicy` in `build_reconnect_policy`) now throw
+  `CONFIG_INVALID` instead of silently falling back to a default. In normal
+  usage ordinals flow only through the typed Java enums, so the valid range is
+  always respected; this rejection catches version-skew where a caller compiled
+  against a newer binding passes an ordinal unknown to the native library
+  (DA-JVM-3, PR #83).
 - `NativeLoader` now extracts the native library to a stable,
   content-addressed directory (`<tmpdir>/tstrans-native-<hash>/`) instead of a
   randomly-named temp file. On load, stale sibling directories from previous
   JAR versions are swept best-effort. On Windows, `deleteOnExit` cannot remove
   a DLL that is still loaded; the stable layout means only one copy accumulates
   per JAR version, and the sweep removes copies from older versions once they
-  are no longer locked. Linux and macOS behavior is unchanged (DA-JVM-2, PR #83).
+  are no longer locked. The stable-dir layout applies on all platforms; Linux
+  and macOS never accumulated temp files across restarts, and their behavior is
+  otherwise unchanged (DA-JVM-2, PR #83).
 
 ### Changed — Python demux event payload laziness (Subtitle / UnknownSample)
 

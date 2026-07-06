@@ -176,7 +176,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
             return 0;
         }
 
-        let policy = super::build_reconnect_policy(
+        let Some(policy) = super::build_reconnect_policy(
+            env,
             max_attempts_present != 0,
             max_attempts,
             backoff_kind,
@@ -184,7 +185,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedSender_nFromUrl(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
-        );
+        ) else {
+            return 0;
+        };
 
         // Initial connect — the FIRST inner ManagedTransport::new wraps.
         let initial = match build_sender_transport(&url_str) {
@@ -432,7 +435,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
             return 0;
         }
 
-        let policy = super::build_reconnect_policy(
+        let Some(policy) = super::build_reconnect_policy(
+            env,
             max_attempts_present != 0,
             max_attempts,
             backoff_kind,
@@ -440,7 +444,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedReceiver_nFromUrl(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
-        );
+        ) else {
+            return 0;
+        };
 
         // Initial bind+accept — the FIRST inner ManagedRecvTransport::new wraps.
         let initial = match build_receiver_transport(&url_str) {

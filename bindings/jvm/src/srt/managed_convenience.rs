@@ -273,7 +273,8 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
         let mut sock_cfg = SocketConfig::default();
         parsed.overlay.apply_to_socket(&mut sock_cfg);
 
-        let policy = super::build_reconnect_policy(
+        let Some(policy) = super::build_reconnect_policy(
+            env,
             max_attempts_present != 0,
             max_attempts,
             backoff_kind,
@@ -281,7 +282,9 @@ pub extern "system" fn Java_org_tstrans_srt_ManagedMuxSender_nFromUrl<'local>(
             backoff_max_ms,
             gap_buffer_capacity,
             overflow_policy,
-        );
+        ) else {
+            return 0;
+        };
 
         // Reconnect factory: bump the attempt counter on every call, then dial.
         // `ManagedTransport::new` requires `Fn + Send + Sync`.
@@ -796,7 +799,8 @@ fn build_demux_from_url(
     let host = parsed.host.clone();
     let port = parsed.port;
 
-    let policy = super::build_reconnect_policy(
+    let Some(policy) = super::build_reconnect_policy(
+        env,
         max_attempts_present != 0,
         max_attempts,
         backoff_kind,
@@ -804,7 +808,9 @@ fn build_demux_from_url(
         backoff_max_ms,
         gap_buffer_capacity,
         overflow_policy,
-    );
+    ) else {
+        return 0;
+    };
 
     // Reconnect factory: bump the attempt counter on every call, then re-bind /
     // re-dial per the captured mode. `ManagedRecvTransport::new` takes

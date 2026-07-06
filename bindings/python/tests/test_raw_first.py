@@ -670,7 +670,11 @@ def test_subtitle_event_demuxer_path_lazy():
             )
             payload = ev.payload
             assert isinstance(payload, (bytes, bytearray))
-            assert len(payload) > 0
+            # CEA-708 standalone uses Passthrough shape — no envelope wrapping
+            # on either the mux or demux side, so bytes round-trip verbatim.
+            assert payload == b"\xAA\xBB\xCC\xDD subtitle payload", (
+                f"subtitle payload did not round-trip: got {payload!r}"
+            )
             assert ev._payload._materialized is True
             assert ev.payload is payload  # cached
             found = True

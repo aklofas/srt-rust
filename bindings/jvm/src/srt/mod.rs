@@ -30,10 +30,16 @@ static REGISTRY_CANCEL: LazyLock<HandleRegistry<JniCancel>> = LazyLock::new(Hand
 
 /// Reconstruct a `tst_pipeline::ReconnectPolicy` from the primitive args the
 /// JVM `Managed*.nFromUrl` natives marshal (see `org.tstrans.srt.PolicyArgs`).
-/// `backoff_kind`: 0 = Constant, else Exponential. `overflow_policy`: 0 =
-/// DropOldest, else Reject. `max_attempts_present == false` -> retry forever.
+/// `backoff_kind`: 0 = Constant, 1 = Exponential — throws `CONFIG_INVALID` on
+/// any other value. `overflow_policy`: 0 = DropOldest, 1 = Reject — throws
+/// `CONFIG_INVALID` on any other value. `max_attempts_present == false` →
+/// retry forever.
+///
+/// Returns `None` (with a pending `SrtException`) on an invalid ordinal;
+/// callers must propagate the `None` as a `return 0` early-exit.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_reconnect_policy(
+    env: &mut JNIEnv,
     max_attempts_present: bool,
     max_attempts: i32,
     backoff_kind: i32,
@@ -41,16 +47,35 @@ pub(crate) fn build_reconnect_policy(
     backoff_max_ms: i64,
     gap_buffer_capacity: i32,
     overflow_policy: i32,
-) -> ReconnectPolicy {
-    let backoff = if backoff_kind == 0 {
-        BackoffStrategy::Constant(Duration::from_millis(backoff_base_ms.max(0) as u64))
-    } else {
-        BackoffStrategy::Exponential {
+) -> Option<ReconnectPolicy> {
+    let backoff = match backoff_kind {
+        0 => BackoffStrategy::Constant(Duration::from_millis(backoff_base_ms.max(0) as u64)),
+        1 => BackoffStrategy::Exponential {
             base: Duration::from_millis(backoff_base_ms.max(0) as u64),
             max: Duration::from_millis(backoff_max_ms.max(0) as u64),
+        },
+        other => {
+            errors::throw_srt(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown BackoffStrategy ordinal {other}"),
+            );
+            return None;
         }
     };
-    ReconnectPolicy {
+    let overflow = match overflow_policy {
+        0 => OverflowPolicy::DropOldest,
+        1 => OverflowPolicy::Reject,
+        other => {
+            errors::throw_srt(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown OverflowPolicy ordinal {other}"),
+            );
+            return None;
+        }
+    };
+    Some(ReconnectPolicy {
         max_attempts: if max_attempts_present {
             Some(max_attempts.max(0) as u32)
         } else {
@@ -58,12 +83,8 @@ pub(crate) fn build_reconnect_policy(
         },
         backoff,
         gap_buffer_capacity: gap_buffer_capacity.max(1) as usize,
-        overflow_policy: if overflow_policy == 0 {
-            OverflowPolicy::DropOldest
-        } else {
-            OverflowPolicy::Reject
-        },
-    }
+        overflow_policy: overflow,
+    })
 }
 
 /// Boxed behind a `CancelHandle.handle`. Mirrors tst-py's `PyCancelHandle`:

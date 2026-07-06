@@ -1,18 +1,22 @@
 //! `RawBytes` — a lazy, content-comparable holder for a demuxed payload.
 //!
-//! The demuxer no longer copies each video/audio payload into a Python `bytes`
-//! at demux time. Instead it hands the underlying [`SharedBytes`] (a cheap
-//! `Arc` bump — no payload copy) to a `RawBytes` holder. The Python `bytes`
-//! is materialized on first `.raw` access and cached thereafter, so a caller
-//! that filters the stream or reads only PMT/KLV never pays for the
-//! media-payload copy.
+//! The demuxer no longer copies each video/audio/subtitle/unknown payload into
+//! a Python `bytes` at demux time. Instead it hands the underlying
+//! [`SharedBytes`] (a cheap `Arc` bump — no payload copy) to a `RawBytes`
+//! holder. The Python `bytes` is materialized on first `.raw` / `.payload`
+//! access and cached thereafter, so a caller that filters the stream or reads
+//! only PMT/KLV never pays for the media-payload copy.
+//!
+//! This holder backs:
+//! - `DemuxEvent.Video.raw` and `DemuxEvent.Audio.raw` (WP-E PY-01)
+//! - `DemuxEvent.Subtitle.payload` and `DemuxEvent.UnknownSample.payload`
 //!
 //! Retention tradeoff: holding the event keeps the underlying demux buffer
-//! (the `Arc`) alive until the event is dropped, even if `.raw` is never
-//! materialized. The win is pay-per-access (lazy) materialization, not
-//! zero-copy at the boundary — abi3 copies the bytes into a fresh `PyBytes`
-//! regardless (see `docs/specs/2026-06-08-raw-first-sample-model-design.md`
-//! §4.1).
+//! (the `Arc`) alive until the event is dropped, even if `.raw` / `.payload`
+//! is never materialized. The win is pay-per-access (lazy) materialization,
+//! not zero-copy at the boundary — abi3 copies the bytes into a fresh
+//! `PyBytes` regardless (see
+//! `docs/specs/2026-06-08-raw-first-sample-model-design.md` §4.1).
 //!
 //! This holder is shared by `src/pipeline.rs` and the demux event types,
 //! hence the standalone module.

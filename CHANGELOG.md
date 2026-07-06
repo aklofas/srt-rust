@@ -254,7 +254,7 @@ layout changed.
   per JAR version, and the sweep removes copies from older versions once they
   are no longer locked. Linux and macOS behavior is unchanged (DA-JVM-2, PR #83).
 
-### Fixed — Python demux event payload laziness (Subtitle / UnknownSample)
+### Changed — Python demux event payload laziness (Subtitle / UnknownSample)
 
 - `DemuxEvent.Subtitle` and `DemuxEvent.UnknownSample` now defer the
   `bytes` materialization to the first `.payload` access, matching the

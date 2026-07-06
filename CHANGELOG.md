@@ -153,8 +153,8 @@ layout changed.
   ranges. For parameters such as `min ≈ −f64::MAX, max = tiny subnormal`,
   the scale factor `sF` becomes extremely small, making `sR = 1/sF` enormous.
   The resulting `value = sR·(y−Zoffset) + min` could overflow to `±∞`; the
-  existing lower-bound epsilon guard failed to catch this because `epsilon`
-  itself overflowed to `+∞`, making `p.min − epsilon = −∞` and the guard
+  existing lower-bound epsilon guard failed to catch this because the
+  subtraction `p.min − epsilon` also underflowed to `−∞`, making the guard
   `value < −∞` always false. The fix guards non-finite arithmetic results
   immediately after computing `value`, returning `OutOfRange { decoded }` —
   the correct classification for any non-usable arithmetic result.

@@ -132,6 +132,10 @@ tasks.test {
     if (jniTestHooks) {
         systemProperty("tst.jniTestHooks", "true")
     }
+    // Reflection-based ordinal-boundary tests (MuxerConfigOrdinalTest) call
+    // Muxer.nOpen via setAccessible(true). No --add-opens is required: the
+    // library JAR is on the classpath (unnamed module), so the module system
+    // doesn't restrict deep reflection (DA-JVM-3).
 }
 
 // javac (like javadoc below) defaults to the platform charset, which is

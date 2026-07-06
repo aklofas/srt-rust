@@ -268,7 +268,13 @@ impl<P: Publisher> MuxPublisher<P> {
             .stats()
     }
 
-    /// Consume the shell, flush, and return the owned publisher.
+    /// Consume the shell and return the owned inner publisher.
+    ///
+    /// No flush or drain is performed here: pending muxed bytes are not
+    /// pushed to the publisher, and no end-of-stream marker is written.
+    /// If the caller needs to finalize the publisher (flush the pending
+    /// segment, write an HLS `#EXT-X-ENDLIST` tag, tear down sinks, etc.),
+    /// they should call [`Publisher::finish`] on the returned publisher.
     ///
     /// If the inner lock was poisoned, the publisher is still returned:
     /// `into_inner` recovers the poisoned guard, and the publisher

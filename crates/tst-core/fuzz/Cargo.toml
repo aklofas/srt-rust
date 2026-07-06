@@ -138,6 +138,13 @@ doc               = false
 bench             = false
 
 [[bin]]
+name              = "split_video"
+path              = "fuzz_targets/split_video.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
 name              = "h265_slice_header_light"
 path              = "fuzz_targets/h265_slice_header_light.rs"
 test              = false

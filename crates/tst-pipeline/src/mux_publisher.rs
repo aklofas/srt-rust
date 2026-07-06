@@ -42,6 +42,18 @@ struct Inner<P: Publisher> {
 
 /// Shell that owns a [`Muxer`] and pushes its output to a [`Publisher`].
 /// Mirrors [`crate::MuxSender`].
+///
+/// # Poison policy
+///
+/// No method panics on a poisoned inner mutex. If a prior call panicked
+/// mid-mutation and poisoned the lock, each method falls back gracefully:
+/// fallible methods (`send_*`, `cut_segment`) return
+/// [`MuxPublisherError::LockPoisoned`]; infallible methods (`stats`,
+/// `publisher_stats`) recover the poisoned guard and return the last
+/// observed value. `finish` recovers the poisoned guard and returns the
+/// owned publisher — the publisher's state may be partial if the panic
+/// occurred during a push, but the caller receives it for its own
+/// disposal.
 pub struct MuxPublisher<P: Publisher> {
     inner: Mutex<Inner<P>>,
     /// Lifetime span, entered only during construction and `Drop` — see
@@ -106,7 +118,10 @@ impl<P: Publisher> MuxPublisher<P> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -142,7 +157,10 @@ impl<P: Publisher> MuxPublisher<P> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -159,7 +177,10 @@ impl<P: Publisher> MuxPublisher<P> {
         frames: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -176,7 +197,10 @@ impl<P: Publisher> MuxPublisher<P> {
         payload: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -194,7 +218,10 @@ impl<P: Publisher> MuxPublisher<P> {
     /// [`Muxer::push_data_to`] holds the contract (`pts` is written into
     /// the PES header only for `carries_pts: true` streams).
     pub fn send_data(&self, data: &[u8], pts: Pts90khz) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -207,7 +234,10 @@ impl<P: Publisher> MuxPublisher<P> {
 
     /// Explicit segment-cut hint.
     pub fn cut_segment(&self) -> Result<(), MuxPublisherError<P::Error>> {
-        let mut inner = self.inner.lock().expect("MuxPublisher poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| MuxPublisherError::LockPoisoned)?;
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
@@ -226,19 +256,24 @@ impl<P: Publisher> MuxPublisher<P> {
 
     /// Snapshot stats.
     pub fn stats(&self) -> MuxPublisherStats {
-        self.inner.lock().expect("MuxPublisher poisoned").stats
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).stats
     }
 
     /// Publisher-side stats (universal subset across publisher impls).
     pub fn publisher_stats(&self) -> PublisherStats {
         self.inner
             .lock()
-            .expect("MuxPublisher poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .publisher
             .stats()
     }
 
     /// Consume the shell, flush, and return the owned publisher.
+    ///
+    /// If the inner lock was poisoned, the publisher is still returned:
+    /// `into_inner` recovers the poisoned guard, and the publisher
+    /// (possibly in partial state if the panic interrupted a push) is
+    /// handed back for caller disposal.
     pub fn finish(self) -> Result<P, MuxPublisherError<P::Error>> {
         let Inner {
             muxer: _,
@@ -248,7 +283,7 @@ impl<P: Publisher> MuxPublisher<P> {
             segment_start_pts: _,
             last_video_pts: _,
             scratch: _,
-        } = self.inner.into_inner().expect("MuxPublisher poisoned");
+        } = self.inner.into_inner().unwrap_or_else(|e| e.into_inner());
         Ok(publisher)
     }
 
@@ -289,6 +324,13 @@ pub enum MuxPublisherError<E: std::error::Error + Send + Sync + 'static> {
     /// The shell has been consumed via [`MuxPublisher::finish`].
     #[error("MuxPublisher closed")]
     Closed,
+
+    /// The inner mutex was poisoned because a previous call panicked
+    /// mid-mutation. All subsequent fallible calls on this shell return
+    /// this error. Infallible methods (`stats`, `publisher_stats`) recover
+    /// the poisoned guard and return the last observed value.
+    #[error("MuxPublisher lock poisoned")]
+    LockPoisoned,
 }
 
 impl<E: std::error::Error + Send + Sync + 'static> MuxPublisherError<E> {
@@ -298,6 +340,7 @@ impl<E: std::error::Error + Send + Sync + 'static> MuxPublisherError<E> {
             Self::Mux(e) => kind_from_mux(e),
             Self::Publisher(_) => ShellErrorKind::TransportBroken,
             Self::Closed => ShellErrorKind::Closed,
+            Self::LockPoisoned => ShellErrorKind::TransportBroken,
         }
     }
 }
@@ -397,6 +440,105 @@ mod tests {
         let p = MemoryPublisher { buffers: vec![] };
         let pub_ = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
         let _ = format!("{:?}", pub_);
+    }
+
+    /// A publisher that panics inside `push_ts` — used to poison the inner
+    /// mutex while it is held, simulating a mid-mutation panic.
+    struct PanicPublisher;
+
+    impl Publisher for PanicPublisher {
+        type Error = MemErr;
+        fn push_ts(&mut self, _ts: &[u8]) -> Result<(), MemErr> {
+            panic!("intentional panic to poison MuxPublisher mutex");
+        }
+        fn cut_segment(&mut self) -> Result<(), MemErr> {
+            Ok(())
+        }
+        fn finish(self) -> Result<(), MemErr> {
+            Ok(())
+        }
+        fn stats(&self) -> PublisherStats {
+            PublisherStats::default()
+        }
+    }
+
+    /// DA-PIPE-5: after the inner mutex is poisoned by a mid-mutation panic,
+    /// every public method must NOT panic:
+    ///   - fallible send/cut methods → `Err(MuxPublisherError::LockPoisoned)`
+    ///   - infallible stats methods → return a value without panicking
+    ///   - `finish` → returns `Ok(publisher)` by recovering the poisoned guard
+    #[test]
+    fn lock_poison_no_panic_and_correct_error() {
+        // Build a publisher whose push_ts panics.  The muxer will produce TS
+        // bytes on the first valid video push, calling push_ts and triggering
+        // the panic while the inner Mutex guard is held — poisoning the mutex.
+        let pub_ = MuxPublisher::with_config(PanicPublisher, test_muxer_config()).unwrap();
+
+        // Catch the panic so the test thread survives.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let nal = h264_au();
+            let _ = pub_.send_video(&nal, Pts90khz::new(0), true);
+        }));
+        assert!(result.is_err(), "expected a panic from push_ts");
+
+        // The inner mutex is now poisoned.  No subsequent call must panic.
+
+        // All fallible push methods → LockPoisoned.
+        assert!(
+            matches!(
+                pub_.send_video(&[], Pts90khz::new(0), false),
+                Err(MuxPublisherError::LockPoisoned)
+            ),
+            "send_video: expected LockPoisoned"
+        );
+        assert!(
+            matches!(
+                pub_.send_klv(&[], Pts90khz::new(0), 0),
+                Err(MuxPublisherError::LockPoisoned)
+            ),
+            "send_klv: expected LockPoisoned"
+        );
+        assert!(
+            matches!(
+                pub_.send_audio(&[], Pts90khz::new(0)),
+                Err(MuxPublisherError::LockPoisoned)
+            ),
+            "send_audio: expected LockPoisoned"
+        );
+        assert!(
+            matches!(
+                pub_.send_subtitle(&[], Pts90khz::new(0)),
+                Err(MuxPublisherError::LockPoisoned)
+            ),
+            "send_subtitle: expected LockPoisoned"
+        );
+        assert!(
+            matches!(
+                pub_.send_data(&[], Pts90khz::new(0)),
+                Err(MuxPublisherError::LockPoisoned)
+            ),
+            "send_data: expected LockPoisoned"
+        );
+        assert!(
+            matches!(pub_.cut_segment(), Err(MuxPublisherError::LockPoisoned)),
+            "cut_segment: expected LockPoisoned"
+        );
+
+        // LockPoisoned kind → TransportBroken.
+        assert_eq!(
+            pub_.send_video(&[], Pts90khz::new(0), false)
+                .unwrap_err()
+                .kind(),
+            crate::shell_error::ShellErrorKind::TransportBroken,
+        );
+
+        // Infallible methods recover the poisoned guard — must not panic.
+        let _ = pub_.stats();
+        let _ = pub_.publisher_stats();
+
+        // finish recovers the poisoned guard and returns the publisher.
+        pub_.finish()
+            .expect("finish must succeed even on a poisoned lock");
     }
 
     struct RecordingPublisher {

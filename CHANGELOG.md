@@ -235,6 +235,16 @@ layout changed.
   different mounts. The normalization is applied consistently across DESCRIBE
   and SETUP (PR #82).
 
+### Fixed — pipeline shell panic safety
+
+- `MuxPublisher`'s fallible methods (`send_video`, `send_klv`, `send_audio`,
+  `send_subtitle`, `send_data`, `cut_segment`) now return
+  `MuxPublisherError::LockPoisoned` instead of panicking when the inner mutex is
+  poisoned. Infallible methods (`stats`, `publisher_stats`) recover the poisoned
+  guard and return the last observed value. `finish` recovers the poisoned guard
+  and returns the owned publisher. Aligns `MuxPublisher` with the established
+  crate-wide poison policy (DA-PIPE-5, PR #83).
+
 ### Changed — internal refactors and dependencies (behavior-preserving)
 
 - Removed unused dependencies: `log`, `rtsp-types`, the `cc` dev-dependency, and

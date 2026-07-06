@@ -353,6 +353,7 @@ impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive:
 pub mod tst_pipeline::mux_publisher
 #[non_exhaustive] pub enum tst_pipeline::mux_publisher::MuxPublisherError<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static>
 pub tst_pipeline::mux_publisher::MuxPublisherError::Closed
+pub tst_pipeline::mux_publisher::MuxPublisherError::LockPoisoned
 pub tst_pipeline::mux_publisher::MuxPublisherError::Mux(tst_core::error::MuxError)
 pub tst_pipeline::mux_publisher::MuxPublisherError::Publisher(E)
 impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> tst_pipeline::mux_publisher::MuxPublisherError<E>
@@ -1207,6 +1208,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::D
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 #[non_exhaustive] pub enum tst_pipeline::MuxPublisherError<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static>
 pub tst_pipeline::MuxPublisherError::Closed
+pub tst_pipeline::MuxPublisherError::LockPoisoned
 pub tst_pipeline::MuxPublisherError::Mux(tst_core::error::MuxError)
 pub tst_pipeline::MuxPublisherError::Publisher(E)
 impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> tst_pipeline::mux_publisher::MuxPublisherError<E>

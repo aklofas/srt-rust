@@ -16,6 +16,17 @@ import org.tstrans.mpegts.MuxerConfig;
  * Notice 5402 server-initiated teardown of active sessions) then frees the native
  * server. Use try-with-resources. {@link #stop(long)} is the explicit graceful
  * shutdown; {@link #cancelHandle()} returns a cross-thread hard-cancel.
+ *
+ * <p><b>Failure isolation (rare):</b> if an internal panic occurs during a mutating
+ * server operation (e.g. {@link #addUnicastMount} / {@link #stop}), the server entry
+ * is invalidated and subsequent server calls throw {@link IllegalStateException}.
+ * However, {@link MountHandle} objects already returned by a prior
+ * {@code addUnicastMount} / {@code addMulticastMount} call are held in a separate
+ * registry and are <em>not</em> immediately invalidated — their next push operation
+ * will fail with a closed-channel error rather than throwing at the moment the server
+ * is torn down. This is memory-safe; the failure surfaces at the next push call rather
+ * than at server-invalidation time. This scenario requires an internal panic
+ * mid-mutation, which is rare in normal operation.
  */
 public final class RtspServer extends NativeHandle {
     static { NativeLoader.load(); }

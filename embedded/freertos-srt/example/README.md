@@ -39,7 +39,7 @@ arrive intact at an independent SRT receiver.
 
 ```bash
 # from the workspace root — builds firmware + host, orchestrates both phases
-bash scripts/check/embedded/freertos-srt.sh example
+bash embedded/scripts/check/freertos-srt.sh example
 ```
 
 The gate starts the host listener, waits for its `host-ready` line, launches the

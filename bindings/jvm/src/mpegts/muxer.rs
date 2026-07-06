@@ -182,13 +182,22 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
         // stream kind code: 0=video, 1=klv, 2=audio, 3=subtitle, 4=data.
         match kinds[i] {
             0 => {
-                prog.add_video(pid, video_codec(codecs[i]));
+                let Some(codec) = video_codec(env, codecs[i]) else {
+                    return Err(());
+                };
+                prog.add_video(pid, codec);
             }
             1 => {
-                prog.add_klv(pid, klv_type(type_codes[i]), carries[i] != 0);
+                let Some(ktype) = klv_type(env, type_codes[i]) else {
+                    return Err(());
+                };
+                prog.add_klv(pid, ktype, carries[i] != 0);
             }
             2 => {
-                prog.add_audio(pid, audio_codec(codecs[i]));
+                let Some(codec) = audio_codec(env, codecs[i]) else {
+                    return Err(());
+                };
+                prog.add_audio(pid, codec);
             }
             3 => {
                 // Subtitle ordinals 2/3 only (CEA-708 / WebVTT). Ordinals 0/1 are
@@ -261,7 +270,10 @@ pub(crate) fn build_muxer_config_from_arrays<'local>(
     b.pcr_interval_ms(pcr_interval_ms as u32);
     b.psi_interval_ms(psi_interval_ms as u32);
     b.buffer_packets(buffer_packets as usize);
-    b.av1_carriage(av1_mode(av1_carriage));
+    let Some(carriage) = av1_mode(env, av1_carriage) else {
+        return Err(());
+    };
+    b.av1_carriage(carriage);
     match b.build() {
         Ok(c) => Ok(c),
         Err(e) => {
@@ -1040,28 +1052,43 @@ fn read_boolean_array(env: &mut JNIEnv, arr: &JBooleanArray) -> Option<Vec<u8>> 
 }
 
 /// Video codec ordinal (`stream_codecs[i]` when kind=video) → [`VideoCodec`].
-/// Matches the Java `VideoCodec` enum declaration order.
-fn video_codec(ordinal: i32) -> VideoCodec {
+/// Matches the Java `VideoCodec` enum declaration order. Throws CONFIG_INVALID
+/// and returns `None` on any ordinal outside the valid range (0-3); this
+/// catches enum drift across binding versions.
+fn video_codec(env: &mut JNIEnv, ordinal: i32) -> Option<VideoCodec> {
     match ordinal {
-        0 => VideoCodec::H264,
-        1 => VideoCodec::H265,
-        2 => VideoCodec::H266,
-        3 => VideoCodec::Av1,
-        // Unreachable: a Java enum ordinal is always in range.
-        _ => VideoCodec::H264,
+        0 => Some(VideoCodec::H264),
+        1 => Some(VideoCodec::H265),
+        2 => Some(VideoCodec::H266),
+        3 => Some(VideoCodec::Av1),
+        other => {
+            throw_mux(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown VideoCodec ordinal {other}"),
+            );
+            None
+        }
     }
 }
 
 /// Audio codec ordinal (`stream_codecs[i]` when kind=audio) → [`AudioCodec`].
-/// Matches the Java `AudioCodec` enum declaration order.
-fn audio_codec(ordinal: i32) -> AudioCodec {
+/// Matches the Java `AudioCodec` enum declaration order. Throws CONFIG_INVALID
+/// and returns `None` on any ordinal outside the valid range (0-3).
+fn audio_codec(env: &mut JNIEnv, ordinal: i32) -> Option<AudioCodec> {
     match ordinal {
-        0 => AudioCodec::Mp2,
-        1 => AudioCodec::Aac,
-        2 => AudioCodec::AacLatm,
-        3 => AudioCodec::Ac3,
-        // Unreachable: a Java enum ordinal is always in range.
-        _ => AudioCodec::Mp2,
+        0 => Some(AudioCodec::Mp2),
+        1 => Some(AudioCodec::Aac),
+        2 => Some(AudioCodec::AacLatm),
+        3 => Some(AudioCodec::Ac3),
+        other => {
+            throw_mux(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown AudioCodec ordinal {other}"),
+            );
+            None
+        }
     }
 }
 
@@ -1080,19 +1107,40 @@ fn split_descriptor_tlvs(blob: &[u8]) -> Option<Vec<Vec<u8>>> {
 }
 
 /// KLV stream-type ordinal (`stream_type_codes[i]` when kind=klv) →
-/// [`KlvStreamType`]. Matches the Java `KlvStreamType` enum declaration order.
-fn klv_type(ordinal: i32) -> KlvStreamType {
+/// [`KlvStreamType`]. Matches the Java `KlvStreamType` enum declaration order:
+/// 0 = SynchronousMetadata, 1 = PrivateData. Throws CONFIG_INVALID and returns
+/// `None` on ordinals outside 0-1 (ordinal 1 IS valid PrivateData — only
+/// truly out-of-range values indicate enum drift).
+fn klv_type(env: &mut JNIEnv, ordinal: i32) -> Option<KlvStreamType> {
     match ordinal {
-        0 => KlvStreamType::SynchronousMetadata,
-        _ => KlvStreamType::PrivateData, // 1 (and any out-of-range → PrivateData).
+        0 => Some(KlvStreamType::SynchronousMetadata),
+        1 => Some(KlvStreamType::PrivateData),
+        other => {
+            throw_mux(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown KlvStreamType ordinal {other}"),
+            );
+            None
+        }
     }
 }
 
-/// `av1Carriage` scalar ordinal → [`Av1CarriageMode`]. Mirrors the Demuxer
-/// `nOpenWithConfig` mapping: 1 → InteropRawObu, else Mpeg2TsBinding.
-fn av1_mode(ordinal: i32) -> Av1CarriageMode {
+/// `av1Carriage` scalar ordinal → [`Av1CarriageMode`]. Matches the Java
+/// `Av1CarriageMode` enum declaration order: 0 = Mpeg2TsBinding,
+/// 1 = InteropRawObu. Throws CONFIG_INVALID and returns `None` on ordinals
+/// outside 0-1; mirrors the demux path hardened in commit 38d51690.
+fn av1_mode(env: &mut JNIEnv, ordinal: i32) -> Option<Av1CarriageMode> {
     match ordinal {
-        1 => Av1CarriageMode::InteropRawObu,
-        _ => Av1CarriageMode::Mpeg2TsBinding,
+        0 => Some(Av1CarriageMode::Mpeg2TsBinding),
+        1 => Some(Av1CarriageMode::InteropRawObu),
+        other => {
+            throw_mux(
+                env,
+                "CONFIG_INVALID",
+                &format!("unknown Av1CarriageMode ordinal {other}"),
+            );
+            None
+        }
     }
 }

@@ -234,6 +234,13 @@ layout changed.
   client that DESCRIBE'd at `/live/` but then SETUP'd at `/live` would find
   different mounts. The normalization is applied consistently across DESCRIBE
   and SETUP (PR #82).
+- JVM: the muxer config-enum ordinal decode helpers (`VideoCodec`, `AudioCodec`,
+  `KlvStreamType`, `Av1CarriageMode`) now throw `MuxException(CONFIG_INVALID)`
+  on any ordinal outside the valid range instead of silently falling back to a
+  default. In normal usage ordinals flow only through the typed Java enums, so
+  the valid range is always respected; this rejection catches version-skew where
+  a caller compiled against a newer binding passes an ordinal unknown to the
+  native library (DA-JVM-3, PR #83).
 
 ### Fixed — pipeline shell panic safety
 

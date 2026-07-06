@@ -41,7 +41,7 @@ rist    = ["tst-c-core/rist"]
 # `cargo test --workspace --no-default-features` exercises the std (thread_local)
 # error path rather than the no_std process-global one (which races under
 # libtest parallelism). The no_std path is gated separately by
-# `cargo build -p tst-c-core --no-default-features` (scripts/check/embedded/no-std-baremetal.sh)
+# `cargo build -p tst-c-core --no-default-features` (embedded/scripts/check/no-std-baremetal.sh)
 # + the QEMU C-firmware test, where the leaf is absent.
 tst-c-core = { path = "core", default-features = false, features = ["std"] }
 

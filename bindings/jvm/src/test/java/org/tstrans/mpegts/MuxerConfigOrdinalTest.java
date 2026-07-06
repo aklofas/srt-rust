@@ -15,9 +15,10 @@ import org.tstrans.MuxException;
  * <p>Drives {@code Muxer.nOpen} via reflection with ordinal 99 injected into
  * the relevant array slot — a value that the typed Java enum API cannot
  * produce in normal usage but that could appear under enum drift (caller
- * compiled against a future version of the binding). Requires
- * {@code --add-opens org.tstrans/org.tstrans.mpegts=ALL-UNNAMED} in the test
- * JVM args (configured in {@code build.gradle.kts}).
+ * compiled against a future version of the binding). No
+ * {@code --add-opens} is required: the compiled library loads as an unnamed
+ * module on the test classpath, so reflective access to the package-private
+ * {@code nOpen} native is unrestricted.
  *
  * <p>Valid-ordinal boundary coverage lives in {@link MuxerTest} and
  * {@link MuxerConfigTest} via the normal typed-enum builder path.

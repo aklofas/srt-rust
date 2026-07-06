@@ -9,7 +9,7 @@
 
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use tst_core::klv::st0903::{decode, decode_strict, encode_to_vec};
+use tst_core::klv::st0903::{decode, decode_strict, encode_strict_compliance, encode_to_vec};
 
 fuzz_target!(|data: &[u8]| {
     // Lenient + strict decoders: panic-freedom probe (preserves
@@ -18,6 +18,11 @@ fuzz_target!(|data: &[u8]| {
     let Ok(mut ls1) = decode(data) else {
         return;
     };
+
+    // F-01 rider: strict encoder panic-freedom probe. `encode_strict_compliance`
+    // exercises MissingMandatoryItem / structural guard paths that `encode_to_vec`
+    // does not reach. May Err on incomplete records; must never panic.
+    let _ = encode_strict_compliance(&ls1);
 
     // Round-trip: decode → encode → decode must yield an equal VmtiLs.
     // `field_errors` is excluded from PartialEq (manual impl) since

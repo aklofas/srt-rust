@@ -84,6 +84,13 @@ fuzz_target!(|data: &[u8]| {
                     decode_imapb(&p, &buf).expect("decode after successful encode must succeed");
                 match decoded {
                     DecodedImapb::Value(v_back) => {
+                        // Value must be finite — a non-finite Value violates
+                        // the decode contract (PR #84 guard).
+                        assert!(
+                            v_back.is_finite(),
+                            "decode returned Value({v_back}) which is non-finite; \
+                             min={min}, max={max}, L={length}"
+                        );
                         let fp_eps = span.abs() * f64::EPSILON * 8.0;
                         let tolerance = s_r + fp_eps;
                         assert!(
@@ -93,8 +100,16 @@ fuzz_target!(|data: &[u8]| {
                              min={min}, max={max}, L={length}"
                         );
                     }
+                    // OutOfRange with a non-finite decoded value: this is the
+                    // correct outcome when the decode formula overflows due to
+                    // an enormous sR (degenerate range, PR #84). The encode
+                    // succeeded for v_raw ∈ [min, max], but the round-trip
+                    // can't be guaranteed when sR is large enough that
+                    // sR·Zoffset + |min| exceeds f64::MAX.
+                    DecodedImapb::OutOfRange { decoded } if !decoded.is_finite() => {}
                     other => panic!(
-                        "encode(value ∈ [min,max]) then decode must return Value, got {other:?}; \
+                        "encode(value ∈ [min,max]) then decode must return Value or \
+                         OutOfRange(non-finite), got {other:?}; \
                          min={min}, max={max}, L={length}"
                     ),
                 }

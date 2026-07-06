@@ -263,6 +263,15 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFi
     let s_r = 1.0 / sf;
     let value = s_r * (y as f64 - z_offset) + p.min;
 
+    // Guard: degenerate ranges (e.g. min ≈ -f64::MAX, max = tiny subnormal)
+    // can produce an enormous sR = 1/sF, making `value` non-finite even when
+    // `y` is a valid normal-range wire integer. A non-finite decode is never a
+    // usable measurement; OutOfRange is the correct classification (fuzz-found,
+    // PR #84).
+    if !value.is_finite() {
+        return Ok(DecodedImapb::OutOfRange { decoded: value });
+    }
+
     // ST 1201.5 §8.6 Eq.12 / §7.2.3 Table 1: upper-bound reserved-space
     // detection in the integer domain. The exact max wire integer is
     //
@@ -1325,6 +1334,84 @@ mod tests {
                 DecodedImapb::Special(s),
                 "round-trip {s:?}"
             );
+        }
+    }
+
+    /// Fuzz-found regression (PR #84): degenerate range (min ≈ −f64::MAX,
+    /// max = tiny subnormal, L=4) produced an enormous sR = 1/sF, causing
+    /// `value = sR*(y−Zoffset)+min` to overflow to −∞ when y=0.
+    ///
+    /// Mechanism: Zoffset = frac(sF·min) ≈ 0.674. For y=0:
+    ///   value = sR*(0 − 0.674) + min = −8.37e298·0.674 + (−1.798e308)
+    ///         = −5.64e298 − 1.798e308 → overflows to −∞.
+    /// The lower-bound epsilon guard `value < p.min − epsilon` fails because
+    /// epsilon = sR = 8.37e298, making p.min − epsilon = −inf, and
+    /// `−∞ < −∞` is FALSE. So the pre-fix code returns Value(−∞), a
+    /// non-finite Value in violation of the decode contract.
+    ///
+    /// The fix: guard `!value.is_finite()` immediately after computing
+    /// `value`, returning `OutOfRange { decoded: value }`.
+    ///
+    /// Invariant: `decode_imapb` MUST NOT return `Value(x)` for non-finite x.
+    ///
+    /// Byte layout of the minimized libFuzzer artifact:
+    ///   data[0]=0x2B → length=(43%8)+1=4; data[1..9]=min; data[9..17]=max;
+    ///   the crash path in the fuzz target encodes v_raw (payload[0..8]) and
+    ///   decodes it: encode gives y=0, decode(y=0) → −∞.
+    #[test]
+    fn decode_imapb_never_returns_nonfinite_value() {
+        // Exact parameters from the minimized fuzz artifact.
+        let min = f64::from_bits(u64::from_le_bytes([
+            0xf3, 0xde, 0xd4, 0xff, 0xff, 0xff, 0xef, 0xff,
+        ]));
+        let max = f64::from_bits(u64::from_le_bytes([
+            0x7e, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ]));
+        // Sanity: artifact params must satisfy the ST 1201.5 §6 precondition.
+        assert!(min.is_finite() && max.is_finite() && min < max);
+
+        let p = ImapbParams {
+            min,
+            max,
+            length: 4,
+        };
+
+        // y=0 wire bytes: the crash path. sR*(0 − Zoffset) + min overflows
+        // to −∞; with the fix, this must return OutOfRange, not Value.
+        let result_y0 = decode_imapb(&p, &[0x00, 0x00, 0x00, 0x00])
+            .expect("decode_imapb must not error for valid params");
+        match result_y0 {
+            DecodedImapb::Value(v) => panic!(
+                "decode(y=0) returned Value({v}) but value must be non-finite \
+                 for this degenerate range; pre-fix code returned Value(−inf), \
+                 post-fix must return OutOfRange"
+            ),
+            DecodedImapb::OutOfRange { decoded } => {
+                assert!(
+                    !decoded.is_finite(),
+                    "OutOfRange.decoded should be −∞ for this overflow case, got {decoded}"
+                );
+            }
+            other => panic!("unexpected variant for y=0: {other:?}"),
+        }
+
+        // Belt-and-suspenders: no Value variant from any normal-pattern
+        // 4-byte wire integer may carry a non-finite float with these params.
+        // Normal-pattern means top two bits NOT both set (0b00..=0b10xxxxxx).
+        // We sweep a broad sample (all combinations of hi ∈ 0x00..=0x3F and
+        // a few lo values) to cover both the overflow zone (small y) and the
+        // in-range zone.
+        for hi in 0x00u8..=0x3Fu8 {
+            for lo in [0x00u8, 0x80u8, 0xFFu8] {
+                let w = [0x00u8, 0x00, hi, lo];
+                if let DecodedImapb::Value(v) = decode_imapb(&p, &w).unwrap() {
+                    assert!(
+                        v.is_finite(),
+                        "Value({v}) is non-finite for wire {w:?} with degenerate params \
+                         min={min:.6e}, max={max:.6e}"
+                    );
+                }
+            }
         }
     }
 }

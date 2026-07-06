@@ -147,6 +147,19 @@ layout changed.
   frame rate) is rejected. Malformed or hostile bitstreams are now rejected
   rather than silently mis-parsed (PR #67).
 
+### Fixed — KLV codec (IMAPB non-finite decode, fuzz-found)
+
+- `decode_imapb` no longer returns a non-finite `Value` for degenerate IMAPB
+  ranges. For parameters such as `min ≈ −f64::MAX, max = tiny subnormal`,
+  the scale factor `sF` becomes extremely small, making `sR = 1/sF` enormous.
+  The resulting `value = sR·(y−Zoffset) + min` could overflow to `±∞`; the
+  existing lower-bound epsilon guard failed to catch this because `epsilon`
+  itself overflowed to `+∞`, making `p.min − epsilon = −∞` and the guard
+  `value < −∞` always false. The fix guards non-finite arithmetic results
+  immediately after computing `value`, returning `OutOfRange { decoded }` —
+  the correct classification for any non-usable arithmetic result.
+  Bug found by the `klv_imapb` libFuzzer target (PR #84).
+
 ### Fixed — KLV codec (IMAPB reserved-space detection)
 
 - `decode_imapb` now detects inter-band reserved integers using an exact

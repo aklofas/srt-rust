@@ -32,6 +32,10 @@ name = "h266_slice_header_light"
 
 [[target]]
 crate = "tst-core"
+name = "klv_imapb"
+
+[[target]]
+crate = "tst-core"
 name = "klv_st0102_decode"
 
 [[target]]

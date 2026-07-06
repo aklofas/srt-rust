@@ -80,6 +80,10 @@ name = "parse_parameter_sets"
 
 [[target]]
 crate = "tst-core"
+name = "split_video"
+
+[[target]]
+crate = "tst-core"
 name = "ts_parser"
 
 [[target]]

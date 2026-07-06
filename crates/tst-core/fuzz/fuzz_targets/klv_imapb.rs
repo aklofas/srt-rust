@@ -15,11 +15,13 @@
 //! [17..]   payload bytes
 //! ```
 //!
-//! The driver bails early on degenerate `(min, max)` — non-finite or
-//! `min >= max` — mirroring the ST 1201.5 §6 precondition the library
-//! enforces. It also skips the round-trip probes when the scale factor
-//! `sF = 2^(dPow − bPow)` overflows or underflows (extreme spans at small
-//! `L`), since in those cases no round-trip tolerance can be stated.
+//! The driver restricts its input domain to finite `min < max`: this is the
+//! fuzz target's own constraint to keep round-trip tolerance meaningful, not a
+//! mirror of the library precondition. The library rejects NaN params (where
+//! `partial_cmp` returns `None`) and `min >= max`, but accepts ±∞ params
+//! (e.g. `−∞ < +∞` satisfies `partial_cmp`). The driver also skips the
+//! round-trip probes when `sF = 2^(dPow − bPow)` overflows to `+∞` (tiny
+//! span), since in that case no round-trip tolerance can be stated.
 
 #![no_main]
 use libfuzzer_sys::fuzz_target;
@@ -53,9 +55,13 @@ fuzz_target!(|data: &[u8]| {
         let _ = decode_imapb(&p, &payload[..length]);
     }
 
-    // Compute scale factor for the round-trip probes. Bail if it is
-    // non-finite (tiny span → sF overflows to +∞; huge span → sF
-    // underflows only for pathological params that f64 can't represent).
+    // Compute scale factor for the round-trip probes. Bail if sF is
+    // non-finite or zero: a tiny span overflows sF to +∞ (the primary
+    // case); the s_f <= 0.0 arm is a safety net for extreme-magnitude
+    // spans where max − min itself overflows f64 arithmetic.
+    // NOTE: keep this bPow/sF derivation in sync with `ImapbParams::sf()`
+    // in imapb.rs; a drift here surfaces as a loud false-positive crash,
+    // not a silent gap.
     let span = max - min;
     let b_pow = span.log2().ceil();
     let d_pow = (8 * length as i32 - 1) as f64;

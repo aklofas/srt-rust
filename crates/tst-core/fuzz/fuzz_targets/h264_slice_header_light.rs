@@ -112,8 +112,9 @@ fuzz_target!(|data: &[u8]| {
         let sps_rbsp = minimal_sps_rbsp(log2);
         // Safety net: if parse_sps rejects the synthesized bytes the if-let
         // below silently falls through — every exec is crash-free but the
-        // Some(&sps) branch is never taken (coverage theater).  Fuzz builds
-        // are debug, so this fires on the very first exec if synthesis breaks.
+        // Some(&sps) branch is never taken (coverage theater).
+        // cargo-fuzz builds enable debug-assertions even in release mode, so
+        // this fires on the very first exec if synthesis breaks.
         debug_assert!(
             parse_sps(&sps_rbsp).is_ok(),
             "minimal_sps_rbsp({log2}) rejected by parse_sps — SPS-context branch is dead"

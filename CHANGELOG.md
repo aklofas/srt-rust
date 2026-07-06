@@ -154,7 +154,7 @@ layout changed.
   the scale factor `sF` becomes extremely small, making `sR = 1/sF` enormous.
   The resulting `value = sR·(y−Zoffset) + min` could overflow to `±∞`; the
   existing lower-bound epsilon guard failed to catch this because the
-  subtraction `p.min − epsilon` also underflowed to `−∞`, making the guard
+  subtraction `p.min − epsilon` also overflowed to `−∞` (its magnitude exceeded f64::MAX), making the guard
   `value < −∞` always false. The fix guards non-finite arithmetic results
   immediately after computing `value`, returning `OutOfRange { decoded }` —
   the correct classification for any non-usable arithmetic result.

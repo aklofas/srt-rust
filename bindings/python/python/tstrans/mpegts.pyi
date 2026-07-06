@@ -313,11 +313,13 @@ class DemuxEvent:
         programs: Tuple[_ProgramMapData, ...]
 
     # `Video` / `Audio` / `Subtitle` / `UnknownSample` are hand-written frozen
-    # classes at runtime (NOT dataclasses) because their payload property
-    # materializes lazily — a value cannot be both a dataclass field and a
-    # same-named property. The stub mirrors the runtime: a keyword-only
-    # `__init__`, payload as a read-only `bytes` property, and explicit
-    # `__match_args__`.
+    # classes at runtime (NOT dataclasses) because their raw access unit /
+    # payload is lazily materialized through the native `RawBytes` holder —
+    # a value cannot be both a dataclass field and a same-named property.
+    # `Video` and `Audio` expose this as `.raw`; `Subtitle` and
+    # `UnknownSample` expose it as `.payload`. The stub mirrors the runtime:
+    # a keyword-only `__init__`, the access property as a read-only `bytes`
+    # property, and explicit `__match_args__`.
     class Video(DemuxEvent):
         stream: StreamId
         pts: Pts90khz

@@ -254,6 +254,18 @@ layout changed.
   per JAR version, and the sweep removes copies from older versions once they
   are no longer locked. Linux and macOS behavior is unchanged (DA-JVM-2, PR #83).
 
+### Fixed — Python demux event payload laziness (Subtitle / UnknownSample)
+
+- `DemuxEvent.Subtitle` and `DemuxEvent.UnknownSample` now defer the
+  `bytes` materialization to the first `.payload` access, matching the
+  existing lazy pattern on `DemuxEvent.Video.raw` / `.Audio.raw` (WP-E
+  PY-01). Both `SamplePayload::Subtitle.payload` and
+  `SamplePayload::Unknown.raw` are `SharedBytes` in tst-core, so the
+  Rust binding passes a cheap Arc clone to a `RawBytes` holder — no
+  payload copy at event creation. `DemuxEvent.Metadata.payload` remains
+  eager (`Vec<u8>` source, copy unavoidable at the `&DemuxEvent` call
+  boundary) (DA-PERF-13, PR #83).
+
 ### Fixed — pipeline shell panic safety
 
 - `MuxPublisher`'s fallible methods (`send_video`, `send_klv`, `send_audio`,

@@ -8,6 +8,10 @@ name = "audio_frame_iter"
 
 [[target]]
 crate = "tst-core"
+name = "audio_syncframe"
+
+[[target]]
+crate = "tst-core"
 name = "demux_feed"
 
 [[target]]

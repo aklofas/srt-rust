@@ -19,6 +19,13 @@ doc               = false
 bench             = false
 
 [[bin]]
+name              = "audio_syncframe"
+path              = "fuzz_targets/audio_syncframe.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
 name              = "demux_feed"
 path              = "fuzz_targets/demux_feed.rs"
 test              = false

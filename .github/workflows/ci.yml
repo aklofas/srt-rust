@@ -669,7 +669,7 @@ jobs:
       # binaries do). thumbv7em-none-eabihf = Cortex-M4F/M7F (STM32F4/F7/H7);
       # riscv32imac-unknown-none-elf proves the code is arch-agnostic no_std
       # (e.g. ESP32-P4 bare-metal). Mirrored locally by
-      # scripts/check/embedded/no-std-baremetal.sh.
+      # embedded/scripts/check/no-std-baremetal.sh.
       - name: cargo build (tst-core, thumbv7em-none-eabihf)
         run: cargo build -p tst-core --no-default-features --target thumbv7em-none-eabihf
 
@@ -706,18 +706,18 @@ jobs:
       # staticlib + arm-none-eabi-gcc), run under QEMU mps2-an386, and assert it
       # byte-matches the same video-roundtrip golden via the offline C ABI.
       - name: QEMU runtime smoke (C firmware via libtstrans.a)
-        run: bash scripts/check/c/firmware-qemu.sh
+        run: bash embedded/scripts/check/firmware-qemu.sh
 
       # Runtime gates for the embedded/freertos-srt/ reference product (the
       # consolidated S0-S4 arc: one shared substrate, the NIC-egress example, and
       # the five layered verifications as named tests, all driven by the
-      # scripts/check/embedded/freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
+      # embedded/scripts/check/freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
       # `command -v` guards if the cross-toolchain/QEMU/cmake/cargo is absent, so
       # promotion can't false-red on a runner-image change. No new apt packages --
       # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm +
-      # cmake are installed above; vendor/{lwip,srt,mbedtls} come from the
-      # recursive submodule checkout; the example host harness builds the vendored
-      # host libsrt via cargo.
+      # cmake are installed above; embedded/vendor/{lwip,freertos-*} +
+      # vendor/{srt,mbedtls} come from the recursive submodule checkout; the
+      # example host harness builds the vendored host libsrt via cargo.
 
       # exceptions (was S0): concurrent per-task C++ throw/catch with exception
       # isolation on FreeRTOS + FreeRTOS-Plus-POSIX (pthread backend). Hard-gate.
@@ -726,27 +726,27 @@ jobs:
       # so a runner-image regression can't silently drop coverage while green.
       - name: QEMU runtime gate (freertos-srt exceptions)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check/embedded/freertos-srt.sh exceptions
+        run: bash embedded/scripts/check/freertos-srt.sh exceptions
 
       # lwip-loopback (was S1): the 564-byte golden round-trips through a lwIP UDP
       # loopback socket (BSD sockets + select(), hi-res clock_gettime). Hard-gate.
       - name: QEMU runtime gate (freertos-srt lwip-loopback)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check/embedded/freertos-srt.sh lwip-loopback
+        run: bash embedded/scripts/check/freertos-srt.sh lwip-loopback
 
       # libsrt-smoke (was S2): cross-compiled libsrt (Generic -> ::select path,
       # pthread backend, logging+encryption OFF) boots srt_startup + create_socket
       # + close + cleanup against the FreeRTOS+lwIP substrate. Hard-gate.
       - name: QEMU runtime gate (freertos-srt libsrt-smoke)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check/embedded/freertos-srt.sh libsrt-smoke
+        run: bash embedded/scripts/check/freertos-srt.sh libsrt-smoke
 
       # loopback-arq (was S3): SRT caller+listener data-plane proof -- streams the
       # golden x N over a lossy loopback netif (~20% deterministic loss) and
       # recovers it byte-exact, plain and mbedTLS-AES-128. Hard-gate.
       - name: QEMU runtime gate (freertos-srt loopback-arq ARQ + encryption)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
-        run: bash scripts/check/embedded/freertos-srt.sh loopback-arq
+        run: bash embedded/scripts/check/freertos-srt.sh loopback-arq
 
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
@@ -756,7 +756,7 @@ jobs:
       # it bakes a few more cycles before promotion to hard-gate.
       - name: QEMU runtime gate (freertos-srt NIC egress example)
         continue-on-error: true
-        run: bash scripts/check/embedded/freertos-srt.sh example
+        run: bash embedded/scripts/check/freertos-srt.sh example
 
   fuzz-smoke:
     name: fuzz smoke (nightly, compile only)

@@ -72,6 +72,11 @@ layout changed.
 - `tst_tcp` gains a `TcpCancelHandle` with `cancel_handle()`, giving the TCP
   transport a cooperative cancellation path; the Python TCP transport exposes
   it too (PR #62).
+- `NativeLoader` now accepts a `-Dtstrans.native.lib=<path>` JVM system
+  property as a developer override: when set to a non-empty path, the loader
+  skips JAR extraction and calls `System.load` on that path directly, making
+  it easy to point at a freshly-compiled debug build without repackaging the
+  JAR (DA-JVM-2, PR #83).
 
 ### Changed — default features and transport behavior
 
@@ -241,6 +246,13 @@ layout changed.
   the valid range is always respected; this rejection catches version-skew where
   a caller compiled against a newer binding passes an ordinal unknown to the
   native library (DA-JVM-3, PR #83).
+- `NativeLoader` now extracts the native library to a stable,
+  content-addressed directory (`<tmpdir>/tstrans-native-<hash>/`) instead of a
+  randomly-named temp file. On load, stale sibling directories from previous
+  JAR versions are swept best-effort. On Windows, `deleteOnExit` cannot remove
+  a DLL that is still loaded; the stable layout means only one copy accumulates
+  per JAR version, and the sweep removes copies from older versions once they
+  are no longer locked. Linux and macOS behavior is unchanged (DA-JVM-2, PR #83).
 
 ### Fixed — pipeline shell panic safety
 

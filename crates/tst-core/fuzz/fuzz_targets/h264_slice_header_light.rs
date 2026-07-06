@@ -12,10 +12,15 @@
 //! [0]     selector byte:
 //!           bit 7 = 0 → no-SPS path (original coverage)
 //!           bit 7 = 1 → SPS-context path;
-//!                        log2_max_frame_num_minus4 = byte % 13  (→ 0..=12)
+//!                        log2_max_frame_num_minus4 = sel % 13  (→ 0..=12,
+//!                        folding the full byte — not just low bits)
 //!           bit 0     → nal_unit_type: 0=non-IDR (type 1), 1=IDR (type 5)
 //! [1..]   slice RBSP bytes (fuzz-driven)
 //! ```
+//!
+//! // TODO(codec F-03): H.265 parse_slice_header_light has the same
+//! // log2_max_pic_order_cnt_lsb_minus4 SPS-context gap; deferred —
+//! // H.265 SPS synthesis needs profile_tier_level + sub-layer arrays.
 
 use libfuzzer_sys::fuzz_target;
 use tst_core::codec::h264::{parse_slice_header_light, parse_sps};
@@ -102,8 +107,17 @@ fuzz_target!(|data: &[u8]| {
     } else {
         // SPS-context path — exercises the frame_num read_u(bits) call with
         // fuzz-chosen bit-width bits = log2 + 4 ∈ 4..=16.
-        let log2 = sel % 13; // 0..=12
+        // `sel % 13` folds the full selector byte (0..=255) to 0..=12.
+        let log2 = sel % 13;
         let sps_rbsp = minimal_sps_rbsp(log2);
+        // Safety net: if parse_sps rejects the synthesized bytes the if-let
+        // below silently falls through — every exec is crash-free but the
+        // Some(&sps) branch is never taken (coverage theater).  Fuzz builds
+        // are debug, so this fires on the very first exec if synthesis breaks.
+        debug_assert!(
+            parse_sps(&sps_rbsp).is_ok(),
+            "minimal_sps_rbsp({log2}) rejected by parse_sps — SPS-context branch is dead"
+        );
         if let Ok(sps) = parse_sps(&sps_rbsp) {
             let _ = parse_slice_header_light(rbsp, Some(&sps), nal_type);
         }

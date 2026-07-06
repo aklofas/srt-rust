@@ -176,4 +176,51 @@ class NativeLoaderExtractTest {
             System.clearProperty("tstrans.native.lib");
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Atomic write — partial-file recovery
+    // -----------------------------------------------------------------------
+
+    /**
+     * Regression guard for the crash-mid-write scenario fixed by the atomic
+     * write path.
+     *
+     * <p>Before the fix, {@code Files.write(target, bytes)} wrote directly to
+     * the stable path. A JVM crash mid-write left a <em>partial</em>
+     * {@code target}. On the next run the {@code Files.exists(target)} fast-
+     * path reused it, and {@code System.load} threw an
+     * {@link UnsatisfiedLinkError} with no recovery.
+     *
+     * <p>After the fix, writes land on {@code libtstjni.<ext>.part} first and
+     * are promoted to {@code target} via {@code ATOMIC_MOVE}. A crash between
+     * the write and the move therefore leaves only {@code .part} partial, never
+     * {@code target}.  This test simulates that exact crash: plants a truncated
+     * {@code .part} file (as if the JVM died after {@code Files.write(part)}
+     * but before {@code Files.move}), then calls {@link NativeLoader#extractToStableDir}
+     * and asserts that the complete library is extracted to {@code target}.
+     */
+    @Test
+    void partialDotPartFileFromCrashedWriteIsOverwritten(@TempDir Path tmp) throws IOException {
+        byte[] fullBytes = new byte[]{10, 20, 30, 40, 50};
+
+        // Compute the stable-dir path so we can pre-plant the .part file.
+        String hash = NativeLoader.contentHash(fullBytes);
+        Path targetDir = tmp.resolve("tstrans-native-" + hash);
+        Files.createDirectories(targetDir);
+
+        // Simulate crash: .part written but move never completed → target absent.
+        Path partFile = targetDir.resolve("libtstjni.so.part");
+        Files.write(partFile, new byte[]{(byte) 0xDE, (byte) 0xAD}); // truncated
+
+        // target does not exist → extraction must overwrite the stale .part and
+        // produce a complete, loadable target.
+        Path result = NativeLoader.extractToStableDir(fullBytes, "so", tmp);
+
+        assertEquals(targetDir.resolve("libtstjni.so"), result,
+                "must return the content-addressed target path");
+        assertArrayEquals(fullBytes, Files.readAllBytes(result),
+                "target must contain the full library bytes; stale .part must not block it");
+        assertFalse(Files.exists(partFile),
+                ".part staging file must be gone after successful atomic promotion");
+    }
 }

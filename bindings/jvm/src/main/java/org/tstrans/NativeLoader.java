@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.zip.CRC32;
 
 /**
@@ -108,7 +109,15 @@ public final class NativeLoader {
 
         if (!Files.exists(target)) {
             Files.createDirectories(targetDir);
-            Files.write(target, bytes);
+            // Write to a staging file first, then promote atomically.  If the
+            // JVM crashes between write and move only the .part file is partial;
+            // target either does not exist (next run re-extracts) or already
+            // contains a complete write (from a racing JVM that won the move).
+            // REPLACE_EXISTING lets a racing loser overwrite with identical bytes.
+            Path part = targetDir.resolve("libtstjni." + ext + ".part");
+            Files.write(part, bytes);
+            Files.move(part, target, StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
         }
         target.toFile().deleteOnExit();
         return target;

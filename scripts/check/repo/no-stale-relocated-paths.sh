@@ -33,11 +33,14 @@ PATTERN='crates/tst-c-core|crates/tst-py|crates/baremetal-qemu|bindings/c/tst-c-
 #   scripts/check/c/firmware-qemu.sh          -> embedded/scripts/check/firmware-qemu.sh
 #   scripts/lib/run-freertos-srt-example.sh   -> embedded/scripts/lib/
 #   vendor/{freertos-kernel,freertos-plus-posix,lwip} -> embedded/vendor/...
-# The vendor class needs a carve-out: the NEW path contains the old one as a
-# suffix, so hits on `embedded/vendor/...` are filtered back out. .gitmodules is
-# exempt for the vendor class only: submodule NAMES keep the historical
-# `[submodule "vendor/lwip"]` form (renaming a submodule name breaks existing
-# checkouts' .git/modules state — deliberately not done).
+# The vendor class and the lib-helper form need carve-outs: their NEW paths
+# contain the old ones as suffixes (`embedded/vendor/lwip` contains `vendor/lwip`,
+# `embedded/scripts/lib/run-...` contains `scripts/lib/run-...`), so hits on the
+# new prefixes are filtered back out. The check-script forms have no such
+# collision (`embedded/scripts/check/` does not contain `scripts/check/embedded/`).
+# .gitmodules is exempt for the vendor class only: submodule NAMES keep the
+# historical `[submodule "vendor/lwip"]` form (renaming a submodule name breaks
+# existing checkouts' .git/modules state — deliberately not done).
 PATTERN_EMB='scripts/check/embedded/|scripts/check/c/firmware-qemu\.sh|scripts/lib/run-freertos-srt-example\.sh'
 PATTERN_VEND='vendor/(freertos-kernel|freertos-plus-posix|lwip)'
 
@@ -50,7 +53,8 @@ hits=$(git ls-files \
 hits_emb=$(git ls-files \
   | grep -vE '^(CHANGELOG\.md|scripts/check/repo/no-stale-relocated-paths\.sh)$' \
   | tr '\n' '\0' \
-  | xargs -0 grep -InE "$PATTERN_EMB" 2>/dev/null || true)
+  | xargs -0 grep -InE "$PATTERN_EMB" 2>/dev/null \
+  | grep -v 'embedded/scripts/lib/' || true)
 
 hits_vend=$(git ls-files \
   | grep -vE '^(CHANGELOG\.md|\.gitmodules|scripts/check/repo/no-stale-relocated-paths\.sh)$' \

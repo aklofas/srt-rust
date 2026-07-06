@@ -12,11 +12,12 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 get_filename_component(_SUB "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 # This file lives at embedded/freertos-srt/substrate/ — three levels under the
-# workspace root, hence the ../../.. to reach vendor/.
+# workspace root. Embedded-only vendor trees live at embedded/vendor/; the
+# shared srt/mbedtls submodules stay at the workspace-level vendor/.
 set(_ROOT "${_SUB}/../../..")
-set(_K "${_ROOT}/vendor/freertos-kernel")
-set(_P "${_ROOT}/vendor/freertos-plus-posix")
-set(_L "${_ROOT}/vendor/lwip")
+set(_K "${_ROOT}/embedded/vendor/freertos-kernel")
+set(_P "${_ROOT}/embedded/vendor/freertos-plus-posix")
+set(_L "${_ROOT}/embedded/vendor/lwip")
 
 set(_ARCH "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 # -D__GNU__: selects libsrt utilities.h's endian branch

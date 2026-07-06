@@ -748,7 +748,12 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", subtitle_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("payload", PyBytes::new_bound(py, payload.as_slice()))?;
+            // Lazy raw: `payload` is SharedBytes — hand the Arc clone to the
+            // holder. PyBytes copy is deferred to the first `.payload` access.
+            kwargs.set_item(
+                "payload",
+                Py::new(py, crate::raw_bytes::RawBytes::from_shared(payload.clone()))?,
+            )?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Unknown { stream_type, raw } => {
@@ -760,7 +765,12 @@ fn convert_sample_event(
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("stream_type", stream_type.as_byte())?;
-            kwargs.set_item("payload", PyBytes::new_bound(py, raw.as_slice()))?;
+            // Lazy raw: `raw` is SharedBytes — hand the Arc clone to the
+            // holder. PyBytes copy is deferred to the first `.payload` access.
+            kwargs.set_item(
+                "payload",
+                Py::new(py, crate::raw_bytes::RawBytes::from_shared(raw.clone()))?,
+            )?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
     }

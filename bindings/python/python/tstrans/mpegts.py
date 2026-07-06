@@ -826,13 +826,66 @@ class _AudioEvent(DemuxEvent):
         return _codec.parse_audio(self.raw, self.codec, strict=strict)
 
 
-@dataclass(frozen=True, slots=True)
 class _SubtitleEvent(DemuxEvent):
-    stream: StreamId
-    pts: Pts90khz
-    dts: Optional[Pts90khz]
-    codec: SubtitleCodec
-    payload: bytes
+    # Hand-written frozen class (see `_VideoEvent` above) so `.payload` can be a
+    # lazily-materialized property rather than an eager dataclass field.
+    # `SamplePayload::Subtitle.payload` is SharedBytes in tst-core, so the Rust
+    # side passes a `RawBytes` holder (cheap Arc clone; no payload copy).
+    __slots__ = ("stream", "pts", "dts", "codec", "_payload")
+
+    __match_args__ = ("stream", "pts", "dts", "codec", "payload")
+
+    def __init__(
+        self,
+        *,
+        stream: StreamId,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz],
+        codec: SubtitleCodec,
+        payload,
+    ) -> None:
+        object.__setattr__(self, "stream", stream)
+        object.__setattr__(self, "pts", pts)
+        object.__setattr__(self, "dts", dts)
+        object.__setattr__(self, "codec", codec)
+        # Accept either a pre-built holder (the demuxer path) or raw bytes
+        # (direct construction with `payload=b"..."`).
+        object.__setattr__(
+            self,
+            "_payload",
+            payload if isinstance(payload, _native.RawBytes) else _native.RawBytes(payload),
+        )
+
+    @property
+    def payload(self) -> bytes:
+        """Raw subtitle PES payload bytes. Materialized on first access and cached."""
+        return self._payload.value
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"cannot delete field {name!r}")
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return (
+            self.stream == other.stream
+            and self.pts == other.pts
+            and self.dts == other.dts
+            and self.codec == other.codec
+            and self._payload == other._payload  # content equality
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.stream, self.pts, self.dts, self.codec, hash(self._payload)))
+
+    def __repr__(self) -> str:
+        return (
+            f"DemuxEvent.Subtitle(stream={self.stream!r}, pts={self.pts!r}, "
+            f"dts={self.dts!r}, codec={self.codec!r}, payload={self.payload!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -861,7 +914,6 @@ class _MetadataEvent(DemuxEvent):
         return _klv.parse_klv_universal(self.payload, strict=strict)
 
 
-@dataclass(frozen=True, slots=True)
 class _UnknownSampleEvent(DemuxEvent):
     """Sample on a PID whose stream_type the demuxer does not classify
     as Video / Audio / Subtitle / KLV. The raw stream_type byte (per
@@ -870,13 +922,69 @@ class _UnknownSampleEvent(DemuxEvent):
 
     Audit-2 finding #1 — prior versions collapsed unknown samples into
     a NonConformant diagnostic and discarded the payload bytes.
+
+    Hand-written frozen class (see `_VideoEvent`) so `.payload` can be a
+    lazily-materialized property; `SamplePayload::Unknown.raw` is
+    SharedBytes in tst-core so the demuxer path avoids an eager copy.
     """
 
-    stream: StreamId
-    pts: Pts90khz
-    dts: Optional[Pts90khz]
-    stream_type: int  # raw PMT byte, 0..=255
-    payload: bytes
+    __slots__ = ("stream", "pts", "dts", "stream_type", "_payload")
+
+    __match_args__ = ("stream", "pts", "dts", "stream_type", "payload")
+
+    def __init__(
+        self,
+        *,
+        stream: StreamId,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz],
+        stream_type: int,
+        payload,
+    ) -> None:
+        object.__setattr__(self, "stream", stream)
+        object.__setattr__(self, "pts", pts)
+        object.__setattr__(self, "dts", dts)
+        object.__setattr__(self, "stream_type", stream_type)
+        # Accept either a pre-built holder (the demuxer path) or raw bytes
+        # (direct construction with `payload=b"..."`).
+        object.__setattr__(
+            self,
+            "_payload",
+            payload if isinstance(payload, _native.RawBytes) else _native.RawBytes(payload),
+        )
+
+    @property
+    def payload(self) -> bytes:
+        """Raw PES payload bytes for the unknown stream type. Materialized on first access and cached."""
+        return self._payload.value
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"cannot delete field {name!r}")
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return (
+            self.stream == other.stream
+            and self.pts == other.pts
+            and self.dts == other.dts
+            and self.stream_type == other.stream_type
+            and self._payload == other._payload  # content equality
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.stream, self.pts, self.dts, self.stream_type, hash(self._payload))
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"DemuxEvent.UnknownSample(stream={self.stream!r}, pts={self.pts!r}, "
+            f"dts={self.dts!r}, stream_type={self.stream_type!r}, payload={self.payload!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True)

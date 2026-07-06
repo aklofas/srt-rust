@@ -21,6 +21,7 @@ from tstrans.mpegts import (
     Pts90khz,
     StreamId,
     StreamKindTag,
+    SubtitleCodec,
     VideoCodec,
 )
 
@@ -483,3 +484,195 @@ def test_transmux_edit_klv_copy_video_byte_faithful():
                 f"sensor_lat_deg in OUT ({rec.sensor_lat_deg}) != ORIG "
                 f"({ORIG_SENSOR_LAT}) — unedited field was corrupted"
             )
+
+
+# ---------------------------------------------------------------------------
+# DA-PERF-13 — lazy RawBytes for Subtitle / UnknownSample demux events
+#
+# `SamplePayload::Subtitle.payload` and `SamplePayload::Unknown.raw` are
+# `SharedBytes` in tst-core, so the Rust side passes a cheap Arc clone to a
+# `RawBytes` holder. The Python `bytes` is materialized only on first
+# `.payload` access. This mirrors the Video / Audio lazy pattern (WP-E).
+#
+# Metadata is NOT lazy: `DemuxEvent::Metadata.payload` is `Vec<u8>` in
+# tst-core and `convert_event` takes `&DemuxEvent`, so no SharedBytes source
+# is available without a copy — an eager PyBytes is still the right call there.
+# ---------------------------------------------------------------------------
+
+
+def _make_stream_id_subtitle():
+    return StreamId(pid=0x102, kind=StreamKindTag.SUBTITLE,
+                    codec=SubtitleCodec.CEA708_STANDALONE, program_number=1)
+
+
+def _make_stream_id_unknown():
+    return StreamId(pid=0x103, kind=StreamKindTag.UNKNOWN, codec=None, program_number=1)
+
+
+def test_subtitle_event_lazy_payload_materialization_direct_construction():
+    """_SubtitleEvent constructed with payload=b'...' wraps the bytes in a
+    RawBytes holder — the PyBytes is not materialized until the first .payload
+    access, then cached. Byte value is identical to the input."""
+    payload_bytes = b"\xfe\xed\xca\xfe subtitle data"
+    ev = DemuxEvent.Subtitle(
+        stream=_make_stream_id_subtitle(),
+        pts=Pts90khz.from_ms(500),
+        dts=None,
+        codec=SubtitleCodec.CEA708_STANDALONE,
+        payload=payload_bytes,
+    )
+    # Unmaterialized: `_payload._materialized` must be False before first access.
+    assert ev._payload._materialized is False, "PyBytes must not be materialized before first access"
+    first = ev.payload
+    assert isinstance(first, (bytes, bytearray))
+    assert bytes(first) == payload_bytes, "payload bytes must match input"
+    assert ev._payload._materialized is True
+    # Repeated access returns the SAME cached object.
+    assert ev.payload is first
+
+
+def test_subtitle_event_lazy_payload_from_raw_bytes_holder():
+    """When a RawBytes holder is passed directly (the demuxer path), the holder
+    is stored as-is and .payload returns its byte content."""
+    holder = _native.RawBytes(b"\x00\x01\x02\x03 subtitle")
+    ev = DemuxEvent.Subtitle(
+        stream=_make_stream_id_subtitle(),
+        pts=Pts90khz.from_ms(100),
+        dts=None,
+        codec=SubtitleCodec.CEA708_STANDALONE,
+        payload=holder,
+    )
+    # Holder was passed in already; _payload IS the holder.
+    assert ev._payload is holder
+    # Content is correct.
+    assert bytes(ev.payload) == b"\x00\x01\x02\x03 subtitle"
+
+
+def test_subtitle_event_equality_and_hash():
+    """Two Subtitle events with equal payload compare equal and hash equal;
+    different payload → not equal."""
+    stream = _make_stream_id_subtitle()
+    pts = Pts90khz.from_ms(100)
+    p = b"sub payload bytes"
+
+    def _mk(payload_arg):
+        return DemuxEvent.Subtitle(
+            stream=stream, pts=pts, dts=None,
+            codec=SubtitleCodec.CEA708_STANDALONE, payload=payload_arg
+        )
+
+    a = _mk(p)
+    b = _mk(bytes(p))  # distinct bytes object, same content
+    assert a == b
+    assert hash(a) == hash(b)
+    assert a != _mk(b"different subtitle bytes")
+
+
+def test_unknown_event_lazy_payload_materialization_direct_construction():
+    """_UnknownSampleEvent constructed with payload=b'...' wraps the bytes in a
+    RawBytes holder; the PyBytes is not materialized until .payload access."""
+    payload_bytes = b"\xde\xad\xbe\xef unknown stream data"
+    ev = DemuxEvent.UnknownSample(
+        stream=_make_stream_id_unknown(),
+        pts=Pts90khz.from_ms(200),
+        dts=None,
+        stream_type=0x80,
+        payload=payload_bytes,
+    )
+    assert ev._payload._materialized is False
+    first = ev.payload
+    assert isinstance(first, (bytes, bytearray))
+    assert bytes(first) == payload_bytes
+    assert ev._payload._materialized is True
+    assert ev.payload is first
+
+
+def test_unknown_event_lazy_payload_from_raw_bytes_holder():
+    """When a RawBytes holder is passed directly (the demuxer path), the holder
+    is stored as-is and .payload returns its byte content."""
+    holder = _native.RawBytes(b"\xff\xfe unknown")
+    ev = DemuxEvent.UnknownSample(
+        stream=_make_stream_id_unknown(),
+        pts=Pts90khz.from_ms(200),
+        dts=None,
+        stream_type=0x81,
+        payload=holder,
+    )
+    assert ev._payload is holder
+    assert bytes(ev.payload) == b"\xff\xfe unknown"
+
+
+def test_unknown_event_equality_and_hash():
+    """Two UnknownSample events with equal payload compare equal and hash equal."""
+    stream = _make_stream_id_unknown()
+    pts = Pts90khz.from_ms(100)
+    p = b"unknown payload"
+
+    def _mk(payload_arg):
+        return DemuxEvent.UnknownSample(
+            stream=stream, pts=pts, dts=None, stream_type=0xAB, payload=payload_arg
+        )
+
+    a = _mk(p)
+    b = _mk(bytes(p))
+    assert a == b
+    assert hash(a) == hash(b)
+    assert a != _mk(b"different")
+
+
+def _mux_subtitle_ts() -> bytes:
+    """Build a minimal TS with one CEA-708 subtitle stream and one subtitle
+    PES packet. Returns the raw TS bytes."""
+    from tstrans.mpegts import Cea708StandaloneConfig
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_subtitle(0x102, Cea708StandaloneConfig())
+        .pcr_pid(0x101)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    mux = Muxer(cfg)
+    pts = Pts90khz.from_ms(1000)
+    # Push one H.264 key frame so the demuxer has a PMT context.
+    au = b"\x00\x00\x00\x01\x65\x88\x84\x00\x10"
+    vh = mux.video_stream_handle(0)
+    mux.push_video_to(vh, au, pts=pts, key_frame=True)
+    sh = mux.subtitle_handles()[0]
+    mux.push_subtitle_to(sh, b"\xAA\xBB\xCC\xDD subtitle payload", pts=pts)
+    out = bytearray()
+    while True:
+        buf = bytearray(1316)
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out += bytes(buf[:n])
+    return bytes(out)
+
+
+def test_subtitle_event_demuxer_path_lazy():
+    """Demux a synthetic TS with a CEA-708 subtitle stream and verify that
+    the resulting DemuxEvent.Subtitle carries a lazy RawBytes holder (not an
+    eager PyBytes) and that .payload returns the correct bytes."""
+    from tstrans.mpegts import Demuxer
+    ts_bytes = _mux_subtitle_ts()
+    demuxer = Demuxer()
+    demuxer.feed(ts_bytes)
+    demuxer.flush()
+    found = False
+    for ev in demuxer:
+        if isinstance(ev, DemuxEvent.Subtitle):
+            # The Rust side passes a RawBytes holder — _payload must exist and
+            # start unmaterialized.
+            assert hasattr(ev, "_payload"), "demuxer-path Subtitle must carry _payload holder"
+            assert ev._payload._materialized is False, (
+                "PyBytes must not be materialized before first .payload access on demuxer path"
+            )
+            payload = ev.payload
+            assert isinstance(payload, (bytes, bytearray))
+            assert len(payload) > 0
+            assert ev._payload._materialized is True
+            assert ev.payload is payload  # cached
+            found = True
+            break
+    assert found, "expected at least one DemuxEvent.Subtitle in the synthetic TS"

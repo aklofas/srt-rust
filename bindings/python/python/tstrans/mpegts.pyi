@@ -312,11 +312,12 @@ class DemuxEvent:
     class ProgramMap(DemuxEvent):
         programs: Tuple[_ProgramMapData, ...]
 
-    # `Video` / `Audio` are hand-written frozen classes at runtime (NOT
-    # dataclasses) because `.raw` materializes lazily — a value cannot be both
-    # a dataclass field and a same-named property (WP-E PY-01). The stub mirrors
-    # the runtime: a keyword-only `__init__`, `raw` as a read-only `bytes`
-    # property, and explicit `__match_args__`.
+    # `Video` / `Audio` / `Subtitle` / `UnknownSample` are hand-written frozen
+    # classes at runtime (NOT dataclasses) because their payload property
+    # materializes lazily — a value cannot be both a dataclass field and a
+    # same-named property. The stub mirrors the runtime: a keyword-only
+    # `__init__`, payload as a read-only `bytes` property, and explicit
+    # `__match_args__`.
     class Video(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
@@ -364,13 +365,23 @@ class DemuxEvent:
         # strict=True raises CodecError on the first malformed frame.
         def parse(self, *, strict: bool = ...) -> List[Any]: ...
 
-    @dataclass(frozen=True, slots=True)
     class Subtitle(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
         dts: Optional[Pts90khz]
         codec: SubtitleCodec
-        payload: bytes
+        __match_args__: ClassVar[Tuple[str, ...]]
+        def __init__(
+            self,
+            *,
+            stream: StreamId,
+            pts: Pts90khz,
+            dts: Optional[Pts90khz],
+            codec: SubtitleCodec,
+            payload: bytes,
+        ) -> None: ...
+        @property
+        def payload(self) -> bytes: ...
 
     @dataclass(frozen=True, slots=True)
     class Metadata(DemuxEvent):
@@ -402,13 +413,23 @@ class DemuxEvent:
             Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]
         ]: ...
 
-    @dataclass(frozen=True, slots=True)
     class UnknownSample(DemuxEvent):
         stream: StreamId
         pts: Pts90khz
         dts: Optional[Pts90khz]
         stream_type: int
-        payload: bytes
+        __match_args__: ClassVar[Tuple[str, ...]]
+        def __init__(
+            self,
+            *,
+            stream: StreamId,
+            pts: Pts90khz,
+            dts: Optional[Pts90khz],
+            stream_type: int,
+            payload: bytes,
+        ) -> None: ...
+        @property
+        def payload(self) -> bytes: ...
 
     @dataclass(frozen=True, slots=True)
     class Discontinuity(DemuxEvent):

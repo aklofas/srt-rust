@@ -51,6 +51,34 @@ bash embedded/scripts/check/freertos-srt.sh lwip-loopback  # lwIP UDP loopback r
 bash embedded/scripts/check/freertos-srt.sh libsrt-smoke   # cross-built libsrt boots
 bash embedded/scripts/check/freertos-srt.sh loopback-arq   # SRT ARQ + AES-128 over a lossy netif
 bash embedded/scripts/check/freertos-srt.sh example        # NIC egress to a host listener
+bash embedded/scripts/check/freertos-srt.sh fault-smoke    # deliberate fault produces labeled FAIL token + fast exit (gate asserts the failure)
+bash embedded/scripts/check/freertos-srt.sh malloc-stress  # 4 tasks × 20000 malloc/free + EH + errno isolation
 ```
 
 Each sub-project's own README covers internals and design rationale.
+
+## Fatal-path diagnostics
+
+Every fatal path in `freertos-srt/` prints a labeled token and exits non-zero
+via semihosting, rather than hanging silently. Fault handlers (HardFault /
+UsageFault / BusFault / MemManage) emit `FAIL[hardfault] pc=0x…` including the
+stacked PC and LR; `configASSERT` fires `FAIL[assert]` with file and line;
+task/thread creation failures print `FAIL[task-…]` and exit immediately.
+All output uses direct ARM semihosting `SYS_WRITE0` — no newlib stdio, no heap,
+no locks — so the path is safe from fault context and from pre-scheduler
+initialisation. Because QEMU routes semihosting writes to stderr, the gate
+scripts fold stderr into the captured transcript (`2>&1`), and the `fault-smoke`
+gate asserts the expected `FAIL[hardfault]` token rather than a `PASS` token.
+
+## Newlib locking and per-task reentrancy
+
+`freertos-srt/` enables `configUSE_NEWLIB_REENTRANT = 1` so FreeRTOS allocates a
+separate `struct _reent` for each task. This makes `errno` and the C library's
+internal file-pointer state task-local, eliminating cross-task bleed under
+preemption. The xpack `arm-none-eabi` newlib is built with `_RETARGETABLE_LOCKING`:
+the library references `__retarget_lock_*` symbols and ships no-op archive
+fallbacks. `substrate/newlib_lock.c` provides strong definitions that back each
+lock with a FreeRTOS recursive mutex, so `malloc`/`free`, `stdio`, and `env`
+become fully preemption-safe. Before `vTaskStartScheduler()`, the scheduler is
+not running and all acquire/release operations are no-ops — the same pattern as
+`pthread_key_shim.c`.

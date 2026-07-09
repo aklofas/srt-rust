@@ -63,5 +63,39 @@ class DemuxerConfigTest {
             () -> DemuxerConfig.builder().pesCapTotal(-1));
         assertThrows(IllegalArgumentException.class,
             () -> DemuxerConfig.builder().auCellCapPerPid(-1));
+        assertThrows(IllegalArgumentException.class,
+            () -> DemuxerConfig.builder().syncBufCap(-1));
+    }
+
+    @Test
+    void syncBufCapPermitsWholeFileFeed() throws Exception {
+        // 5 MiB of valid TS in one feed: default config raises DemuxException
+        // with a message naming sync_buf_cap; raised cap accepts it.
+        byte[] pkt = new byte[188];
+        pkt[0] = 0x47;
+        pkt[1] = 0x1f;
+        pkt[2] = (byte) 0xff;
+        pkt[3] = 0x10;
+        java.util.Arrays.fill(pkt, 4, 188, (byte) 0xff);
+        int count = (5 * 1024 * 1024) / 188 + 1;
+        byte[] data = new byte[count * 188];
+        for (int i = 0; i < count; i++) {
+            System.arraycopy(pkt, 0, data, i * 188, 188);
+        }
+
+        // Default config: feed of 5 MiB throws DemuxException with SYNC_LOSS kind.
+        try (Demuxer d = new Demuxer()) {
+            DemuxException ex = assertThrows(DemuxException.class, () -> d.feed(data));
+            assertTrue(ex.getMessage().contains("sync_buf_cap"),
+                "error message must mention sync_buf_cap; got: " + ex.getMessage());
+        }
+
+        // Raised cap: same feed must not throw.
+        DemuxerConfig cfg = DemuxerConfig.builder()
+            .syncBufCap(16L * 1024 * 1024)
+            .build();
+        try (Demuxer d = new Demuxer(cfg)) {
+            assertDoesNotThrow(() -> d.feed(data));
+        }
     }
 }

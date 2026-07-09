@@ -850,8 +850,10 @@ pub enum DemuxError {
     /// `extend_from_slice`. On this error the demuxer clears `sync_buf`
     /// and resets sync state; the caller's only sane response is to
     /// teardown the demuxer or feed in smaller chunks going forward.
-    #[error("demuxer sync buffer exhausted: {observed} bytes exceeds the {max} byte ceiling; \
+    #[error(
+        "demuxer sync buffer exhausted: {observed} bytes exceeds the {max} byte ceiling; \
              feed in smaller chunks and drain events between feeds, or raise \
-             DemuxerConfig::sync_buf_cap (this ceiling is NOT pes_cap_per_pid/pes_cap_total)")]
+             DemuxerConfig::sync_buf_cap (this ceiling is NOT pes_cap_per_pid/pes_cap_total)"
+    )]
     SyncBufExhausted { observed: usize, max: usize },
 }

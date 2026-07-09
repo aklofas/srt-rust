@@ -137,7 +137,7 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
             demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
-            demuxConfig.lenientPsiReassembly());
+            demuxConfig.lenientPsiReassembly(), demuxConfig.syncBufCap());
         if (h == 0) {
             throw new SrtException(SrtException.Kind.IO,
                 "nFromUrlWithConfig returned 0 without throwing");
@@ -275,7 +275,7 @@ public final class ManagedDemuxReceiver extends NativeHandle implements Iterable
         int backoffKind, long backoffBaseMs, long backoffMaxMs,
         int gapBufferCapacity, int overflowPolicy,
         int strict, long pesCapPerPid, long pesCapTotal, boolean cfi,
-        int av1, long auCellCap, boolean lenientPsi) throws SrtException;
+        int av1, long auCellCap, boolean lenientPsi, long syncBufCap) throws SrtException;
     private static native DemuxEvent nNext(long handle) throws SrtException, DemuxException;
     private static native long nCancelHandle(long handle);
     private static native SocketStats nSocketStats(long handle);

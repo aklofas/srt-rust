@@ -1,14 +1,15 @@
 package org.tstrans.mpegts;
 
 /**
- * Configuration for {@link Demuxer}. Mirrors {@code tstrans.mpegts.DemuxerConfig} (7 knobs).
+ * Configuration for {@link Demuxer}. Mirrors {@code tstrans.mpegts.DemuxerConfig} (8 knobs).
  *
  * <p>An immutable value object built via {@link #builder()}. Defaults match
  * {@code tst_core::mpegts::demux::DemuxerConfig::default()}.
  *
- * <p>The cap knobs ({@code pesCapPerPid}, {@code pesCapTotal}, {@code auCellCapPerPid})
- * use {@code 0} as the sentinel meaning "use the Rust default" — the JNI bridge maps
- * {@code 0} to Rust {@code None} (4 MiB / 64 MiB / 1 MiB respectively).
+ * <p>The cap knobs ({@code pesCapPerPid}, {@code pesCapTotal}, {@code auCellCapPerPid},
+ * {@code syncBufCap}) use {@code 0} as the sentinel meaning "use the Rust default" — the
+ * JNI bridge maps {@code 0} to Rust {@code None} (4 MiB / 64 MiB / 1 MiB / 4 MiB
+ * respectively).
  *
  * <p>{@code klv_link_overrides}/{@code stream_kind_overrides} are Rust-only and
  * deferred — not exposed here.
@@ -21,6 +22,7 @@ public final class DemuxerConfig {
     private final Av1CarriageMode av1Carriage;
     private final long auCellCapPerPid;    // 0 = use Rust default (1 MiB)
     private final boolean lenientPsiReassembly;
+    private final long syncBufCap;         // 0 = use Rust default (4 MiB)
 
     private DemuxerConfig(Builder b) {
         this.strictMode = b.strictMode;
@@ -30,6 +32,7 @@ public final class DemuxerConfig {
         this.av1Carriage = b.av1Carriage;
         this.auCellCapPerPid = b.auCellCapPerPid;
         this.lenientPsiReassembly = b.lenientPsiReassembly;
+        this.syncBufCap = b.syncBufCap;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -44,6 +47,7 @@ public final class DemuxerConfig {
     public Av1CarriageMode av1Carriage() { return av1Carriage; }
     public long auCellCapPerPid() { return auCellCapPerPid; }
     public boolean lenientPsiReassembly() { return lenientPsiReassembly; }
+    public long syncBufCap() { return syncBufCap; }
 
     /** Fluent builder for {@link DemuxerConfig}. Defaults match {@code tst_core}'s. */
     public static final class Builder {
@@ -54,6 +58,7 @@ public final class DemuxerConfig {
         private Av1CarriageMode av1Carriage = Av1CarriageMode.MPEG2_TS_BINDING;
         private long auCellCapPerPid = 0;
         private boolean lenientPsiReassembly = false;
+        private long syncBufCap = 0;
 
         public Builder strictMode(StrictMode v) { this.strictMode = v; return this; }
         /** Per-PID PES cap in bytes; {@code 0} = use the Rust default. Rejects negatives. */
@@ -65,6 +70,13 @@ public final class DemuxerConfig {
         /** Per-PID AU-cell cap in bytes; {@code 0} = use the Rust default. Rejects negatives. */
         public Builder auCellCapPerPid(long v) { this.auCellCapPerPid = requireNonNegativeCap(v, "auCellCapPerPid"); return this; }
         public Builder lenientPsiReassembly(boolean v) { this.lenientPsiReassembly = v; return this; }
+        /**
+         * Pre-sync ingress buffer ceiling in bytes; {@code 0} = use the Rust default (4 MiB).
+         * A single {@code feed()} call larger than this ceiling throws {@link org.tstrans.DemuxException}
+         * (kind {@code SYNC_LOSS}) before any bytes are consumed; feed in smaller chunks,
+         * or raise this ceiling. Rejects negatives.
+         */
+        public Builder syncBufCap(long v) { this.syncBufCap = requireNonNegativeCap(v, "syncBufCap"); return this; }
 
         public DemuxerConfig build() { return new DemuxerConfig(this); }
 

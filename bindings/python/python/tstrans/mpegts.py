@@ -1037,11 +1037,11 @@ DemuxEvent.NonConformant = _NonConformantEvent
 DemuxEvent.ReconnectDiscontinuity = _ReconnectDiscontinuityEvent
 
 
-# Default PES caps mirror `tst_core::mpegts::demux::DemuxerConfig`
-# (4 MB per-PID, 64 MB total). Update both sides together if Rust
-# changes its defaults.
+# Default caps mirror `tst_core::mpegts::demux::DemuxerConfig`.
+# Update both sides together if Rust changes its defaults.
 _DEFAULT_PES_CAP_PER_PID: int = 4 * 1024 * 1024
 _DEFAULT_PES_CAP_TOTAL: int = 64 * 1024 * 1024
+_DEFAULT_SYNC_BUF_CAP: int = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -1077,6 +1077,11 @@ class DemuxerConfig:
       (matches ffmpeg `mpegts.c:3118-3142`). When True, continuation
       packets are accepted across jumps (today's permissive
       behavior — the section either passes by luck or fails its CRC).
+    - `sync_buf_cap` — ceiling in bytes on the pre-sync ingress buffer.
+      A single `feed()` call larger than this ceiling raises
+      `DemuxError` (kind `SYNC_LOSS`) before any bytes are consumed;
+      feed in smaller chunks and drain events between feeds, or raise
+      this ceiling. Default is 4 MiB (`4 * 1024 * 1024`).
 
     `link_klv` and `treat_as` overrides (per-PID PMT-bypass knobs)
     remain Rust-only today; open an issue if your use case needs them.
@@ -1112,6 +1117,10 @@ class DemuxerConfig:
     # See class docstring above for the spec-strict vs lenient PSI
     # reassembly trade-off.
     lenient_psi_reassembly: bool = False
+    # Pre-sync ingress buffer ceiling in bytes. Feeds larger than this
+    # ceiling raise DemuxError (kind SYNC_LOSS) before any bytes are
+    # consumed; feed in smaller chunks, or raise this value.
+    sync_buf_cap: int = _DEFAULT_SYNC_BUF_CAP
 
     def __post_init__(self) -> None:
         # F10 — fail-fast on primitive-shape violations at construction.
@@ -1181,6 +1190,12 @@ class DemuxerConfig:
                 f"lenient_psi_reassembly must be bool; "
                 f"got {type(self.lenient_psi_reassembly).__name__}"
             )
+        if isinstance(self.sync_buf_cap, bool) or not isinstance(self.sync_buf_cap, int):
+            raise TypeError(
+                f"sync_buf_cap must be int; got {type(self.sync_buf_cap).__name__}"
+            )
+        if self.sync_buf_cap <= 0:
+            raise ValueError(f"sync_buf_cap must be > 0; got {self.sync_buf_cap}")
 
 
 # Re-export NalUnit / Obu / ObuExtension so callers can import them

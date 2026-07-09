@@ -80,6 +80,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     av1: jint,
     au_cell_cap: jlong,
     lenient_psi: jboolean,
+    sync_buf_cap: jlong,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let Some(opts) = build_demux_config_from_args(
@@ -91,6 +92,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
             av1,
             au_cell_cap,
             lenient_psi,
+            sync_buf_cap,
         ) else {
             return 0;
         };
@@ -98,7 +100,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Demuxer_nOpenWithConfig<'local>(
     })
 }
 
-/// Assemble a `tst_core` [`DemuxerConfig`] from the 7 marshalled JNI primitives
+/// Assemble a `tst_core` [`DemuxerConfig`] from the 8 marshalled JNI primitives
 /// (the `nOpenWithConfig` arg shape). The `strict`/`av1` ints are the Java enum
 /// ORDINALS (contract: must mirror the Java enum declaration order —
 /// `StrictMode`: 0=OFF,1=TIMING_ONLY,2=PSI_ONLY,3=FULL; `Av1CarriageMode`:
@@ -117,6 +119,7 @@ pub(crate) fn build_demux_config_from_args(
     av1: jint,
     au_cell_cap: jlong,
     lenient_psi: jboolean,
+    sync_buf_cap: jlong,
 ) -> Option<tst_core::mpegts::demux::DemuxerConfig> {
     use tst_core::mpegts::demux::{DemuxerConfig, StrictMode};
 
@@ -158,6 +161,9 @@ pub(crate) fn build_demux_config_from_args(
     }
     opts.cfi_tolerance = cfi != 0;
     opts.lenient_psi_reassembly = lenient_psi != 0;
+    if sync_buf_cap > 0 {
+        opts.sync_buf_cap = Some(sync_buf_cap as usize);
+    }
     Some(opts)
 }
 

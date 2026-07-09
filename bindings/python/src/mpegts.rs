@@ -224,6 +224,8 @@ pub(crate) fn build_demuxer_config(
     if !au_cap_attr.is_none() {
         opts.au_cell_cap_per_pid = Some(au_cap_attr.extract::<usize>()?);
     }
+    let sync_cap: usize = cfg.getattr(intern!(py, "sync_buf_cap"))?.extract()?;
+    opts.sync_buf_cap = Some(sync_cap);
 
     Ok(opts)
 }

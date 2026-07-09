@@ -24,6 +24,7 @@
 extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
+#include "diag.h"
 }
 
 extern "C" {
@@ -46,8 +47,8 @@ __cxa_eh_globals* __cxa_get_globals(void) noexcept {
     void* p = pvTaskGetThreadLocalStoragePointer(nullptr, kEhTls);
     if (p == nullptr) {
         p = std::malloc(sizeof(__cxa_eh_globals));
-        if (p == nullptr) { for(;;); }   // trap: EH state alloc must not fail
-                                         // (libc malloc, so no MallocFailedHook)
+        if (p == nullptr) { tst_diag_fail("eh_alloc"); }   // trap: EH state alloc must not fail
+                                                            // (libc malloc, so no MallocFailedHook)
         std::memset(p, 0, sizeof(__cxa_eh_globals));
         vTaskSetThreadLocalStoragePointer(nullptr, kEhTls, p);
     }

@@ -9,7 +9,7 @@
 # reducing coverage to a no-op pass.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example>}"
+t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke>}"
 D=embedded/freertos-srt
 REQUIRE="${FREERTOS_SRT_REQUIRE_TOOLS:-0}"
 
@@ -53,6 +53,17 @@ case "$t" in
   example)       need cmake cmake
                  need cargo cargo
                  bash "$(dirname "$0")/../lib/run-freertos-srt-example.sh" || exit 1 ;;
-  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example)" >&2; exit 2 ;;
+  fault-smoke)   ( cd "$D" && ./build.sh fault-smoke >/dev/null 2>&1 )
+                 t0=$(date +%s)
+                 if out=$(timeout 30 qemu-system-arm -machine mps2-an386 -nographic \
+                       -semihosting-config enable=on,target=native \
+                       -kernel "$D/build/firmware.elf" 2>&1); then rc=0; else rc=$?; fi
+                 t1=$(date +%s)
+                 grep -q 'FAIL\[hardfault\] pc=0x' <<<"$out" || {
+                   echo "GATE FAILED (fault-smoke: no labeled fault report)"; echo "$out"; exit 1; }
+                 [ $((t1 - t0)) -lt 25 ] || {
+                   echo "GATE FAILED (fault-smoke: fault report was not fast: $((t1-t0))s)"; exit 1; }
+                 echo "OK: deliberate fault produced labeled fast failure (rc=$rc, $((t1-t0))s)" ;;
+  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

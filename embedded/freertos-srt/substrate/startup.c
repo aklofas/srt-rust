@@ -16,6 +16,7 @@
  */
 #include <stdint.h>
 #include <errno.h>
+#include "diag.h"
 
 extern uint32_t _sidata, _sdata, _edata, _sbss, _ebss, _estack;
 extern char end, _heap_end;
@@ -32,7 +33,42 @@ extern void xPortSysTickHandler(void);
 __attribute__((noreturn)) void _exit(int status);
 
 void Reset_Handler(void);
-static void Default_Handler(void) { for (;;) {} }
+static void Default_Handler(void) { tst_diag_fail("unexpected_irq"); }
+
+/* Speaking fault handlers: recover the exception frame from MSP or PSP
+ * (EXC_RETURN bit 2 selects which) then call a C reporter that prints the
+ * label, stacked PC, and stacked LR before calling _exit(1).  The naked
+ * wrapper is required because the hardware has already pushed the exception
+ * frame onto the stack we must read; a normal prologue would corrupt r0. */
+__attribute__((used)) static void fault_report(uint32_t *frame, const char *label) {
+    /* Stacked frame layout (ARMv7-M): r0 r1 r2 r3 r12 lr pc xpsr */
+    char hex[9];
+    tst_diag_write0("FAIL[");
+    tst_diag_write0(label);
+    tst_diag_write0("] pc=0x");
+    tst_diag_hex32(frame[6], hex); tst_diag_write0(hex);
+    tst_diag_write0(" lr=0x");
+    tst_diag_hex32(frame[5], hex); tst_diag_write0(hex);
+    tst_diag_write0("\n");
+    _exit(1);
+}
+
+#define TST_FAULT_HANDLER(asm_name, c_name, label_str)                        \
+    __attribute__((used)) static void c_name(uint32_t *frame) {               \
+        fault_report(frame, label_str);                                       \
+    }                                                                         \
+    __attribute__((naked)) static void asm_name(void) {                       \
+        __asm volatile("tst lr, #4        \n"                                 \
+                       "ite eq            \n"                                 \
+                       "mrseq r0, msp     \n"                                 \
+                       "mrsne r0, psp     \n"                                 \
+                       "b %0              \n" : : "i"(c_name));               \
+    }
+
+TST_FAULT_HANDLER(HardFault_Handler, hardfault_c, "hardfault")
+TST_FAULT_HANDLER(MemManage_Handler, memmanage_c, "memmanage")
+TST_FAULT_HANDLER(BusFault_Handler,  busfault_c,  "busfault")
+TST_FAULT_HANDLER(UsageFault_Handler, usagefault_c, "usagefault")
 
 /* Cortex-M vector table. Slots 0..15 are the system exceptions; we only need
    the system ones FreeRTOS uses plus reset/NMI/HardFault. Intervening slots
@@ -42,10 +78,10 @@ void (* const g_vectors[])(void) = {
     (void (*)(void))(&_estack), /* [0]  initial MSP        */
     Reset_Handler,              /* [1]  Reset              */
     Default_Handler,            /* [2]  NMI                */
-    Default_Handler,            /* [3]  HardFault          */
-    Default_Handler,            /* [4]  MemManage          */
-    Default_Handler,            /* [5]  BusFault           */
-    Default_Handler,            /* [6]  UsageFault         */
+    HardFault_Handler,          /* [3]  HardFault          */
+    MemManage_Handler,          /* [4]  MemManage          */
+    BusFault_Handler,           /* [5]  BusFault           */
+    UsageFault_Handler,         /* [6]  UsageFault         */
     0,                          /* [7]  reserved           */
     0,                          /* [8]  reserved           */
     0,                          /* [9]  reserved           */

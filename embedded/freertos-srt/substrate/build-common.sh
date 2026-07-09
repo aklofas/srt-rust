@@ -64,7 +64,7 @@ INC="-I$SUB -I$GEN -I$SUB/freertos -I$SUB/lwip -I$SUB/drivers \
 # headers and is only meaningful on the data-plane targets, so it rides with the
 # netif drivers below, exactly as in loopback-arq/example. The non-netif targets never call
 # setsockopt, so -Wl,--wrap=setsockopt stays inert for them.)
-C_SRC="$SUB/startup.c $SUB/clock_shim.c $SUB/syscalls_stub.c $SUB/atomic64_stub.c \
+C_SRC="$SUB/startup.c $SUB/diag.c $SUB/clock_shim.c $SUB/syscalls_stub.c $SUB/atomic64_stub.c \
        $K/tasks.c $K/list.c $K/queue.c $K/timers.c $K/event_groups.c \
        $K/portable/GCC/ARM_CM4F/port.c $K/portable/MemMang/heap_4.c \
        $PS/FreeRTOS_POSIX_pthread.c $PS/FreeRTOS_POSIX_pthread_mutex.c \

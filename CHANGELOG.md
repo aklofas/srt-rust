@@ -77,6 +77,15 @@ layout changed.
   skips JAR extraction and calls `System.load` on that path directly, making
   it easy to point at a freshly-compiled debug build without repackaging the
   JAR (DA-JVM-2, PR #83).
+- `DemuxerConfig::sync_buf_cap` (field) and `DemuxerConfigBuilder::sync_buf_cap(bytes)`
+  make the demuxer's pre-sync ingress ceiling configurable (default 4 MiB).
+  Previously a hidden constant, this ceiling silently rejected whole-file
+  `feed()` calls over 4 MiB — including valid single-shot inputs from
+  file-based pipelines — with an error message that pointed at `pes_cap_*`
+  knobs (a dead end). The error message now names the actual knob
+  (`DemuxerConfig::sync_buf_cap`) and the chunk-and-drain pattern. Callers
+  feeding files larger than 4 MiB should either raise the ceiling or switch to
+  chunked feeding. (an integrator field report 2026-07-08.)
 
 ### Changed — default features and transport behavior
 

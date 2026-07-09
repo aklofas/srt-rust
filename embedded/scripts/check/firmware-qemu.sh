@@ -21,16 +21,7 @@ GOLDEN_TS=crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output
 rustup target add thumbv7em-none-eabihf --toolchain 1.85 >/dev/null 2>&1 || true
 
 echo "==> generating golden.h from $GOLDEN_TS"
-python3 - "$GOLDEN_TS" > "$FW/golden.h" <<'PY'
-import sys
-data = open(sys.argv[1], "rb").read()
-print("#include <stddef.h>\n#include <stdint.h>")
-print(f"static const size_t GOLDEN_LEN = {len(data)};")
-print("static const uint8_t GOLDEN[] = {")
-for i in range(0, len(data), 12):
-    print("  " + ", ".join(f"0x{b:02x}" for b in data[i:i+12]) + ",")
-print("};")
-PY
+bash embedded/scripts/lib/gen-golden-h.sh "$GOLDEN_TS" "$FW/golden.h"
 
 echo "==> building glue staticlib (thumbv7em)"
 ( cd "$CRATE" && cargo build --release )

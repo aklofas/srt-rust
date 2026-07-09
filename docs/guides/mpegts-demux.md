@@ -124,8 +124,9 @@ subtitle, or unknown) tagged by `StreamId` and `SamplePayload` variant.
 `DemuxEvent::Metadata` carries KLV — both sync AU-cell
 (`MetadataKind::KlvSyncAuCell`) and async bare-LS
 (`MetadataKind::KlvAsync`) — tagged with the KLV PTS and unwrapped
-payload; `Klv` is a same-object deprecated alias for `Metadata` and will
-be removed at 1.0 (PR #79). `DemuxEvent::Discontinuity` signals a CC
+payload. In the Python binding, `DemuxEvent.Klv` is a same-object
+deprecated alias for `DemuxEvent.Metadata` (removed at 1.0, PR #79);
+in Rust the variant is `Metadata` only. `DemuxEvent::Discontinuity` signals a CC
 jump or PES overflow on a specific PID. `DemuxEvent::NonConformant`
 surfaces a spec violation that the demuxer tolerated in lenient mode.
 `DemuxEvent::ReconnectDiscontinuity` is injected only by

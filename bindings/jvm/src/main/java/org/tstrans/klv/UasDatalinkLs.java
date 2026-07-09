@@ -26,6 +26,63 @@ import java.util.Optional;
  *
  * <p>Decode via {@link Klv#decodeUasDatalink(byte[])}; encode via
  * {@link Klv#encodeUasDatalink(UasDatalinkLs)}.
+ *
+ * <h2>Encode-enforced ranges (MISB ST 0601.19)</h2>
+ *
+ * <p>Values outside the listed range cause {@code KlvEncodeException} on
+ * {@link Klv#encodeUasDatalink}. Narrow/full twins: pitch 6&harr;90,
+ * roll 7&harr;91, corner offsets 26&ndash;33&harr;82&ndash;89 (absolute).
+ *
+ * <pre>
+ * Platform state
+ *   platformHeadingDeg          Tag  5  [0, 360] deg
+ *   platformPitchDeg            Tag  6  [-20, 20] deg      narrow; full twin: platformPitchFullDeg (Tag 90)
+ *   platformRollDeg             Tag  7  [-50, 50] deg      narrow; full twin: platformRollFullDeg (Tag 91)
+ *   platformTrueAirspeed        Tag  8  [0, 255] m/s
+ *   platformIndicatedAirspeed   Tag  9  [0, 255] m/s
+ *   platformPitchFullDeg        Tag 90  [-90, 90] deg      full twin of platformPitchDeg (Tag 6)
+ *   platformRollFullDeg         Tag 91  [-90, 90] deg      full twin of platformRollDeg (Tag 7)
+ *   platformAngleOfAttackDeg    Tag 50  [-20, 20] deg
+ *
+ * Sensor pose &amp; position
+ *   sensorLatDeg                Tag 13  [-90, 90] deg
+ *   sensorLonDeg                Tag 14  [-180, 180] deg
+ *   sensorAltM                  Tag 15  [-900, 19000] m
+ *   sensorEllipsoidHeightM      Tag 75  [-900, 19000] m
+ *   sensorHfovDeg               Tag 16  [0, 180] deg
+ *   sensorVfovDeg               Tag 17  [0, 180] deg
+ *   sensorRelAzDeg              Tag 18  [0, 360] deg
+ *   sensorRelElDeg              Tag 19  [-180, 180] deg
+ *   sensorRelRollDeg            Tag 20  [0, 360] deg
+ *
+ * Ranging &amp; frame center
+ *   slantRangeM                 Tag 21  [0, 5000000] m
+ *   targetWidthM                Tag 22  [0, 10000] m
+ *   frameCenterLatDeg           Tag 23  [-90, 90] deg
+ *   frameCenterLonDeg           Tag 24  [-180, 180] deg
+ *   frameCenterElevM            Tag 25  [-900, 19000] m
+ *   frameCenterEllipsoidHeightM Tag 78  [-900, 19000] m
+ *
+ * Corner offsets (narrow +-0.075 deg)
+ *   cornerLatOffsetP1Deg        Tag 26  [-0.075, 0.075] deg  full twin: cornerLatP1Deg (Tag 82)
+ *   cornerLonOffsetP1Deg        Tag 27  [-0.075, 0.075] deg  full twin: cornerLonP1Deg (Tag 83)
+ *   cornerLatOffsetP2Deg        Tag 28  [-0.075, 0.075] deg  full twin: cornerLatP2Deg (Tag 84)
+ *   cornerLonOffsetP2Deg        Tag 29  [-0.075, 0.075] deg  full twin: cornerLonP2Deg (Tag 85)
+ *   cornerLatOffsetP3Deg        Tag 30  [-0.075, 0.075] deg  full twin: cornerLatP3Deg (Tag 86)
+ *   cornerLonOffsetP3Deg        Tag 31  [-0.075, 0.075] deg  full twin: cornerLonP3Deg (Tag 87)
+ *   cornerLatOffsetP4Deg        Tag 32  [-0.075, 0.075] deg  full twin: cornerLatP4Deg (Tag 88)
+ *   cornerLonOffsetP4Deg        Tag 33  [-0.075, 0.075] deg  full twin: cornerLonP4Deg (Tag 89)
+ *
+ * Corner full lat/lon (ST 0601.13+)
+ *   cornerLatP1Deg              Tag 82  [-90, 90] deg      full twin of cornerLatOffsetP1Deg (Tag 26)
+ *   cornerLonP1Deg              Tag 83  [-180, 180] deg    full twin of cornerLonOffsetP1Deg (Tag 27)
+ *   cornerLatP2Deg              Tag 84  [-90, 90] deg      full twin of cornerLatOffsetP2Deg (Tag 28)
+ *   cornerLonP2Deg              Tag 85  [-180, 180] deg    full twin of cornerLonOffsetP2Deg (Tag 29)
+ *   cornerLatP3Deg              Tag 86  [-90, 90] deg      full twin of cornerLatOffsetP3Deg (Tag 30)
+ *   cornerLonP3Deg              Tag 87  [-180, 180] deg    full twin of cornerLonOffsetP3Deg (Tag 31)
+ *   cornerLatP4Deg              Tag 88  [-90, 90] deg      full twin of cornerLatOffsetP4Deg (Tag 32)
+ *   cornerLonP4Deg              Tag 89  [-180, 180] deg    full twin of cornerLonOffsetP4Deg (Tag 33)
+ * </pre>
  */
 public record UasDatalinkLs(
         // Non-optional identity fields (always present on the wire after decode)

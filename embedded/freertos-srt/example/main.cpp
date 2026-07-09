@@ -53,6 +53,16 @@ static void* caller_thread(void*) {
     SRTSOCKET cs = srt_create_socket();
     if (cs == SRT_INVALID_SOCK || srt_apply_opts(cs) != 0) { fail("call_opts"); return nullptr; }
     if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); return nullptr; }
+#ifdef SRT_PASSPHRASE
+    // The s4_aes PASS token must prove encryption was actually NEGOTIATED,
+    // not merely configured: SRT_KM_S_UNSECURED here would mean plaintext flowed
+    // and the gate would still have passed on byte-equality alone.
+    int km = SRT_KM_S_UNSECURED; int kmlen = (int)sizeof km;
+    if (srt_getsockflag(cs, SRTO_SNDKMSTATE, &km, &kmlen) == SRT_ERROR
+        || km != SRT_KM_S_SECURED) {
+        fail("km_state"); srt_close(cs); return nullptr;
+    }
+#endif
     for (int r = 0; r < REPEAT && !g_fail; r++) {
         int off = 0;
         while (off < (int)GOLDEN_LEN) {

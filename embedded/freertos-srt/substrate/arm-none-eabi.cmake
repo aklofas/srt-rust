@@ -46,8 +46,11 @@ set(_INC "-I${_SUB}/posix-shims -I${_SUB} -I${_SUB}/freertos -I${_SUB}/lwip \
 #   intentional; CMAKE_SYSTEM_NAME=Generic selects the portable ::select()
 #   path by design (see header comment above).
 set(_WNO "-Wno-type-limits -Wno-cpp")
-set(CMAKE_C_FLAGS   "${_ARCH} ${_DEFS} ${_INC}" CACHE STRING "")
-set(CMAKE_CXX_FLAGS "${_ARCH} ${_DEFS} ${_INC} ${_WNO}" CACHE STRING "")
+# Section-per-function/data so the firmware link's --gc-sections can drop
+# unused library code — without these the whole archive member survives.
+set(_GC "-ffunction-sections -fdata-sections")
+set(CMAKE_C_FLAGS   "${_ARCH} ${_DEFS} ${_INC} ${_GC}" CACHE STRING "")
+set(CMAKE_CXX_FLAGS "${_ARCH} ${_DEFS} ${_INC} ${_WNO} ${_GC}" CACHE STRING "")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

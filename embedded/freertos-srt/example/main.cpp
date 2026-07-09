@@ -92,7 +92,9 @@ static void run_task(void*) {
     pthread_t ct;
     pthread_attr_t attr; pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 32768);
-    pthread_create(&ct, &attr, caller_thread, nullptr);
+    if (pthread_create(&ct, &attr, caller_thread, nullptr) != 0) {
+        printf("FAIL[" PASS_TAG "]: pthread_create(caller)\n"); fflush(stdout); _exit(1);
+    }
     pthread_join(ct, nullptr);
 
     // The firmware cannot verify bytes (they left the chip); it only reports the

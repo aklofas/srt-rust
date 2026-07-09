@@ -28,6 +28,13 @@ set(_ARCH "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16")
 # removed by the vendor/srt patch, which makes CThread assign-to-joinable
 # std::terminate() like std::thread; no opt-out define needed.)
 set(_DEFS "-D__GNU__=1 -include ${CMAKE_CURRENT_LIST_DIR}/posix-shims/shim_prefix.h")
+# The cross-built libsrt (USE_ENCLIB=mbedtls) includes mbedTLS headers and MUST
+# see the same configuration view the mbedTLS library itself was compiled with
+# (mbedtls-user-config.h: entropy routed to mbedtls_hardware_poll, OS modules
+# off) — mbedTLS's own build receives the file as a CMake var in
+# build-common.sh; consumers must get it as a preprocessor define. Inert for
+# ENCRYPT=0 builds (no mbedTLS header is included anywhere).
+set(_DEFS "${_DEFS} -DMBEDTLS_USER_CONFIG_FILE=\\\"${CMAKE_CURRENT_LIST_DIR}/mbedtls/mbedtls-user-config.h\\\"")
 # Include order matters: posix-shims FIRST (so <pthread.h>/<netinet/in.h> route
 # to FreeRTOS-Plus-POSIX/lwIP), then the substrate config dirs (substrate/lwip
 # has lwipopts.h + arch/cc.h; substrate/freertos has FreeRTOSConfig.h), then

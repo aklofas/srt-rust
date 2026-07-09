@@ -23,13 +23,17 @@ static inline int srt_apply_opts(SRTSOCKET s) {
     if (srt_setsockflag(s, SRTO_TRANSTYPE, &tt, sizeof tt) == SRT_ERROR) return -1;
     // Modest buffers (keep SRT's allocations small on the 1 MiB FreeRTOS heap).
     int buf = 256 * 1024;
-    srt_setsockflag(s, SRTO_SNDBUF, &buf, sizeof buf);
-    srt_setsockflag(s, SRTO_RCVBUF, &buf, sizeof buf);
+    if (srt_setsockflag(s, SRTO_SNDBUF, &buf, sizeof buf) == SRT_ERROR) return -1;
+    if (srt_setsockflag(s, SRTO_RCVBUF, &buf, sizeof buf) == SRT_ERROR) return -1;
 #ifdef SRT_PASSPHRASE
+    // TEST-ONLY key material: the passphrase is a compile-time constant and the
+    // entropy behind the derived keys is a deterministic LCG (substrate/
+    // syscalls_stub.c; see the README "Production crypto warning"). Do not copy
+    // this setup into production firmware.
     const char* pp = SRT_PASSPHRASE;
     int klen = 16;  // AES-128
     if (srt_setsockflag(s, SRTO_PASSPHRASE, pp, (int)__builtin_strlen(pp)) == SRT_ERROR) return -1;
-    srt_setsockflag(s, SRTO_PBKEYLEN, &klen, sizeof klen);
+    if (srt_setsockflag(s, SRTO_PBKEYLEN, &klen, sizeof klen) == SRT_ERROR) return -1;
 #endif
     return 0;
 }

@@ -755,6 +755,14 @@ jobs:
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/freertos-srt.sh fault-smoke
 
+      # malloc-stress (s5, WP-EMB-1): 4 tasks x 20000 malloc/free with per-block
+      # canaries + concurrent C++ throw/catch + per-task errno isolation checks.
+      # Regression proof for EMB-HEAP-1 (newlib malloc lock-free under preemption)
+      # and EMB-ERRNO-1 (shared _reent errno bleed). Hard-gate.
+      - name: QEMU runtime gate (freertos-srt malloc-stress)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
+        run: bash embedded/scripts/check/freertos-srt.sh malloc-stress
+
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
       # listener that verifies byte-exact (plain + AES-128); the host process exit

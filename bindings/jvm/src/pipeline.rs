@@ -82,6 +82,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
     av1: jint,
     au_cell_cap: jlong,
     lenient_psi: jboolean,
+    sync_buf_cap: jlong,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let mode = if buffered != 0 {
@@ -108,6 +109,7 @@ pub extern "system" fn Java_org_tstrans_pipeline_Pairer_nOpenWithConfig<'local>(
                 av1,
                 au_cell_cap,
                 lenient_psi,
+                sync_buf_cap,
             ) else {
                 return 0;
             };

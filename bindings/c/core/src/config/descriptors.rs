@@ -642,8 +642,7 @@ unsafe fn parse_tlv_list(
         );
         return Err(TstError::InvalidUsage as i32);
     }
-    let bytes =
-        unsafe { crate::ffi_slice::ffi_slice(tlv_bytes, tlv_total_len, "tlv_bytes") }?;
+    let bytes = unsafe { crate::ffi_slice::ffi_slice(tlv_bytes, tlv_total_len, "tlv_bytes") }?;
     // Clamp capacity: each TLV is at minimum 2 bytes (tag + body-length).
     // `tlv_count.min(tlv_total_len / 2 + 1)` bounds the reservation to a
     // value proportional to the actual byte budget, preventing caller-controlled

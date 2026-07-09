@@ -327,6 +327,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
     av1: jint,
     au_cell_cap: jlong,
     lenient_psi: jboolean,
+    sync_buf_cap: jlong,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         // Lease the session and clone the data-plane `session` Arc out. `None`
@@ -367,6 +368,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
                 av1,
                 au_cell_cap,
                 lenient_psi,
+                sync_buf_cap,
             ) else {
                 return 0;
             };

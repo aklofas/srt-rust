@@ -11,6 +11,7 @@
 #include "lwip/snmp.h"
 #include "netif/ethernet.h"
 #include "lan9118_netif.h"
+#include "diag.h"
 
 #define LAN9118_BASE 0x40200000u
 #define REG(off)     (*(volatile uint32_t *)(LAN9118_BASE + (off)))
@@ -59,39 +60,42 @@ static void mac_write(uint32_t idx, uint32_t val) {
 static err_t low_level_output(struct netif *n, struct pbuf *p) {
     (void)n;
     uint32_t len = p->tot_len;
+    /* Word-typed staging buffer: the FIFO is pushed 32 bits at a time, and a
+     * uint8_t buffer punned through uint32_t* is undefined behavior under
+     * strict aliasing (-Os enables it). Byte-copies INTO a uint32_t array via
+     * pbuf_copy_partial/memcpy are always legal; the reverse pun is not. */
+    static uint32_t buf[1600 / 4];
+    /* Reject oversize frames BEFORE any FIFO write: the two command words
+     * would otherwise already be queued, corrupting TX framing for the next
+     * packet instead of cleanly returning ERR_BUF. */
+    if (len > sizeof buf) return ERR_BUF;
     REG(TX_DATA_FIFO) = (1u << 13) | (1u << 12) | (len & 0x7FFu);   /* cmd A: FS|LS|size */
     REG(TX_DATA_FIFO) = (len & 0xFFFFu);                            /* cmd B: length+tag */
-    /* Copy pbuf chain into a word-padded local buffer, then push as words. */
-    static uint8_t buf[1600];
-    if (len > sizeof buf) return ERR_BUF;
     pbuf_copy_partial(p, buf, len, 0);
     uint32_t words = (len + 3u) / 4u;
-    const uint32_t *w = (const uint32_t *)buf;
-    for (uint32_t i = 0; i < words; i++) REG(TX_DATA_FIFO) = w[i];
+    for (uint32_t i = 0; i < words; i++) REG(TX_DATA_FIFO) = buf[i];
     MIB2_STATS_NETIF_ADD(n, ifoutoctets, len);
     return ERR_OK;
 }
 
 void lan9118_poll(void) {
-    /* RX_FIFO_INF bits 23:16 = RX status FIFO used count. */
-    if (((REG(RX_FIFO_INF) >> 16) & 0xFFu) == 0) return;
-    uint32_t status = REG(RX_STATUS_FIFO);
-    uint32_t len = (status >> 16) & 0x3FFFu;             /* packet length incl CRC */
-    static uint8_t buf[1600];
-    uint32_t words = (len + 3u) / 4u;
-    /* Drain + drop on a zero, oversize, or unallocatable frame so a malformed
-     * RX status length (the field is 14 bits, up to 16383) can never overflow
-     * buf[1600] or the pbuf. Mirrors the TX path's len guard. */
-    struct pbuf *p = (len == 0 || len > sizeof buf) ? NULL
-                     : pbuf_alloc(PBUF_RAW, (u16_t)len, PBUF_RAM);
-    if (p == NULL) {
-        for (uint32_t i = 0; i < words; i++) (void)REG(RX_DATA_FIFO);
-        return;
+    /* Drain EVERY queued frame per poll: RX_FIFO_INF bits 23:16 = status FIFO
+     * used count — loop until it reads empty. */
+    while (((REG(RX_FIFO_INF) >> 16) & 0xFFu) != 0) {
+        uint32_t status = REG(RX_STATUS_FIFO);
+        uint32_t len = (status >> 16) & 0x3FFFu;         /* length incl CRC */
+        static uint32_t buf[1600 / 4];                    /* word-typed: see TX */
+        uint32_t words = (len + 3u) / 4u;
+        struct pbuf *p = (len == 0 || len > sizeof buf) ? NULL
+                         : pbuf_alloc(PBUF_RAW, (u16_t)len, PBUF_RAM);
+        if (p == NULL) {
+            for (uint32_t i = 0; i < words; i++) (void)REG(RX_DATA_FIFO);
+            continue;
+        }
+        for (uint32_t i = 0; i < words; i++) buf[i] = REG(RX_DATA_FIFO);
+        pbuf_take(p, buf, (u16_t)len);
+        if (s_netif.input(p, &s_netif) != ERR_OK) pbuf_free(p);
     }
-    uint32_t *w = (uint32_t *)buf;
-    for (uint32_t i = 0; i < words; i++) w[i] = REG(RX_DATA_FIFO);
-    pbuf_take(p, buf, (u16_t)len);
-    if (s_netif.input(p, &s_netif) != ERR_OK) pbuf_free(p);
 }
 
 static err_t lan9118_init(struct netif *netif) {
@@ -106,9 +110,12 @@ static err_t lan9118_init(struct netif *netif) {
     for (int i = 0; i < 6; i++) netif->hwaddr[i] = s_mac[i];
     netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_LINK_UP;
 
-    /* Endianness probe (QEMU returns 0x87654321 from BYTE_TEST). */
-    (void)REG(BYTE_TEST);
-    REG(HW_CFG) = 0;                                      /* defaults are fine for QEMU */
+    /* Endianness probe: QEMU must return 0x87654321 from BYTE_TEST. A probe
+     * that discards the value cannot fail — assert it loudly, since every
+     * later FIFO word access assumes this little-endian register mapping. */
+    if (REG(BYTE_TEST) != 0x87654321u) tst_diag_fail("lan9118_byte_test");
+    /* HW_CFG: leave at reset defaults. The previous `REG(HW_CFG) = 0` zeroed
+     * the TX-FIFO-size field it claimed to leave alone. */
     /* Program MAC address: ADDRL = low 4 bytes, ADDRH = high 2 bytes. */
     mac_write(MAC_ADDRL, s_mac[0] | (s_mac[1]<<8) | (s_mac[2]<<16) | (s_mac[3]<<24));
     mac_write(MAC_ADDRH, s_mac[4] | (s_mac[5]<<8));

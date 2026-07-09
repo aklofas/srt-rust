@@ -28,11 +28,13 @@ need qemu-system-arm   qemu-system-arm
 # drop the firmware's FAIL[...] line). Token-only — not exit-code — because ARM
 # semihosting SYS_EXIT propagation through qemu-system-arm is version-dependent;
 # the firmware prints exactly one PASS line on success, so the token is the
-# authoritative verdict.
+# authoritative verdict. stderr is folded in (2>&1) so that SYS_WRITE0 diagnostic
+# output (FAIL[hardfault]/FAIL[assert]/etc.) appears in the failure dump — those
+# go to QEMU stderr while printf/SYS_WRITE goes to stdout.
 assert_pass() { # $1=timeout  $2=token  $3=label
   local out
   out=$(timeout "$1" qemu-system-arm -machine mps2-an386 -nographic \
-        -semihosting-config enable=on,target=native -kernel "$D/build/firmware.elf" || true)
+        -semihosting-config enable=on,target=native -kernel "$D/build/firmware.elf" 2>&1 || true)
   grep -q "$2" <<<"$out" && return 0
   echo "GATE FAILED ($3)"; echo "----- QEMU output ($3) -----"; echo "$out"; exit 1
 }

@@ -116,6 +116,22 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 The complete enum / struct definitions live in
 [../crates/tst-core/src/mpegts/demux/event.rs](../crates/tst-core/src/mpegts/demux/event.rs).
 
+**Event variants in brief.** `DemuxEvent::ProgramMap` arrives when the
+demuxer first sees a PAT/PMT or on any PSI version bump, and carries the
+full declared stream topology including `klv_links`. `DemuxEvent::Sample`
+carries one reassembled elementary-stream access unit (video, audio,
+subtitle, or unknown) tagged by `StreamId` and `SamplePayload` variant.
+`DemuxEvent::Metadata` carries KLV — both sync AU-cell
+(`MetadataKind::KlvSyncAuCell`) and async bare-LS
+(`MetadataKind::KlvAsync`) — tagged with the KLV PTS and unwrapped
+payload; `Klv` is a same-object deprecated alias for `Metadata` and will
+be removed at 1.0 (PR #79). `DemuxEvent::Discontinuity` signals a CC
+jump or PES overflow on a specific PID. `DemuxEvent::NonConformant`
+surfaces a spec violation that the demuxer tolerated in lenient mode.
+`DemuxEvent::ReconnectDiscontinuity` is injected only by
+`ManagedDemuxReceiver` after a transport reconnect to signal a hard
+stream break; plain `Demuxer::next_event` never emits it.
+
 ### `Demuxer` methods
 
 ```text
@@ -133,6 +149,55 @@ sync byte within the search window — ~6 KiB by default — which usually
 means the input isn't TS at all), `DemuxError::MalformedPes` (a PES
 header that doesn't validate), or `DemuxError::StrictRejection` (a
 strict-mode-rejected `NonConformant` issue surfaced as a fatal error).
+
+**Sync-ingress ceiling.** Before the demuxer acquires its first sync
+lock, `feed` buffers incoming bytes to scan for the `0x47` sync byte.
+This pre-sync buffer is capped at **4 MiB** by default. A single-shot
+`feed` call of a large `.ts` file that exceeds this ceiling will return
+an error before any events are emitted. The fix is either to raise the
+ceiling via `DemuxerConfig::sync_buf_cap`, or to chunk the input and
+drain events between chunks — the sync lock is acquired on the first
+call that provides at least one full 188-byte packet, and subsequent
+calls bypass the pre-sync buffer entirely. The chunk-and-drain loop is
+the recommended pattern for file replay regardless of file size, because
+it avoids allocating the entire file in the demuxer's queue at once:
+
+```rust,no_run
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+use std::fs;
+
+fn replay_file(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = fs::read(path)?;
+    let mut d = Demuxer::new();
+    // Feed 188-packet chunks (188 * 1024 = one nominal TS chunk).
+    const CHUNK: usize = 188 * 1024;
+    for chunk in bytes.chunks(CHUNK) {
+        d.feed(chunk)?;
+        while let Some(ev) = d.next_event() {
+            // process ev ...
+            let _ = ev;
+        }
+    }
+    d.flush();
+    while let Some(ev) = d.next_event() {
+        let _ = ev;
+    }
+    Ok(())
+}
+```
+
+To raise the ceiling instead (for callers that have the full file in
+memory and want a single `feed` call):
+
+```rust,no_run
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+
+let mut d = Demuxer::with_config(
+    DemuxerConfig::builder()
+        .sync_buf_cap(64 * 1024 * 1024) // 64 MiB
+        .build(),
+);
+```
 
 `next_event` is non-blocking — returns `None` when the queue is empty.
 The standard pattern is `feed`-then-drain in a loop. Events accumulate
@@ -219,6 +284,7 @@ ambiguous.
 
 | Method | What it does | When to reach for it |
 | --- | --- | --- |
+| `sync_buf_cap(bytes)` | Maximum pre-sync ingress buffer. Default 4 MiB. Exceeding this returns `DemuxError::Unrecoverable` before sync lock is acquired. | Single-shot `feed` of a large `.ts` file (> 4 MiB). Prefer the chunk-and-drain loop instead; see the "Sync-ingress ceiling" note above. |
 | `link_klv(klv_pid, video_pid)` | Force a `KlvLink` between two PIDs regardless of what the PMT declares. Surfaces as `LinkSource::Override` in the `klv_links` table. | The encoder doesn't emit `metadata_descriptor`, your topology has multiple video PIDs, and you know which KLV PID feeds which video. |
 | `treat_as(pid, kind)` | Override the demuxer's PMT-derived `StreamKind` for one PID. | Encoder advertises wrong `stream_type`; you know the real shape of the bytes. |
 | `pes_cap_per_pid(bytes)` | Maximum PES reassembly buffer per PID. Default 4 MiB. Exceeding this emits `Discontinuity::PesOversize { pid }` and drops the partial PES. | Memory-tight environments, or paranoia against runaway PES from a malformed encoder. |

@@ -14,13 +14,12 @@ the trigger that would unblock it.
   JAR (`tst-jni` pulls no HLS dependency). It is no longer in the
   `bindings/python` crate's `default` feature set. You can still enable
   it for local / experimental builds with `--features hls`.
-- **Why deferred:** RFC 8216 stream-conformance is now fixed (PR3, WP-I)
-  — the `#EXT-X-TARGETDURATION` is an immutable ceiling, `#EXTINF` is
-  derived from media-presentation time (PTS) via `MuxPublisher`, live
-  eviction keeps ≥ 3 target durations with a grace queue for
-  removed-segment availability, and live configs that cannot hold 3
-  target durations are rejected. The built-in HTTP server is still not
-  release-ready:
+- **Why deferred:** playlist-model RFC 8216 conformance (target-duration
+  ceiling, duration-floor eviction, media-PTS `#EXTINF`) was fixed in
+  v0.2.0; segment-initial decodability and HTTP-server hardening (path
+  traversal) remain open, so HLS stays gated out of published artifacts
+  pending those and a security review. Specifically, the built-in HTTP
+  server is still not release-ready:
   - **Path traversal (CWE-22)** — segment requests are served from an
     unauthenticated server bound to all interfaces, with no validated
     confinement of the request path to the output directory.

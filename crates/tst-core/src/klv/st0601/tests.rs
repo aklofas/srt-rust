@@ -160,6 +160,44 @@ fn encode_out_of_range_rejects() {
 }
 
 #[test]
+fn out_of_range_pitch_names_the_full_range_twin() {
+    // Tag 6 (Platform Pitch, ±20°) rejects 22.4° and should name its full-range
+    // twin (Tag 90, ±90°) in the error message.
+    let rec = UasDatalinkLs {
+        platform_pitch_deg: Some(22.4),
+        ..UasDatalinkLs::default()
+    };
+    let err = encode_to_vec(&rec).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("platform_pitch_full_deg"), "got: {msg}");
+    assert!(msg.contains("90"), "got: {msg}");
+}
+
+#[test]
+fn out_of_range_corner_offset_names_the_absolute_corners() {
+    // Tag 26 (Offset Corner Lat P1, ±0.075°) rejects 0.08° and should name
+    // the absolute corner fields (Tags 82-89) in the error message.
+    let rec = UasDatalinkLs {
+        corner_lat_offset_p1_deg: Some(0.08),
+        ..UasDatalinkLs::default()
+    };
+    let err = encode_to_vec(&rec).unwrap_err();
+    assert!(err.to_string().contains("corner_lat_p1_deg"), "got: {}", err);
+}
+
+#[test]
+fn out_of_range_without_twin_has_no_hint() {
+    // Tag 22 (Target Width, 0..10000 m) has no full-range twin; the error
+    // message must NOT carry a hint (no ';' appended).
+    let rec = UasDatalinkLs {
+        target_width_m: Some(12_089.0),
+        ..UasDatalinkLs::default()
+    };
+    let err = encode_to_vec(&rec).unwrap_err();
+    assert!(!err.to_string().contains(';'), "got: {}", err);
+}
+
+#[test]
 fn encode_string_too_long_rejects() {
     let r = UasDatalinkLs {
         platform_call_sign: Some("x".repeat(200)),

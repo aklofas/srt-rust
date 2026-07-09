@@ -157,6 +157,7 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
             value,
             min: p.min,
             max: p.max,
+            hint: None,
         });
     }
     // ST 1201.5 §7.2.1 step 4a: y = truncate(sF*(x - min) + Zoffset).
@@ -433,6 +434,7 @@ pub fn encode_imapb_special(
             value: payload as f64,
             min: 0.0,
             max: ((1u64 << payload_bits) - 1) as f64,
+            hint: None,
         });
     }
     let word = ((prefix5 as u64) << payload_bits) | payload;

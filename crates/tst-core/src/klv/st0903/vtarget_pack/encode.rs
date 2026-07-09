@@ -38,6 +38,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V6_MAX as f64,
+                hint: None,
             });
         }
         emit_var_u64(out, 1, v)?;
@@ -49,6 +50,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V6_MAX as f64,
+                hint: None,
             });
         }
         emit_var_u64(out, 2, v)?;
@@ -60,6 +62,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V6_MAX as f64,
+                hint: None,
             });
         }
         emit_var_u64(out, 3, v)?;
@@ -86,6 +89,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V3_MAX as f64,
+                hint: None,
             });
         }
         emit_var(out, 9, v)?;
@@ -129,6 +133,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V4_MAX as f64,
+                hint: None,
             });
         }
         emit_var_u64(out, 19, v)?;
@@ -140,6 +145,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V4_MAX as f64,
+                hint: None,
             });
         }
         emit_var_u64(out, 20, v)?;
@@ -151,6 +157,7 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
                 value: v as f64,
                 min: 0.0,
                 max: V3_MAX as f64,
+                hint: None,
             });
         }
         emit_var(out, 22, v)?;

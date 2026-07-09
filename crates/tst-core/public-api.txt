@@ -1231,6 +1231,7 @@ pub tst_core::error::KlvEncodeError::MissingMandatoryItem
 pub tst_core::error::KlvEncodeError::MissingMandatoryItem::name: &'static str
 pub tst_core::error::KlvEncodeError::MissingMandatoryItem::tag: u16
 pub tst_core::error::KlvEncodeError::OutOfRange
+pub tst_core::error::KlvEncodeError::OutOfRange::hint: core::option::Option<&'static str>
 pub tst_core::error::KlvEncodeError::OutOfRange::max: f64
 pub tst_core::error::KlvEncodeError::OutOfRange::min: f64
 pub tst_core::error::KlvEncodeError::OutOfRange::tag: u32
@@ -5820,6 +5821,7 @@ pub tst_core::KlvEncodeError::MissingMandatoryItem
 pub tst_core::KlvEncodeError::MissingMandatoryItem::name: &'static str
 pub tst_core::KlvEncodeError::MissingMandatoryItem::tag: u16
 pub tst_core::KlvEncodeError::OutOfRange
+pub tst_core::KlvEncodeError::OutOfRange::hint: core::option::Option<&'static str>
 pub tst_core::KlvEncodeError::OutOfRange::max: f64
 pub tst_core::KlvEncodeError::OutOfRange::min: f64
 pub tst_core::KlvEncodeError::OutOfRange::tag: u32

@@ -106,6 +106,21 @@ pub fn st0601_sentinel_meaning(tag: u32) -> Option<St0601SentinelMeaning> {
     }
 }
 
+/// ST 0601 defines full-range/absolute twins for several narrow tags; when a
+/// narrow encode rejects, point the caller at the twin (field report
+/// 2026-07-07: every integrator discovers these one runtime crash at a time).
+fn range_hint(tag: u8) -> Option<&'static str> {
+    match tag {
+        6 => Some("for extended range use platform_pitch_full_deg (Tag 90, +/-90 deg)"),
+        7 => Some("for extended range use platform_roll_full_deg (Tag 91, +/-90 deg)"),
+        26..=33 => Some(
+            "for out-of-range corner offsets use the absolute corner fields \
+             corner_lat_p1_deg..corner_lon_p4_deg (Tags 82-89)",
+        ),
+        _ => None,
+    }
+}
+
 /// Encode a float value into `out` according to `range`.
 /// `tag` is for error reporting only.
 pub(crate) fn encode_fixed_range(
@@ -126,6 +141,7 @@ pub(crate) fn encode_fixed_range(
             value,
             min: range.min,
             max: range.max,
+            hint: range_hint(tag as u8),
         });
     }
     if range.signed {

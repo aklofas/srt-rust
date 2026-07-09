@@ -22,6 +22,7 @@ extern "C" void _exit(int);  // matches startup.c + the libc builtin (void, nore
 
 static volatile int g_lwip_up = 0;
 static volatile int g_fail = 0;
+static volatile int g_rx_ready = 0;
 static int g_rx_sock = -1;
 static uint8_t g_rxbuf[1024];
 static int g_rxlen = 0;
@@ -38,6 +39,10 @@ static void* rx_thread(void*) {
     if (g_rx_sock < 0 || lwip_bind(g_rx_sock, (struct sockaddr*)&addr, sizeof addr) != 0) {
         g_fail = 1; return nullptr;
     }
+    // Signal the tx thread that the socket is bound. A bound UDP socket will
+    // queue the datagram even if select() hasn't started yet, so this is the
+    // earliest safe moment for tx to send.
+    g_rx_ready = 1;
     fd_set rfds; FD_ZERO(&rfds); FD_SET(g_rx_sock, &rfds);
     struct timeval tv; tv.tv_sec = 5; tv.tv_usec = 0;
     if (lwip_select(g_rx_sock + 1, &rfds, nullptr, nullptr, &tv) <= 0) { g_fail = 1; return nullptr; }
@@ -52,8 +57,14 @@ static void* tx_thread(void*) {
     addr.sin_port = lwip_htons(PORT);
     addr.sin_addr.s_addr = lwip_htonl(INADDR_LOOPBACK);
     int tx = lwip_socket(AF_INET, SOCK_DGRAM, 0);
-    // Small delay so the receiver is bound + in select() first.
-    vTaskDelay(pdMS_TO_TICKS(50));
+    // Wait until the receiver is BOUND (not a fixed delay — on a starved TCG
+    // runner 50 ms was not always enough, and an unbound receiver silently
+    // drops the one datagram). Bounded so an rx failure can't spin forever.
+    for (int i = 0; !g_rx_ready; i++) {
+        if (g_fail) return nullptr;
+        if (i >= 5000) { g_fail = 1; return nullptr; }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
     if (lwip_sendto(tx, GOLDEN, GOLDEN_LEN, 0, (struct sockaddr*)&addr, sizeof addr) < 0) g_fail = 1;
     return nullptr;
 }

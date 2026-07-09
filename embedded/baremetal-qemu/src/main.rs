@@ -123,11 +123,11 @@ struct SmoltcpUdpTransport {
     handle: SocketHandle,
     clock_ms: i64,
     endpoint: IpEndpoint,
-    acc: Arc<Mutex<Vec<u8>>>,
+    acc: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
 impl SmoltcpUdpTransport {
-    fn new(acc: Arc<Mutex<Vec<u8>>>) -> Self {
+    fn new(acc: Arc<Mutex<Vec<Vec<u8>>>>) -> Self {
         let mut device = Loopback::new(Medium::Ethernet);
 
         // Locally-administered fake MAC; loopback resolves its own ARP.
@@ -174,7 +174,7 @@ impl SmoltcpUdpTransport {
         let mut tmp = [0u8; 1500];
         while socket.can_recv() {
             if let Ok((n, _meta)) = socket.recv_slice(&mut tmp) {
-                self.acc.lock().extend_from_slice(&tmp[..n]);
+                self.acc.lock().push(tmp[..n].to_vec());
             } else {
                 break;
             }
@@ -245,9 +245,9 @@ fn mux_sender_roundtrip_ts_bytes() -> Vec<u8> {
 
 /// Same config as Check 2, but driven through `MuxSender<SmoltcpUdpTransport>`:
 /// every TS chunk is sent as a UDP datagram, looped back through the smoltcp
-/// stack, recovered, and accumulated. The recovered bytes must equal the same
-/// golden — proving the TS payload survives real UDP encode + loopback + decode.
-fn mux_sender_over_udp_loopback() -> Vec<u8> {
+/// stack, recovered, and accumulated. Returns each received datagram as its own
+/// `Vec<u8>` so the caller can assert both byte content and datagram boundaries.
+fn mux_sender_over_udp_loopback() -> Vec<Vec<u8>> {
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x1011, VideoCodec::H264);
@@ -311,9 +311,30 @@ fn main() -> ! {
     }
 
     // Check 3 — MuxSender over a real smoltcp UDP/IP loopback transport (P7c).
-    let udp_out = mux_sender_over_udp_loopback();
+    let datagrams = mux_sender_over_udp_loopback();
+    // Check 3a — flatten and byte-compare, mirroring the prior golden check.
+    let udp_out: Vec<u8> = datagrams.iter().flat_map(|d| d.iter().copied()).collect();
     if udp_out != GOLDEN {
         report_mismatch("udp_loopback", &udp_out, GOLDEN);
+        debug::exit(debug::EXIT_FAILURE);
+        loop {}
+    }
+
+    // Check 3b — datagram boundaries must mirror MuxSender's max_payload
+    // chunking. The flatten-compare above can't see a chunking regression
+    // (e.g. splitting mid-TS-packet) as long as the bytes still concatenate.
+    // The 564-byte golden fits one ≤1316-byte send, so expected == [GOLDEN].
+    let expected: Vec<&[u8]> = GOLDEN.chunks(1316).collect();
+    if datagrams.len() != expected.len()
+        || datagrams.iter().zip(&expected).any(|(g, w)| g.as_slice() != *w)
+    {
+        hprintln!(
+            "FAIL[udp_datagram_boundaries]: got {} datagrams (lens {:?}), want {} (lens {:?})",
+            datagrams.len(),
+            datagrams.iter().map(|d| d.len()).collect::<Vec<_>>(),
+            expected.len(),
+            expected.iter().map(|d| d.len()).collect::<Vec<_>>(),
+        );
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }

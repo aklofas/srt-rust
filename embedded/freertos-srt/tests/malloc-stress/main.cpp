@@ -62,6 +62,7 @@ static void collector_task(void *) {
 int main() {
     try { throw 1; } catch (int) {} // pre-scheduler EH bootstrap (NEW-EMB-2)
     s_done = xSemaphoreCreateCounting(4, 0);
+    if (!s_done) { printf("FAIL[s5_malloc_stress]: semaphore create\n"); fflush(stdout); _exit(1); }
     for (unsigned t = 0; t < 4; t++)
         if (xTaskCreate(churn_task, "churn", 4096, (void *)(uintptr_t)t, 2, nullptr) != pdPASS) {
             printf("FAIL[s5_malloc_stress]: xTaskCreate churn\n"); fflush(stdout); _exit(1);

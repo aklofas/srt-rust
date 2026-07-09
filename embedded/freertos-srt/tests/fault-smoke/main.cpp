@@ -18,7 +18,12 @@ static void crash_task(void*) {
 }
 
 int main() {
-    xTaskCreate(crash_task, "crash", 1024, nullptr, 2, nullptr);
+    /* Check task creation explicitly: the malloc-failed hook already makes a
+     * heap exhaustion loud, but a direct check here gives clearer triage and
+     * is consistent with the sibling firmwares (malloc-stress, loopback-arq). */
+    if (xTaskCreate(crash_task, "crash", 1024, nullptr, 2, nullptr) != pdPASS) {
+        printf("FAIL[fault_smoke]: xTaskCreate\n"); fflush(stdout); _exit(1);
+    }
     vTaskStartScheduler();
     for (;;) {}
 }

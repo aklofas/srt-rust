@@ -843,14 +843,15 @@ pub enum DemuxError {
     MalformedPes { pid: u16, reason: &'static str },
 
     /// The demuxer's pre-sync buffer (`Demuxer::sync_buf`) exceeded its
-    /// hard ceiling. Fired when a peer feeds bytes with no 0x47 sync byte
-    /// faster than the sync-search window can scan them — `feed` runs
-    /// `extend_from_slice` up front, so a single oversized call would
-    /// otherwise allocate the whole input before the per-loop window
-    /// check could bail. The cap matches ffmpeg's `MpegTSSectionFilter`
-    /// (4 MiB). On this error the demuxer drops `sync_buf` to release the
-    /// adversarial bytes; the caller's only sane response is to teardown
-    /// the demuxer or accept that subsequent reads will not align.
-    #[error("demuxer sync buffer exhausted: {observed} bytes exceeds {max} byte ceiling")]
+    /// configured ceiling. Fired when the projected buffer size after a
+    /// `feed` call would exceed the cap (default 4 MiB, configurable via
+    /// [`crate::mpegts::demux::DemuxerConfig::sync_buf_cap`]). The bytes
+    /// in the call are never copied in — the check fires before
+    /// `extend_from_slice`. On this error the demuxer clears `sync_buf`
+    /// and resets sync state; the caller's only sane response is to
+    /// teardown the demuxer or feed in smaller chunks going forward.
+    #[error("demuxer sync buffer exhausted: {observed} bytes exceeds the {max} byte ceiling; \
+             feed in smaller chunks and drain events between feeds, or raise \
+             DemuxerConfig::sync_buf_cap (this ceiling is NOT pes_cap_per_pid/pes_cap_total)")]
     SyncBufExhausted { observed: usize, max: usize },
 }

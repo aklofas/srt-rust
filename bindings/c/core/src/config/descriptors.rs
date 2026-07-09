@@ -329,13 +329,7 @@ unsafe fn desc_to_tlv_blob(
         );
         return Err(TstError::InvalidConfig as i32);
     }
-    let body: &[u8] = if desc.data_len == 0 {
-        &[]
-    } else {
-        // SAFETY: caller validated desc.data non-null and desc.data_len > 0;
-        // bytes are copied into the Vec so the caller's buffer can be freed.
-        unsafe { core::slice::from_raw_parts(desc.data, desc.data_len) }
-    };
+    let body = unsafe { crate::ffi_slice::ffi_slice(desc.data, desc.data_len, "data") }?;
     let mut tlv = Vec::with_capacity(2 + body.len());
     tlv.push(desc.tag);
     tlv.push(desc.data_len as u8);
@@ -648,7 +642,8 @@ unsafe fn parse_tlv_list(
         );
         return Err(TstError::InvalidUsage as i32);
     }
-    let bytes = unsafe { core::slice::from_raw_parts(tlv_bytes, tlv_total_len) };
+    let bytes =
+        unsafe { crate::ffi_slice::ffi_slice(tlv_bytes, tlv_total_len, "tlv_bytes") }?;
     // Clamp capacity: each TLV is at minimum 2 bytes (tag + body-length).
     // `tlv_count.min(tlv_total_len / 2 + 1)` bounds the reservation to a
     // value proportional to the actual byte budget, preventing caller-controlled

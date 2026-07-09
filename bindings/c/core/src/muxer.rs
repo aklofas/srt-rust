@@ -744,7 +744,10 @@ pub unsafe extern "C" fn tst_muxer_pull(
     if out_buf.is_null() || out_cap == 0 {
         return 0;
     }
-    let slice = unsafe { core::slice::from_raw_parts_mut(out_buf, out_cap) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice_mut(out_buf, out_cap, "out_buf") } {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
     let mut n = 0usize;
     let _rc = handle.inner.with_inner_mut(|m| {
         n = m.pull(slice);

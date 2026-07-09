@@ -470,9 +470,14 @@ pub unsafe extern "C" fn tst_rtsp_server_builder_tls_cert_pem(
             );
             return;
         }
-        // SAFETY: caller guarantees each pointer..+len is valid for this call.
-        let cert_bytes = unsafe { std::slice::from_raw_parts(cert, cert_len) };
-        let key_bytes = unsafe { std::slice::from_raw_parts(key, key_len) };
+        let cert_bytes = match unsafe { crate::ffi_slice::ffi_slice(cert, cert_len, "cert") } {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let key_bytes = match unsafe { crate::ffi_slice::ffi_slice(key, key_len, "key") } {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         b.tls_cert_pem = Some(cert_bytes.to_vec());
         b.tls_key_pem = Some(key_bytes.to_vec());
     });

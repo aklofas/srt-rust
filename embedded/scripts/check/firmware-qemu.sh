@@ -7,12 +7,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
-if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-  echo "SKIP: arm-none-eabi-gcc not installed (apt install gcc-arm-none-eabi libnewlib-arm-none-eabi)"; exit 0
-fi
-if ! command -v qemu-system-arm >/dev/null 2>&1; then
-  echo "SKIP: qemu-system-arm not installed (apt install qemu-system-arm)"; exit 0
-fi
+# Skip when a tool is absent (local convenience) — or fail closed under
+# FIRMWARE_QEMU_REQUIRE_TOOLS=1 (the CI hard-gate sets it so a runner-image
+# regression that drops a tool goes red instead of silently skipping to a
+# green no-op). Mirrors freertos-srt.sh's FREERTOS_SRT_REQUIRE_TOOLS.
+REQUIRE="${FIRMWARE_QEMU_REQUIRE_TOOLS:-0}"
+need() { # $1=binary  $2=install hint
+  command -v "$1" >/dev/null 2>&1 && return 0
+  if [ "$REQUIRE" = "1" ]; then echo "FATAL: required tool '$1' not installed ($2) (FIRMWARE_QEMU_REQUIRE_TOOLS=1)"; exit 1; fi
+  echo "SKIP: $1 not installed ($2)"; exit 0
+}
+need arm-none-eabi-gcc "apt install gcc-arm-none-eabi libnewlib-arm-none-eabi"
+need qemu-system-arm   "apt install qemu-system-arm"
+need python3           "apt install python3"
 
 CRATE=embedded/baremetal-qemu-c
 FW="$CRATE/firmware"
@@ -24,7 +31,7 @@ echo "==> generating golden.h from $GOLDEN_TS"
 bash embedded/scripts/lib/gen-golden-h.sh "$GOLDEN_TS" "$FW/golden.h"
 
 echo "==> building glue staticlib (thumbv7em)"
-( cd "$CRATE" && cargo build --release )
+( cd "$CRATE" && cargo build --release --locked )
 # Deterministic path: --release above + target pinned to thumbv7em-none-eabihf
 # in the crate's .cargo/config.toml. (A `find | head -1` would walk debug/
 # first and could link a stale debug archive from a prior `cargo build`.)

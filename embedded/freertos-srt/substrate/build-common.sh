@@ -35,21 +35,10 @@ CC=arm-none-eabi-gcc; CXX=arm-none-eabi-g++
 ARCH="-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16"
 OPT="-Os -ffunction-sections -fdata-sections -g"
 
-# Generate golden.h (564B video-roundtrip) into build/generated/ if absent;
-# targets that #include it get -I$GEN. Self-contained on a clean checkout.
+# Generate golden.h (564B video-roundtrip) into build/generated/ — regenerated
+# every build via the shared atomic generator (see gen-golden-h.sh for why).
 GOLDEN_TS=$ROOT/crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts
-if [ ! -f "$GEN/golden.h" ]; then
-  python3 - "$GOLDEN_TS" > "$GEN/golden.h" <<'PY'
-import sys
-data = open(sys.argv[1], "rb").read()
-print("#include <stddef.h>\n#include <stdint.h>")
-print(f"static const size_t GOLDEN_LEN = {len(data)};")
-print("static const uint8_t GOLDEN[] = {")
-for i in range(0, len(data), 12):
-    print("  " + ", ".join(f"0x{b:02x}" for b in data[i:i+12]) + ",")
-print("};")
-PY
-fi
+bash "$ROOT/embedded/scripts/lib/gen-golden-h.sh" "$GOLDEN_TS" "$GEN/golden.h"
 
 # Base includes: substrate roots (lwipopts.h, FreeRTOSConfig.h, arch/, golden.h,
 # srt_opts.h, drivers) + FreeRTOS + FreeRTOS-Plus-POSIX. posix-shims + lwIP +

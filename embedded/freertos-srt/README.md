@@ -8,7 +8,7 @@ no hardware required.
 
 > **Most consumers do not need this.** If you are integrating from an
 > application runtime, use the language bindings instead — the Python package
-> (`tstrans`) or the planned JVM bindings — and point them at a normal OS
+> (`tstrans`) or the JVM bindings (`org.tstrans:tstrans-jvm` on Maven Central) — and point them at a normal OS
 > socket. This product is for the narrow case of **linking the C core directly
 > into MCU firmware** that has no operating system. It is **not built by
 > default**: it is not a Cargo workspace member, and its gates are opt-in.
@@ -26,15 +26,19 @@ freertos-srt/
     atomic64_stub.c syscalls_stub.c net_shim.c   newlib/lwIP impedance shims
     cxa_override.cpp      per-task C++ exception state in FreeRTOS TLS
     pthread_key_shim.c    pthread TSD over a FreeRTOS TLS slot
+    diag.c diag.h         semihosting fatal-path diagnostics
+    newlib_lock.c         newlib locks on FreeRTOS mutexes
     srt_opts.h            shared SRT socket setup (transtype/buffers/passphrase)
     freertos/  lwip/  posix-shims/  drivers/  mbedtls/  patches/
   example/              the flagship: SRT egress out a real NIC to a host
     main.cpp  README.md  host/   (a tst-srt listener that verifies byte-exact)
-  tests/               five layered verifications, smallest first
+  tests/               six layered verifications, smallest first
     exceptions/        concurrent per-task C++ throw/catch
     lwip-loopback/     564B golden through a lwIP UDP loopback socket
     libsrt-smoke/      srt_startup + create_socket + close + cleanup
-    loopback-arq/      SRT byte-exact recovery under ~20% loss (plain + AES)
+    loopback-arq/      SRT byte-exact recovery under ~20% loss (plain + AES-128 with negotiated-KM assert)
+    fault-smoke/       deliberate fault produces a labeled FAIL + fast exit
+    malloc-stress/     4 tasks × 20000 malloc/free + EH + errno isolation
   build/               all generated output (gitignored; ./build.sh clean wipes it)
 ```
 
@@ -47,7 +51,7 @@ path, with `#ifndef`-guarded toggles overridden per target via `-D`.
 
 ```bash
 # from this directory
-./build.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example>
+./build.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|loopback-arq-connfail|fault-smoke|malloc-stress|example>
 # ENCRYPT=1 selects the mbedTLS AES-128 build for loopback-arq / example
 ENCRYPT=1 ./build.sh loopback-arq
 ```
@@ -84,18 +88,21 @@ token:
 bash embedded/scripts/check/freertos-srt.sh <target>   # from the workspace root
 ```
 
-It skips cleanly when the cross-toolchain / QEMU / cmake / cargo is absent. The
-first four targets are CI hard-gates; the NIC-egress `example` (a networked,
-two-process gate) is phase-in.
+It skips cleanly when the cross-toolchain / QEMU / cmake / cargo is absent. All
+targets — including `arq-connfail` and the NIC-egress `example` — are CI
+hard-gates.
 
-## The five tests, one line each
+## The gate targets, one line each
 
 | target | proves |
 |---|---|
 | `exceptions` | concurrent per-task C++ exceptions are isolated on FreeRTOS + the pthread backend |
 | `lwip-loopback` | the FreeRTOS + lwIP + hi-res-clock substrate round-trips the golden over a UDP loopback socket |
 | `libsrt-smoke` | the cross-compiled libsrt boots its runtime (startup → socket → cleanup) on the substrate |
-| `loopback-arq` | SRT recovers the golden byte-exact under ~20% packet loss, plain and AES-128 |
+| `loopback-arq` | SRT recovers the golden byte-exact under ~20% packet loss, plain and AES-128 with negotiated-KM assert |
+| `arq-connfail` | a caller pointed at a dead port fails fast with a labeled verdict (EMB-JOIN-1 regression gate) |
+| `fault-smoke` | a deliberate fault produces the labeled `FAIL[hardfault]` token and exits fast, not hangs |
+| `malloc-stress` | 4 tasks × 20000 malloc/free with per-block canaries + concurrent EH + per-task errno isolation |
 | `example` | a real-NIC SRT caller streams the golden to a host listener byte-exact, plain and AES-128 |
 
 ## Newlib locking

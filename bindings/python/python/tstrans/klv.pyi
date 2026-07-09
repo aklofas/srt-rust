@@ -272,6 +272,67 @@ class Corners:
 
 @dataclass(frozen=True, slots=True)
 class UasDatalinkLs:
+    """MISB ST 0601.19 UAS Datalink Local Set typed view.
+
+    Encode-enforced ranges (MISB ST 0601.19). Values outside a range raise
+    ``KlvEncodeError`` on ``encode_uas_datalink``. Narrow/full twins:
+    pitch 6↔90, roll 7↔91, corner offsets 26-33↔82-89 (absolute).
+
+    Platform state
+    --------------
+    platform_heading_deg        Tag  5, [0, 360] deg
+    platform_pitch_deg          Tag  6, [-20, 20] deg      — narrow; full twin: platform_pitch_full_deg (Tag 90)
+    platform_roll_deg           Tag  7, [-50, 50] deg      — narrow; full twin: platform_roll_full_deg (Tag 91)
+    platform_true_airspeed      Tag  8, [0, 255] m/s
+    platform_indicated_airspeed Tag  9, [0, 255] m/s
+    platform_pitch_full_deg     Tag 90, [-90, 90] deg      — full twin of platform_pitch_deg (Tag 6)
+    platform_roll_full_deg      Tag 91, [-90, 90] deg      — full twin of platform_roll_deg (Tag 7)
+    platform_angle_of_attack_deg Tag 50, [-20, 20] deg
+
+    Sensor pose & position
+    ----------------------
+    sensor_lat_deg              Tag 13, [-90, 90] deg
+    sensor_lon_deg              Tag 14, [-180, 180] deg
+    sensor_alt_m                Tag 15, [-900, 19000] m
+    sensor_ellipsoid_height_m   Tag 75, [-900, 19000] m
+    sensor_hfov_deg             Tag 16, [0, 180] deg
+    sensor_vfov_deg             Tag 17, [0, 180] deg
+    sensor_rel_az_deg           Tag 18, [0, 360] deg
+    sensor_rel_el_deg           Tag 19, [-180, 180] deg
+    sensor_rel_roll_deg         Tag 20, [0, 360] deg
+
+    Ranging & frame center
+    ----------------------
+    slant_range_m               Tag 21, [0, 5000000] m
+    target_width_m              Tag 22, [0, 10000] m
+    frame_center_lat_deg        Tag 23, [-90, 90] deg
+    frame_center_lon_deg        Tag 24, [-180, 180] deg
+    frame_center_elev_m         Tag 25, [-900, 19000] m
+    frame_center_ellipsoid_height_m Tag 78, [-900, 19000] m
+
+    Corner offsets (narrow ±0.075°)
+    --------------------------------
+    corner_lat_offset_p1_deg    Tag 26, [-0.075, 0.075] deg  — full twin: corner_lat_p1_deg (Tag 82)
+    corner_lon_offset_p1_deg    Tag 27, [-0.075, 0.075] deg  — full twin: corner_lon_p1_deg (Tag 83)
+    corner_lat_offset_p2_deg    Tag 28, [-0.075, 0.075] deg  — full twin: corner_lat_p2_deg (Tag 84)
+    corner_lon_offset_p2_deg    Tag 29, [-0.075, 0.075] deg  — full twin: corner_lon_p2_deg (Tag 85)
+    corner_lat_offset_p3_deg    Tag 30, [-0.075, 0.075] deg  — full twin: corner_lat_p3_deg (Tag 86)
+    corner_lon_offset_p3_deg    Tag 31, [-0.075, 0.075] deg  — full twin: corner_lon_p3_deg (Tag 87)
+    corner_lat_offset_p4_deg    Tag 32, [-0.075, 0.075] deg  — full twin: corner_lat_p4_deg (Tag 88)
+    corner_lon_offset_p4_deg    Tag 33, [-0.075, 0.075] deg  — full twin: corner_lon_p4_deg (Tag 89)
+
+    Corner full lat/lon (ST 0601.13+)
+    -----------------------------------
+    corner_lat_p1_deg           Tag 82, [-90, 90] deg        — full twin of corner_lat_offset_p1_deg (Tag 26)
+    corner_lon_p1_deg           Tag 83, [-180, 180] deg      — full twin of corner_lon_offset_p1_deg (Tag 27)
+    corner_lat_p2_deg           Tag 84, [-90, 90] deg        — full twin of corner_lat_offset_p2_deg (Tag 28)
+    corner_lon_p2_deg           Tag 85, [-180, 180] deg      — full twin of corner_lon_offset_p2_deg (Tag 29)
+    corner_lat_p3_deg           Tag 86, [-90, 90] deg        — full twin of corner_lat_offset_p3_deg (Tag 30)
+    corner_lon_p3_deg           Tag 87, [-180, 180] deg      — full twin of corner_lon_offset_p3_deg (Tag 31)
+    corner_lat_p4_deg           Tag 88, [-90, 90] deg        — full twin of corner_lat_offset_p4_deg (Tag 32)
+    corner_lon_p4_deg           Tag 89, [-180, 180] deg      — full twin of corner_lon_offset_p4_deg (Tag 33)
+    """
+
     universal_label: bytes = ...
     declared_version: int = ...
     mission_id: Optional[str] = ...

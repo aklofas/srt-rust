@@ -182,7 +182,11 @@ fn out_of_range_corner_offset_names_the_absolute_corners() {
         ..UasDatalinkLs::default()
     };
     let err = encode_to_vec(&rec).unwrap_err();
-    assert!(err.to_string().contains("corner_lat_p1_deg"), "got: {}", err);
+    assert!(
+        err.to_string().contains("corner_lat_p1_deg"),
+        "got: {}",
+        err
+    );
 }
 
 #[test]

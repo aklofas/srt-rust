@@ -27,57 +27,151 @@ pub struct UasDatalinkLs {
     pub timestamp_us: Option<u64>,
 
     // Platform state
+    /// Item 5: Platform Heading Angle — encode range [0, 360] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub platform_heading_deg: Option<f64>,
+    /// Item 6: Platform Pitch Angle — encode range [-20, 20] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for
+    /// the full ±90° range use [`Self::platform_pitch_full_deg`] (Item 90).
     pub platform_pitch_deg: Option<f64>,
+    /// Item 7: Platform Roll Angle — encode range [-50, 50] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for
+    /// the full ±90° range use [`Self::platform_roll_full_deg`] (Item 91).
     pub platform_roll_deg: Option<f64>,
+    /// Item 8: Platform True Airspeed — encode range [0, 255] m/s (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub platform_true_airspeed: Option<f64>,
+    /// Item 9: Platform Indicated Airspeed — encode range [0, 255] m/s (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub platform_indicated_airspeed: Option<f64>,
-    /// Item 90: Platform Pitch Angle (Full) — int32 mapped to ±90°.
+    /// Item 90: Platform Pitch Angle (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::platform_pitch_deg`] (Item 6, ±20°).
     pub platform_pitch_full_deg: Option<f64>,
-    /// Item 91: Platform Roll Angle (Full) — int32 mapped to ±90°.
+    /// Item 91: Platform Roll Angle (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::platform_roll_deg`] (Item 7, ±50°).
     pub platform_roll_full_deg: Option<f64>,
-    /// Item 50: Platform Angle of Attack — int16 mapped to ±20°.
+    /// Item 50: Platform Angle of Attack — encode range [-20, 20] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub platform_angle_of_attack_deg: Option<f64>,
 
     // Sensor pose & position
+    /// Item 13: Sensor Latitude — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_lat_deg: Option<f64>,
+    /// Item 14: Sensor Longitude — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_lon_deg: Option<f64>,
+    /// Item 15: Sensor True Altitude — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_alt_m: Option<f64>,
-    /// Item 75: Sensor Ellipsoid Height (WGS84-relative meters).
+    /// Item 75: Sensor Ellipsoid Height (WGS84) — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_ellipsoid_height_m: Option<f64>,
+    /// Item 16: Sensor Horizontal FOV — encode range [0, 180] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_hfov_deg: Option<f64>,
+    /// Item 17: Sensor Vertical FOV — encode range [0, 180] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_vfov_deg: Option<f64>,
+    /// Item 18: Sensor Relative Azimuth — encode range [0, 360] deg (uint32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_rel_az_deg: Option<f64>,
+    /// Item 19: Sensor Relative Elevation — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_rel_el_deg: Option<f64>,
+    /// Item 20: Sensor Relative Roll — encode range [0, 360] deg (uint32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_rel_roll_deg: Option<f64>,
 
     // Ranging & frame center
+    /// Item 21: Slant Range — encode range [0, 5000000] m (uint32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub slant_range_m: Option<f64>,
+    /// Item 22: Target Width — encode range [0, 10000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub target_width_m: Option<f64>,
+    /// Item 23: Frame Center Latitude — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub frame_center_lat_deg: Option<f64>,
+    /// Item 24: Frame Center Longitude — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub frame_center_lon_deg: Option<f64>,
+    /// Item 25: Frame Center Elevation — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub frame_center_elev_m: Option<f64>,
-    /// Item 78: Frame Center Height Above Ellipsoid (WGS84-relative meters).
+    /// Item 78: Frame Center Height Above Ellipsoid (WGS84) — encode range
+    /// [-900, 19000] m (uint16). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
     pub frame_center_ellipsoid_height_m: Option<f64>,
 
     // Image corners — offsets from frame center (tags 26-33)
+    /// Item 26: Offset Corner Latitude Point 1 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// latitude range use [`Self::corner_lat_p1_deg`] (Item 82, ±90°).
     pub corner_lat_offset_p1_deg: Option<f64>,
+    /// Item 27: Offset Corner Longitude Point 1 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// longitude range use [`Self::corner_lon_p1_deg`] (Item 83, ±180°).
     pub corner_lon_offset_p1_deg: Option<f64>,
+    /// Item 28: Offset Corner Latitude Point 2 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// latitude range use [`Self::corner_lat_p2_deg`] (Item 84, ±90°).
     pub corner_lat_offset_p2_deg: Option<f64>,
+    /// Item 29: Offset Corner Longitude Point 2 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// longitude range use [`Self::corner_lon_p2_deg`] (Item 85, ±180°).
     pub corner_lon_offset_p2_deg: Option<f64>,
+    /// Item 30: Offset Corner Latitude Point 3 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// latitude range use [`Self::corner_lat_p3_deg`] (Item 86, ±90°).
     pub corner_lat_offset_p3_deg: Option<f64>,
+    /// Item 31: Offset Corner Longitude Point 3 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// longitude range use [`Self::corner_lon_p3_deg`] (Item 87, ±180°).
     pub corner_lon_offset_p3_deg: Option<f64>,
+    /// Item 32: Offset Corner Latitude Point 4 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// latitude range use [`Self::corner_lat_p4_deg`] (Item 88, ±90°).
     pub corner_lat_offset_p4_deg: Option<f64>,
+    /// Item 33: Offset Corner Longitude Point 4 — encode range [-0.075, 0.075] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for the full
+    /// longitude range use [`Self::corner_lon_p4_deg`] (Item 89, ±180°).
     pub corner_lon_offset_p4_deg: Option<f64>,
 
     // Image corners — full lat/lon (tags 82-89, ST 0601.13+)
+    /// Item 82: Corner Latitude Point 1 (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lat_offset_p1_deg`] (Item 26, ±0.075°).
     pub corner_lat_p1_deg: Option<f64>,
+    /// Item 83: Corner Longitude Point 1 (Full) — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lon_offset_p1_deg`] (Item 27, ±0.075°).
     pub corner_lon_p1_deg: Option<f64>,
+    /// Item 84: Corner Latitude Point 2 (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lat_offset_p2_deg`] (Item 28, ±0.075°).
     pub corner_lat_p2_deg: Option<f64>,
+    /// Item 85: Corner Longitude Point 2 (Full) — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lon_offset_p2_deg`] (Item 29, ±0.075°).
     pub corner_lon_p2_deg: Option<f64>,
+    /// Item 86: Corner Latitude Point 3 (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lat_offset_p3_deg`] (Item 30, ±0.075°).
     pub corner_lat_p3_deg: Option<f64>,
+    /// Item 87: Corner Longitude Point 3 (Full) — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lon_offset_p3_deg`] (Item 31, ±0.075°).
     pub corner_lon_p3_deg: Option<f64>,
+    /// Item 88: Corner Latitude Point 4 (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lat_offset_p4_deg`] (Item 32, ±0.075°).
     pub corner_lat_p4_deg: Option<f64>,
+    /// Item 89: Corner Longitude Point 4 (Full) — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::corner_lon_offset_p4_deg`] (Item 33, ±0.075°).
     pub corner_lon_p4_deg: Option<f64>,
 
     // Misc

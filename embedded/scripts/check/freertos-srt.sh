@@ -9,7 +9,7 @@
 # reducing coverage to a no-op pass.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke>}"
+t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke|malloc-stress>}"
 D=embedded/freertos-srt
 REQUIRE="${FREERTOS_SRT_REQUIRE_TOOLS:-0}"
 
@@ -74,6 +74,8 @@ case "$t" in
                  [ $((t1 - t0)) -lt 25 ] || {
                    echo "GATE FAILED (fault-smoke: fault report was not fast: $((t1-t0))s)"; exit 1; }
                  echo "OK: deliberate fault produced labeled fast failure (rc=$rc, $((t1-t0))s)" ;;
-  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke)" >&2; exit 2 ;;
+  malloc-stress) ( cd "$D" && ./build.sh malloc-stress >/dev/null )
+                 assert_pass 90 'PASS: s5_malloc_stress' "$t" ;;
+  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke|malloc-stress)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

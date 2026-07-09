@@ -97,3 +97,12 @@ two-process gate) is phase-in.
 | `libsrt-smoke` | the cross-compiled libsrt boots its runtime (startup → socket → cleanup) on the substrate |
 | `loopback-arq` | SRT recovers the golden byte-exact under ~20% packet loss, plain and AES-128 |
 | `example` | a real-NIC SRT caller streams the golden to a host listener byte-exact, plain and AES-128 |
+
+## Newlib locking
+
+`substrate/newlib_lock.c` makes newlib safe under preemption. Both newlib
+builds are supported: toolchains with `_RETARGETABLE_LOCKING` (e.g. xpack
+14.2.1) get the full `__retarget_lock_*` family covering malloc, stdio, and
+env; toolchains without it (e.g. distro `gcc-arm-none-eabi`) get the
+function-call-based `__malloc_lock`/`__env_lock` overrides — stdio FILE
+locking is unavailable in that libc configuration.

@@ -3,7 +3,7 @@
 `no_std` runtime smoke test for the `tst-core` muxer. Runs the
 `video-roundtrip` mux sequence on a Cortex-M4 under QEMU and asserts the
 output byte-matches the committed golden
-(`../tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts`).
+(`../../crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts`).
 
 This is the runtime counterpart to the `no_std` *compile* gate
 (`embedded/scripts/check/no-std-baremetal.sh`): the compile gate proves `tst-core`
@@ -20,7 +20,7 @@ and the QEMU runner.
 
     sudo apt install qemu-system-arm   # one-time
     rustup target add thumbv7em-none-eabihf
-    cd embedded/baremetal-qemu && cargo run
+    cd embedded/baremetal-qemu && cargo run --release --locked
 
 A `PASS` line + exit 0 means the on-device muxer reproduced the golden. Or run
 the repo-root mirror, which skips cleanly without QEMU:

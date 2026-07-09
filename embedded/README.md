@@ -32,8 +32,9 @@ pin bare-metal targets and profiles) and consume the workspace crates by path
 ## Prerequisites
 
 ```bash
+git submodule update --init --recursive   # embedded/vendor/* + vendor/{srt,mbedtls}
 sudo apt install qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi \
-                 libstdc++-arm-none-eabi-newlib cmake
+                 libstdc++-arm-none-eabi-newlib cmake python3
 rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
 ```
 
@@ -51,10 +52,11 @@ bash embedded/scripts/check/firmware-qemu.sh      # C firmware via libtstrans_fi
 bash embedded/scripts/check/freertos-srt.sh exceptions     # C++ exceptions on FreeRTOS
 bash embedded/scripts/check/freertos-srt.sh lwip-loopback  # lwIP UDP loopback round-trip
 bash embedded/scripts/check/freertos-srt.sh libsrt-smoke   # cross-built libsrt boots
-bash embedded/scripts/check/freertos-srt.sh loopback-arq   # SRT ARQ + AES-128 over a lossy netif
-bash embedded/scripts/check/freertos-srt.sh example        # NIC egress to a host listener
-bash embedded/scripts/check/freertos-srt.sh fault-smoke    # deliberate fault produces labeled FAIL token + fast exit (gate asserts the failure)
-bash embedded/scripts/check/freertos-srt.sh malloc-stress  # 4 tasks × 20000 malloc/free + EH + errno isolation
+bash embedded/scripts/check/freertos-srt.sh loopback-arq      # SRT ARQ + AES-128 over a lossy netif
+bash embedded/scripts/check/freertos-srt.sh arq-connfail      # caller at dead port fails fast with labeled verdict (EMB-JOIN-1)
+bash embedded/scripts/check/freertos-srt.sh example           # NIC egress to a host listener
+bash embedded/scripts/check/freertos-srt.sh fault-smoke       # deliberate fault produces labeled FAIL token + fast exit (gate asserts the failure)
+bash embedded/scripts/check/freertos-srt.sh malloc-stress     # 4 tasks × 20000 malloc/free + EH + errno isolation
 ```
 
 Each sub-project's own README covers internals and design rationale.
@@ -84,3 +86,29 @@ lock with a FreeRTOS recursive mutex, so `malloc`/`free`, `stdio`, and `env`
 become fully preemption-safe. Before `vTaskStartScheduler()`, the scheduler is
 not running and all acquire/release operations are no-ops — the same pattern as
 `pthread_key_shim.c`.
+
+## Third-party components
+
+This sub-project uses the following third-party libraries, vendored as git
+submodules. Licenses are in each submodule tree.
+
+| Component | Submodule path | License |
+|---|---|---|
+| FreeRTOS Kernel | `embedded/vendor/freertos-kernel` | MIT |
+| FreeRTOS-Plus-POSIX | `embedded/vendor/freertos-plus-posix` | MIT |
+| lwIP | `embedded/vendor/lwip` | BSD-3-Clause |
+| libsrt | `vendor/srt` | MPL-2.0 |
+| Mbed TLS | `vendor/mbedtls` | Apache-2.0 OR GPL-2.0-or-later |
+
+## Generated artifacts
+
+All generated output (firmware ELF, object files, intermediate libraries) lives
+under each sub-project's gitignored `build/` or `target/` directory; nothing
+generated is committed. The two golden header files (`golden.h`) used by
+`baremetal-qemu-c/firmware/` and `freertos-srt/tests/` derive from the
+committed fixture at
+`crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/output.ts`
+via `embedded/scripts/lib/gen-golden-h.sh`. The three Rust sub-projects
+(`baremetal-qemu`, `baremetal-qemu-c`, `freertos-srt/example/host`) commit
+their `Cargo.lock` files, and the CI gates build with `--locked` to reproduce
+the exact dependency tree.

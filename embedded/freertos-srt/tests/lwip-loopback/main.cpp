@@ -15,7 +15,7 @@ extern "C" {
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
 }
-#include "golden.h"   // embedded/baremetal-qemu-c/firmware/golden.h — GOLDEN[], GOLDEN_LEN
+#include "golden.h"   // build/generated/golden.h (gen-golden-h.sh) — GOLDEN[], GOLDEN_LEN = 564
 extern "C" void _exit(int);  // matches startup.c + the libc builtin (void, noreturn)
 
 #define PORT 9000

@@ -114,7 +114,7 @@ rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
 
 ## Where to go next
 
-- [`/embedded/README.md`](/embedded/README.md) — sub-project layout, all gate commands, and fatigue-path diagnostics summary.
+- [`/embedded/README.md`](/embedded/README.md) — sub-project layout, all gate commands, and fatal-path diagnostics summary.
 - [`/embedded/baremetal-qemu/README.md`](/embedded/baremetal-qemu/README.md) — Rust no_std runtime reference, check sequence.
 - [`/embedded/baremetal-qemu-c/README.md`](/embedded/baremetal-qemu-c/README.md) — C staticlib glue reference.
 - [`/embedded/freertos-srt/README.md`](/embedded/freertos-srt/README.md) — FreeRTOS reference port internals and newlib locking.

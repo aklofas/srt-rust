@@ -1,7 +1,9 @@
-// loopback-arq — Phase A: SRT caller + listener (FILE mode) on one device over the lossy
+// loopback-arq — SRT caller + listener (FILE mode) on one device over the lossy
 // loopback netif. The 564-byte golden is streamed REPEAT times and the listener
-// reconstructs it byte-exact. This step runs with the drop filter DISABLED to
-// prove the SRT data-plane wiring before adding loss (Task 3 enables it).
+// reconstructs it byte-exact under ~20% deterministic data-packet loss, proving
+// SRT ARQ recovery on the substrate. ENCRYPT=1 adds mbedTLS AES-128 plus a
+// negotiated-KM assertion. -DFREERTOS_SRT_CONNECT_PORT points the caller at a
+// dead port to exercise the caller-failure path (the arq-connfail gate).
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -19,6 +21,12 @@ extern "C" {
 #include "srt_opts.h"
 
 #define PORT   9001
+// The arq-connfail gate points the caller at a dead port to force a connect
+// failure (nothing listens there), proving a caller-side failure aborts the
+// listener instead of wedging pthread_join (EMB-JOIN-1).
+#ifndef FREERTOS_SRT_CONNECT_PORT
+#define FREERTOS_SRT_CONNECT_PORT PORT
+#endif
 #define REPEAT 64
 static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 
@@ -31,17 +39,36 @@ static const int STREAM_LEN = (int)GOLDEN_LEN * REPEAT;   // 36096 bytes
 #define ENC_SUFFIX ""
 #endif
 
-static volatile int g_up = 0;
-static volatile int g_listen_ready = 0;
-static volatile int g_fail = 0;
-static const char*  g_where = "";
-static uint8_t      g_rxbuf[STREAM_LEN];
-static int          g_rxlen = 0;
-static SRT_TRACEBSTATS g_rx_stats;
+static volatile int      g_up = 0;
+static volatile int      g_listen_ready = 0;
+static volatile int      g_fail = 0;
+static const char*       g_where = "";
+static volatile SRTSOCKET g_ls = SRT_INVALID_SOCK;
+static uint8_t           g_rxbuf[STREAM_LEN];
+static int               g_rxlen = 0;
+static SRT_TRACEBSTATS   g_rx_stats;
 
 static void tcpip_ready(void*) { g_up = 1; }
 
-static void fail(const char* w) { g_fail = 1; g_where = w; }
+// First failure wins (a caller-side abort also wakes the listener, whose own
+// srt_accept error must not overwrite the root cause), and the label prints
+// IMMEDIATELY: if anything later still wedges, the transcript already names
+// where things went wrong instead of an anonymous timeout.
+static void fail(const char* w) {
+    if (g_fail) return;
+    g_fail = 1; g_where = w;
+    printf("FAIL-DETAIL: where=%s\n", w); fflush(stdout);
+}
+
+// EMB-JOIN-1: on any pre-connect caller failure, close the listen socket too.
+// srt_accept has no deadline — without this, the listener stays parked in
+// srt_accept forever, run_task wedges in pthread_join, and the gate's outer
+// timeout kills QEMU with an empty transcript. Closing the listen socket makes
+// srt_accept return; the listener exits and the verdict prints within seconds.
+static void abort_listener(void) {
+    SRTSOCKET ls = g_ls;
+    if (ls != SRT_INVALID_SOCK) srt_close(ls);
+}
 
 // Listener: bind/listen/accept, then srt_recv until STREAM_LEN bytes.
 static void* listener_thread(void*) {
@@ -57,9 +84,10 @@ static void* listener_thread(void*) {
     if (srt_apply_opts(ls) != 0)                              { fail("listen_opts"); srt_close(ls); return nullptr; }
     if (srt_bind(ls, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("bind");        srt_close(ls); return nullptr; }
     if (srt_listen(ls, 1) == SRT_ERROR)                       { fail("listen");      srt_close(ls); return nullptr; }
+    g_ls = ls;
     g_listen_ready = 1;
     SRTSOCKET cs = srt_accept(ls, nullptr, nullptr);
-    if (cs == SRT_INVALID_SOCK) { fail("accept"); return nullptr; }
+    if (cs == SRT_INVALID_SOCK) { fail("accept"); srt_close(ls); return nullptr; }
     int got = 0;
     while (got < STREAM_LEN) {
         int n = srt_recv(cs, (char*)g_rxbuf + got, STREAM_LEN - got);
@@ -86,16 +114,16 @@ static void* caller_thread(void*) {
     // into a QEMU timeout. The 10s bound is a backstop for any unforeseen stall.
     for (int i = 0; !g_listen_ready; i++) {
         if (g_fail) return nullptr;
-        if (i >= 10000) { fail("listen_ready_timeout"); return nullptr; }
+        if (i >= 10000) { fail("listen_ready_timeout"); abort_listener(); return nullptr; }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
     struct sockaddr_in sa; memset(&sa, 0, sizeof sa);
-    sa.sin_family = AF_INET; sa.sin_port = lwip_htons(PORT);
+    sa.sin_family = AF_INET; sa.sin_port = lwip_htons(FREERTOS_SRT_CONNECT_PORT);
     sa.sin_addr.s_addr = lwip_htonl(0x0A000001);   /* 10.0.0.1 (our lossy netif) */
     SRTSOCKET cs = srt_create_socket();
-    if (cs == SRT_INVALID_SOCK) { fail("call_create"); return nullptr; }
-    if (srt_apply_opts(cs) != 0) { fail("call_opts"); srt_close(cs); return nullptr; }
-    if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); srt_close(cs); return nullptr; }
+    if (cs == SRT_INVALID_SOCK) { fail("call_create"); abort_listener(); return nullptr; }
+    if (srt_apply_opts(cs) != 0) { fail("call_opts"); srt_close(cs); abort_listener(); return nullptr; }
+    if (srt_connect(cs, (sockaddr*)&sa, sizeof sa) == SRT_ERROR) { fail("connect"); srt_close(cs); abort_listener(); return nullptr; }
     // Handshake (+ KM in Phase B) is complete now; loss may be enabled.
     lossy_set_enabled(FREERTOS_SRT_LOSS_ENABLED);
     for (int r = 0; r < REPEAT && !g_fail; r++) {
@@ -147,18 +175,11 @@ static void run_task(void*) {
     unsigned dropped = lossy_dropped_count();
     int rcvloss = g_rx_stats.pktRcvLossTotal;
 
-#if FREERTOS_SRT_LOSS_ENABLED
     int ok = !g_fail && bytes_ok && dropped > 0;     // injected loss recovered byte-exact
     if (ok) printf("PASS: " PASS_TAG " (GOLDEN x %d recovered byte-exact under ~20%% loss%s, dropped=%u, rcv_loss=%d)\n",
                    REPEAT, ENC_SUFFIX, dropped, rcvloss);
     else    printf("FAIL[" PASS_TAG "]: where=%s rxlen=%d/%d bytes_ok=%d dropped=%u rcv_loss=%d\n",
                    g_where, g_rxlen, STREAM_LEN, bytes_ok, dropped, rcvloss);
-#else
-    int ok = !g_fail && bytes_ok;                    // clean delivery (no loss yet)
-    if (ok) printf("PASS: s3_srt_clean (GOLDEN x %d delivered, no loss)\n", REPEAT);
-    else    printf("FAIL[s3_srt_clean]: where=%s rxlen=%d/%d bytes_ok=%d\n",
-                   g_where, g_rxlen, STREAM_LEN, bytes_ok);
-#endif
     fflush(stdout);
     srt_cleanup();
     _exit(ok ? 0 : 1);

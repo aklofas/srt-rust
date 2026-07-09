@@ -235,6 +235,9 @@ jobs:
       - name: Check no direct NotAvailable/NotFound casts
         run: bash scripts/check/c/no-direct-not-available-not-found-cast.sh
 
+      - name: Check no direct from_raw_parts in C bindings
+        run: bash scripts/check/c/no-direct-from-raw-parts.sh
+
       - name: Check lifecycle ffi_catch coverage
         # Linux-only: scans platform-independent Rust source under
         # bindings/c/core/src/ with GNU-grep `\w`/`\b`. BSD grep on the

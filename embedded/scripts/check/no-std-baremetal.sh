@@ -16,7 +16,7 @@ cd "$(dirname "$0")/../../.."
 
 TARGETS=(thumbv7em-none-eabihf riscv32imac-unknown-none-elf)
 for t in "${TARGETS[@]}"; do
-  rustup target add "$t" >/dev/null 2>&1 || true
+  rustup target add "$t" --toolchain 1.85 >/dev/null 2>&1 || true
   echo "==> cargo build -p tst-core --no-default-features --target $t"
   cargo build -p tst-core --no-default-features --target "$t"
 done

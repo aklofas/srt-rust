@@ -9,15 +9,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
+REQUIRE="${QEMU_RUNTIME_REQUIRE_TOOLS:-0}"
 if ! command -v qemu-system-arm >/dev/null 2>&1; then
-  echo "SKIP: qemu-system-arm not installed (apt install qemu-system-arm)"
-  exit 0
+  if [ "$REQUIRE" = "1" ]; then echo "FATAL: required tool 'qemu-system-arm' not installed (QEMU_RUNTIME_REQUIRE_TOOLS=1)"; exit 1; fi
+  echo "SKIP: qemu-system-arm not installed (apt install qemu-system-arm)"; exit 0
 fi
 
-# Pin the target to the workspace toolchain (rust-toolchain.toml channel "1.85").
-# A bare `rustup target add` installs into the DEFAULT toolchain, which may not
-# be the one `cargo run` resolves via rust-toolchain.toml — so pin explicitly.
 rustup target add thumbv7em-none-eabihf --toolchain 1.85 >/dev/null 2>&1 || true
 echo "==> QEMU runtime smoke: baremetal-qemu"
-( cd embedded/baremetal-qemu && timeout 60 cargo run )
+# Build OUTSIDE the QEMU timeout (a cold build alone can eat the whole 60 s
+# budget), with the committed lockfile enforced (--locked) and the tuned
+# [profile.release] actually exercised (the debug profile left it dead config).
+( cd embedded/baremetal-qemu && cargo build --release --locked )
+( cd embedded/baremetal-qemu && timeout 60 cargo run --release --locked )
 echo "OK: tst-core muxer byte-matches the video-roundtrip golden under QEMU"

@@ -663,7 +663,10 @@ jobs:
             !target/debug/incremental
             !target/debug/.fingerprint
             !target/debug/deps
-          key: cargo-nostd-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+            embedded/baremetal-qemu/target
+            embedded/baremetal-qemu-c/target
+            embedded/freertos-srt/example/host/target
+          key: cargo-nostd-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'embedded/baremetal-qemu/Cargo.lock', 'embedded/baremetal-qemu-c/Cargo.lock', 'embedded/freertos-srt/example/host/Cargo.lock') }}
           restore-keys: cargo-nostd-${{ runner.os }}-
 
       # A `*-none-*` target has no std at all, so a successful library build
@@ -698,17 +701,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
       # Runtime gate: run the tst-core muxer on a Cortex-M4 under QEMU and
-      # assert it byte-matches the committed video-roundtrip golden. The
-      # semihosting `debug::exit` code becomes this step's pass/fail; `timeout`
-      # bounds any QEMU hang. See embedded/baremetal-qemu/ + the design spec.
+      # assert it byte-matches the committed video-roundtrip golden. The script
+      # builds --release --locked outside a 60 s QEMU-only timeout (so the
+      # build step itself does not race the timer), fails closed on missing
+      # tools. See embedded/baremetal-qemu/ + the design spec.
       - name: QEMU runtime smoke (baremetal-qemu)
-        working-directory: embedded/baremetal-qemu
-        run: timeout 60 cargo run
+        env: { QEMU_RUNTIME_REQUIRE_TOOLS: "1" }
+        run: bash embedded/scripts/check/qemu-runtime.sh
 
       # Runtime gate: build the C-firmware (libtstrans_firmware.a no_std glue
       # staticlib + arm-none-eabi-gcc), run under QEMU mps2-an386, and assert it
       # byte-matches the same video-roundtrip golden via the offline C ABI.
-      - name: QEMU runtime smoke (C firmware via libtstrans.a)
+      - name: QEMU runtime smoke (C firmware via libtstrans_firmware.a)
+        env: { FIRMWARE_QEMU_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/firmware-qemu.sh
 
       # Runtime gates for the embedded/freertos-srt/ reference product (the
@@ -769,11 +774,11 @@ jobs:
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
       # listener that verifies byte-exact (plain + AES-128); the host process exit
-      # code is the verdict. STAYS phase-in (continue-on-error): it's the only
-      # networked / two-process gate (SLIRP timing + a kill-bounded host join), so
-      # it bakes a few more cycles before promotion to hard-gate.
+      # code is the verdict. Promoted to hard-gate after 12 consecutive green
+      # cycles post WP-EMB-1; the flake-root fix (per-task newlib _reent +
+      # retargetable locking) removed the known intermittent failure source.
       - name: QEMU runtime gate (freertos-srt NIC egress example)
-        continue-on-error: true
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/freertos-srt.sh example
 
   fuzz-smoke:

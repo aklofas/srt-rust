@@ -40,7 +40,9 @@ rustup target add thumbv7em-none-eabihf riscv32imac-unknown-none-elf
 ## Running the gates
 
 All gates run from the workspace root. Missing tools skip cleanly by default;
-CI sets `FREERTOS_SRT_REQUIRE_TOOLS=1` to fail closed instead:
+CI hard-gates fail closed instead via per-script env knobs
+(`FREERTOS_SRT_REQUIRE_TOOLS=1`, `FIRMWARE_QEMU_REQUIRE_TOOLS=1`,
+`QEMU_RUNTIME_REQUIRE_TOOLS=1`):
 
 ```bash
 bash embedded/scripts/check/no-std-baremetal.sh   # no_std compile proof (3 crates x 2 targets)

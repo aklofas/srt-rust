@@ -72,6 +72,13 @@ run_phase() {  # $1=label  $2=host-PASS-token  $3=ENCRYPT  $4=passphrase-or-empt
   rm -f "$hostout"
 }
 
+# The firmware bakes the host port (example/main.cpp PORT=9000) at compile
+# time, so the host listener MUST get 9000. Fail fast and say why, instead of
+# a confusing "host died early" when something else already holds the port.
+if command -v ss >/dev/null 2>&1 && ss -uln 2>/dev/null | grep -q ':9000 '; then
+  echo "GATE FAILED: UDP port 9000 already in use on the host (the firmware's target port is compile-time fixed)"; exit 1
+fi
+
 run_phase "plain"     'PASS: s4_host_plain' 0 ''
 run_phase "encrypted" 'PASS: s4_host_aes'   1 "$PASSPHRASE"
 

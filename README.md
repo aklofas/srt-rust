@@ -18,6 +18,7 @@ encryption, and typed metadata decoding. Rust core; C, Python, and JVM bindings.
 | **C** | Shipping · ABI 0.17 | [`docs/languages/c.md`](docs/languages/c.md) |
 | **Python** | Shipping · `tstrans` on PyPI | [`docs/languages/python.md`](docs/languages/python.md) |
 | **JVM** | Shipping · `org.tstrans:tstrans-jvm` on Maven Central | [`docs/languages/jvm.md`](docs/languages/jvm.md) |
+| **Embedded (bare-metal / RTOS)** | Shipping · QEMU-gated `no_std` core + C staticlib | [`docs/languages/embedded.md`](docs/languages/embedded.md) |
 
 ## See it in 30 seconds
 

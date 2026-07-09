@@ -313,6 +313,7 @@ layout changed.
 
 ### Changed — documentation
 
+- Added an embedded (`no_std` / bare-metal) entry page at `docs/languages/embedded.md` with index + README routing (WP-EMB-6).
 - The MPEG-TS demux guide (`docs/guides/mpegts-demux.md`) now documents
   the sync-ingress ceiling (`DemuxerConfig::sync_buf_cap`, default 4 MiB),
   the chunk-and-drain loop for file replay, a new entry in the override-knobs

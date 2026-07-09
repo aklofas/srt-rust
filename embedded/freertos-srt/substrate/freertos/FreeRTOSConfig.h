@@ -85,7 +85,8 @@
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
 #define INCLUDE_xSemaphoreGetMutexHolder        1
 
-#define configASSERT(x) if ((x) == 0) { taskDISABLE_INTERRUPTS(); for(;;); }
+extern void vAssertCalled(const char *file, unsigned long line);
+#define configASSERT(x) do { if ((x) == 0) { vAssertCalled(__FILE__, __LINE__); } } while (0)
 
 /* Map the FreeRTOS port handlers onto the names our vector table uses. The
    ARM_CM4F port already exports vPortSVCHandler/xPortPendSVHandler/

@@ -748,6 +748,13 @@ jobs:
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/freertos-srt.sh loopback-arq
 
+      # fault-smoke (EMB-TRAP-1): deliberate __builtin_trap() must produce a
+      # labeled FAIL[hardfault] pc=0x... token and exit fast (<25 s), not hang
+      # silently for the full timeout. Proves the speaking fault handlers work.
+      - name: QEMU runtime gate (freertos-srt fault-smoke)
+        env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
+        run: bash embedded/scripts/check/freertos-srt.sh fault-smoke
+
       # example (was S4): real-NIC egress. A bare-metal SRT caller streams the
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
       # listener that verifies byte-exact (plain + AES-128); the host process exit

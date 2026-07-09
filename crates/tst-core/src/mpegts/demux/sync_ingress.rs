@@ -19,13 +19,15 @@ use crate::mpegts::demux::event::{DiscontinuityKind, NonConformantIssue, StreamI
 /// the stream unrecoverable.
 pub(super) const SYNC_SEARCH_WINDOW: usize = crate::mpegts::common::TS_PACKET_SIZE * 32;
 
-/// Hard ceiling on `Demuxer::sync_buf`. `feed` always runs
-/// `extend_from_slice` before the inner sync-search-window check fires,
-/// so an oversized single-call feed (multi-GB of garbage) would otherwise
-/// allocate the whole input before the loop got to bail. The 4 MiB cap
-/// matches ffmpeg's `MpegTSSectionFilter` ceiling and is comfortably
-/// larger than `SYNC_SEARCH_WINDOW` (~6 KiB), so well-formed streams are
-/// unaffected.
+/// Default ceiling on `Demuxer::sync_buf` — the value used when
+/// [`crate::mpegts::demux::DemuxerConfig::sync_buf_cap`] is `None`. `feed`
+/// always enforces the cap BEFORE `extend_from_slice` so an oversized
+/// single-call feed (multi-GB of garbage) cannot allocate the whole input
+/// before the check fires. The 4 MiB value matches ffmpeg's
+/// `MpegTSSectionFilter` ceiling and is comfortably larger than
+/// `SYNC_SEARCH_WINDOW` (~6 KiB), so well-formed streams are unaffected.
+/// Callers feeding whole-file inputs larger than 4 MiB should raise the
+/// ceiling via `DemuxerConfig::sync_buf_cap`.
 pub(super) const MAX_SYNC_BUF_BYTES: usize = 4 << 20;
 
 /// PCR jump threshold beyond which we emit `PcrAnomaly`. 1 second @ 27 MHz.

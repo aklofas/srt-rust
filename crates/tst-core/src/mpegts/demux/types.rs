@@ -98,6 +98,13 @@ pub struct DemuxerConfig {
     /// concurrent high-bitrate PIDs; tune down to bound multi-PID flood
     /// memory growth in adversarial-input scenarios.
     pub pes_cap_total: Option<usize>,
+    /// Ceiling on the demuxer's pre-sync ingress buffer, in bytes. This bounds
+    /// how many bytes a single `feed` call (plus any unconsumed residue) may
+    /// hold before sync-scan; a whole-file feed larger than the ceiling is
+    /// rejected with [`crate::error::DemuxError::SyncBufExhausted`]. `None`
+    /// uses the 4 MiB default. Distinct from `pes_cap_*`, which bound PES
+    /// *reassembly*.
+    pub sync_buf_cap: Option<usize>,
     pub klv_link_overrides: Vec<(u16, u16)>,
     pub stream_kind_overrides: BTreeMap<u16, StreamKind>,
     /// When `true`, PSI section reassembly accepts continuation packets
@@ -199,6 +206,7 @@ impl Default for DemuxerConfig {
             strict: StrictMode::default(),
             pes_cap_per_pid: None,
             pes_cap_total: None,
+            sync_buf_cap: None,
             klv_link_overrides: Vec::new(),
             stream_kind_overrides: BTreeMap::new(),
             lenient_psi_reassembly: false,
@@ -260,6 +268,13 @@ impl DemuxerConfigBuilder {
 
     pub fn pes_cap_total(mut self, bytes: usize) -> Self {
         self.options.pes_cap_total = Some(bytes);
+        self
+    }
+
+    /// Set the pre-sync ingress buffer ceiling. See
+    /// [`DemuxerConfig::sync_buf_cap`].
+    pub fn sync_buf_cap(mut self, bytes: usize) -> Self {
+        self.options.sync_buf_cap = Some(bytes);
         self
     }
 

@@ -265,8 +265,12 @@ impl Demuxer {
         // Compare the projected post-extend length against the ceiling
         // using checked arithmetic so a pathological `bytes.len()` near
         // `usize::MAX` can't wrap.
+        let cap = self
+            .options
+            .sync_buf_cap
+            .unwrap_or(super::sync_ingress::MAX_SYNC_BUF_BYTES);
         let projected = self.sync_buf.len().checked_add(bytes.len());
-        if projected.is_none_or(|n| n > super::sync_ingress::MAX_SYNC_BUF_BYTES) {
+        if projected.is_none_or(|n| n > cap) {
             // Report what the total would have been (saturating, so the
             // checked-add-overflow case still yields a meaningful figure).
             let observed = self.sync_buf.len().saturating_add(bytes.len());
@@ -279,10 +283,7 @@ impl Demuxer {
             self.sync_buf.clear();
             self.sync_consumed = 0;
             self.is_synced = false;
-            return Err(DemuxError::SyncBufExhausted {
-                observed,
-                max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
-            });
+            return Err(DemuxError::SyncBufExhausted { observed, max: cap });
         }
         // Reserve up front so a partial copy can't leave the buffer in a
         // half-grown state, and surface an allocation failure as a clean
@@ -292,10 +293,7 @@ impl Demuxer {
             self.sync_buf.clear();
             self.sync_consumed = 0;
             self.is_synced = false;
-            return Err(DemuxError::SyncBufExhausted {
-                observed,
-                max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
-            });
+            return Err(DemuxError::SyncBufExhausted { observed, max: cap });
         }
         self.sync_buf.extend_from_slice(bytes);
         // `resyncing` tracks whether the next 0x47 we find arrived via
@@ -836,6 +834,62 @@ mod tests {
             "rejected oversized feed grew sync_buf capacity (check-before-extend violated)"
         );
         assert_eq!(dx.sync_buf.len(), len_before);
+    }
+
+    // A null TS packet (PID 0x1FFF) — syntactically valid 188-byte packet with
+    // a 0x47 sync byte. The null PID carries no payload; the demuxer ignores it
+    // without emitting any event, making it safe as a volume-fill packet in
+    // cap tests that care only about accepting/rejecting the feed, not events.
+    fn null_ts_packet() -> [u8; 188] {
+        let mut pkt = [0xFFu8; 188];
+        pkt[0] = 0x47; // sync byte
+        pkt[1] = 0x1F; // pid_high = 0x1F (null PID 0x1FFF)
+        pkt[2] = 0xFF; // pid_low = 0xFF
+        pkt[3] = 0x10; // adaptation_field_control=01, cc=0
+        pkt
+    }
+
+    #[test]
+    fn sync_buf_cap_default_rejects_whole_file_feed_over_4mib() {
+        // The field-report case: a valid ~5 MiB TS fed in ONE call must still
+        // exhaust the DEFAULT ceiling (the check is on the feed-call size).
+        let pkt = null_ts_packet();
+        let n = (5 * 1024 * 1024) / 188 + 1;
+        let mut data = Vec::with_capacity(n * 188);
+        for _ in 0..n {
+            data.extend_from_slice(&pkt);
+        }
+        let mut d = Demuxer::new();
+        let err = d.feed(&data).unwrap_err();
+        assert!(matches!(err, DemuxError::SyncBufExhausted { .. }));
+    }
+
+    #[test]
+    fn sync_buf_cap_raised_accepts_whole_file_feed() {
+        let pkt = null_ts_packet();
+        let n = (5 * 1024 * 1024) / 188 + 1;
+        let mut data = Vec::with_capacity(n * 188);
+        for _ in 0..n {
+            data.extend_from_slice(&pkt);
+        }
+        let cfg = DemuxerConfig::builder()
+            .sync_buf_cap(16 * 1024 * 1024)
+            .build();
+        let mut d = Demuxer::with_config(cfg);
+        d.feed(&data)
+            .expect("raised ceiling must accept a whole-file feed");
+    }
+
+    #[test]
+    fn sync_buf_exhausted_message_names_the_knob() {
+        // The 0.2.0 wording sent the integrator hunting through pes_cap_* (a
+        // dead end). The message must now name the actual knob and the pattern.
+        let mut d = Demuxer::new();
+        let garbage = vec![0xFFu8; 5 * 1024 * 1024];
+        let err = d.feed(&garbage).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("sync_buf_cap"), "got: {msg}");
+        assert!(msg.contains("smaller chunks"), "got: {msg}");
     }
 
     #[test]

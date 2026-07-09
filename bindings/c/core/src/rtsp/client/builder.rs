@@ -220,8 +220,10 @@ pub unsafe extern "C" fn tst_rtsp_client_builder_tls_root_cert_pem(
             set_last_error(TstError::InvalidConfig, "cert_pem is null or cert_len is 0");
             return;
         }
-        // SAFETY: caller guarantees cert_pem..+cert_len is valid.
-        let bytes = unsafe { std::slice::from_raw_parts(cert_pem, cert_len) };
+        let bytes = match unsafe { crate::ffi_slice::ffi_slice(cert_pem, cert_len, "cert_pem") } {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         b.tls_root_cert_pem = Some(bytes.to_vec());
     });
 }

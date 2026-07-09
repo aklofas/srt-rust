@@ -77,7 +77,7 @@ bash embedded/scripts/check/firmware-qemu.sh
 
 [`embedded/freertos-srt/`](/embedded/freertos-srt/) is the flagship: a complete reference port of **libsrt** + the MPEG-TS muxer onto FreeRTOS + FreeRTOS-Plus-POSIX + lwIP. It demonstrates SRT video egress from a microcontroller, including byte-exact ARQ recovery under ~20% packet loss and AES-128 encryption.
 
-It is **not built by default** — it is not a Cargo workspace member and its gate is opt-in.
+It is **not built by default** — it is not a Cargo workspace member, and its gates skip locally when the cross-toolchain or QEMU is absent. In CI, every `freertos-srt` target runs as a fail-closed hard gate under QEMU.
 
 ```bash
 # From the workspace root:

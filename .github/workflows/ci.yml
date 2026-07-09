@@ -718,12 +718,13 @@ jobs:
 
       # Runtime gates for the embedded/freertos-srt/ reference product (the
       # consolidated S0-S4 arc: one shared substrate, the NIC-egress example, and
-      # the five layered verifications as named tests, all driven by the
+      # eight named test targets, all driven by the
       # embedded/scripts/check/freertos-srt.sh <target> dispatcher). Each gate skips cleanly via
       # `command -v` guards if the cross-toolchain/QEMU/cmake/cargo is absent, so
       # promotion can't false-red on a runner-image change. No new apt packages --
-      # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm +
-      # cmake are installed above; embedded/vendor/{lwip,freertos-*} +
+      # gcc-arm-none-eabi + libstdc++-arm-none-eabi-newlib + qemu-system-arm are
+      # installed above; cmake is preinstalled on the runner image; the apt step
+      # installs the rest; embedded/vendor/{lwip,freertos-*} +
       # vendor/{srt,mbedtls} come from the recursive submodule checkout; the
       # example host harness builds the vendored host libsrt via cargo.
 

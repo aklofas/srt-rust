@@ -3,7 +3,7 @@ name = "baremetal-qemu-c"
 version = "0.0.0"
 edition = "2021"
 publish = false
-description = "no_std staticlib glue: libtstrans.a (tst-c-core offline surface) for the C-firmware QEMU embedded test, excluded from the workspace"
+description = "no_std staticlib glue: libtstrans_firmware.a (tst-c-core offline surface) for the C-firmware QEMU embedded test, excluded from the workspace"
 
 [lib]
 name = "tstrans_firmware"

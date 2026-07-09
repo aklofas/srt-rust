@@ -52,6 +52,16 @@ layout changed.
   `parse(boolean strict)` (throwing `CodecParseException` /
   `DemuxException`) (PR #78).
 
+### Changed (breaking, pre-1.0) — ST 0601 range-error messages name their full-range twins
+
+- `KlvEncodeError::OutOfRange` gains a `hint: Option<&'static str>` field. ST 0601
+  narrow-range encode rejections for Tags 6/7 (Platform Pitch/Roll, ±20°/±50°) and
+  Tags 26–33 (Offset Corner Lat/Lon, ±0.075°) now append a hint to the error message
+  naming the full-range twin fields (Tags 90/91 and 82–89 respectively). Tags without
+  a twin continue to produce hints of `None` and no `;` in the message. Code that
+  constructs `OutOfRange` directly must add `hint: None` (Skydio field report
+  2026-07-08).
+
 ### Removed (breaking, pre-1.0)
 
 - `PairerConfig::link_klv_to_video` (the dead pairing knob) is removed across

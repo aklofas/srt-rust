@@ -114,12 +114,13 @@ pub enum KlvEncodeError {
     #[error("record exceeds maximum BER-encodable length")]
     RecordTooLarge,
 
-    #[error("value out of range for tag {tag}: {value} not in [{min}, {max}]")]
+    #[error("value out of range for tag {tag}: {value} not in [{min}, {max}]{}", .hint.map(|h| alloc::format!("; {h}")).unwrap_or_default())]
     OutOfRange {
         tag: u32,
         value: f64,
         min: f64,
         max: f64,
+        hint: Option<&'static str>,
     },
 
     #[error("string field for tag {tag} exceeds {max} bytes")]

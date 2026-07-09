@@ -83,7 +83,7 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
             demuxConfig.strictMode().ordinal(), demuxConfig.pesCapPerPid(),
             demuxConfig.pesCapTotal(), demuxConfig.cfiTolerance(),
             demuxConfig.av1Carriage().ordinal(), demuxConfig.auCellCapPerPid(),
-            demuxConfig.lenientPsiReassembly());
+            demuxConfig.lenientPsiReassembly(), demuxConfig.syncBufCap());
         if (h == 0) {
             throw new RtpException(RtpException.Kind.TRANSPORT,
                 "nFromUrlWithConfig returned 0 without throwing");
@@ -197,8 +197,8 @@ public final class DemuxReceiver extends NativeHandle implements Iterable<DemuxE
 
     private static native long nFromUrl(String url) throws RtpException;
     private static native long nFromUrlWithConfig(String url, int strict, long pesCapPerPid,
-        long pesCapTotal, boolean cfi, int av1, long auCellCap, boolean lenientPsi)
-        throws RtpException;
+        long pesCapTotal, boolean cfi, int av1, long auCellCap, boolean lenientPsi,
+        long syncBufCap) throws RtpException;
     private static native DemuxEvent nNext(long handle) throws RtpException, DemuxException;
     private static native void nAddByteSink(long handle, Consumer<byte[]> callback);
     private static native TransportStats nStats(long handle);

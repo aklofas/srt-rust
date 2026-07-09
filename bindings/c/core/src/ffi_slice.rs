@@ -245,7 +245,10 @@ mod tests {
         // Verify it is actually writable — the contents differ from what the
         // helper would return if the code were wrong (e.g., an empty slice).
         slice[0] = 0xAB;
-        assert_eq!(buf[0], 0xAB, "write through slice must reach the original buffer");
+        assert_eq!(
+            buf[0], 0xAB,
+            "write through slice must reach the original buffer"
+        );
     }
 
     #[test]

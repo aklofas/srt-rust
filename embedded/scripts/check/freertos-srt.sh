@@ -9,7 +9,7 @@
 # reducing coverage to a no-op pass.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke|malloc-stress>}"
+t="${1:?usage: embedded/scripts/check/freertos-srt.sh <exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|fault-smoke|malloc-stress>}"
 D=embedded/freertos-srt
 REQUIRE="${FREERTOS_SRT_REQUIRE_TOOLS:-0}"
 
@@ -74,8 +74,22 @@ case "$t" in
                  [ $((t1 - t0)) -lt 25 ] || {
                    echo "GATE FAILED (fault-smoke: fault report was not fast: $((t1-t0))s)"; exit 1; }
                  echo "OK: deliberate fault produced labeled fast failure (rc=$rc, $((t1-t0))s)" ;;
+  arq-connfail)  need cmake cmake
+                 ( cd "$D" && ENCRYPT=0 ./build.sh loopback-arq-connfail >/dev/null )
+                 t0=$(date +%s)
+                 if out=$(timeout 60 qemu-system-arm -machine mps2-an386 -nographic \
+                       -semihosting-config enable=on,target=native \
+                       -kernel "$D/build/firmware.elf" 2>&1); then rc=0; else rc=$?; fi
+                 t1=$(date +%s)
+                 grep -q 'FAIL\[s3_srt_plain\]: where=connect' <<<"$out" || {
+                   echo "GATE FAILED (arq-connfail: no labeled connect-failure verdict — a caller-side"
+                   echo "failure wedged the listener join instead of aborting it; EMB-JOIN-1 regressed)"
+                   echo "qemu rc=$rc elapsed=$((t1 - t0))s"; echo "$out"; exit 1; }
+                 [ $((t1 - t0)) -lt 30 ] || {
+                   echo "GATE FAILED (arq-connfail: failure was not fast: $((t1 - t0))s)"; exit 1; }
+                 echo "OK: caller connect-failure aborted the listener and reported fast (rc=$rc, $((t1 - t0))s)" ;;
   malloc-stress) ( cd "$D" && ./build.sh malloc-stress >/dev/null )
                  assert_pass 90 'PASS: s5_malloc_stress' "$t" ;;
-  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|example|fault-smoke|malloc-stress)" >&2; exit 2 ;;
+  *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|fault-smoke|malloc-stress)" >&2; exit 2 ;;
 esac
 echo "OK: freertos-srt $t"

@@ -3354,8 +3354,9 @@ struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
  * of bytes written; 0 means nothing was ready or the buffer was too
- * small for the next chunk. Never sets last-error — 0 is a normal return
- * value.
+ * small for the next chunk. Returns 0 on invalid buffer arguments (null
+ * pointer, zero capacity, or capacity exceeding `isize::MAX`); the
+ * absurd-length case additionally records a last-error for diagnosis.
  */
 size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
 

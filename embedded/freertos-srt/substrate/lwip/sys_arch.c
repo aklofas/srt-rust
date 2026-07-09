@@ -2,6 +2,7 @@
  * mailboxes/threads onto FreeRTOS primitives. Mailboxes are FreeRTOS queues of
  * void* (lwIP posts pbuf/api-msg pointers). Standard reference shape (cf.
  * lwip-contrib ports/freertos), trimmed to what loopback UDP + sockets need. */
+#include <stdint.h>
 #include "lwip/opt.h"
 #include "lwip/sys.h"
 #include "lwip/err.h"
@@ -14,6 +15,20 @@ extern __attribute__((noreturn)) void _exit(int);
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
+
+/* lwIP timeout convention (sys_arch_sem_wait / sys_arch_mbox_fetch): 0 means
+ * "block forever", any other value is a bound in ms. Convert with a 64-bit
+ * intermediate: pdMS_TO_TICKS multiplies ms * configTICK_RATE_HZ in TickType_t
+ * (u32), which wraps for timeouts >= ~71.6 min at 1 kHz and would silently
+ * SHORTEN long waits. Values that still overflow TickType_t clamp to the
+ * longest finite wait (portMAX_DELAY is the "forever" sentinel). */
+static TickType_t timeout_ms_to_ticks(u32_t timeout_ms) {
+    if (timeout_ms == 0) return portMAX_DELAY;
+    uint64_t ticks = (uint64_t)timeout_ms * configTICK_RATE_HZ / 1000u;
+    if (ticks >= (uint64_t)portMAX_DELAY) return portMAX_DELAY - 1;
+    if (ticks == 0) ticks = 1;   /* sub-tick bound still waits, not trypost */
+    return (TickType_t)ticks;
+}
 
 /* ---- protection (SYS_LIGHTWEIGHT_PROT) ---- */
 sys_prot_t sys_arch_protect(void)        { taskENTER_CRITICAL(); return 0; }
@@ -37,7 +52,7 @@ void sys_sem_set_invalid(sys_sem_t *sem) { sem->sem = NULL; }
 
 u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout_ms) {
     TickType_t start = xTaskGetTickCount();
-    TickType_t to = (timeout_ms == 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    TickType_t to = timeout_ms_to_ticks(timeout_ms);
     if (xSemaphoreTake(sem->sem, to) == pdTRUE) {
         return (u32_t)((xTaskGetTickCount() - start) * portTICK_PERIOD_MS);
     }
@@ -80,7 +95,7 @@ err_t sys_mbox_trypost_fromisr(sys_mbox_t *mbox, void *msg) {
 u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout_ms) {
     void *dummy; if (msg == NULL) msg = &dummy;
     TickType_t start = xTaskGetTickCount();
-    TickType_t to = (timeout_ms == 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    TickType_t to = timeout_ms_to_ticks(timeout_ms);
     if (xQueueReceive(mbox->mbox, &(*msg), to) == pdTRUE) {
         return (u32_t)((xTaskGetTickCount() - start) * portTICK_PERIOD_MS);
     }

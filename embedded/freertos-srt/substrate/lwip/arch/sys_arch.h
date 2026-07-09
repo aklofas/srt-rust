@@ -8,8 +8,6 @@
 
 #define SYS_MBOX_NULL  NULL
 #define SYS_SEM_NULL   NULL
-#define SYS_ARCH_TIMEOUT 0xffffffffUL
-#define SYS_MBOX_EMPTY   SYS_ARCH_TIMEOUT
 
 typedef UBaseType_t sys_prot_t;
 typedef struct { SemaphoreHandle_t sem; } sys_sem_t;

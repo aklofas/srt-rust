@@ -82,6 +82,10 @@ static void bootstrap_task(void*) {
 }
 
 int main() {
+    // Verify that C++ EH machinery is usable before vTaskStartScheduler
+    // (static ctors or early error paths may legitimately throw pre-scheduler).
+    try { throw 1; } catch (int) {}
+
     xTaskCreate(bootstrap_task, "boot", 1024, nullptr, 2, nullptr);
     vTaskStartScheduler();
     for (;;) {}

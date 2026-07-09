@@ -66,10 +66,17 @@ static void* caller_thread(void*) {
     // buffer to drain (pktSndBuf == 0) so all REPEAT messages leave the NIC,
     // then a short grace so the host reads its recv buffer before we close and
     // QEMU tears the network down. Both bounded so a stall can't hang the gate.
+    bool drained = false;
     for (int i = 0; i < 8000; i++) {
         srt_bstats(cs, &g_tx_stats, 0);
-        if (g_tx_stats.pktSndBuf == 0) break;
+        if (g_tx_stats.pktSndBuf == 0) { drained = true; break; }
         vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    if (!drained) {
+        printf("FAIL[s4_drain_timeout]: send buffer did not empty within 8s\n");
+        fflush(stdout);
+        srt_close(cs);
+        _exit(1);
     }
     vTaskDelay(pdMS_TO_TICKS(2000));
     srt_close(cs);

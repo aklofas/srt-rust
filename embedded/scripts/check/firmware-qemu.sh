@@ -51,11 +51,23 @@ echo "==> compiling + linking firmware.elf"
     -o firmware.elf )
 
 echo "==> running firmware under QEMU (mps2-an386)"
-# `|| true` so a non-zero firmware exit (FAIL path / semihosting _exit(1)) is
-# captured here instead of aborting via `set -e` before the diagnostic is
-# echoed — CI logs need the firmware's FAIL line to triage a regression.
-OUT=$(timeout 60 qemu-system-arm -machine mps2-an386 -nographic \
-  -semihosting-config enable=on,target=native -kernel "$FW/firmware.elf" || true)
+# Use `if out=$(...)` so a non-zero firmware exit (FAIL path / semihosting
+# _exit(1)) is captured rather than killing the script via `set -e`, while
+# still preserving rc for the failure message. stderr is folded in (2>&1) so
+# that SYS_WRITE0 diagnostic output goes into OUT alongside stdout.
+OUT_RC=0
+T0=$(date +%s)
+if OUT=$(timeout 60 qemu-system-arm -machine mps2-an386 -nographic \
+  -semihosting-config enable=on,target=native -kernel "$FW/firmware.elf" 2>&1); then
+  OUT_RC=0
+else
+  OUT_RC=$?
+fi
+T1=$(date +%s)
 echo "$OUT"
-echo "$OUT" | grep -q 'PASS: c_firmware' || { echo "GATE FAILED"; exit 1; }
+if ! echo "$OUT" | grep -q 'PASS: c_firmware'; then
+  echo "GATE FAILED — qemu rc=$OUT_RC, elapsed=$((T1 - T0))s of 60s budget"
+  echo "  (rc=124 + full budget = hang/timeout; fast nonzero rc = a labeled FAIL[...] exit — read the transcript)"
+  exit 1
+fi
 echo "OK: C firmware muxer byte-matches the video-roundtrip golden under QEMU"

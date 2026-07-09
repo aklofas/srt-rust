@@ -268,6 +268,28 @@ fn mux_sender_over_udp_loopback() -> Vec<u8> {
     out
 }
 
+/// Print a richer FAIL line for a golden mismatch: byte counts plus the first
+/// offset where the two slices diverge (or where one ends early) with the
+/// expected and actual byte values in hex. Keeps the PASS token byte-identical.
+fn report_mismatch(label: &str, got: &[u8], want: &[u8]) {
+    let first = got
+        .iter()
+        .zip(want.iter())
+        .position(|(g, w)| g != w)
+        .unwrap_or_else(|| got.len().min(want.len()));
+    let exp_byte = want.get(first).copied().unwrap_or(0);
+    let got_byte = got.get(first).copied().unwrap_or(0);
+    hprintln!(
+        "FAIL[{}]: produced {} bytes, golden {} bytes; first mismatch at offset {} (expected 0x{:02x}, got 0x{:02x})",
+        label,
+        got.len(),
+        want.len(),
+        first,
+        exp_byte,
+        got_byte,
+    );
+}
+
 #[entry]
 fn main() -> ! {
     unsafe { HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
@@ -275,11 +297,7 @@ fn main() -> ! {
     // Check 1 — bare muxer (P7(a) regression guard).
     let muxer_out = video_roundtrip_ts_bytes();
     if muxer_out != GOLDEN {
-        hprintln!(
-            "FAIL[muxer]: produced {} bytes, golden {} bytes",
-            muxer_out.len(),
-            GOLDEN.len()
-        );
+        report_mismatch("muxer", &muxer_out, GOLDEN);
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }
@@ -287,11 +305,7 @@ fn main() -> ! {
     // Check 2 — MuxSender shell over an in-memory transport (P7(b)).
     let sender_out = mux_sender_roundtrip_ts_bytes();
     if sender_out != GOLDEN {
-        hprintln!(
-            "FAIL[mux_sender]: produced {} bytes, golden {} bytes",
-            sender_out.len(),
-            GOLDEN.len()
-        );
+        report_mismatch("mux_sender", &sender_out, GOLDEN);
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }
@@ -299,11 +313,7 @@ fn main() -> ! {
     // Check 3 — MuxSender over a real smoltcp UDP/IP loopback transport (P7c).
     let udp_out = mux_sender_over_udp_loopback();
     if udp_out != GOLDEN {
-        hprintln!(
-            "FAIL[udp_loopback]: produced {} bytes, golden {} bytes",
-            udp_out.len(),
-            GOLDEN.len()
-        );
+        report_mismatch("udp_loopback", &udp_out, GOLDEN);
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }

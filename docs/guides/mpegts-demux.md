@@ -285,7 +285,7 @@ ambiguous.
 
 | Method | What it does | When to reach for it |
 | --- | --- | --- |
-| `sync_buf_cap(bytes)` | Maximum pre-sync ingress buffer. Default 4 MiB. Exceeding this returns `DemuxError::Unrecoverable` before sync lock is acquired. | Single-shot `feed` of a large `.ts` file (> 4 MiB). Prefer the chunk-and-drain loop instead; see the "Sync-ingress ceiling" note above. |
+| `sync_buf_cap(bytes)` | Maximum pre-sync ingress buffer. Default 4 MiB. Exceeding this returns `DemuxError::SyncBufExhausted` before sync lock is acquired. | Single-shot `feed` of a large `.ts` file (> 4 MiB). Prefer the chunk-and-drain loop instead; see the "Sync-ingress ceiling" note above. |
 | `link_klv(klv_pid, video_pid)` | Force a `KlvLink` between two PIDs regardless of what the PMT declares. Surfaces as `LinkSource::Override` in the `klv_links` table. | The encoder doesn't emit `metadata_descriptor`, your topology has multiple video PIDs, and you know which KLV PID feeds which video. |
 | `treat_as(pid, kind)` | Override the demuxer's PMT-derived `StreamKind` for one PID. | Encoder advertises wrong `stream_type`; you know the real shape of the bytes. |
 | `pes_cap_per_pid(bytes)` | Maximum PES reassembly buffer per PID. Default 4 MiB. Exceeding this emits `Discontinuity::PesOversize { pid }` and drops the partial PES. | Memory-tight environments, or paranoia against runaway PES from a malformed encoder. |

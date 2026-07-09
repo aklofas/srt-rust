@@ -43,7 +43,16 @@ struct __cxa_eh_globals {
 
 static const BaseType_t kEhTls = 1;   // slot 1; slot 0 = pthread_key_shim
 
+// Pre-scheduler bootstrap EH state: __cxa_get_globals can be reached before
+// vTaskStartScheduler (static ctors, a pre-scheduler throw); the FreeRTOS TLS
+// calls assert on pxCurrentTCB==NULL there. Single context pre-scheduler, so
+// one static block is correct (same pattern as pthread_key_shim.c's
+// s_bootstrap_tls).
+static __cxa_eh_globals s_bootstrap_eh_globals; // zero-initialized
+
 __cxa_eh_globals* __cxa_get_globals(void) noexcept {
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED)
+        return &s_bootstrap_eh_globals;
     void* p = pvTaskGetThreadLocalStoragePointer(nullptr, kEhTls);
     if (p == nullptr) {
         p = std::malloc(sizeof(__cxa_eh_globals));
@@ -57,7 +66,11 @@ __cxa_eh_globals* __cxa_get_globals(void) noexcept {
 
 // The unwinder only calls _fast after a throw has already run __cxa_get_globals
 // in this task, so the TLS slot is populated. Return the SAME per-task pointer.
+// The pre-scheduler path returns the bootstrap block (throw and its matching
+// catch both run in the same context before vTaskStartScheduler).
 __cxa_eh_globals* __cxa_get_globals_fast(void) noexcept {
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED)
+        return &s_bootstrap_eh_globals;
     return static_cast<__cxa_eh_globals*>(
         pvTaskGetThreadLocalStoragePointer(nullptr, kEhTls));
 }

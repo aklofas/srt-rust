@@ -110,15 +110,27 @@ void Reset_Handler(void) {
     for (;;) {} /* unreachable; satisfies noreturn analysis */
 }
 
-/* Self-contained heap for newlib malloc / the C++ runtime. */
+extern void tst_heap_lock(void);
+extern void tst_heap_unlock(void);
+
+/* Self-contained heap for newlib malloc / the C++ runtime.
+ * tst_heap_lock/unlock are no-ops before the scheduler starts; under a
+ * running scheduler they suspend-all so concurrent malloc → _sbrk paths
+ * can't race on the brk pointer (EMB-HEAP-1). */
 void *_sbrk(int incr) {
     static char *brk = 0;
+    tst_heap_lock();
     if (!brk) brk = &end;
+    char *prev;
     if (brk + incr > &_heap_end || brk + incr < &end) {
         errno = ENOMEM;
-        return (void *)-1;
+        prev = (void *)-1;
+    } else {
+        prev = brk;
+        brk += incr;
     }
-    char *prev = brk; brk += incr; return prev;
+    tst_heap_unlock();
+    return prev;
 }
 
 /* Override newlib's _exit() with a direct ARM semihosting SYS_EXIT BKPT.

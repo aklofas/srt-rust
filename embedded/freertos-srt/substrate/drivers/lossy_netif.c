@@ -15,6 +15,9 @@
 #include "lwip/ip4_addr.h"
 #include "lwip/pbuf.h"
 #include "lossy_netif.h"
+#if LWIP_IPV6
+#include "lwip/ip6_addr.h"
+#endif
 
 static struct netif      s_netif;
 static volatile int      s_enabled = 1;
@@ -53,11 +56,23 @@ static err_t lossy_output_v4(struct netif *netif, struct pbuf *p,
     return lossy_linkoutput(netif, p);
 }
 
+#if LWIP_IPV6
+static err_t lossy_output_v6(struct netif *netif, struct pbuf *p,
+                             const ip6_addr_t *ipaddr)
+{
+    (void)ipaddr;                                   /* loopback: no ND */
+    return lossy_linkoutput(netif, p);
+}
+#endif
+
 static err_t lossy_netif_init(struct netif *netif)
 {
     netif->name[0] = 'l'; netif->name[1] = 'o';
     netif->output      = lossy_output_v4;
     netif->linkoutput  = lossy_linkoutput;
+#if LWIP_IPV6
+    netif->output_ip6  = lossy_output_v6;
+#endif
     netif->mtu         = 1500;
     netif->flags       = NETIF_FLAG_LINK_UP;        /* up; no ARP/broadcast */
     return ERR_OK;

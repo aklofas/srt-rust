@@ -3,7 +3,11 @@
 void tst_diag_write0(const char *s) {
     register uint32_t r0 __asm("r0") = 0x04u; /* SYS_WRITE0 */
     register const char *r1 __asm("r1") = s;
-    __asm volatile("bkpt 0xab" : : "r"(r0), "r"(r1) : "memory");
+    /* "+r" (in-out) + "cc" clobber: the ARM semihosting spec says r0 holds
+     * the return value after the BKPT, so both registers are corrupted by
+     * the host.  Without in-out constraints the compiler may reuse r0/r1
+     * for live values after this call at -O2. */
+    __asm volatile("bkpt 0xab" : "+r"(r0), "+r"(r1) : : "memory", "cc");
 }
 
 void tst_diag_hex32(uint32_t v, char out[9]) {

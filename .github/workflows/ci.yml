@@ -775,8 +775,9 @@ jobs:
       # golden x N out a lan9118 NIC over QEMU SLIRP user-net to a host tst-srt
       # listener that verifies byte-exact (plain + AES-128); the host process exit
       # code is the verdict. Promoted to hard-gate after 12 consecutive green
-      # cycles post WP-EMB-1; the flake-root fix (per-task newlib _reent +
-      # retargetable locking) removed the known intermittent failure source.
+      # example steps on main (runs 28696404540..29004357578, checked 2026-07-09).
+      # WP-EMB-1's per-task _reent + retargetable-locking fix addressed the newlib
+      # flake class; this gate had already been green across that window.
       - name: QEMU runtime gate (freertos-srt NIC egress example)
         env: { FREERTOS_SRT_REQUIRE_TOOLS: "1" }
         run: bash embedded/scripts/check/freertos-srt.sh example

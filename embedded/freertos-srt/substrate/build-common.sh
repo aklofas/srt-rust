@@ -6,10 +6,13 @@
 # All generated artifacts (objects, firmware.elf, generated headers, the staged
 # libsrt source, and the cross-built libsrt/mbedTLS trees) land under a single
 # ignored build/ directory so the product root stays easy to scan. `REBUILD=1`
-# forces a clean libsrt/mbedTLS rebuild; the cross-build also self-invalidates
-# when the toolchain files, patches, config headers, or vendored submodule HEADs
-# change (a stamp file under build/), so a stale static lib can't survive an
-# input edit. Wipe everything with: rm -rf build/  (or build.sh clean).
+# forces a full wipe of the staged source, BOTH ENCRYPT variants of srt-install*,
+# and mbedTLS, then rebuilds from scratch. The cross-build also self-invalidates
+# via a stamp that covers this script, the toolchain/cmake files, all substrate
+# config/shim headers (posix-shims/**, freertos/*.h, lwip/lwipopts.h + lwip/arch/*.h,
+# mbedtls-user-config.h), and all 5 vendored submodule HEADs (srt, mbedtls,
+# freertos-kernel, freertos-plus-posix, lwip). Wipe everything with:
+# rm -rf build/  (or build.sh clean).
 set -euo pipefail
 PROD=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)   # embedded/freertos-srt
 SUB="$PROD/substrate"
@@ -78,28 +81,48 @@ if [ "${LIBSRT:-0}" = "1" ]; then
   SRT_INSTALL="$BUILD/srt-install${ENCRYPT:-0}"; SRT_BUILD="$BUILD/srt-build${ENCRYPT:-0}"
   SRT_SRC="$BUILD/srt-src"
 
-  # Cache invalidation: a stamp hashing the toolchain files, the patch set, the
-  # mbedTLS user-config, the vendored libsrt/mbedTLS submodule HEADs, AND this
-  # script itself (the libsrt/mbedTLS CMake flags — ENABLE_*, build type, link
-  # deps — are hardcoded below, so an edit to them must bust the cache too). When
-  # it changes, blow away the staged source + both ENCRYPT trees so an input edit
-  # can never link a stale static lib. (Per-tree existence checks below still
-  # cover the first build of each ENCRYPT variant under an unchanged stamp.)
+  # Cache invalidation: a stamp hashing every input the cross-build consumes —
+  # this script, the toolchain/cmake files, the patch set, the substrate
+  # config/shim headers that arm-none-eabi.cmake -include's/-I's into the
+  # cross-compile (posix-shims/**, freertos/*.h, lwip/lwipopts.h + lwip/arch/*.h,
+  # mbedtls-user-config.h), and the vendored submodule HEADs (srt, mbedtls, and
+  # the embedded freertos-kernel/freertos-plus-posix/lwip trees whose headers
+  # the cross-build includes). When the stamp changes — or under REBUILD=1 —
+  # blow away the staged source + BOTH ENCRYPT trees + mbedTLS so a stale
+  # static lib can never survive an input edit. Hashing is fail-loud: a
+  # missing input dir/file aborts the build rather than silently hashing less.
   STAMPFILE="$BUILD/.cross-build-stamp"
-  NEWSTAMP=$( { sha256sum "${BASH_SOURCE[0]}" "$SUB/arm-none-eabi.cmake" "$SUB/mbedtls/mbedtls-toolchain.cmake" \
-                  "$SUB/mbedtls/mbedtls-user-config.h" "$SUB"/patches/*.patch 2>/dev/null
-               git -C "$SRT" rev-parse HEAD; git -C "$MBED" rev-parse HEAD; } | sha256sum | awk '{print $1}')
-  EFF_REBUILD="${REBUILD:-0}"
-  if [ "$NEWSTAMP" != "$(cat "$STAMPFILE" 2>/dev/null || true)" ]; then
-    echo "freertos-srt: cross-build inputs changed -> rebuilding libsrt/mbedTLS"
-    rm -rf "$BUILD"/srt-build* "$BUILD"/srt-install* "$BUILD/mbedtls-build" "$MBED_INSTALL" "$SRT_SRC"
-    EFF_REBUILD=1
+  for d in "$SUB/posix-shims" "$SUB/freertos" "$SUB/lwip" "$SUB/patches"; do
+    [ -d "$d" ] || { echo "FATAL: stamp input dir missing: $d" >&2; exit 1; }
+  done
+  mapfile -t STAMP_FILES < <(
+    printf '%s\n' "${BASH_SOURCE[0]}" "$SUB/arm-none-eabi.cmake" \
+      "$SUB/mbedtls/mbedtls-toolchain.cmake" "$SUB/mbedtls/mbedtls-user-config.h"
+    find "$SUB/patches" -type f -name '*.patch' | sort
+    find "$SUB/posix-shims" "$SUB/freertos" "$SUB/lwip" -type f -name '*.h' | sort
+  )
+  FILE_HASHES=$(sha256sum -- "${STAMP_FILES[@]}")
+  VENDOR_HEADS=$(for r in "$SRT" "$MBED" "$K" "$P" "$L"; do
+                   git -C "$r" rev-parse HEAD || exit 1
+                 done)
+  NEWSTAMP=$(printf '%s\n%s\n' "$FILE_HASHES" "$VENDOR_HEADS" | sha256sum | awk '{print $1}')
+  # Sweep doomed trees left by an interrupted earlier wipe (see rename-first below).
+  rm -rf "$BUILD"/.srt-src.doomed.*
+  if [ "$NEWSTAMP" != "$(cat "$STAMPFILE" 2>/dev/null || true)" ] || [ "${REBUILD:-0}" = "1" ]; then
+    echo "freertos-srt: cross-build inputs changed (or REBUILD=1) -> rebuilding libsrt/mbedTLS"
+    # srt-src is wiped rename-first: mv is atomic, so srt-src only ever exists
+    # as a complete tree — an interrupted rm of the renamed dir is re-swept on
+    # the next run instead of a half tree being silently reused. The build/
+    # install trees are guarded by their key-artifact existence checks below
+    # (a half-deleted install tree fails loudly at compile time).
+    if [ -d "$SRT_SRC" ]; then mv "$SRT_SRC" "$BUILD/.srt-src.doomed.$$"; fi
+    rm -rf "$BUILD"/srt-build* "$BUILD"/srt-install* "$BUILD/mbedtls-build" "$MBED_INSTALL" \
+           "$BUILD"/.srt-src.doomed.*
   fi
 
   SRT_ENC_FLAGS="-DENABLE_ENCRYPTION=OFF"
   if [ "${ENCRYPT:-0}" = "1" ]; then
-    if [ ! -f "$MBED_INSTALL/lib/libmbedcrypto.a" ] || [ "$EFF_REBUILD" = "1" ]; then
-      rm -rf "$BUILD/mbedtls-build" "$MBED_INSTALL"
+    if [ ! -f "$MBED_INSTALL/lib/libmbedcrypto.a" ]; then
       # CMAKE_WARN_DEPRECATED=OFF: the pinned submodule declares
       # cmake_minimum_required 3.5.1 — newer CMakes print a deprecation
       # banner about it that we can't act on without a submodule bump.
@@ -128,7 +151,7 @@ if [ "${LIBSRT:-0}" = "1" ]; then
   # srt-src therefore only ever exists as a complete, fully-patched tree — an
   # interrupted run leaves only the temp dir (wiped on the next run), so a partial
   # tree can never be silently reused.
-  if [ ! -d "$SRT_SRC" ] || [ "$EFF_REBUILD" = "1" ]; then
+  if [ ! -d "$SRT_SRC" ]; then
     STAGE="$BUILD/.srt-src.staging"
     rm -rf "$STAGE" "$SRT_SRC"; mkdir -p "$STAGE"
     git -C "$SRT" archive HEAD | tar -x -C "$STAGE"
@@ -140,7 +163,7 @@ if [ "${LIBSRT:-0}" = "1" ]; then
     mv "$STAGE" "$SRT_SRC"
   fi
 
-  if [ ! -f "$SRT_INSTALL/lib/libsrt.a" ] || [ "$EFF_REBUILD" = "1" ]; then
+  if [ ! -f "$SRT_INSTALL/lib/libsrt.a" ]; then
     rm -rf "$SRT_BUILD" "$SRT_INSTALL"
     # CMAKE_WARN_DEPRECATED=OFF: pinned libsrt declares cmake_minimum_required
     # 3.5 — same unactionable deprecation banner as the mbedTLS build above.
@@ -153,7 +176,7 @@ if [ "${LIBSRT:-0}" = "1" ]; then
       -DENABLE_STDCXX_SYNC=OFF -DENABLE_MONOTONIC_CLOCK=OFF -DENABLE_SOCK_CLOEXEC=OFF
     cmake --build "$SRT_BUILD" --target install -j"$(nproc)"
   fi
-  printf '%s\n' "$NEWSTAMP" > "$STAMPFILE"
+  printf '%s\n' "$NEWSTAMP" > "$STAMPFILE.tmp.$$" && mv "$STAMPFILE.tmp.$$" "$STAMPFILE"
   SRT_LIB=$(echo "$SRT_INSTALL"/lib*/libsrt.a)
   INC="$INC -I$SRT_INSTALL/include"
 fi

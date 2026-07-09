@@ -311,6 +311,24 @@ layout changed.
   and returns the owned publisher. Aligns `MuxPublisher` with the established
   crate-wide poison policy (DA-PIPE-5, PR #83).
 
+### Changed — documentation
+
+- The MPEG-TS demux guide (`docs/guides/mpegts-demux.md`) now documents
+  the sync-ingress ceiling (`DemuxerConfig::sync_buf_cap`, default 4 MiB),
+  the chunk-and-drain loop for file replay, a new entry in the override-knobs
+  table, and a concise prose paragraph describing each `DemuxEvent` variant
+  (including the `Metadata` / `Klv` alias relationship).
+- The Python guide (`docs/languages/python.md`) adds the same ceiling note
+  with a Python chunk-and-drain snippet, a `DemuxerConfig(sync_buf_cap=…)`
+  alternative, a full `DemuxEvent` variant reference with `match`/`isinstance`
+  examples, and a `Muxer.pull()` drain-loop recipe for callers that need
+  TS bytes in memory rather than writing to a file.
+- HLS conformance wording qualified in `docs/project/deferred-features.md`
+  and `docs/reference/compatibility.md`: the v0.2.0 fix covered the
+  playlist-model (target-duration ceiling, duration-floor eviction, media-PTS
+  `#EXTINF`); segment-initial decodability and HTTP-server hardening (path
+  traversal) remain open.
+
 ### Changed — internal refactors and dependencies (behavior-preserving)
 
 - Removed unused dependencies: `log`, `rtsp-types`, the `cc` dev-dependency, and

@@ -103,6 +103,25 @@ manager — `__exit__` flushes and finalizes the file; no explicit
 object the `with` statement yields), not through `m` — only proxy
 pushes drain to the file as they go.
 
+When you need the TS bytes in memory rather than writing to a file, use
+`Muxer.pull()` directly. `pull` fills a preallocated `bytearray` and
+returns the number of bytes written; drain it in a loop until `pull`
+returns 0:
+
+```python
+buf = bytearray(188 * 64)   # preallocate one chunk
+
+m.push_video(nal_bytes, pts=Pts90khz.from_raw(900_000))
+m.push_klv(klv_bytes, pts=Pts90khz.from_raw(900_000))
+
+packets: list[bytes] = []
+while (n := m.pull(buf)) > 0:
+    packets.append(bytes(buf[:n]))
+```
+
+For the common file-write case, `write_file` (returning a `MuxerFileSink`)
+is the canonical path — no manual `pull` loop needed.
+
 ## First receive
 
 Demux a file and dispatch on typed events with a `match` statement:
@@ -179,6 +198,61 @@ accumulates per-field errors on `.field_errors`; strict mode raises
 `encode_*_strict_compliance` (opt-in strict)) round-trip parsed records
 back to wire bytes.
 See the `tstrans.klv` module docstring for the full type listing.
+
+### DemuxEvent variant reference
+
+The full `DemuxEvent` class hierarchy for `match`/`isinstance` dispatch:
+
+```python
+from tstrans.mpegts import Demuxer, DemuxerConfig, DemuxEvent
+
+with open("capture.ts", "rb") as f:
+    ts = f.read()
+
+# For files larger than 4 MiB, use the chunk-and-drain loop (see below)
+# rather than a single feed() call.
+d = Demuxer()
+CHUNK = 188 * 1024
+for i in range(0, len(ts), CHUNK):
+    d.feed(ts[i : i + CHUNK])
+    while (ev := d.next_event()) is not None:
+        match ev:
+            case DemuxEvent.ProgramMap():
+                pass  # topology; build config from this if re-muxing
+            case DemuxEvent.Video():
+                pass  # SamplePayload::Video — raw AU; ev.parse() → NALs/OBUs
+            case DemuxEvent.Audio():
+                pass  # SamplePayload::Audio — raw frames; ev.parse() → typed
+            case DemuxEvent.Subtitle():
+                pass  # SamplePayload::Subtitle
+            case DemuxEvent.Metadata():
+                pass  # KLV — both sync AU-cell and async bare-LS land here
+                      # DemuxEvent.Klv is a deprecated alias; prefer .Metadata
+            case DemuxEvent.UnknownSample():
+                pass  # unrecognized stream_type; verbatim PES payload
+            case DemuxEvent.Discontinuity():
+                pass  # CC jump or PES overflow on a PID
+            case DemuxEvent.NonConformant():
+                pass  # spec violation tolerated in lenient mode
+            case DemuxEvent.ReconnectDiscontinuity():
+                pass  # injected only by ManagedDemuxReceiver after reconnect
+d.flush()
+while (ev := d.next_event()) is not None:
+    pass  # drain trailing AU (unbounded-PES_packet_length)
+```
+
+**Sync-ingress ceiling.** `Demuxer.feed()` buffers incoming bytes
+in a pre-sync scan window capped at **4 MiB** by default. A single
+`feed()` call with a file larger than that cap will raise
+`DemuxError` before any events appear. The chunk-and-drain loop above
+avoids this regardless of file size. To raise the cap instead (for
+small files where a single-call approach is preferred):
+
+```python
+from tstrans.mpegts import Demuxer, DemuxerConfig
+
+d = Demuxer(DemuxerConfig(sync_buf_cap=64 * 1024 * 1024))  # 64 MiB
+```
 
 ## Transmux: edit metadata, copy everything else
 

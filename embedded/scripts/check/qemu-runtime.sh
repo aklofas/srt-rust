@@ -15,6 +15,8 @@ if ! command -v qemu-system-arm >/dev/null 2>&1; then
   echo "SKIP: qemu-system-arm not installed (apt install qemu-system-arm)"; exit 0
 fi
 
+# Pin to the workspace toolchain (rust-toolchain.toml "1.85") — a bare
+# `rustup target add` installs into the DEFAULT toolchain, which may differ.
 rustup target add thumbv7em-none-eabihf --toolchain 1.85 >/dev/null 2>&1 || true
 echo "==> QEMU runtime smoke: baremetal-qemu"
 # Build OUTSIDE the QEMU timeout (a cold build alone can eat the whole 60 s

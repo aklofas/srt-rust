@@ -65,8 +65,12 @@ static void run_task(void*) {
     pthread_t rx, tx;
     pthread_attr_t attr; pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 4096);   // ≥4 KiB (exceptions finding)
-    pthread_create(&rx, &attr, rx_thread, nullptr);
-    pthread_create(&tx, &attr, tx_thread, nullptr);
+    if (pthread_create(&rx, &attr, rx_thread, nullptr) != 0) {
+        printf("FAIL[s1_lwip]: pthread_create(rx)\n"); fflush(stdout); _exit(1);
+    }
+    if (pthread_create(&tx, &attr, tx_thread, nullptr) != 0) {
+        printf("FAIL[s1_lwip]: pthread_create(tx)\n"); fflush(stdout); _exit(1);
+    }
     pthread_join(tx, nullptr);
     pthread_join(rx, nullptr);
 

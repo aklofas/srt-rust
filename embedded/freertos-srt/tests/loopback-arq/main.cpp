@@ -124,8 +124,12 @@ static void run_task(void*) {
     pthread_t lt, ct;
     pthread_attr_t attr; pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 32768);         // libsrt API call chains are deep
-    pthread_create(&lt, &attr, listener_thread, nullptr);
-    pthread_create(&ct, &attr, caller_thread, nullptr);
+    if (pthread_create(&lt, &attr, listener_thread, nullptr) != 0) {
+        printf("FAIL[" PASS_TAG "]: pthread_create(listener)\n"); fflush(stdout); _exit(1);
+    }
+    if (pthread_create(&ct, &attr, caller_thread, nullptr) != 0) {
+        printf("FAIL[" PASS_TAG "]: pthread_create(caller)\n"); fflush(stdout); _exit(1);
+    }
     pthread_join(ct, nullptr);
     pthread_join(lt, nullptr);
 

@@ -6,6 +6,9 @@
 #include "lwip/sys.h"
 #include "lwip/err.h"
 #include "arch/sys_arch.h"
+#include "diag.h"
+
+extern __attribute__((noreturn)) void _exit(int);
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -95,8 +98,13 @@ sys_thread_t sys_thread_new(const char *name, lwip_thread_fn fn, void *arg,
     TaskHandle_t h = NULL;
     /* lwIP stacksize is in bytes; FreeRTOS xTaskCreate depth is in words.
      * Round up so a non-word-aligned byte size doesn't under-allocate. */
-    xTaskCreate((TaskFunction_t)fn, name,
-                (configSTACK_DEPTH_TYPE)(((size_t)stacksize + sizeof(StackType_t) - 1) / sizeof(StackType_t)),
-                arg, (UBaseType_t)prio, &h);
+    if (xTaskCreate((TaskFunction_t)fn, name,
+                    (configSTACK_DEPTH_TYPE)(((size_t)stacksize + sizeof(StackType_t) - 1) / sizeof(StackType_t)),
+                    arg, (UBaseType_t)prio, &h) != pdPASS) {
+        tst_diag_write0("FAIL[sys_thread_new] ");
+        tst_diag_write0(name);
+        tst_diag_write0("\n");
+        _exit(1);
+    }
     return h;
 }

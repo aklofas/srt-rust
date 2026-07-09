@@ -48,8 +48,20 @@ int main(void) {
     }
     tst_muxer_close(mux);
 
-    if (total != (size_t)GOLDEN_LEN || memcmp(out, GOLDEN, total) != 0)
-        return fail("mismatch", total);
+    if (total != (size_t)GOLDEN_LEN || memcmp(out, GOLDEN, total) != 0) {
+        size_t cmp_len = total < (size_t)GOLDEN_LEN ? total : (size_t)GOLDEN_LEN;
+        size_t first = cmp_len; /* default: lengths differ, no byte overlap */
+        for (size_t i = 0; i < cmp_len; i++) {
+            if (out[i] != GOLDEN[i]) { first = i; break; }
+        }
+        printf("FAIL[c_firmware] mismatch: produced %u bytes, golden %u;"
+               " first mismatch at offset %u (expected 0x%02x, got 0x%02x)\n",
+               (unsigned)total, (unsigned)GOLDEN_LEN,
+               (unsigned)first,
+               first < (size_t)GOLDEN_LEN ? (unsigned)GOLDEN[first] : 0u,
+               first < total             ? (unsigned)out[first]   : 0u);
+        return 1;
+    }
 
     printf("PASS: c_firmware (%u bytes)\n", (unsigned)total);
     return 0;

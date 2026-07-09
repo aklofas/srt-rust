@@ -32,11 +32,19 @@ need qemu-system-arm   qemu-system-arm
 # output (FAIL[hardfault]/FAIL[assert]/etc.) appears in the failure dump — those
 # go to QEMU stderr while printf/SYS_WRITE goes to stdout.
 assert_pass() { # $1=timeout  $2=token  $3=label
-  local out
-  out=$(timeout "$1" qemu-system-arm -machine mps2-an386 -nographic \
-        -semihosting-config enable=on,target=native -kernel "$D/build/firmware.elf" 2>&1 || true)
+  local out rc t0 t1
+  t0=$(date +%s)
+  if out=$(timeout "$1" qemu-system-arm -machine mps2-an386 -nographic \
+        -semihosting-config enable=on,target=native -kernel "$D/build/firmware.elf" 2>&1); then
+    rc=0
+  else
+    rc=$?
+  fi
+  t1=$(date +%s)
   grep -q "$2" <<<"$out" && return 0
-  echo "GATE FAILED ($3)"; echo "----- QEMU output ($3) -----"; echo "$out"; exit 1
+  echo "GATE FAILED ($3) — qemu rc=$rc, elapsed=$((t1 - t0))s of ${1}s budget"
+  echo "  (rc=124 + full budget = hang/timeout; fast nonzero rc = a labeled FAIL[...] exit — read the transcript)"
+  echo "----- QEMU output ($3) -----"; echo "$out"; exit 1
 }
 
 case "$t" in

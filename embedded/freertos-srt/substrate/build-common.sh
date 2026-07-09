@@ -101,7 +101,11 @@ if [ "${LIBSRT:-0}" = "1" ]; then
     find "$SUB/patches" -type f -name '*.patch' | sort
     find "$SUB/posix-shims" "$SUB/freertos" "$SUB/lwip" -type f -name '*.h' | sort
   )
-  FILE_HASHES=$(sha256sum -- "${STAMP_FILES[@]}")
+  # Digests only — sha256sum's raw output embeds absolute paths, which would
+  # bust the stamp on a checkout move despite identical contents. Ordering
+  # stays deterministic (STAMP_FILES is sorted), and pipefail (active in the
+  # sourcing shell) keeps a sha256sum failure fail-loud through the pipe.
+  FILE_HASHES=$(sha256sum -- "${STAMP_FILES[@]}" | awk '{print $1}')
   VENDOR_HEADS=$(for r in "$SRT" "$MBED" "$K" "$P" "$L"; do
                    git -C "$r" rev-parse HEAD || exit 1
                  done)

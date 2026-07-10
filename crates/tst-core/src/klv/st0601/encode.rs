@@ -101,8 +101,9 @@ pub fn encode_with(
 /// [`KlvEncodeError::RecordTooLarge`] for BER-overflow records, and
 /// [`KlvEncodeError::ReservedTagInUnknown`] if `record.unknown` carries
 /// a reserved or typed tag.
-/// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — the
-/// buffer is pre-sized via [`encoded_len`].)
+/// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — it
+/// delegates to [`encode_to_vec_with`], which pre-sizes the buffer via
+/// [`encoded_len_with`].)
 pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> {
     encode_to_vec_with(record, &EncodeConfig::default())
 }

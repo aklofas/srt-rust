@@ -12,7 +12,8 @@
 //! 1. **SSRC**: the first packet latches the SSRC. A different SSRC signals a
 //!    source restart — the open AU is discarded (no `aus_dropped` tick), seq/
 //!    timestamp state is reset, and `ssrc_changes` is incremented. PTS stays
-//!    monotonic across resets.
+//!    monotonic across SSRC resets (the re-anchor adds one nominal frame step
+//!    to the last emitted value before anchoring the new stream).
 //!
 //! 2. **Sequence gaps**: a gap (`delta ≠ 1`) poisons the currently-accumulating
 //!    AU (if any) *before* boundary handling, then also poisons the AU this
@@ -32,9 +33,9 @@
 //!    increment `aus_dropped`. Clean AUs push an [`H264Au`] onto the ready queue.
 //!
 //! 6. **Payload dispatch** on `payload[0] & 0x1F` (NALU type): types 1–23 are
-//!    single NAL units (Task 3); type 24 = STAP-A (Task 4); type 28 = FU-A
-//!    (Task 5); types 25/26/27/29 are interleaved-mode-only and poison the AU;
-//!    types 0/30/31 are reserved and are discarded without poisoning.
+//!    single NAL units; type 24 = STAP-A aggregation packets; type 28 = FU-A
+//!    fragmentation units; types 25/26/27/29 are interleaved-mode-only and poison
+//!    the AU; types 0/30/31 are reserved and are discarded without poisoning.
 //!
 //! 7. **`push_nalu(bytes)`**: if the F bit (`bytes[0] & 0x80`) is set the NALU
 //!    is discarded and the AU is poisoned. Otherwise `[0,0,0,1]` + bytes is
@@ -43,6 +44,15 @@
 //! 8. **[`flush`](H264Depacketizer::flush)**: equivalent to `complete_au()` then
 //!    [`next_au`](H264Depacketizer::next_au). The caller should drain `next_au()`
 //!    before calling `flush`.
+//!
+//! # B-frames
+//!
+//! This depacketizer targets low-latency, no-B-frame camera streams (the primary
+//! use case for gimbaled-platform video). RTP timestamps reflect decode order, not
+//! display order, so [`H264Au::pts`] is a **decode-order** timestamp — B-frame
+//! content can produce non-monotonic PTS values, which are passed through unaltered.
+//! DTS is not derivable from RTP; callers with B-frame sources must derive DTS
+//! themselves and supply it to `push_video_to_with_dts`.
 //!
 //! [`feed`]: H264Depacketizer::feed
 //! [`next_au`]: H264Depacketizer::next_au
@@ -70,12 +80,25 @@ const ANNEXB_START_CODE: [u8; 4] = [0, 0, 0, 1];
 ///
 /// The `annexb` buffer contains all NALUs concatenated in Annex B framing
 /// (`[0,0,0,1]` start code before each NALU), in RTP packet order.
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct H264Au {
     /// Annex B–framed NALU bytes (one or more NALUs concatenated with
     /// `[0,0,0,1]` start codes).
     pub annexb: Vec<u8>,
-    /// 90 kHz presentation timestamp, monotonically non-decreasing.
+    /// 90 kHz decode-order timestamp derived from the RTP timestamp.
+    ///
+    /// Zero-based at the first emitted AU; unwrapped across the 32-bit RTP
+    /// timestamp rollover. Because RTP timestamps reflect decode order, B-frame
+    /// content produces non-monotonic PTS values — the depacketizer passes them
+    /// through unaltered. DTS is not derivable from RTP; callers with B-frame
+    /// sources must derive DTS themselves for `push_video_to_with_dts`.
+    ///
+    /// Values can be negative if a later AU's unwrapped timestamp falls below
+    /// the first AU's anchor (e.g. after an SSRC reset with a lower timestamp
+    /// origin). PTS **is** monotonic across SSRC resets: the re-anchor adds
+    /// one nominal frame step (3003 ticks at 90 kHz ≈ 30 fps) to the last
+    /// emitted value before anchoring the new stream.
     pub pts: Pts90khz,
     /// `true` if the AU contains at least one IDR slice (NALU type 5).
     pub key_frame: bool,
@@ -113,7 +136,8 @@ pub struct H264DepayConfig {
     /// Whether to inject cached SPS/PPS before IDR frames.
     pub parameter_set_injection: ParameterSetInjection,
     /// Out-of-band parameter sets from SDP `sprop-parameter-sets`. Each
-    /// element is one raw NALU (type 7 or 8). Used by injection (Task 6).
+    /// element is one raw NALU (type 7 or 8). Seeded into the parameter-set
+    /// cache at construction and used by [`ParameterSetInjection::BeforeIdr`].
     pub initial_parameter_sets: Vec<Vec<u8>>,
 }
 
@@ -145,7 +169,8 @@ pub struct H264DepayStats {
     pub seq_gaps: u64,
     /// Number of duplicate sequence numbers detected.
     pub duplicate_packets: u64,
-    /// Number of times cached parameter sets were updated (Task 6).
+    /// Number of times cached parameter sets were updated (in-band SPS/PPS
+    /// bytes differed from the cached value).
     pub parameter_set_updates: u64,
     /// Number of SSRC changes (source restarts) detected.
     pub ssrc_changes: u64,
@@ -220,8 +245,8 @@ pub struct H264Depacketizer {
     au_ts: Option<u32>,
     /// Annex B buffer for the open AU.
     au_buf: Vec<u8>,
-    /// Open FU-A accumulation buffer (Task 5 fills this; exists for rule 2
-    /// gap-clearing and rule 5 completion checks).
+    /// Open FU-A accumulation buffer (filled by FU-A reassembly; exists for
+    /// rule 2 gap-clearing and rule 5 completion checks).
     fu: Option<Vec<u8>>,
     /// True if the AU should be dropped when completed.
     au_poisoned: bool,
@@ -476,7 +501,7 @@ impl H264Depacketizer {
             return;
         }
 
-        // ── Task 6: BeforeIdr injection ───────────────────────────────────────
+        // ── BeforeIdr injection ───────────────────────────────────────────────
         // If the AU is an IDR and BeforeIdr injection is enabled, prepend any
         // cached parameter sets that are not already present in this AU.
         if self.au_has_idr
@@ -527,7 +552,7 @@ impl H264Depacketizer {
         debug_assert!(!bytes.is_empty(), "dispatch guarantees non-empty NALUs");
         if bytes.is_empty() {
             // Unreachable via feed()'s dispatch guard; kept as a release-mode
-            // safety net (Task 4 feeds STAP-A sub-NALUs through here too).
+            // safety net (STAP-A unpacking also feeds sub-NALUs through here).
             return;
         }
         self.push_nalu_owned(bytes.to_owned());
@@ -719,7 +744,7 @@ mod tests {
 
     fn depay() -> H264Depacketizer {
         H264Depacketizer::new(H264DepayConfig {
-            parameter_set_injection: ParameterSetInjection::None, // injection tested in Task 6
+            parameter_set_injection: ParameterSetInjection::None, // injection tested separately below
             ..H264DepayConfig::default()
         })
     }
@@ -850,7 +875,7 @@ mod tests {
         assert_eq!(au.annexb, [0, 0, 0, 1, 0x41, 0x01]);
     }
 
-    // ── STAP-A tests (Task 4) ─────────────────────────────────────────────────
+    // ── STAP-A tests ──────────────────────────────────────────────────────────
 
     #[test]
     fn stap_a_unpacks_units_in_order() {
@@ -884,7 +909,7 @@ mod tests {
         assert_eq!(d.stats().aus_dropped, 1);
     }
 
-    // ── FU-A tests (Task 5) ───────────────────────────────────────────────────
+    // ── FU-A tests ────────────────────────────────────────────────────────────
 
     /// FU-A packet: indicator (F/NRI + type 28), header (S/E + orig type), fragment bytes.
     fn fua(nri: u8, s: bool, e: bool, typ: u8, frag: &[u8]) -> Vec<u8> {
@@ -995,7 +1020,7 @@ mod tests {
         assert_eq!(d.stats().aus_dropped, 1);
     }
 
-    // ── Task 6: parameter-set cache + BeforeIdr injection tests ──────────────
+    // ── Parameter-set cache + BeforeIdr injection tests ──────────────────────
 
     fn sps() -> Vec<u8> {
         vec![0x67, 0x42, 0x00, 0x1E]

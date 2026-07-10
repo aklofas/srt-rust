@@ -98,6 +98,8 @@ impl TcpTransportBuilder {
 
     /// Set the connection timeout (caller-side only).
     ///
+    /// Applied per resolved address — a hostname that resolves to multiple
+    /// addresses may take up to N× this value before the overall attempt fails.
     /// Default: 10 seconds.
     pub fn connect_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.connect_timeout = Some(t);

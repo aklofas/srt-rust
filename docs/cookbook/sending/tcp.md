@@ -69,7 +69,7 @@ let tx = TcpTransport::connect("tcps://192.168.1.10:7001?ca=ca-bundle.pem")?;
 | `keepalive` | disabled | SO_KEEPALIVE idle time in seconds |
 | `rcvbuf` | OS default | SO_RCVBUF in bytes (suffixes: `K`, `M`) |
 | `sndbuf` | OS default | SO_SNDBUF in bytes |
-| `connect_timeout` | 10 | Caller-side connect timeout in seconds |
+| `connect_timeout` | 10 | Caller-side connect timeout in seconds. Applied per resolved address — a hostname resolving to multiple addresses may take up to N× this value before failing |
 | `ca` | OS native store | Custom CA bundle PEM path (TLS caller only) |
 
 ## Verify with ffmpeg

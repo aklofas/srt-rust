@@ -1,0 +1,182 @@
+//! TLS loopback test: `tcps://` hostname dial verifies against a dnsName-SAN cert.
+//!
+//! This is the integration test for DA-NET-9: the client dials by *hostname*
+//! (`localhost`) and rustls verifies the server certificate's `dnsName` SAN.
+//!
+//! The positive-path cert carries ONLY a `dnsName` SAN for `localhost` (no
+//! `iPAddress` SAN). This means an IP-literal dial (`127.0.0.1`) against the
+//! same cert MUST fail, which anchors both legs of the test:
+//!
+//! - `tcps_hostname_loopback_handshake_and_roundtrip` — dials `localhost`
+//!   → cert has a matching `dnsName` → handshake succeeds.
+//! - `tcps_ip_dial_against_dns_only_cert_loopback_fails` — dials `127.0.0.1`
+//!   → cert has no `iPAddress` SAN → handshake fails on first I/O.
+//!
+//! The test binary is only compiled when the `tls` feature is active (the
+//! crate's default). Without TLS there is nothing to exercise.
+
+#![cfg(feature = "tls")]
+
+use std::thread;
+
+use tst_core::transport::{RecvTransport, Transport};
+use tst_tcp::config::SocketConfig;
+use tst_tcp::url::TcpUrl;
+use tst_tcp::{TcpListener, TcpTransport};
+
+// ---------------------------------------------------------------------------
+// Cert fixture helpers
+// ---------------------------------------------------------------------------
+
+/// Self-signed cert that carries ONLY a `dnsName` SAN for `localhost`
+/// (no `iPAddress` SAN). Written to files in a temp directory.
+///
+/// This is intentionally dnsName-only so that:
+/// - A hostname dial (`localhost`) succeeds (the dnsName matches).
+/// - An IP-literal dial (`127.0.0.1`) fails (no iPAddress SAN).
+///
+/// The temp directory (and the files inside it) live for the lifetime of the
+/// returned `TempDir`. Drop it after the test completes.
+fn gen_dns_only_cert() -> (
+    tempfile::TempDir,
+    std::path::PathBuf, // cert.pem / CA bundle
+    std::path::PathBuf, // key.pem
+) {
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+        .expect("rcgen self-signed cert generation");
+    let cert_pem = cert.cert.pem();
+    let key_pem = cert.key_pair.serialize_pem();
+
+    let dir = tempfile::tempdir().expect("create tempdir for TLS fixture");
+    let cert_path = dir.path().join("cert.pem");
+    let key_path = dir.path().join("key.pem");
+    std::fs::write(&cert_path, &cert_pem).expect("write cert.pem");
+    std::fs::write(&key_path, &key_pem).expect("write key.pem");
+    // The self-signed cert doubles as the trust anchor (CA bundle).
+    (dir, cert_path, key_path)
+}
+
+// ---------------------------------------------------------------------------
+// Helper: accept one connection, echo N bytes, close.
+// ---------------------------------------------------------------------------
+
+fn echo_server(listener: TcpListener) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let mut conn = listener.accept_blocking().expect("server accept");
+        let mut buf = [0u8; 4];
+        let n = conn.recv_bytes(&mut buf).expect("server recv");
+        conn.send_bytes(&buf[..n]).expect("server send echo");
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Positive test: hostname dial verifies against dnsName SAN
+// ---------------------------------------------------------------------------
+
+/// Full `tcps://` TLS handshake + ping/echo round-trip where the client dials
+/// by *hostname* (`localhost`) and the server certificate carries that name
+/// as a `dnsName` SAN (with NO `iPAddress` SAN).
+///
+/// This is the core assertion of DA-NET-9: hostname SNI works end-to-end.
+/// If `tls.rs` reverted to the old IP-string server-name form (presenting the
+/// resolved `127.0.0.1` for SNI), this test would fail with a certificate
+/// mismatch error because the cert has no `iPAddress` SAN.
+///
+/// Test name contains "loopback" so nextest assigns it to the `network` group
+/// (serialised, single-threaded; avoids port contention and timing flakes).
+#[test]
+fn tcps_hostname_loopback_handshake_and_roundtrip() {
+    let (_dir, cert_path, key_path) = gen_dns_only_cert();
+    // The self-signed cert itself is the CA bundle the client trusts.
+    let ca_path = cert_path.clone();
+
+    // Bind TLS listener on an ephemeral port (port 0 → OS assigns).
+    let listener = TcpListener::from_url(&format!(
+        "tcps://127.0.0.1:0?listen=1&cert={}&key={}",
+        cert_path.display(),
+        key_path.display(),
+    ))
+    .expect("TLS listener bind");
+
+    let port = listener.local_addr().expect("local_addr after bind").port();
+    assert_ne!(port, 0, "OS must have assigned a non-zero port");
+
+    // Spawn echo server — accepts once, echoes 4 bytes, exits.
+    let srv = echo_server(listener);
+
+    // --- THE POINT OF DA-NET-9 ---
+    // Dial by *hostname*. The cert has ONLY a dnsName SAN for "localhost"
+    // (no iPAddress SAN). rustls must accept the handshake because the SNI
+    // ("localhost") matches the dnsName SAN. An old IP-based SNI would present
+    // "127.0.0.1" → no matching iPAddress SAN → certificate error.
+    let dial_url = format!("tcps://localhost:{port}?ca={}", ca_path.display());
+    let parsed = TcpUrl::parse(&dial_url).expect("URL parse");
+    let mut client = TcpTransport::connect_with_config(&parsed, &SocketConfig::default())
+        .expect("tcps connect (hostname dial must succeed with dnsName SAN)");
+
+    // Trigger the TLS handshake and exercise the full round-trip.
+    client.send_bytes(b"ping").expect("client send");
+
+    let mut buf = [0u8; 4];
+    let n = client.recv_bytes(&mut buf).expect("client recv");
+    assert_eq!(n, 4);
+    assert_eq!(&buf[..n], b"ping", "echoed payload must match");
+
+    srv.join().expect("server thread panicked");
+}
+
+// ---------------------------------------------------------------------------
+// Negative test: IP-literal dial against a dnsName-only cert fails
+// ---------------------------------------------------------------------------
+
+/// Confirm the inverse: if we dial by IP literal (`127.0.0.1`) but the cert
+/// carries *only* a `dnsName` SAN (for `localhost`, no `iPAddress` SAN),
+/// rustls MUST reject the handshake.
+///
+/// The TLS handshake is lazy — it completes on the first I/O call, not at
+/// connect time. So we trigger it via `send_bytes` and assert that either
+/// the send or the subsequent `recv_bytes` returns an error.
+///
+/// Test name contains "loopback" for nextest network group membership.
+#[test]
+fn tcps_ip_dial_against_dns_only_cert_loopback_fails() {
+    let (_dir, cert_path, key_path) = gen_dns_only_cert();
+    let ca_path = cert_path.clone();
+
+    let listener = TcpListener::from_url(&format!(
+        "tcps://127.0.0.1:0?listen=1&cert={}&key={}",
+        cert_path.display(),
+        key_path.display(),
+    ))
+    .expect("TLS listener bind");
+
+    let port = listener.local_addr().expect("local_addr").port();
+
+    // Spawn an accept thread — the handshake failure closes the connection;
+    // the server side may surface an error which we intentionally ignore.
+    let _srv = thread::spawn(move || {
+        let _ = listener.accept_blocking();
+    });
+
+    // Dial by IP literal against a cert that has no iPAddress SAN.
+    // The TCP connect itself succeeds (lazy handshake), so we expect Ok here.
+    let dial_url = format!("tcps://127.0.0.1:{port}?ca={}", ca_path.display());
+    let parsed = TcpUrl::parse(&dial_url).expect("URL parse");
+    let mut transport = TcpTransport::connect_with_config(&parsed, &SocketConfig::default())
+        .expect("TCP connect returns Ok (handshake is lazy — not yet triggered)");
+
+    // Trigger the handshake. The cert has no iPAddress SAN for 127.0.0.1
+    // so rustls must reject it. The error surfaces on send or recv.
+    let send_result = transport.send_bytes(b"ping");
+    let error_observed = if send_result.is_err() {
+        true
+    } else {
+        let mut buf = [0u8; 4];
+        transport.recv_bytes(&mut buf).is_err()
+    };
+
+    assert!(
+        error_observed,
+        "IP-literal dial against a dnsName-only cert must fail on first I/O"
+    );
+}

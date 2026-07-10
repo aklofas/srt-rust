@@ -492,7 +492,7 @@ mod connect_stream_tests {
     use super::connect_stream;
 
     #[test]
-    fn connect_stream_resolves_localhost() {
+    fn connect_stream_loopback_resolves_localhost() {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         // "localhost" may resolve to ::1 first — the per-address loop must

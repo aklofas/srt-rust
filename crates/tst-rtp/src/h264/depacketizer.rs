@@ -352,9 +352,8 @@ impl H264Depacketizer {
                 self.push_nalu(payload);
             }
             24 => {
-                // Task 4 replaces this arm (STAP-A).
-                self.stats.packets_discarded += 1;
-                self.au_poisoned = true;
+                // ── Rule 6: STAP-A aggregation packet (RFC 6184 §5.7.1) ────────
+                self.push_stap_a(payload);
             }
             28 => {
                 // Task 5 replaces this arm (FU-A).
@@ -478,6 +477,41 @@ impl H264Depacketizer {
         // Append Annex B start code + NALU bytes.
         self.au_buf.extend_from_slice(&ANNEXB_START_CODE);
         self.au_buf.extend_from_slice(bytes);
+    }
+
+    /// Unpack a STAP-A aggregation packet (RFC 6184 §5.7.1 Figure 6).
+    ///
+    /// Layout: `[STAP-A hdr (1 byte)] [size u16 BE] [NALU] ... [size u16 BE] [NALU]`
+    ///
+    /// Malformed conditions (any → `packets_discarded += 1` + poison + return):
+    /// - fewer than 2 bytes remain for the size field (trailing 1-byte remainder)
+    /// - `size == 0` (degenerate)
+    /// - `size` extends past the end of the payload (truncated NALU data)
+    fn push_stap_a(&mut self, payload: &[u8]) {
+        // cursor starts at 1: skip the STAP-A header byte.
+        let mut cursor = 1usize;
+        while cursor < payload.len() {
+            // ── Need 2 bytes for the size field ──────────────────────────────
+            if cursor + 2 > payload.len() {
+                // Trailing 1-byte remainder — malformed.
+                self.stats.packets_discarded = self.stats.packets_discarded.saturating_add(1);
+                self.au_poisoned = true;
+                return;
+            }
+            let size = u16::from_be_bytes([payload[cursor], payload[cursor + 1]]) as usize;
+
+            // ── Zero size or data runs past end ───────────────────────────────
+            if size == 0 || cursor + 2 + size > payload.len() {
+                self.stats.packets_discarded = self.stats.packets_discarded.saturating_add(1);
+                self.au_poisoned = true;
+                return;
+            }
+
+            // ── Push this aggregation unit's NALU ────────────────────────────
+            self.push_nalu(&payload[cursor + 2..cursor + 2 + size]);
+
+            cursor += 2 + size;
+        }
     }
 
     /// Reset per-AU state (called after completing or discarding an AU).
@@ -640,6 +674,40 @@ mod tests {
         let au = d.next_au().expect("non-empty AU should complete");
         assert_eq!(d.stats().packets_discarded, 1);
         assert_eq!(au.annexb, [0, 0, 0, 1, 0x41, 0x01]);
+    }
+
+    // ── STAP-A tests (Task 4) ─────────────────────────────────────────────────
+
+    #[test]
+    fn stap_a_unpacks_units_in_order() {
+        // STAP-A header (24, NRI=3 → 0x78) + [size=2][SPS 0x67,0x42] + [size=3][PPS 0x68,0xCE,0x38]
+        let stap = [0x78, 0, 2, 0x67, 0x42, 0, 3, 0x68, 0xCE, 0x38];
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &stap);
+        let au = d.next_au().unwrap();
+        assert_eq!(
+            au.annexb,
+            [0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 1, 0x68, 0xCE, 0x38]
+        );
+    }
+
+    #[test]
+    fn stap_a_zero_size_unit_poisons() {
+        let stap = [0x78, 0, 0, 0x67]; // size=0 is degenerate (size includes the NALU header byte)
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &stap);
+        assert!(d.next_au().is_none());
+        assert_eq!(d.stats().packets_discarded, 1);
+        assert_eq!(d.stats().aus_dropped, 1);
+    }
+
+    #[test]
+    fn stap_a_truncated_unit_poisons() {
+        let stap = [0x78, 0, 5, 0x67, 0x42]; // claims 5 bytes, only 2 present
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &stap);
+        assert!(d.next_au().is_none());
+        assert_eq!(d.stats().aus_dropped, 1);
     }
 
     #[test]

@@ -36,11 +36,13 @@ impl TlsStream {
 
 /// Build a TLS-wrapped TcpTransport (caller side).
 ///
-/// Because `TcpUrl` accepts only IP literals, the TLS server name presented
-/// during the handshake is always an IP address. The server certificate must
-/// carry a matching `iPAddress` SubjectAltName (SAN). A certificate with only
-/// a `dnsName` SAN will be rejected. See the module-level docs on [`crate::url`]
-/// for a one-liner to generate an IP-SAN certificate with OpenSSL.
+/// The TLS server name is the host as written in the URL — a DNS hostname or
+/// an IP literal. The server certificate must carry a matching SAN:
+/// - hostname → `dnsName` SAN
+/// - IP literal → `iPAddress` SAN
+///
+/// Resolution to a socket address happens via [`crate::transport::connect_stream`]
+/// at connect time (DA-NET-9).
 pub fn connect_tls(url: &TcpUrl, cfg: &SocketConfig) -> Result<TcpTransport, TcpError> {
     let mut roots = rustls::RootCertStore::empty();
 
@@ -67,15 +69,15 @@ pub fn connect_tls(url: &TcpUrl, cfg: &SocketConfig) -> Result<TcpTransport, Tcp
         .with_root_certificates(roots)
         .with_no_client_auth();
 
-    let server_name = ServerName::try_from(url.addr.to_string())
-        .map_err(|e| TcpError::Tls(format!("invalid server name: {e}")))?;
+    let server_name = ServerName::try_from(url.host.clone())
+        .map_err(|e| TcpError::Tls(format!("invalid server name '{}': {e}", url.host)))?;
 
     let conn = ClientConnection::new(Arc::new(client_config), server_name)
         .map_err(|e| TcpError::Tls(format!("ClientConnection::new: {e}")))?;
 
-    let peer = SocketAddr::new(url.addr, url.port);
-    let socket = TcpStream::connect_timeout(&peer, cfg.connect_timeout_or_default())
-        .map_err(TcpError::Io)?;
+    let (socket, peer) =
+        crate::transport::connect_stream(&url.host, url.port, cfg.connect_timeout_or_default())
+            .map_err(TcpError::Io)?;
     apply_knobs(&socket, cfg).map_err(TcpError::Io)?;
 
     let stream = StreamOwned::new(conn, socket);

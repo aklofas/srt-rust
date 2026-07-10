@@ -5,6 +5,7 @@ import pytest
 from tstrans.exceptions import KlvEncodeError, KlvEncodeErrorKind
 from tstrans.klv import (
     ST_0601_UL,
+    OutOfRangePolicy,
     UasDatalinkLs,
     decode_uas_datalink,
     encode_uas_datalink,
@@ -155,3 +156,41 @@ def test_sentinel_tags_out_of_u32_range_raises_overflow():
     rec = UasDatalinkLs(sentinel_tags=(2**33,))
     with pytest.raises(OverflowError):
         encode_uas_datalink(rec)
+
+
+# ---------------------------------------------------------------------------
+# OutOfRangePolicy: encode indicator for eligible tags
+# ---------------------------------------------------------------------------
+
+
+def test_encode_out_of_range_indicator_policy():
+    """INDICATOR policy emits the INT_MIN sentinel for Tag 6 (Platform Pitch)
+    when the value (25.0°) is outside the narrow [-20, 20]° range.
+
+    With the default ERROR policy, encoding raises. With INDICATOR, encode
+    succeeds, and decoding the result shows platform_pitch_deg=None and
+    tag 6 in sentinel_tags (the spec Out-of-Range signal).
+    """
+    # platform_pitch_deg Tag 6 has range [-20, 20]; 25.0 is out of range.
+    rec = UasDatalinkLs(platform_pitch_deg=25.0)
+    # Default policy (ERROR) must still raise.
+    with pytest.raises(KlvEncodeError):
+        encode_uas_datalink(rec)
+    # INDICATOR policy succeeds and emits the INT_MIN sentinel.
+    raw = encode_uas_datalink(rec, out_of_range_policy=OutOfRangePolicy.INDICATOR)
+    assert isinstance(raw, bytes)
+    back = decode_uas_datalink(raw)
+    assert back.platform_pitch_deg is None, "sentinel field must be None after decode"
+    assert 6 in back.sentinel_tags, "tag 6 must appear in sentinel_tags"
+
+
+def test_encode_indicator_policy_ineligible_tag_still_raises():
+    """INDICATOR policy only applies to tags whose INT_MIN sentinel means
+    Out of Range. Tag 13 (sensor_lat_deg, range [-90, 90]) has a Reserved
+    sentinel meaning, so a value outside range must still raise KlvEncodeError.
+
+    95.0° is beyond [-90, 90] and Tag 13 is not in the eligible set.
+    """
+    rec = UasDatalinkLs(sensor_lat_deg=95.0)
+    with pytest.raises(KlvEncodeError):
+        encode_uas_datalink(rec, out_of_range_policy=OutOfRangePolicy.INDICATOR)

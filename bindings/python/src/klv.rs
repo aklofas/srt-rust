@@ -30,10 +30,11 @@ use tst_core::klv::st0102::{
     encode_strict_compliance as encode_st0102_strict_compliance, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
-    UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
+    EncodeConfig as St0601EncodeConfig, OutOfRangePolicy as RustOutOfRangePolicy, UasDatalinkLs,
+    decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
-    encode_strict_compliance as encode_st0601_strict_compliance, encode_to_vec as encode_st0601,
-    patch as patch_st0601,
+    encode_strict_compliance as encode_st0601_strict_compliance,
+    encode_to_vec_with as encode_st0601_with, patch as patch_st0601,
 };
 use tst_core::klv::st0605::{
     PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
@@ -1224,14 +1225,61 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     Ok(r)
 }
 
+// ---------------------------------------------------------------------------
+// OutOfRangePolicy — IntEnum-shaped frozen PyClass.
+// ---------------------------------------------------------------------------
+
+/// Policy for ranged values that fall outside their ST 0601 mapped range
+/// during encoding.
+///
+/// - ``ERROR`` (default): raise ``KlvEncodeError(OUT_OF_RANGE)`` — the
+///   encoder never silently alters the caller's data.
+/// - ``INDICATOR``: emit the tag's spec-defined Out-of-Range special value
+///   instead of raising. This applies only to the tags whose INT_MIN sentinel
+///   (``0x8000`` for 2-byte, ``0x80000000`` for 4-byte signed mappings) means
+///   "Out of Range" per ST 0601.19 §7.5 / requirement ST 0601.13-27.  Of the
+///   currently encodable ``UasDatalinkLs`` fields, these are: platform pitch /
+///   roll / angle-of-attack (Tags 6, 7, 50) and full-range pitch / roll (Tags
+///   90, 91). All other fields, and any non-finite value, still raise even
+///   under ``INDICATOR``.
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
+#[pyclass(name = "OutOfRangePolicy", module = "tstrans.klv", eq, eq_int, frozen)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PyOutOfRangePolicy {
+    ERROR = 0,
+    INDICATOR = 1,
+}
+
+impl From<PyOutOfRangePolicy> for RustOutOfRangePolicy {
+    fn from(p: PyOutOfRangePolicy) -> Self {
+        match p {
+            PyOutOfRangePolicy::ERROR => RustOutOfRangePolicy::Error,
+            PyOutOfRangePolicy::INDICATOR => RustOutOfRangePolicy::Indicator,
+        }
+    }
+}
+
 /// Encode a Python `UasDatalinkLs` to wire bytes (lenient — emits only
 /// the populated fields, no mandatory-tag enforcement). Returns
 /// `bytes` containing the 16-byte UL + BER length + body.
+///
+/// The optional keyword-only `out_of_range_policy` (default: `ERROR`) controls
+/// how values outside their ST 0601 mapped range are handled — see
+/// `OutOfRangePolicy` for details.
 #[pyfunction]
-#[pyo3(name = "encode_uas_datalink")]
-fn encode_uas_datalink_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+#[pyo3(name = "encode_uas_datalink", signature = (record, *, out_of_range_policy = None))]
+fn encode_uas_datalink_py(
+    py: Python<'_>,
+    record: &Bound<'_, PyAny>,
+    out_of_range_policy: Option<PyOutOfRangePolicy>,
+) -> PyResult<PyObject> {
     let rust_rec = py_to_uas_datalink_ls(record)?;
-    let bytes = encode_st0601(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    let mut opts = St0601EncodeConfig::default();
+    if let Some(p) = out_of_range_policy {
+        opts.out_of_range_policy = p.into();
+    }
+    let bytes =
+        encode_st0601_with(&rust_rec, &opts).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
     Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
 }
 
@@ -1284,6 +1332,7 @@ fn patch_uas_datalink_py(
 // ---------------------------------------------------------------------------
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyOutOfRangePolicy>()?;
     m.add_function(wrap_pyfunction!(decode_precision_timestamp_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_vmti_py, m)?)?;

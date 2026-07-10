@@ -703,6 +703,8 @@ class UasDatalinkLs:
 Klv0601 = UasDatalinkLs
 
 
+OutOfRangePolicy = _native_mod.OutOfRangePolicy
+
 decode_uas_datalink = _native_mod.decode_uas_datalink
 encode_uas_datalink = _native_mod.encode_uas_datalink
 encode_uas_datalink_strict_compliance = _native_mod.encode_uas_datalink_strict_compliance
@@ -893,6 +895,7 @@ __all__: list[str] = [
     "Attitude",
     "FieldOfView",
     "Corners",
+    "OutOfRangePolicy",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",

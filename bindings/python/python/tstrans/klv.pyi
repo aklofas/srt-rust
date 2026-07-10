@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, final
 
 # Bytes-like input accepted by the decoders. PyO3's &[u8] extractor takes any
 # buffer-protocol object. Private (leading underscore) so stubtest doesn't
@@ -400,10 +400,30 @@ class UasDatalinkLs:
 # Spec-compat alias.
 Klv0601 = UasDatalinkLs
 
+@final
+class OutOfRangePolicy:
+    """Policy for values outside their ST 0601 mapped range during encoding.
+
+    - ``ERROR`` (default): raise ``KlvEncodeError(OUT_OF_RANGE)``.
+    - ``INDICATOR``: emit the tag's spec-defined Out-of-Range special value
+      (INT_MIN sentinel, ``0x8000`` or ``0x80000000``) instead of raising.
+      Applies only to tags where ST 0601 defines the indicator; of the
+      currently encodable fields: platform pitch/roll/angle-of-attack
+      (Tags 6, 7, 50) and full-range pitch/roll (Tags 90, 91). All other
+      fields, and any non-finite value, still raise under ``INDICATOR``.
+    """
+
+    ERROR: OutOfRangePolicy
+    INDICATOR: OutOfRangePolicy
+
 def decode_uas_datalink(
     buf: _BytesLike, *, strict: bool = ..., compliance: bool = ...
 ) -> UasDatalinkLs: ...
-def encode_uas_datalink(record: UasDatalinkLs) -> bytes: ...
+def encode_uas_datalink(
+    record: UasDatalinkLs,
+    *,
+    out_of_range_policy: Optional[OutOfRangePolicy] = ...,
+) -> bytes: ...
 def encode_uas_datalink_strict_compliance(record: UasDatalinkLs) -> bytes: ...
 def patch_uas_datalink(
     raw: bytes, edits: Union[UasDatalinkLs, dict[str, object]]
@@ -450,6 +470,7 @@ __all__ = [
     "Attitude",
     "FieldOfView",
     "Corners",
+    "OutOfRangePolicy",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",

@@ -259,9 +259,10 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                             // header extension (X=1) must be skipped, and any
                             // RFC 3550 §5.1 padding (P=1) trimmed. Mirrors the
                             // UDP RTP recv path (RtpRecvTransport::recv_bytes).
-                            // A malformed header (truncated / bad version /
-                            // wrong PT) is dropped + counter-ticked rather than
-                            // fed to the demuxer.
+                            // A malformed header (truncated / bad version) is
+                            // dropped + counter-ticked rather than fed to the
+                            // demuxer; a non-MP2T payload type decodes fine but
+                            // is dropped by the explicit PT check below.
                             match crate::packet::RtpHeader::decode(payload_bytes) {
                                 Err(parse_err) => {
                                     stats.malformed_frames.fetch_add(1, Ordering::Relaxed);

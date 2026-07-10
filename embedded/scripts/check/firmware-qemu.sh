@@ -43,7 +43,7 @@ echo "==> compiling + linking firmware.elf"
 ( cd "$FW" && arm-none-eabi-gcc \
     -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
     -Os -ffunction-sections -fdata-sections --specs=nano.specs --specs=rdimon.specs \
-    -T mps2_an386.ld -Wl,--gc-sections -DTST_SKIP_ABI_ASSERTS -I "$INC" \
+    -T mps2_an386.ld -Wl,--gc-sections -I "$INC" \
     startup.c main.c \
     -Wl,--start-group "-L$ARDIR" -ltstrans_firmware -lc -lm -lrdimon -Wl,--end-group \
     -o firmware.elf )

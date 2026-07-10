@@ -10006,14 +10006,18 @@ int tst_udp_sender_send_ts(struct TstUdpSender *p, const uint8_t *bytes, size_t 
  * via `const _: () = assert!(...)` blocks on the Rust side; this
  * duplicates the guard on the C side so consumers building against an
  * upgraded libtstrans see the mismatch immediately rather than at runtime.
+ *
+ * The asserts are split by pointer width: the stats structs and
+ * tst_klv_link_t carry only fixed-width integer fields, so their sizes
+ * hold on any width; the event-view structs carry pointer / size_t
+ * fields, so their expected sizes are pinned per width (64-bit hosts and
+ * the 32-bit embedded targets the firmware-qemu gate proves). An
+ * unrecognized pointer width skips only the pointer-bearing asserts.
  */
 #if !defined(TST_SKIP_ABI_ASSERTS) && !defined(_TST_ABI_ASSERTS_DONE)
 #define _TST_ABI_ASSERTS_DONE
 #define _TST_ABI_ASSERT(c, msg) _Static_assert((c), msg)
-_TST_ABI_ASSERT(sizeof(tst_nal_t)                  == 24, "tst_nal_t size drift");
-_TST_ABI_ASSERT(sizeof(tst_obu_t)                  == 24, "tst_obu_t size drift");
-_TST_ABI_ASSERT(sizeof(tst_descriptor_t)           == 24, "tst_descriptor_t size drift");
-_TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t size drift");
+/* Pointer-width-independent layouts (fixed-width integer fields only). */
 _TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
@@ -10026,4 +10030,16 @@ _TST_ABI_ASSERT(sizeof(tst_receiver_stats_t)       == 32, "tst_receiver_stats_t 
 _TST_ABI_ASSERT(sizeof(tst_sender_stats_t)         == 32, "tst_sender_stats_t size drift: expected 32 bytes");
 _TST_ABI_ASSERT(sizeof(tst_muxer_stats_t)          == 6176, "tst_muxer_stats_t size drift: expected 6176 bytes");
 _TST_ABI_ASSERT(sizeof(tst_mux_sender_stats_t)     == 6192, "tst_mux_sender_stats_t size drift: expected 6192 bytes");
+/* Pointer-bearing layouts — expected sizes differ by pointer width. */
+#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
+_TST_ABI_ASSERT(sizeof(tst_nal_t)                  == 24, "tst_nal_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_obu_t)                  == 24, "tst_obu_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_descriptor_t)           == 24, "tst_descriptor_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t size drift");
+#elif UINTPTR_MAX == 0xFFFFFFFF
+_TST_ABI_ASSERT(sizeof(tst_nal_t)                  == 12, "tst_nal_t size drift (32-bit)");
+_TST_ABI_ASSERT(sizeof(tst_obu_t)                  == 12, "tst_obu_t size drift (32-bit)");
+_TST_ABI_ASSERT(sizeof(tst_descriptor_t)           == 16, "tst_descriptor_t size drift (32-bit)");
+_TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 28, "tst_stream_info_t size drift (32-bit)");
+#endif
 #endif

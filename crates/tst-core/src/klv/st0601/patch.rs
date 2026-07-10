@@ -15,7 +15,7 @@ use crate::klv::checksum::checksum_running_sum_16;
 use crate::klv::length::{read_ber, read_ber_oid, write_ber, write_ber_oid};
 
 use super::encode::encode_tag_value;
-use super::model::UasDatalinkLs;
+use super::model::{OutOfRangePolicy, UasDatalinkLs};
 use super::tags::TAGS;
 
 /// Rebase a slice-relative decode-error offset to an absolute `raw`
@@ -173,7 +173,8 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
                 new_body.extend_from_slice(&tlv[header_len..]);
             }
         } else if let Some(spec) = TAGS.iter().find(|s| u32::from(s.id) == tag) {
-            match encode_tag_value(edits, spec, None)? {
+            // patch keeps strict range behavior; policy is an encode-entry option
+            match encode_tag_value(edits, spec, None, OutOfRangePolicy::Error)? {
                 Some(value) => emit_tlv(tag, &value, &mut new_body)?,
                 None => new_body.extend_from_slice(tlv),
             }
@@ -190,7 +191,8 @@ pub fn patch(raw: &[u8], edits: &UasDatalinkLs) -> Result<Vec<u8>, KlvPatchError
         if spec.id == 1 || seen.contains(&u32::from(spec.id)) {
             continue;
         }
-        if let Some(value) = encode_tag_value(edits, spec, None)? {
+        // patch keeps strict range behavior; policy is an encode-entry option
+        if let Some(value) = encode_tag_value(edits, spec, None, OutOfRangePolicy::Error)? {
             emit_tlv(u32::from(spec.id), &value, &mut new_body)?;
         }
     }

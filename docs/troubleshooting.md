@@ -290,58 +290,59 @@ filtering by kind is not the issue).
 **A UDP or RIST `recv` blocks forever and cannot be stopped from another thread**
 
 **Symptom:** a thread parked in `UdpRecvTransport::recv_bytes` (or the
-Python/C equivalent) does not return even after calling what you expect
-to be a shutdown signal. SRT, RTP, and TCP all expose a cloneable cancel
-handle (`SrtCancelHandle` / `RtpCancelHandle` / `TcpCancelHandle`) that
-you can fire from any thread; UDP and RIST do not have an equivalent
-handle type.
+Python equivalent) does not return when another thread tries to shut it
+down. SRT, RTP, and TCP expose a cloneable cancel handle
+(`SrtCancelHandle` / `RtpCancelHandle` / `TcpCancelHandle`) that can be
+fired from any thread; UDP and RIST have no equivalent.
 
-**Diagnosis:** there is no cross-thread cancel handle on `tst-udp` or
-`tst-rist` by design — see the
-[deferred-features entry](/docs/project/deferred-features.md) for the
-rationale. Both receivers do poll an internal liveness flag every 100 ms,
-so the correct shutdown path is to call `close()` on the transport itself.
-`close()` is safe to call from any thread (the flag is an `Arc<AtomicBool>`),
-and a parked `recv` will return `TransportError::Closed` within 100 ms.
+**Diagnosis:** there is no race-free way to interrupt a live UDP or RIST
+receive from another thread. Both `recv_bytes` and `close()` take `&mut
+self`, so they cannot be called concurrently in safe Rust — calling
+`close()` from another thread while `recv` is in flight is not possible
+without unsafe code, and wrapping the transport in a `Mutex` just
+reproduces the GIL-freeze shape (the mutex blocks the closer until the
+recv finishes, so nothing is gained). The supported shutdown pattern is
+cooperative: pass a finite per-call timeout and check a stop flag between
+calls. See the [deferred-features entry](/docs/project/deferred-features.md)
+for the deferral rationale.
 
-**Fix:** hold a reference to the transport (or a `DemuxReceiver<UdpRecvTransport>`
-/ `DemuxReceiver<RistRecvTransport>`) that is reachable from your shutdown
-thread, and call `close()` on it when you need to stop. If that is not
-possible without restructuring ownership, use a finite timeout on each
-`recv` call and poll a stop flag in the caller loop — shown here for UDP
-(`UdpRecvTransport::recv_timeout`; RIST's Rust transport has no per-call
-deadline method, so on RIST the `close()`-based path above is the only
-cross-thread option):
+**Fix:** use `recv_timeout` (UDP Rust) or `timeout_ms` (Python UDP/RIST)
+for a bounded per-call deadline, and check a stop flag in the caller loop.
+The owning thread calls `close()` once it decides to stop, between `recv`
+calls:
 
 ```rust,ignore
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 let stop = Arc::new(AtomicBool::new(false));
-let stop_clone = Arc::clone(&stop);
+let stop_for_signal = Arc::clone(&stop);
 
-// Shutdown thread: set the flag; recv loop notices within timeout_ms.
+// Signal thread: set the flag. The recv loop notices on the next
+// timeout tick (within `timeout_ms`). No reference to the transport
+// is needed here — cooperative stop via an AtomicBool.
 std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_secs(30));
-    stop_clone.store(true, Ordering::Release);
+    stop_for_signal.store(true, Ordering::Release);
 });
 
-// Recv loop: bounded wait + stop-flag check.
+// Recv loop on the owning thread — the ONLY thread that calls recv or close.
 let mut buf = vec![0u8; 65535];
 loop {
     if stop.load(Ordering::Acquire) {
+        recv_transport.close(); // safe: called by the owning thread
         break;
     }
     match recv_transport.recv_timeout(&mut buf, std::time::Duration::from_millis(200)) {
         Ok(Some(n)) => { /* process buf[..n] */ }
-        Ok(None) => continue,  // timeout — loop and re-check stop
+        Ok(None) => continue,  // timeout tick — loop back and check stop
         Err(e) => return Err(e.into()),
     }
 }
 ```
 
-If you need to stop the loop from a thread that cannot reach the transport,
-consider switching to SRT, RTP, or TCP, all of which expose a cancel
-handle that is safe to store and fire from any context. See
-[srt-cancel-handle.md](/docs/reference/srt-cancel-handle.md) for the
+If you need to interrupt the recv from a thread that does not own the
+transport, consider switching to SRT, RTP, or TCP — all three expose a
+cloneable cancel handle that is safe to store and fire from any context.
+See [srt-cancel-handle.md](/docs/reference/srt-cancel-handle.md) for the
 cancel-handle pattern.

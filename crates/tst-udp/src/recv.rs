@@ -22,12 +22,15 @@ use crate::url::UdpUrl;
 ///
 /// # Cross-thread cancellation
 ///
-/// `UdpRecvTransport` does not expose a cancel handle. Calling [`RecvTransport::close`]
-/// from any thread (the flag is `Arc<AtomicBool>`) unblocks a parked
-/// [`RecvTransport::recv_bytes`] within 100 ms on the next internal poll tick.
-/// For a bounded single-call deadline, use [`UdpRecvTransport::recv_timeout`].
-/// If you need true cross-thread cancel without owning the transport, consider
-/// `tst-srt` / `tst-rtp` / `tst-tcp`, which expose cloneable cancel handles.
+/// `UdpRecvTransport` does not expose a cancel handle. Both
+/// [`RecvTransport::recv_bytes`] and [`RecvTransport::close`] take `&mut self`,
+/// so they cannot be called concurrently — there is no race-free way to
+/// interrupt a live receive from another thread. Use cooperative shutdown
+/// instead: call [`UdpRecvTransport::recv_timeout`] with a finite deadline and
+/// check a stop flag in the caller loop; the owning thread calls `close()` once
+/// it decides to stop. If you need to fire shutdown from a thread that does not
+/// own the transport, consider `tst-srt` / `tst-rtp` / `tst-tcp`, which expose
+/// cloneable cancel handles.
 pub struct UdpRecvTransport {
     socket: UdpSocket,
     local: SocketAddr,

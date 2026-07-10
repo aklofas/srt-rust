@@ -185,9 +185,10 @@ class RecvTransport:
         Note: actual timeout latency may exceed ``timeout_ms`` by up to
         ~100 ms due to the internal librist poll window.
 
-        No cross-thread cancel handle: call ``close()`` from any thread to
-        unblock a parked ``recv`` within ~100 ms, or pass ``timeout_ms`` for
-        a single-call deadline.
+        No cross-thread cancel handle: there is no race-free way to interrupt
+        a live ``recv()`` from another thread; ``close()`` is only safe to call
+        after ``recv()`` returns. Use a finite ``timeout_ms`` and check a stop
+        flag between calls for cooperative shutdown.
 
         Raises:
             RistError(kind=RECV_TIMEOUT): No packet within ``timeout_ms``.

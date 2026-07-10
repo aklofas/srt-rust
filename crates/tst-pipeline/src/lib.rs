@@ -47,7 +47,12 @@
 //!   embedding binary must supply a `#[global_allocator]`. Verified in CI
 //!   against `thumbv7em-none-eabihf` and `riscv32imac-unknown-none-elf`, and at
 //!   runtime under QEMU. Under no_std the `MuxSender` lock is a `spin::Mutex`
-//!   (a single-core sender never contends).
+//!   with no priority inheritance and no interrupt masking — drive each
+//!   sender shell from a **single task** (one-sender-per-task). The type
+//!   system still permits cross-task sharing (`MuxSender` is `Sync`), but
+//!   doing so under a preemptive scheduler risks priority-inversion
+//!   livelock: a higher-priority task spinning on a lock a preempted task
+//!   holds. See the `MuxSender` docs' "`no_std` concurrency" section.
 
 #![warn(rustdoc::broken_intra_doc_links)]
 #![cfg_attr(not(feature = "std"), no_std)]

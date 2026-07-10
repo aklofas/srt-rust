@@ -34,6 +34,10 @@ time — no C symbol, signature, or struct layout changed.
 - `DemuxerBuilder` → `DemuxerConfigBuilder`; its `build()` is now infallible
   and returns a `DemuxerConfig` (previously a `Result`). A new
   `DemuxerConfig::builder()` entry point is added (PR #79).
+- `TcpUrl::addr: IpAddr` → `TcpUrl::host: String`. The field now holds the
+  host as written in the URL (either an IP literal or a DNS hostname), deferring
+  resolution to connect time. Callers that previously matched on `addr` should
+  call `host.parse::<IpAddr>()` if they need the old `IpAddr` type (DA-NET-9).
 
 ### Changed (breaking, pre-1.0) — Python and JVM binding surface
 
@@ -72,6 +76,13 @@ time — no C symbol, signature, or struct layout changed.
   modeled explicitly rather than rejected — see the Added entry below (PR #79).
 
 ### Added
+
+- `tcp://` and `tcps://` caller URLs now accept DNS hostnames in addition to IP
+  literals. Resolution happens at connect time (never at parse time). For
+  `tcps://`, TLS presents the dialed name as the SNI and verifies the server
+  certificate against it — dial a hostname for a `dnsName` SAN, or an IP
+  literal for an `iPAddress` SAN. Listener URLs (`?listen=1`) still require IP
+  literals (DA-NET-9).
 
 - ST 0601 INT_MIN "sentinel" values (out-of-range / reserved / not-available)
   are now modeled explicitly instead of being rejected. `UasDatalinkLs` gains a

@@ -23,14 +23,27 @@ sender.send_klv(&klv_bytes, pts)?;
 
 ## TLS (`tcps://`)
 
-`tcps://` requires an **IP literal** — the URL parser accepts only IPv4/IPv6
-addresses, not hostnames. The TLS library presents the IP address to the server
-during the handshake, so the server certificate must carry a matching
-`iPAddress` SubjectAltName (SAN). A certificate with only a `dnsName` SAN (even
-if the DNS name resolves to that IP) will be rejected with a TLS certificate
-error.
+`tcps://` caller URLs accept both DNS hostnames and IP literals. TLS presents
+whatever you dialed as the SNI and verifies the server certificate against it:
 
-Generate a certificate with an IP SAN using OpenSSL:
+- Dial a **hostname** (e.g. `tcps://relay.example.com:7001`) → the certificate
+  must carry a matching `dnsName` SubjectAltName (SAN).
+- Dial an **IP literal** (e.g. `tcps://192.168.1.10:7001`) → the certificate
+  must carry a matching `iPAddress` SAN.
+
+Listener URLs (`?listen=1`) still require an IP literal because the OS must
+bind to a specific address. Use `0.0.0.0` (or `::` for IPv6) to listen on all
+interfaces.
+
+Generate a certificate with a hostname SAN using OpenSSL:
+```bash
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -subj "/CN=relay.example.com" \
+  -addext "subjectAltName=DNS:relay.example.com" \
+  -out server.crt -keyout server.key
+```
+
+Or with an IP SAN if you dial by IP:
 ```bash
 openssl req -x509 -nodes -newkey rsa:2048 \
   -subj "/CN=server" \
@@ -41,10 +54,10 @@ openssl req -x509 -nodes -newkey rsa:2048 \
 ```rust
 use tst_tcp::TcpTransport;
 
-// Uses OS native cert store (the CA that signed the server cert must be there).
-let tx = TcpTransport::connect("tcps://192.168.1.10:7001")?;
+// Dial by hostname — cert must have a dnsName SAN for "relay.example.com".
+let tx = TcpTransport::connect("tcps://relay.example.com:7001?ca=ca-bundle.pem")?;
 
-// Or supply a custom CA bundle (e.g. a self-signed CA):
+// Dial by IP literal — cert must have an iPAddress SAN for 192.168.1.10.
 let tx = TcpTransport::connect("tcps://192.168.1.10:7001?ca=ca-bundle.pem")?;
 ```
 

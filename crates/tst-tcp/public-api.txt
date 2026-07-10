@@ -251,10 +251,10 @@ impl core::marker::UnsafeUnpin for tst_tcp::url::TcpUrlError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_tcp::url::TcpUrlError
 impl core::panic::unwind_safe::UnwindSafe for tst_tcp::url::TcpUrlError
 pub struct tst_tcp::url::TcpUrl
-pub tst_tcp::url::TcpUrl::addr: core::net::ip_addr::IpAddr
 pub tst_tcp::url::TcpUrl::ca: core::option::Option<alloc::string::String>
 pub tst_tcp::url::TcpUrl::cert: core::option::Option<alloc::string::String>
 pub tst_tcp::url::TcpUrl::connect_timeout: core::option::Option<core::time::Duration>
+pub tst_tcp::url::TcpUrl::host: alloc::string::String
 pub tst_tcp::url::TcpUrl::keepalive: core::option::Option<core::time::Duration>
 pub tst_tcp::url::TcpUrl::key: core::option::Option<alloc::string::String>
 pub tst_tcp::url::TcpUrl::listen: bool

@@ -27,12 +27,12 @@ let listener = TcpListener::from_url("tcp://0.0.0.0:7001?listen=1&nodelay=1")?;
 let rx = listener.accept_blocking()?;
 ```
 
-For TLS listeners, the bind address must be an IP literal (the URL parser
-accepts only IPv4/IPv6 addresses, not hostnames). The server certificate
-must carry an `iPAddress` SubjectAltName matching the IP address callers
-use to reach the server — a `dnsName` SAN will cause callers to fail with
-a certificate error. See the [TLS section in the TCP send guide](/docs/cookbook/sending/tcp.md)
-for an OpenSSL one-liner to generate a cert with an IP SAN.
+For TLS listeners, the bind address must be an IP literal because the OS must
+bind to a specific address (use `0.0.0.0` or `::` to listen on all interfaces).
+The server certificate must match what callers dial: a `dnsName` SAN if callers
+use a hostname, or an `iPAddress` SAN if callers use an IP literal. See the
+[TLS section in the TCP send guide](/docs/cookbook/sending/tcp.md) for OpenSSL
+one-liners to generate certs for both cases.
 
 ```rust
 let listener = TcpListener::from_url(

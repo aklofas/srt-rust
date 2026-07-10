@@ -22,6 +22,7 @@ pub mod builder;
 pub mod cancel;
 pub mod clock;
 pub mod error;
+pub mod h264;
 pub mod init;
 pub mod packet;
 pub mod rtcp;
@@ -56,6 +57,9 @@ pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 pub use sdp::pick::pick_mp2t;
 pub use sdp::{Sdp, SdpMedia};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
+
+// H.264 RTP payload format (RFC 6184).
+pub use h264::{H264FmtpParams, parse_rtpmap_h264};
 
 // RTSP server.
 pub use builder::RtspServerBuilder;

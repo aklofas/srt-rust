@@ -244,6 +244,11 @@ pub unsafe extern "C" fn tst_get_last_error() -> crate::c_types::c_int {
 /// Pointer to the most recent error message on this thread. Valid until
 /// the next tst-c call on the same thread. Never NULL — empty string when
 /// no error.
+///
+/// **`no_std` builds:** the backing slot is process-global rather than
+/// per-thread (see [`tst_get_last_error`]), so "the next tst-c call"
+/// means the next call from **any** task — copy the message out before
+/// another task can make a tst-c call if it must be retained.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_last_error_str() -> *const crate::c_types::c_char {
     // The thread-local CString stays alive for the thread's lifetime, but

@@ -154,7 +154,8 @@ fn tcps_ip_dial_against_dns_only_cert_loopback_fails() {
 
     // Spawn an accept thread — the handshake failure closes the connection;
     // the server side may surface an error which we intentionally ignore.
-    let _srv = thread::spawn(move || {
+    // Bind to a named variable so we can join on all paths (no thread leaks).
+    let srv = thread::spawn(move || {
         let _ = listener.accept_blocking();
     });
 
@@ -174,6 +175,10 @@ fn tcps_ip_dial_against_dns_only_cert_loopback_fails() {
         let mut buf = [0u8; 4];
         transport.recv_bytes(&mut buf).is_err()
     };
+
+    // Join before asserting so the server thread is always reaped, even if
+    // the assertion below fires (no parked accept_blocking leaks on test fail).
+    let _ = srv.join();
 
     assert!(
         error_observed,

@@ -17,7 +17,7 @@ use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel
 
 use crate::cancel::RtpCancelHandle;
 use crate::clock::RtpClock;
-use crate::packet::{RTP_HEADER_LEN, RtpHeader};
+use crate::packet::{RTP_HEADER_LEN, RTP_PT_MP2T, RtpHeader};
 use crate::rtcp::ingest::{ingest_rr, ingest_sr};
 use crate::rtcp::reporter::RtcpReporterHandle;
 use crate::rtcp::stats::RtcpStats;
@@ -853,6 +853,15 @@ impl RecvTransport for RtpRecvTransport {
                         self.packets_received += 1;
                         match RtpHeader::decode(&self.scratch[..n]) {
                             Ok(parsed) => {
+                                if parsed.header.payload_type != RTP_PT_MP2T {
+                                    self.malformed_packets =
+                                        self.malformed_packets.saturating_add(1);
+                                    tracing::debug!(
+                                        pt = parsed.header.payload_type,
+                                        "non-MP2T payload type at MP2T receiver; packet dropped",
+                                    );
+                                    continue;
+                                }
                                 // Use payload_end (not n) to exclude any RFC 3550
                                 // padding bytes and to reflect extension skipping.
                                 let payload =

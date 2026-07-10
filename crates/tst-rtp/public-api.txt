@@ -233,7 +233,6 @@ pub mod tst_rtp::packet
 pub tst_rtp::packet::RtpParseError::Truncated
 pub tst_rtp::packet::RtpParseError::Truncated::got: usize
 pub tst_rtp::packet::RtpParseError::Truncated::need: usize
-pub tst_rtp::packet::RtpParseError::UnsupportedPayloadType(u8)
 pub tst_rtp::packet::RtpParseError::UnsupportedVersion(u8)
 impl core::clone::Clone for tst_rtp::packet::RtpParseError
 pub fn tst_rtp::packet::RtpParseError::clone(&self) -> tst_rtp::packet::RtpParseError
@@ -274,6 +273,8 @@ impl core::marker::UnsafeUnpin for tst_rtp::packet::Parsed
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::Parsed
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::Parsed
 #[non_exhaustive] pub struct tst_rtp::packet::RtpHeader
+pub tst_rtp::packet::RtpHeader::marker: bool
+pub tst_rtp::packet::RtpHeader::payload_type: u8
 pub tst_rtp::packet::RtpHeader::seq: u16
 pub tst_rtp::packet::RtpHeader::ssrc: u32
 pub tst_rtp::packet::RtpHeader::timestamp: u32
@@ -1468,7 +1469,6 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::RtcpPacketType
 pub tst_rtp::RtpParseError::Truncated
 pub tst_rtp::RtpParseError::Truncated::got: usize
 pub tst_rtp::RtpParseError::Truncated::need: usize
-pub tst_rtp::RtpParseError::UnsupportedPayloadType(u8)
 pub tst_rtp::RtpParseError::UnsupportedVersion(u8)
 impl core::clone::Clone for tst_rtp::packet::RtpParseError
 pub fn tst_rtp::packet::RtpParseError::clone(&self) -> tst_rtp::packet::RtpParseError
@@ -2011,6 +2011,8 @@ impl core::marker::UnsafeUnpin for tst_rtp::clock::RtpClock
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::clock::RtpClock
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::clock::RtpClock
 #[non_exhaustive] pub struct tst_rtp::RtpHeader
+pub tst_rtp::RtpHeader::marker: bool
+pub tst_rtp::RtpHeader::payload_type: u8
 pub tst_rtp::RtpHeader::seq: u16
 pub tst_rtp::RtpHeader::ssrc: u32
 pub tst_rtp::RtpHeader::timestamp: u32

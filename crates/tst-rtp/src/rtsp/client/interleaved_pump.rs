@@ -272,26 +272,36 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
                                     );
                                 }
                                 Ok(parsed) => {
-                                    let ts_payload = Bytes::copy_from_slice(
-                                        &payload_bytes[parsed.payload_offset..parsed.payload_end],
-                                    );
-                                    // Bounded, drop-newest, non-blocking. A `Full`
-                                    // queue means a slow/absent consumer — drop the
-                                    // newest frame (live-stream convention) and
-                                    // counter-tick so the pump never blocks (a
-                                    // blocking send would wedge this thread, which
-                                    // also carries the control channel — a self-DoS).
-                                    // Only a dropped RECEIVER is fatal.
-                                    match data_tx.try_send(ts_payload) {
-                                        Ok(()) => {}
-                                        Err(mpsc::TrySendError::Full(_)) => {
-                                            stats
-                                                .media_frames_dropped
-                                                .fetch_add(1, Ordering::Relaxed);
-                                        }
-                                        Err(mpsc::TrySendError::Disconnected(_)) => {
-                                            // Receiver dropped — pump exits.
-                                            return;
+                                    if parsed.header.payload_type != crate::packet::RTP_PT_MP2T {
+                                        stats.malformed_frames.fetch_add(1, Ordering::Relaxed);
+                                        tracing::debug!(
+                                            target: "tst_rtp::client::pump",
+                                            pt = parsed.header.payload_type,
+                                            "non-MP2T payload type at MP2T receiver; frame dropped",
+                                        );
+                                    } else {
+                                        let ts_payload = Bytes::copy_from_slice(
+                                            &payload_bytes
+                                                [parsed.payload_offset..parsed.payload_end],
+                                        );
+                                        // Bounded, drop-newest, non-blocking. A `Full`
+                                        // queue means a slow/absent consumer — drop the
+                                        // newest frame (live-stream convention) and
+                                        // counter-tick so the pump never blocks (a
+                                        // blocking send would wedge this thread, which
+                                        // also carries the control channel — a self-DoS).
+                                        // Only a dropped RECEIVER is fatal.
+                                        match data_tx.try_send(ts_payload) {
+                                            Ok(()) => {}
+                                            Err(mpsc::TrySendError::Full(_)) => {
+                                                stats
+                                                    .media_frames_dropped
+                                                    .fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            Err(mpsc::TrySendError::Disconnected(_)) => {
+                                                // Receiver dropped — pump exits.
+                                                return;
+                                            }
                                         }
                                     }
                                 }

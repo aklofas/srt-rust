@@ -197,7 +197,13 @@ impl TcpListenerBuilder {
 
     fn format_url(&self) -> String {
         let scheme = if self.url.tls { "tcps" } else { "tcp" };
-        let mut url = format!("{}://{}:{}?listen=1", scheme, self.url.addr, self.url.port);
+        // IPv6 literals must be bracketed in URLs (e.g. `[::1]`).
+        let host = if self.url.host.contains(':') {
+            format!("[{}]", self.url.host)
+        } else {
+            self.url.host.clone()
+        };
+        let mut url = format!("{}://{}:{}?listen=1", scheme, host, self.url.port);
 
         if let Some(cert) = &self.url.cert {
             url.push_str(&format!("&cert={}", cert));
@@ -243,5 +249,15 @@ mod tests {
     fn listener_url_parse_error_propagates() {
         let err = TcpListenerBuilder::from_url("invalid://host");
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn ipv6_listener_url_round_trips() {
+        // format_url must bracket IPv6 literals so the re-parsed URL is valid.
+        let b = TcpListenerBuilder::from_url("tcp://[::1]:7001?listen=1").unwrap();
+        let formatted = b.format_url();
+        let reparsed = crate::url::TcpUrl::parse(&formatted).expect("re-parse must succeed");
+        assert_eq!(reparsed.host, "::1");
+        assert!(reparsed.listen);
     }
 }

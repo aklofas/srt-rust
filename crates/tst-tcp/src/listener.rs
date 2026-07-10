@@ -1,8 +1,8 @@
 //! [`TcpListener`] — sync TCP listener that accepts new `TcpTransport` connections.
 
 use std::io;
-use std::net::SocketAddr;
 use std::net::TcpListener as StdTcpListener;
+use std::net::{IpAddr, SocketAddr};
 #[cfg(feature = "tls")]
 use std::sync::Arc;
 
@@ -51,7 +51,13 @@ impl TcpListener {
             ));
         }
 
-        let bind_addr = SocketAddr::new(parsed.addr, parsed.port);
+        let ip: IpAddr = parsed.host.parse().map_err(|_| {
+            TcpError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("listener host '{}' must be an IP literal", parsed.host),
+            ))
+        })?;
+        let bind_addr = SocketAddr::new(ip, parsed.port);
         let mut listener = Self::bind(bind_addr)?;
         listener.config.merge_from_url(&parsed);
 

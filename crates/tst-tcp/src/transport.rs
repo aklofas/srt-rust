@@ -101,6 +101,30 @@ pub struct TcpTransport {
     pub(crate) alive: Arc<AtomicBool>,
 }
 
+/// Resolve `host:port` (IP literal or DNS name) and connect with `timeout`
+/// applied per candidate address, returning the stream + the address that
+/// accepted. DA-NET-9: hostnames resolve here, never at URL-parse time.
+pub(crate) fn connect_stream(
+    host: &str,
+    port: u16,
+    timeout: std::time::Duration,
+) -> std::io::Result<(TcpStream, SocketAddr)> {
+    use std::net::ToSocketAddrs;
+    let mut last_err = None;
+    for addr in (host, port).to_socket_addrs()? {
+        match TcpStream::connect_timeout(&addr, timeout) {
+            Ok(s) => return Ok((s, addr)),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("no addresses resolved for {host}:{port}"),
+        )
+    }))
+}
+
 impl TcpTransport {
     /// Build a caller-side `TcpTransport` from a URL (TLS automatically
     /// applied for `tcps://`).
@@ -129,9 +153,8 @@ impl TcpTransport {
             }
         }
 
-        let peer = SocketAddr::new(url.addr, url.port);
-        let socket =
-            TcpStream::connect_timeout(&peer, cfg.connect_timeout_or_default()).map_err(|e| {
+        let (socket, peer) = connect_stream(&url.host, url.port, cfg.connect_timeout_or_default())
+            .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::TimedOut {
                     TcpError::ConnectTimeout {
                         seconds: cfg.connect_timeout_or_default().as_secs(),
@@ -461,5 +484,34 @@ mod write_loop_tests {
             Err((TransportError::Broken { .. }, mark_dead)) => assert!(mark_dead),
             other => panic!("expected Broken, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod connect_stream_tests {
+    use super::connect_stream;
+
+    #[test]
+    fn connect_stream_resolves_localhost() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        // "localhost" may resolve to ::1 first — the per-address loop must
+        // fall through to 127.0.0.1.
+        let (s, peer) =
+            connect_stream("localhost", port, std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(peer.port(), port);
+        drop((s, l));
+    }
+
+    #[test]
+    fn connect_stream_resolution_failure_is_clean_io_error() {
+        // RFC 2606 .invalid TLD — guaranteed NXDOMAIN, no external network needed.
+        let err = connect_stream(
+            "nonexistent.invalid",
+            7001,
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap_err();
+        let _ = err; // any io::Error is acceptable; must not panic
     }
 }

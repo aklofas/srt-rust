@@ -294,6 +294,8 @@ impl H264Depacketizer {
         } else {
             is_gap = false;
         }
+        // last_seq is updated before the early return so the next packet's
+        // delta is computed correctly (e.g. the empty-payload discard path).
         self.last_seq = Some(header.seq);
 
         // ── Rule 3: timestamp boundary ────────────────────────────────────
@@ -448,9 +450,10 @@ impl H264Depacketizer {
     ///
     /// If the F bit is set the NALU is corrupt — discard and poison.
     fn push_nalu(&mut self, bytes: &[u8]) {
+        debug_assert!(!bytes.is_empty(), "dispatch guarantees non-empty NALUs");
         if bytes.is_empty() {
-            // Shouldn't happen given the dispatch check, but be safe.
-            self.stats.packets_discarded += 1;
+            // Unreachable via feed()'s dispatch guard; kept as a release-mode
+            // safety net (Task 4 feeds STAP-A sub-NALUs through here too).
             return;
         }
         if bytes[0] & 0x80 != 0 {
@@ -486,7 +489,8 @@ impl H264Depacketizer {
         self.au_has_idr = false;
         self.au_has_sps = false;
         self.au_has_pps = false;
-        // gap_pending is NOT reset here — it must persist to poison the next AU.
+        // gap_pending is NOT reset here — it must persist to poison the next
+        // AU; consumed in the au_ts.is_none() new-AU block in feed().
     }
 }
 

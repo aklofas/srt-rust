@@ -505,13 +505,11 @@ mod connect_stream_tests {
 
     #[test]
     fn connect_stream_resolution_failure_is_clean_io_error() {
-        // RFC 2606 .invalid TLD — guaranteed NXDOMAIN, no external network needed.
-        let err = connect_stream(
-            "nonexistent.invalid",
-            7001,
-            std::time::Duration::from_secs(5),
-        )
-        .unwrap_err();
+        // An empty host fails getaddrinfo's argument preprocessing before any
+        // resolver query is issued, so this stays hermetic even on a runner
+        // with blocked or misconfigured DNS. (A real NXDOMAIN path is
+        // resolver-dependent and deliberately not exercised in unit tests.)
+        let err = connect_stream("", 7001, std::time::Duration::from_secs(5)).unwrap_err();
         let _ = err; // any io::Error is acceptable; must not panic
     }
 }

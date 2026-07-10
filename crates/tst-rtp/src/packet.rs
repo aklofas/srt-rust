@@ -543,18 +543,42 @@ mod tests {
         let mut buf = [0u8; 12];
         h.encode_into(&mut buf);
         assert_eq!(buf[1], 33); // M=0 | PT=33
+
+        // Setting the marker field must flip the M bit in octet 1.
+        let mut h = RtpHeader::new(1, 2, 3);
+        h.marker = true;
+        let mut buf = [0u8; 12];
+        h.encode_into(&mut buf);
+        assert_eq!(buf[1], 0x80 | 33); // M=1 | PT=33
     }
 
     use proptest::prelude::*;
 
     proptest! {
         #[test]
-        fn encode_decode_roundtrip(seq in any::<u16>(), ts in any::<u32>(), ssrc in any::<u32>()) {
-            let h = RtpHeader::new(seq, ts, ssrc);
+        fn encode_decode_roundtrip(
+            seq in any::<u16>(),
+            ts in any::<u32>(),
+            ssrc in any::<u32>(),
+            marker in any::<bool>(),
+            payload_type in 0u8..=127,
+        ) {
+            // Struct literal — same crate, so #[non_exhaustive] doesn't
+            // bind; covers marker=true and dynamic PTs, which new() never
+            // produces.
+            let h = RtpHeader {
+                seq,
+                timestamp: ts,
+                ssrc,
+                marker,
+                payload_type,
+            };
             let mut buf = [0u8; 12];
             h.encode_into(&mut buf);
             let parsed = RtpHeader::decode(&buf).unwrap();
             prop_assert_eq!(parsed.header, h);
+            prop_assert_eq!(parsed.header.marker, marker);
+            prop_assert_eq!(parsed.header.payload_type, payload_type);
             prop_assert_eq!(parsed.payload_offset, 12);
         }
     }

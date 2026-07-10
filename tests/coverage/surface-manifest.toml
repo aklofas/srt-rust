@@ -8086,6 +8086,14 @@ item = "tst_rtp::h264::H264Depacketizer"
 reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
 
 [[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Au::clone"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Au::fmt"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
 item = "tst_rtp::h264::depacketizer::H264Depacketizer"
 reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
 

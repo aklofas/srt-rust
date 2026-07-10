@@ -470,4 +470,56 @@ class St0601Test {
                 .build();
         assertThrows(IllegalArgumentException.class, () -> Klv.encodeUasDatalink(rec));
     }
+
+    // -----------------------------------------------------------------------
+    // OutOfRangePolicy overload tests
+    // -----------------------------------------------------------------------
+
+    /**
+     * Tag 6 (Platform Pitch, ±20°) with value 25.0 is out of range.
+     *
+     * <p>The default 1-arg {@link Klv#encodeUasDatalink(UasDatalinkLs)} still
+     * throws {@link KlvEncodeException} (policy = ERROR). The 2-arg overload
+     * with {@link OutOfRangePolicy#INDICATOR} succeeds and the decoded record
+     * carries a null {@code platformPitchDeg} with tag 6 in {@code sentinelTags}.
+     */
+    @Test
+    void encodeOutOfRangeIndicatorPolicy() throws KlvDecodeException, KlvEncodeException {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .platformPitchDeg(25.0)
+                .build();
+
+        // Default (ERROR) policy still throws for an out-of-range value.
+        assertThrows(KlvEncodeException.class, () -> Klv.encodeUasDatalink(rec));
+
+        // INDICATOR policy emits the Out-of-Range special instead of erroring.
+        byte[] raw = Klv.encodeUasDatalink(rec, OutOfRangePolicy.INDICATOR);
+        UasDatalinkLs back = Klv.decodeUasDatalink(raw);
+        assertNull(back.platformPitchDeg(),
+                "Out-of-Range indicator must leave platformPitchDeg null");
+        assertTrue(back.sentinelTags().contains(6L),
+                "tag 6 must appear in sentinelTags after INDICATOR encode");
+        assertTrue(back.fieldErrors().isEmpty(),
+                "sentinel must not produce a field error on decode");
+    }
+
+    /**
+     * The 2-arg overload with {@link OutOfRangePolicy#ERROR} behaves identically
+     * to the 1-arg overload: it throws for an out-of-range value.
+     */
+    @Test
+    void encodeErrorPolicyThrowsLikeDefault() {
+        java.nio.ByteBuffer ul = java.nio.ByteBuffer.wrap(
+                HexFormat.of().parseHex("060e2b34020b01010e01030101000000"));
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ul)
+                .platformPitchDeg(25.0)
+                .build();
+
+        assertThrows(KlvEncodeException.class,
+                () -> Klv.encodeUasDatalink(rec, OutOfRangePolicy.ERROR));
+    }
 }

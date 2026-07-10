@@ -254,6 +254,10 @@ pub tst_rtp::h264::depacketizer::H264Au::annexb: alloc::vec::Vec<u8>
 pub tst_rtp::h264::depacketizer::H264Au::key_frame: bool
 pub tst_rtp::h264::depacketizer::H264Au::pts: tst_core::mpegts::common::Pts90khz
 pub tst_rtp::h264::depacketizer::H264Au::rtp_timestamp: u32
+impl core::clone::Clone for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::clone(&self) -> tst_rtp::h264::depacketizer::H264Au
+impl core::fmt::Debug for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Send for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Sync for tst_rtp::h264::depacketizer::H264Au
@@ -368,6 +372,10 @@ pub tst_rtp::h264::H264Au::annexb: alloc::vec::Vec<u8>
 pub tst_rtp::h264::H264Au::key_frame: bool
 pub tst_rtp::h264::H264Au::pts: tst_core::mpegts::common::Pts90khz
 pub tst_rtp::h264::H264Au::rtp_timestamp: u32
+impl core::clone::Clone for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::clone(&self) -> tst_rtp::h264::depacketizer::H264Au
+impl core::fmt::Debug for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Send for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Sync for tst_rtp::h264::depacketizer::H264Au
@@ -2011,6 +2019,10 @@ pub tst_rtp::H264Au::annexb: alloc::vec::Vec<u8>
 pub tst_rtp::H264Au::key_frame: bool
 pub tst_rtp::H264Au::pts: tst_core::mpegts::common::Pts90khz
 pub tst_rtp::H264Au::rtp_timestamp: u32
+impl core::clone::Clone for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::clone(&self) -> tst_rtp::h264::depacketizer::H264Au
+impl core::fmt::Debug for tst_rtp::h264::depacketizer::H264Au
+pub fn tst_rtp::h264::depacketizer::H264Au::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Send for tst_rtp::h264::depacketizer::H264Au
 impl core::marker::Sync for tst_rtp::h264::depacketizer::H264Au

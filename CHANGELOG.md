@@ -37,7 +37,7 @@ time — no C symbol, signature, or struct layout changed.
 - `TcpUrl::addr: IpAddr` → `TcpUrl::host: String`. The field now holds the
   host as written in the URL (either an IP literal or a DNS hostname), deferring
   resolution to connect time. Callers that previously matched on `addr` should
-  call `host.parse::<IpAddr>()` if they need the old `IpAddr` type (DA-NET-9).
+  call `host.parse::<IpAddr>()` if they need the old `IpAddr` type (DA-NET-9, PR #91).
 
 ### Changed (breaking, pre-1.0) — Python and JVM binding surface
 
@@ -82,7 +82,7 @@ time — no C symbol, signature, or struct layout changed.
   `tcps://`, TLS presents the dialed name as the SNI and verifies the server
   certificate against it — dial a hostname for a `dnsName` SAN, or an IP
   literal for an `iPAddress` SAN. Listener URLs (`?listen=1`) still require IP
-  literals (DA-NET-9).
+  literals (DA-NET-9, PR #91).
 
 - ST 0601 INT_MIN "sentinel" values (out-of-range / reserved / not-available)
   are now modeled explicitly instead of being rejected. `UasDatalinkLs` gains a
@@ -113,7 +113,7 @@ time — no C symbol, signature, or struct layout changed.
   Tags 6, 7, 50–52, 79, 80, 90–93 instead of erroring (of these, Tags 6, 7,
   50, 90, 91 are currently encodable typed fields); `encode_to_vec_with`;
   Python `out_of_range_policy=` kwarg; JVM `encodeUasDatalink(record, policy)`
-  overload. Default behavior unchanged.
+  overload. Default behavior unchanged. (PR #92)
 
 ### Changed — default features and transport behavior
 

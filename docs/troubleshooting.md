@@ -102,25 +102,35 @@ Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where 
 
 ## TCP / TLS (`tcps://`)
 
-**`tcps://` fails with a certificate error even though the hostname resolves correctly**
+**`tcps://` fails with a certificate error**
 
-The URL parser accepts only IPv4/IPv6 literals — hostnames are rejected at
-parse time. When `tcps://` is used, the TLS handshake presents the **IP
-address** as the server name (via `iPAddress` SubjectAltName). A certificate
-with only a `dnsName` SAN — even a name that resolves to the correct IP — does
-not match and the handshake fails.
+TLS verifies the server certificate against exactly what you dialed:
 
-Fix: regenerate the server certificate with an `iPAddress` SAN entry matching
-the IP address the client connects to:
+- If you dialed a **hostname** (`tcps://relay.example.com:7001`), the
+  certificate must carry a `dnsName` SubjectAltName for that hostname.
+- If you dialed an **IP literal** (`tcps://192.168.1.10:7001`), the
+  certificate must carry an `iPAddress` SubjectAltName for that address.
 
+A common mistake is generating a cert with only an `iPAddress` SAN and then
+dialing a hostname (or vice versa). The fix is to dial what the cert says, or
+regenerate the cert to match what you want to dial.
+
+Generate a cert for hostname dialing:
+```bash
+openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=relay.example.com" \
+  -addext "subjectAltName=DNS:relay.example.com" -out server.crt -keyout server.key
+```
+
+Generate a cert for IP-literal dialing:
 ```bash
 openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=server" \
   -addext "subjectAltName=IP:192.168.1.10" -out server.crt -keyout server.key
 ```
 
-Then reference this certificate with `?cert=server.crt&key=server.key` on the
+Reference this certificate with `?cert=server.crt&key=server.key` on the
 listener URL, and add the CA to the caller's trust store (`?ca=ca.crt`) or to
-the OS native trust store.
+the OS native trust store. Listener bind addresses still require IP literals
+(`0.0.0.0` / `::`); the listener-vs-caller asymmetry is intentional.
 
 ## KLV decode rejection
 

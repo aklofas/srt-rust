@@ -11,6 +11,8 @@ use crate::error::{KlvEncodeError, KlvFieldError};
 use crate::float_ext::FloatExt;
 use crate::klv::st0601::tags::LinearRange;
 
+use super::model::OutOfRangePolicy;
+
 /// Spec-defined meaning of the INT_MIN sentinel wire value for a given
 /// ST 0601 signed-mapping tag. Derived from ST 0601.19 per-tag "Special
 /// Values" table entries; not all signed tags reserve INT_MIN — only the
@@ -128,6 +130,7 @@ pub(crate) fn encode_fixed_range(
     tag: u32,
     value: f64,
     out: &mut [u8],
+    policy: OutOfRangePolicy,
 ) -> Result<(), KlvEncodeError> {
     if out.len() < range.byte_length {
         return Err(KlvEncodeError::BufferTooSmall {
@@ -136,6 +139,26 @@ pub(crate) fn encode_fixed_range(
         });
     }
     if !value.is_finite() || value < range.min || value > range.max {
+        // ST 0601.19 §7.5 / ST 0601.13-27: where the item defines an
+        // "Out of Range" special value, an encoder shall use it. Only the
+        // 11 tags whose INT_MIN sentinel *means* OutOfRange qualify —
+        // emitting the same bit pattern on a Reserved/NotAvailable tag
+        // would signal the wrong condition. Non-finite input is a caller
+        // bug, not an out-of-range measurement: always an error.
+        if policy == OutOfRangePolicy::Indicator
+            && value.is_finite()
+            && range.signed
+            && st0601_sentinel_meaning(tag) == Some(St0601SentinelMeaning::OutOfRange)
+        {
+            let int_min_value: i64 = match range.byte_length {
+                2 => i64::from(i16::MIN),
+                4 => i64::from(i32::MIN),
+                _ => unreachable!("OutOfRange sentinel tags are 2- or 4-byte"),
+            };
+            let all = int_min_value.to_be_bytes();
+            out[..range.byte_length].copy_from_slice(&all[8 - range.byte_length..]);
+            return Ok(());
+        }
         return Err(KlvEncodeError::OutOfRange {
             tag,
             value,
@@ -328,7 +351,7 @@ mod tests {
         };
         for v in [-89.999, -45.0, 0.0, 45.0, 89.999] {
             let mut buf = [0u8; 4];
-            encode_fixed_range(&r, 13, v, &mut buf).unwrap();
+            encode_fixed_range(&r, 13, v, &mut buf, OutOfRangePolicy::Error).unwrap();
             let back = decode_fixed_range(&r, 13, &buf)
                 .unwrap()
                 .expect("non-sentinel round-trip");
@@ -377,7 +400,7 @@ mod tests {
         };
         for v in [0.0, 90.0, 180.0, 270.0, 359.99] {
             let mut buf = [0u8; 2];
-            encode_fixed_range(&r, 5, v, &mut buf).unwrap();
+            encode_fixed_range(&r, 5, v, &mut buf, OutOfRangePolicy::Error).unwrap();
             // Unsigned ranges never return None; the inner unwrap is infallible.
             let back = decode_fixed_range(&r, 5, &buf).unwrap().unwrap();
             assert!((back - v).abs() < 0.01, "v={v} back={back}");
@@ -394,7 +417,7 @@ mod tests {
         };
         for v in [-900.0, -500.0, 0.0, 1000.0, 18000.0, 19000.0] {
             let mut buf = [0u8; 2];
-            encode_fixed_range(&r, 15, v, &mut buf).unwrap();
+            encode_fixed_range(&r, 15, v, &mut buf, OutOfRangePolicy::Error).unwrap();
             let back = decode_fixed_range(&r, 15, &buf).unwrap().unwrap();
             assert!((back - v).abs() < 1.0, "v={v} back={back}");
         }
@@ -409,7 +432,7 @@ mod tests {
             max: 90.0,
         };
         let mut buf = [0u8; 4];
-        let err = encode_fixed_range(&r, 13, 100.0, &mut buf).unwrap_err();
+        let err = encode_fixed_range(&r, 13, 100.0, &mut buf, OutOfRangePolicy::Error).unwrap_err();
         matches!(err, KlvEncodeError::OutOfRange { .. });
     }
 
@@ -423,11 +446,69 @@ mod tests {
         };
         for v in [-0.075, -0.05, 0.0, 0.05, 0.075] {
             let mut buf = [0u8; 2];
-            encode_fixed_range(&r, 26, v, &mut buf).unwrap();
+            encode_fixed_range(&r, 26, v, &mut buf, OutOfRangePolicy::Error).unwrap();
             let back = decode_fixed_range(&r, 26, &buf)
                 .unwrap()
                 .expect("non-sentinel round-trip");
             assert!((back - v).abs() < 1e-5, "v={v} back={back}");
         }
+    }
+
+    #[test]
+    fn indicator_policy_emits_int_min_for_out_of_range_tag() {
+        // Tag 6 (Platform Pitch, ±20°, 2-byte signed): 25.0 is out of range and
+        // Tag 6's sentinel meaning is OutOfRange → emit 0x8000, not an error.
+        let r = LinearRange {
+            signed: true,
+            byte_length: 2,
+            min: -20.0,
+            max: 20.0,
+        };
+        let mut buf = [0u8; 2];
+        encode_fixed_range(&r, 6, 25.0, &mut buf, OutOfRangePolicy::Indicator).unwrap();
+        assert_eq!(buf, [0x80, 0x00]);
+    }
+
+    #[test]
+    fn indicator_policy_ineligible_tag_still_errors() {
+        // Tag 13 (Sensor Latitude): sentinel meaning is Reserved, not OutOfRange.
+        let r = LinearRange {
+            signed: true,
+            byte_length: 4,
+            min: -90.0,
+            max: 90.0,
+        };
+        let mut buf = [0u8; 4];
+        let err =
+            encode_fixed_range(&r, 13, 95.0, &mut buf, OutOfRangePolicy::Indicator).unwrap_err();
+        assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 13, .. }));
+    }
+
+    #[test]
+    fn indicator_policy_nonfinite_still_errors() {
+        let r = LinearRange {
+            signed: true,
+            byte_length: 2,
+            min: -20.0,
+            max: 20.0,
+        };
+        let mut buf = [0u8; 2];
+        assert!(
+            encode_fixed_range(&r, 6, f64::NAN, &mut buf, OutOfRangePolicy::Indicator).is_err()
+        );
+    }
+
+    #[test]
+    fn indicator_policy_in_range_value_encodes_normally() {
+        let r = LinearRange {
+            signed: true,
+            byte_length: 2,
+            min: -20.0,
+            max: 20.0,
+        };
+        let (mut a, mut b) = ([0u8; 2], [0u8; 2]);
+        encode_fixed_range(&r, 6, 10.0, &mut a, OutOfRangePolicy::Error).unwrap();
+        encode_fixed_range(&r, 6, 10.0, &mut b, OutOfRangePolicy::Indicator).unwrap();
+        assert_eq!(a, b);
     }
 }

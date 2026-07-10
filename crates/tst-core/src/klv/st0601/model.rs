@@ -270,6 +270,25 @@ impl Default for UasDatalinkLs {
     }
 }
 
+/// What the `encode*` entry points do when a ranged value falls outside
+/// its ST 0601 mapped range.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutOfRangePolicy {
+    /// Reject the record with [`crate::error::KlvEncodeError::OutOfRange`] (default).
+    #[default]
+    Error,
+    /// Emit the tag's spec-defined "Out of Range" special value instead of
+    /// erroring — ST 0601.19 §7.5 / requirement ST 0601.13-27 (`0x8000` /
+    /// `0x80000000` for 2-/4-byte signed mappings). Applies ONLY to the
+    /// tags whose INT_MIN sentinel means Out of Range (Tags 6, 7, 50, 51,
+    /// 52, 79, 80, 90–93 — see
+    /// [`st0601_sentinel_meaning`][crate::klv::st0601::st0601_sentinel_meaning]);
+    /// every other tag, and any non-finite input, still returns
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    Indicator,
+}
+
 #[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -277,6 +296,8 @@ pub struct EncodeConfig {
     pub universal_label: UniversalLabel,
     /// Version byte to use for Tag 65 if the struct's `uas_ls_version` is None.
     pub version: u8,
+    /// Policy for ranged values that fall outside their ST 0601 mapped range.
+    pub out_of_range_policy: OutOfRangePolicy,
 }
 
 impl Default for EncodeConfig {
@@ -289,6 +310,7 @@ impl Default for EncodeConfig {
             // per ST 0601.19 §6.2 has byte 13 = 0x00, which is not the
             // ST 0601 version number.
             version: 19,
+            out_of_range_policy: OutOfRangePolicy::Error,
         }
     }
 }

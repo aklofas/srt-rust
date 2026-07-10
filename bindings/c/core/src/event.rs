@@ -320,6 +320,11 @@ const _TST_NAL_SIZE: () = assert!(
     core::mem::size_of::<TstNal>() == 24,
     "TstNal must be 24 bytes (4 bytes header + 8 bytes pointer + 8 bytes len)"
 );
+#[cfg(target_pointer_width = "32")]
+const _TST_NAL_SIZE: () = assert!(
+    core::mem::size_of::<TstNal>() == 12,
+    "TstNal must be 12 bytes on 32-bit (4 bytes header + 4 bytes pointer + 4 bytes len)"
+);
 
 /// `repr(C)` mirror of `tst_core::mpegts::demux::Obu`.
 ///
@@ -344,6 +349,11 @@ const _TST_OBU_SIZE: () = assert!(
     core::mem::size_of::<TstObu>() == 24,
     "TstObu must be 24 bytes"
 );
+#[cfg(target_pointer_width = "32")]
+const _TST_OBU_SIZE: () = assert!(
+    core::mem::size_of::<TstObu>() == 12,
+    "TstObu must be 12 bytes on 32-bit"
+);
 
 /// `repr(C)` mirror of `tst_core::mpegts::descriptors::RawDescriptor`.
 ///
@@ -363,6 +373,11 @@ pub struct TstDescriptor {
 const _TST_DESCRIPTOR_SIZE: () = assert!(
     core::mem::size_of::<TstDescriptor>() == 24,
     "TstDescriptor must be 24 bytes"
+);
+#[cfg(target_pointer_width = "32")]
+const _TST_DESCRIPTOR_SIZE: () = assert!(
+    core::mem::size_of::<TstDescriptor>() == 16,
+    "TstDescriptor must be 16 bytes on 32-bit"
 );
 
 /// `repr(C)` mirror of `tst_core::mpegts::demux::StreamInfo`.
@@ -392,6 +407,11 @@ pub struct TstStreamInfo {
 const _TST_STREAM_INFO_SIZE: () = assert!(
     core::mem::size_of::<TstStreamInfo>() == 40,
     "TstStreamInfo must be 40 bytes"
+);
+#[cfg(target_pointer_width = "32")]
+const _TST_STREAM_INFO_SIZE: () = assert!(
+    core::mem::size_of::<TstStreamInfo>() == 28,
+    "TstStreamInfo must be 28 bytes on 32-bit"
 );
 
 /// `repr(C)` mirror of `tst_core::mpegts::demux::KlvLink`.
@@ -597,7 +617,6 @@ pub struct TstEvent {
     pub u: TstEventBody,
 }
 
-#[cfg(target_pointer_width = "64")]
 const _TST_EVENT_SIZE_REASONABLE: () = assert!(
     core::mem::size_of::<TstEvent>() <= 256,
     "TstEvent should fit in 256 bytes for stack-allocation comfort"

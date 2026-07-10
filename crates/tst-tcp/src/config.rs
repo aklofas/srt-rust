@@ -23,6 +23,10 @@ pub struct SocketConfig {
     /// SO_SNDBUF size in bytes.
     pub sndbuf: Option<usize>,
     /// Connect timeout (caller-side only).
+    ///
+    /// Applied per resolved address — a hostname that resolves to multiple
+    /// addresses may take up to N× this value before the connection attempt
+    /// fails overall. Default: 10 s (see [`SocketConfig::connect_timeout_or_default`]).
     pub connect_timeout: Option<Duration>,
     /// Send-side payload chunk size; per-call max for `send_bytes`.
     /// Default 64 KiB (matches reasonable TCP send-buffer sizing).

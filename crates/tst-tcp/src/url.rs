@@ -123,13 +123,9 @@ impl TcpUrl {
             }
         }
 
-        // Strip brackets from IPv6 literals (e.g. `[::1]` → `::1`).
-        let host_raw = parsed.host;
-        let host = if host_raw.starts_with('[') && host_raw.ends_with(']') {
-            host_raw[1..host_raw.len() - 1].to_string()
-        } else {
-            host_raw.to_string()
-        };
+        // tst-core's parse_url already strips IPv6 brackets from parsed.host
+        // (e.g. `[::1]` → `::1`), so no bracket-stripping is needed here.
+        let host = parsed.host.to_string();
 
         // Listeners bind a socket — the host must be an IP literal. Callers
         // accept hostnames: resolution happens at connect time and TLS uses

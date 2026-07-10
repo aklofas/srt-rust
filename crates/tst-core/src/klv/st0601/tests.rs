@@ -1,8 +1,11 @@
 use super::decode::{
     assign_ranged, decode, decode_strict, decode_strict_compliance, decode_unchecked,
 };
-use super::encode::{encode, encode_strict_compliance, encode_to_vec, encode_with, encoded_len};
-use super::model::{EncodeConfig, UasDatalinkLs};
+use super::encode::{
+    encode, encode_strict_compliance, encode_to_vec, encode_to_vec_with, encode_with, encoded_len,
+    encoded_len_with,
+};
+use super::model::{EncodeConfig, OutOfRangePolicy, UasDatalinkLs};
 use super::patch::patch;
 use super::tags::TAGS;
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
@@ -317,6 +320,7 @@ fn encode_with_custom_ul() {
     let opts = EncodeConfig {
         universal_label: custom_ul,
         version: 0x09,
+        out_of_range_policy: OutOfRangePolicy::Error,
     };
     let mut buf = vec![0u8; 256];
     let n = encode_with(&r, &opts, &mut buf).unwrap();
@@ -392,6 +396,7 @@ fn decode_strict_rejects_funky_ul() {
     let opts = EncodeConfig {
         universal_label: UniversalLabel::new([0xAB; 16]),
         version: 0x13,
+        out_of_range_policy: OutOfRangePolicy::Error,
     };
     let mut buf = vec![0u8; 256];
     let n = encode_with(&r, &opts, &mut buf).unwrap();
@@ -1842,6 +1847,105 @@ fn sentinel_between_populated_tags_is_fixpoint() {
     assert_eq!(redecoded.platform_pitch_deg, None, "pitch stays None");
     assert!(redecoded.platform_roll_deg.is_some(), "roll survives");
     assert_eq!(redecoded.sentinel_tags, vec![6u32], "sentinel tag survives");
+}
+
+// ============================================================================
+// OutOfRangePolicy::Indicator round-trip tests
+// ============================================================================
+
+/// With `OutOfRangePolicy::Indicator`, out-of-range values on eligible tags
+/// (Tags 6 and 91 here) encode to the INT_MIN sentinel rather than erroring.
+/// Decoding the output yields `None` in the typed fields and both tags in
+/// `sentinel_tags`.
+#[test]
+fn indicator_mode_round_trips_as_sentinel() {
+    let rec = UasDatalinkLs {
+        platform_pitch_deg: Some(25.0), // Tag 6, ±20° range — out of range
+        platform_roll_full_deg: Some(120.0), // Tag 91, ±90° range — out of range
+        ..UasDatalinkLs::default()
+    };
+    let opts = EncodeConfig {
+        out_of_range_policy: OutOfRangePolicy::Indicator,
+        ..Default::default()
+    };
+    let bytes = encode_to_vec_with(&rec, &opts).expect("indicator mode must not error");
+    let back = decode(&bytes).expect("decode must succeed");
+    assert_eq!(
+        back.platform_pitch_deg, None,
+        "Tag 6 sentinel must yield None"
+    );
+    assert_eq!(
+        back.platform_roll_full_deg, None,
+        "Tag 91 sentinel must yield None"
+    );
+    assert!(
+        back.sentinel_tags.contains(&6) && back.sentinel_tags.contains(&91),
+        "both tags must appear in sentinel_tags; got {:?}",
+        back.sentinel_tags,
+    );
+    use super::mapping::St0601SentinelMeaning;
+    assert_eq!(
+        super::mapping::st0601_sentinel_meaning(6),
+        Some(St0601SentinelMeaning::OutOfRange),
+    );
+}
+
+/// With `OutOfRangePolicy::Indicator`, a tag whose sentinel meaning is
+/// `NotAvailable` (not `OutOfRange`) must still error.
+#[test]
+fn indicator_mode_ineligible_tag_errors_with_hint() {
+    let rec = UasDatalinkLs {
+        corner_lat_offset_p1_deg: Some(0.08), // Tag 26, ±0.075°, meaning=NotAvailable
+        ..UasDatalinkLs::default()
+    };
+    let opts = EncodeConfig {
+        out_of_range_policy: OutOfRangePolicy::Indicator,
+        ..Default::default()
+    };
+    let err = encode_to_vec_with(&rec, &opts).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            KlvEncodeError::OutOfRange {
+                tag: 26,
+                hint: Some(_),
+                ..
+            }
+        ),
+        "expected OutOfRange for tag 26 with a hint; got {err:?}",
+    );
+}
+
+/// The default `EncodeConfig` still rejects out-of-range values.
+#[test]
+fn default_policy_still_errors() {
+    let rec = UasDatalinkLs {
+        platform_pitch_deg: Some(25.0), // Tag 6, ±20° range — out of range
+        ..UasDatalinkLs::default()
+    };
+    assert!(
+        encode_to_vec(&rec).is_err(),
+        "default policy must error on out-of-range"
+    );
+}
+
+/// Ranged fields are width-fixed: `encoded_len_with` must equal the actual
+/// encoded byte count even when the indicator policy emits a sentinel.
+#[test]
+fn indicator_mode_does_not_change_encoded_len() {
+    let rec = UasDatalinkLs {
+        platform_pitch_deg: Some(25.0), // Tag 6, out of range
+        ..UasDatalinkLs::default()
+    };
+    let opts = EncodeConfig {
+        out_of_range_policy: OutOfRangePolicy::Indicator,
+        ..Default::default()
+    };
+    assert_eq!(
+        encoded_len_with(&rec, &opts),
+        encode_to_vec_with(&rec, &opts).unwrap().len(),
+        "encoded_len_with must match actual encoded byte count under Indicator policy",
+    );
 }
 
 /// Normal decode of a non-sentinel signed field does not populate sentinel_tags.

@@ -7,7 +7,7 @@ use crate::klv::pack::{emit_ber_oid_tlv, is_typed_tag};
 use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
-use super::model::{EncodeConfig, UasDatalinkLs};
+use super::model::{EncodeConfig, OutOfRangePolicy, UasDatalinkLs};
 use super::tags::{Encoding, TAGS, TagSpec, lookup as lookup_tag};
 
 /// Encode a UAS Datalink Local Set into the caller-provided buffer per
@@ -34,6 +34,22 @@ pub fn encode(record: &UasDatalinkLs, out: &mut [u8]) -> Result<usize, KlvEncode
     encode_with(record, &EncodeConfig::default(), out)
 }
 
+/// Encode a UAS Datalink Local Set into the caller-provided buffer with
+/// explicit [`EncodeConfig`] (universal label, version byte, out-of-range
+/// policy).
+///
+/// # Errors
+/// - [`KlvEncodeError::BufferTooSmall`] if `out.len()` is less than the
+///   required encoded length.
+/// - [`KlvEncodeError::OutOfRange`] if any ranged float field falls outside
+///   its ST 0601 mapped range. Under [`OutOfRangePolicy::Indicator`],
+///   `OutOfRange` is still returned for tags without a spec-defined Out-of-Range
+///   special (i.e., tags whose INT_MIN sentinel means `Reserved` or
+///   `NotAvailable`) and for any non-finite input value.
+/// - [`KlvEncodeError::StringTooLong`] if a UTF-8 string exceeds the spec cap.
+/// - [`KlvEncodeError::RecordTooLarge`] on BER length overflow.
+/// - [`KlvEncodeError::ReservedTagInUnknown`] for typed/reserved tags in
+///   `record.unknown`.
 pub fn encode_with(
     record: &UasDatalinkLs,
     opts: &EncodeConfig,
@@ -88,9 +104,26 @@ pub fn encode_with(
 /// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — the
 /// buffer is pre-sized via [`encoded_len`].)
 pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> {
-    let n = encoded_len(record);
+    encode_to_vec_with(record, &EncodeConfig::default())
+}
+
+/// [`encode_to_vec`] with explicit [`EncodeConfig`] (universal label,
+/// version byte, out-of-range policy).
+///
+/// # Errors
+/// Same as [`encode_to_vec`]; additionally, under
+/// [`OutOfRangePolicy::Indicator`], [`KlvEncodeError::OutOfRange`] is still
+/// returned for tags without a spec-defined Out-of-Range special and for
+/// non-finite input values.
+/// (`KlvEncodeError::BufferTooSmall` cannot fire — the buffer is pre-sized
+/// via [`encoded_len_with`].)
+pub fn encode_to_vec_with(
+    record: &UasDatalinkLs,
+    opts: &EncodeConfig,
+) -> Result<Vec<u8>, KlvEncodeError> {
+    let n = encoded_len_with(record, opts);
     let mut buf = vec![0u8; n];
-    let written = encode(record, &mut buf)?;
+    let written = encode_with(record, opts, &mut buf)?;
     buf.truncate(written);
     Ok(buf)
 }
@@ -263,6 +296,7 @@ pub(super) fn encode_tag_value(
     record: &UasDatalinkLs,
     spec: &TagSpec,
     version_fallback: Option<u8>,
+    policy: OutOfRangePolicy,
 ) -> Result<Option<Vec<u8>>, KlvEncodeError> {
     let mut scratch = [0u8; 8];
     Ok(match spec.id {
@@ -309,7 +343,7 @@ pub(super) fn encode_tag_value(
         // tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
             if let Some(entry) = super::decode::ranged_entry(spec.id) {
-                encode_ranged((entry.get)(record), spec, &mut scratch)?
+                encode_ranged((entry.get)(record), spec, &mut scratch, policy)?
             } else {
                 None
             }
@@ -327,7 +361,9 @@ fn write_typed_fields(
         if spec.id == 1 {
             continue;
         }
-        if let Some(value) = encode_tag_value(record, spec, Some(opts.version))? {
+        if let Some(value) =
+            encode_tag_value(record, spec, Some(opts.version), opts.out_of_range_policy)?
+        {
             emit_ber_oid_tlv(spec.id as u32, &value, body)?;
         }
     }
@@ -393,13 +429,14 @@ fn encode_ranged(
     value: Option<f64>,
     spec: &super::tags::TagSpec,
     scratch: &mut [u8; 8],
+    policy: OutOfRangePolicy,
 ) -> Result<Option<Vec<u8>>, KlvEncodeError> {
     let Some(v) = value else { return Ok(None) };
     let r = spec
         .range
         .as_ref()
         .expect("ranged tag must have LinearRange");
-    encode_fixed_range(r, spec.id as u32, v, &mut scratch[..r.byte_length])?;
+    encode_fixed_range(r, spec.id as u32, v, &mut scratch[..r.byte_length], policy)?;
     Ok(Some(scratch[..r.byte_length].to_vec()))
 }
 

@@ -62,9 +62,11 @@ mod tests;
 
 pub use decode::{decode, decode_strict, decode_strict_compliance, decode_unchecked};
 pub use encode::{
-    _mandatory_tags, encode, encode_strict_compliance, encode_to_vec, encode_with, encoded_len,
-    encoded_len_with,
+    _mandatory_tags, encode, encode_strict_compliance, encode_to_vec, encode_to_vec_with,
+    encode_with, encoded_len, encoded_len_with,
 };
 pub use mapping::{St0601SentinelMeaning, st0601_sentinel_meaning};
-pub use model::{Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, UasDatalinkLs};
+pub use model::{
+    Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, OutOfRangePolicy, UasDatalinkLs,
+};
 pub use patch::patch;

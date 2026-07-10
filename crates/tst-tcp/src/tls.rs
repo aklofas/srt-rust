@@ -41,8 +41,7 @@ impl TlsStream {
 /// - hostname → `dnsName` SAN
 /// - IP literal → `iPAddress` SAN
 ///
-/// Resolution to a socket address happens via [`crate::transport::connect_stream`]
-/// at connect time (DA-NET-9).
+/// Resolution to a socket address happens at connect time (DA-NET-9).
 pub fn connect_tls(url: &TcpUrl, cfg: &SocketConfig) -> Result<TcpTransport, TcpError> {
     let mut roots = rustls::RootCertStore::empty();
 

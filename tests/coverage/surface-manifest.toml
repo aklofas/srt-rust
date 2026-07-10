@@ -2536,6 +2536,26 @@ item = "tst_core::klv::st0601::EncodeConfig::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::klv::st0601::OutOfRangePolicy::clone"
+reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OutOfRangePolicy::default"
+reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OutOfRangePolicy::eq"
+reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OutOfRangePolicy::fmt"
+reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
+item = "tst_core::klv::st0601::encode_to_vec_with"
+reason = "added 2026-07-10 (WP-2 encode_to_vec_with); graduate to [[surface]] as coverage is asserted"
+
+[[exempt]]
 item = "tst_core::klv::st0601::FieldOfView"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

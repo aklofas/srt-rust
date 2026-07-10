@@ -111,7 +111,8 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeUasDatalink<'local>(
 
 /// `org.tstrans.klv.Klv.nEncodeUasDatalinkWithPolicy(UasDatalinkLs, int policy) -> byte[]`
 ///
-/// Same read path as `nEncodeUasDatalink`, but uses an explicit
+/// Reads all fields from the Java `UasDatalinkLs` record, builds a Rust
+/// `UasDatalinkLs`, then calls [`encode_to_vec_with`] using an
 /// [`OutOfRangePolicy`] mapped from the `policy` int:
 /// - `0` → [`OutOfRangePolicy::Error`] (throws on any out-of-range value)
 /// - `1` → [`OutOfRangePolicy::Indicator`] (emits the spec's Out-of-Range

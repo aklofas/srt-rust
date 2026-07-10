@@ -123,6 +123,17 @@ pub struct MuxSenderStats {
 /// | C | `tst_mux_sender_close(sender)` (explicit; mirrors `Drop`) |
 ///
 /// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
+///
+/// # `no_std` concurrency
+///
+/// Under `--no-default-features` (`no_std`) the inner lock is a
+/// `spin::Mutex` with no priority inheritance and no interrupt masking.
+/// **Drive each `MuxSender` from a single task** (one-sender-per-task).
+/// The type still implements `Sync`, but sharing one instance across
+/// preemptive tasks (e.g. FreeRTOS tasks at different priorities) can
+/// livelock: a higher-priority task spins on the lock while the preempted
+/// holder never runs. Under `std` this section does not apply — the lock
+/// is `std::sync::Mutex` and cross-thread sharing is fully supported.
 pub struct MuxSender<T: Transport> {
     inner: ShellMutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction

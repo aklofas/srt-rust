@@ -44,10 +44,13 @@
 //!   transport traits all compile for bare-metal / FreeRTOS senders. The
 //!   embedding binary must supply a `#[global_allocator]`. Verified in CI
 //!   against `thumbv7em-none-eabihf` (Cortex-M4F/M7F = STM32F4/F7/H7) and
-//!   `riscv32imac-unknown-none-elf` (e.g. ESP32-P4 bare-metal). On 32-bit
-//!   cores the cancel handle's 64-bit atomic is provided by
-//!   `portable-atomic` (its `fallback`/critical-section impl is the
-//!   embedder's responsibility at link time), and KLV IMAP float math uses
+//!   `riscv32imac-unknown-none-elf` (e.g. ESP32-P4 bare-metal). The no_std
+//!   floor is a target with native atomic load/store/CAS — both verified
+//!   targets have it, and `alloc::sync::Arc` requires it; atomics-less
+//!   cores (e.g. `thumbv6m`) are not supported. On 32-bit cores the cancel
+//!   handle's 64-bit atomic comes from `portable-atomic`'s `fallback`
+//!   implementation (a lock shim over the target's native atomics — no
+//!   embedder-supplied hook needed), and KLV IMAP float math uses
 //!   `libm`. (The MPEG-TS PTS/PCR pacing math is integer-only and needs no
 //!   FPU; only KLV coordinate IMAP-B mapping uses `f64`.)
 //! - `file` (default-on, implies `std`) — enables std::fs-using helpers in

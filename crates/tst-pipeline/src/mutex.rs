@@ -4,10 +4,16 @@
 //! - Under `std`, [`ShellMutex`] is a type alias for [`std::sync::Mutex`] —
 //!   poison semantics and behavior are exactly std's (zero divergence on the
 //!   gating platforms).
-//! - Under `no_std`, it is a thin newtype over [`spin::Mutex`]. A single-core
-//!   embedded sender never contends, so the spinlock is an uncontended atomic
-//!   swap. `lock()` returns `Result<_, ()>` (always `Ok`) so the call sites —
-//!   which use `if let Ok(..)` / `match` / `.map_err(|_| ..)?` and never name
+//! - Under `no_std`, it is a thin newtype over [`spin::Mutex`] — no
+//!   poisoning, no priority inheritance, no interrupt masking. The shells'
+//!   documented contract (one sender per task) keeps the lock uncontended
+//!   in correct programs: it exists to satisfy `Sync`, not to arbitrate
+//!   cross-task sharing. Sharing one sender across preemptive tasks anyway
+//!   can livelock — a higher-priority task spins forever against a
+//!   preempted lock-holder (classic priority inversion). That is a
+//!   contract violation, not a supported mode. `lock()` returns
+//!   `Result<_, ()>` (always `Ok`) so the call sites — which use
+//!   `if let Ok(..)` / `match` / `.map_err(|_| ..)?` and never name
 //!   `PoisonError` — compile unchanged against both backends.
 
 #[cfg(feature = "std")]

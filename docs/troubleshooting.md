@@ -284,3 +284,61 @@ If `paired` is still zero after switching, the cause is not interleave
 order — check the PIDs, tolerance, and `MetadataKind` distribution
 (`KlvSyncAuCell` vs `KlvAsync` are both treated as KLV candidates, so
 filtering by kind is not the issue).
+
+## UDP / RIST receive cancellation
+
+**A UDP or RIST `recv` blocks forever and cannot be stopped from another thread**
+
+**Symptom:** a thread parked in `UdpRecvTransport::recv_bytes` (or the
+Python/C equivalent) does not return even after calling what you expect
+to be a shutdown signal. SRT, RTP, and TCP all expose a cloneable cancel
+handle (`SrtCancelHandle` / `RtpCancelHandle` / `TcpCancelHandle`) that
+you can fire from any thread; UDP and RIST do not have an equivalent
+handle type.
+
+**Diagnosis:** there is no cross-thread cancel handle on `tst-udp` or
+`tst-rist` by design — see the
+[deferred-features entry](/docs/project/deferred-features.md) for the
+rationale. Both receivers do poll an internal liveness flag every 100 ms,
+so the correct shutdown path is to call `close()` on the transport itself.
+`close()` is safe to call from any thread (the flag is an `Arc<AtomicBool>`),
+and a parked `recv` will return `TransportError::Closed` within 100 ms.
+
+**Fix:** hold a reference to the transport (or a `DemuxReceiver<UdpRecvTransport>`
+/ `DemuxReceiver<RistRecvTransport>`) that is reachable from your shutdown
+thread, and call `close()` on it when you need to stop. If that is not
+possible without restructuring ownership, use a finite `timeout_ms` on
+each `recv` call and poll a stop flag in the caller loop:
+
+```rust,ignore
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+let stop = Arc::new(AtomicBool::new(false));
+let stop_clone = Arc::clone(&stop);
+
+// Shutdown thread: set the flag; recv loop notices within timeout_ms.
+std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_secs(30));
+    stop_clone.store(true, Ordering::Release);
+});
+
+// Recv loop: bounded wait + stop-flag check.
+let mut buf = vec![0u8; 65535];
+loop {
+    if stop.load(Ordering::Acquire) {
+        break;
+    }
+    match recv_transport.recv_timeout(&mut buf, std::time::Duration::from_millis(200)) {
+        Ok(Some(n)) => { /* process buf[..n] */ }
+        Ok(None) => continue,  // timeout — loop and re-check stop
+        Err(e) => return Err(e.into()),
+    }
+}
+```
+
+If you need to stop the loop from a thread that cannot reach the transport,
+consider switching to SRT, RTP, or TCP, all of which expose a cancel
+handle that is safe to store and fire from any context. See
+[srt-cancel-handle.md](/docs/reference/srt-cancel-handle.md) for the
+cancel-handle pattern.

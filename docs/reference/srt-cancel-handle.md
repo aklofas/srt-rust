@@ -178,6 +178,16 @@ separate crate (`tst-srt-async` or feature-gated), it ships
 above. See the **Sync vs. async** section in
 [`architecture.md`](./architecture.md) for the long form.
 
+## Cancel coverage by transport
+
+| Transport | Cancel handle | Notes |
+|-----------|--------------|-------|
+| SRT (`tst-srt`) | `SrtCancelHandle` | From `Socket::cancel_handle()` or `pipeline_shell.cancel_handle()`. |
+| RTP / RTSP (`tst-rtp`) | `RtpCancelHandle` | From `RtpTransport::cancel_handle()` or the pipeline shell. |
+| TCP / TLS (`tst-tcp`) | `TcpCancelHandle` | From `TcpTransport::cancel_handle()` or the pipeline shell. |
+| UDP (`tst-udp`) | None | Call `close()` on the transport from any thread; a parked `recv` unblocks within 100 ms. See [/docs/project/deferred-features.md](/docs/project/deferred-features.md) for the deferral rationale. |
+| RIST (`tst-rist`) | None | Same as UDP — use `close()`. See [/docs/project/deferred-features.md](/docs/project/deferred-features.md). |
+
 ## See also
 
 - [`architecture.md`](./architecture.md) — Cross-thread shutdown section.

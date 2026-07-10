@@ -1499,3 +1499,38 @@ the trigger that would unblock it.
   (microsecond resolution) covers all observed real-world payloads.
 - **Trigger to revisit:** A consumer produces or ingests ST 0605 Nano
   Precision Time Stamp packs and needs sub-microsecond timestamp fidelity.
+
+## Cross-thread receive cancellation for UDP / RIST
+
+- **Status:** Not implemented for the `tst-udp` and `tst-rist` receive
+  paths. SRT (`SrtCancelHandle`), RTP (`RtpCancelHandle`), and TCP
+  (`TcpCancelHandle`) all expose cloneable cross-thread cancel handles;
+  `tst-udp` and `tst-rist` have no equivalent. Both receivers do poll
+  their internal `alive` flag on a 100 ms tick, so calling `close()` on
+  the transport from any thread unblocks a parked `recv` within 100 ms.
+  There is no way to hand a cancel-capable token to another thread
+  without also holding a reference to the transport itself.
+- **Why deferred:** The 100 ms `close()`-based shutdown covers the
+  operational need for graceful teardown. A cross-thread cancel handle
+  is permanent public API on two crates plus up to three binding mirrors;
+  no consumer has asked for it on these transports.
+- **Trigger to revisit:** A consumer needs to interrupt a parked
+  UDP or RIST receive from a thread that does not own the transport
+  (for example, a signal handler that cannot reach the transport
+  object), or the Python bindings need to lift the documented single-
+  thread recv/close contract for these transports.
+
+## RTP H.264 depayloader (RFC 6184)
+
+- **Status:** Not implemented. `tst-rtp` receives MPEG-TS-over-RTP
+  (PT 33) only; elementary H.264-over-RTP (RFC 6184 — single NAL
+  unit, STAP-A, FU-A; packetization modes 0/1) cannot be ingested.
+- **Why deferred:** It is a new wire-facing parser and public API
+  surface that deserves its own design pass (NAL reassembly, access-
+  unit boundaries, timestamp mapping into the muxer) rather than a
+  bolt-on. Field evidence exists: a field integrator runs a full
+  libav dependency in-process solely to depacketize RFC 6184 before
+  handing Annex-B access units to the muxer.
+- **Trigger to revisit:** Scheduled — planned as the next feature arc
+  (design document first). An RTSP/ONVIF-style camera source asking
+  for first-party ingest re-confirms the priority.

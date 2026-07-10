@@ -19,6 +19,15 @@ use crate::url::UdpUrl;
 ///
 /// Construct via [`UdpRecvTransport::listen`] for the URL fast-path, or via
 /// [`crate::builder::UdpRecvTransportBuilder`] (added in a later phase).
+///
+/// # Cross-thread cancellation
+///
+/// `UdpRecvTransport` does not expose a cancel handle. Calling [`RecvTransport::close`]
+/// from any thread (the flag is `Arc<AtomicBool>`) unblocks a parked
+/// [`RecvTransport::recv_bytes`] within 100 ms on the next internal poll tick.
+/// For a bounded single-call deadline, use [`UdpRecvTransport::recv_timeout`].
+/// If you need true cross-thread cancel without owning the transport, consider
+/// `tst-srt` / `tst-rtp` / `tst-tcp`, which expose cloneable cancel handles.
 pub struct UdpRecvTransport {
     socket: UdpSocket,
     local: SocketAddr,

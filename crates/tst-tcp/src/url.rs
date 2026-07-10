@@ -1,26 +1,30 @@
 //! Parsing of `tcp://` and `tcps://` URLs.
 //!
-//! - `tcp://10.0.0.5:9000` — plain TCP caller
-//! - `tcps://10.0.0.5:9000` — TLS caller
-//! - `tcp://0.0.0.0:port?listen=1` — listener (plain)
-//! - `tcps://0.0.0.0:port?listen=1&cert=...&key=...` — listener (TLS)
+//! - `tcp://10.0.0.5:9000` — plain TCP caller (IP literal)
+//! - `tcp://relay.example.com:9000` — plain TCP caller (hostname)
+//! - `tcps://10.0.0.5:9000` — TLS caller (IP literal; certificate must have `iPAddress` SAN)
+//! - `tcps://relay.example.com:9000` — TLS caller (hostname; certificate must have `dnsName` SAN)
+//! - `tcp://0.0.0.0:port?listen=1` — listener (plain; IP literal required)
+//! - `tcps://0.0.0.0:port?listen=1&cert=...&key=...` — listener (TLS; IP literal required)
 //!
-//! Hosts must be IPv4/IPv6 literals for both schemes — hostnames are
-//! rejected at parse time (`BadHost`).
+//! ## Caller URLs — IP literals and hostnames
 //!
-//! # IP-literal requirement for `tcps://`
+//! Caller URLs (no `?listen=1`) accept both IPv4/IPv6 literals and DNS
+//! hostnames. Resolution happens at connect time, never at parse time
+//! (DA-NET-9). For `tcps://`, TLS presents whatever name you dialed as the
+//! SNI and verifies the server certificate against it:
 //!
-//! The parser accepts only IPv4 or IPv6 literals, never hostnames. For TLS
-//! (`tcps://`), this means the TLS handshake presents the IP address as the
-//! server name. The server certificate must carry a matching `iPAddress`
-//! SubjectAltName (SAN); a `dnsName` SAN — even one that resolves to the same
-//! IP — will cause the handshake to fail with a certificate error. Generate
-//! a certificate with an IP SAN using:
+//! - If you dial an IP literal, the certificate must carry a matching
+//!   `iPAddress` SubjectAltName (SAN).
+//! - If you dial a hostname, the certificate must carry a matching `dnsName`
+//!   SAN.
 //!
-//! ```bash
-//! openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=server" \
-//!   -addext "subjectAltName=IP:192.168.1.10" -out server.crt -keyout server.key
-//! ```
+//! ## Listener URLs — IP literals required
+//!
+//! Listener URLs (`?listen=1`) must use an IP literal because the OS must bind
+//! a socket to a specific address. Pass `0.0.0.0` (IPv4) or `::` (IPv6) to
+//! listen on all interfaces. A hostname in a listener URL is rejected at parse
+//! time with [`TcpUrlError::BadHost`].
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -30,8 +34,11 @@ use thiserror::Error;
 /// Parsed TCP URL.
 #[derive(Debug, Clone)]
 pub struct TcpUrl {
-    /// Destination address (for caller) or bind address (for listener).
-    pub addr: IpAddr,
+    /// Destination host as written in the URL — an IPv4/IPv6 literal or a
+    /// DNS hostname. Caller URLs resolve it at connect time and (for
+    /// `tcps://`) present it verbatim for SNI/certificate verification.
+    /// Listener URLs (`?listen=1`) require an IP literal (socket bind).
+    pub host: String,
     /// Port.
     pub port: u16,
     /// True for `tcps://`.
@@ -64,7 +71,7 @@ pub enum TcpUrlError {
     BadScheme(String),
     #[error("URL must include a port")]
     MissingPort,
-    #[error("host '{0}' is not a literal IPv4/IPv6 address")]
+    #[error("listener host '{0}' must be a literal IPv4/IPv6 address")]
     BadHost(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
     BadQueryValue {
@@ -88,11 +95,7 @@ impl TcpUrl {
         };
         let port = parsed.port.ok_or(TcpUrlError::MissingPort)?;
 
-        let host_str = parsed.host;
-        let addr: IpAddr = host_str
-            .parse()
-            .map_err(|_| TcpUrlError::BadHost(host_str.to_string()))?;
-
+        // Parse query params first — we need `listen` before host validation.
         let mut listen = false;
         let mut nodelay = None;
         let mut keepalive = None;
@@ -120,8 +123,23 @@ impl TcpUrl {
             }
         }
 
+        // Strip brackets from IPv6 literals (e.g. `[::1]` → `::1`).
+        let host_raw = parsed.host;
+        let host = if host_raw.starts_with('[') && host_raw.ends_with(']') {
+            host_raw[1..host_raw.len() - 1].to_string()
+        } else {
+            host_raw.to_string()
+        };
+
+        // Listeners bind a socket — the host must be an IP literal. Callers
+        // accept hostnames: resolution happens at connect time and TLS uses
+        // the name for SNI/verification (DA-NET-9).
+        if listen && host.parse::<IpAddr>().is_err() {
+            return Err(TcpUrlError::BadHost(host));
+        }
+
         Ok(Self {
-            addr,
+            host,
             port,
             tls,
             listen,
@@ -174,6 +192,7 @@ mod tests {
         assert!(!u.tls);
         assert!(!u.listen);
         assert_eq!(u.port, 7001);
+        assert_eq!(u.host, "192.168.1.5");
     }
 
     #[test]
@@ -181,6 +200,7 @@ mod tests {
         let u = TcpUrl::parse("tcps://192.168.1.5:7001").unwrap();
         assert!(u.tls);
         assert!(!u.listen);
+        assert_eq!(u.host, "192.168.1.5");
     }
 
     #[test]
@@ -188,6 +208,7 @@ mod tests {
         let u = TcpUrl::parse("tcp://0.0.0.0:7001?listen=1").unwrap();
         assert!(!u.tls);
         assert!(u.listen);
+        assert_eq!(u.host, "0.0.0.0");
     }
 
     #[test]
@@ -261,5 +282,26 @@ mod tests {
         assert_eq!(u.rcvbuf, Some(8 * 1024 * 1024));
         assert_eq!(u.sndbuf, Some(2 * 1024 * 1024));
         assert_eq!(u.connect_timeout, Some(Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn hostname_caller_accepted() {
+        let u = TcpUrl::parse("tcp://relay.example.com:7001").unwrap();
+        assert_eq!(u.host, "relay.example.com");
+        assert!(!u.tls);
+        let u = TcpUrl::parse("tcps://relay.example.com:7001").unwrap();
+        assert!(u.tls);
+    }
+
+    #[test]
+    fn hostname_listener_rejected() {
+        let err = TcpUrl::parse("tcp://relay.example.com:7001?listen=1").unwrap_err();
+        assert!(matches!(err, TcpUrlError::BadHost(h) if h == "relay.example.com"));
+    }
+
+    #[test]
+    fn ipv6_literal_host_is_bracket_stripped() {
+        let u = TcpUrl::parse("tcps://[::1]:7001").unwrap();
+        assert_eq!(u.host, "::1");
     }
 }

@@ -85,8 +85,8 @@ pub struct H264Au {
 
 /// Controls whether out-of-band SPS/PPS are injected before IDR frames.
 ///
-/// Task 6 implements injection; until then only [`ParameterSetInjection::None`]
-/// has an effect.
+/// See the parameter-set cache section of the [`H264Depacketizer`] docs for
+/// the full cache-and-injection contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ParameterSetInjection {
@@ -1030,7 +1030,16 @@ mod tests {
         d.feed(&hdr(2, 1000, false), &pps());
         d.feed(&hdr(3, 1000, true), &[0x65, 0xAA]);
         let au = d.next_au().unwrap();
-        // Byte-identical pass-through: exactly 3 NALUs, no duplicates prepended.
+        // Byte-identical pass-through: the AU's own SPS + PPS + IDR, exactly
+        // as fed — nothing prepended.
+        let mut expected = vec![0, 0, 0, 1];
+        expected.extend(sps());
+        expected.extend([0, 0, 0, 1]);
+        expected.extend(pps());
+        expected.extend([0, 0, 0, 1, 0x65, 0xAA]);
+        assert_eq!(au.annexb, expected);
+        // Redundant with the byte-equality above, but states the intent:
+        // exactly 3 NALUs, no duplicates prepended.
         assert_eq!(
             au.annexb.windows(4).filter(|w| *w == [0, 0, 0, 1]).count(),
             3
@@ -1053,11 +1062,14 @@ mod tests {
         d.feed(&hdr(2, 4003, true), &[0x65, 0xAA]); // bare IDR in the NEXT AU
         d.next_au().unwrap();
         let au = d.next_au().unwrap();
-        assert!(
-            au.annexb
-                .windows(new_sps.len())
-                .any(|w| w == new_sps.as_slice())
-        );
+        // Second AU gets the UPDATED SPS (in-band replaced the seed) followed
+        // by the SEEDED PPS (never seen in-band, still served from the cache).
+        let mut expected = vec![0, 0, 0, 1];
+        expected.extend(&new_sps);
+        expected.extend([0, 0, 0, 1]);
+        expected.extend(pps());
+        expected.extend([0, 0, 0, 1, 0x65, 0xAA]);
+        assert_eq!(au.annexb, expected);
         assert_eq!(d.stats().parameter_set_updates, 1); // sprop→in-band change counted once
     }
 

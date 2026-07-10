@@ -307,8 +307,11 @@ and a parked `recv` will return `TransportError::Closed` within 100 ms.
 **Fix:** hold a reference to the transport (or a `DemuxReceiver<UdpRecvTransport>`
 / `DemuxReceiver<RistRecvTransport>`) that is reachable from your shutdown
 thread, and call `close()` on it when you need to stop. If that is not
-possible without restructuring ownership, use a finite `timeout_ms` on
-each `recv` call and poll a stop flag in the caller loop:
+possible without restructuring ownership, use a finite timeout on each
+`recv` call and poll a stop flag in the caller loop — shown here for UDP
+(`UdpRecvTransport::recv_timeout`; RIST's Rust transport has no per-call
+deadline method, so on RIST the `close()`-based path above is the only
+cross-thread option):
 
 ```rust,ignore
 use std::sync::atomic::{AtomicBool, Ordering};

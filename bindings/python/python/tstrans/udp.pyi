@@ -201,6 +201,10 @@ class RecvTransport:
         string is currently always ``""``; the underlying ``recv_bytes``
         API does not expose it.
 
+        No cross-thread cancel handle: call ``close()`` from any thread to
+        unblock a parked ``recv`` within ~100 ms, or pass ``timeout_ms`` for
+        a single-call deadline.
+
         Parameters
         ----------
         timeout_ms:

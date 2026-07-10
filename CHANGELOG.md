@@ -10,10 +10,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening
 
 Remediation of the two 2026-07-01 audits (correctness/spec/safety and
-simplification/refactor/dependency), landed as PRs #58–#89, plus the embedded
-audit arc (WP-EMB-1–6, PRs #85–#89 and the current PR). The C ABI stayed
-frozen at minor **17** the entire time — no C symbol, signature, or struct
-layout changed.
+simplification/refactor/dependency), landed as PRs #58–#84, plus the embedded
+audit arc (WP-EMB-1–6, PRs #85/#86/#88/#89 and the current PR) and the
+field-feedback hardening. The C ABI stayed frozen at minor **17** the entire
+time — no C symbol, signature, or struct layout changed.
 
 ### Changed (breaking, pre-1.0) — SRT buffer-size options are now byte-valued
 

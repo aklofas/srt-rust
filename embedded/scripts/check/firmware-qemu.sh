@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build the C firmware (links libtstrans_firmware.a = tst-c-core's offline C ABI
 # built no_std) and run it under QEMU mps2-an386, asserting it byte-matches the
-# committed video-roundtrip golden through the C ABI. Skips when the ARM C
+# committed video-roundtrip golden through the C ABI and that demuxing that
+# output back yields typed event structs that validate field-by-field
+# (32-bit struct-crossing). Skips when the ARM C
 # cross-toolchain or QEMU is absent (same optional-tool pattern as
 # embedded/scripts/check/qemu-runtime.sh).
 set -euo pipefail
@@ -63,7 +65,7 @@ else
 fi
 T1=$(date +%s)
 echo "$OUT"
-if ! echo "$OUT" | grep -q 'PASS: c_firmware'; then
+if ! echo "$OUT" | grep -q 'PASS: c_firmware ('; then
   echo "GATE FAILED — qemu rc=$OUT_RC, elapsed=$((T1 - T0))s of 60s budget"
   echo "  (rc=124 + full budget = hang/timeout; fast nonzero rc = a labeled FAIL[...] exit — read the transcript)"
   exit 1

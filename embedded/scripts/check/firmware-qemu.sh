@@ -68,4 +68,4 @@ if ! echo "$OUT" | grep -q 'PASS: c_firmware'; then
   echo "  (rc=124 + full budget = hang/timeout; fast nonzero rc = a labeled FAIL[...] exit — read the transcript)"
   exit 1
 fi
-echo "OK: C firmware muxer byte-matches the video-roundtrip golden under QEMU"
+echo "OK: C firmware muxer byte-matches the golden + demux struct-crossing checks pass under QEMU"

@@ -1505,15 +1505,21 @@ the trigger that would unblock it.
 - **Status:** Not implemented for the `tst-udp` and `tst-rist` receive
   paths. SRT (`SrtCancelHandle`), RTP (`RtpCancelHandle`), and TCP
   (`TcpCancelHandle`) all expose cloneable cross-thread cancel handles;
-  `tst-udp` and `tst-rist` have no equivalent. Both receivers do poll
-  their internal `alive` flag on a 100 ms tick, so calling `close()` on
-  the transport from any thread unblocks a parked `recv` within 100 ms.
-  There is no way to hand a cancel-capable token to another thread
-  without also holding a reference to the transport itself.
-- **Why deferred:** The 100 ms `close()`-based shutdown covers the
-  operational need for graceful teardown. A cross-thread cancel handle
-  is permanent public API on two crates plus up to three binding mirrors;
-  no consumer has asked for it on these transports.
+  `tst-udp` and `tst-rist` have no equivalent. Both `recv_bytes` and
+  `close` take `&mut self`, so calling `close()` while a `recv` is in
+  flight is not possible in safe Rust — there is no race-free way to
+  interrupt a live receive from another thread. Cooperative shutdown
+  requires a finite per-call timeout plus a caller-side stop flag checked
+  between calls. The Python bindings document this explicitly: "there is
+  no race-free way to interrupt a live recv(); close() is only safe to
+  call after recv() returns."
+- **Why deferred:** Cooperative timeout-based shutdown covers the
+  operational need for graceful teardown. A cancel handle is permanent
+  public API on two crates plus up to three binding mirrors; no consumer
+  has asked for it on these transports. This is precisely the gap that
+  `SrtCancelHandle` / `RtpCancelHandle` / `TcpCancelHandle` close on
+  the other transports — a future UDP/RIST cancel handle would follow
+  the same shape.
 - **Trigger to revisit:** A consumer needs to interrupt a parked
   UDP or RIST receive from a thread that does not own the transport
   (for example, a signal handler that cannot reach the transport

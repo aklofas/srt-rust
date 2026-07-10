@@ -5,10 +5,12 @@
 //! `decode_strict`; else `decode` (lenient). Builds the Java `UasDatalinkLs` via its
 //! public mutable `Builder` (the Builder-marshalling pattern from Tasks 2–3).
 //!
-//! `nEncodeUasDatalink(UasDatalinkLs) -> byte[]` — reads all fields via accessor
-//! `call_method`s, builds a Rust `UasDatalinkLs`, calls `encode_to_vec`. Mirrors
-//! tst-py's `py_to_uas_datalink_ls` including 16-byte UL validation and the
-//! `is_st0601_typed_tag` collision-drop.
+//! `nEncodeUasDatalinkWithPolicy(UasDatalinkLs, int policy) -> byte[]` — reads all
+//! fields via accessor `call_method`s, builds a Rust `UasDatalinkLs`, calls
+//! `encode_to_vec_with`. The Java 1-arg `encodeUasDatalink(record)` delegates here
+//! with `policy=0` (ERROR). The 2-arg overload passes `policy=1` for INDICATOR.
+//! Mirrors tst-py's `py_to_uas_datalink_ls` including 16-byte UL validation and
+//! the `is_st0601_typed_tag` collision-drop.
 //!
 //! `nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]` — same read path,
 //! calls `encode_strict_compliance` instead.
@@ -22,10 +24,10 @@
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
-use jni::sys::jobject;
+use jni::sys::{jint, jobject};
 use tst_core::klv::st0601::{
-    UasDatalinkLs, decode as decode_lenient, decode_strict, decode_strict_compliance,
-    encode_strict_compliance, encode_to_vec,
+    EncodeConfig, OutOfRangePolicy, UasDatalinkLs, decode as decode_lenient, decode_strict,
+    decode_strict_compliance, encode_strict_compliance, encode_to_vec_with,
 };
 use tst_core::klv::universal_label::UniversalLabel;
 
@@ -107,29 +109,49 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeUasDatalink<'local>(
 // Encode entry points
 // -----------------------------------------------------------------------
 
-/// `org.tstrans.klv.Klv.nEncodeUasDatalink(UasDatalinkLs) -> byte[]`
+/// `org.tstrans.klv.Klv.nEncodeUasDatalinkWithPolicy(UasDatalinkLs, int policy) -> byte[]`
 ///
-/// Reads all fields from the Java `UasDatalinkLs` record, builds a Rust
-/// `UasDatalinkLs`, calls `encode_to_vec`. Returns the full wire bytes
-/// `[UL:16][BER length][body][Tag1 checksum]`. Mirrors tst-py's
-/// `encode_uas_datalink`.
+/// Same read path as `nEncodeUasDatalink`, but uses an explicit
+/// [`OutOfRangePolicy`] mapped from the `policy` int:
+/// - `0` → [`OutOfRangePolicy::Error`] (throws on any out-of-range value)
+/// - `1` → [`OutOfRangePolicy::Indicator`] (emits the spec's Out-of-Range
+///   special for eligible tags: 6, 7, 50, 51, 52, 79, 80, 90–93)
+///
+/// Any other ordinal throws `java.lang.IllegalArgumentException` — this
+/// signals enum drift between the Java and Rust layers.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalink<'local>(
+pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalinkWithPolicy<'local>(
     mut env: JNIEnv<'local>,
     _c: JClass<'local>,
     record: JObject<'local>,
+    policy: jint,
 ) -> jobject {
-    crate::panic::jni_catch(
-        &mut env,
-        std::ptr::null_mut(),
-        |env| match read_uas_datalink(env, &record) {
-            Ok(rust_rec) => match encode_to_vec(&rust_rec) {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        // Exact-ordinal validation: out-of-range means enum drift between
+        // the Java and Rust layers — fail loudly.
+        let oor_policy = match policy {
+            0 => OutOfRangePolicy::Error,
+            1 => OutOfRangePolicy::Indicator,
+            other => {
+                let _ = env.throw_new(
+                    "java/lang/IllegalArgumentException",
+                    format!("unknown OutOfRangePolicy ordinal {other}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let mut opts = EncodeConfig::default();
+        opts.out_of_range_policy = oor_policy;
+        match read_uas_datalink(env, &record) {
+            Ok(rust_rec) => match encode_to_vec_with(&rust_rec, &opts) {
                 Ok(bytes) => match env.byte_array_from_slice(&bytes) {
                     Ok(arr) => arr.into_raw(),
                     Err(e) => {
                         let _ = env.throw_new(
                             "java/lang/RuntimeException",
-                            format!("nEncodeUasDatalink: byte_array_from_slice failed: {e}"),
+                            format!(
+                                "nEncodeUasDatalinkWithPolicy: byte_array_from_slice failed: {e}"
+                            ),
                         );
                         JObject::null().into_raw()
                     }
@@ -143,13 +165,13 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalink<'local>(
                 if !env.exception_check().unwrap_or(false) {
                     let _ = env.throw_new(
                         "java/lang/RuntimeException",
-                        format!("nEncodeUasDatalink: field read failed: {e}"),
+                        format!("nEncodeUasDatalinkWithPolicy: field read failed: {e}"),
                     );
                 }
                 JObject::null().into_raw()
             }
-        },
-    )
+        }
+    })
 }
 
 /// `org.tstrans.klv.Klv.nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]`

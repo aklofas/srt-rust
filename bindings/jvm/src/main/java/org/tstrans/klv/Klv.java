@@ -353,7 +353,8 @@ public final class Klv {
     }
 
     /**
-     * Encode a {@link UasDatalinkLs} to the full ST 0601 wire format.
+     * Encode a {@link UasDatalinkLs} to the full ST 0601 wire format using the
+     * default {@link OutOfRangePolicy#ERROR} policy.
      *
      * <p>Returns the full framing: {@code [UL:16][BER length][body][Tag1 checksum]}.
      * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
@@ -366,7 +367,37 @@ public final class Klv {
      */
     public static byte[] encodeUasDatalink(UasDatalinkLs record)
             throws org.tstrans.KlvEncodeException {
-        return nEncodeUasDatalink(record);
+        return encodeUasDatalink(record, OutOfRangePolicy.ERROR);
+    }
+
+    /**
+     * Encode a {@link UasDatalinkLs} to the full ST 0601 wire format with an
+     * explicit {@link OutOfRangePolicy}.
+     *
+     * <p>Returns the full framing: {@code [UL:16][BER length][body][Tag1 checksum]}.
+     * Encoding is lenient (emits only populated fields; no mandatory-tag enforcement).
+     * Mirrors tst-py's {@code encode_uas_datalink(record, out_of_range_policy=...)}.
+     *
+     * <p>When {@code policy} is {@link OutOfRangePolicy#INDICATOR}, out-of-range
+     * values on tags whose ST 0601 INT_MIN sentinel means "Out of Range"
+     * (Tags 6, 7, 50, 51, 52, 79, 80, 90–93; of these, Tags 6, 7, 50, 90, and 91
+     * are currently encodable typed fields) are replaced by the spec-defined special
+     * value rather than throwing. All other tags and non-finite inputs still throw.
+     *
+     * @param record the UAS Datalink LS to encode
+     * @param policy how to handle out-of-range field values
+     * @return ST 0601 wire bytes
+     * @throws org.tstrans.KlvEncodeException if any field value is out of range
+     *                                        (and not eligible for INDICATOR), or a
+     *                                        reserved tag appears in {@code unknown}
+     */
+    public static byte[] encodeUasDatalink(UasDatalinkLs record, OutOfRangePolicy policy)
+            throws org.tstrans.KlvEncodeException {
+        int policyInt = switch (policy) {
+            case ERROR -> 0;
+            case INDICATOR -> 1;
+        };
+        return nEncodeUasDatalinkWithPolicy(record, policyInt);
     }
 
     /**
@@ -389,7 +420,7 @@ public final class Klv {
     private static native UasDatalinkLs nDecodeUasDatalink(byte[] buf, boolean strict, boolean compliance)
             throws org.tstrans.KlvDecodeException;
 
-    private static native byte[] nEncodeUasDatalink(UasDatalinkLs record)
+    private static native byte[] nEncodeUasDatalinkWithPolicy(UasDatalinkLs record, int policy)
             throws org.tstrans.KlvEncodeException;
 
     private static native byte[] nEncodeUasDatalinkStrictCompliance(UasDatalinkLs record)

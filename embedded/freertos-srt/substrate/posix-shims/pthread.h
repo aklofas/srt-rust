@@ -7,8 +7,9 @@
 
 /* FreeRTOS-Plus-POSIX provides NO thread-specific-data (pthread_key_*) API, but
  * libsrt's sync_posix.cpp uses one key for its per-thread last-error store.
- * Declare the API here; pthread_key_shim.c implements it over FreeRTOS's single
- * thread-local-storage slot (configNUM_THREAD_LOCAL_STORAGE_POINTERS=1). The
+ * Declare the API here; pthread_key_shim.c implements it over FreeRTOS
+ * thread-local-storage slot 0 (slot 1 is cxa_override.cpp's per-task EH
+ * globals; configNUM_THREAD_LOCAL_STORAGE_POINTERS=2). The
  * definitions link into the firmware, not libsrt.a. */
 #ifndef FREERTOS_SRT_PTHREAD_KEY_DECLARED
 #define FREERTOS_SRT_PTHREAD_KEY_DECLARED

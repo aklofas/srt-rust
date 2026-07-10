@@ -15,8 +15,11 @@
 #define configSTACK_DEPTH_TYPE                  uint32_t     /* lwIP sys_thread_new byte→word conversion */
 /* loopback-arq: the SRT data plane spins up several worker pthreads (2 per multiplexer +
  * GC) plus our 2 app pthreads, each with a multi-KiB stack carved from this
- * heap, on top of libsrt's own buffers. 192 KiB (libsrt-smoke's boot-smoke budget) is far
- * too small. RAM is 4 MiB (mps2_an386.ld), so be generous. */
+ * heap. NOTE the two-heap split: ucHeap (this define) backs task stacks +
+ * kernel objects ONLY; libsrt's buffers and all C++/malloc allocations come
+ * from the separate ~2.8 MiB newlib _sbrk heap set up by the linker script.
+ * 192 KiB (libsrt-smoke's boot-smoke budget) is far too small for the stacks
+ * alone. RAM is 4 MiB (mps2_an386.ld), so be generous. */
 #define configTOTAL_HEAP_SIZE                   (1024 * 1024)
 #define configMAX_TASK_NAME_LEN                 (16)
 #define configUSE_16_BIT_TICKS                  0

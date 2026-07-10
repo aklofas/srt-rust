@@ -283,8 +283,10 @@ pub enum OutOfRangePolicy {
     /// `0x80000000` for 2-/4-byte signed mappings). Applies ONLY to the
     /// tags whose INT_MIN sentinel means Out of Range (Tags 6, 7, 50, 51,
     /// 52, 79, 80, 90–93 — see
-    /// [`st0601_sentinel_meaning`][crate::klv::st0601::st0601_sentinel_meaning]);
-    /// every other tag, and any non-finite input, still returns
+    /// [`st0601_sentinel_meaning`][crate::klv::st0601::st0601_sentinel_meaning]).
+    /// Of those, Tags 6, 7, 50, 90, 91 are the ones currently modeled as
+    /// encodable [`UasDatalinkLs`] fields; every other tag, and any
+    /// non-finite input, still returns
     /// [`crate::error::KlvEncodeError::OutOfRange`].
     Indicator,
 }

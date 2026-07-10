@@ -15,7 +15,12 @@ use crate::sdp::SdpMedia;
 /// If the `a=fmtp` line is absent or malformed, all fields carry their RFC
 /// 6184 §8.2.1 defaults: `packetization_mode = 0`, empty
 /// `sprop_parameter_sets`, no `profile_level_id`.
+///
+/// Marked non-exhaustive: RFC 6184 §8.2.1 defines further optional
+/// parameters (e.g. `max-fs`, `max-mbps`) this struct may grow to carry.
+/// Construct via [`H264FmtpParams::parse`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct H264FmtpParams {
     /// Packetization mode (RFC 6184 §5); 0 = Single NAL unit, 1 = Non-interleaved.
     /// Defaults to 0 when the fmtp line is absent.
@@ -149,12 +154,13 @@ impl H264FmtpParams {
 /// Discover the dynamic RTP payload type assigned to H.264 in an SDP media
 /// section by scanning `a=rtpmap` lines.
 ///
-/// Returns `Some(pt)` if exactly one `a=rtpmap` line names `H264` (case-
-/// insensitive) at 90 000 Hz and the payload type is listed in
-/// `media.payload_types`; otherwise `None`.
+/// Returns the payload type of the **first** `a=rtpmap` line that names
+/// `H264` (case-insensitive) AND whose payload type is listed in
+/// `media.payload_types`; `None` if no such line exists.
 ///
-/// When multiple H.264 rtpmap lines exist but only one references a listed
-/// payload type, that one is returned. If none are listed, `None` is returned.
+/// Selection policy among multiple H.264 rtpmap lines (offers with several
+/// H.264 payload types) lives at the picker level (a later task) — this
+/// function deliberately takes the first in-media match.
 pub fn parse_rtpmap_h264(media: &SdpMedia) -> Option<u8> {
     media
         .attributes
@@ -244,6 +250,20 @@ mod tests {
         let f = H264FmtpParams::parse(&m, 96);
         assert_eq!(f.packetization_mode, 0);
         assert!(f.sprop_parameter_sets.is_empty());
+    }
+
+    #[test]
+    fn fmtp_unparseable_packetization_mode_falls_back_to_0() {
+        let m = media_with(
+            &[(
+                "fmtp",
+                "96 packetization-mode=banana;profile-level-id=42001e",
+            )],
+            &[96],
+        );
+        let f = H264FmtpParams::parse(&m, 96);
+        assert_eq!(f.packetization_mode, 0); // warn + default, not an error
+        assert_eq!(f.profile_level_id.as_deref(), Some("42001e")); // later params still parsed
     }
 
     #[test]

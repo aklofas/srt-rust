@@ -7,10 +7,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Post-v0.2.0 audit remediation + API consistency
+## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening
 
 Remediation of the two 2026-07-01 audits (correctness/spec/safety and
-simplification/refactor/dependency), landed as PRs #58–#79. The C ABI stayed
+simplification/refactor/dependency), landed as PRs #58–#89, plus the embedded
+audit arc (WP-EMB-1–6, PRs #85–#89 and the current PR). The C ABI stayed
 frozen at minor **17** the entire time — no C symbol, signature, or struct
 layout changed.
 
@@ -344,6 +345,25 @@ layout changed.
 - The CI `cargo public-api` toolchain is pinned to `nightly-2026-07-03` to stop
   a recurring `std::io` / `core::io` render false-drift; render baselines with
   `cargo +nightly-2026-07-03 public-api` (PR #78).
+
+### Fixed — 32-bit C ABI layout protection (embedded audit WP-EMB-4/5)
+
+- The `tstrans.h` ABI layout asserts are now pointer-width-aware: the
+  pointer-bearing event-view structs pin per-width expected sizes (64-bit
+  and 32-bit), so 32-bit consumers no longer need `-DTST_SKIP_ABI_ASSERTS`
+  to build — and get layout-drift protection for the first time. Matching
+  `target_pointer_width = "32"` const asserts added on the Rust side. The
+  C-firmware QEMU gate now compiles with the asserts enabled and
+  additionally demuxes its own output, validating `tst_event_t` /
+  `tst_stream_info_t` / `tst_nal_t` field-by-field across the C↔Rust
+  boundary on a 32-bit target (EMB-ABI32-1).
+- Documented the `no_std` one-sender-per-task / one-handle-per-task
+  concurrency contract on `MuxSender`, the pipeline `no_std` docs, the C
+  handle layer, and `docs/languages/embedded.md`; `tst_get_last_error_str`
+  now documents its process-global `no_std` storage. Corrected the
+  portable-atomic story (native-atomics floor; `fallback` needs no embedder
+  hook) and stale FreeRTOS substrate comments (EMB-MUTEX-1 + T-G;
+  doc-comments only, no behavior change).
 
 ---
 

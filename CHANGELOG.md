@@ -108,6 +108,11 @@ time — no C symbol, signature, or struct layout changed.
   (`DemuxerConfig::sync_buf_cap`) and the chunk-and-drain pattern. Callers
   feeding files larger than 4 MiB should either raise the ceiling or switch to
   chunked feeding. (an integrator field report 2026-07-08.)
+- ST 0601 encode: opt-in `OutOfRangePolicy::Indicator` emits the spec's
+  Out-of-Range special value (`0x8000`/`0x80000000`, ST 0601.19 §7.5) for
+  Tags 6, 7, 50–52, 79, 80, 90–93 instead of erroring; `encode_to_vec_with`;
+  Python `out_of_range_policy=` kwarg; JVM `encodeUasDatalink(record, policy)`
+  overload. Default behavior unchanged.
 
 ### Changed — default features and transport behavior
 

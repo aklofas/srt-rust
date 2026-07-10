@@ -64,8 +64,10 @@ compiles the crate for `thumbv7em-none-eabihf` and
 `riscv32imac-unknown-none-elf`; a `*-none-*` target has no `std`, so the
 build itself is the guard. This is a **compile**-gate with a runtime sanity-check — the embedding
 binary supplies a `#[global_allocator]`, and on 32-bit cores
-`portable-atomic` backs the 64-bit cancel atomic (its
-critical-section/fallback impl is the embedder's responsibility). The
+`portable-atomic` backs the 64-bit cancel atomic via its `fallback`
+implementation (a lock shim over the target's native atomics — no
+embedder-supplied hook needed; atomics-less cores such as `thumbv6m`
+are not supported). The
 bare-metal compile is also exercised at runtime under QEMU
 (`qemu-system-arm -machine mps2-an386`, thumbv7em) in CI as an end-to-end
 mux round-trip. The libsrt-on-FreeRTOS port remains a future milestone.

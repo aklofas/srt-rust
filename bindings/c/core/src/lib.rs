@@ -57,8 +57,10 @@ pub(crate) mod c_types {
 // Under std: callers import `std::sync::Mutex` directly.
 // Under no_std (bare-metal): a spin::Mutex newtype that surfaces the same
 // `new() + lock() -> Result<Guard, _>` interface so call sites compile
-// verbatim in both modes. The impl is registered by a downstream glue crate
-// via `critical-section`.
+// verbatim in both modes.
+// (The `critical-section` impl a glue crate registers serves the no_std
+// last-error slot in error.rs — NOT this seam, which is plain spin.)
+//
 // No priority inheritance / interrupt masking: the documented embedding
 // contract is one-handle-per-task (see handle.rs module docs) — the lock
 // exists to satisfy Sync, not to arbitrate cross-task sharing.

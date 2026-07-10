@@ -59,6 +59,9 @@ pub(crate) mod c_types {
 // `new() + lock() -> Result<Guard, _>` interface so call sites compile
 // verbatim in both modes. The impl is registered by a downstream glue crate
 // via `critical-section`.
+// No priority inheritance / interrupt masking: the documented embedding
+// contract is one-handle-per-task (see handle.rs module docs) — the lock
+// exists to satisfy Sync, not to arbitrate cross-task sharing.
 // ---------------------------------------------------------------------------
 #[cfg(not(feature = "std"))]
 pub(crate) mod nostd_mutex {

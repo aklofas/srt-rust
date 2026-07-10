@@ -4,6 +4,14 @@
 //! `Box::into_raw(Box::new(Handle::new(inner)))`. Data-path entry points
 //! call `Handle::with_inner_mut`; `_close` calls `Handle::close`. Drop of
 //! the inner runs Drop, which closes the underlying transport / muxer.
+//!
+//! Under `no_std` the lock is the spin-backed `nostd_mutex::Mutex` — no
+//! priority inheritance, no interrupt masking — so each C handle must be
+//! driven from a single task (one-handle-per-task), the same contract
+//! `tst-pipeline` documents for its sender shells. Sharing one handle
+//! across preemptive tasks can livelock a higher-priority task against a
+//! preempted lock-holder. (`std` builds use `std::sync::Mutex`; the
+//! contract applies only to no_std/bare-metal embeddings.)
 
 use crate::error::{TstError, record_internal, record_panic_caught, set_last_error};
 #[cfg(feature = "std")]

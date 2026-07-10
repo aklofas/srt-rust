@@ -2156,6 +2156,11 @@ int tst_get_last_error(void);
  * Pointer to the most recent error message on this thread. Valid until
  * the next tst-c call on the same thread. Never NULL — empty string when
  * no error.
+ *
+ * **`no_std` builds:** the backing slot is process-global rather than
+ * per-thread (see [`tst_get_last_error`]), so "the next tst-c call"
+ * means the next call from **any** task — copy the message out before
+ * another task can make a tst-c call if it must be retained.
  */
 const char *tst_get_last_error_str(void);
 

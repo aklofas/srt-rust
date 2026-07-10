@@ -288,6 +288,11 @@ impl H264Depacketizer {
                 if self.au_ts.is_some() {
                     self.au_poisoned = true;
                 }
+                // Also discard any open FU so its bytes cannot leak into a
+                // later NALU after the gap (§7.3 discard guidance).
+                if self.fu.take().is_some() {
+                    self.stats.nalus_discarded += 1;
+                }
                 self.stats.seq_gaps += 1;
                 is_gap = true;
             }
@@ -318,7 +323,8 @@ impl H264Depacketizer {
         }
 
         // Adopt this timestamp for the current AU.
-        if self.au_ts.is_none() {
+        let is_new_au = self.au_ts.is_none();
+        if is_new_au {
             self.au_ts = Some(header.timestamp);
             self.au_ts_ext = ts_ext;
 
@@ -331,12 +337,18 @@ impl H264Depacketizer {
             if is_gap || self.gap_pending {
                 self.au_poisoned = true;
             }
+            // gap_pending was consumed by the new-AU check above; clear it so
+            // it does not cascade to the AU AFTER this one.  If is_gap is also
+            // true the gap has already poisoned THIS AU — no further carry-over.
+            self.gap_pending = false;
         }
-        // For subsequent packets of the same AU, apply gap poison here.
-        if is_gap {
+        // For subsequent packets of the SAME (already-open) AU, a gap poisons
+        // and sets gap_pending so the NEXT AU (which we may be about to start
+        // after a markerless boundary) also gets poisoned.
+        if is_gap && !is_new_au {
             self.au_poisoned = true;
             self.gap_pending = true;
-        } else {
+        } else if !is_gap {
             self.gap_pending = false;
         }
 
@@ -356,9 +368,8 @@ impl H264Depacketizer {
                 self.push_stap_a(payload);
             }
             28 => {
-                // Task 5 replaces this arm (FU-A).
-                self.stats.packets_discarded += 1;
-                self.au_poisoned = true;
+                // FU-A fragmentation unit (RFC 6184 §5.8).
+                self.push_fu_a(payload);
             }
             25 | 26 | 27 | 29 => {
                 // Interleaved-mode-only types — unrecoverable, poison the AU.
@@ -375,6 +386,10 @@ impl H264Depacketizer {
         // ── Rule 4: marker fast-path ──────────────────────────────────────
         if header.marker {
             self.complete_au();
+            // A marker establishes a firm AU boundary — the gap ambiguity
+            // from any in-flight `gap_pending` is resolved; the next AU
+            // starts clean unless it has its own gap.
+            self.gap_pending = false;
         }
     }
 
@@ -455,6 +470,18 @@ impl H264Depacketizer {
             // safety net (Task 4 feeds STAP-A sub-NALUs through here too).
             return;
         }
+        self.push_nalu_owned(bytes.to_owned());
+    }
+
+    /// Owned-buffer variant of [`push_nalu`] — used by FU-A reassembly to
+    /// avoid a copy when the reconstructed buffer is already heap-allocated.
+    ///
+    /// Checks the F bit, updates AU metadata flags, and appends Annex B
+    /// framing exactly as `push_nalu` does.
+    fn push_nalu_owned(&mut self, bytes: Vec<u8>) {
+        if bytes.is_empty() {
+            return;
+        }
         if bytes[0] & 0x80 != 0 {
             // F bit set → advertised corrupt, §5.3.
             self.stats.nalus_discarded += 1;
@@ -476,7 +503,86 @@ impl H264Depacketizer {
         }
         // Append Annex B start code + NALU bytes.
         self.au_buf.extend_from_slice(&ANNEXB_START_CODE);
-        self.au_buf.extend_from_slice(bytes);
+        self.au_buf.extend_from_slice(&bytes);
+    }
+
+    /// Unpack and reassemble an FU-A fragmentation unit (RFC 6184 §5.8).
+    ///
+    /// FU-A payload layout:
+    /// - byte 0: FU indicator — `F | NRI | 28`
+    /// - byte 1: FU header   — `S | E | R | orig-type`
+    /// - bytes 2..: fragment data
+    ///
+    /// The reconstructed NALU header is `(indicator & 0xE0) | (fu_header & 0x1F)`.
+    fn push_fu_a(&mut self, payload: &[u8]) {
+        // ── Malformed: fewer than 2 bytes ────────────────────────────────────
+        if payload.len() < 2 {
+            self.stats.packets_discarded += 1;
+            // Discard open FU and poison.
+            if self.fu.take().is_some() {
+                self.stats.nalus_discarded += 1;
+            }
+            self.au_poisoned = true;
+            return;
+        }
+
+        let ind = payload[0];
+        let fh = payload[1];
+        let fragment = &payload[2..]; // may be empty — §5.8 note, legal
+
+        // ── F bit on the FU indicator → corrupt NALU ─────────────────────────
+        if ind & 0x80 != 0 {
+            self.stats.nalus_discarded += 1;
+            if self.fu.take().is_some() {
+                self.stats.nalus_discarded += 1;
+            }
+            self.au_poisoned = true;
+            return;
+        }
+
+        let s = fh & 0x80 != 0; // Start bit
+        let e = fh & 0x40 != 0; // End bit
+
+        // ── S==1 && E==1: §5.8 MUST NOT ──────────────────────────────────────
+        if s && e {
+            self.stats.packets_discarded += 1;
+            if self.fu.take().is_some() {
+                self.stats.nalus_discarded += 1;
+            }
+            self.au_poisoned = true;
+            return;
+        }
+
+        if s {
+            // ── Start of a new FU-A NALU ──────────────────────────────────────
+            // If there is already an open FU, the previous NALU never finished.
+            if self.fu.take().is_some() {
+                self.stats.nalus_discarded += 1;
+                self.au_poisoned = true;
+            }
+            // Reconstruct the NALU header and open the accumulation buffer.
+            let nalu_hdr = (ind & 0xE0) | (fh & 0x1F);
+            let mut buf = Vec::with_capacity(1 + fragment.len());
+            buf.push(nalu_hdr);
+            buf.extend_from_slice(fragment);
+            self.fu = Some(buf);
+        } else {
+            // ── Continuation or end fragment ──────────────────────────────────
+            if let Some(ref mut buf) = self.fu {
+                buf.extend_from_slice(fragment);
+            } else {
+                // No open FU — the start packet was lost (§7.3 discard guidance).
+                self.stats.nalus_discarded += 1;
+                self.au_poisoned = true;
+                return;
+            }
+        }
+
+        if e {
+            // ── End of the FU-A NALU: close and push ─────────────────────────
+            let buf = self.fu.take().expect("fu is Some — set above or continued");
+            self.push_nalu_owned(buf);
+        }
     }
 
     /// Unpack a STAP-A aggregation packet (RFC 6184 §5.7.1 Figure 6).
@@ -710,10 +816,122 @@ mod tests {
         assert_eq!(d.stats().aus_dropped, 1);
     }
 
+    // ── FU-A tests (Task 5) ───────────────────────────────────────────────────
+
+    /// FU-A packet: indicator (F/NRI + type 28), header (S/E + orig type), fragment bytes.
+    fn fua(nri: u8, s: bool, e: bool, typ: u8, frag: &[u8]) -> Vec<u8> {
+        let ind = (nri << 5) | 28;
+        let fh = (u8::from(s) << 7) | (u8::from(e) << 6) | (typ & 0x1F);
+        let mut v = vec![ind, fh];
+        v.extend_from_slice(frag);
+        v
+    }
+
+    #[test]
+    fn fu_a_reassembles_across_three_packets() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, false), &fua(3, true, false, 5, &[0xAA]));
+        d.feed(&hdr(2, 1000, false), &fua(3, false, false, 5, &[0xBB]));
+        d.feed(&hdr(3, 1000, true), &fua(3, false, true, 5, &[0xCC]));
+        let au = d.next_au().unwrap();
+        // Reconstructed header: (ind & 0xE0) | (fh & 0x1F) = 0x60 | 5 = 0x65
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xAA, 0xBB, 0xCC]);
+        assert!(au.key_frame);
+    }
+
+    #[test]
+    fn fu_middle_fragment_loss_drops_au() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, false), &fua(3, true, false, 5, &[0xAA]));
+        d.feed(&hdr(3, 1000, true), &fua(3, false, true, 5, &[0xCC])); // seq 2 lost
+        assert!(d.next_au().is_none());
+        assert_eq!(d.stats().seq_gaps, 1);
+        assert_eq!(d.stats().aus_dropped, 1);
+    }
+
+    #[test]
+    fn fu_start_loss_discards_tail_fragments() {
+        let mut d = depay();
+        // First packet ever is a mid-NALU fragment: no gap detectable, but no open FU either.
+        d.feed(&hdr(9, 1000, false), &fua(3, false, false, 5, &[0xBB]));
+        d.feed(&hdr(10, 1000, true), &fua(3, false, true, 5, &[0xCC]));
+        assert!(d.next_au().is_none()); // AU poisoned — its head is missing (§7.3 discard guidance)
+        assert!(d.stats().nalus_discarded >= 1);
+    }
+
+    #[test]
+    fn fu_s_and_e_both_set_is_malformed() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &fua(3, true, true, 5, &[0xAA])); // §5.8 MUST NOT
+        assert!(d.next_au().is_none());
+        assert_eq!(d.stats().packets_discarded, 1);
+    }
+
+    #[test]
+    fn fu_empty_payload_is_legal() {
+        let mut d = depay();
+        // NRI=1, type=1: ind=0x3C → reconstructed header = (0x3C & 0xE0) | 1 = 0x21
+        d.feed(&hdr(1, 1000, false), &fua(1, true, false, 1, &[0xAA]));
+        d.feed(&hdr(2, 1000, false), &fua(1, false, false, 1, &[])); // empty fragment, §5.8 note
+        d.feed(&hdr(3, 1000, true), &fua(1, false, true, 1, &[0xBB]));
+        let au = d.next_au().expect("empty FU fragment is legal");
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x21, 0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn gap_after_marker_terminated_au_kills_only_next_au() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &[0x41, 0x01]); // AU-1 complete (marker)
+        d.feed(&hdr(5, 4003, true), &[0x41, 0x02]); // gap; AU-2 head may be lost → poisoned
+        d.feed(&hdr(6, 7006, true), &[0x41, 0x03]); // AU-3 clean
+        let a = d.next_au().unwrap();
+        assert_eq!(a.annexb[4], 0x41);
+        assert_eq!(a.annexb[5], 0x01);
+        let c = d.next_au().unwrap();
+        assert_eq!(c.annexb[5], 0x03); // AU-2 was dropped
+        assert_eq!(d.stats().aus_dropped, 1);
+        assert_eq!(c.pts, Pts90khz::new(6006)); // PTS still tracks timestamps, not emission count
+    }
+
+    #[test]
+    fn markerless_boundary_gap_kills_both_aus() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, false), &[0x41, 0x01]); // AU-1, no marker
+        d.feed(&hdr(4, 4003, false), &[0x41, 0x02]); // gap spanning the boundary
+        d.feed(&hdr(5, 7006, true), &[0x41, 0x03]); // AU-3
+        let only = d.next_au().unwrap();
+        assert_eq!(only.annexb[5], 0x03);
+        assert_eq!(d.stats().aus_dropped, 2);
+    }
+
+    #[test]
+    fn ssrc_change_resets_and_keeps_pts_monotonic_fua() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &[0x41, 0x01]);
+        let mut h2 = hdr(1, 900_000, true); // new source, unrelated ts base
+        h2.ssrc = 0xDEAD;
+        d.feed(&h2, &[0x41, 0x02]);
+        let a = d.next_au().unwrap();
+        let b = d.next_au().unwrap();
+        assert_eq!(a.pts, Pts90khz::new(0));
+        assert_eq!(b.pts, Pts90khz::new(3003)); // last_emitted + SSRC_RESET_PTS_STEP
+        assert_eq!(d.stats().ssrc_changes, 1);
+    }
+
+    #[test]
+    fn f_bit_nalu_discarded_and_poisons() {
+        let mut d = depay();
+        d.feed(&hdr(1, 1000, true), &[0x80 | 0x41, 0x01]); // F=1
+        assert!(d.next_au().is_none());
+        assert_eq!(d.stats().nalus_discarded, 1);
+        assert_eq!(d.stats().aus_dropped, 1);
+    }
+
     #[test]
     fn seq_gap_poisons_current_and_next_au() {
-        // AU1: seq 1 only. AU2: seq 2 then gap. AU3: should be dropped (gap_pending).
-        // AU4: should be clean.
+        // A gap poisons the AU it lands on.  When that AU is closed by a
+        // marker the boundary is established: the NEXT AU starts clean.
+        // gap_pending carries through markerless boundaries only.
         let mut d = depay();
         // AU1: clean, completed by marker.
         d.feed(&hdr(1, 1000, true), &[0x41, 0x01]);
@@ -725,16 +943,18 @@ mod tests {
         let au2 = d.next_au().expect("AU2 clean");
         assert!(!au2.key_frame);
 
-        // Gap: seq 5 (skipped 3,4) on AU3.
+        // Gap: seq 5 (skipped 3,4) on AU3. AU3 is poisoned by the gap AND
+        // closed by its own marker — boundary is known after this point.
         d.feed(&hdr(5, 3000, true), &[0x41, 0x03]);
         assert!(d.next_au().is_none(), "AU3 should be poisoned by gap");
         assert_eq!(d.stats().seq_gaps, 1);
         assert_eq!(d.stats().aus_dropped, 1);
 
-        // AU4: seq 6, right after gap — gap_pending should poison it too.
+        // AU4: seq 6, right after the marker-closed gap AU — boundary was
+        // established by the marker so AU4 starts clean.
         d.feed(&hdr(6, 4000, true), &[0x41, 0x04]);
-        assert!(d.next_au().is_none(), "AU4 poisoned by gap_pending");
-        assert_eq!(d.stats().aus_dropped, 2);
+        assert!(d.next_au().is_some(), "AU4 clean: marker resolved boundary");
+        assert_eq!(d.stats().aus_dropped, 1); // still 1 — AU4 is clean
 
         // AU5: seq 7, clean.
         d.feed(&hdr(7, 5000, true), &[0x41, 0x05]);

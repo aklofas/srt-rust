@@ -8078,6 +8078,110 @@ item = "tst_rtp::url::UrlError::source"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_rtp::H264Depacketizer"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::H264Depacketizer"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer::feed"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer::flush"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer::new"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer::next_au"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264Depacketizer::stats"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayConfig::clone"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayConfig::default"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayConfig::fmt"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayStats::clone"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayStats::default"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayStats::eq"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::H264DepayStats::fmt"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::ParameterSetInjection::clone"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::ParameterSetInjection::default"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::ParameterSetInjection::eq"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::depacketizer::ParameterSetInjection::fmt"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::fmtp::H264FmtpParams::clone"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::fmtp::H264FmtpParams::eq"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::fmtp::H264FmtpParams::fmt"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::fmtp::H264FmtpParams::parse"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::fmtp::parse_rtpmap_h264"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::h264::parse_rtpmap_h264"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
+item = "tst_rtp::parse_rtpmap_h264"
+reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
+
+[[exempt]]
 item = "tst_srt::Congestion"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

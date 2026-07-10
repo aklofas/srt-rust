@@ -165,13 +165,32 @@ pub struct H264DepayStats {
 /// `feed` never panics on any input byte pattern — adversarial payloads are
 /// handled by silently discarding and ticking the appropriate stat counter.
 ///
+/// # Parameter-set cache and BeforeIdr injection
+///
+/// The depacketizer maintains a one-slot SPS cache and one-slot PPS cache.
+/// Both are seeded from [`H264DepayConfig::initial_parameter_sets`] at
+/// construction (type 7 → SPS, type 8 → PPS; last of each wins; seeding does
+/// NOT tick `parameter_set_updates`).  In-band SPS/PPS NALUs update the cache
+/// only when their bytes differ from the cached value; each update ticks
+/// `parameter_set_updates`.
+///
+/// When [`ParameterSetInjection::BeforeIdr`] is active (the default), every
+/// IDR AU that does not already carry an in-band SPS or PPS receives the
+/// missing cached parameter set(s) prepended — SPS first, then PPS — each
+/// with a 4-byte Annex B start code.  [`ParameterSetInjection::None`] passes
+/// NALUs through unchanged.
+///
 /// # AU boundary / marker / poisoning contract summary
 ///
 /// See the [module-level doc](self) for the full 8-rule state-machine contract.
 pub struct H264Depacketizer {
-    // Used in Task 6 for parameter-set injection.
-    #[allow(dead_code)]
     config: H264DepayConfig,
+    /// Cached SPS NALU (raw bytes, no start code). Updated from in-band type-7
+    /// NALUs; seeded from `initial_parameter_sets` at construction.
+    sps_cache: Option<Vec<u8>>,
+    /// Cached PPS NALU (raw bytes, no start code). Updated from in-band type-8
+    /// NALUs; seeded from `initial_parameter_sets` at construction.
+    pps_cache: Option<Vec<u8>>,
     stats: H264DepayStats,
 
     // SSRC state (rule 1)
@@ -220,8 +239,24 @@ pub struct H264Depacketizer {
 impl H264Depacketizer {
     /// Construct a new depacketizer with the given configuration.
     pub fn new(config: H264DepayConfig) -> Self {
+        // Seed parameter-set cache from initial_parameter_sets. Last of each
+        // type wins. Does NOT tick parameter_set_updates (seeding ≠ an update).
+        let mut sps_cache: Option<Vec<u8>> = None;
+        let mut pps_cache: Option<Vec<u8>> = None;
+        for nalu in &config.initial_parameter_sets {
+            if nalu.is_empty() {
+                continue;
+            }
+            match nalu[0] & 0x1F {
+                7 => sps_cache = Some(nalu.clone()),
+                8 => pps_cache = Some(nalu.clone()),
+                _ => {} // other types ignored defensively
+            }
+        }
         Self {
             config,
+            sps_cache,
+            pps_cache,
             stats: H264DepayStats::default(),
             ssrc: None,
             last_seq: None,
@@ -441,6 +476,31 @@ impl H264Depacketizer {
             return;
         }
 
+        // ── Task 6: BeforeIdr injection ───────────────────────────────────────
+        // If the AU is an IDR and BeforeIdr injection is enabled, prepend any
+        // cached parameter sets that are not already present in this AU.
+        if self.au_has_idr
+            && self.config.parameter_set_injection == ParameterSetInjection::BeforeIdr
+        {
+            let mut prefix: Vec<u8> = Vec::new();
+            if !self.au_has_sps {
+                if let Some(ref sps) = self.sps_cache {
+                    prefix.extend_from_slice(&ANNEXB_START_CODE);
+                    prefix.extend_from_slice(sps);
+                }
+            }
+            if !self.au_has_pps {
+                if let Some(ref pps) = self.pps_cache {
+                    prefix.extend_from_slice(&ANNEXB_START_CODE);
+                    prefix.extend_from_slice(pps);
+                }
+            }
+            if !prefix.is_empty() {
+                prefix.extend_from_slice(&self.au_buf);
+                self.au_buf = prefix;
+            }
+        }
+
         // Compute PTS.
         let pts_base = self.pts_base.unwrap_or(0);
         let pts_raw = self.au_ts_ext - pts_base;
@@ -493,11 +553,19 @@ impl H264Depacketizer {
             5 => self.au_has_idr = true,
             7 => {
                 self.au_has_sps = true;
-                // Task 6 updates the parameter-set cache here.
+                // Update SPS cache; tick the counter only when bytes change.
+                if self.sps_cache.as_deref() != Some(bytes.as_slice()) {
+                    self.sps_cache = Some(bytes.clone());
+                    self.stats.parameter_set_updates += 1;
+                }
             }
             8 => {
                 self.au_has_pps = true;
-                // Task 6 updates the parameter-set cache here.
+                // Update PPS cache; tick the counter only when bytes change.
+                if self.pps_cache.as_deref() != Some(bytes.as_slice()) {
+                    self.pps_cache = Some(bytes.clone());
+                    self.stats.parameter_set_updates += 1;
+                }
             }
             _ => {}
         }
@@ -925,6 +993,83 @@ mod tests {
         assert!(d.next_au().is_none());
         assert_eq!(d.stats().nalus_discarded, 1);
         assert_eq!(d.stats().aus_dropped, 1);
+    }
+
+    // ── Task 6: parameter-set cache + BeforeIdr injection tests ──────────────
+
+    fn sps() -> Vec<u8> {
+        vec![0x67, 0x42, 0x00, 0x1E]
+    }
+    fn pps() -> Vec<u8> {
+        vec![0x68, 0xCE, 0x38, 0x80]
+    }
+    fn depay_inject(sprop: Vec<Vec<u8>>) -> H264Depacketizer {
+        H264Depacketizer::new(H264DepayConfig {
+            initial_parameter_sets: sprop,
+            ..H264DepayConfig::default() // BeforeIdr is the default
+        })
+    }
+
+    #[test]
+    fn sprop_injected_before_idr_when_absent_inband() {
+        let mut d = depay_inject(vec![sps(), pps()]);
+        d.feed(&hdr(1, 1000, true), &[0x65, 0xAA]); // bare IDR
+        let au = d.next_au().unwrap();
+        let mut expect = vec![0, 0, 0, 1];
+        expect.extend(sps());
+        expect.extend([0, 0, 0, 1]);
+        expect.extend(pps());
+        expect.extend([0, 0, 0, 1, 0x65, 0xAA]);
+        assert_eq!(au.annexb, expect);
+    }
+
+    #[test]
+    fn injection_idempotent_when_au_already_carries_ps() {
+        let mut d = depay_inject(vec![sps(), pps()]);
+        d.feed(&hdr(1, 1000, false), &sps());
+        d.feed(&hdr(2, 1000, false), &pps());
+        d.feed(&hdr(3, 1000, true), &[0x65, 0xAA]);
+        let au = d.next_au().unwrap();
+        // Byte-identical pass-through: exactly 3 NALUs, no duplicates prepended.
+        assert_eq!(
+            au.annexb.windows(4).filter(|w| *w == [0, 0, 0, 1]).count(),
+            3
+        );
+    }
+
+    #[test]
+    fn non_idr_aus_never_get_injection() {
+        let mut d = depay_inject(vec![sps(), pps()]);
+        d.feed(&hdr(1, 1000, true), &[0x41, 0x01]);
+        let au = d.next_au().unwrap();
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x41, 0x01]);
+    }
+
+    #[test]
+    fn inband_ps_updates_cache_and_counter() {
+        let mut d = depay_inject(vec![sps(), pps()]);
+        let new_sps = vec![0x67, 0x42, 0x00, 0x28]; // different SPS arrives in-band
+        d.feed(&hdr(1, 1000, true), &new_sps);
+        d.feed(&hdr(2, 4003, true), &[0x65, 0xAA]); // bare IDR in the NEXT AU
+        d.next_au().unwrap();
+        let au = d.next_au().unwrap();
+        assert!(
+            au.annexb
+                .windows(new_sps.len())
+                .any(|w| w == new_sps.as_slice())
+        );
+        assert_eq!(d.stats().parameter_set_updates, 1); // sprop→in-band change counted once
+    }
+
+    #[test]
+    fn injection_none_is_byte_faithful() {
+        let mut d = H264Depacketizer::new(H264DepayConfig {
+            parameter_set_injection: ParameterSetInjection::None,
+            initial_parameter_sets: vec![sps(), pps()],
+            ..H264DepayConfig::default()
+        });
+        d.feed(&hdr(1, 1000, true), &[0x65, 0xAA]);
+        assert_eq!(d.next_au().unwrap().annexb, [0, 0, 0, 1, 0x65, 0xAA]);
     }
 
     #[test]

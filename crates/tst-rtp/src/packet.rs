@@ -1,19 +1,19 @@
 //! `RtpHeader` — the 12-byte fixed RTP header per RFC 3550 §5.1.
 //!
 //! The **encoder** emits only the fixed 12-byte header (no CSRC list, no
-//! extension): `V=2`, `P=0`, `X=0`, `CC=0`. `M` is always 0 (we use a
-//! system-clock timestamp source which has no discontinuity signal —
-//! see [`RtpClock`](crate::clock::RtpClock)). `PT=33` (MP2T) per RFC
-//! 3551 §6 Table 5.
+//! extension): `V=2`, `P=0`, `X=0`, `CC=0`. `M` defaults to 0 and `PT`
+//! defaults to 33 (MP2T) per RFC 3551 §6 Table 5; both are settable
+//! via the [`marker`](RtpHeader::marker) and
+//! [`payload_type`](RtpHeader::payload_type) fields.
 //!
 //! The **decoder** ([`RtpHeader::decode`]) parses received packets fully —
 //! it skips any CSRC list and extension header and trims RFC 3550 padding,
 //! returning the true payload bounds — so packets from other RTP senders
 //! (CSRC/extension/padding present) depacketize correctly.
 //!
-//! Receivers accept any payload type but only MP2T (33) is meaningful
-//! for this crate; non-MP2T packets are silently dropped at the
-//! transport boundary.
+//! `decode` no longer enforces `PT=33`; instead it returns the `payload_type`
+//! field so callers can enforce whatever payload type they require. The MP2T
+//! recv path enforces `PT=33` at the transport boundary.
 
 use thiserror::Error;
 
@@ -29,9 +29,8 @@ pub const RTP_VERSION: u8 = 2;
 /// One RTP fixed-header record.
 ///
 /// Field accessors return scalars; the wire encoding lives in
-/// [`Self::encode_into`]. Pre-1.0 the struct is `#[non_exhaustive]` so
-/// adding a field (e.g., a `marker` setter once we have RTCP) is not a
-/// breaking change.
+/// [`Self::encode_into`]. The struct is `#[non_exhaustive]` pre-1.0 so
+/// adding fields is not a breaking change.
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -43,16 +42,26 @@ pub struct RtpHeader {
     pub timestamp: u32,
     /// Synchronization source — random per-stream identifier.
     pub ssrc: u32,
+    /// Marker bit (M). For MP2T sends this is always 0; on decode it
+    /// carries the peer's value (RFC 6184 uses it as an access-unit
+    /// end hint).
+    pub marker: bool,
+    /// Payload type (PT), 7 bits. 33 = MP2T; H.264 uses a dynamic PT
+    /// assigned in SDP (commonly 96).
+    pub payload_type: u8,
 }
 
 impl RtpHeader {
-    /// Construct a header from `seq` / `timestamp` / `ssrc`. Other
-    /// fields are pinned: V=2, P=0, X=0, CC=0, M=0, PT=33.
+    /// Construct a header from `seq` / `timestamp` / `ssrc`. Encoding
+    /// fields are pinned: V=2, P=0, X=0, CC=0. `marker` defaults to
+    /// `false` and `payload_type` defaults to [`RTP_PT_MP2T`] (33).
     pub fn new(seq: u16, timestamp: u32, ssrc: u32) -> Self {
         Self {
             seq,
             timestamp,
             ssrc,
+            marker: false,
+            payload_type: RTP_PT_MP2T,
         }
     }
 
@@ -69,8 +78,8 @@ impl RtpHeader {
         );
         // Octet 0: V(2) | P(1) | X(1) | CC(4) = 0b10_0_0_0000 = 0x80
         buf[0] = (RTP_VERSION << 6) & 0xC0;
-        // Octet 1: M(1) | PT(7) = 0b0_0100001 = 33
-        buf[1] = RTP_PT_MP2T & 0x7F;
+        // Octet 1: M(1) | PT(7)
+        buf[1] = (u8::from(self.marker) << 7) | (self.payload_type & 0x7F);
         // Octets 2..4: sequence (big-endian)
         buf[2..4].copy_from_slice(&self.seq.to_be_bytes());
         // Octets 4..8: timestamp (big-endian)
@@ -83,9 +92,9 @@ impl RtpHeader {
 /// Why an RTP packet failed to parse.
 ///
 /// At the transport boundary these are silently dropped + counter-ticked
-/// (the recv-side transport's malformed-packet counter, defined in
-/// Task 10) rather than surfaced as errors — RFC 3550 §5.1 expects
-/// receivers to ignore unparseable packets and continue.
+/// (the recv-side transport's malformed-packet counter) rather than
+/// surfaced as errors — RFC 3550 §5.1 expects receivers to ignore
+/// unparseable packets and continue.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
 pub enum RtpParseError {
@@ -96,10 +105,6 @@ pub enum RtpParseError {
     /// `V` (version) field was not 2.
     #[error("unsupported RTP version: {0}")]
     UnsupportedVersion(u8),
-    /// `PT` (payload type) was not 33 (MP2T). This crate is
-    /// MPEG-TS-over-RTP only; non-MP2T payloads are not parsed.
-    #[error("unsupported RTP payload type: {0} (expected 33 MP2T)")]
-    UnsupportedPayloadType(u8),
 }
 
 /// Result of [`RtpHeader::decode`] — header struct + the byte range of
@@ -121,8 +126,8 @@ pub struct Parsed {
 }
 
 impl RtpHeader {
-    /// Decode an RTP header from `buf`, validate `V=2` and `PT=33`, and
-    /// return the parsed header + the byte range of the application payload.
+    /// Decode an RTP header from `buf`, validate `V=2`, and return the
+    /// parsed header + the byte range of the application payload.
     ///
     /// The payload is `&buf[parsed.payload_offset..parsed.payload_end]`.
     ///
@@ -151,10 +156,8 @@ impl RtpHeader {
         let x_bit = (buf[0] >> 4) & 0x01; // header extension present
         let p_bit = (buf[0] >> 5) & 0x01; // padding present
         let cc = (buf[0] & 0x0F) as usize;
+        let marker = (buf[1] & 0x80) != 0;
         let pt = buf[1] & 0x7F;
-        if pt != RTP_PT_MP2T {
-            return Err(RtpParseError::UnsupportedPayloadType(pt));
-        }
 
         // Byte offset right after the fixed header + CSRC list.
         let after_csrc = RTP_HEADER_LEN + cc * 4;
@@ -221,7 +224,13 @@ impl RtpHeader {
         let timestamp = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
         let ssrc = u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]);
         Ok(Parsed {
-            header: RtpHeader::new(seq, timestamp, ssrc),
+            header: RtpHeader {
+                seq,
+                timestamp,
+                ssrc,
+                marker,
+                payload_type: pt,
+            },
             payload_offset,
             payload_end,
         })
@@ -452,22 +461,27 @@ mod tests {
     }
 
     #[test]
-    fn decode_rejects_wrong_payload_type() {
+    fn decode_dynamic_payload_type_accepted() {
+        // Dynamic PT (e.g. 96 for H.264) must now decode successfully;
+        // PT enforcement is the caller's responsibility.
         let mut buf = [0u8; 12];
         buf[0] = 0x80;
         buf[1] = 96; // dynamic PT range, not MP2T
-        let err = RtpHeader::decode(&buf).unwrap_err();
-        assert!(matches!(err, RtpParseError::UnsupportedPayloadType(96)));
+        let parsed = RtpHeader::decode(&buf).unwrap();
+        assert_eq!(parsed.header.payload_type, 96);
+        assert!(!parsed.header.marker);
     }
 
     #[test]
     fn decode_accepts_marker_bit() {
-        // M=1 is informational only on receive; we don't reject it.
+        // M=1 is informational on receive; decode exposes it via marker field.
         let mut buf = [0u8; 12];
         buf[0] = 0x80;
         buf[1] = 0x80 | 33; // M=1, PT=33
         let parsed = RtpHeader::decode(&buf).unwrap();
         assert_eq!(parsed.header.seq, 0);
+        assert!(parsed.header.marker);
+        assert_eq!(parsed.header.payload_type, 33);
     }
 
     #[test]
@@ -495,6 +509,40 @@ mod tests {
         buf[1] = 33;
         let err = RtpHeader::decode(&buf).unwrap_err();
         assert!(matches!(err, RtpParseError::Truncated { .. }));
+    }
+
+    #[test]
+    fn decode_exposes_marker_and_dynamic_pt() {
+        // V=2, M=1, PT=96 (dynamic H.264), seq=7, ts=0x11223344, ssrc=0x55667788, 1 payload byte
+        #[rustfmt::skip]
+        let pkt: &[u8] = &[
+            0x80, 0x80 | 96, 0, 7,
+            0x11, 0x22, 0x33, 0x44,
+            0x55, 0x66, 0x77, 0x88,
+            0xAB,
+        ];
+        let parsed = RtpHeader::decode(pkt).expect("dynamic PT must decode");
+        assert!(parsed.header.marker);
+        assert_eq!(parsed.header.payload_type, 96);
+        assert_eq!(parsed.header.seq, 7);
+        assert_eq!(&pkt[parsed.payload_offset..parsed.payload_end], &[0xAB]);
+    }
+
+    #[test]
+    fn decode_pt33_no_marker_unchanged() {
+        let pkt: &[u8] = &[0x80, 33, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x47];
+        let parsed = RtpHeader::decode(pkt).unwrap();
+        assert!(!parsed.header.marker);
+        assert_eq!(parsed.header.payload_type, 33);
+    }
+
+    #[test]
+    fn encode_into_honors_marker_and_pt_fields() {
+        // Default construction stays byte-identical to the old pinned M=0/PT=33.
+        let h = RtpHeader::new(1, 2, 3);
+        let mut buf = [0u8; 12];
+        h.encode_into(&mut buf);
+        assert_eq!(buf[1], 33); // M=0 | PT=33
     }
 
     use proptest::prelude::*;

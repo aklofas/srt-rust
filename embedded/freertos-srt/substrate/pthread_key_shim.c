@@ -2,8 +2,9 @@
  *
  * FreeRTOS-Plus-POSIX ships no pthread_key_* API, but libsrt's sync_posix.cpp
  * needs exactly ONE key (CThreadError's per-thread last-error). We back that key
- * with FreeRTOS's single thread-local-storage pointer slot 0
- * (configNUM_THREAD_LOCAL_STORAGE_POINTERS=1). Only one live key is supported,
+ * with FreeRTOS thread-local-storage pointer slot 0 (of the
+ * configNUM_THREAD_LOCAL_STORAGE_POINTERS=2 slots — slot 1 holds the per-task
+ * __cxa_eh_globals, see cxa_override.cpp). Only one live key is supported,
  * which matches libsrt's usage.
  *
  * Limitation: the key destructor is NOT invoked on task exit (FreeRTOS TLS has

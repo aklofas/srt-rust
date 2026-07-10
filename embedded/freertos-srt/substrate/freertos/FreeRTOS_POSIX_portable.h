@@ -30,6 +30,17 @@
 #include <sys/types.h>
 
 /* Use newlib's sched_param/sched_yield/etc. rather than the POSIX-layer copy. */
+/* Latent scheduling cliffs (2026-07-05 embedded audit, T-G) — documented, not
+ * fixed, because no gate exercises them:
+ * - SCHED_PARAM is disabled, so every pthread runs at the FreeRTOS-Plus-POSIX
+ *   default priority (tskIDLE_PRIORITY, 0). All SRT worker threads time-slice
+ *   at one priority; a competing priority>=1 compute task would starve the
+ *   whole SRT data plane. Fine for the QEMU gates (nothing else runs);
+ *   revisit before reusing this substrate in a real product.
+ * - posixconfigPTHREAD_COND_MAX_WAITERS defaults to 4; a 5th concurrent
+ *   waiter on one condvar gets an immediate ENOMEM, which libsrt does not
+ *   check -> busy-spin. The gates never exceed 4; raise it if the workload
+ *   grows. */
 #define posixconfigENABLE_SCHED_PARAM   0
 #include <sys/sched.h>
 

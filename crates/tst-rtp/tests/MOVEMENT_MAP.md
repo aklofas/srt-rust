@@ -55,6 +55,14 @@ unchanged (310) and the test leaf-name multiset is byte-identical before/after
 | `rtsp_client_tls.rs` | `rtsp_client/tls.rs` |
 | `rtsp_client_tls_keepalive.rs` | `rtsp_client/tls_keepalive.rs` |
 
+### `h264/` — RFC 6184 H.264-over-RTP: UDP loopback round-trips + RTSP session (WP-2)
+
+| new `tests/…` | description |
+| --- | --- |
+| `h264/common.rs` | Test-only RFC 6184 payloader + LCG PRNG + `expected_annexb` helper |
+| `h264/udp_loopback.rs` | Multi-AU roundtrip + randomized-loss soak (p=0.2, 200 AUs, fixed seed) |
+| `h264/rtsp_session.rs` | `setup_h264_auto` mode-1 roundtrip + mode-2 pre-SETUP rejection |
+
 ### `rtsp_server/` — RTSP server: mounts, auth, multicast, TLS, shutdown, interleaved/UDP transports
 
 | old `tests/…` | new `tests/…` |

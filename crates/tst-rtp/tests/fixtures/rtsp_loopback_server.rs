@@ -34,6 +34,12 @@ pub struct FixtureConfig {
     pub username: String,
     pub password: String,
     pub sdp_body: Vec<u8>,
+    /// Optional raw bytes to write to the client immediately after the PLAY
+    /// 200 OK response. Used by H.264 tests to push TCP-interleaved `$`-frames.
+    pub play_data: Vec<u8>,
+    /// If true, the server records all SETUP requests received.
+    /// The count is exposed through the shared `setup_count` in `FixtureHandle`.
+    pub track_setup: bool,
 }
 
 impl Default for FixtureConfig {
@@ -54,12 +60,17 @@ m=video 0 RTP/AVP 33
 a=control:trackID=0
 "#
             .to_vec(),
+            play_data: Vec::new(),
+            track_setup: false,
         }
     }
 }
 
 pub struct FixtureHandle {
     pub port: u16,
+    /// Number of SETUP requests the server has received (only tracked when
+    /// `FixtureConfig::track_setup` is true).
+    pub setup_count: Arc<std::sync::atomic::AtomicU32>,
     shutdown: Arc<AtomicBool>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -68,6 +79,8 @@ impl FixtureHandle {
     pub fn spawn(cfg: FixtureConfig) -> Self {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
+        let setup_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let setup_count_clone = setup_count.clone();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -86,7 +99,7 @@ impl FixtureHandle {
                         match accept_res {
                             Ok((sock, peer)) => {
                                 let cfg = cfg_arc.lock().unwrap().clone();
-                                tokio::spawn(handle_client(sock, peer, cfg, shutdown_clone.clone()));
+                                tokio::spawn(handle_client(sock, peer, cfg, shutdown_clone.clone(), setup_count_clone.clone()));
                             }
                             Err(_) => break,
                         }
@@ -100,6 +113,7 @@ impl FixtureHandle {
         let port = port_rx.recv().unwrap();
         Self {
             port,
+            setup_count,
             shutdown,
             runtime: Some(runtime),
         }
@@ -127,6 +141,8 @@ impl Clone for FixtureConfig {
             username: self.username.clone(),
             password: self.password.clone(),
             sdp_body: self.sdp_body.clone(),
+            play_data: self.play_data.clone(),
+            track_setup: self.track_setup,
         }
     }
 }
@@ -136,6 +152,7 @@ async fn handle_client(
     _peer: SocketAddr,
     cfg: FixtureConfig,
     shutdown: Arc<AtomicBool>,
+    setup_count: Arc<std::sync::atomic::AtomicU32>,
 ) {
     let mut buf = vec![0u8; 8192];
     let mut accumulator = Vec::new();
@@ -209,6 +226,9 @@ async fn handle_client(
                 let _ = sock.write_all(&cfg.sdp_body).await;
             }
             "SETUP" => {
+                if cfg.track_setup {
+                    setup_count.fetch_add(1, Ordering::Relaxed);
+                }
                 let transport = extract_header(&request, "Transport").unwrap_or_default();
                 let is_udp = transport.contains("RTP/AVP;") && !transport.contains("/TCP");
                 if is_udp && cfg.force_461_on_udp && udp_setup_attempts == 0 {
@@ -245,6 +265,10 @@ async fn handle_client(
                     "RTSP/1.0 200 OK\r\nCSeq: {}\r\nSession: {}\r\nRTP-Info: url=rtsp://127.0.0.1/test/streamid=0;seq=1234;rtptime=5000000\r\n\r\n",
                     cseq, session_id,
                 ).as_bytes()).await;
+                // Push any canned interleaved data after the PLAY response.
+                if !cfg.play_data.is_empty() {
+                    let _ = sock.write_all(&cfg.play_data).await;
+                }
             }
             "PAUSE" => {
                 let _ = sock

@@ -23,6 +23,40 @@ use crate::error::HlsError;
 use crate::playlist;
 use crate::publisher::State;
 
+/// Routing decision for a single HTTP request.
+///
+/// Kept as a standalone type so LL-HLS routes (blocking playlist queries,
+/// media parts) can slot in alongside `Playlist` and `Segment` without
+/// rewriting `serve()`.
+pub(crate) enum Route {
+    Playlist,
+    Segment(String),
+    NotFound,
+}
+
+/// Method + path dispatcher.
+///
+/// Only GET is routed; every other method maps to `NotFound` (→ 404).
+/// The `path` argument is the raw, percent-encoded URI path as delivered by
+/// hyper — `%2F` sequences are intentionally left encoded so they never act
+/// as real path separators in a lookup key.
+pub(crate) fn route(method: &hyper::Method, path: &str) -> Route {
+    if method != hyper::Method::GET {
+        return Route::NotFound;
+    }
+    if path == "/playlist.m3u8" {
+        return Route::Playlist;
+    }
+    // Strip the leading `/`, reject anything with an embedded `/` or `\`
+    // (multi-component paths, double-slashes, encoded or literal traversal).
+    match path.strip_prefix('/') {
+        Some(name) if !name.is_empty() && !name.contains('/') && !name.contains('\\') => {
+            Route::Segment(name.to_string())
+        }
+        _ => Route::NotFound,
+    }
+}
+
 /// Handle owned by the publisher; cancels + joins the runtime on drop.
 pub(crate) struct ServerHandle {
     pub(crate) cancel: CancellationToken,
@@ -146,7 +180,8 @@ async fn serve(
     state: Arc<Mutex<State>>,
     basic_auth: Option<(String, String)>,
 ) -> Response<Full<Bytes>> {
-    // Auth check (if configured).
+    // Auth check (if configured) — runs before routing so every route is
+    // covered, including the playlist endpoint.
     if let Some((user, pass)) = &basic_auth {
         let header = req
             .headers()
@@ -161,42 +196,40 @@ async fn serve(
         }
     }
 
-    let path = req.uri().path();
-
-    if path == "/playlist.m3u8" {
-        let pl = {
-            let s = state.lock().expect("HlsPublisher poisoned");
-            playlist::render(&s.segmenter, false)
-        };
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(CONTENT_TYPE, "application/vnd.apple.mpegurl")
-            .body(Full::new(Bytes::from(pl)))
-            .unwrap();
-    }
-
-    if let Some(filename) = path.strip_prefix('/') {
-        if filename.starts_with("segment_") && filename.ends_with(".ts") {
-            let bytes = {
+    match route(req.method(), req.uri().path()) {
+        Route::Playlist => {
+            let pl = {
                 let s = state.lock().expect("HlsPublisher poisoned");
-                s.segmenter.read_segment(filename)
+                playlist::render(&s.segmenter, false)
             };
-            return match bytes {
-                Ok(b) => Response::builder()
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/vnd.apple.mpegurl")
+                .body(Full::new(Bytes::from(pl)))
+                .unwrap()
+        }
+        Route::Segment(name) => {
+            // Resolve under the lock, then release it before doing I/O.
+            let path = {
+                let s = state.lock().expect("HlsPublisher poisoned");
+                s.segmenter.serve_lookup(&name)
+            };
+            match path.and_then(|p| std::fs::read(&p).ok()) {
+                Some(bytes) => Response::builder()
                     .status(StatusCode::OK)
                     .header(CONTENT_TYPE, "video/mp2t")
-                    .body(Full::new(Bytes::from(b)))
+                    .body(Full::new(Bytes::from(bytes)))
                     .unwrap(),
-                Err(_) => Response::builder()
+                // Not in known set, or grace-purge race: both map to 404.
+                None => Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .body(Full::new(Bytes::from_static(b"Not Found")))
                     .unwrap(),
-            };
+            }
         }
+        Route::NotFound => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Full::new(Bytes::from_static(b"Not Found")))
+            .unwrap(),
     }
-
-    Response::builder()
-        .status(StatusCode::NOT_FOUND)
-        .body(Full::new(Bytes::from_static(b"Not Found")))
-        .unwrap()
 }

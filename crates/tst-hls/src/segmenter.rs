@@ -173,11 +173,18 @@ impl Segmenter {
         self.cut()
     }
 
-    /// Read a segment file's bytes from disk (called by the HTTP server).
+    /// Resolve a request name against the authoritative set of segments this
+    /// segmenter created and still serves (live window ∪ grace queue). The
+    /// request string is a LOOKUP KEY, never a path component — names not in
+    /// the set resolve to `None`, which the server turns into a 404. This is
+    /// what makes path traversal (CWE-22) structurally impossible: no attacker-
+    /// controlled string is ever joined onto `output_dir` unless it was already
+    /// emitted by `open_new()`.
     #[cfg(feature = "serve")]
-    pub(crate) fn read_segment(&self, filename: &str) -> Result<Vec<u8>, HlsError> {
-        let path = self.config.output_dir.join(filename);
-        std::fs::read(&path).map_err(HlsError::Io)
+    pub(crate) fn serve_lookup(&self, name: &str) -> Option<PathBuf> {
+        let known = self.history.iter().any(|s| s.filename == name)
+            || self.grace.iter().any(|g| g.filename == name);
+        known.then(|| self.config.output_dir.join(name))
     }
 
     pub(crate) fn output_dir(&self) -> &Path {
@@ -479,5 +486,113 @@ mod tests {
         // segmenter must fall back to wall-clock so EXTINF is never 0.000.
         s.cut_with_duration(Some(Duration::ZERO)).unwrap();
         assert_eq!(s.history.len(), 1);
+    }
+
+    // -- serve_lookup unit tests -------------------------------------------
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn serve_lookup_returns_some_for_history_filename() {
+        let dir = tmpdir();
+        let cfg = HlsConfig {
+            output_dir: dir.clone(),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        s.cut().unwrap();
+        // segment_00000.ts is in history; lookup must resolve to the absolute path.
+        let result = s.serve_lookup("segment_00000.ts");
+        assert_eq!(result, Some(dir.join("segment_00000.ts")));
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn serve_lookup_returns_some_for_grace_filename() {
+        let dir = tmpdir();
+        let cfg = HlsConfig {
+            output_dir: dir.clone(),
+            mode: HlsMode::Live,
+            segment_duration: Duration::from_secs(2), // target 2 → 3× = 6 s
+            playlist_window: 3,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        // Push 6 segments with 2 s each — segments 0–2 evict into grace (file
+        // still on disk, still in the grace queue, still lookup-available).
+        for _ in 0..6 {
+            s.push_ts(&[0x47u8; 188]).unwrap();
+            s.cut_with_duration(Some(Duration::from_secs(2))).unwrap();
+        }
+        assert_eq!(
+            s.visible_segments().len(),
+            3,
+            "only newest 3 visible in live window"
+        );
+        // segment_00000.ts is in the grace queue, not history.
+        assert!(
+            s.history
+                .iter()
+                .all(|seg| seg.filename != "segment_00000.ts"),
+            "segment_00000.ts must have been evicted from history"
+        );
+        let result = s.serve_lookup("segment_00000.ts");
+        assert_eq!(
+            result,
+            Some(dir.join("segment_00000.ts")),
+            "grace-queued segment must still be lookup-available"
+        );
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn serve_lookup_returns_none_after_grace_purge() {
+        let dir = tmpdir();
+        let cfg = HlsConfig {
+            output_dir: dir.clone(),
+            mode: HlsMode::Live,
+            segment_duration: Duration::from_secs(2),
+            playlist_window: 3,
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        for _ in 0..6 {
+            s.push_ts(&[0x47u8; 188]).unwrap();
+            s.cut_with_duration(Some(Duration::from_secs(2))).unwrap();
+        }
+        // Advance past all availability windows.
+        let far_future = Instant::now() + Duration::from_secs(3600);
+        s.purge_grace(far_future);
+        // segment_00000.ts is no longer in history or grace; lookup must return None.
+        assert_eq!(s.serve_lookup("segment_00000.ts"), None);
+    }
+
+    #[cfg(feature = "serve")]
+    #[test]
+    fn serve_lookup_returns_none_for_arbitrary_names() {
+        let dir = tmpdir();
+        let cfg = HlsConfig {
+            output_dir: dir.clone(),
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        s.cut().unwrap();
+
+        // Names never created by this segmenter → None regardless of form.
+        for name in [
+            "segment_99999.ts",
+            "segment_../secret.ts",
+            "../../etc/passwd",
+            "segment_00000.ts\0.ts",
+            "",
+        ] {
+            assert_eq!(
+                s.serve_lookup(name),
+                None,
+                "unexpected Some for never-created name {name:?}"
+            );
+        }
     }
 }

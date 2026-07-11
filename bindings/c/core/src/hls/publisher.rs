@@ -489,10 +489,11 @@ pub struct TstHlsServerHandle {
 /// ends: the server stays up so clients can request the full playlist and
 /// all segment files until the returned handle is shut down or freed.
 ///
-/// Consumes the publisher's inner on success — the `TstPublisher` handle is
-/// left allocated but terminal (subsequent push/cut/stats calls return
-/// `TST_E_HLS_FINISHED`); the caller must still `tst_publisher_free` it. On
-/// failure the inner is restored so the publisher stays usable.
+/// Consumes the publisher's inner on **both success and failure** — the
+/// `TstPublisher` handle is left allocated but terminal regardless of the
+/// return code (subsequent push/cut/stats calls return `TST_E_HLS_FINISHED`);
+/// the caller must still `tst_publisher_free` it and must not reuse it after
+/// a failure return.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if `p` or `out` is null,
 /// `TST_E_HLS_FINISHED` if the publisher was already finished, or another
@@ -519,9 +520,9 @@ pub unsafe extern "C" fn tst_hls_publisher_finish_serving(
             set_last_error(TstError::InvalidConfig, "null out pointer");
             return TstError::InvalidConfig as i32;
         }
-        // Take the inner BEFORE the fallible consuming call (consumes-by-value
-        // finish_serving needs ownership); restore it on failure so the
-        // publisher stays usable and there is no double-free.
+        // Take the inner unconditionally — finish_serving consumes by value on
+        // both Ok and Err paths, so it cannot be restored on failure.  The
+        // publisher handle is terminal after this call regardless of outcome.
         match handle.inner.take() {
             Some(PublisherImpl::Hls(h)) => match h.finish_serving() {
                 Ok(server) => {

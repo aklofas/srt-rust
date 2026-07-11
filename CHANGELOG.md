@@ -75,6 +75,49 @@ time — no C symbol, signature, or struct layout changed.
 - `KlvFieldError::InvalidSentinel` is removed. ST 0601 sentinel values are now
   modeled explicitly rather than rejected — see the Added entry below (PR #79).
 
+### Added — H.264-over-RTP ingest (RFC 6184)
+
+- **`tst-rtp`:** `H264Depacketizer` — a state machine that reassembles H.264
+  Access Units from RFC 6184 RTP packets. Handles single-NAL unit (types 1–23),
+  STAP-A aggregation (type 24), and FU-A fragmentation (type 28); packetization
+  modes 0 and 1. Rejects mode 2 with `UnsupportedPacketizationMode(2)`.
+  Sequence-gap detection, SSRC-change recovery, oversize-AU protection
+  (`max_au_bytes`, default 8 MiB), `ParameterSetInjection::BeforeIdr`
+  (prepends cached SPS/PPS before every IDR), counters via `H264DepayStats`.
+  Feed-next_au-flush idiom mirrors `Demuxer` (PRs #94–#95).
+
+- **`tst-rtp`:** `H264Receiver` — a blocking I/O shell wrapping `H264Depacketizer`
+  over a UDP socket or mpsc channel (TCP-interleaved). `listen("rtp://host:port?pt=N")`
+  for direct UDP; `socket_stats()`, `rtp_stats()`, `depay_stats()`, `cancel_handle()`,
+  `close()`. `recv_au()` → `Option<H264Au>` with the EOS drain contract (PRs #94–#95).
+
+- **`tst-rtp`:** RTSP H.264 path — `RtspClient::setup_h264_auto(&sdp)` picks the
+  unique H.264 m-line, decodes `a=rtpmap` and `a=fmtp` (including base64
+  `sprop-parameter-sets`), rejects mode 2, and returns `(RtspSession, H264DepayConfig)`.
+  `RtspSession::into_h264_receiver(config)` consumes the session into an
+  `H264Receiver` that owns the control connection and performs TEARDOWN on drop.
+  `rtpmap` must advertise `H264/90000` — non-90 kHz clocks are rejected
+  with `RtspError::UnsupportedRtpmap` (PR #95).
+
+- **Python (`tstrans.rtp`):** `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`,
+  `ParameterSetInjection`, `H264DepayStats`, `RtpStats`; `RtspClient.connect_h264(config)`
+  → `RtspSession`; `RtspSession.into_h264_receiver()` (session stays usable for
+  `pause()`/`play()` — differs from JVM). Ships in published wheels (WP-3).
+
+- **JVM (`org.tstrans.rtp`):** `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`,
+  `ParameterSetInjection`, `H264DepayStats`, `RtpStats`; `RtspClient.connectH264(config)`
+  → `RtspSession`; `RtspSession.intoH264Receiver()` (consuming — session is closed on
+  return; `pause()`/`play()` unavailable afterward; differs from Python). Ships in
+  the published JAR (WP-3).
+
+- **Example:** `examples/receiving/recv_rtsp_h264.rs` — RTSP H.264 → Muxer →
+  `.ts` file gateway with per-step `// why + how` commentary. Compile gate in CI;
+  run locally against MediaMTX or any ONVIF camera.
+
+- **Fuzz target:** `crates/tst-rtp/fuzz/fuzz_targets/h264_depacketizer.rs` —
+  exercises the depacketizer state machine against arbitrary byte sequences
+  (arbitrary `RtpHeader` + payload, repeated feed/next_au cycles).
+
 ### Added
 
 - `tcp://` and `tcps://` caller URLs now accept DNS hostnames in addition to IP

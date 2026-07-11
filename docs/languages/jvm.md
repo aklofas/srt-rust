@@ -1129,12 +1129,17 @@ carefully, they are not uniform across the four shells:**
 
 ## RTP transport (`org.tstrans.rtp`)
 
-The `org.tstrans.rtp` package wraps `tst_rtp::RtpTransport` / `RtpRecvTransport`
-**directly** (the `Transport` / `RecvTransport` trait methods, not a pipeline
-shell) for sending and receiving pre-muxed MPEG-TS bytes over RTP-over-UDP. Each
-`send` produces one RTP datagram (12-byte header + TS payload); each `recv`
-returns one datagram's TS payload with the RTP header already stripped. RTP is
-default-on — no feature flag is needed.
+The `org.tstrans.rtp` package covers two RTP receive shapes:
+
+- **MPEG-TS-over-RTP (RFC 2250, PT=33):** `RtpTransport` / `RtpRecvTransport`
+  send/receive pre-muxed MPEG-TS bytes over RTP/UDP. Each `send` produces one
+  datagram (12-byte RTP header + TS payload); each `recv` returns one datagram's
+  TS payload with the header stripped.
+- **H.264-over-RTP (RFC 6184):** `H264Receiver` and `RtspClient.connectH264`
+  ingest bare H.264 access units from an RTSP camera. See the dedicated section
+  below.
+
+RTP is default-on — no feature flag is needed.
 
 ### Sender hello
 
@@ -1366,6 +1371,102 @@ try (RtspServer server = RtspServer.start(cfg);
   `tlsCertPem`/`tlsKeyPem` on the config raises `RtspException` of kind `TLS` at
   `start()`. Both fields must be set together (both or neither) or `build()` will
   throw `IllegalArgumentException`.
+
+## H.264-over-RTP ingest (RFC 6184) (`org.tstrans.rtp`)
+
+`org.tstrans.rtp.H264Receiver` ingests bare H.264 elementary streams over
+RTP/RTSP (RFC 6184 — single-NALU, STAP-A, FU-A; packetization modes 0 and 1).
+The canonical path for an RTSP camera uses `RtspClient.connectH264`:
+
+```java
+import org.tstrans.rtp.*;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
+import org.tstrans.RtspException;
+
+var cfg = RtspClientConfig.builder("rtsp://cam.local/h264")
+    .auth(new DigestAuth("admin", "secret"))
+    .build();
+
+try (RtspSession session = RtspClient.connectH264(cfg)) {
+    // intoH264Receiver() CONSUMES the session handle — session is closed on
+    // return (success or failure). pause()/play() are unavailable afterward.
+    // See the "JVM divergence" note below.
+    try (H264Receiver rx = session.intoH264Receiver()) {
+        var muxCfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+        try (var mux = new org.tstrans.mpegts.Muxer(muxCfg)) {
+            byte[] drain = new byte[1316];
+            H264AccessUnit au;
+            while ((au = rx.recvAu()) != null) {
+                // au.pts() is a 90 kHz decode-order timestamp — same clock
+                // as MPEG-TS PTS, no rescaling needed.
+                mux.pushVideo(au.annexb(), au.pts(), au.keyFrame());
+                int n;
+                while ((n = mux.pull(drain)) > 0) {
+                    // write drain[0..n] to file / SRT / etc.
+                }
+            }
+        }
+    }
+}
+```
+
+### Key types
+
+| Type | Notes |
+|---|---|
+| `H264Receiver` | `listen(String url)` / `listen(String url, H264DepayConfig cfg)` for direct UDP. `recvAu()` → `H264AccessUnit \| null`. `implements AutoCloseable, Iterable<H264AccessUnit>`. |
+| `H264AccessUnit` | `annexb(): byte[]`, `pts(): long` (90 kHz ticks, i64), `keyFrame(): boolean`, `rtpTimestamp(): int`. |
+| `H264DepayConfig` | Immutable; build with `H264DepayConfig.builder()`. Defaults: `payloadType=96`, `parameterSetInjection=BEFORE_IDR`, `initialParameterSets=[]`, `maxAuBytes=8388608`. |
+| `ParameterSetInjection` | `NONE` — pass through as received; `BEFORE_IDR` (default) — prepend cached SPS/PPS before each IDR. |
+| `H264DepayStats` | `ausEmitted()`, `ausDropped()`, `seqGaps()`, `parameterSetUpdates()`, … (9 counters). |
+| `RtpStats` | `malformedPackets()`. |
+
+### JVM divergence from Python
+
+**`intoH264Receiver()` consumes the session.** Unlike the Python binding
+(where `session.into_h264_receiver()` leaves the session wrapper usable for
+`pause()`/`play()`), the JVM `intoH264Receiver()` zeroes the session handle
+via `consumeHandle()` before the fallible native call (NativeHandle contract
+item 3 — double-free safety). On return — success **or** failure — this
+`RtspSession` wrapper is closed: subsequent `pause()` / `play()` / `teardown()`
+calls throw `IllegalStateException`. The `H264Receiver` takes over the full
+session (control connection, keepalives, teardown on `close()`).
+
+**Failure path note.** If `intoDemuxReceiver()` previously consumed the data
+plane, a subsequent `intoH264Receiver()` still consumes and tears down the
+session (the native returns `PROTOCOL`) — a live `DemuxReceiver` on it will
+reach EOS on its next iteration. Ensure only one `into*` call is made per
+session.
+
+**`socket_stats()` is not Optional.** `H264Receiver.socketStats()` returns a
+bare `SocketStats` (never null), whereas the SRT `Receiver.socketStats()`
+returns `Optional<SocketStats>`. This matches the Rust
+`H264Receiver::socket_stats()` → `SocketStats` signature directly, which has
+no "no socket" code path once constructed.
+
+### Integration notes
+
+- **`sprop-parameter-sets` handled automatically.** `connectH264` decodes the
+  SDP `a=fmtp` attribute and stores SPS/PPS NALUs in the `H264DepayConfig`
+  stashed inside the session. With `ParameterSetInjection.BEFORE_IDR` (the
+  default), the depacketizer prepends them before every IDR frame.
+
+- **B-frame / DTS limitation.** `au.pts()` is derived from the RTP timestamp
+  (decode order). For live cameras without B-frames, PTS = DTS. For
+  B-frame content, supply DTS separately to `mux.pushVideoToWithDts`.
+
+- **Loss behavior.** A sequence-number gap drops the open AU and increments
+  `rx.depayStats().ausDropped()` and `.seqGaps()`. Loss is whole-AU only.
+
+- **KLV pairing slot.** For a STANAG 4609 gateway, push KLV using
+  `mux.pushKlv(klvBytes, /*pts=*/ au.pts(), /*metadataServiceId=*/ 0x00)`.
+
+- **RTCP is not implemented on the H.264 path (v1 decision).** No RTCP
+  socket is bound; no RR/SR is sent or received.
 
 ## Pipeline pairing (`org.tstrans.pipeline.Pairer`)
 

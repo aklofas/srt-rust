@@ -1528,15 +1528,75 @@ the trigger that would unblock it.
 
 ## RTP H.264 depayloader (RFC 6184)
 
-- **Status:** Not implemented. `tst-rtp` receives MPEG-TS-over-RTP
-  (PT 33) only; elementary H.264-over-RTP (RFC 6184 — single NAL
-  unit, STAP-A, FU-A; packetization modes 0/1) cannot be ingested.
-- **Why deferred:** It is a new wire-facing parser and public API
-  surface that deserves its own design pass (NAL reassembly, access-
-  unit boundaries, timestamp mapping into the muxer) rather than a
-  bolt-on. Field evidence exists: a field integrator runs a full
-  libav dependency in-process solely to depacketize RFC 6184 before
-  handing Annex-B access units to the muxer.
-- **Trigger to revisit:** Scheduled — planned as the next feature arc
-  (design document first). An RTSP/ONVIF-style camera source asking
-  for first-party ingest re-confirms the priority.
+- **Status:** Shipped — v0.2.x (PRs #94 / #95 / WP-3). The
+  depacketizer (`H264Depacketizer`), receiver shell (`H264Receiver`),
+  and RTSP path (`setup_h264_auto` / `into_h264_receiver`) are all
+  implemented in Rust (`tst-rtp`) and mirrored in the Python and JVM
+  bindings. Covered: single-NAL unit, STAP-A aggregation, FU-A
+  fragmentation (packetization modes 0 and 1). Design document:
+  `docs/specs/2026-07-10-rfc6184-design.md`.
+- **What remains open:** See the four entries below
+  (C-ABI receiver, payloader send side, interleaved mode 2, and
+  RTP jitter/RTCP).
+
+## C-ABI H.264 receiver family
+
+- **Status:** Deferred. No C-ABI `H264Receiver` / `H264DepayConfig` /
+  `H264Au` family exists; the H.264 ingest path is only available from
+  Rust, Python, and JVM.
+- **Why deferred:** The C ABI is frozen at minor 17; adding an
+  H.264-specific receive family would bump to 18 and requires cbindgen-
+  friendly struct definitions (no opaque Rust types passed by value).
+  The existing Python + JVM mirrors cover all current consumers.
+- **Trigger to revisit:** A C or embedded consumer asks for first-party
+  H.264 ingest (e.g. a bare-metal pipeline receiving from a STANAG 4609
+  RTSP camera). Would be ABI minor 17 → 18.
+
+## H.264-over-RTP payloader (RFC 6184 send side)
+
+- **Status:** Deferred. The library can send MPEG-TS-over-RTP (RFC 2250,
+  PT=33) via `MuxSender<RtpTransport>` / the RTSP `MountHandle` push
+  family, but there is no way to send a bare H.264 elementary stream in
+  RFC 6184 fragmented form.
+- **Why deferred:** No consumer has asked for it. The STANAG 4609 pipeline
+  shape — mux video + KLV + audio into MPEG-TS, then send over RTP —
+  is sufficient for all current deployments; bare H.264 RTP output is a
+  camera-side concern.
+- **Trigger to revisit:** A consumer needs to push H.264 to an ONVIF
+  recorder or WebRTC gateway that does not accept MPEG-TS.
+
+## RTP interleaved mode 2 (STAP-B / MTAP / FU-B / DON)
+
+- **Status:** Deferred. RFC 6184 §5.7.4–§5.7.5 interleaved mode
+  (STAP-B, MTAP16, MTAP24, FU-B, all carrying a Decoding Order Number)
+  is rejected at SETUP time with `UnsupportedPacketizationMode(2)`.
+  Modes 0 (single-NAL) and 1 (non-interleaved FU-A / STAP-A) work with
+  all cameras tested.
+- **Why deferred:** Mode 2 requires a full DON-reorder buffer and out-of-
+  order packet assembly. No production camera tested in the field uses it;
+  all use mode 1.
+- **Trigger to revisit:** A specific camera known to advertise mode 2
+  appears in a deployment; the DON machinery is designed and fuzz-tested
+  before shipping.
+
+## RTP jitter/reorder buffer + H.264-path RTCP
+
+- **Status:** Deferred. The `H264Receiver` processes packets in arrival
+  order without a jitter buffer or sequence-number reorder window. RTCP
+  RR/SR emission on the H.264 path is also not implemented (v1 decision).
+- **Why deferred:** A jitter buffer requires a configurable depth and a
+  flush strategy that interacts with the access-unit boundary rules (a
+  reordered FU-A fragment may arrive after the next AU's start). The
+  design is non-trivial. RTCP SR/RR support exists on the MPEG-TS-over-
+  RTP path (interleaved pump) but was not wired to the H.264 path.
+- **Open decision on large-payload loss.** The current `Receiver<R>` /
+  `DemuxReceiver<R>` pipeline shells cap their receive scratch buffer at
+  `RECV_SCRATCH_LEN` (1304 bytes) to match the standard RTP payload size.
+  Payloads larger than this surface as `TransportError::Broken` rather
+  than being rejected cleanly. This is a known gap in the Receiver/
+  DemuxReceiver path for non-standard configurations; `H264Receiver`
+  is unaffected (its scratch buffer is large enough for any single NALU).
+- **Trigger to revisit:** A deployment sees significant packet
+  reordering (e.g. multi-path satellite link) and requires in-order AU
+  reconstruction, or RTCP RR feedback to the sender is needed for
+  adaptive bitrate control.

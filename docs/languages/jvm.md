@@ -1419,7 +1419,7 @@ try (RtspSession session = RtspClient.connectH264(cfg)) {
 | Type | Notes |
 |---|---|
 | `H264Receiver` | `listen(String url)` / `listen(String url, H264DepayConfig cfg)` for direct UDP. `recvAu()` → `H264AccessUnit \| null`. `implements AutoCloseable, Iterable<H264AccessUnit>`. |
-| `H264AccessUnit` | `annexb(): byte[]`, `pts(): long` (90 kHz ticks, i64), `keyFrame(): boolean`, `rtpTimestamp(): int`. |
+| `H264AccessUnit` | `annexb(): byte[]`, `pts(): long` (90 kHz ticks, i64), `keyFrame(): boolean`, `rtpTimestamp(): long`. |
 | `H264DepayConfig` | Immutable; build with `H264DepayConfig.builder()`. Defaults: `payloadType=96`, `parameterSetInjection=BEFORE_IDR`, `initialParameterSets=[]`, `maxAuBytes=8388608`. |
 | `ParameterSetInjection` | `NONE` — pass through as received; `BEFORE_IDR` (default) — prepend cached SPS/PPS before each IDR. |
 | `H264DepayStats` | `ausEmitted()`, `ausDropped()`, `seqGaps()`, `parameterSetUpdates()`, … (9 counters). |

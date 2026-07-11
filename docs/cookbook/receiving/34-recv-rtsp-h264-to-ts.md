@@ -9,7 +9,7 @@
 > - [`/docs/languages/python.md#h264-over-rtp-ingest-rfc-6184`](/docs/languages/python.md#h264-over-rtp-ingest-rfc-6184) — full Python API reference
 > - [`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs) — Rust runnable twin with full commentary
 > - [Recipe 12: Pair sync-KLV with video by PTS](12-pair-klv-by-pts.md) — once you have AUs, pairing with KLV
-> - [Recipe 4b: Receive MPEG-TS over TCP](tcp.md) — for cameras that expose MPEG-TS-over-RTP (different path)
+> - [Recipe 4a: Receive MPEG-TS over UDP / RTSP](udp.md) — for cameras that expose MPEG-TS-over-RTP (use `RtspClient.connect()` → `into_demux_receiver()` for that shape)
 
 Most surveillance cameras and gimbal sensor pods use one of two RTSP shapes:
 

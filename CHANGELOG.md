@@ -7,13 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening
+## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening + RFC 6184 H.264 ingest
 
 Remediation of the two 2026-07-01 audits (correctness/spec/safety and
 simplification/refactor/dependency), landed as PRs #58–#84, plus the embedded
-audit arc (WP-EMB-1–6, PRs #85/#86/#88/#89 and the current PR) and the
-field-feedback hardening. The C ABI stayed frozen at minor **17** the entire
-time — no C symbol, signature, or struct layout changed.
+audit arc (WP-EMB-1–6, PRs #85/#86/#88/#89/#90), the field-feedback hardening
+(PR #87 / #91–#93), and the RFC 6184 H.264-over-RTP depayloader feature arc
+(PRs #94–#96). The C ABI stayed frozen at minor **17** the entire time — no
+C symbol, signature, or struct layout changed.
 
 ### Changed (breaking, pre-1.0) — SRT buffer-size options are now byte-valued
 
@@ -80,7 +81,9 @@ time — no C symbol, signature, or struct layout changed.
 - **`tst-rtp`:** `H264Depacketizer` — a state machine that reassembles H.264
   Access Units from RFC 6184 RTP packets. Handles single-NAL unit (types 1–23),
   STAP-A aggregation (type 24), and FU-A fragmentation (type 28); packetization
-  modes 0 and 1. Rejects mode 2 with `UnsupportedPacketizationMode(2)`.
+  modes 0 and 1. Interleaved-mode (mode 2) packet types that reach the
+  depacketizer are discarded into `H264DepayStats::packets_discarded` — mode 2
+  is rejected earlier, at RTSP SETUP (see the RTSP path bullet below).
   Sequence-gap detection, SSRC-change recovery, oversize-AU protection
   (`max_au_bytes`, default 8 MiB), `ParameterSetInjection::BeforeIdr`
   (prepends cached SPS/PPS before every IDR), counters via `H264DepayStats`.
@@ -102,19 +105,19 @@ time — no C symbol, signature, or struct layout changed.
 - **Python (`tstrans.rtp`):** `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`,
   `ParameterSetInjection`, `H264DepayStats`, `RtpStats`; `RtspClient.connect_h264(config)`
   → `RtspSession`; `RtspSession.into_h264_receiver()` (session stays usable for
-  `pause()`/`play()` — differs from JVM). Ships in published wheels (WP-3).
+  `pause()`/`play()` — differs from JVM). Ships in published wheels (PR #96).
 
 - **JVM (`org.tstrans.rtp`):** `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`,
   `ParameterSetInjection`, `H264DepayStats`, `RtpStats`; `RtspClient.connectH264(config)`
   → `RtspSession`; `RtspSession.intoH264Receiver()` (consuming — session is closed on
   return; `pause()`/`play()` unavailable afterward; differs from Python). Ships in
-  the published JAR (WP-3).
+  the published JAR (PR #96).
 
 - **Example:** `examples/receiving/recv_rtsp_h264.rs` — RTSP H.264 → Muxer →
   `.ts` file gateway with per-step `// why + how` commentary. Compile gate in CI;
   run locally against MediaMTX or any ONVIF camera.
 
-- **Fuzz target:** `crates/tst-rtp/fuzz/fuzz_targets/h264_depacketizer.rs` —
+- **Fuzz target:** `crates/tst-rtp/fuzz/fuzz_targets/rtp_h264_depacketize.rs` —
   exercises the depacketizer state machine against arbitrary byte sequences
   (arbitrary `RtpHeader` + payload, repeated feed/next_au cycles).
 
@@ -338,7 +341,7 @@ time — no C symbol, signature, or struct layout changed.
   shells (`Receiver` / `DemuxReceiver`) still size their buffers to the
   send-side budget (1304 bytes) and currently reject larger payloads with a
   speaking error rather than truncating — lifting that ceiling is tracked as
-  a follow-up.
+  a follow-up (PR #95).
 - RTSP: `extract_mount_path` now strips a single trailing `/` from the
   resolved path (except for the root `"/"`) so `rtsp://host/live/` and
   `rtsp://host/live` resolve to the same registered mount. Previously, a

@@ -177,9 +177,8 @@ impl RistRecvTransportBuilder {
         self
     }
 
-    /// Expected packet size hint. The receive ceiling reported to the
-    /// pipeline shells is never below the 65535-byte UDP maximum, so
-    /// this only matters when set above it.
+    /// Expected send-side packet size. Has no effect on the receive
+    /// buffer, which always accepts any legal datagram.
     pub fn pkt_size(mut self, n: usize) -> Self {
         self.config.pkt_size = n;
         self

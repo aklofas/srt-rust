@@ -120,12 +120,17 @@ class HlsStats:
     """Total bytes accepted by ``push_ts`` across all segments."""
     open_segment_bytes: int
     """Bytes in the currently-open segment (0 between cuts)."""
+    forced_cuts: int
+    """Segments cut by the wall-clock hard-cap fallback because a keyframe was
+    overdue (keyframe-driven flow only). A persistently non-zero value means
+    the upstream GOP length exceeds the configured cap."""
 
     def __init__(
         self,
         segments_written: int,
         bytes_pushed_total: int,
         open_segment_bytes: int,
+        forced_cuts: int,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -223,6 +228,64 @@ class HlsPublisher:
         """Idempotent ``finish()`` — never raises if already finished."""
         ...
 
+    def finish_serving(self) -> HlsServerHandle:
+        """Finalize but keep the HTTP server serving the terminal playlist.
+
+        Like :meth:`finish`, but the built-in HTTP server stays up (via the
+        returned :class:`HlsServerHandle`) so clients can fetch the terminal
+        playlist + every segment after the stream ends — the way a VOD /
+        EVENT stream becomes observable. **Consumes** the publisher;
+        subsequent operations raise ``HlsError(kind=FINISHED)``.
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+
+# ---------------------------------------------------------------------------
+# HlsServerHandle — keeps a finished playlist served
+# ---------------------------------------------------------------------------
+
+
+class HlsServerHandle:
+    """Live HTTP server serving a finished HLS playlist + its segments.
+
+    Returned by :meth:`HlsPublisher.finish_serving`. Keeps the built-in
+    server up so clients can fetch the terminal playlist and every segment
+    file after the stream has ended. Use as a context manager (``__exit__``
+    calls :meth:`shutdown`) or call :meth:`shutdown` / :meth:`close`
+    explicitly; the server also stops when the handle is dropped.
+    """
+
+    def local_addr(self) -> str:
+        """Bound HTTP server address as ``"ip:port"``.
+
+        Raises ``HlsError(kind=FINISHED)`` after shutdown.
+        """
+        ...
+
+    def local_port(self) -> int:
+        """Bound TCP port.
+
+        Raises ``HlsError(kind=FINISHED)`` after shutdown.
+        """
+        ...
+
+    def shutdown(self) -> None:
+        """Stop serving and drain the runtime. Idempotent."""
+        ...
+
+    def close(self) -> None:
+        """Alias for :meth:`shutdown` (idempotent)."""
+        ...
+
+    def __enter__(self) -> HlsServerHandle: ...
+    def __exit__(
+        self,
+        exc_type: object | None = ...,
+        exc_value: object | None = ...,
+        traceback: object | None = ...,
+    ) -> bool: ...
     def __repr__(self) -> str: ...
 
 
@@ -245,6 +308,16 @@ class HlsPublisherBuilder:
 
     def segment_duration_ms(self, ms: int) -> HlsPublisherBuilder:
         """Target segment duration in milliseconds."""
+        ...
+
+    def max_segment_duration_ms(self, ms: int) -> HlsPublisherBuilder:
+        """Hard cap (ms) on an open segment's wall-clock age in the
+        keyframe-driven flow (force-cuts when a keyframe is overdue).
+
+        Defaults to ``2 × segment_duration``; must be ``>= segment_duration``
+        at ``build()``. ``ms == 0`` leaves the library default in place (no
+        reset-to-default); callers wanting the default never call this.
+        """
         ...
 
     def playlist_window(self, n: int) -> HlsPublisherBuilder:

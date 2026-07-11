@@ -116,9 +116,10 @@ pub(crate) fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     // T13 — HlsMode + HlsStats.
     m.add_class::<config::PyHlsMode>()?;
     m.add_class::<config::PyHlsStats>()?;
-    // T12 — HlsPublisher + builder.
+    // T12 — HlsPublisher + builder + server handle.
     m.add_class::<publisher::PyHlsPublisher>()?;
     m.add_class::<publisher::PyHlsPublisherBuilder>()?;
+    m.add_class::<publisher::PyHlsServerHandle>()?;
     // T11 — MuxPublisher + MuxPublisherStats.
     m.add_class::<mux_publisher::PyMuxPublisher>()?;
     m.add_class::<mux_publisher::PyMuxPublisherStats>()?;

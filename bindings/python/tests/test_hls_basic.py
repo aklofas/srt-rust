@@ -18,14 +18,16 @@ from __future__ import annotations
 import glob
 import os
 import tempfile
+import urllib.request
 
 import pytest
 
-# HLS is EXPERIMENTAL and gated off the default/published build (its `hls` cargo
-# feature is off by default). Skip the whole module unless it was built in.
+# The `hls` cargo feature is default-on and ships in published wheels. This
+# skip only fires for a `--no-default-features` source build; a missing
+# `tstrans.hls` in a default build means an under-built wheel — investigate.
 pytest.importorskip(
     "tstrans.hls",
-    reason="HLS is experimental and off by default; build with --features hls to test it.",
+    reason="tstrans.hls missing = under-built wheel (or --no-default-features build); investigate.",
     exc_type=ImportError,
 )
 
@@ -36,6 +38,8 @@ from tstrans.exceptions import HlsError, HlsErrorKind
 from tstrans.hls import (
     HlsMode,
     HlsPublisher,
+    HlsPublisherBuilder,
+    HlsServerHandle,
     HlsStats,
     MuxPublisher,
     MuxPublisherStats,
@@ -179,10 +183,11 @@ def test_publisher_stats_fields() -> None:
 
 
 def test_hls_stats_fields() -> None:
-    s = HlsStats(2, 752, 0)
+    s = HlsStats(2, 752, 0, 0)
     assert s.segments_written == 2
     assert s.bytes_pushed_total == 752
     assert s.open_segment_bytes == 0
+    assert s.forced_cuts == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -286,7 +291,11 @@ def test_mux_publisher_video_then_finish_into_publisher() -> None:
         mstats = mp.stats()
         assert isinstance(mstats, MuxPublisherStats)
         assert mstats.bytes_pushed > 0
-        assert mstats.cut_calls >= 3  # 3 keyframes auto-cut
+        # Keyframes *begin* segments (send_video cuts BEFORE pushing a
+        # keyframe): the stream-head keyframe opens segment 0 without a
+        # spurious zero-duration cut, and the 2nd + 3rd keyframes each cut.
+        # So 3 keyframes → 2 cuts (segment 2 stays open until finish).
+        assert mstats.cut_calls >= 2
 
         pstats = mp.publisher_stats()
         assert isinstance(pstats, PublisherStats)
@@ -378,14 +387,16 @@ def test_extinf_is_media_derived() -> None:
         program = _video_program()
         mp = MuxPublisher.with_config_hls(pub, program)
 
-        # PTS 0: keyframe — pushed then cut, closing a degenerate segment 0
-        # (span 0 → wall-clock fallback); the next push re-baselines the start.
+        # Keyframes *begin* segments (send_video cuts BEFORE a keyframe):
+        # PTS 0: stream-head keyframe — opens segment 0 (no spurious cut),
+        #   baselining its start PTS at 0.
         mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(0), key_frame=True)
-        # PTS 9000: non-keyframe — opens segment 1, baselining its start PTS.
-        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(9000), key_frame=False)
-        # PTS 270000: keyframe — cuts segment 1, which spans PTS 9000..270000
-        # = 261000 ticks = 2.9 s at 90 kHz.
-        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(270000), key_frame=True)
+        # PTS 90000: non-keyframe — appended to segment 0.
+        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(90000), key_frame=False)
+        # PTS 261000: keyframe — cuts segment 0 (span 0..261000 = 261000 ticks
+        #   = 2.9 s at 90 kHz), then opens segment 1. 2.900 s is well past the
+        #   1.0 s target, so it can only be the media-derived (PTS-span) EXTINF.
+        mp.send_video(NAL_IDR, pts=Pts90khz.from_raw(261000), key_frame=True)
 
         hls = mp.finish_into_publisher()
         pl = hls.render_playlist(False)
@@ -415,3 +426,91 @@ def test_hls_publisher_cut_with_duration() -> None:
         pub.finish()
 
         assert "#EXTINF:3.200," in pl, pl
+
+
+# --------------------------------------------------------------------------- #
+# finish_serving + HlsServerHandle (Task 14)                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_finish_serving_serves_vod(tmp_path: object) -> None:
+    """finish_serving keeps the HTTP server up; the terminal VOD playlist is
+    fetchable and carries #EXT-X-ENDLIST."""
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .mode(HlsMode.VOD)
+        .build()
+    )
+    pub.push_ts(b"\x47" + b"\x00" * 187)
+    pub.cut_segment()
+    with pub.finish_serving() as handle:
+        assert isinstance(handle, HlsServerHandle)
+        port = handle.local_port()
+        assert port > 0
+        assert handle.local_addr().startswith("127.0.0.1:")
+        url = f"http://127.0.0.1:{port}/playlist.m3u8"
+        body = urllib.request.urlopen(url).read().decode()  # noqa: S310
+        assert "#EXT-X-ENDLIST" in body, body
+
+
+def test_forced_cuts_stat_default_zero(tmp_path: object) -> None:
+    """A fresh publisher reports forced_cuts == 0."""
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .build()
+    )
+    try:
+        assert pub.hls_stats().forced_cuts == 0
+    finally:
+        pub.finish()
+
+
+def test_max_segment_duration_ms_builder(tmp_path: object) -> None:
+    """The max_segment_duration_ms builder setter builds OK (non-zero cap)."""
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .segment_duration_ms(4000)
+        .max_segment_duration_ms(8000)
+        .build()
+    )
+    try:
+        assert isinstance(pub, HlsPublisher)
+    finally:
+        pub.finish()
+
+
+def test_max_segment_duration_ms_zero_leaves_default(tmp_path: object) -> None:
+    """Passing 0 leaves the library default (no reset-to-None); builds OK."""
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .max_segment_duration_ms(0)
+        .build()
+    )
+    try:
+        assert isinstance(pub, HlsPublisher)
+    finally:
+        pub.finish()
+
+
+def test_server_handle_shutdown_is_idempotent(tmp_path: object) -> None:
+    """Explicit shutdown() works and a following context-exit is a no-op."""
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .mode(HlsMode.VOD)
+        .build()
+    )
+    pub.push_ts(b"\x47" + b"\x00" * 187)
+    pub.cut_segment()
+    handle = pub.finish_serving()
+    handle.shutdown()
+    handle.close()  # alias; idempotent no-op after shutdown

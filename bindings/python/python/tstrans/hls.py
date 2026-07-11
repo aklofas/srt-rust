@@ -1,9 +1,9 @@
 """tstrans.hls — tst-hls (HLS publisher) bindings.
 
-Available only when tstrans was built with the `hls` cargo feature. HLS is
-EXPERIMENTAL and the `hls` feature is **off by default and NOT included in
-the published wheels** — build from source with `--features hls` to enable
-it. A build without `--features hls` will fail to import this submodule.
+The `hls` cargo feature is default-on and ships in the published wheels, so
+this submodule imports out of the box. It is unavailable only in a
+`--no-default-features` source build (or one that selects features without
+`hls`); such a build will fail to import this submodule.
 
 Surface (Plan A5b Wave C):
 
@@ -17,6 +17,9 @@ Surface (Plan A5b Wave C):
 - ``PublisherStats`` — universal cross-publisher stats snapshot.
 - ``HlsPublisher`` / ``HlsPublisherBuilder`` — the concrete HLS sink:
   segments MPEG-TS to disk + serves a built-in HTTP playlist.
+- ``HlsServerHandle`` — returned by ``HlsPublisher.finish_serving()``; keeps
+  the built-in HTTP server up so the terminal playlist + segments stay
+  fetchable after the stream ends.
 - ``MuxPublisher`` / ``MuxPublisherStats`` — pipeline shell that owns a
   muxer + an ``HlsPublisher`` and accepts elementary streams.
 - ``HlsMode`` (LIVE / EVENT / VOD) + ``HlsStats``.
@@ -41,15 +44,17 @@ try:
     _hls = _native.hls
 except (ImportError, AttributeError) as exc:  # pragma: no cover
     raise ImportError(
-        "tstrans.hls is unavailable. HLS is EXPERIMENTAL and is NOT included "
-        "in the published wheels (the `hls` cargo feature is off by "
-        "default); build from source with `--features hls` to enable it."
+        "tstrans.hls is unavailable. The `hls` cargo feature is default-on "
+        "and shipped in the published wheels, so this usually means a "
+        "`--no-default-features` source build (or one that omitted `hls`); "
+        "rebuild with the `hls` feature enabled."
     ) from exc
 
 # Native PyClasses populated by `bindings/python/src/hls/`.
 PublisherStats = _hls.PublisherStats
 HlsPublisher = _hls.HlsPublisher
 HlsPublisherBuilder = _hls.HlsPublisherBuilder
+HlsServerHandle = _hls.HlsServerHandle
 MuxPublisher = _hls.MuxPublisher
 MuxPublisherStats = _hls.MuxPublisherStats
 HlsMode = _hls.HlsMode
@@ -116,6 +121,7 @@ __all__ = [
     "PublisherStats",
     "HlsPublisher",
     "HlsPublisherBuilder",
+    "HlsServerHandle",
     "MuxPublisher",
     "MuxPublisherStats",
     "HlsMode",

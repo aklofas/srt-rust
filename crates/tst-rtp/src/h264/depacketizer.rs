@@ -130,8 +130,15 @@ impl Default for ParameterSetInjection {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct H264DepayConfig {
-    /// Expected RTP payload type (7 bits). Packets with a different PT are
-    /// still accepted — PT filtering is the transport layer's responsibility.
+    /// Expected RTP payload type (7 bits).
+    ///
+    /// This field is carried here so that SDP negotiation can hand the receiver
+    /// a single config object. [`H264Depacketizer::feed`] itself does **not**
+    /// read it — the depacketizer processes whatever packet it is given,
+    /// regardless of PT. PT filtering is the I/O layer's responsibility: the
+    /// receiver shell (arriving in the next PR) compares `header.payload_type`
+    /// against this value before calling `feed`. Callers that source packets
+    /// from a foreign mux or socket must filter PT upstream before feeding.
     pub payload_type: u8,
     /// Whether to inject cached SPS/PPS before IDR frames.
     pub parameter_set_injection: ParameterSetInjection,

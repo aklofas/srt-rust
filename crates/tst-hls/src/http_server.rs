@@ -200,7 +200,7 @@ async fn serve(
         Route::Playlist => {
             let pl = {
                 let s = state.lock().expect("HlsPublisher poisoned");
-                playlist::render(&s.segmenter, false)
+                playlist::render(&s.segmenter, s.finished)
             };
             Response::builder()
                 .status(StatusCode::OK)

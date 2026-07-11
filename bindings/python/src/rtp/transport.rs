@@ -161,7 +161,7 @@ impl PySocketStats {
 /// here flips the same atomic the transport polls.
 #[pyclass(name = "CancelHandle", module = "tstrans.rtp")]
 pub(crate) struct PyCancelHandle {
-    inner: Arc<dyn TransportCancel + Send + Sync>,
+    pub(crate) inner: Arc<dyn TransportCancel + Send + Sync>,
 }
 
 #[pymethods]

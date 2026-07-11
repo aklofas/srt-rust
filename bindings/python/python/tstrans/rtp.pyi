@@ -300,16 +300,28 @@ class RtspCancelHandle:
 
 class RtspClient:
     """Static facade. `connect(config)` runs OPTIONS / DESCRIBE / SETUP
-    / PLAY and returns a live `RtspSession`.
+    / PLAY and returns a live `RtspSession` for MPEG-TS streams.
+    `connect_h264(config)` runs the same flow but targets an H.264
+    media line and stashes the negotiated `H264DepayConfig` in the
+    returned session for use with `into_h264_receiver()`.
     """
 
     @staticmethod
     def connect(config: RtspClientConfig) -> RtspSession: ...
+    @staticmethod
+    def connect_h264(config: RtspClientConfig) -> RtspSession: ...
 
 
 class RtspSession:
     """Live RTSP session — server is in PLAY state. Methods drive
     `pause` / `play` / `teardown` and expose RTCP-derived stats.
+
+    `into_demux_receiver()` — consume the data plane for MPEG-TS demuxing
+    (created by `RtspClient.connect()`).
+    `into_h264_receiver()` — consume the data plane for H.264 AU iteration
+    (created by `RtspClient.connect_h264()`).
+    Calling either twice, or calling the wrong one for the session type,
+    raises `RtspError(PROTOCOL)`.
     """
 
     def pause(self) -> None: ...
@@ -321,6 +333,7 @@ class RtspSession:
         self,
         demux_config: Optional[DemuxerConfig] = ...,
     ) -> DemuxReceiver: ...
+    def into_h264_receiver(self) -> H264Receiver: ...
     def is_torn_down(self) -> bool: ...
     def __enter__(self) -> RtspSession: ...
     def __exit__(
@@ -666,6 +679,141 @@ class DemuxReceiver:
     def stats(self) -> Tuple[SocketStats, Any]: ...
     def close(self) -> None: ...
     def __enter__(self) -> DemuxReceiver: ...
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[Any],
+    ) -> bool: ...
+    def __repr__(self) -> str: ...
+
+
+# ---------------------------------------------------------------------------
+# WP-3 RFC 6184 — H.264 depacketizer types + H264Receiver
+# ---------------------------------------------------------------------------
+
+
+class ParameterSetInjection:
+    """Controls whether out-of-band SPS/PPS are injected before IDR frames
+    (IntEnum-shaped PyClass). Mirrors `tst_rtp::ParameterSetInjection`.
+
+    `NONE`       — pass NALUs through exactly as received.
+    `BEFORE_IDR` — inject cached SPS/PPS before every IDR frame (default).
+    """
+
+    NONE: ParameterSetInjection
+    BEFORE_IDR: ParameterSetInjection
+
+
+class H264DepayConfig:
+    """H.264 depacketizer configuration. Frozen.
+
+    All defaults mirror `tst_rtp::H264DepayConfig::default()` (payload_type=96,
+    parameter_set_injection=BEFORE_IDR, initial_parameter_sets=[], max_au_bytes=8388608).
+
+    `initial_parameter_sets` accepts a list of raw NALU bytes (type 7 = SPS,
+    type 8 = PPS). Last SPS and PPS each win when multiple are provided.
+    """
+
+    def __init__(
+        self,
+        *,
+        payload_type: int = ...,
+        parameter_set_injection: ParameterSetInjection = ...,
+        initial_parameter_sets: List[bytes] = ...,
+        max_au_bytes: int = ...,
+    ) -> None: ...
+    @property
+    def payload_type(self) -> int: ...
+    @property
+    def parameter_set_injection(self) -> ParameterSetInjection: ...
+    @property
+    def initial_parameter_sets(self) -> List[bytes]: ...
+    @property
+    def max_au_bytes(self) -> int: ...
+    def __repr__(self) -> str: ...
+
+
+class H264AccessUnit:
+    """A fully reassembled H.264 Access Unit. Frozen.
+
+    `annexb`        — Annex B–framed NALU bytes (start codes prepended).
+    `pts`           — 90 kHz decode-order timestamp as `int` (i64 ticks).
+    `key_frame`     — `True` if the AU contains an IDR slice (NALU type 5).
+    `rtp_timestamp` — raw 32-bit RTP timestamp from the packet header.
+    """
+
+    annexb: bytes
+    pts: int
+    key_frame: bool
+    rtp_timestamp: int
+
+    def __repr__(self) -> str: ...
+
+
+class H264DepayStats:
+    """RFC 6184 depacketizer counters. Frozen snapshot.
+
+    All 9 counters are `int`; zero until activity occurs.
+    """
+
+    aus_emitted: int
+    aus_dropped: int
+    aus_dropped_oversize: int
+    packets_discarded: int
+    nalus_discarded: int
+    seq_gaps: int
+    duplicate_packets: int
+    parameter_set_updates: int
+    ssrc_changes: int
+
+    def __repr__(self) -> str: ...
+
+
+class RtpStats:
+    """RTP protocol–level statistics snapshot. Frozen.
+
+    `malformed_packets` — datagrams with an invalid RTP header, wrong payload
+    type, or empty payload. Cumulative since `listen()`.
+    """
+
+    malformed_packets: int
+
+    def __repr__(self) -> str: ...
+
+
+class H264Receiver:
+    """Blocking H.264-over-RTP receiver (RFC 6184).
+
+    `listen(url, config=None)` — bind to `rtp://host:port?pt=N` and return
+    a ready receiver. `?pt=` is required (1..=127; 33 is rejected).
+
+    `recv_au()` — block until an Access Unit is reassembled (releasing the
+    GIL via `py.allow_threads()`). Returns `H264AccessUnit` or `None` at EOS.
+
+    Acts as its own iterator: `for au in receiver: ...` yields AUs until EOS.
+
+    `depay_stats()` / `rtp_stats()` / `socket_stats()` — snapshot counters.
+    `local_addr()` — UDP bind address as `"host:port"`, or `None` for TCP.
+    `cancel_handle()` — returns a `CancelHandle` for cross-thread cancellation.
+    `close()` — idempotent; fires cancel + drops the socket.
+    """
+
+    @staticmethod
+    def listen(
+        url: str,
+        config: Optional[H264DepayConfig] = ...,
+    ) -> H264Receiver: ...
+    def recv_au(self) -> Optional[H264AccessUnit]: ...
+    def __iter__(self) -> Iterator[H264AccessUnit]: ...
+    def __next__(self) -> H264AccessUnit: ...
+    def depay_stats(self) -> H264DepayStats: ...
+    def rtp_stats(self) -> RtpStats: ...
+    def socket_stats(self) -> SocketStats: ...
+    def local_addr(self) -> Optional[str]: ...
+    def cancel_handle(self) -> CancelHandle: ...
+    def close(self) -> None: ...
+    def __enter__(self) -> H264Receiver: ...
     def __exit__(
         self,
         exc_type: Optional[Type[BaseException]],

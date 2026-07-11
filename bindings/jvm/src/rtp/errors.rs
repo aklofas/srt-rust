@@ -109,8 +109,8 @@ pub(crate) fn rtsp_error_to_jvm(env: &mut JNIEnv, e: &RtspError) {
     throw_rtsp(env, rtsp_error_kind(e), &e.to_string());
 }
 
-/// `RtspError` → SCREAMING_SNAKE `RtspException.Kind` constant name. 1:1 with
-/// tst-py `rtsp_error_kind_str`.
+/// `RtspError` → SCREAMING_SNAKE `RtspException.Kind` constant name. Mirrors
+/// tst-py `rtsp_error_kind_str` — keep both in sync on any mapping change.
 fn rtsp_error_kind(e: &RtspError) -> &'static str {
     match e {
         RtspError::Io(_) => "IO",
@@ -131,7 +131,7 @@ fn rtsp_error_kind(e: &RtspError) -> &'static str {
         RtspError::MultipleMp2tMedia { .. } => "MOUNT",
         RtspError::NoH264Media => "MOUNT",
         RtspError::MultipleH264Media { .. } => "MOUNT",
-        RtspError::UnsupportedPacketizationMode(_) => "MOUNT",
+        RtspError::UnsupportedPacketizationMode(_) => "UNSUPPORTED_TRANSPORT",
         RtspError::Url(_) => "PROTOCOL",
         // non-exhaustive wildcard — future variants land in PROTOCOL until the
         // Java-side RtspException.Kind grows a matching constant.

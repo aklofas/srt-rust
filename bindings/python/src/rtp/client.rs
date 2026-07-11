@@ -42,10 +42,11 @@ use tst_rtp::rtsp::client::session::RtspSession as RustRtspSession;
 use tst_rtp::rtsp::client::{
     RtspCancelHandle as RustRtspCancelHandle, RtspClient as RustRtspClient,
 };
-use tst_rtp::{RtspClientBuilder, RtspVersion};
+use tst_rtp::{H264DepayConfig, RtspClientBuilder, RtspVersion};
 
 use crate::errors::make_rtsp_error;
 use crate::rtp::demux_receiver::PyDemuxReceiver;
+use crate::rtp::h264_receiver::PyH264Receiver;
 
 // ---------------------------------------------------------------------------
 // Enums (Python IntEnum-equivalent PyClasses)
@@ -579,6 +580,71 @@ impl PyRtspClient {
             client: Arc::new(Mutex::new(Some(client))),
             session: Arc::new(Mutex::new(Some(session))),
             torn_down: Arc::new(AtomicBool::new(false)),
+            h264_depay_config: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    /// Connect to `config.url`, run OPTIONS / DESCRIBE / SETUP / PLAY for
+    /// an H.264 media stream, and return a live `RtspSession`.
+    ///
+    /// Twin of `connect()`, but calls `setup_h264_auto` instead of
+    /// `setup_mp2t_auto`. The resulting session stashes the negotiated
+    /// `H264DepayConfig` (payload type + out-of-band SPS/PPS from the
+    /// SDP `a=fmtp:` line) so that `session.into_h264_receiver()` can
+    /// configure the depacketizer without the caller needing to inspect
+    /// the SDP manually.
+    ///
+    /// GIL released for the duration of the network exchange.
+    ///
+    /// Raises `RtspError(MOUNT)` when the SDP has no H.264 media or
+    /// more than one H.264 media (use `connect()` for MP2T streams).
+    /// Raises `RtspError(UNSUPPORTED_TRANSPORT)` for packetization mode 2.
+    #[staticmethod]
+    fn connect_h264(py: Python<'_>, config: &PyRtspClientConfig) -> PyResult<PyRtspSession> {
+        let mut builder = RtspClientBuilder::new(&config.url)
+            .map_err(|e| make_rtsp_error(py, rtsp_error_kind_str(&e), &e.to_string()))?;
+
+        if let Some(auth_obj) = &config.auth {
+            let auth_bound = auth_obj.bind(py);
+            if let Ok(basic) = auth_bound.extract::<PyRef<'_, PyBasicAuth>>() {
+                let pw = SecretString::from(basic.password.clone());
+                builder = builder.auth(basic.user.clone(), pw);
+            } else if let Ok(digest) = auth_bound.extract::<PyRef<'_, PyDigestAuth>>() {
+                let pw = SecretString::from(digest.password.clone());
+                builder = builder.auth(digest.user.clone(), pw);
+            }
+        }
+
+        if !config.keepalive {
+            builder = builder.no_auto_keepalive(true);
+        }
+
+        let _ = (
+            config.rtsp_version.to_rust(),
+            config.transport_pref,
+            config.rtcp,
+            config.tls_root_certs_pem.as_ref(),
+        );
+
+        let result = py.allow_threads(
+            || -> Result<(RustRtspClient, RustRtspSession, H264DepayConfig), RustRtspError> {
+                let mut client = builder.connect()?;
+                let _opts = client.options()?;
+                let sdp = client.describe()?;
+                let (session, depay_config) = client.setup_h264_auto(&sdp)?;
+                let _rtp_info = client.play()?;
+                Ok((client, session, depay_config))
+            },
+        );
+
+        let (client, session, depay_config) =
+            result.map_err(|e| make_rtsp_error(py, rtsp_error_kind_str(&e), &e.to_string()))?;
+
+        Ok(PyRtspSession {
+            client: Arc::new(Mutex::new(Some(client))),
+            session: Arc::new(Mutex::new(Some(session))),
+            torn_down: Arc::new(AtomicBool::new(false)),
+            h264_depay_config: Arc::new(Mutex::new(Some(depay_config))),
         })
     }
 }
@@ -610,8 +676,8 @@ pub struct PyRtspSession {
     client: Arc<Mutex<Option<RustRtspClient>>>,
     /// The SETUP-time `RtspSession` carrying the UDP socket pair (or
     /// TCP-interleaved mpsc receiver) for the data plane. `Option`
-    /// because `into_demux_receiver` consumes it — calling it twice on
-    /// the same `PyRtspSession` raises `RtspError(PROTOCOL)`. The
+    /// because `into_demux_receiver` / `into_h264_receiver` consumes it
+    /// — calling either twice raises `RtspError(PROTOCOL)`. The
     /// `Mutex` mirrors the `client` field's pattern so the two fields
     /// can be accessed under uniform locking discipline.
     session: Arc<Mutex<Option<RustRtspSession>>>,
@@ -621,6 +687,12 @@ pub struct PyRtspSession {
     /// observe it across the GIL boundary inside the
     /// `py.allow_threads` closure without holding the python ref.
     torn_down: Arc<AtomicBool>,
+    /// H.264 depacketizer config stashed at `connect_h264` time. `None`
+    /// when this session was created via `connect()` (MP2T path) or when
+    /// `into_h264_receiver()` has already consumed it. Calling
+    /// `into_h264_receiver()` on a `connect()`-created session raises
+    /// `RtspError(PROTOCOL)`.
+    h264_depay_config: Arc<Mutex<Option<H264DepayConfig>>>,
 }
 
 #[pymethods]
@@ -763,6 +835,58 @@ impl PyRtspSession {
             }
         };
         Ok(receiver)
+    }
+
+    /// Consume the session's data plane and wrap it in an `H264Receiver`
+    /// for iterating reassembled H.264 Access Units.
+    ///
+    /// Raises `RtspError(PROTOCOL)` when:
+    /// - this session was created via `connect()` (not `connect_h264()`), or
+    /// - `into_h264_receiver()` or `into_demux_receiver()` has already been
+    ///   called on this session (data plane consumed).
+    ///
+    /// The control-plane methods (`pause` / `play` / `teardown` /
+    /// `cancel_handle`) remain usable after the call — only the data-plane
+    /// `RtspSession` (the inner Rust value) is consumed.
+    ///
+    /// Handle is zeroed BEFORE the fallible native work to avoid
+    /// double-free if the construction raises (the double-free lesson).
+    #[allow(clippy::wrong_self_convention)]
+    fn into_h264_receiver(&mut self, _py: Python<'_>) -> PyResult<PyH264Receiver> {
+        // Step 1: take the H264DepayConfig stashed at connect_h264 time.
+        // None = session was created by connect() (wrong path).
+        let depay_config = {
+            let mut guard = self
+                .h264_depay_config
+                .lock()
+                .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
+            guard.take().ok_or_else(|| {
+                make_rtsp_error_pure(
+                    "PROTOCOL",
+                    "RtspSession.into_h264_receiver: session was not created by \
+                     connect_h264(), or the H264DepayConfig has already been consumed",
+                )
+            })?
+        };
+
+        // Step 2: take the SETUP-time RtspSession.
+        // Zero this BEFORE the fallible into_h264_receiver call (double-free lesson).
+        let session = {
+            let mut guard = self
+                .session
+                .lock()
+                .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
+            guard.take().ok_or_else(|| {
+                make_rtsp_error_pure(
+                    "PROTOCOL",
+                    "RtspSession.into_h264_receiver: data plane already consumed",
+                )
+            })?
+        };
+
+        // Step 3: convert the RTSP session into an H264Receiver.
+        let receiver = session.into_h264_receiver(depay_config);
+        Ok(PyH264Receiver::from_h264_receiver(receiver))
     }
 
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {

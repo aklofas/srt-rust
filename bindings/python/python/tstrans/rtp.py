@@ -61,6 +61,14 @@ ServerStats = _rtp.ServerStats
 MountStats = _rtp.MountStats
 RtspServerCancelHandle = _rtp.RtspServerCancelHandle
 
+# WP-3 RFC 6184 — H.264 depacketizer + blocking receiver.
+ParameterSetInjection = _rtp.ParameterSetInjection
+H264DepayConfig = _rtp.H264DepayConfig
+H264AccessUnit = _rtp.H264AccessUnit
+H264DepayStats = _rtp.H264DepayStats
+RtpStats = _rtp.RtpStats
+H264Receiver = _rtp.H264Receiver
+
 
 # ---------------------------------------------------------------------------
 # T22 — RtspServerConfig dataclass. Lives Python-side (not PyClass) because
@@ -165,4 +173,11 @@ __all__: list[str] = [
     "MountStats",
     "RtspServerCancelHandle",
     "RtspServerConfig",
+    # WP-3 RFC 6184 H.264 receiver
+    "ParameterSetInjection",
+    "H264DepayConfig",
+    "H264AccessUnit",
+    "H264DepayStats",
+    "RtpStats",
+    "H264Receiver",
 ]

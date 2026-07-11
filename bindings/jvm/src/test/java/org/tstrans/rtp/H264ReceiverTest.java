@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.tstrans.RtpException;
@@ -98,6 +100,85 @@ class H264ReceiverTest {
             // toString must not throw.
             assertNotNull(au.toString());
         }
+    }
+
+    // ── Test 1b: for-each iterator collects 2 AUs then terminates ────────────
+
+    /**
+     * Push 2 canned IDR packets to an H264Receiver, close it after sending,
+     * then collect via for-each and assert both AUs arrive and the loop terminates.
+     *
+     * <p>Uses the marker-bit (M=1) property: the helper packet has M=1, so the
+     * depacketizer emits one AU per packet immediately. Two packets → 2 AUs.
+     * After the second packet arrives the test thread breaks out of the iterator
+     * (the receiver is still open); a close() from the main thread after joining
+     * ensures cleanup. This mirrors {@code DemuxReceiver}'s iteration contract.
+     */
+    @Test
+    @Timeout(10)
+    void iteratorCollectsTwoAus() throws Exception {
+        try (H264Receiver rx = H264Receiver.listen("rtp://127.0.0.1:0?pt=96")) {
+            String addrStr = rx.localAddr();
+            assertNotNull(addrStr);
+            int port = Integer.parseInt(addrStr.substring(addrStr.lastIndexOf(':') + 1));
+
+            List<H264AccessUnit> collected = new ArrayList<>();
+            // Consumer thread: collect exactly 2 AUs then break.
+            Thread consumer = new Thread(() -> {
+                for (H264AccessUnit au : rx) {
+                    collected.add(au);
+                    if (collected.size() >= 2) break;
+                }
+            });
+            consumer.setDaemon(true);
+            consumer.start();
+
+            // Let the consumer park on the first recvAu().
+            Thread.sleep(50);
+
+            // Send 2 packets. M=1 on each → one AU emitted per packet.
+            // Second packet uses a distinct RTP timestamp so PTS ordering is clear.
+            try (DatagramSocket tx = new DatagramSocket(
+                    new InetSocketAddress("127.0.0.1", 0))) {
+                byte[] pkt1 = buildPkt((short) 1, 0, (byte) 0x65);
+                byte[] pkt2 = buildPkt((short) 2, 3000, (byte) 0x65);
+                tx.send(new DatagramPacket(pkt1, pkt1.length,
+                    new InetSocketAddress("127.0.0.1", port)));
+                Thread.sleep(10);
+                tx.send(new DatagramPacket(pkt2, pkt2.length,
+                    new InetSocketAddress("127.0.0.1", port)));
+            }
+
+            consumer.join(3_000);
+            assertFalse(consumer.isAlive(), "consumer thread must finish within 3 s");
+            assertEquals(2, collected.size(),
+                "for-each must collect exactly 2 AUs (one per M=1 packet)");
+            for (H264AccessUnit au : collected) {
+                byte[] annexb = au.annexb();
+                // All AUs start with the 4-byte Annex B start code.
+                assertEquals(4, annexbStartCodeLen(annexb),
+                    "AU must start with 4-byte Annex B start code");
+            }
+        }
+    }
+
+    /** Build a minimal M=1 single-NALU RTP packet with given seq, ts, and NALU type. */
+    private static byte[] buildPkt(short seq, int ts, byte naluType) {
+        return new byte[] {
+            (byte) 0x80,
+            (byte) (0x80 | 96),
+            (byte) (seq >> 8), (byte) seq,
+            (byte) (ts >> 24), (byte) (ts >> 16), (byte) (ts >> 8), (byte) ts,
+            0, 0, 0, 9,          // ssrc = 9
+            naluType, (byte) 0xAB, (byte) 0xCD
+        };
+    }
+
+    /** Returns the length of the leading Annex B start code (3 or 4), or 0 if absent. */
+    private static int annexbStartCodeLen(byte[] b) {
+        if (b.length >= 4 && b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 1) return 4;
+        if (b.length >= 3 && b[0] == 0 && b[1] == 0 && b[2] == 1) return 3;
+        return 0;
     }
 
     // ── Test 2: close-then-recvAu → IllegalStateException ─────────────────────

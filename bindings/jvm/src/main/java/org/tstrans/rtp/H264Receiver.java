@@ -1,5 +1,7 @@
 package org.tstrans.rtp;
 
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import org.tstrans.NativeHandle;
 import org.tstrans.NativeLoader;
 import org.tstrans.RtpException;
@@ -60,7 +62,7 @@ import org.tstrans.RtpException;
  * }
  * }</pre>
  */
-public final class H264Receiver extends NativeHandle {
+public final class H264Receiver extends NativeHandle implements Iterable<H264AccessUnit> {
     static { NativeLoader.load(); }
 
     H264Receiver(long h) { setHandle(h); }
@@ -127,6 +129,46 @@ public final class H264Receiver extends NativeHandle {
     public H264AccessUnit recvAu() throws RtpException {
         ensureOpen("H264Receiver is closed");
         return nRecvAu(peekHandle());
+    }
+
+    /**
+     * Iterate reassembled H.264 Access Units. Each {@code hasNext()} blocks on
+     * the next {@code recvAu()} until an AU arrives, EOS ({@code null}) is returned,
+     * or an error occurs. A {@link RtpException} from the native pull is wrapped in
+     * an unchecked {@link RuntimeException} (the {@code Iterator} contract forbids
+     * checked exceptions).
+     *
+     * <p>For-each shorthand:
+     * <pre>{@code
+     * try (H264Receiver rx = H264Receiver.listen("rtp://0.0.0.0:5004?pt=96")) {
+     *     for (H264AccessUnit au : rx) {
+     *         byte[] annexb = au.annexb();
+     *         // ... decode or re-mux ...
+     *     }
+     * }
+     * }</pre>
+     */
+    @Override
+    public Iterator<H264AccessUnit> iterator() {
+        return new Iterator<>() {
+            private H264AccessUnit peeked;
+            private boolean done;
+            @Override public boolean hasNext() {
+                if (done) return false;
+                if (peeked != null) return true;
+                try {
+                    peeked = recvAu();
+                } catch (RtpException e) {
+                    throw new RuntimeException(e);
+                }
+                if (peeked == null) { done = true; return false; }
+                return true;
+            }
+            @Override public H264AccessUnit next() {
+                if (!hasNext()) throw new NoSuchElementException();
+                H264AccessUnit au = peeked; peeked = null; return au;
+            }
+        };
     }
 
     /**

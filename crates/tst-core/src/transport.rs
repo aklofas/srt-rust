@@ -202,7 +202,10 @@ pub trait Transport: Send {
 
     /// Maximum payload size for this transport. For SRT live mode this is
     /// `SRTO_PAYLOADSIZE` (default 1316). Senders use this to size
-    /// per-send buffers and to validate raw-sender input.
+    /// per-send buffers and to validate raw-sender input. This is the
+    /// **send-side budget**; the receive-side counterpart
+    /// ([`RecvTransport::max_payload`]) reports the protocol's
+    /// deliverable ceiling instead, which may be larger.
     fn max_payload(&self) -> usize;
 
     /// Advisory liveness check. Returns `false` when the transport is
@@ -293,9 +296,15 @@ pub trait RecvTransport: Send {
     /// transport is still alive and the caller may retry.
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError>;
 
-    /// Maximum bytes a single `recv_bytes` call may return. For SRT live
-    /// mode this is `SRTO_PAYLOADSIZE` (default 1316). Receive shells use
-    /// this to size their internal buffers on construction.
+    /// Upper bound on the bytes a single `recv_bytes` call may deliver.
+    /// Receive shells size their internal buffers from this value on
+    /// construction, so it must be the **deliverable ceiling of the
+    /// underlying protocol** — the largest message a conformant remote
+    /// sender can legally produce — NOT the local send-side packet-size
+    /// budget (that is [`Transport::max_payload`]). A remote peer does
+    /// not know or honor our local packet-size configuration; returning
+    /// the local budget here makes conformant oversize traffic surface
+    /// as a broken transport (or silent loss) at the shell layer.
     fn max_payload(&self) -> usize;
 
     /// Advisory liveness check. Returns `false` when the transport is known

@@ -596,10 +596,6 @@ pub struct RtpRecvTransport {
     /// Underlying byte source — UDP socket or mpsc-fed
     /// TCP-interleaved bridge. `None` after [`Self::close`].
     source: Option<Source>,
-    /// Datagram budget from `RtpUrl::pkt_size` — exposed (minus the RTP
-    /// header) via [`RecvTransport::max_payload`]. The recv scratch is
-    /// NOT sized from this — see [`RECV_SCRATCH_LEN`].
-    max_payload: usize,
     cancel: Arc<RtpCancelHandle>,
     bytes_received: u64,
     packets_received: u64,
@@ -780,7 +776,6 @@ impl RtpRecvTransport {
                         tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
                         return Ok(Self {
                             source: Some(Source::Udp(socket)),
-                            max_payload: url.pkt_size,
                             cancel: RtpCancelHandle::new(),
                             bytes_received: 0,
                             packets_received: 0,
@@ -810,7 +805,6 @@ impl RtpRecvTransport {
                     tracing::warn!("url port 65535 has no RTCP companion; skipping RR reporter");
                     return Ok(Self {
                         source: Some(Source::Udp(socket)),
-                        max_payload: url.pkt_size,
                         cancel: RtpCancelHandle::new(),
                         bytes_received: 0,
                         packets_received: 0,
@@ -851,7 +845,6 @@ impl RtpRecvTransport {
         };
         Ok(Self {
             source: Some(Source::Udp(socket)),
-            max_payload: url.pkt_size,
             cancel: RtpCancelHandle::new(),
             bytes_received: 0,
             packets_received: 0,
@@ -880,11 +873,9 @@ impl RtpRecvTransport {
         socket
             .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
             .map_err(ConnectError::Io)?;
-        let pkt_size = crate::url::DEFAULT_PKT_SIZE;
         let ssrc = random_u32();
         Ok(Self {
             source: Some(Source::Udp(socket)),
-            max_payload: pkt_size,
             cancel: RtpCancelHandle::new(),
             bytes_received: 0,
             packets_received: 0,
@@ -914,11 +905,9 @@ impl RtpRecvTransport {
     /// `rx` is the consumer side of the bridge; the producer side
     /// (`Sender<Bytes>`) is held by the pump thread.
     pub(crate) fn from_mpsc_placeholder(rx: std::sync::mpsc::Receiver<bytes::Bytes>) -> Self {
-        let pkt_size = crate::url::DEFAULT_PKT_SIZE;
         let ssrc = random_u32();
         Self {
             source: Some(Source::Mpsc(rx)),
-            max_payload: pkt_size,
             cancel: RtpCancelHandle::new(),
             bytes_received: 0,
             packets_received: 0,
@@ -1078,7 +1067,14 @@ impl RecvTransport for RtpRecvTransport {
     }
 
     fn max_payload(&self) -> usize {
-        self.max_payload.saturating_sub(RTP_HEADER_LEN)
+        // Recv-side deliverable ceiling (see RecvTransport::max_payload
+        // in tst-core): one whole RTP payload at the largest size any
+        // legal source can deliver — RECV_SCRATCH_LEN (the 16-bit
+        // UDP-datagram / interleaved-frame limit) minus the fixed RTP
+        // header. Deliberately NOT derived from the URL's pkt_size:
+        // that is the send-side budget, and conformant foreign senders
+        // (gst/ffmpeg full-MTU 7×188 bundles) exceed it.
+        RECV_SCRATCH_LEN - RTP_HEADER_LEN
     }
 
     fn is_alive(&self) -> bool {

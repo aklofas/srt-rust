@@ -13,10 +13,6 @@
 
 #define TST_HAS_SRT 1
 #define TST_HAS_RTP 1
-#define TST_HAS_UDP 1
-#define TST_HAS_TCP 1
-#define TST_HAS_HLS 1
-#define TST_HAS_RIST 1
 
 #include <stdarg.h>
 #include <stdbool.h>

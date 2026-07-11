@@ -22,6 +22,9 @@ pub struct HlsPublisher {
 pub(crate) struct State {
     pub(crate) segmenter: Segmenter,
     pub(crate) bytes_pushed_total: u64,
+    /// Set to `true` once the publisher is finished so the HTTP server renders
+    /// a terminal playlist (with `#EXT-X-ENDLIST`).
+    pub(crate) finished: bool,
 }
 
 impl HlsPublisher {
@@ -48,6 +51,7 @@ impl HlsPublisher {
         let state = Arc::new(Mutex::new(State {
             segmenter,
             bytes_pushed_total: 0,
+            finished: false,
         }));
 
         #[cfg(feature = "serve")]
@@ -134,6 +138,7 @@ impl Publisher for HlsPublisher {
         let (output_dir, final_pl) = {
             let mut s = self.state.lock().expect("HlsPublisher poisoned");
             s.segmenter.finalize()?;
+            s.finished = true;
             let pl = playlist::render(&s.segmenter, true);
             (s.segmenter.output_dir().to_path_buf(), pl)
         };
@@ -153,6 +158,68 @@ impl Publisher for HlsPublisher {
         out.current_segment_age = s.segmenter.current_segment_age();
         out.last_segment_duration = s.segmenter.last_segment_duration();
         out
+    }
+}
+
+impl HlsPublisher {
+    /// Like [`Publisher::finish`], but keeps the built-in HTTP server serving
+    /// the completed (terminal) playlist and segments until the returned
+    /// [`HlsServerHandle`] is dropped or [`HlsServerHandle::shutdown`] is
+    /// called.
+    ///
+    /// This is how a VOD or EVENT stream becomes observable after the stream
+    /// ends: the server stays up so clients can request the full playlist and
+    /// all segment files.
+    ///
+    /// Returns [`HlsError::Finished`] if the publisher has already been
+    /// finished.
+    #[cfg(feature = "serve")]
+    pub fn finish_serving(mut self) -> Result<HlsServerHandle, HlsError> {
+        if self.finished {
+            return Err(HlsError::Finished);
+        }
+        self.finished = true;
+        let (output_dir, final_pl) = {
+            let mut s = self.state.lock().expect("HlsPublisher poisoned");
+            s.segmenter.finalize()?;
+            s.finished = true;
+            let pl = playlist::render(&s.segmenter, true);
+            (s.segmenter.output_dir().to_path_buf(), pl)
+        };
+        std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)?;
+        let server = self
+            .server
+            .take()
+            .ok_or_else(|| HlsError::Internal("HTTP server not running".into()))?;
+        Ok(HlsServerHandle {
+            server,
+            _state: self.state,
+        })
+    }
+}
+
+/// Keeps the finished playlist and segments served until dropped or
+/// [`shutdown`](HlsServerHandle::shutdown) is called.
+///
+/// Obtained by calling [`HlsPublisher::finish_serving`].
+#[cfg(feature = "serve")]
+pub struct HlsServerHandle {
+    server: crate::http_server::ServerHandle,
+    // Keeps the Arc<Mutex<State>> alive so the HTTP server's shared state
+    // is not freed while the handle is live.
+    _state: Arc<Mutex<State>>,
+}
+
+#[cfg(feature = "serve")]
+impl HlsServerHandle {
+    /// The local socket address the HTTP server is bound to.
+    pub fn local_addr(&self) -> std::net::SocketAddr {
+        self.server.local_addr()
+    }
+
+    /// Stop serving and drain the runtime. Also happens automatically on drop.
+    pub fn shutdown(self) {
+        self.server.shutdown();
     }
 }
 

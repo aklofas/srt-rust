@@ -135,6 +135,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_hls::error::HlsErrorKind
 pub mod tst_hls::publisher
 pub struct tst_hls::publisher::HlsPublisher
 impl tst_hls::publisher::HlsPublisher
+pub fn tst_hls::publisher::HlsPublisher::finish_serving(self) -> core::result::Result<tst_hls::publisher::HlsServerHandle, tst_hls::error::HlsError>
+impl tst_hls::publisher::HlsPublisher
 pub fn tst_hls::publisher::HlsPublisher::hls_stats(&self) -> tst_hls::stats::HlsStats
 pub fn tst_hls::publisher::HlsPublisher::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
 pub fn tst_hls::publisher::HlsPublisher::render_playlist(&self, bool) -> alloc::string::String
@@ -153,6 +155,17 @@ impl core::marker::Unpin for tst_hls::publisher::HlsPublisher
 impl core::marker::UnsafeUnpin for tst_hls::publisher::HlsPublisher
 impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::publisher::HlsPublisher
 impl core::panic::unwind_safe::UnwindSafe for tst_hls::publisher::HlsPublisher
+pub struct tst_hls::publisher::HlsServerHandle
+impl tst_hls::publisher::HlsServerHandle
+pub fn tst_hls::publisher::HlsServerHandle::local_addr(&self) -> core::net::socket_addr::SocketAddr
+pub fn tst_hls::publisher::HlsServerHandle::shutdown(self)
+impl !core::marker::Freeze for tst_hls::publisher::HlsServerHandle
+impl core::marker::Send for tst_hls::publisher::HlsServerHandle
+impl core::marker::Sync for tst_hls::publisher::HlsServerHandle
+impl core::marker::Unpin for tst_hls::publisher::HlsServerHandle
+impl core::marker::UnsafeUnpin for tst_hls::publisher::HlsServerHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::publisher::HlsServerHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_hls::publisher::HlsServerHandle
 pub mod tst_hls::stats
 #[non_exhaustive] pub struct tst_hls::stats::HlsStats
 pub tst_hls::stats::HlsStats::bytes_pushed_total: u64
@@ -357,6 +370,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::config::HlsConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_hls::config::HlsConfig
 pub struct tst_hls::HlsPublisher
 impl tst_hls::publisher::HlsPublisher
+pub fn tst_hls::publisher::HlsPublisher::finish_serving(self) -> core::result::Result<tst_hls::publisher::HlsServerHandle, tst_hls::error::HlsError>
+impl tst_hls::publisher::HlsPublisher
 pub fn tst_hls::publisher::HlsPublisher::hls_stats(&self) -> tst_hls::stats::HlsStats
 pub fn tst_hls::publisher::HlsPublisher::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
 pub fn tst_hls::publisher::HlsPublisher::render_playlist(&self, bool) -> alloc::string::String
@@ -400,6 +415,17 @@ impl core::marker::Unpin for tst_hls::builder::HlsPublisherBuilder
 impl core::marker::UnsafeUnpin for tst_hls::builder::HlsPublisherBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::builder::HlsPublisherBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_hls::builder::HlsPublisherBuilder
+pub struct tst_hls::HlsServerHandle
+impl tst_hls::publisher::HlsServerHandle
+pub fn tst_hls::publisher::HlsServerHandle::local_addr(&self) -> core::net::socket_addr::SocketAddr
+pub fn tst_hls::publisher::HlsServerHandle::shutdown(self)
+impl !core::marker::Freeze for tst_hls::publisher::HlsServerHandle
+impl core::marker::Send for tst_hls::publisher::HlsServerHandle
+impl core::marker::Sync for tst_hls::publisher::HlsServerHandle
+impl core::marker::Unpin for tst_hls::publisher::HlsServerHandle
+impl core::marker::UnsafeUnpin for tst_hls::publisher::HlsServerHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::publisher::HlsServerHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_hls::publisher::HlsServerHandle
 #[non_exhaustive] pub struct tst_hls::HlsStats
 pub tst_hls::HlsStats::bytes_pushed_total: u64
 pub tst_hls::HlsStats::open_segment_bytes: u64

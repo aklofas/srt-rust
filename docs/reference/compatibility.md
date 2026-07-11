@@ -20,8 +20,11 @@ KLV** over **UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT, and RIST
 An HLS publisher (`tst-hls`) is now **supported and ships in the Python wheels**
 (default-on `hls` feature in `tst-py`). The C binding exposes HLS via the opt-in
 `hls` Cargo feature; the crate is segmenter-first — the built-in HTTP server
-and TLS are gated behind the `serve` and `tls` features respectively (see
-`deferred-features.md` for the HTTP-server path-traversal and VOD-serving items).
+and TLS are gated behind the `serve` and `tls` features respectively. The
+built-in server serves only a known set of files it wrote (no path traversal),
+binds loopback by default, and can keep serving a completed VOD/EVENT playlist
+via `finish_serving`. See the [HLS guide](/docs/guides/hls.md); fMP4/CMAF and
+LL-HLS remain deferred (`deferred-features.md`).
 The JVM binding has no HLS surface (deferred). Other
 containers (MP4 / CMAF), other transports (RTMP / WebRTC), and raw elementary
 streams remain out of scope until a consumer asks. See

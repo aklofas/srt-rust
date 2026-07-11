@@ -31,7 +31,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 ## What's in the box
 
 - **MPEG-TS mux + demux** — the Rust core (`tst-core`, `tst-pipeline`, `tst-srt`). Single-program or multi-program TS; auto-PCR insertion; PAT/PMT generation; the full ST 1402 KLV-in-TS multiplexing pipeline.
-- **Transports** — SRT (vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist). An HLS publisher exists but is experimental and not in the published artifacts — see [`project/deferred-features.md`](/docs/project/deferred-features.md).
+- **Transports** — SRT (vendored libsrt 1.5.5; mbedTLS 3.6.x LTS encryption ON by default with AES-128/192/256), RTP (incl. RTSP client + server), raw TCP / TLS, UDP, and RIST (VideoLAN librist). A supported HLS publisher (segmenter + optional built-in HTTP server) ships too — see the [HLS guide](/docs/guides/hls.md).
 - **MISB KLV** — typed encode + decode for ST 0601 (Full Motion Video FMV), ST 0102 (Security Metadata), ST 0605 (Amend Tags), ST 0903 (VMTI per-target detections). H.222.0 §2.12.4.2 Metadata AU cell wrapping for synchronous KLV streams.
 - **Video codecs** — H.264, H.265, H.266/VVC, AV1. NAL/OBU parsers; SPS/PPS/VPS extraction; slice-header-light parsers for resolution + profile.
 - **Audio codecs** — AAC (ADTS full; LATM carriage + sync validation, full decode deferred), MPEG-2 Audio (MP2/MP3), AC-3. Frame-level parsers expose sample rate / channel count.
@@ -44,8 +44,8 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 
 ts-transformer is intentionally narrow. If you need any of these, look elsewhere or pair the library with a complementary tool:
 
-- **Other containers** — MPEG-TS only. No MP4, MKV, fMP4, HLS, DASH. (You can transcode + repackage on the receiver side using FFmpeg, GStreamer, etc.)
-- **Other transports** — **SRT** 1.5 (Haivision libsrt, vendored), **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, and **RIST** (VideoLAN librist) all ship today. An **HLS** publisher exists but is experimental and gated out of the published artifacts (see [`project/deferred-features.md`](/docs/project/deferred-features.md)). **RTMP** and **WebRTC** are not on the roadmap.
+- **Other containers** — MPEG-TS only. No MP4, MKV, fMP4, DASH. (The HLS publisher segments MPEG-TS itself; it does not repackage to fMP4/CMAF. You can transcode + repackage on the receiver side using FFmpeg, GStreamer, etc.)
+- **Other transports** — **SRT** 1.5 (Haivision libsrt, vendored), **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, **RIST** (VideoLAN librist), and a supported **HLS** publisher (segmenter + optional built-in HTTP server, see the [HLS guide](/docs/guides/hls.md)) all ship today. **RTMP** and **WebRTC** are not on the roadmap.
 - **Other metadata formats** — MISB KLV only. No arbitrary user data, no raw timestamps, no proprietary metadata schemas. See [`project/deferred-features.md`](/docs/project/deferred-features.md) for what's deferred.
 - **Video encoding / decoding** — wire-format only. You bring the encoded NAL units / OBU frames; the library multiplexes them. Pair with x264 / x265 / FFmpeg / NVENC / GStreamer for the actual encode side; PyAV / FFmpeg / a hardware decoder for display.
 - **GUI** — no display layer. Pair with VLC, mpv, MPV.js, a custom decoder + framebuffer, or any other player that consumes MPEG-TS.

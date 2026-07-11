@@ -1,14 +1,5 @@
 # Publish MPEG-TS as an HLS stream
 
-> **⚠️ Experimental — not in published artifacts.** The HLS publisher is
-> **Rust-only** and gated behind the `hls` Cargo feature (default-off). It
-> is **not** enabled in the PyPI wheels or the JVM fat JAR. The built-in
-> HTTP server has a pending security review (path traversal and unserved VOD
-> playlists). Use it only for local / experimental builds with
-> `--features hls`. See
-> [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md)
-> for the full rationale and the trigger to promote it to a supported feature.
-
 > **Conformance notes (RFC 8216):** `#EXTINF` reflects media-presentation
 > (PTS) duration when driven through `MuxPublisher`; raw `push_ts` callers
 > fall back to wall-clock. `#EXT-X-TARGETDURATION` is fixed at the ceiling
@@ -16,23 +7,33 @@
 > mode requires `playlist_window × segment_duration ≥ 3 × ceil(segment_duration)`;
 > `HlsPublisherBuilder::build()` rejects configs that cannot meet this floor.
 
-`tst-tcp`'s HLS publisher segments your stream to `.ts` files on disk and
-serves them (plus a rolling `.m3u8`) over a built-in HTTP server. KLV
-metadata stays inside the segments — STANAG 4609-aware players continue
-to decode telemetry.
+The `tst-hls` publisher segments your stream to `.ts` files on disk and
+serves them (plus a rolling `.m3u8`) over a built-in HTTP server. Each
+segment opens on a decodable boundary (PAT → PMT → IDR), so a joining player
+can decode the first segment it fetches. KLV metadata stays inside the
+segments — STANAG 4609-aware players continue to decode telemetry.
+
+See the [HLS guide](/docs/guides/hls.md) for serving guidance, the KLV
+ride-along carriage modes, and latency tuning. For the browser + hls.js
+client contract, see
+[Recipe 9e: KLV-over-HLS to a browser](hls-klv-to-web.md).
 
 ## Code
 
 ```rust
 use std::time::Duration;
 use tst_core::publisher::Publisher;
+use tst_hls::{HlsMode, HlsPublisherBuilder};
 use tst_pipeline::MuxPublisher;
-use tst_tcp::hls::{HlsMode, HlsPublisherBuilder};
 
 let publisher = HlsPublisherBuilder::new()
-    .bind("0.0.0.0:8080".parse()?)
+    // Default bind is 127.0.0.1:8080 (loopback). Bind all interfaces only
+    // behind a reverse proxy, or with auth + TLS.
     .output_dir("/var/cache/hls")
     .segment_duration(Duration::from_secs(4))
+    // Force-cut cap for an overdue keyframe (stalled / very long GOP).
+    // Defaults to 2 × segment_duration; must be ≥ segment_duration.
+    .max_segment_duration(Duration::from_secs(8))
     .playlist_window(6)
     .mode(HlsMode::Live)
     .build()?;
@@ -50,6 +51,25 @@ shell.send_klv(&klv_bytes, pts, 0)?;
 let publisher = shell.finish()?;
 publisher.finish()?;  // writes final playlist + #EXT-X-ENDLIST (Event/Vod modes)
 ```
+
+## Keep a completed VOD / EVENT playlist watchable
+
+`Publisher::finish` writes the terminal playlist and tears the server down —
+so a VOD stops being fetchable the moment it ends. Use `finish_serving`
+instead to finalize the playlist but keep the built-in server up, returning
+an `HlsServerHandle`:
+
+```rust
+let publisher = shell.finish()?;
+let handle = publisher.finish_serving()?;   // #EXT-X-ENDLIST written; server stays up
+println!("VOD at http://{}/playlist.m3u8", handle.local_addr());
+// ... hold the handle for as long as clients should be able to fetch ...
+handle.shutdown();
+```
+
+`PublisherStats.forced_cuts` counts how often `max_segment_duration`
+force-cut an overdue keyframe — a persistently non-zero value means your GOP
+cadence and `segment_duration` are mismatched.
 
 ## Verify with ffmpeg / VLC / mpv
 
@@ -71,7 +91,7 @@ mpv    'http://localhost:8080/playlist.m3u8'
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `output_dir` | `/tmp/hls` | Filesystem dir for `.ts` + `.m3u8` |
+| `output_dir` | `<temp_dir>/tstrans-hls` | Filesystem dir for `.ts` + `.m3u8` (portable temp dir) |
 | `segment_duration` | `4` (seconds) | Duration cap before forced cut |
 | `playlist_window` | `6` | Rolling window size (LIVE mode only) |
 | `mode` | `live` | One of `live`/`event`/`vod` |

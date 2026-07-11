@@ -8,6 +8,7 @@ This file documents what each binary covers.
 | Binary | Feature gates | What it covers |
 |---|---|---|
 | `hls_e2e` | `serve` | `MuxPublisher<HlsPublisher>` over TCP; an `ffmpeg` pull client fetches `/playlist.m3u8` and verifies byte-identity with the source TS. Skipped gracefully if `ffmpeg` is absent. Moved from `crates/tst-tcp/tests/hls_e2e.rs`. |
+| `http_hardening` | `serve` | Serve-from-known-set security model (CWE-22 closure): traversal paths and unknown segment names → 404; only segmenter-known names serve bytes. Non-GET methods rejected. Basic-auth covers all routes. |
 
 ## Equivalence note
 

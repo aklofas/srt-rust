@@ -282,6 +282,16 @@ time — no C symbol, signature, or struct layout changed.
   UDP path. Both paths now consistently count every received datagram or
   channel chunk; malformed drops remain separately tracked in
   `RtpStats::malformed_packets` (PR #82).
+- RTP: `RtpRecvTransport` no longer truncates full-size (7×188) MP2T-over-RTP
+  datagrams. The receive buffer was sized to `pkt_size` (default 1316 bytes),
+  which cannot hold a full 7×188 TS bundle plus the 12-byte RTP header
+  (1328 bytes) — let alone CSRC- or extension-bearing headers —
+  and `UdpSocket::recv` silently discards the excess: silent corruption in
+  0.2.0, silent drops after the MP2T shape guard landed. The receive buffer
+  is now sized to the 16-bit datagram ceiling (65535 bytes) on both the UDP
+  and TCP-interleaved paths, so no legal datagram or interleaved frame can
+  truncate. Only traffic from foreign senders was affected — the in-tree
+  sender caps datagrams below the old buffer size.
 - RTSP: `extract_mount_path` now strips a single trailing `/` from the
   resolved path (except for the root `"/"`) so `rtsp://host/live/` and
   `rtsp://host/live` resolve to the same registered mount. Previously, a

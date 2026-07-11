@@ -14,6 +14,7 @@
 //! | `iface` | interface name (`eth0`) or IPv4 literal | OS default |
 //! | `pkt_size` | positive multiple of 188 | 1316 |
 //! | `ssrc` | u32 decimal or `0x`-prefixed hex | random |
+//! | `pt` | 1..=127, 33 rejected (MPEG-TS) | absent — required by `H264Receiver::listen` |
 //!
 //! Supported `rtsp[s]://` query keys:
 //!
@@ -65,6 +66,14 @@ pub struct RtpUrl {
     pub pkt_size: usize,
     /// `?ssrc=N` — explicit SSRC; `None` means "randomize at construct".
     pub ssrc: Option<u32>,
+    /// `?pt=N` — RTP payload type for elementary-stream (H.264) ingest.
+    ///
+    /// Range 1..=127; value 33 is rejected ("payload type 33 is MPEG-TS —
+    /// use the MP2T receiver (no ?pt=)"). Absent for standard MP2T URLs.
+    /// Required by [`crate::h264::H264Receiver::listen`]; rejected by the
+    /// MP2T constructors (`RtpTransport::connect*` /
+    /// `RtpRecvTransport::listen*`).
+    pub pt: Option<u8>,
 }
 
 /// Errors specific to parsing the `rtp://` URL form.
@@ -100,6 +109,9 @@ pub enum UrlError {
     /// interface name or a literal IPv4 address.
     #[error("invalid iface '{got}'")]
     BadIface { got: String },
+    /// `?pt=` value is out of range or is the reserved MPEG-TS type (33).
+    #[error("invalid pt '{got}': {detail}")]
+    BadPayloadType { got: String, detail: String },
     /// Query key wasn't recognized. (The full set is documented in the
     /// module rustdoc table.) We reject unknown keys hard so typos don't
     /// silently get ignored.
@@ -172,12 +184,14 @@ impl RtpUrl {
         let mut iface = None;
         let mut pkt_size = DEFAULT_PKT_SIZE;
         let mut ssrc = None;
+        let mut pt = None;
         for (k, v) in query.iter() {
             match k.as_ref() {
                 "ttl" => ttl = Some(parse_ttl(v.as_ref())?),
                 "iface" => iface = Some(parse_iface(v.as_ref())?),
                 "pkt_size" => pkt_size = parse_pkt_size(v.as_ref())?,
                 "ssrc" => ssrc = Some(parse_ssrc(v.as_ref())?),
+                "pt" => pt = Some(parse_pt(v.as_ref())?),
                 other => {
                     return Err(UrlError::UnknownKey {
                         got: other.to_string(),
@@ -192,6 +206,7 @@ impl RtpUrl {
             iface,
             pkt_size,
             ssrc,
+            pt,
         })
     }
 }
@@ -252,6 +267,28 @@ fn parse_iface(v: &str) -> Result<String, UrlError> {
     } else {
         Err(UrlError::BadIface { got: v.to_string() })
     }
+}
+
+fn parse_pt(v: &str) -> Result<u8, UrlError> {
+    let n: u32 = v
+        .parse()
+        .map_err(|e: std::num::ParseIntError| UrlError::BadPayloadType {
+            got: v.to_string(),
+            detail: e.to_string(),
+        })?;
+    if n == 33 {
+        return Err(UrlError::BadPayloadType {
+            got: v.to_string(),
+            detail: "payload type 33 is MPEG-TS — use the MP2T receiver (no ?pt=)".to_string(),
+        });
+    }
+    if !(1..=127).contains(&n) {
+        return Err(UrlError::BadPayloadType {
+            got: v.to_string(),
+            detail: "must be in 1..=127 (excluding 33, which is MPEG-TS)".to_string(),
+        });
+    }
+    Ok(n as u8)
 }
 
 /// RTSP URL scheme — distinguishes plain RTSP from RTSP-over-TLS.
@@ -626,6 +663,65 @@ mod tests {
     fn rejects_bad_ssrc() {
         let err = RtpUrl::parse("rtp://h:5004?ssrc=notanint").unwrap_err();
         assert!(matches!(err, UrlError::BadSsrc { .. }));
+    }
+
+    // ── ?pt= query key tests ──────────────────────────────────────────────
+
+    #[test]
+    fn pt_96_parses_ok() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004?pt=96").unwrap();
+        assert_eq!(u.pt, Some(96));
+    }
+
+    #[test]
+    fn pt_1_parses_ok() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004?pt=1").unwrap();
+        assert_eq!(u.pt, Some(1));
+    }
+
+    #[test]
+    fn pt_127_parses_ok() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004?pt=127").unwrap();
+        assert_eq!(u.pt, Some(127));
+    }
+
+    #[test]
+    fn pt_absent_gives_none() {
+        let u = RtpUrl::parse("rtp://127.0.0.1:5004").unwrap();
+        assert_eq!(u.pt, None);
+    }
+
+    #[test]
+    fn pt_33_rejected_as_mp2t() {
+        let err = RtpUrl::parse("rtp://h:5004?pt=33").unwrap_err();
+        assert!(
+            matches!(err, UrlError::BadPayloadType { .. }),
+            "expected BadPayloadType for pt=33, got {err:?}"
+        );
+        if let UrlError::BadPayloadType { detail, .. } = err {
+            assert!(
+                detail.contains("MPEG-TS"),
+                "error detail must mention MPEG-TS"
+            );
+        }
+    }
+
+    #[test]
+    fn pt_200_rejected_out_of_range() {
+        let err = RtpUrl::parse("rtp://h:5004?pt=200").unwrap_err();
+        assert!(matches!(err, UrlError::BadPayloadType { .. }));
+    }
+
+    #[test]
+    fn pt_0_rejected_out_of_range() {
+        let err = RtpUrl::parse("rtp://h:5004?pt=0").unwrap_err();
+        assert!(matches!(err, UrlError::BadPayloadType { .. }));
+    }
+
+    #[test]
+    fn pt_non_numeric_rejected() {
+        let err = RtpUrl::parse("rtp://h:5004?pt=h264").unwrap_err();
+        assert!(matches!(err, UrlError::BadPayloadType { .. }));
     }
 }
 

@@ -1005,7 +1005,7 @@ impl RecvTransport for RtpRecvTransport {
                         // demux loop.
                         self.source = None;
                         return Err(TransportError::Broken {
-                            msg: "InterleavedReader bridge disconnected".to_string(),
+                            msg: "interleaved pump bridge disconnected".to_string(),
                             errno_code: None,
                         });
                     }

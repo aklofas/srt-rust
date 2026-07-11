@@ -477,13 +477,38 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
     })
 }
 
-/// `RtspSession.nIntoH264Receiver` — take the H264DepayConfig stashed at
-/// `nConnectH264` time AND the data-plane `RtspSession`, convert them into an
-/// `H264Receiver`, and return its handle. Ports `PyRtspSession::into_h264_receiver`.
+/// Best-effort TEARDOWN + `torn_down` latch for a session slot already taken
+/// out of `REGISTRY_SESSION`. Errors swallowed (the tst-py `__exit__` contract:
+/// "ensure closed", not "fail if the server is uncooperative"). Used by the
+/// consuming `nIntoH264Receiver` failure paths.
+fn teardown_best_effort(slot: &JniRtspSession) {
+    if !slot.torn_down.load(Ordering::Relaxed) {
+        if let Ok(mut guard) = slot.client.lock() {
+            if let Some(c) = guard.as_mut() {
+                let _ = c.teardown();
+            }
+        }
+        slot.torn_down.store(true, Ordering::Relaxed);
+    }
+}
+
+/// `RtspSession.nIntoH264Receiver` — CONSUMING native (the Java caller zeroed
+/// its handle via `consumeHandle()` BEFORE this call — NativeHandle contract
+/// item 3, same shape as srt `Socket.nIntoSender`). Takes the whole
+/// `JniRtspSession` slot out of the registry (the Java wrapper will never call
+/// `nClose` again, so a leased lookup here would leak the slot forever):
 ///
-/// Double-consume (calling `intoDemuxReceiver` or `intoH264Receiver` twice) →
-/// `RtspException(PROTOCOL)`. Calling on a plain `nConnect`-created session (no
-/// stashed config) → `RtspException(PROTOCOL)`.
+/// - success: converts the data plane into an `H264Receiver` and moves the
+///   control plane (`RtspClient` + `torn_down` flag) into the receiver's slot
+///   so the RTSP control connection + keepalive stay alive while AUs flow;
+///   `H264Receiver.nClose` then performs the best-effort TEARDOWN.
+/// - failure (plain-`nConnect` session / data plane already consumed) →
+///   `RtspException(PROTOCOL)` and the session tears down best-effort — the
+///   session is consumed either way (mirrors `Socket`'s "consumed even if the
+///   config is rejected" semantics).
+///
+/// Ports `PyRtspSession::into_h264_receiver` (Python keeps its session object
+/// alive instead; the consumption asymmetry is a deliberate JVM adjudication).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoH264Receiver(
     mut env: JNIEnv<'_>,
@@ -491,27 +516,30 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoH264Receiver(
     handle: jlong,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
-        // Step 1: lease the session and clone both Arcs out.
-        let Some((depay_config_arc, session_arc)) = REGISTRY_SESSION.with(handle as u64, |s| {
-            (s.h264_depay_config.clone(), s.session.clone())
-        }) else {
+        // Step 1: take the session out of its registry (atomic; idempotent).
+        // `None` = already closed/consumed → the Java caller zeroed its field,
+        // so this is a stale call racing a concurrent close/consume.
+        let Some(slot) = REGISTRY_SESSION.close(handle as u64) else {
             crate::error::throw_closed(env, "RtspSession");
             return 0;
         };
 
         // Step 2: take the H264DepayConfig. None = wrong path (plain connect) or
-        // already consumed.
+        // already consumed. The session is consumed even on failure: tear it down
+        // best-effort before throwing (dropping `slot` then closes the control
+        // connection).
         let depay_config = {
-            let mut guard = match depay_config_arc.lock() {
-                Ok(g) => g,
+            let taken = match slot.h264_depay_config.lock() {
+                Ok(mut g) => g.take(),
                 Err(_) => {
                     throw_rtsp(env, "PROTOCOL", "RtspSession H264DepayConfig lock poisoned");
                     return 0;
                 }
             };
-            match guard.take() {
+            match taken {
                 Some(cfg) => cfg,
                 None => {
+                    teardown_best_effort(&slot);
                     throw_rtsp(
                         env,
                         "PROTOCOL",
@@ -527,16 +555,17 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoH264Receiver(
         // This is zeroed BEFORE the fallible `into_h264_receiver` call
         // (double-free lesson — mirrors Python's `guard.take()` before conversion).
         let session = {
-            let mut guard = match session_arc.lock() {
-                Ok(g) => g,
+            let taken = match slot.session.lock() {
+                Ok(mut g) => g.take(),
                 Err(_) => {
                     throw_rtsp(env, "PROTOCOL", "RtspSession data-plane lock poisoned");
                     return 0;
                 }
             };
-            match guard.take() {
+            match taken {
                 Some(sess) => sess,
                 None => {
+                    teardown_best_effort(&slot);
                     throw_rtsp(
                         env,
                         "PROTOCOL",
@@ -550,8 +579,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoH264Receiver(
         // Step 4: convert — infallible on valid SETUP-succeeded paths.
         let receiver = session.into_h264_receiver(depay_config);
 
-        // Step 5: wrap in registry and return the handle.
-        super::h264_receiver::h264_receiver_handle_from_receiver(receiver)
+        // Step 5: register, moving the control plane into the receiver's slot so
+        // the control connection + keepalive outlive this (consumed) session.
+        super::h264_receiver::h264_receiver_handle_from_rtsp_session(
+            receiver,
+            super::h264_receiver::JniRtspControl {
+                client: slot.client,
+                torn_down: slot.torn_down,
+            },
+        )
     })
 }
 

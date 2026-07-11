@@ -1,10 +1,19 @@
-//! TS Transformer RTP transport — RTP-over-UDP per RFC 3550 carrying an
-//! MPEG-TS bytestream per RFC 2250, plus an RTSP/1.0 client (Phase 2) and
-//! server (Phase 3) for negotiated unicast / multicast / TCP-interleaved
-//! sessions. RTSP/2.0 (RFC 7826) requests are handled on the RFC 7826-
-//! compatible subset shared with RTSP/1.0; the server does not implement
-//! RTSP/2.0-only features (e.g. pipelining, REDIRECT, per-request timeouts).
-//! As of Phase 4 Stage 3, RTCP RR/SR ingest is
+//! TS Transformer RTP transport — two receive shapes over RTP/RTSP:
+//!
+//! - **MPEG-TS-over-RTP (RFC 2250, PT=33):** an enclosing MPEG-TS stream rides
+//!   a single RTP flow. Use [`RtpTransport`] / [`RtpRecvTransport`] (raw) or
+//!   the `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>` shells
+//!   from `tst_pipeline`.
+//!
+//! - **H.264-over-RTP (RFC 6184):** a bare H.264 elementary stream rides an RTP
+//!   flow with a dynamic payload type. Use [`H264Receiver`] (direct UDP) or the
+//!   RTSP path [`RtspClient::setup_h264_auto`] → [`RtspSession::into_h264_receiver`].
+//!
+//! Both shapes share the RTSP/1.0 client (Phase 2) and server (Phase 3) for
+//! negotiated unicast / multicast / TCP-interleaved sessions. RTSP/2.0 (RFC 7826)
+//! requests are handled on the RFC 7826-compatible subset shared with RTSP/1.0;
+//! the server does not implement RTSP/2.0-only features (e.g. pipelining,
+//! REDIRECT, per-request timeouts). As of Phase 4 Stage 3, RTCP RR/SR ingest is
 //! wired on the TCP-interleaved (RFC 7826 §14) client path: peer RR
 //! populates `socket_stats().packets_lost_send` from the cumulative-lost
 //! field and `socket_stats().rtt_us` from the RR-after-SR calculation

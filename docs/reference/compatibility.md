@@ -644,6 +644,15 @@ covers.
 
 For full build-target / CI gating coverage see "Build targets" at the top of this document.
 
+### H.264-over-RTP ingest (RFC 6184) — per-binding status
+
+| Binding | Status | Notes |
+|---|---|---|
+| Rust (`tst-rtp`) | ✅ Full | `H264Depacketizer` / `H264Receiver` / `H264DepayConfig` / `H264Au` / `H264DepayStats`. Single-NALU, STAP-A, FU-A (modes 0 and 1). RTSP path via `setup_h264_auto` → `into_h264_receiver`. |
+| Python (`tstrans.rtp`) | ✅ Full | `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`, `ParameterSetInjection`, `H264DepayStats`, `RtpStats`. RTSP path via `RtspClient.connect_h264` → `session.into_h264_receiver()`. Ships in published wheels. |
+| JVM (`org.tstrans.rtp`) | ✅ Full | `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`, `ParameterSetInjection`, `H264DepayStats`, `RtpStats`. RTSP path via `RtspClient.connectH264` → `session.intoH264Receiver()`. Note: `intoH264Receiver()` consumes the session (differs from Python). Ships in the published JAR. |
+| C (`tst-c`) | ❌ Deferred | No C-ABI `H264Receiver` family yet. Would be ABI minor 17 → 18. Trigger: a C/embedded consumer asks. See [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md). |
+
 **Intentional per-language conveniences.** A small set of APIs exist only in
 one binding by design: `transmux` (Python-only convenience that bridges a
 `Demuxer` and `Muxer` in one call; Rust callers compose them directly);

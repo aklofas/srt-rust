@@ -92,6 +92,69 @@ fn srt_transport_inherits_configured_payload_size() {
     );
 }
 
+/// A foreign SRT peer's `SRTO_PAYLOADSIZE` is a LOCAL socket option — it
+/// is not negotiated down to our value. A peer configured at the
+/// live-mode maximum (1456) delivers 1456-byte messages to a receiver
+/// that kept the 1316 default, so a receive buffer sized from the old
+/// recv-side max_payload() (= local option) hit `SRT_ELARGEMSG` →
+/// Broken("recv buf too small"). The recv-side ceiling must cover the
+/// live-mode wire maximum regardless of the local option.
+#[test]
+fn oversize_foreign_payload_through_raw_receiver_shell() {
+    require_loopback!();
+    use tst_core::transport::RecvTransport;
+    use tst_pipeline::{RawReceiver, RawReceiverConfig};
+
+    // Listener side: DEFAULT payloadsize (1316) — the victim receiver.
+    let mut builder = ListenerBuilder::new();
+    builder.recv_timeout(Duration::from_secs(5));
+    let lb = crate::common::Loopback::bind_with(builder);
+    let port = lb.port;
+
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
+
+    // Caller side: the "foreign" sender at the live-mode max.
+    let mut sender = SocketBuilder::new()
+        .payload_size(1456)
+        .send_timeout(Duration::from_secs(5))
+        .connect(("127.0.0.1", port))
+        .expect("connect");
+
+    let accepted = accept.join();
+    let transport = SrtTransport::new(accepted);
+    assert!(
+        RecvTransport::max_payload(&transport) >= 1456,
+        "recv-side ceiling must cover the SRT live-mode wire max, got {}",
+        RecvTransport::max_payload(&transport)
+    );
+    // Send-side budget must be untouched by the recv-ceiling fix.
+    assert_eq!(
+        Transport::max_payload(&transport),
+        1316,
+        "send-side budget must remain the local negotiated value"
+    );
+
+    let mut shell = RawReceiver::new(transport, RawReceiverConfig::default());
+    let payload: Vec<u8> = (0..1456u16).map(|i| (i % 251) as u8).collect();
+    sender.send(&payload).expect("send 1456-byte message");
+
+    // TSBPD delivers after the latency window (~120 ms default); the
+    // 5 s recv_timeout blocks until then. Bounded retry keeps the test
+    // deterministic on loaded runners.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let got = loop {
+        match shell.recv_one() {
+            Ok(v) => break v,
+            Err(e) if std::time::Instant::now() < deadline => {
+                eprintln!("retrying recv_one: {e:?}");
+            }
+            Err(e) => panic!("full-size foreign message never delivered: {e:?}"),
+        }
+    };
+    assert_eq!(got, payload);
+}
+
 /// Sibling sanity: when a socket is built with no `payload_size` config
 /// (libsrt default), `SrtTransport::new` reports the
 /// `SRT_TS_BUNDLE_BYTES` (1316) constant — preserving prior behavior

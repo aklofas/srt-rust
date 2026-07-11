@@ -13,7 +13,7 @@
 rust	udp	UdpErrorKind	crates/tst-udp/src/error.rs	udp_error_to_code
 rust	tcp	TcpErrorKind	crates/tst-tcp/src/error.rs	tcp_error_to_code
 rust	rist	RistErrorKind	crates/tst-rist/src/error.rs	rist_error_to_code
-rust	hls	HlsErrorKind	crates/tst-tcp/src/hls/error.rs	hls_error_to_code
+rust	hls	HlsErrorKind	crates/tst-hls/src/error.rs	hls_error_to_code
 py	udp	UdpErrorKind	make_udp_error	-
 py	tcp	TcpErrorKind	make_tcp_error	-
 py	rist	RistErrorKind	make_rist_error	-

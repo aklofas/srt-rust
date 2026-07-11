@@ -12,7 +12,8 @@ tst-pipeline = { path = "../crates/tst-pipeline" }
 tst-rist = { path = "../crates/tst-rist" }
 tst-rtp = { path = "../crates/tst-rtp" }
 tst-srt = { path = "../crates/tst-srt" }
-tst-tcp = { path = "../crates/tst-tcp", features = ["hls"] }
+tst-tcp = { path = "../crates/tst-tcp" }
+tst-hls = { path = "../crates/tst-hls" }
 tst-udp = { path = "../crates/tst-udp" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.

@@ -33,6 +33,12 @@ pub enum HlsMode {
 #[non_exhaustive]
 pub struct HlsConfig {
     /// Where the HTTP server binds.
+    ///
+    /// Defaults to `127.0.0.1:8080` (loopback only).  Binding all interfaces
+    /// (`0.0.0.0`) is an explicit choice — front the server with a reverse
+    /// proxy, or use auth+TLS (`basic_auth`/`tls_cert`/`tls_key`), when
+    /// exposing it beyond localhost.
+    ///
     /// Ignored when the `serve` feature is disabled.
     pub bind: SocketAddr,
     /// Filesystem directory where segments + playlist are written.
@@ -61,8 +67,8 @@ pub struct HlsConfig {
 impl Default for HlsConfig {
     fn default() -> Self {
         Self {
-            bind: "0.0.0.0:8080".parse().expect("hard-coded default"),
-            output_dir: PathBuf::from("/tmp/hls"),
+            bind: "127.0.0.1:8080".parse().expect("hard-coded default"),
+            output_dir: std::env::temp_dir().join("tstrans-hls"),
             segment_duration: Duration::from_secs(4),
             playlist_window: 6,
             mode: HlsMode::Live,
@@ -145,6 +151,16 @@ impl HlsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_bind_is_loopback() {
+        let cfg = HlsConfig::default();
+        assert!(
+            cfg.bind.ip().is_loopback(),
+            "default bind must be loopback, got {}",
+            cfg.bind
+        );
+    }
 
     #[test]
     fn default_is_valid() {

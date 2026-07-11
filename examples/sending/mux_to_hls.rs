@@ -8,7 +8,7 @@
 //!   decode the metadata from the HLS segments.
 //!
 //! HOW to run:
-//!   cargo run -p tst-examples --example mux_to_hls -- input.ts /tmp/hls 0.0.0.0:8080
+//!   cargo run -p tst-examples --example mux_to_hls -- input.ts /tmp/hls 127.0.0.1:8080
 //!
 //! HOW to verify with ffmpeg / VLC / mpv:
 //!   ffplay 'http://localhost:8080/playlist.m3u8'

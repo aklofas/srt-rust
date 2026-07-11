@@ -610,6 +610,13 @@ impl PyRtspClient {
                 let pw = SecretString::from(basic.password.clone());
                 builder = builder.auth(basic.user.clone(), pw);
             } else if let Ok(digest) = auth_bound.extract::<PyRef<'_, PyDigestAuth>>() {
+                // tst-rtp's RtspClientBuilder::auth doesn't (yet) take an
+                // algorithm hint — the challenge handler in
+                // `options_describe::handle_auth_challenge_and_retry`
+                // picks the algorithm from the server's
+                // WWW-Authenticate header. We still capture the
+                // algorithm on the Python side for caller introspection
+                // through DigestAuth.algorithm.
                 let pw = SecretString::from(digest.password.clone());
                 builder = builder.auth(digest.user.clone(), pw);
             }
@@ -852,7 +859,7 @@ impl PyRtspSession {
     /// Handle is zeroed BEFORE the fallible native work to avoid
     /// double-free if the construction raises (the double-free lesson).
     #[allow(clippy::wrong_self_convention)]
-    fn into_h264_receiver(&mut self, _py: Python<'_>) -> PyResult<PyH264Receiver> {
+    fn into_h264_receiver(&mut self, py: Python<'_>) -> PyResult<PyH264Receiver> {
         // Step 1: take the H264DepayConfig stashed at connect_h264 time.
         // None = session was created by connect() (wrong path).
         let depay_config = {
@@ -861,7 +868,8 @@ impl PyRtspSession {
                 .lock()
                 .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
             guard.take().ok_or_else(|| {
-                make_rtsp_error_pure(
+                make_rtsp_error(
+                    py,
                     "PROTOCOL",
                     "RtspSession.into_h264_receiver: session was not created by \
                      connect_h264(), or the H264DepayConfig has already been consumed",
@@ -877,7 +885,8 @@ impl PyRtspSession {
                 .lock()
                 .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
             guard.take().ok_or_else(|| {
-                make_rtsp_error_pure(
+                make_rtsp_error(
+                    py,
                     "PROTOCOL",
                     "RtspSession.into_h264_receiver: data plane already consumed",
                 )

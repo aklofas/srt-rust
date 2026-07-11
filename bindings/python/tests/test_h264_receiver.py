@@ -87,8 +87,9 @@ def test_h264_receiver_single_au_loopback() -> None:
     assert au is not None, "recv_au() must return an AU after one packet"
     assert bytes(au.annexb) == b"\x00\x00\x00\x01\x65\xab\xcd"
     assert au.key_frame is True
-    # pts is 90kHz int; ts=9000 = 0x2328 maps through depacketizer
-    assert isinstance(au.pts, int)
+    # pts is zero-based via the depacketizer (first AU establishes the
+    # base, so pts == 0 here); rtp_timestamp is the raw wire value.
+    assert au.pts == 0
     assert au.rtp_timestamp == 9000
 
     rx.close()
@@ -124,7 +125,9 @@ def test_h264_receiver_iterator_collects_aus() -> None:
     time.sleep(0.05)  # let consumer park on recv_au
 
     tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Send two distinct packets (different timestamps so depacketizer emits 2 AUs)
+    # Send two distinct packets. Both carry M=1 (the _rtp_pkt helper sets
+    # the marker bit), and M=1 causes immediate AU emission per packet —
+    # so exactly 2 AUs is deterministic, not racy.
     pkt1 = _rtp_pkt(seq=1, ts=0, nal_bytes=b"\x65\x01")
     pkt2 = _rtp_pkt(seq=2, ts=3000, nal_bytes=b"\x65\x02")
     tx.sendto(pkt1, (host, port))
@@ -136,8 +139,8 @@ def test_h264_receiver_iterator_collects_aus() -> None:
     rx.close()
     t.join(timeout=1.0)
 
-    assert len(collected) >= 1, (
-        f"expected at least 1 AU from iterator, got {len(collected)}"
+    assert len(collected) == 2, (
+        f"expected exactly 2 AUs from iterator (both packets M=1), got {len(collected)}"
     )
     for au in collected:
         assert bytes(au.annexb).startswith(b"\x00\x00\x00\x01")
@@ -146,6 +149,16 @@ def test_h264_receiver_iterator_collects_aus() -> None:
 # --------------------------------------------------------------------------- #
 # 3. Close-then-recv raises RtpError                                           #
 # --------------------------------------------------------------------------- #
+
+
+def test_h264_receiver_context_manager() -> None:
+    """`with H264Receiver.listen(...)` closes on exit (mirrors DemuxReceiver's)."""
+    with tstrans.rtp.H264Receiver.listen("rtp://127.0.0.1:0?pt=96") as rx:
+        assert "open" in repr(rx)
+    # After context exit the receiver is closed.
+    assert "closed" in repr(rx)
+    with pytest.raises(RtpError):
+        rx.recv_au()
 
 
 def test_h264_receiver_closed_recv_raises() -> None:

@@ -63,8 +63,10 @@ fn udp_err_to_connect(e: io::Error) -> ConnectError {
 /// Phase 1 — UDP either accepts the datagram or surfaces an error.
 pub struct RtpTransport {
     socket: Option<UdpSocket>,
-    /// Negotiated max UDP payload (RTP header + TS bundle) — defaults to
-    /// 1316 + 12 = 1328 bytes from `RtpUrl::pkt_size`.
+    /// Max UDP datagram budget (RTP header + TS bundle), set from
+    /// `RtpUrl::pkt_size` (default 1316). `send_bytes` rejects payloads
+    /// where `len + RTP_HEADER_LEN` would exceed this, so the
+    /// caller-visible [`Transport::max_payload`] is `pkt_size - 12`.
     max_payload: usize,
     clock: RtpClock,
     ssrc: u32,
@@ -413,6 +415,20 @@ fn random_u32() -> u32 {
     u32::from_be_bytes(buf)
 }
 
+/// Size of the receive scratch buffer: one whole RTP packet, at the
+/// largest size any source can legally deliver.
+///
+/// - **UDP:** the UDP length field is 16 bits, so 65535 is the ceiling on
+///   any legal datagram — `UdpSocket::recv` into a buffer this large can
+///   never truncate. Sizing from `pkt_size` instead would truncate
+///   full-MTU datagrams from conformant peers (a 7×188 TS bundle is a
+///   1328-byte packet, and CSRC/extension headers push it further —
+///   CC=15 alone adds 60 bytes) because the OS silently discards the
+///   excess bytes on a short `recv`.
+/// - **Mpsc (TCP-interleaved):** RFC 7826 §14 interleaved frames carry a
+///   u16 length prefix, so the same 65535 ceiling applies.
+const RECV_SCRATCH_LEN: usize = 65535;
+
 /// Inner data source for [`RtpRecvTransport`].
 ///
 /// `Udp` — the Phase 1 default: read UDP datagrams off a bound socket
@@ -456,11 +472,17 @@ impl Source {
     ///     `errno_code` carries the OS errno.
     ///   - Mpsc: `RecvTimeoutError::Disconnected` (the pump's `Sender`
     ///     was dropped) — `errno_code` is `None`.
-    ///   - Either: `scratch` too small for the incoming packet —
-    ///     `errno_code` is `None`. In practice this cannot happen for
-    ///     correctly-configured transports (scratch is sized to
-    ///     `pkt_size` at construction; UDP datagrams and RTSP interleaved
-    ///     frames both carry MP2T bundles bounded by the same `pkt_size`).
+    ///   - Mpsc: a frame larger than `scratch` — `errno_code` is `None`.
+    ///     Unreachable when `scratch` is [`RECV_SCRATCH_LEN`] bytes (the
+    ///     interleaved u16 frame cap); kept as defence.
+    ///
+    /// # Scratch sizing
+    ///
+    /// `scratch` must be at least [`RECV_SCRATCH_LEN`] bytes. The UDP arm
+    /// has **no oversize signal** — `UdpSocket::recv` silently truncates a
+    /// datagram larger than the buffer — so only a buffer at the 16-bit
+    /// datagram ceiling guarantees no legal packet (full-MTU 7×188 bundle,
+    /// CSRC list, header extension) is corrupted.
     ///
     /// # Side effects
     ///
@@ -505,11 +527,11 @@ impl Source {
                 match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
                     Ok(packet) => {
                         if packet.len() > scratch.len() {
-                            // Frame larger than scratch — the transport is
-                            // misconfigured (scratch is sized to pkt_size;
-                            // RTSP interleaved frames carry MP2T bundles
-                            // bounded by the same limit). Treat as broken
-                            // so the recv shell stops the demux loop.
+                            // Unreachable with a RECV_SCRATCH_LEN-sized
+                            // scratch (interleaved frames are capped by
+                            // their u16 length prefix) — kept as defence.
+                            // Treat as broken so the recv shell stops the
+                            // demux loop.
                             return Err(TransportError::Broken {
                                 msg: format!(
                                     "interleaved frame ({} B) exceeds scratch buffer ({} B)",
@@ -560,14 +582,17 @@ pub struct RtpRecvTransport {
     /// Underlying byte source — UDP socket or mpsc-fed
     /// TCP-interleaved bridge. `None` after [`Self::close`].
     source: Option<Source>,
-    /// Max UDP payload — used to size the recv scratch buffer.
+    /// Datagram budget from `RtpUrl::pkt_size` — exposed (minus the RTP
+    /// header) via [`RecvTransport::max_payload`]. The recv scratch is
+    /// NOT sized from this — see [`RECV_SCRATCH_LEN`].
     max_payload: usize,
     cancel: Arc<RtpCancelHandle>,
     bytes_received: u64,
     packets_received: u64,
     /// Counter for RTP packets that failed the header check.
     malformed_packets: u64,
-    /// Per-recv scratch — heap allocated once.
+    /// Per-recv scratch, sized to [`RECV_SCRATCH_LEN`] — heap allocated
+    /// once; holds one whole RTP packet (header + payload) per recv.
     scratch: Vec<u8>,
     /// Companion RTCP socket bound on `port + 1` per RFC 3550 §11.
     /// `None` when the caller opted out via `RtpRecvSocketBuilder::rtcp(false)`.
@@ -743,7 +768,7 @@ impl RtpRecvTransport {
                             bytes_received: 0,
                             packets_received: 0,
                             malformed_packets: 0,
-                            scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
+                            scratch: vec![0u8; RECV_SCRATCH_LEN],
                             rtcp_socket,
                             rtcp_stats,
                             rtcp_reporter: None,
@@ -773,7 +798,7 @@ impl RtpRecvTransport {
                         bytes_received: 0,
                         packets_received: 0,
                         malformed_packets: 0,
-                        scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
+                        scratch: vec![0u8; RECV_SCRATCH_LEN],
                         rtcp_socket,
                         rtcp_stats,
                         rtcp_reporter: None,
@@ -814,7 +839,7 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
+            scratch: vec![0u8; RECV_SCRATCH_LEN],
             rtcp_socket,
             rtcp_stats,
             rtcp_reporter,
@@ -847,7 +872,7 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            scratch: vec![0u8; pkt_size + RTP_HEADER_LEN],
+            scratch: vec![0u8; RECV_SCRATCH_LEN],
             rtcp_socket: None,
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
@@ -884,8 +909,8 @@ impl RtpRecvTransport {
             // Scratch holds one whole RTP packet (header + TS payload).
             // recv_raw (Source::Mpsc arm) copies the incoming Bytes into
             // scratch before recv_bytes decodes the header and strips the
-            // payload — same buffer shared with the UDP arm.
-            scratch: vec![0u8; pkt_size + RTP_HEADER_LEN],
+            // payload — same buffer + ceiling as the UDP arm.
+            scratch: vec![0u8; RECV_SCRATCH_LEN],
             rtcp_socket: None,
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
@@ -1557,6 +1582,103 @@ mod tests {
             1,
             "malformed_packets must be 1 for the one dropped payload"
         );
+    }
+
+    /// Regression: full-MTU RTP truncation (pre-existing bug shipped in
+    /// v0.2.0). A conformant peer sending a full 7×188 MP2T bundle emits a
+    /// 1328-byte datagram (12-byte RTP header + 1316-byte payload) — larger
+    /// than the old `pkt_size`-sized (1316 B) recv scratch, so
+    /// `UdpSocket::recv` silently truncated it: corrupt delivery in v0.2.0,
+    /// silent drop once the DA-RTP-5 shape guard landed. The scratch is now
+    /// sized to `RECV_SCRATCH_LEN` (the UDP datagram ceiling), so the whole
+    /// payload must arrive intact with `malformed_packets == 0`.
+    #[test]
+    fn udp_full_mtu_datagram_delivered_whole() {
+        let recv_sock = UdpSocket::bind("127.0.0.1:0").expect("bind recv socket");
+        let recv_addr = recv_sock.local_addr().expect("recv local addr");
+        let mut t = RtpRecvTransport::from_udp_socket(recv_sock).expect("wrap recv socket");
+
+        // 7×188 = 1316-byte TS bundle; every packet 0x47-led.
+        let mut bundle = vec![0u8; 188 * 7];
+        for chunk in bundle.chunks_mut(188) {
+            chunk[0] = 0x47;
+        }
+        let pkt = make_rtp_packet(&bundle);
+        assert_eq!(pkt.len(), 1328, "whole datagram must be 1328 bytes");
+
+        let send_sock = UdpSocket::bind("127.0.0.1:0").expect("bind send socket");
+        send_sock.send_to(&pkt, recv_addr).expect("send datagram");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("full-MTU datagram must be delivered");
+        assert_eq!(n, 188 * 7, "whole 1316-byte payload must be returned");
+        assert_eq!(&buf[..n], bundle.as_slice(), "payload must be untruncated");
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            0,
+            "conformant full-MTU datagram must not be counted malformed"
+        );
+    }
+
+    /// Regression twin with a CSRC-bearing header: CC=15 adds 60 bytes of
+    /// CSRC list, so the whole datagram is 12 + 60 + 1316 = 1388 bytes —
+    /// larger than even `pkt_size + RTP_HEADER_LEN`. Conformant per
+    /// RFC 3550 §5.1; must be delivered whole.
+    #[test]
+    fn udp_csrc_bearing_oversize_datagram_delivered_whole() {
+        let recv_sock = UdpSocket::bind("127.0.0.1:0").expect("bind recv socket");
+        let recv_addr = recv_sock.local_addr().expect("recv local addr");
+        let mut t = RtpRecvTransport::from_udp_socket(recv_sock).expect("wrap recv socket");
+
+        let mut bundle = vec![0u8; 188 * 7];
+        for chunk in bundle.chunks_mut(188) {
+            chunk[0] = 0x47;
+        }
+
+        // V=2 | P=0 | X=0 | CC=15 → 0x8F; M=0 | PT=33.
+        let mut pkt = vec![0x8Fu8, RTP_PT_MP2T];
+        pkt.extend_from_slice(&[0u8; 10]); // seq/ts/ssrc
+        pkt.extend_from_slice(&[0u8; 60]); // 15 CSRC entries × 4 bytes
+        pkt.extend_from_slice(&bundle);
+        assert_eq!(pkt.len(), 1388, "whole datagram must be 1388 bytes");
+
+        let send_sock = UdpSocket::bind("127.0.0.1:0").expect("bind send socket");
+        send_sock.send_to(&pkt, recv_addr).expect("send datagram");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("CSRC-bearing datagram must be delivered");
+        assert_eq!(n, 188 * 7, "payload after CSRC strip must be 1316 bytes");
+        assert_eq!(&buf[..n], bundle.as_slice(), "payload must be untruncated");
+        assert_eq!(t.rtp_stats().malformed_packets, 0);
+    }
+
+    /// Mpsc twin of the full-MTU pin: a whole 1328-byte interleaved frame
+    /// (12-byte header + 7×188 payload) must round-trip through recv_raw's
+    /// scratch copy without truncation or drop.
+    #[test]
+    fn mpsc_full_frame_1328_delivered_whole() {
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        let mut bundle = vec![0u8; 188 * 7];
+        for chunk in bundle.chunks_mut(188) {
+            chunk[0] = 0x47;
+        }
+        let pkt = make_rtp_packet(&bundle);
+        assert_eq!(pkt.len(), 1328, "whole frame must be 1328 bytes");
+        data_tx.send(pkt).expect("send frame");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("1328-byte frame must be delivered");
+        assert_eq!(n, 188 * 7);
+        assert_eq!(&buf[..n], bundle.as_slice());
+        assert_eq!(t.rtp_stats().malformed_packets, 0);
     }
 
     /// B4 / T1-RTSP-RTP (transport level) — a whole RTP packet with CSRC list

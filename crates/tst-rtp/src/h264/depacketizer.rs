@@ -146,6 +146,19 @@ pub struct H264DepayConfig {
     /// element is one raw NALU (type 7 or 8). Seeded into the parameter-set
     /// cache at construction and used by [`ParameterSetInjection::BeforeIdr`].
     pub initial_parameter_sets: Vec<Vec<u8>>,
+    /// Maximum combined byte count for a single AU's accumulation buffers
+    /// (`au_buf` + the open FU-A buffer). When this limit is exceeded the
+    /// buffers are immediately cleared (memory released, not just flagged),
+    /// the AU is poisoned, and [`H264DepayStats::aus_dropped_oversize`] is
+    /// incremented. The drop is also counted in
+    /// [`H264DepayStats::aus_dropped`] at the normal AU-boundary tick site.
+    ///
+    /// This bound closes a DoS vector: on an unconnected UDP socket (or a
+    /// hostile interleaved RTSP server) an attacker can hold a constant RTP
+    /// timestamp and send contiguous sequence numbers indefinitely, causing
+    /// `au_buf` to grow without limit. The default (8 MiB) is generous for
+    /// any real H.264 AU; lower the value in memory-constrained environments.
+    pub max_au_bytes: usize,
 }
 
 impl Default for H264DepayConfig {
@@ -154,6 +167,7 @@ impl Default for H264DepayConfig {
             payload_type: 96,
             parameter_set_injection: ParameterSetInjection::BeforeIdr,
             initial_parameter_sets: Vec::new(),
+            max_au_bytes: 8 * 1024 * 1024, // 8 MiB
         }
     }
 }
@@ -167,7 +181,13 @@ pub struct H264DepayStats {
     /// Number of complete, unpoisoned AUs emitted.
     pub aus_emitted: u64,
     /// Number of AUs discarded due to poisoning (seq gaps, F-bit, etc.).
+    /// Includes AUs dropped for exceeding `max_au_bytes`
+    /// (those are also counted in `aus_dropped_oversize`).
     pub aus_dropped: u64,
+    /// Number of AUs dropped specifically because their accumulated buffer
+    /// size exceeded [`H264DepayConfig::max_au_bytes`]. Every oversize drop
+    /// also increments `aus_dropped` at the normal AU-boundary tick site.
+    pub aus_dropped_oversize: u64,
     /// Number of RTP packets discarded (empty, reserved, interleaved types).
     pub packets_discarded: u64,
     /// Number of NALUs discarded (F-bit set, open FU at AU completion, etc.).
@@ -552,6 +572,29 @@ impl H264Depacketizer {
         self.reset_au();
     }
 
+    /// Enforce the AU accumulation cap after an append. If the combined size
+    /// of `au_buf` and the open FU buffer exceeds [`H264DepayConfig::max_au_bytes`]:
+    /// immediately clear both buffers (memory is released, not just flagged),
+    /// poison the AU, and tick `aus_dropped_oversize`. Returns `true` if the
+    /// cap was exceeded so the caller can short-circuit further work.
+    ///
+    /// The AU is poisoned so `complete_au()` will tick `aus_dropped` at the
+    /// normal boundary site.
+    fn check_and_apply_oversize_cap(&mut self) -> bool {
+        let fu_len = self.fu.as_ref().map_or(0, |b| b.len());
+        let total = self.au_buf.len().saturating_add(fu_len);
+        if total <= self.config.max_au_bytes {
+            return false;
+        }
+        // Release memory immediately — poisoning alone would let bytes continue
+        // accumulating until the next AU boundary.
+        self.au_buf = Vec::new();
+        self.fu = None;
+        self.au_poisoned = true;
+        self.stats.aus_dropped_oversize += 1;
+        true
+    }
+
     /// Push one NALU into the open AU buffer (rule 7).
     ///
     /// If the F bit is set the NALU is corrupt — discard and poison.
@@ -572,6 +615,12 @@ impl H264Depacketizer {
     /// framing exactly as `push_nalu` does.
     fn push_nalu_owned(&mut self, bytes: Vec<u8>) {
         if bytes.is_empty() {
+            return;
+        }
+        // Skip buffering entirely for poisoned AUs — their bytes are dropped
+        // at `complete_au()` anyway, and continuing to extend `au_buf` would
+        // defeat the `max_au_bytes` cap (attacker could still fill memory).
+        if self.au_poisoned {
             return;
         }
         if bytes[0] & 0x80 != 0 {
@@ -601,9 +650,12 @@ impl H264Depacketizer {
             }
             _ => {}
         }
-        // Append Annex B start code + NALU bytes.
+        // Append Annex B start code + NALU bytes, then enforce the cap.
+        // Checking after the append catches both accumulated growth and a single
+        // enormous NALU in one place without pre-computing the new size.
         self.au_buf.extend_from_slice(&ANNEXB_START_CODE);
         self.au_buf.extend_from_slice(&bytes);
+        self.check_and_apply_oversize_cap();
     }
 
     /// Unpack and reassemble an FU-A fragmentation unit (RFC 6184 §5.8).
@@ -660,16 +712,37 @@ impl H264Depacketizer {
                 self.stats.nalus_discarded += 1;
                 self.au_poisoned = true;
             }
+            // Skip buffering for already-poisoned AUs (cap enforcement or prior
+            // error) — no point accumulating bytes we'll discard at completion.
+            if self.au_poisoned {
+                return;
+            }
             // Reconstruct the NALU header and open the accumulation buffer.
             let nalu_hdr = (ind & 0xE0) | (fh & 0x1F);
             let mut buf = Vec::with_capacity(1 + fragment.len());
             buf.push(nalu_hdr);
             buf.extend_from_slice(fragment);
             self.fu = Some(buf);
+            // Enforce cap after the first fragment is stored. A single large
+            // start fragment may already push `au_buf + fu` over the limit.
+            if self.check_and_apply_oversize_cap() {
+                return;
+            }
+            // `fu` is now Some — safe to continue.
         } else {
             // ── Continuation or end fragment ──────────────────────────────────
+            if self.au_poisoned {
+                // Already poisoned (e.g. by cap enforcement on a prior packet):
+                // discard continuation bytes without extending any buffer.
+                return;
+            }
             if let Some(ref mut buf) = self.fu {
                 buf.extend_from_slice(fragment);
+                // Check cap after each append — a slow-drip attack feeds small
+                // continuation fragments indefinitely.
+                if self.check_and_apply_oversize_cap() {
+                    return;
+                }
             } else {
                 // No open FU — the start packet was lost (§7.3 discard guidance).
                 self.stats.nalus_discarded += 1;
@@ -1148,5 +1221,86 @@ mod tests {
         // AU5: seq 7, clean.
         d.feed(&hdr(7, 5000, true), &[0x41, 0x05]);
         assert!(d.next_au().is_some(), "AU5 should be clean");
+    }
+
+    // ── max_au_bytes cap tests ────────────────────────────────────────────────
+
+    /// Build an `H264Depacketizer` with a tiny cap for oversize testing.
+    fn depay_capped(max_bytes: usize) -> H264Depacketizer {
+        H264Depacketizer::new(H264DepayConfig {
+            max_au_bytes: max_bytes,
+            parameter_set_injection: ParameterSetInjection::None,
+            ..H264DepayConfig::default()
+        })
+    }
+
+    /// FU-A fragments totalling > cap must be dropped with memory cleared and
+    /// `aus_dropped_oversize` ticked. A subsequent clean AU must still work
+    /// (depacketizer recovers cleanly).
+    #[test]
+    fn oversize_fu_a_au_is_dropped_and_stats_ticked() {
+        const CAP: usize = 32; // tiny cap for the test
+        let mut d = depay_capped(CAP);
+
+        // Feed FU-A packets for one AU with a constant timestamp.
+        // Each fragment is 16 bytes; after 2 packets au_buf+fu exceeds CAP=32.
+        // FU-A indicator: NRI=3→0x60, type 28→0x1C → ind=0x7C
+        // Fragment type 1 (non-IDR): fh start = 0x80|1=0x81; mid = 0x01; end = 0x40|1=0x41
+        let ind: u8 = (3 << 5) | 28; // NRI=3, type=FU-A
+        let frag = vec![0xAAu8; 16];
+
+        // Start fragment
+        let mut start = vec![ind, 0x80 | 1]; // S=1, E=0, orig type=1
+        start.extend_from_slice(&frag);
+        d.feed(&hdr(1, 1000, false), &start);
+
+        // Continuation fragment — pushes over CAP
+        let mut cont = vec![ind, 0x01]; // S=0, E=0, orig type=1
+        cont.extend_from_slice(&frag);
+        d.feed(&hdr(2, 1000, false), &cont);
+
+        // End fragment (would close the FU-A, but cap was already hit)
+        let mut end = vec![ind, 0x40 | 1]; // S=0, E=1, orig type=1
+        end.extend_from_slice(&[0xBBu8; 4]);
+        d.feed(&hdr(3, 1000, true), &end); // marker → complete_au → drop
+
+        // The AU must be dropped, not emitted.
+        assert!(d.next_au().is_none(), "oversize AU must be dropped");
+        let stats = d.stats();
+        assert_eq!(
+            stats.aus_dropped_oversize, 1,
+            "aus_dropped_oversize must tick"
+        );
+        assert_eq!(stats.aus_dropped, 1, "aus_dropped must also tick");
+
+        // Verify memory is bounded: the internal buffers must have been cleared
+        // (no retained bytes). We verify this indirectly by confirming a clean
+        // subsequent AU succeeds — if the buffers were NOT cleared, the old
+        // bytes would still be there and the cap would fire again.
+        d.feed(&hdr(4, 4003, true), &[0x41, 0x01]); // clean non-IDR AU
+        let clean = d.next_au().expect("subsequent clean AU must succeed");
+        assert_eq!(clean.annexb, [0, 0, 0, 1, 0x41, 0x01]);
+        assert_eq!(d.stats().aus_dropped_oversize, 1, "no new oversize drops");
+    }
+
+    /// Single-NALU AU that exceeds the cap: `aus_dropped_oversize` ticks and
+    /// the AU is dropped. Verifies the single-NALU (non-FU-A) path.
+    #[test]
+    fn oversize_single_nalu_au_is_dropped() {
+        const CAP: usize = 8; // only 8 bytes before oversize
+        let mut d = depay_capped(CAP);
+
+        // Push a clean small NALU to start filling au_buf (4+1 = 5 bytes).
+        d.feed(&hdr(1, 1000, false), &[0x41, 0x01]);
+        assert_eq!(d.stats().aus_dropped_oversize, 0);
+
+        // Push another NALU at the same timestamp — this will push au_buf over 8.
+        // 5 (current) + 4 (start code) + 2 (nalu) = 11 bytes > 8 → oversize.
+        d.feed(&hdr(2, 1000, true), &[0x41, 0x02]); // marker closes AU
+
+        assert!(d.next_au().is_none(), "oversize AU must be dropped");
+        let stats = d.stats();
+        assert_eq!(stats.aus_dropped_oversize, 1);
+        assert_eq!(stats.aus_dropped, 1);
     }
 }

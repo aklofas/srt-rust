@@ -34,8 +34,8 @@
 
 use pyo3::prelude::*;
 
-use tst_pipeline::MuxPublisherError;
 use tst_hls::{HlsError, HlsErrorKind, HlsUrlError};
+use tst_pipeline::MuxPublisherError;
 
 pub(crate) use crate::errors::make_hls_error;
 

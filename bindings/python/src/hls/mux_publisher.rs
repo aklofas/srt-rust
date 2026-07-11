@@ -34,8 +34,8 @@ use std::sync::Mutex;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
-use tst_pipeline::{MuxPublisher as RustMuxPublisher, MuxPublisherError};
 use tst_hls::HlsPublisher;
+use tst_pipeline::{MuxPublisher as RustMuxPublisher, MuxPublisherError};
 
 use crate::hls::publisher::PyHlsPublisher;
 use crate::hls::publisher_abc::PyPublisherStats;

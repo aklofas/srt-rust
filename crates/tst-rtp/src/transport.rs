@@ -429,6 +429,116 @@ pub(crate) enum Source {
     Mpsc(std::sync::mpsc::Receiver<bytes::Bytes>),
 }
 
+impl Source {
+    /// Block (polling `cancel` between timeouts) until one raw packet is
+    /// available; copy it into `scratch` and return its byte length.
+    ///
+    /// # Contract
+    ///
+    /// - **Blocking with cancel polling:** for the UDP arm the socket's
+    ///   `SO_RCVTIMEO` is set to `CANCEL_POLL_INTERVAL` at construction;
+    ///   `WouldBlock`/`TimedOut` wakes the loop which re-checks `cancel`
+    ///   before blocking again. The mpsc arm uses `recv_timeout` with the
+    ///   same interval.
+    ///
+    /// - **Returns `Ok(n)`** when `scratch[..n]` holds the raw RTP packet
+    ///   (header + payload, as received from the underlying source). The
+    ///   caller is responsible for decoding the RTP header, applying PT
+    ///   policy, stripping CSRC/extension/padding, and validating MP2T
+    ///   shape before copying the TS payload into the caller's buffer.
+    ///
+    /// - **Returns `Err(TransportError::ExplicitClose)`** when `cancel` is
+    ///   set.
+    ///
+    /// - **Returns `Err(TransportError::Broken)`** when the underlying
+    ///   source reports a hard error:
+    ///   - UDP: any `io::Error` that is not `WouldBlock`/`TimedOut` —
+    ///     `errno_code` carries the OS errno.
+    ///   - Mpsc: `RecvTimeoutError::Disconnected` (the pump's `Sender`
+    ///     was dropped) — `errno_code` is `None`.
+    ///   - Either: `scratch` too small for the incoming packet —
+    ///     `errno_code` is `None`. In practice this cannot happen for
+    ///     correctly-configured transports (scratch is sized to
+    ///     `pkt_size` at construction; UDP datagrams and RTSP interleaved
+    ///     frames both carry MP2T bundles bounded by the same `pkt_size`).
+    ///
+    /// # Side effects
+    ///
+    /// `recv_raw` takes `&self` and performs no side effects on the source
+    /// or any counters. Callers are responsible for:
+    /// - Ticking `bytes_received` / `packets_received` after `Ok`.
+    /// - Clearing `self.source = None` after a `Broken` return.
+    pub(crate) fn recv_raw(
+        &self,
+        scratch: &mut [u8],
+        cancel: &RtpCancelHandle,
+    ) -> Result<usize, TransportError> {
+        match self {
+            Source::Udp(socket) => loop {
+                if cancel.is_cancelled() {
+                    return Err(TransportError::ExplicitClose);
+                }
+                match socket.recv(scratch) {
+                    Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
+                    Ok(n) => return Ok(n),
+                    Err(e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::TimedOut =>
+                    {
+                        continue;
+                    }
+                    Err(e) => {
+                        return Err(TransportError::Broken {
+                            msg: format!("UDP recv failed: {e}"),
+                            errno_code: e.raw_os_error(),
+                        });
+                    }
+                }
+            },
+            Source::Mpsc(rx) => loop {
+                if cancel.is_cancelled() {
+                    return Err(TransportError::ExplicitClose);
+                }
+                // Same cancel-poll cadence as the UDP path. recv_timeout
+                // wakes on either a value arriving or the timeout
+                // elapsing — the latter just loops to re-check cancel.
+                match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
+                    Ok(packet) => {
+                        if packet.len() > scratch.len() {
+                            // Frame larger than scratch — the transport is
+                            // misconfigured (scratch is sized to pkt_size;
+                            // RTSP interleaved frames carry MP2T bundles
+                            // bounded by the same limit). Treat as broken
+                            // so the recv shell stops the demux loop.
+                            return Err(TransportError::Broken {
+                                msg: format!(
+                                    "interleaved frame ({} B) exceeds scratch buffer ({} B)",
+                                    packet.len(),
+                                    scratch.len()
+                                ),
+                                errno_code: None,
+                            });
+                        }
+                        let n = packet.len();
+                        scratch[..n].copy_from_slice(&packet);
+                        return Ok(n);
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        // The pump thread dropped its Sender — surface as a
+                        // broken transport so the recv shell can stop the
+                        // demux loop.
+                        return Err(TransportError::Broken {
+                            msg: "interleaved pump bridge disconnected".to_string(),
+                            errno_code: None,
+                        });
+                    }
+                }
+            },
+        }
+    }
+}
+
 /// RTP receive-side transport: reads UDP datagrams, strips the 12-byte
 /// RTP header, returns the TS payload bytes to callers.
 ///
@@ -633,7 +743,7 @@ impl RtpRecvTransport {
                             bytes_received: 0,
                             packets_received: 0,
                             malformed_packets: 0,
-                            scratch: vec![0u8; url.pkt_size],
+                            scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
                             rtcp_socket,
                             rtcp_stats,
                             rtcp_reporter: None,
@@ -663,7 +773,7 @@ impl RtpRecvTransport {
                         bytes_received: 0,
                         packets_received: 0,
                         malformed_packets: 0,
-                        scratch: vec![0u8; url.pkt_size],
+                        scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
                         rtcp_socket,
                         rtcp_stats,
                         rtcp_reporter: None,
@@ -704,7 +814,7 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            scratch: vec![0u8; url.pkt_size],
+            scratch: vec![0u8; url.pkt_size + RTP_HEADER_LEN],
             rtcp_socket,
             rtcp_stats,
             rtcp_reporter,
@@ -737,7 +847,7 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            scratch: vec![0u8; pkt_size],
+            scratch: vec![0u8; pkt_size + RTP_HEADER_LEN],
             rtcp_socket: None,
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
@@ -771,11 +881,11 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            // No scratch needed for mpsc path — recv_bytes decodes the
-            // RTP header from the incoming Bytes in-place — but keep the
-            // allocation so a future code path can fall back to the
-            // shared buffer without conditional malloc.
-            scratch: vec![0u8; pkt_size],
+            // Scratch holds one whole RTP packet (header + TS payload).
+            // recv_raw (Source::Mpsc arm) copies the incoming Bytes into
+            // scratch before recv_bytes decodes the header and strips the
+            // payload — same buffer shared with the UDP arm.
+            scratch: vec![0u8; pkt_size + RTP_HEADER_LEN],
             rtcp_socket: None,
             rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
             rtcp_reporter: None,
@@ -846,171 +956,82 @@ impl RecvTransport for RtpRecvTransport {
     /// The demuxer's own resync logic remains defense-in-depth and is
     /// unchanged.
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
-        let source = self.source.as_ref().ok_or(TransportError::Closed)?;
-        match source {
-            Source::Udp(socket) => loop {
-                if self.cancel.is_cancelled() {
-                    return Err(TransportError::ExplicitClose);
+        if self.source.is_none() {
+            return Err(TransportError::Closed);
+        }
+        loop {
+            // Borrow source for the duration of recv_raw only; we re-check
+            // self.source at the top of each iteration via the outer guard
+            // so the mutable `self.source = None` on Broken is unambiguous.
+            let raw_result = self
+                .source
+                .as_ref()
+                .expect("source checked above; cannot be None here")
+                .recv_raw(&mut self.scratch, &self.cancel);
+            let n = match raw_result {
+                Ok(n) => n,
+                Err(e @ TransportError::Broken { .. }) => {
+                    // Hard error from the underlying source — mark transport
+                    // dead (same as both pre-refactor arms did) then propagate.
+                    self.source = None;
+                    return Err(e);
                 }
-                match socket.recv(&mut self.scratch) {
-                    Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
-                    Ok(n) => {
-                        self.bytes_received += n as u64;
-                        self.packets_received += 1;
-                        match RtpHeader::decode(&self.scratch[..n]) {
-                            Ok(parsed) => {
-                                if parsed.header.payload_type != RTP_PT_MP2T {
-                                    self.malformed_packets =
-                                        self.malformed_packets.saturating_add(1);
-                                    tracing::debug!(
-                                        pt = parsed.header.payload_type,
-                                        "non-MP2T payload type at MP2T receiver; packet dropped",
-                                    );
-                                    continue;
-                                }
-                                // Use payload_end (not n) to exclude any RFC 3550
-                                // padding bytes and to reflect extension skipping.
-                                let payload =
-                                    &self.scratch[parsed.payload_offset..parsed.payload_end];
-                                if payload.len() > buf.len() {
-                                    // Caller buf too small. Treat as broken,
-                                    // since the recv shell is misconfigured
-                                    // (it should have sized buf to at least
-                                    // max_payload()).
-                                    return Err(TransportError::Broken {
-                                        msg: format!(
-                                            "recv buf too small: {} < {}",
-                                            buf.len(),
-                                            payload.len()
-                                        ),
-                                        errno_code: None,
-                                    });
-                                }
-                                // DA-RTP-5: RFC 2250 shape guard — payload must be
-                                // non-empty, 188-byte aligned, and begin with 0x47.
-                                // RTP-header validation above already pinned PT=33
-                                // (MP2T); this catches a corrupt or misaligned bundle.
-                                if !is_valid_mp2t_payload(payload) {
-                                    self.malformed_packets =
-                                        self.malformed_packets.saturating_add(1);
-                                    tracing::debug!(
-                                        payload_len = payload.len(),
-                                        first_byte = payload.first().copied().unwrap_or(0),
-                                        "MP2T payload shape invalid (len%188≠0 or no 0x47 \
-                                         sync byte); packet dropped",
-                                    );
-                                    continue;
-                                }
-                                buf[..payload.len()].copy_from_slice(payload);
-                                return Ok(payload.len());
-                            }
-                            Err(parse_err) => {
-                                self.malformed_packets = self.malformed_packets.saturating_add(1);
-                                tracing::debug!(
-                                    error = ?parse_err,
-                                    "RTP packet rejected at recv; counter ticked",
-                                );
-                                // Drop + continue the recv loop.
-                                continue;
-                            }
-                        }
-                    }
-                    Err(e)
-                        if e.kind() == io::ErrorKind::WouldBlock
-                            || e.kind() == io::ErrorKind::TimedOut =>
-                    {
-                        continue;
-                    }
-                    Err(e) => {
-                        let raw_errno = e.raw_os_error();
-                        let msg = format!("UDP recv failed: {e}");
-                        self.source = None;
-                        return Err(TransportError::Broken {
-                            msg,
-                            errno_code: raw_errno,
-                        });
-                    }
+                Err(e) => return Err(e),
+            };
+            // Count at wire-level, before validation — consistent with the
+            // pre-refactor UDP path (incremented on Ok(n) before RTP-header or
+            // MP2T-shape checks). Malformed-but-received packets are counted
+            // here; drops are tracked in `malformed_packets`.
+            self.bytes_received = self.bytes_received.saturating_add(n as u64);
+            self.packets_received = self.packets_received.saturating_add(1);
+            // Decode the RTP header from scratch — applies to both UDP and
+            // mpsc paths after recv_raw copied the whole packet into scratch.
+            let parsed = match RtpHeader::decode(&self.scratch[..n]) {
+                Ok(p) => p,
+                Err(parse_err) => {
+                    self.malformed_packets = self.malformed_packets.saturating_add(1);
+                    tracing::debug!(
+                        error = ?parse_err,
+                        "RTP packet rejected at recv; counter ticked",
+                    );
+                    continue;
                 }
-            },
-            Source::Mpsc(rx) => loop {
-                if self.cancel.is_cancelled() {
-                    return Err(TransportError::ExplicitClose);
-                }
-                // Same cancel-poll cadence as the UDP path. recv_timeout
-                // wakes on either a value arriving or the timeout
-                // elapsing — the latter just loops to re-check cancel.
-                match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
-                    Ok(packet) => {
-                        // Count at wire-level, before validation — consistent with
-                        // the UDP path which increments on Ok(n) before RTP-header
-                        // or MP2T-shape checks. Malformed-but-received packets are
-                        // counted here; drops are tracked in `malformed_packets`.
-                        self.bytes_received =
-                            self.bytes_received.saturating_add(packet.len() as u64);
-                        self.packets_received = self.packets_received.saturating_add(1);
-                        // Decode the RTP header — the pump validated structural
-                        // correctness but passes the whole packet so PT policy
-                        // and CSRC/extension/padding stripping happen here,
-                        // mirroring the UDP arm.
-                        let parsed = match RtpHeader::decode(&packet) {
-                            Ok(p) => p,
-                            Err(parse_err) => {
-                                self.malformed_packets = self.malformed_packets.saturating_add(1);
-                                tracing::debug!(
-                                    error = ?parse_err,
-                                    "RTP packet rejected on mpsc path; counter ticked",
-                                );
-                                continue;
-                            }
-                        };
-                        if parsed.header.payload_type != RTP_PT_MP2T {
-                            self.malformed_packets = self.malformed_packets.saturating_add(1);
-                            tracing::debug!(
-                                pt = parsed.header.payload_type,
-                                "non-MP2T payload type on mpsc path; packet dropped",
-                            );
-                            continue;
-                        }
-                        // Use payload_end (not packet.len()) to exclude any
-                        // RFC 3550 padding bytes and to reflect extension skipping.
-                        let ts_payload = &packet[parsed.payload_offset..parsed.payload_end];
-                        if ts_payload.len() > buf.len() {
-                            return Err(TransportError::Broken {
-                                msg: format!(
-                                    "recv buf too small: {} < {}",
-                                    buf.len(),
-                                    ts_payload.len()
-                                ),
-                                errno_code: None,
-                            });
-                        }
-                        // DA-RTP-5: same RFC 2250 shape guard as the UDP path.
-                        if !is_valid_mp2t_payload(ts_payload) {
-                            self.malformed_packets = self.malformed_packets.saturating_add(1);
-                            tracing::debug!(
-                                payload_len = ts_payload.len(),
-                                first_byte = ts_payload.first().copied().unwrap_or(0),
-                                "MP2T payload shape invalid on mpsc path (len%188≠0 or \
-                                 no 0x47 sync byte); packet dropped",
-                            );
-                            continue;
-                        }
-                        buf[..ts_payload.len()].copy_from_slice(ts_payload);
-                        return Ok(ts_payload.len());
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        // The pump thread dropped its Sender — surface as a
-                        // broken transport so the recv shell can stop the
-                        // demux loop.
-                        self.source = None;
-                        return Err(TransportError::Broken {
-                            msg: "interleaved pump bridge disconnected".to_string(),
-                            errno_code: None,
-                        });
-                    }
-                }
-            },
+            };
+            if parsed.header.payload_type != RTP_PT_MP2T {
+                self.malformed_packets = self.malformed_packets.saturating_add(1);
+                tracing::debug!(
+                    pt = parsed.header.payload_type,
+                    "non-MP2T payload type at MP2T receiver; packet dropped",
+                );
+                continue;
+            }
+            // Use payload_end (not n) to exclude any RFC 3550 padding bytes
+            // and to reflect extension skipping.
+            let payload = &self.scratch[parsed.payload_offset..parsed.payload_end];
+            if payload.len() > buf.len() {
+                // Caller buf too small. Treat as broken, since the recv shell
+                // is misconfigured (it should have sized buf to at least
+                // max_payload()).
+                return Err(TransportError::Broken {
+                    msg: format!("recv buf too small: {} < {}", buf.len(), payload.len()),
+                    errno_code: None,
+                });
+            }
+            // DA-RTP-5: RFC 2250 shape guard — payload must be non-empty,
+            // 188-byte aligned, and begin with 0x47. RTP-header validation
+            // above already pinned PT=33 (MP2T); this catches a corrupt or
+            // misaligned bundle.
+            if !is_valid_mp2t_payload(payload) {
+                self.malformed_packets = self.malformed_packets.saturating_add(1);
+                tracing::debug!(
+                    payload_len = payload.len(),
+                    first_byte = payload.first().copied().unwrap_or(0),
+                    "MP2T payload shape invalid (len%188≠0 or no 0x47 sync byte); packet dropped",
+                );
+                continue;
+            }
+            buf[..payload.len()].copy_from_slice(payload);
+            return Ok(payload.len());
         }
     }
 

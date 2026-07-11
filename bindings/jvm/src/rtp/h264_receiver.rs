@@ -22,12 +22,14 @@
 //! - other `TransportError`          → `RtpException(TRANSPORT)`
 //! - `ConnectError`                  → `RtpException(TRANSPORT)`
 
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jobject};
 
+use tst_rtp::rtsp::client::RtspClient as RustRtspClient;
 use tst_rtp::{H264DepayConfig, H264Receiver, ParameterSetInjection};
 
 use crate::handle::HandleRegistry;
@@ -35,25 +37,57 @@ use crate::handle::HandleRegistry;
 use super::errors::{connect_error_to_rtp, transport_error_to_rtp};
 use super::stats::build_socket_stats;
 
+/// RTSP control plane retained by receivers created via
+/// `RtspSession.intoH264Receiver()`. The Java session wrapper is CONSUMED at
+/// conversion (NativeHandle contract item 3), so the receiver becomes the sole
+/// owner of the control plane: retaining the `RtspClient` keeps the TCP control
+/// connection + keepalive thread alive while AUs flow (dropping it would let
+/// the server tear the session down mid-stream), and `nClose` performs the
+/// best-effort TEARDOWN the consumed session wrapper can no longer issue.
+pub(super) struct JniRtspControl {
+    pub(super) client: Arc<Mutex<Option<RustRtspClient>>>,
+    pub(super) torn_down: Arc<AtomicBool>,
+}
+
 /// Native backing for `org.tstrans.rtp.H264Receiver`. A single-iterator
 /// wrapper: one thread owns the recv loop. The cancel handle is extracted at
 /// construction and wired as the registry's cancel hook so `close()` wakes
 /// a parked `nRecvAu` before taking the slot.
 struct JniH264Receiver {
     inner: H264Receiver,
+    /// `Some` only for RTSP-created receivers (see [`JniRtspControl`]);
+    /// `None` for plain `listen()` receivers.
+    rtsp: Option<JniRtspControl>,
 }
 
 /// Per-type leased-handle registry for `org.tstrans.rtp.H264Receiver`. Registers
 /// a cancel hook so a cross-thread `close()` wakes a parked `recv_au`.
 static REGISTRY: LazyLock<HandleRegistry<JniH264Receiver>> = LazyLock::new(HandleRegistry::new);
 
-/// Build a registry handle from an already-constructed `H264Receiver`.
-/// Extracts the cancel handle, registers it as the cancel hook, and returns
-/// the boxed handle as `jlong`. Used by both `nListen*` and the RTSP client's
-/// `nIntoH264Receiver`.
+/// Build a registry handle from an already-constructed `H264Receiver`
+/// (plain `nListen*` path — no RTSP control plane).
 pub(crate) fn h264_receiver_handle_from_receiver(receiver: H264Receiver) -> jlong {
+    insert_receiver(receiver, None)
+}
+
+/// Build a registry handle from an RTSP-session conversion: the receiver slot
+/// additionally owns the session's control plane (see [`JniRtspControl`]).
+/// Used by `RtspSession.nIntoH264Receiver`.
+pub(super) fn h264_receiver_handle_from_rtsp_session(
+    receiver: H264Receiver,
+    control: JniRtspControl,
+) -> jlong {
+    insert_receiver(receiver, Some(control))
+}
+
+/// Extract the cancel handle, register it as the registry cancel hook, and
+/// return the boxed handle as `jlong`.
+fn insert_receiver(receiver: H264Receiver, rtsp: Option<JniRtspControl>) -> jlong {
     let cancel = receiver.cancel_handle();
-    let slot = JniH264Receiver { inner: receiver };
+    let slot = JniH264Receiver {
+        inner: receiver,
+        rtsp,
+    };
     REGISTRY.insert_with_cancel(slot, Some(Box::new(move || cancel.cancel()))) as jlong
 }
 
@@ -413,6 +447,11 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nCancelHandle(
 
 /// `H264Receiver.nClose(handle)` — cancel-first (wakes a parked recv), then take
 /// + close the inner receiver and free the box. Atomic + idempotent.
+///
+/// For RTSP-created receivers the slot also owns the session control plane
+/// (see [`JniRtspControl`]): best-effort TEARDOWN fires first (so the server
+/// stops streaming), then the data plane closes — mirroring
+/// `RtspSession.nClose`'s teardown contract.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
     mut env: JNIEnv<'_>,
@@ -425,6 +464,16 @@ pub extern "system" fn Java_org_tstrans_rtp_H264Receiver_nClose(
         // lock (blocking briefly until the woken recv releases it). Atomic +
         // idempotent: a double close finds the id gone → no-op.
         if let Some(mut slot) = REGISTRY.close(handle as u64) {
+            if let Some(ctrl) = slot.rtsp.take() {
+                if !ctrl.torn_down.load(Ordering::Relaxed) {
+                    if let Ok(mut guard) = ctrl.client.lock() {
+                        if let Some(c) = guard.as_mut() {
+                            let _ = c.teardown(); // best-effort
+                        }
+                    }
+                    ctrl.torn_down.store(true, Ordering::Relaxed);
+                }
+            }
             slot.inner.close();
         }
     })

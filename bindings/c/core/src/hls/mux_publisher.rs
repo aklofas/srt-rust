@@ -21,8 +21,8 @@
 //! inner out by value.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_pipeline::{MuxPublisher, MuxPublisherError};
 use tst_hls::HlsPublisher;
+use tst_pipeline::{MuxPublisher, MuxPublisherError};
 
 use crate::config::TstMuxConfig;
 use crate::error::{TstError, record_mux_error, set_last_error, tst_error_from_kind};

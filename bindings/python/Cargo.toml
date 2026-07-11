@@ -41,7 +41,7 @@ tcp     = ["dep:tst-tcp"]
 # hls: EXPERIMENTAL — not shipped in published wheels/JAR; see
 # docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
 # floor + VOD-never-served, all on an unauthenticated all-interfaces server).
-hls     = ["dep:tst-tcp", "tst-tcp?/hls", "dep:tst-pipeline"]
+hls     = ["dep:tst-hls", "dep:tst-pipeline"]
 rist    = ["dep:tst-rist", "dep:secrecy"]
 # pipeline pulls tst-pipeline for the ext::pairing PairingDemuxer composite.
 pipeline = ["dep:tst-pipeline"]
@@ -53,6 +53,7 @@ tst-rtp      = { path = "../../crates/tst-rtp", default-features = false, option
 tst-srt      = { path = "../../crates/tst-srt", optional = true }
 tst-udp      = { path = "../../crates/tst-udp", default-features = false, optional = true }
 tst-tcp      = { path = "../../crates/tst-tcp", default-features = false, optional = true }
+tst-hls      = { path = "../../crates/tst-hls", default-features = false, optional = true }
 tst-rist     = { path = "../../crates/tst-rist", default-features = false, optional = true }
 pyo3         = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 # Used by the `rtp` feature path — both T21 RtspClientBuilder::auth and

@@ -2,7 +2,7 @@
 //!
 //! Skips gracefully if `ffmpeg` is not on $PATH.
 
-#![cfg(feature = "hls")]
+#![cfg(feature = "serve")]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -13,7 +13,7 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::publisher::Publisher;
 use tst_pipeline::MuxPublisher;
-use tst_tcp::hls::{HlsMode, HlsPublisherBuilder};
+use tst_hls::{HlsMode, HlsPublisherBuilder};
 
 fn ffmpeg_available() -> bool {
     Command::new("ffmpeg").arg("-version").output().is_ok()

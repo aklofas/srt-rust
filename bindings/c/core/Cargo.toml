@@ -27,7 +27,7 @@ rtp     = ["std", "dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
 udp     = ["std", "dep:tst-udp"]
 tcp     = ["std", "dep:tst-tcp"]
-hls     = ["std", "dep:tst-tcp", "tst-tcp?/hls"]
+hls     = ["std", "dep:tst-hls"]
 rist    = ["std", "dep:tst-rist"]
 
 [dependencies]
@@ -35,6 +35,7 @@ tst-srt      = { path = "../../../crates/tst-srt", default-features = false, opt
 tst-rtp      = { path = "../../../crates/tst-rtp", default-features = false, optional = true }
 tst-udp      = { path = "../../../crates/tst-udp", default-features = false, optional = true }
 tst-tcp      = { path = "../../../crates/tst-tcp", default-features = false, optional = true }
+tst-hls      = { path = "../../../crates/tst-hls", default-features = false, optional = true }
 tst-rist     = { path = "../../../crates/tst-rist", default-features = false, optional = true }
 tst-pipeline = { path = "../../../crates/tst-pipeline", default-features = false }
 tst-core     = { path = "../../../crates/tst-core", default-features = false }

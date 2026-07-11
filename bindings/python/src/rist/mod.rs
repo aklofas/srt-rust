@@ -675,8 +675,8 @@ impl PyRistRecvTransportBuilder {
         slf
     }
 
-    /// Override the recv scratch-buffer size in bytes (default = max_payload
-    /// from librist, at least 65 536). Must be ≥ the largest expected payload.
+    /// Expected send-side packet size. Has no effect on the receive
+    /// buffer, which always accepts any legal block.
     fn pkt_size(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
         slf.pkt_size = Some(v);
         slf

@@ -33,9 +33,10 @@ on:
       - "crates/tst-pipeline/**"
       - "crates/tst-srt/**"
       - "crates/srt-sys/**"
-      # The wheel builds --features rtp,srt,udp,tcp,rist, so every native
+      # The wheel builds --features rtp,srt,udp,tcp,hls,rist, so every native
       # crate on that path affects it. rist-sys (+ tst-rist/tst-tcp/tst-udp)
       # were missing — a change to them must rebuild + re-test the wheels.
+      - "crates/tst-hls/**"
       - "crates/rist-sys/**"
       - "crates/tst-rist/**"
       - "crates/tst-tcp/**"
@@ -103,7 +104,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           working-directory: bindings/python
-          args: --release --out dist --features rtp,srt,udp,tcp,rist
+          args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
           before-script-linux: |
             # The manylinux base image is minimal: unlike the GitHub-hosted
             # ubuntu/macOS/windows runners it ships NO clang/libclang, which
@@ -200,7 +201,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           working-directory: bindings/python
-          args: --release --out dist --features rtp,srt,udp,tcp,rist
+          args: --release --out dist --features rtp,srt,udp,tcp,hls,rist
         env:
           SRT_FORCE_VENDORED: "1"
           RIST_FORCE_VENDORED: "1"
@@ -250,7 +251,7 @@ jobs:
           # below. We therefore disable defaults and list the exact Windows set
           # (everything in `default` EXCEPT rist; `pipeline` is pure-Rust and
           # kept for parity with the linux/macos wheels).
-          args: --release --out dist --no-default-features --features rtp,srt,udp,tcp,pipeline
+          args: --release --out dist --no-default-features --features rtp,srt,udp,tcp,hls,pipeline
         env:
           SRT_FORCE_VENDORED: "1"
 

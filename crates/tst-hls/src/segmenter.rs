@@ -174,6 +174,7 @@ impl Segmenter {
     }
 
     /// Read a segment file's bytes from disk (called by the HTTP server).
+    #[cfg(feature = "serve")]
     pub(crate) fn read_segment(&self, filename: &str) -> Result<Vec<u8>, HlsError> {
         let path = self.config.output_dir.join(filename);
         std::fs::read(&path).map_err(HlsError::Io)

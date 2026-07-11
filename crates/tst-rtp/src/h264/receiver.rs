@@ -42,12 +42,12 @@ use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 
 use tst_core::net::udp_socket::CANCEL_POLL_INTERVAL;
-use tst_core::transport::TransportError;
+use tst_core::transport::{SocketStats, TransportError};
 
 use crate::cancel::RtpCancelHandle;
 use crate::h264::depacketizer::{H264Au, H264Depacketizer, H264DepayConfig, H264DepayStats};
 use crate::packet::RtpHeader;
-use crate::transport::{ConnectError, RECV_SCRATCH_LEN, RtpStats, Source};
+use crate::transport::{ConnectError, MPSC_PUMP_DISCONNECTED, RECV_SCRATCH_LEN, RtpStats, Source};
 use crate::url::RtpUrl;
 
 /// Blocking H.264-over-RTP receive shell.
@@ -73,9 +73,23 @@ use crate::url::RtpUrl;
 ///      depacketizer, go to step 1.
 ///    - `Err(ExplicitClose)` — set EOS, flush depacketizer, return
 ///      flushed AU if any else `Ok(None)`.
-///    - `Err(Broken)` where the message is `"interleaved pump bridge
-///      disconnected"` — same EOS path (clean RTSP teardown).
+///    - `Err(Broken)` carrying the `MPSC_PUMP_DISCONNECTED` sentinel
+///      (`pub(crate)` const in `transport.rs`) — same EOS path (clean
+///      RTSP teardown).
 ///    - `Err(Broken)` otherwise — clear source, propagate.
+///
+/// # Stats
+///
+/// Three complementary views, mirroring `RtpRecvTransport`'s split:
+///
+/// - [`Self::socket_stats`] — **throughput**: wire-level
+///   `bytes_received` / `packets_received`, counted before RTP-header or
+///   PT validation.
+/// - [`Self::rtp_stats`] — **protocol anomalies**: the malformed-packet
+///   counter (bad RTP header, or PT mismatch against the configured
+///   `?pt=`).
+/// - [`Self::depay_stats`] — **RFC 6184 depacketizer internals**: AU
+///   counts, sequence gaps, parameter-set updates.
 ///
 /// # RTCP
 ///
@@ -218,9 +232,7 @@ impl H264Receiver {
                     self.eos = true;
                     return Ok(self.depay.flush());
                 }
-                Err(TransportError::Broken { ref msg, .. })
-                    if msg == "interleaved pump bridge disconnected" =>
-                {
+                Err(TransportError::Broken { ref msg, .. }) if msg == MPSC_PUMP_DISCONNECTED => {
                     // Clean RTSP teardown — same EOS path.
                     self.eos = true;
                     return Ok(self.depay.flush());
@@ -269,6 +281,27 @@ impl H264Receiver {
         RtpStats {
             malformed_packets: self.malformed_packets,
         }
+    }
+
+    /// Throughput counters projected into [`SocketStats`], mirroring
+    /// `RtpRecvTransport::socket_stats`'s field mapping:
+    ///
+    /// | [`SocketStats`] field | Source |
+    /// |---|---|
+    /// | `bytes_received` / `packets_received` | Local counters; incremented on every received datagram/chunk before RTP-header or PT validation. Malformed-but-received packets are counted here; their drops are separately tracked in [`RtpStats::malformed_packets`] via [`Self::rtp_stats`]. |
+    /// | `rtt_us` / `packets_lost_send` | Always 0 — RTCP is not implemented on this path (v1 decision; see the struct-level RTCP section). |
+    /// | `bytes_sent` / `packets_sent` | 0 (this is the receive half) |
+    /// | All other fields | 0 |
+    pub fn socket_stats(&self) -> SocketStats {
+        #[allow(clippy::field_reassign_with_default)]
+        // SocketStats is non_exhaustive in tst-core, so the
+        // default-and-assign pattern is the only way to construct one
+        // from outside that crate. (Spelled without the attribute
+        // syntax to keep the CI non_exhaustive line-grep honest.)
+        let mut s = SocketStats::default();
+        s.bytes_received = self.bytes_received;
+        s.packets_received = self.packets_received;
+        s
     }
 
     /// The local address the UDP socket is bound to, or `None` for the
@@ -350,6 +383,10 @@ mod tests {
         let au = rx.recv_au().unwrap().expect("AU expected");
         assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xAB, 0xCD]);
         assert!(au.key_frame);
+        // Throughput counters: exactly one wire packet of pkt.len() bytes.
+        let stats = rx.socket_stats();
+        assert_eq!(stats.packets_received, 1);
+        assert_eq!(stats.bytes_received, pkt.len() as u64);
         rx.close();
     }
 
@@ -361,6 +398,23 @@ mod tests {
         assert!(
             matches!(err, ConnectError::MissingPayloadTypeParam),
             "expected MissingPayloadTypeParam, got {err:?}"
+        );
+    }
+
+    /// `?pt=33` is rejected at the URL-parse level (`BadPayloadType`),
+    /// BEFORE the missing-pt check ever runs — distinct from
+    /// `MissingPayloadTypeParam` (absent `?pt=`, previous test).
+    #[test]
+    fn listen_with_pt_33_rejected_at_url_level() {
+        let err = H264Receiver::listen("rtp://127.0.0.1:0?pt=33")
+            .map(|_| ())
+            .expect_err("?pt=33 must fail at URL parse");
+        assert!(
+            matches!(
+                err,
+                ConnectError::Url(crate::url::UrlError::BadPayloadType { .. })
+            ),
+            "expected Url(BadPayloadType), got {err:?}"
         );
     }
 

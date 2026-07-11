@@ -6,9 +6,21 @@
 //! the matching `a=fmtp` line.
 
 use base64::Engine as _;
+use base64::engine::DecodePaddingMode;
+use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
 use tst_core::codec::h264::{parse_pps, parse_sps};
 
 use crate::sdp::SdpMedia;
+
+/// Base64 engine for `sprop-parameter-sets`: standard alphabet,
+/// tolerant of missing trailing padding. RFC 6184 §8.2.1 mandates
+/// base64, and real-world cameras and RTSP servers commonly omit the
+/// `=` padding; a skipped sprop entry silently costs the stream its
+/// out-of-band SPS/PPS. Invalid characters still fail the decode.
+const SPROP_BASE64: GeneralPurpose = GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
 
 /// Parameters extracted from the `a=fmtp` line for an H.264 media section.
 ///
@@ -102,8 +114,9 @@ impl H264FmtpParams {
                     if entry.is_empty() {
                         continue;
                     }
-                    // Decode base64 (standard alphabet with padding, per RFC 6184 §8.2.1).
-                    let nalu = match base64::engine::general_purpose::STANDARD.decode(entry) {
+                    // Decode base64 (standard alphabet; padding optional —
+                    // see SPROP_BASE64) per RFC 6184 §8.2.1.
+                    let nalu = match SPROP_BASE64.decode(entry) {
                         Ok(b) => b,
                         Err(_) => {
                             tracing::warn!(
@@ -363,5 +376,46 @@ mod tests {
             &[95, 96],
         );
         assert_eq!(parse_rtpmap_h264(&m), Some(96));
+    }
+
+    #[test]
+    fn sprop_unpadded_base64_accepted() {
+        // Same SPS/PPS as fmtp_parses_mode_and_sprop with the trailing
+        // `=` padding stripped — the common real-camera spelling.
+        let m = media_with(
+            &[
+                ("rtpmap", "96 H264/90000"),
+                (
+                    "fmtp",
+                    "96 packetization-mode=1;sprop-parameter-sets=Z0IAHg,aM44gA",
+                ),
+            ],
+            &[96],
+        );
+        let f = H264FmtpParams::parse(&m, 96);
+        assert_eq!(
+            f.sprop_parameter_sets.len(),
+            2,
+            "unpadded sprop entries must decode"
+        );
+        assert_eq!(f.sprop_parameter_sets[0], vec![0x67, 0x42, 0x00, 0x1E]);
+        assert_eq!(f.sprop_parameter_sets[1], vec![0x68, 0xCE, 0x38, 0x80]);
+    }
+
+    #[test]
+    fn sprop_invalid_chars_still_skipped() {
+        let m = media_with(
+            &[
+                ("rtpmap", "96 H264/90000"),
+                ("fmtp", "96 sprop-parameter-sets=Z0IAHg,@@notbase64@@"),
+            ],
+            &[96],
+        );
+        let f = H264FmtpParams::parse(&m, 96);
+        assert_eq!(
+            f.sprop_parameter_sets.len(),
+            1,
+            "invalid entry skipped, valid unpadded entry kept"
+        );
     }
 }

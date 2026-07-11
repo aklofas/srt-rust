@@ -22,7 +22,7 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_pipeline::{MuxPublisher, MuxPublisherError};
-use tst_tcp::hls::HlsPublisher;
+use tst_hls::HlsPublisher;
 
 use crate::config::TstMuxConfig;
 use crate::error::{TstError, record_mux_error, set_last_error, tst_error_from_kind};
@@ -49,7 +49,7 @@ pub struct TstMuxPublisher {
 /// override (mirrors how `rtp/mux_sender.rs` records muxer errors). All
 /// other arms route through the coarse `kind()` → `ShellErrorKind`
 /// projection shared with the rest of tst-c.
-fn record_mux_publisher_error(e: &MuxPublisherError<tst_tcp::hls::HlsError>) -> i32 {
+fn record_mux_publisher_error(e: &MuxPublisherError<tst_hls::HlsError>) -> i32 {
     match e {
         MuxPublisherError::Mux(m) => {
             record_mux_error(m);

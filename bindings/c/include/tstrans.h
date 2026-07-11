@@ -13,6 +13,10 @@
 
 #define TST_HAS_SRT 1
 #define TST_HAS_RTP 1
+#define TST_HAS_UDP 1
+#define TST_HAS_TCP 1
+#define TST_HAS_HLS 1
+#define TST_HAS_RIST 1
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -426,7 +430,7 @@ enum tst_e
   TST_E_TCP_TLS = -33,
   /**
    * (-34) HLS HTTP server bind/listen failure.
-   * Maps from `tst_tcp::hls::HlsErrorKind::{BindFailed, Io}`.
+   * Maps from `tst_hls::HlsErrorKind::{BindFailed, Io}`.
    */
   TST_E_HLS_IO = -34,
   /**
@@ -1811,7 +1815,7 @@ typedef struct tst_event_t {
 } tst_event_t;
 
 /**
- * `repr(C)` mirror of `tst_tcp::hls::HlsStats` — HLS-specific richer
+ * `repr(C)` mirror of `tst_hls::HlsStats` — HLS-specific richer
  * stats. Returned by `tst_hls_publisher_get_hls_stats`. Size 24 B.
  */
 typedef struct TstHlsStats {

@@ -1,8 +1,8 @@
 //! Python bindings for tst-hls (`tstrans.hls`). Gated on `feature = "hls"`.
 //!
-//! Populated by Plan A5b Wave C. HLS lives in the `tst-tcp` crate
-//! (`tst_tcp::hls`) — the `hls` cargo feature here pulls
-//! `tst-tcp?/hls` + `tst-pipeline` (for the `MuxPublisher` shell).
+//! Populated by Plan A5b Wave C. HLS lives in the `tst-hls` crate
+//! (`tst_hls`) — the `hls` cargo feature here pulls
+//! `tst-hls` + `tst-pipeline` (for the `MuxPublisher` shell).
 //!
 //! Surface (module `"tstrans.hls"`):
 //! - `Publisher` (ABC) + `PublisherStats` — T10
@@ -16,7 +16,7 @@
 //! `build` release the GIL via `py.allow_threads` (disk + HTTP work is
 //! pure Rust). Read-only getters do not release it.
 //!
-//! Error mapping: `tst_tcp::hls::HlsError` → `tstrans.exceptions.HlsError`
+//! Error mapping: `tst_hls::HlsError` → `tstrans.exceptions.HlsError`
 //! via `map_hls_error` (exhaustive over `HlsErrorKind`, with a wildcard
 //! for the `#[non_exhaustive]` enum). The Rust `HlsErrorKind` is
 //! 1-indexed; the Python `HlsErrorKind` IntEnum is 0-indexed — the
@@ -35,7 +35,7 @@
 use pyo3::prelude::*;
 
 use tst_pipeline::MuxPublisherError;
-use tst_tcp::hls::{HlsError, HlsErrorKind, HlsUrlError};
+use tst_hls::{HlsError, HlsErrorKind, HlsUrlError};
 
 pub(crate) use crate::errors::make_hls_error;
 
@@ -48,7 +48,7 @@ pub(crate) mod publisher_abc;
 // Error mapping
 // ---------------------------------------------------------------------------
 
-/// Map a `tst_tcp::hls::HlsError` to a `tstrans.exceptions.HlsError`.
+/// Map a `tst_hls::HlsError` to a `tstrans.exceptions.HlsError`.
 ///
 /// Exhaustive over the 9 `HlsErrorKind` variants; the wildcard arm routes
 /// any future `#[non_exhaustive]` addition to `INTERNAL` so this fn never
@@ -72,7 +72,7 @@ pub(crate) fn map_hls_error(py: Python<'_>, e: &HlsError) -> PyErr {
     }
 }
 
-/// Map a `tst_tcp::hls::HlsUrlError` (from `builder.from_url`) to a
+/// Map a `tst_hls::HlsUrlError` (from `builder.from_url`) to a
 /// `tstrans.exceptions.HlsError` with `kind=URL`.
 pub(crate) fn map_hls_url_error(py: Python<'_>, e: &HlsUrlError) -> PyErr {
     make_hls_error(py, "URL", &e.to_string())

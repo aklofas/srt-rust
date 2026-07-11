@@ -28,7 +28,7 @@ __all__: list[str]
 
 
 class HlsErrorKind(IntEnum):
-    """Discriminator for ``HlsError.kind``. Mirrors ``tst_tcp::hls::HlsErrorKind``."""
+    """Discriminator for ``HlsError.kind``. Mirrors ``tst_hls::HlsErrorKind``."""
 
     URL = 0
     IO = 1
@@ -56,7 +56,7 @@ class HlsError(Exception):
 
 
 class HlsMode:
-    """HLS playlist mode. Mirrors ``tst_tcp::hls::HlsMode``.
+    """HLS playlist mode. Mirrors ``tst_hls::HlsMode``.
 
     ``LIVE`` rolling-window, ``EVENT`` monotone-grow, ``VOD`` all-at-once
     on finish. Int-comparable (``==`` / ``hash``).
@@ -108,7 +108,7 @@ class PublisherStats:
 
 
 class HlsStats:
-    """Frozen HLS-specific stats snapshot. Mirrors ``tst_tcp::hls::HlsStats``.
+    """Frozen HLS-specific stats snapshot. Mirrors ``tst_hls::HlsStats``.
 
     For cross-publisher metrics use ``HlsPublisher.stats()`` (returns
     ``PublisherStats``) instead.

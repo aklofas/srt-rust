@@ -1,6 +1,6 @@
 //! `TstHlsPublisherBuilder` — opaque builder for the HLS publisher.
 //!
-//! `tst_tcp::hls::HlsPublisherBuilder` uses move-style chain setters
+//! `tst_hls::HlsPublisherBuilder` uses move-style chain setters
 //! (`fn bind(self, ...) -> Self`), which don't map cleanly to in-place C
 //! mutation. The opaque builder here wraps it in an `Option` so each
 //! setter can `take()` the inner builder, apply the move-style method, and
@@ -22,7 +22,7 @@ use std::net::SocketAddr;
 use std::os::raw::c_char;
 use std::time::Duration;
 
-use tst_tcp::hls::{HlsMode, HlsPublisherBuilder};
+use tst_hls::{HlsMode, HlsPublisherBuilder};
 
 use crate::error::{TstError, hls_error_to_code, set_last_error};
 use crate::hls::publisher::{PublisherImpl, TstPublisher};

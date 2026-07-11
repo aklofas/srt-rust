@@ -381,7 +381,7 @@ class TcpError(_KindMessageError):
 
 
 class HlsErrorKind(enum.IntEnum):
-    """Mirrors `tst_tcp::hls::HlsErrorKind`. Raised by `tstrans.hls`
+    """Mirrors `tst_hls::HlsErrorKind`. Raised by `tstrans.hls`
     operations (built with the `hls` cargo feature, default-on)."""
 
     URL = 0

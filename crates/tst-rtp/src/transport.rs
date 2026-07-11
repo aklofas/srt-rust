@@ -419,11 +419,11 @@ fn random_u32() -> u32 {
 /// and strip the RTP header in `recv_bytes`.
 ///
 /// `Mpsc` — the TCP-interleaved bridge introduced in Phase 2 Task 17:
-/// an `InterleavedReader` background thread parses `$<ch><len><data>`
-/// frames off the RTSP control TCP and pushes the *unwrapped* RTP
-/// payload bytes (i.e., the TS bundle, already past the 12-byte RTP
-/// header) through an mpsc channel. `recv_bytes` here just dequeues a
-/// chunk; the RTP header strip happened in the bridge thread.
+/// the interleaved pump background thread parses `$<ch><len><data>`
+/// frames off the RTSP control TCP and pushes **whole RTP packets**
+/// (header intact) through the mpsc channel. `recv_bytes` decodes the
+/// RTP header, enforces PT=33, strips CSRC/extension/padding, and
+/// validates the MP2T payload shape — mirroring the UDP arm end-to-end.
 pub(crate) enum Source {
     Udp(UdpSocket),
     Mpsc(std::sync::mpsc::Receiver<bytes::Bytes>),
@@ -746,19 +746,21 @@ impl RtpRecvTransport {
     }
 
     /// Construct an `RtpRecvTransport` whose source is an mpsc channel
-    /// fed by the RTSP client's `InterleavedReader` background thread.
+    /// fed by the RTSP client's interleaved pump background thread.
     ///
     /// Used by
     /// [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
     /// when SETUP negotiated TCP-interleaved transport. The producer
-    /// (an InterleavedReader-driven thread inside the RtspClient) parses
-    /// `$<ch><len><data>` frames off the RTSP control TCP, strips the
-    /// 12-byte RTP header, and pushes the TS bundle into `rx`'s paired
-    /// sender. `recv_bytes` on the resulting transport just dequeues a
-    /// chunk per call.
+    /// (the pump thread inside the RtspClient) parses `$<ch><len><data>`
+    /// frames off the RTSP control TCP, validates the RTP header, and
+    /// pushes the **whole RTP packet** (header intact) into `rx`'s paired
+    /// sender. `recv_bytes` on the resulting transport decodes the header,
+    /// enforces PT=33, strips CSRC/extension/padding, applies MP2T shape
+    /// checks, and copies the TS payload into the caller's buffer —
+    /// mirroring the UDP arm end-to-end.
     ///
     /// `rx` is the consumer side of the bridge; the producer side
-    /// (`Sender<Bytes>`) is held by the InterleavedReader thread.
+    /// (`Sender<Bytes>`) is held by the pump thread.
     pub(crate) fn from_mpsc_placeholder(rx: std::sync::mpsc::Receiver<bytes::Bytes>) -> Self {
         let pkt_size = crate::url::DEFAULT_PKT_SIZE;
         let ssrc = random_u32();
@@ -769,8 +771,8 @@ impl RtpRecvTransport {
             bytes_received: 0,
             packets_received: 0,
             malformed_packets: 0,
-            // No scratch needed for mpsc path — payload is already
-            // RTP-header-stripped by the bridge thread — but keep the
+            // No scratch needed for mpsc path — recv_bytes decodes the
+            // RTP header from the incoming Bytes in-place — but keep the
             // allocation so a future code path can fall back to the
             // shared buffer without conditional malloc.
             scratch: vec![0u8; pkt_size],
@@ -787,6 +789,10 @@ impl RtpRecvTransport {
     /// feed each packet into the shared [`RtcpStats`] via [`ingest_rr`]
     /// or [`ingest_sr`]. Unknown PTs (SDES/BYE/APP/etc.) are counted
     /// as ignored and skipped.
+    ///
+    /// The `data_rx` channel carries **whole RTP packets** (header
+    /// intact), as pushed by the pump — `recv_bytes` performs header
+    /// decode, PT enforcement, and stripping on each dequeued packet.
     ///
     /// Used by
     /// [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
@@ -934,45 +940,69 @@ impl RecvTransport for RtpRecvTransport {
                 // wakes on either a value arriving or the timeout
                 // elapsing — the latter just loops to re-check cancel.
                 match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
-                    Ok(payload) => {
+                    Ok(packet) => {
                         // Count at wire-level, before validation — consistent with
                         // the UDP path which increments on Ok(n) before RTP-header
                         // or MP2T-shape checks. Malformed-but-received packets are
                         // counted here; drops are tracked in `malformed_packets`.
                         self.bytes_received =
-                            self.bytes_received.saturating_add(payload.len() as u64);
+                            self.bytes_received.saturating_add(packet.len() as u64);
                         self.packets_received = self.packets_received.saturating_add(1);
-                        if payload.len() > buf.len() {
+                        // Decode the RTP header — the pump validated structural
+                        // correctness but passes the whole packet so PT policy
+                        // and CSRC/extension/padding stripping happen here,
+                        // mirroring the UDP arm.
+                        let parsed = match RtpHeader::decode(&packet) {
+                            Ok(p) => p,
+                            Err(parse_err) => {
+                                self.malformed_packets = self.malformed_packets.saturating_add(1);
+                                tracing::debug!(
+                                    error = ?parse_err,
+                                    "RTP packet rejected on mpsc path; counter ticked",
+                                );
+                                continue;
+                            }
+                        };
+                        if parsed.header.payload_type != RTP_PT_MP2T {
+                            self.malformed_packets = self.malformed_packets.saturating_add(1);
+                            tracing::debug!(
+                                pt = parsed.header.payload_type,
+                                "non-MP2T payload type on mpsc path; packet dropped",
+                            );
+                            continue;
+                        }
+                        // Use payload_end (not packet.len()) to exclude any
+                        // RFC 3550 padding bytes and to reflect extension skipping.
+                        let ts_payload = &packet[parsed.payload_offset..parsed.payload_end];
+                        if ts_payload.len() > buf.len() {
                             return Err(TransportError::Broken {
                                 msg: format!(
                                     "recv buf too small: {} < {}",
                                     buf.len(),
-                                    payload.len()
+                                    ts_payload.len()
                                 ),
                                 errno_code: None,
                             });
                         }
                         // DA-RTP-5: same RFC 2250 shape guard as the UDP path.
-                        // The InterleavedReader already stripped the RTP header, so
-                        // `payload` here is the raw TS bundle — validate its shape.
-                        if !is_valid_mp2t_payload(&payload) {
+                        if !is_valid_mp2t_payload(ts_payload) {
                             self.malformed_packets = self.malformed_packets.saturating_add(1);
                             tracing::debug!(
-                                payload_len = payload.len(),
-                                first_byte = payload.first().copied().unwrap_or(0),
+                                payload_len = ts_payload.len(),
+                                first_byte = ts_payload.first().copied().unwrap_or(0),
                                 "MP2T payload shape invalid on mpsc path (len%188≠0 or \
                                  no 0x47 sync byte); packet dropped",
                             );
                             continue;
                         }
-                        buf[..payload.len()].copy_from_slice(&payload);
-                        return Ok(payload.len());
+                        buf[..ts_payload.len()].copy_from_slice(ts_payload);
+                        return Ok(ts_payload.len());
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        // The InterleavedReader thread dropped its
-                        // Sender — surface as a broken transport so
-                        // the recv shell can stop the demux loop.
+                        // The pump thread dropped its Sender — surface as a
+                        // broken transport so the recv shell can stop the
+                        // demux loop.
                         self.source = None;
                         return Err(TransportError::Broken {
                             msg: "InterleavedReader bridge disconnected".to_string(),
@@ -1111,6 +1141,18 @@ fn spawn_rtcp_ingest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build a minimal valid RTP packet (V=2, P=0, X=0, CC=0, PT=33)
+    /// wrapping `payload`. Used by mpsc-path tests that feed whole RTP
+    /// packets into `from_mpsc_placeholder`, matching the pump's new
+    /// contract (the pump no longer strips the header before enqueuing).
+    fn make_rtp_packet(payload: &[u8]) -> bytes::Bytes {
+        use crate::packet::RtpHeader;
+        let mut pkt = vec![0u8; RTP_HEADER_LEN];
+        RtpHeader::new(0, 0, 0).encode_into(&mut pkt);
+        pkt.extend_from_slice(payload);
+        bytes::Bytes::from(pkt)
+    }
 
     /// Verify socket_stats() now returns Some(_) once Task 9 wires up
     /// the local counters. bytes_sent / packets_sent advance through
@@ -1321,14 +1363,14 @@ mod tests {
 
     // --- DA-RTP-5: MP2T payload shape validation ---
     //
-    // These tests drive the recv path via the mpsc seam (from_mpsc_placeholder),
-    // which bypasses the RTP header parse and pushes raw payload bytes directly.
-    // This is the cheapest honest seam: no network I/O, no threading. The mpsc
-    // path is representative because the UDP path shares is_valid_mp2t_payload.
+    // These tests drive the recv path via the mpsc seam (from_mpsc_placeholder).
+    // Since the pump now pushes whole RTP packets, tests feed whole packets
+    // (built with make_rtp_packet) rather than raw payload bytes directly.
+    // The mpsc path is representative because the UDP path shares
+    // is_valid_mp2t_payload and the same RTP header decode logic.
 
     /// A 100-byte payload that doesn't start with 0x47 must be dropped and
-    /// must tick malformed_packets. Currently (before DA-RTP-5 fix) this
-    /// payload is passed through — this test is the failing anchor.
+    /// must tick malformed_packets.
     #[test]
     fn mp2t_shape_invalid_non_aligned_drops_and_ticks_counter() {
         use tst_core::transport::RecvTransport;
@@ -1336,16 +1378,19 @@ mod tests {
         let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
         let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
 
-        // Push a 100-byte non-0x47 payload (not 188-aligned, wrong sync byte).
-        let malformed = bytes::Bytes::from(vec![0xAAu8; 100]);
-        data_tx.send(malformed).expect("send malformed payload");
+        // Push a whole RTP packet wrapping a 100-byte non-0x47 TS "payload"
+        // (not 188-aligned, wrong sync byte) — shape check rejects it.
+        let malformed_ts = vec![0xAAu8; 100];
+        data_tx
+            .send(make_rtp_packet(&malformed_ts))
+            .expect("send malformed payload");
 
         // Push a valid 188-byte TS packet (0x47 sync) so recv_bytes has
         // something to return after discarding the malformed one.
         let mut valid_pkt = vec![0x00u8; 188];
         valid_pkt[0] = 0x47;
         data_tx
-            .send(bytes::Bytes::from(valid_pkt.clone()))
+            .send(make_rtp_packet(&valid_pkt))
             .expect("send valid payload");
 
         let mut buf = vec![0u8; 4096];
@@ -1374,7 +1419,7 @@ mod tests {
         let mut pkt = vec![0xABu8; 188];
         pkt[0] = 0x47;
         data_tx
-            .send(bytes::Bytes::from(pkt.clone()))
+            .send(make_rtp_packet(&pkt))
             .expect("send valid payload");
 
         let mut buf = vec![0u8; 4096];
@@ -1402,7 +1447,7 @@ mod tests {
         let mut bundle = vec![0x00u8; 188 * 7];
         bundle[0] = 0x47;
         data_tx
-            .send(bytes::Bytes::from(bundle.clone()))
+            .send(make_rtp_packet(&bundle))
             .expect("send valid bundle");
 
         let mut buf = vec![0u8; 4096];
@@ -1411,7 +1456,8 @@ mod tests {
         assert_eq!(t.rtp_stats().malformed_packets, 0);
     }
 
-    /// An empty payload must be dropped and tick malformed_packets.
+    /// An empty TS payload (inside a valid RTP header) must be dropped and
+    /// tick malformed_packets.
     #[test]
     fn mp2t_shape_empty_payload_drops_and_ticks_counter() {
         use tst_core::transport::RecvTransport;
@@ -1419,16 +1465,16 @@ mod tests {
         let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
         let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
 
-        // Empty payload — not a valid MP2T bundle.
+        // Empty TS payload wrapped in a valid RTP header.
         data_tx
-            .send(bytes::Bytes::new())
+            .send(make_rtp_packet(&[]))
             .expect("send empty payload");
 
         // Follow with a valid packet so recv_bytes can return.
         let mut valid_pkt = vec![0u8; 188];
         valid_pkt[0] = 0x47;
         data_tx
-            .send(bytes::Bytes::from(valid_pkt))
+            .send(make_rtp_packet(&valid_pkt))
             .expect("send valid payload");
 
         let mut buf = vec![0u8; 4096];
@@ -1446,9 +1492,10 @@ mod tests {
     /// malformed payload still advances the counters (same as the UDP path,
     /// which increments on `Ok(n)` before any header or shape check).
     ///
-    /// We send one malformed (100-byte, wrong sync) + one valid (188-byte,
-    /// 0x47 sync) payload. After recv_bytes returns the valid one we expect
-    /// packets_received == 2 and bytes_received == 100 + 188 == 288.
+    /// We send one malformed (100-byte, wrong sync, wrapped in RTP) + one
+    /// valid (188-byte, 0x47 sync, wrapped in RTP). After recv_bytes returns
+    /// the valid one we expect packets_received == 2 and bytes_received to
+    /// sum both whole RTP packets.
     #[test]
     fn mpsc_bytes_packets_received_counted_at_wire_level() {
         use tst_core::transport::RecvTransport;
@@ -1456,16 +1503,19 @@ mod tests {
         let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
         let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
 
-        // Malformed: not 188-aligned, wrong sync byte.
-        let malformed = bytes::Bytes::from(vec![0xAAu8; 100]);
-        data_tx.send(malformed).expect("send malformed payload");
+        // Malformed TS payload: not 188-aligned, wrong sync byte.
+        let malformed_ts = vec![0xAAu8; 100];
+        let malformed_pkt = make_rtp_packet(&malformed_ts);
+        let malformed_len = malformed_pkt.len(); // RTP_HEADER_LEN + 100
 
         // Valid: exactly one 188-byte TS packet.
-        let mut valid_pkt = vec![0x00u8; 188];
-        valid_pkt[0] = 0x47;
-        data_tx
-            .send(bytes::Bytes::from(valid_pkt))
-            .expect("send valid payload");
+        let mut valid_ts = vec![0x00u8; 188];
+        valid_ts[0] = 0x47;
+        let valid_pkt = make_rtp_packet(&valid_ts);
+        let valid_len = valid_pkt.len(); // RTP_HEADER_LEN + 188
+
+        data_tx.send(malformed_pkt).expect("send malformed payload");
+        data_tx.send(valid_pkt).expect("send valid payload");
 
         let mut buf = vec![0u8; 4096];
         let n = t.recv_bytes(&mut buf).expect("valid packet must not error");
@@ -1477,13 +1527,71 @@ mod tests {
             "both malformed and valid packets must be counted at wire-level"
         );
         assert_eq!(
-            s.bytes_received, 288,
-            "bytes_received must sum both malformed (100) and valid (188) payloads"
+            s.bytes_received,
+            (malformed_len + valid_len) as u64,
+            "bytes_received must sum both whole RTP packets"
         );
         assert_eq!(
             t.rtp_stats().malformed_packets,
             1,
             "malformed_packets must be 1 for the one dropped payload"
+        );
+    }
+
+    /// B4 / T1-RTSP-RTP (transport level) — a whole RTP packet with CSRC list
+    /// (CC>0), header extension (X=1), and trailing padding (P=1) arriving on
+    /// the mpsc path must have ONLY the true TS payload reach the caller —
+    /// CSRC words and extension skipped, padding trimmed. The pump delivers
+    /// the whole packet; stripping is the transport's responsibility.
+    #[test]
+    fn interleaved_rtp_csrc_extension_padding_stripped_at_recv_site() {
+        use crate::packet::RTP_PT_MP2T;
+        use tst_core::transport::RecvTransport;
+
+        // Build a whole RTP packet with CC=1, X=1, P=1, PT=33.
+        //   Octet 0: V=2 | P=1 | X=1 | CC=1 = 0b10_1_1_0001 = 0xB1
+        //   Octet 1: M=0 | PT=33
+        //   Octets 2..12: seq/ts/ssrc (all zero)
+        //   Octets 12..16: 1 CSRC entry (4 bytes)
+        //   Octets 16..20: extension header (profile=0xBEDE, len=1 word)
+        //   Octets 20..24: 1 word (4 bytes) of extension data
+        //   Octets 24..212: 188-byte TS payload (0x47 sync + fill)
+        //   Octets 212..214: 2 padding bytes (last byte = pad count = 2)
+        let mut ts_payload = vec![0xABu8; 188];
+        ts_payload[0] = 0x47;
+
+        let mut rtp = vec![0xB1u8, RTP_PT_MP2T];
+        rtp.extend_from_slice(&[0u8; 10]); // seq/ts/ssrc
+        rtp.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // CSRC[0]
+        rtp.extend_from_slice(&[0xBE, 0xDE, 0x00, 0x01]); // ext header, len=1 word
+        rtp.extend_from_slice(&[0x11, 0x22, 0x33, 0x44]); // ext data word
+        rtp.extend_from_slice(&ts_payload); // 188-byte TS payload
+        rtp.extend_from_slice(&[0x00, 0x02]); // 2 padding bytes (count=2)
+
+        let (data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let mut t = RtpRecvTransport::from_mpsc_placeholder(data_rx);
+
+        data_tx
+            .send(bytes::Bytes::from(rtp))
+            .expect("send whole RTP packet");
+
+        let mut buf = vec![0u8; 4096];
+        let n = t
+            .recv_bytes(&mut buf)
+            .expect("valid MP2T payload must not error");
+        assert_eq!(
+            n, 188,
+            "only the 188-byte TS payload must be returned (CSRC+ext skipped, padding trimmed)"
+        );
+        assert_eq!(
+            &buf[..188],
+            ts_payload.as_slice(),
+            "returned bytes must be the exact TS payload"
+        );
+        assert_eq!(
+            t.rtp_stats().malformed_packets,
+            0,
+            "well-formed packet must not tick malformed_packets"
         );
     }
 

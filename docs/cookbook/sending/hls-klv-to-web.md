@@ -56,8 +56,11 @@ dev/edge convenience — see the [HLS guide](/docs/guides/hls.md)).
 ## Client (hls.js)
 
 hls.js parses the private-data PES out of each fragment and delivers KLV
-samples on `FRAG_PARSING_METADATA`. The snippet below handles **both** the
-native `misbklv` path (hls.js ≥ 1.7 with `enableEmsgKLVMetadata: true`) and
+samples on `FRAG_PARSING_METADATA`. Here "native `misbklv` path" means hls.js
+reads the KLV directly off the MPEG-TS private-data PID — `tst-hls` carries KLV
+in-band on that PID and does **not** emit CMAF `emsg` boxes (fMP4/emsg carriage
+per MISB ST 1910.1 is a separate deferred feature). The snippet below handles
+**both** that native path (hls.js ≥ 1.7 with `enableEmsgKLVMetadata: true`) and
 older/stock hls.js (anchor on the 16-byte SMPTE UL to slice the KLV out of
 the sample bytes):
 

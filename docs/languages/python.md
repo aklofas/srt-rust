@@ -56,7 +56,7 @@ in a `--no-default-features` source build that omits `hls`.
 > via `pip install tstrans[pandas]`, the live transports
 > `tstrans.{srt,rtp,udp,tcp,rist}` (with RTSP client + server and SRT
 > auto-reconnect), the HLS publisher (`tstrans.hls`), and
-> `tstrans.pipeline.Pairer`. ~1149 pytest tests.
+> `tstrans.pipeline.Pairer`. ~1240 pytest tests.
 
 ## Hello world
 

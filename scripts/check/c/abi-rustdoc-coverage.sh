@@ -399,7 +399,7 @@ ALLOWLIST=(
     # --- Plan A5a HLS publisher entry points ---
     #     tst-c-only projections: TstPublisher (enum-dispatch over the
     #     tst_core::publisher::Publisher trait), TstHlsPublisherBuilder
-    #     (wraps tst_tcp::hls::HlsPublisherBuilder), TstMuxPublisher
+    #     (wraps tst_hls::HlsPublisherBuilder), TstMuxPublisher
     #     (wraps tst_pipeline::MuxPublisher<HlsPublisher>). The universal
     #     tst_publisher_* trait-mirror symbols are separately enforced by
     #     scripts/check/c/publisher-trait-mirror.sh.

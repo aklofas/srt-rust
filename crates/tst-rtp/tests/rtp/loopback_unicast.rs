@@ -305,3 +305,74 @@ fn udp_path_malformed_mp2t_payload_dropped_and_counted() {
         "malformed_packets must be 1 after one shape-invalid UDP datagram"
     );
 }
+
+/// Foreign senders (gst/ffmpeg defaults) pack 7×188 = 1316-byte MP2T
+/// payloads — a 1328-byte datagram with the RTP header. Before the
+/// recv-ceiling fix, the pipeline shells sized their receive buffer from
+/// max_payload() = pkt_size − 12 = 1304, so this conformant bundle
+/// surfaced as Broken("recv buf too small: 1304 < 1316") (v0.2.0
+/// silently truncated it instead). Regression: the whole bundle must
+/// flow through a `Receiver` shell intact, and the recv-side ceiling
+/// must be the deliverable ceiling, not the send budget.
+#[test]
+fn full_mtu_foreign_bundle_through_receiver_shell() {
+    use tst_pipeline::{Receiver, ReceiverConfig};
+
+    let base = free_rtp_port_base();
+    let url = format!("rtp://127.0.0.1:{base}");
+    let recv = RtpRecvTransport::listen(&url).unwrap();
+    assert_eq!(
+        RecvTransport::max_payload(&recv),
+        65535 - 12,
+        "recv-side ceiling must be RECV_SCRATCH_LEN - RTP_HEADER_LEN, \
+         not the pkt_size send budget"
+    );
+
+    // The Receiver shell sizes its internal buffer from max_payload()
+    // at construction — that sizing is exactly what this test pins.
+    let (tx, rx) = std::sync::mpsc::channel::<[u8; 188]>();
+    let recv_thread = thread::spawn(move || {
+        let mut shell = Receiver::new(recv, ReceiverConfig::default());
+        for _ in 0..7 {
+            match shell.next_packet() {
+                Ok(p) => {
+                    if tx.send(p).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("shell error: {e:?}");
+                    break;
+                }
+            }
+        }
+    });
+
+    // Hand-craft the foreign datagram: 12-byte RTP header (V=2, PT=33)
+    // + 7 × 188-byte TS packets. Our own RtpTransport cannot send this
+    // (its send budget caps below full-MTU) — which is exactly why the
+    // foreign-sender path needs a raw std socket.
+    thread::sleep(Duration::from_millis(20));
+    let mut datagram = vec![
+        0x80, // V=2, P=0, X=0, CC=0
+        33,   // M=0, PT=33 (MP2T)
+        0x12, 0x34, // sequence number
+        0x00, 0x00, 0x00, 0x01, // timestamp
+        0xde, 0xad, 0xbe, 0xef, // SSRC
+    ];
+    let pkts: Vec<[u8; 188]> = (1..=7).map(|i| synthetic_ts_packet(i as u8)).collect();
+    for p in &pkts {
+        datagram.extend_from_slice(p);
+    }
+    assert_eq!(datagram.len(), 1328);
+    let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    sock.send_to(&datagram, ("127.0.0.1", base)).unwrap();
+
+    for expected in pkts.iter() {
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("full-MTU bundle packet not delivered through the shell");
+        assert_eq!(&got[..], &expected[..]);
+    }
+    recv_thread.join().unwrap();
+}

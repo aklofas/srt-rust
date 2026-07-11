@@ -20,7 +20,7 @@ public final class Receiver extends NativeHandle {
 
     Receiver(long h) { setHandle(h); }
 
-    /** Bind a receiver to {@code url} with the default recv scratch size. */
+    /** Bind a receiver to {@code url} with the default {@code pktSize}. */
     public static Receiver fromUrl(String url) throws RtpException {
         return fromUrl(url, Sender.DEFAULT_PKT_SIZE);
     }
@@ -29,9 +29,9 @@ public final class Receiver extends NativeHandle {
      * Bind a receiver to {@code url}.
      *
      * @param url     {@code rtp://host:port} (unicast or multicast)
-     * @param pktSize expected send-side packet size (URL validation only); has no
-     *                effect on the receive buffer, which always accepts any legal
-     *                datagram; must be &ge; 0
+     * @param pktSize expected send-side packet size; has no effect on the receive
+     *                buffer, which always accepts any legal datagram; must be
+     *                &ge; 0
      * @throws RtpException {@code TRANSPORT} on URL-parse / bind failure
      * @throws IllegalArgumentException if {@code pktSize} is negative
      */

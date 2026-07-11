@@ -46,6 +46,10 @@ pub fn packetize(
     ssrc: u32,
     pt: u8,
 ) -> Vec<Vec<u8>> {
+    debug_assert!(
+        mtu >= 3,
+        "payloader needs ≥3 bytes for FU header + 1 fragment byte"
+    );
     let mut packets: Vec<Vec<u8>> = Vec::new();
     let mut seq = seq0;
 

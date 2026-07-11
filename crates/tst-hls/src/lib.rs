@@ -32,6 +32,8 @@ pub use builder::HlsPublisherBuilder;
 pub use config::{HlsConfig, HlsMode};
 pub use error::{HlsError, HlsErrorKind};
 pub use publisher::HlsPublisher;
+#[cfg(feature = "serve")]
+pub use publisher::HlsServerHandle;
 pub use stats::HlsStats;
 #[cfg(feature = "serve")]
 pub use url::{HlsUrl, HlsUrlError};

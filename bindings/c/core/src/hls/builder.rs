@@ -188,6 +188,47 @@ pub unsafe extern "C" fn tst_hls_publisher_builder_segment_duration_ms(
     })
 }
 
+/// Set the hard upper bound on an open segment's wall-clock age (in
+/// milliseconds) in the keyframe-driven flow. When a keyframe is overdue,
+/// the segmenter force-cuts at this cap so segments never grow unbounded.
+///
+/// A non-zero `ms` must be at least the target segment duration; a smaller
+/// value is rejected later at `tst_hls_publisher_builder_build` with
+/// `TST_E_HLS_CONFIG`.
+///
+/// Passing `ms == 0` is a no-op that leaves the library default in effect
+/// (`2 × segment_duration`). A fresh builder already carries this default,
+/// so `0` is only meaningful as "do not override the cap"; the underlying
+/// `tst-hls` builder exposes no reset-to-default setter, so a `0` after a
+/// prior non-zero call does **not** clear the earlier value. Callers that
+/// need the default should simply never call this setter.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null.
+///
+/// # Safety
+///
+/// `b` must be a valid non-freed builder.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_publisher_builder_max_segment_duration_ms(
+    b: *mut TstHlsPublisherBuilder,
+    ms: u64,
+) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(builder) = (unsafe { b.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null hls builder pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // 0 => leave the library default (None) in place: a fresh builder is
+        // already seeded with the default, so applying nothing is correct.
+        if ms != 0 {
+            map_inner(builder, |inner| {
+                inner.max_segment_duration(Duration::from_millis(ms))
+            });
+        }
+        0
+    })
+}
+
 /// Set the rolling playlist window size (segment count) used in LIVE mode.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null.

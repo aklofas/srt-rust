@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.17` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.18` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -202,7 +202,7 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 17` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 18` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -306,7 +306,18 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   (ISO/IEC 13818-1 §2.4.3.6) for B-frame-reordered streams. Additive —
 ///   no symbol removed, no signature or struct layout changed. (AV1 mux
 ///   carriage and the targeted `*_to` push family already shipped in ABI 14.)
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 17;
+/// - `18` (tst-hls promotion, 2026-07-11): HLS publisher hardening surface
+///   (all gated `TST_HAS_HLS`) — `tst_hls_publisher_finish_serving` +
+///   the opaque `TstHlsServerHandle` (`tst_hls_server_handle_local_addr` /
+///   `_shutdown` / `_free`) that keeps the built-in HTTP server serving a
+///   finished VOD/EVENT stream; builder
+///   `tst_hls_publisher_builder_max_segment_duration_ms` (wall-clock
+///   force-cut cap; `0` leaves the default); and
+///   `tst_hls_publisher_get_forced_cuts` (reads `HlsStats::forced_cuts` via
+///   a getter — `TstHlsStats` layout unchanged). Additive — no existing
+///   symbol or struct changed. The HLS surface moved from `tst-tcp` to the
+///   new `tst-hls` crate (link-level only; no C ABI effect).
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 18;
 
 // =========================================================================
 // Runtime version accessors

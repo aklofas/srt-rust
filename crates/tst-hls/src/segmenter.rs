@@ -170,6 +170,18 @@ impl Segmenter {
         } else if elapsed >= self.config.segment_duration {
             // Raw push_ts flow (pre-muxed TS relay): no keyframe signal exists,
             // wall-clock segmenting is all we have — unchanged v0.2.0 behavior.
+            //
+            // NOTE: `has_explicit_cuts` only flips on the FIRST explicit cut
+            // (which, for a keyframe-driven `MuxPublisher`, is the second
+            // keyframe). So the very first segment lands here until then, and
+            // if the initial GOP is longer than `segment_duration` it can be
+            // wall-clock-cut mid-GOP — breaking the "segments begin with IDR"
+            // guarantee for segment 0 only. This is unreachable in normal
+            // config (a keyframe interval shorter than `segment_duration` cuts
+            // the first segment before this fires); under the misconfiguration
+            // GOP > segment_duration it is bounded by the hard cap and shows up
+            // in `forced_cuts`. A complete fix needs a keyframe-driven-intent
+            // signal through the `Publisher` trait (tracked as a follow-up).
             self.cut()?;
         }
         Ok(())

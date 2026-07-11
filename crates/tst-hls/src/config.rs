@@ -44,6 +44,13 @@ pub struct HlsConfig {
     /// Filesystem directory where segments + playlist are written.
     /// Created if it doesn't exist; emptied of stale `segment_*.ts` /
     /// `playlist.m3u8` on construction.
+    ///
+    /// The default is a single fixed path under the system temp directory,
+    /// intended as a single-publisher convenience. Because construction
+    /// proactively deletes stale `segment_*.ts` / `playlist.m3u8` here, two
+    /// publishers sharing one directory (default or otherwise) will clobber
+    /// each other's output and race on segment creation — give each publisher
+    /// its own `output_dir`.
     pub output_dir: PathBuf,
     /// Target segment duration.  Real segments cut on `cut_segment()` calls
     /// (IDR-aligned) OR when this duration is exceeded since the segment opened.

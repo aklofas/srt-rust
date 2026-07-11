@@ -158,9 +158,10 @@ impl RtpRecvSocketBuilder {
         self
     }
 
-    /// Expected send-side UDP packet size (188-multiple), used for URL
-    /// validation only. Has no effect on the receive buffer, which always
-    /// accepts any legal datagram. Default 1316.
+    /// Expected send-side UDP packet size (the 188-multiple check is
+    /// applied only when supplied via a `?pkt_size=` URL query). Has no
+    /// effect on the receive buffer, which always accepts any legal
+    /// datagram. Default 1316.
     pub fn pkt_size(&mut self, n: usize) -> &mut Self {
         self.url.pkt_size = n;
         self

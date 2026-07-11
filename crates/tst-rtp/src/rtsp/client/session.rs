@@ -14,6 +14,8 @@ use std::sync::mpsc;
 
 use bytes::Bytes;
 
+use crate::h264::depacketizer::H264DepayConfig;
+use crate::h264::receiver::H264Receiver;
 use crate::rtsp::client::transport_negotiation::{RtspTransportKind, TransportResponse};
 use crate::transport::RtpRecvTransport;
 
@@ -135,6 +137,38 @@ impl RtspSession {
                     .take()
                     .expect("TcpInterleaved session has a pump rtcp_rx");
                 RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx)
+            }
+        }
+    }
+
+    /// Consume the session and return an [`H264Receiver`] wired to the
+    /// transport negotiated at SETUP time.
+    ///
+    /// For UDP: takes the RTP socket from the SETUP-allocated UDP pair;
+    /// the companion RTCP socket is dropped (RTCP is not implemented on
+    /// the H.264 path — v1 decision; see `docs/project/deferred-features.md`).
+    ///
+    /// For TCP-interleaved: takes the pump's data `mpsc::Receiver<Bytes>`;
+    /// the pump's RTCP channel (`rtcp_rx`) is dropped for the same reason.
+    ///
+    /// Use the `config` returned by
+    /// [`RtspClient::setup_h264_auto`](crate::rtsp::client::RtspClient::setup_h264_auto)
+    /// to carry the negotiated payload type and out-of-band SPS/PPS NALUs
+    /// into the receiver.
+    pub fn into_h264_receiver(mut self, config: H264DepayConfig) -> H264Receiver {
+        match self.kind {
+            RtspTransportKind::Udp => {
+                let (rtp, _rtcp) = self.udp_sockets.expect("UDP session has sockets");
+                H264Receiver::from_udp_socket_with(rtp, config).expect("from_udp_socket_with")
+            }
+            RtspTransportKind::TcpInterleaved => {
+                let data_rx = self
+                    .data_rx
+                    .take()
+                    .expect("TcpInterleaved session has a pump data_rx");
+                // rtcp_rx is intentionally dropped — RTCP is not implemented
+                // on the H.264 path (v1 decision).
+                H264Receiver::from_mpsc_with(data_rx, config)
             }
         }
     }

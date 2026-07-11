@@ -129,6 +129,9 @@ fn rtsp_error_kind(e: &RtspError) -> &'static str {
         RtspError::LocalCancel => "PROTOCOL",
         RtspError::NoMp2tMedia => "MOUNT",
         RtspError::MultipleMp2tMedia { .. } => "MOUNT",
+        RtspError::NoH264Media => "MOUNT",
+        RtspError::MultipleH264Media { .. } => "MOUNT",
+        RtspError::UnsupportedPacketizationMode(_) => "MOUNT",
         RtspError::Url(_) => "PROTOCOL",
         // non-exhaustive wildcard — future variants land in PROTOCOL until the
         // Java-side RtspException.Kind grows a matching constant.

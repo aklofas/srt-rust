@@ -85,6 +85,16 @@ public final class RtspSession extends NativeHandle {
      * afterward (only the internal data-plane transport is consumed). Calling this
      * twice raises {@link RtspException} of kind {@code PROTOCOL}.
      *
+     * <p><b>Lease semantics (contrast with {@link #intoH264Receiver()}):</b> this
+     * method BORROWS the session handle — a sanctioned lease per the
+     * {@code NativeHandle} subclass contract. Only the internal data-plane
+     * transport moves into the returned receiver; this wrapper stays open, so
+     * {@link #pause()}, {@link #play()}, {@link #teardown()} and {@link #close()}
+     * remain usable (matching the Python binding). {@code intoH264Receiver()}
+     * instead consumes the whole session — see its Javadoc for why. The Rust
+     * layer enforces single use of the data plane: a second call throws
+     * {@link RtspException} of kind {@code PROTOCOL}.
+     *
      * @param demuxConfig demuxer configuration (must not be null; use
      *     {@link #intoDemuxReceiver()} for defaults)
      */

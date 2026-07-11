@@ -295,10 +295,12 @@ impl tst_core::transport::RecvTransport for SrtTransport {
         // Recv-side deliverable ceiling (see RecvTransport::max_payload
         // in tst-core). SRTO_PAYLOADSIZE is a local option — a foreign
         // peer at the live-mode max delivers 1456-byte messages
-        // regardless of our local value, and srt_recvmsg into a
-        // smaller buffer fails with SRT_ELARGEMSG. The max() keeps an
-        // explicitly-configured larger value honored. The send-side
-        // Transport::max_payload keeps returning the local budget.
+        // regardless of our local value, and on vendored libsrt 1.5.5
+        // srt_recvmsg SILENTLY TRUNCATES to the caller's buffer (the
+        // BufferTooSmall→Broken mapping appears unreachable; kept as
+        // defence). The max() keeps an explicitly-configured larger
+        // value honored. The send-side Transport::max_payload keeps
+        // returning the local budget.
         self.max_payload.max(SRT_LIVE_MAX_PAYLOAD)
     }
 

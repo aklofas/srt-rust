@@ -621,6 +621,9 @@ pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
         LocalCancel => TstError::RtspProtocol,
         NoMp2tMedia => TstError::RtspNotFound,
         MultipleMp2tMedia { .. } => TstError::RtspNotFound,
+        NoH264Media => TstError::RtspNotFound,
+        MultipleH264Media { .. } => TstError::RtspNotFound,
+        UnsupportedPacketizationMode(_) => TstError::RtspUnsupported,
         Url(_) => TstError::RtspProtocol,
         // A header name/value (or the request-line URI) carried a CR/LF/NUL/
         // control byte and was rejected before reaching the wire — a caller-side

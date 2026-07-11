@@ -54,7 +54,7 @@ pub use rtsp::client::transport_negotiation::{RtspTransportKind, TransportRespon
 pub use rtsp::client::{RtspCancelHandle, RtspClient};
 pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BINARY_FRAME_LEN};
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
-pub use sdp::pick::pick_mp2t;
+pub use sdp::pick::{H264Media, pick_h264, pick_mp2t};
 pub use sdp::{Sdp, SdpMedia};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
 

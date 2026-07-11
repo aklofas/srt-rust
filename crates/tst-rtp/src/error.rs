@@ -7,8 +7,9 @@
 //! mid-PLAY, UDP recv errors) bubble through the transport's normal
 //! `TransportError::Broken` path.
 //!
-//! Total variants: 15 (Phase 2 master-spec 12 + Url + NoMp2tMedia +
-//! MultipleMp2tMedia).
+//! Total variants: 18 (Phase 2 master-spec 12 + Url + NoMp2tMedia +
+//! MultipleMp2tMedia + NoH264Media + MultipleH264Media +
+//! UnsupportedPacketizationMode).
 
 use std::io;
 
@@ -111,6 +112,27 @@ pub enum RtspError {
     /// `RtspClient::setup` (lands Wave B) with a chosen media line.
     #[error("multiple MPEG-TS m-lines in SDP ({count} found)")]
     MultipleMp2tMedia { count: usize },
+
+    /// `DESCRIBE` returned an SDP with no H.264 (RFC 6184) media line —
+    /// no `m=` section contains an `a=rtpmap` naming `H264/90000`. Only
+    /// emitted by [`crate::rtsp::client::RtspClient::setup_h264_auto`];
+    /// explicit `setup(&media)` does not consult H.264-ness.
+    #[error("SDP has no H.264 (rtpmap H264/90000) media")]
+    NoH264Media,
+
+    /// `DESCRIBE` returned an SDP with multiple H.264 media lines. Caller
+    /// should fall back to explicit `RtspClient::setup` with a chosen
+    /// media line.
+    #[error("SDP has {count} H.264 media lines; explicit selection required")]
+    MultipleH264Media { count: usize },
+
+    /// The H.264 media line advertises packetization-mode 2 (interleaved
+    /// mode). Only modes 0 and 1 are implemented. Emitted by
+    /// [`crate::rtsp::client::RtspClient::setup_h264_auto`].
+    #[error(
+        "H.264 media requires packetization-mode {0}; only modes 0/1 are supported (interleaved mode is not implemented)"
+    )]
+    UnsupportedPacketizationMode(u8),
 
     /// A header name or value destined for an outgoing RTSP request
     /// contained a forbidden byte — CR, LF, NUL, or another ASCII control

@@ -18,11 +18,11 @@ crate-type = ["cdylib", "rlib"]
 doctest    = false
 
 [features]
-# `hls` is intentionally NOT in `default`: it is EXPERIMENTAL and is NOT shipped
-# in published wheels (gated out of python-wheels.yml too). Enable it
-# explicitly with `--features hls` for local/experimental builds.
-# See docs/project/deferred-features.md.
-default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline"]
+# `hls` is default-on and ships in published wheels alongside the other
+# transports. A `--no-default-features` source build (or explicit feature
+# selection without `hls`) is the only way to omit it. See
+# docs/project/deferred-features.md.
+default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline", "hls"]
 # `rtp` pulls tst-rtp + tst-pipeline (the latter for the
 # `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>`
 # convenience wrappers added by Wave B Task 23) + secrecy (for
@@ -33,14 +33,12 @@ rtp     = ["dep:tst-rtp", "dep:tst-pipeline", "dep:secrecy"]
 # wrapping user-passed passwords in `SecretString` before handing them
 # to the Rust builder).
 srt     = ["dep:tst-srt", "dep:tst-pipeline", "dep:secrecy"]
-# Plan A5b — udp / tcp / hls / rist transports (default-on, matching rtp/srt;
-# PyPI wheels ship everything except the experimental `hls`). `hls` reuses tst-tcp (HLS lives there) +
-# tst-pipeline (MuxPublisher shell). `rist` pulls secrecy for AES PSK wrapping.
+# Plan A5b — udp / tcp / hls / rist transports (all default-on, matching
+# rtp/srt; PyPI wheels ship everything). `hls` pulls tst-hls (with its
+# `serve` feature for the built-in HTTP server) + tst-pipeline (MuxPublisher
+# shell). `rist` pulls secrecy for AES PSK wrapping.
 udp     = ["dep:tst-udp"]
 tcp     = ["dep:tst-tcp"]
-# hls: EXPERIMENTAL — not shipped in published wheels/JAR; see
-# docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
-# floor + VOD-never-served, all on an unauthenticated all-interfaces server).
 hls     = ["dep:tst-hls", "tst-hls?/serve", "dep:tst-pipeline"]
 rist    = ["dep:tst-rist", "dep:secrecy"]
 # pipeline pulls tst-pipeline for the ext::pairing PairingDemuxer composite.

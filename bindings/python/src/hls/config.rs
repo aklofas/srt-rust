@@ -91,6 +91,10 @@ pub(crate) struct PyHlsStats {
     pub bytes_pushed_total: u64,
     /// Bytes in the currently-open segment (0 between cuts).
     pub open_segment_bytes: u64,
+    /// Segments cut by the wall-clock hard-cap fallback because a keyframe
+    /// was overdue (keyframe-driven flow only). A persistently non-zero
+    /// value means the upstream GOP length exceeds the configured cap.
+    pub forced_cuts: u64,
 }
 
 impl From<tst_hls::HlsStats> for PyHlsStats {
@@ -99,6 +103,7 @@ impl From<tst_hls::HlsStats> for PyHlsStats {
             segments_written: s.segments_written,
             bytes_pushed_total: s.bytes_pushed_total,
             open_segment_bytes: s.open_segment_bytes,
+            forced_cuts: s.forced_cuts,
         }
     }
 }
@@ -106,18 +111,28 @@ impl From<tst_hls::HlsStats> for PyHlsStats {
 #[pymethods]
 impl PyHlsStats {
     #[new]
-    fn new(segments_written: u64, bytes_pushed_total: u64, open_segment_bytes: u64) -> Self {
+    fn new(
+        segments_written: u64,
+        bytes_pushed_total: u64,
+        open_segment_bytes: u64,
+        forced_cuts: u64,
+    ) -> Self {
         Self {
             segments_written,
             bytes_pushed_total,
             open_segment_bytes,
+            forced_cuts,
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "HlsStats(segments_written={}, bytes_pushed_total={}, open_segment_bytes={})",
-            self.segments_written, self.bytes_pushed_total, self.open_segment_bytes,
+            "HlsStats(segments_written={}, bytes_pushed_total={}, \
+             open_segment_bytes={}, forced_cuts={})",
+            self.segments_written,
+            self.bytes_pushed_total,
+            self.open_segment_bytes,
+            self.forced_cuts,
         )
     }
 }

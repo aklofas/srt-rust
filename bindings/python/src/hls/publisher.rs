@@ -31,7 +31,7 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 use tst_core::publisher::Publisher;
-use tst_hls::{HlsMode, HlsPublisher, HlsPublisherBuilder};
+use tst_hls::{HlsMode, HlsPublisher, HlsPublisherBuilder, HlsServerHandle};
 
 use crate::hls::config::{PyHlsMode, PyHlsStats};
 use crate::hls::publisher_abc::PyPublisherStats;
@@ -150,6 +150,32 @@ impl PyHlsPublisher {
         };
         py.allow_threads(|| Publisher::finish(inner))
             .map_err(|e| map_hls_error(py, &e))
+    }
+
+    /// Like `finish()`, but keep the built-in HTTP server serving the
+    /// completed (terminal) playlist + segments until the returned
+    /// `HlsServerHandle` is shut down / dropped. This is how a VOD or EVENT
+    /// stream stays observable after the stream ends. **Consumes** the inner
+    /// publisher; subsequent ops raise `HlsError(FINISHED)`.
+    fn finish_serving(&self, py: Python<'_>) -> PyResult<PyHlsServerHandle> {
+        // Take the inner BEFORE the fallible consume (mirrors `finish()`):
+        // `finish_serving` moves `self` by value on the Rust side, so we must
+        // zero the Option first — a failure leaves the handle finished (the
+        // Rust side already flipped its `finished` flag) rather than leaking a
+        // half-consumed publisher.
+        let inner = {
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("HlsPublisher mutex poisoned"))?;
+            guard
+                .take()
+                .ok_or_else(|| make_hls_error(py, "FINISHED", "HlsPublisher already finished"))?
+        };
+        let handle = py
+            .allow_threads(|| inner.finish_serving())
+            .map_err(|e| map_hls_error(py, &e))?;
+        Ok(PyHlsServerHandle::from_inner(handle))
     }
 
     /// Universal cross-publisher stats (`PublisherStats`).
@@ -305,6 +331,26 @@ impl PyHlsPublisherBuilder {
         Ok(slf)
     }
 
+    /// Hard upper bound on an open segment's wall-clock age in the
+    /// keyframe-driven flow (force-cuts when a keyframe is overdue). Defaults
+    /// to `2 × segment_duration`; must be `≥ segment_duration` at `build()`.
+    ///
+    /// `ms == 0` leaves the library default in place (matching the C ABI): a
+    /// fresh builder is already seeded with the default, and `tst-hls`
+    /// exposes no reset-to-default setter, so a `0` after a prior non-zero
+    /// call does **not** clear the earlier value. Callers wanting the default
+    /// simply never call this setter.
+    fn max_segment_duration_ms(
+        mut slf: PyRefMut<'_, Self>,
+        ms: u64,
+    ) -> PyResult<PyRefMut<'_, Self>> {
+        if ms != 0 {
+            let d = Duration::from_millis(ms);
+            slf.apply(|b| b.max_segment_duration(d))?;
+        }
+        Ok(slf)
+    }
+
     /// Rolling-window size (number of segments visible in a LIVE playlist).
     fn playlist_window(mut slf: PyRefMut<'_, Self>, n: usize) -> PyResult<PyRefMut<'_, Self>> {
         slf.apply(|b| b.playlist_window(n))?;
@@ -368,5 +414,111 @@ impl PyHlsPublisherBuilder {
 
     fn __repr__(&self) -> &'static str {
         "HlsPublisherBuilder(...)"
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PyHlsServerHandle — wraps tst_hls::HlsServerHandle
+// ---------------------------------------------------------------------------
+
+/// Live HTTP server serving a finished HLS playlist + its segments
+/// (`tstrans.hls.HlsServerHandle`). Returned by
+/// `HlsPublisher.finish_serving()`; keeps the built-in server up so clients
+/// can fetch the terminal playlist and every segment file after the stream
+/// has ended.
+///
+/// `shutdown()` (or the context-manager `__exit__`, or drop) stops serving
+/// and drains the runtime. `shutdown()` is idempotent — a second call (via
+/// `close()`, `__exit__`, or drop after an explicit shutdown) is a no-op.
+#[pyclass(name = "HlsServerHandle", module = "tstrans.hls")]
+pub(crate) struct PyHlsServerHandle {
+    /// `Option` so `shutdown()` can move the handle out (its Rust
+    /// `shutdown(self)` consumes by value) while leaving the PyClass
+    /// addressable; `Mutex` to allow the `&self` methods plus a `take()` on
+    /// shutdown.
+    inner: Mutex<Option<HlsServerHandle>>,
+}
+
+impl PyHlsServerHandle {
+    fn from_inner(inner: HlsServerHandle) -> Self {
+        Self {
+            inner: Mutex::new(Some(inner)),
+        }
+    }
+}
+
+#[pymethods]
+impl PyHlsServerHandle {
+    /// Local socket address the HTTP server is bound to, as `"ip:port"`.
+    /// Raises `HlsError(FINISHED)` if the server has already been shut down.
+    fn local_addr(&self, py: Python<'_>) -> PyResult<String> {
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("HlsServerHandle mutex poisoned"))?;
+        let handle = guard
+            .as_ref()
+            .ok_or_else(|| make_hls_error(py, "FINISHED", "HlsServerHandle shut down"))?;
+        Ok(handle.local_addr().to_string())
+    }
+
+    /// Convenience: the bound TCP port. Raises `HlsError(FINISHED)` if the
+    /// server has already been shut down.
+    fn local_port(&self, py: Python<'_>) -> PyResult<u16> {
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("HlsServerHandle mutex poisoned"))?;
+        let handle = guard
+            .as_ref()
+            .ok_or_else(|| make_hls_error(py, "FINISHED", "HlsServerHandle shut down"))?;
+        Ok(handle.local_addr().port())
+    }
+
+    /// Stop serving and drain the runtime. Idempotent: a second call is a
+    /// no-op. Also happens automatically on drop.
+    fn shutdown(&self, py: Python<'_>) -> PyResult<()> {
+        let handle = {
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("HlsServerHandle mutex poisoned"))?;
+            guard.take()
+        };
+        if let Some(handle) = handle {
+            py.allow_threads(|| handle.shutdown());
+        }
+        Ok(())
+    }
+
+    /// Alias for `shutdown()` (idempotent). Useful in `with`-style cleanup.
+    fn close(&self, py: Python<'_>) -> PyResult<()> {
+        self.shutdown(py)
+    }
+
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    #[pyo3(signature = (_exc_type=None, _exc_value=None, _traceback=None))]
+    fn __exit__(
+        &self,
+        py: Python<'_>,
+        _exc_type: Option<PyObject>,
+        _exc_value: Option<PyObject>,
+        _traceback: Option<PyObject>,
+    ) -> PyResult<bool> {
+        self.shutdown(py)?;
+        // Return false so any in-context exception propagates.
+        Ok(false)
+    }
+
+    fn __repr__(&self) -> String {
+        let live = self.inner.lock().map(|g| g.is_some()).unwrap_or(false);
+        if live {
+            "HlsServerHandle(serving)".to_string()
+        } else {
+            "HlsServerHandle(shutdown)".to_string()
+        }
     }
 }

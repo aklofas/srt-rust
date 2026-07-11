@@ -825,6 +825,8 @@ fn make_rtsp_error_pure(kind: &str, message: &str) -> PyErr {
 /// - `Timeout` → `TIMEOUT`
 /// - `NoMp2tMedia` / `MultipleMp2tMedia` → `MOUNT` (SETUP-time mount
 ///   path issue from the SDP side)
+/// - `NoH264Media` / `MultipleH264Media` / `UnsupportedPacketizationMode`
+///   → `MOUNT` (H.264 SETUP-time SDP issues)
 /// - any future `#[non_exhaustive]` variant → `PROTOCOL` (catch-all;
 ///   the bash ratchet flags missing Python-side variants when they
 ///   land)
@@ -846,6 +848,9 @@ fn rtsp_error_kind_str(e: &RustRtspError) -> &'static str {
         RustRtspError::LocalCancel => "PROTOCOL",
         RustRtspError::NoMp2tMedia => "MOUNT",
         RustRtspError::MultipleMp2tMedia { .. } => "MOUNT",
+        RustRtspError::NoH264Media => "MOUNT",
+        RustRtspError::MultipleH264Media { .. } => "MOUNT",
+        RustRtspError::UnsupportedPacketizationMode(_) => "MOUNT",
         RustRtspError::Url(_) => "PROTOCOL",
         // #[non_exhaustive] wildcard — future variants land in PROTOCOL
         // until the Python-side RtspErrorKind grows a matching variant.

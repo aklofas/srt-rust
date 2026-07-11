@@ -520,6 +520,12 @@ pub unsafe extern "C" fn tst_hls_publisher_finish_serving(
             set_last_error(TstError::InvalidConfig, "null out pointer");
             return TstError::InvalidConfig as i32;
         }
+        // Defensively null `*out` up front so every failure path leaves the
+        // caller's out-pointer with a well-defined value (a caller that passed
+        // a garbage-initialized slot cannot mistake it for a live handle and
+        // double-free). `*out` is overwritten with the real handle only on the
+        // success path below.
+        unsafe { *out = core::ptr::null_mut() };
         // Take the inner unconditionally — finish_serving consumes by value on
         // both Ok and Err paths, so it cannot be restored on failure.  The
         // publisher handle is terminal after this call regardless of outcome.

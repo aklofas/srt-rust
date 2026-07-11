@@ -451,7 +451,8 @@ def test_finish_serving_serves_vod(tmp_path: object) -> None:
         assert port > 0
         assert handle.local_addr().startswith("127.0.0.1:")
         url = f"http://127.0.0.1:{port}/playlist.m3u8"
-        body = urllib.request.urlopen(url).read().decode()  # noqa: S310
+        with urllib.request.urlopen(url) as resp:  # noqa: S310
+            body = resp.read().decode()
         assert "#EXT-X-ENDLIST" in body, body
 
 

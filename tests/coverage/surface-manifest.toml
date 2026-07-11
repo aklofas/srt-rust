@@ -4296,6 +4296,10 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::mpegts::mux::Muxer::pending_packets"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[exempt]]
+item = "tst_core::mpegts::mux::Muxer::request_psi"
+reason = "segment-boundary PSI re-emission plumbing; exercised by the mux unit test (next push emits PAT/PMT) and the tst-hls klv_interop integration test; no direct C/Python/Java binding yet"
+
 [[surface]]
 kind = "rust"
 crate = "tst-core"

@@ -62,6 +62,14 @@ public final class RtspClient {
      * {@link RtspSession#intoH264Receiver()} can configure the depacketizer
      * without the caller needing to inspect the SDP manually.
      *
+     * <p><b>pause() / play() are unavailable after intoH264Receiver().</b>
+     * Calling {@link RtspSession#intoH264Receiver()} consumes the session wrapper
+     * — control-plane methods ({@link RtspSession#pause()} / {@link RtspSession#play()})
+     * throw {@link IllegalStateException} afterward. This differs from the
+     * {@link #connect(RtspClientConfig)} path, where {@link RtspSession#intoDemuxReceiver()}
+     * leaves those methods open, and from the Python binding (which keeps the session
+     * wrapper usable after {@code session.into_h264_receiver()}).
+     *
      * @param config the connection configuration
      * @return a live session in PLAY state, with H.264 depacketizer config stashed
      * @throws RtspException {@code MOUNT} when the SDP has no H.264 media or more

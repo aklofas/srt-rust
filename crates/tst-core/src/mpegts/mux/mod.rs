@@ -295,6 +295,18 @@ impl Muxer {
         self.config.buffer_packets as u64
     }
 
+    /// Force PAT + PMT re-emission on the next push (all programs).
+    ///
+    /// Segmenting shells (e.g. `MuxPublisher` over an HLS publisher) call this
+    /// after cutting a segment so the next segment opens with PSI and is
+    /// independently decodable (RFC 8216 §3: each Media Segment must be
+    /// decodable without prior segments).
+    pub fn request_psi(&mut self) {
+        for slot in &mut self.psi_last {
+            *slot = None;
+        }
+    }
+
     /// Return the resolved PCR PID for program at `prog_idx` (0-based index).
     /// Returns `None` if `prog_idx` is out of range.
     #[cfg(test)]

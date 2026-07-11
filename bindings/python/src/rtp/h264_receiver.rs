@@ -211,6 +211,9 @@ impl PyH264DepayConfig {
 pub struct PyH264AccessUnit {
     /// Annex B framed bytes (heap copy — new `bytes` object for Python).
     pub annexb: Py<PyBytes>,
+    /// Byte length of `annexb`, captured at construction so `__repr__`
+    /// can render it without needing a Python handle.
+    annexb_len: usize,
     /// Decode-order 90 kHz timestamp, as i64 ticks.
     pub pts: i64,
     /// True when the AU contains at least one IDR slice (NALU type 5).
@@ -245,12 +248,7 @@ impl PyH264AccessUnit {
         format!(
             "H264AccessUnit(pts={}, key_frame={}, rtp_timestamp={}, \
              annexb=<{} bytes>)",
-            self.pts,
-            self.key_frame,
-            self.rtp_timestamp,
-            // We can't inspect the bytes without a Python handle, so
-            // show the length placeholder. This repr is for debugging only.
-            "?",
+            self.pts, self.key_frame, self.rtp_timestamp, self.annexb_len,
         )
     }
 }
@@ -261,6 +259,7 @@ impl PyH264AccessUnit {
     pub(crate) fn from_rust(py: Python<'_>, au: H264Au) -> PyResult<Self> {
         Ok(Self {
             annexb: PyBytes::new_bound(py, &au.annexb).unbind(),
+            annexb_len: au.annexb.len(),
             pts: au.pts.as_ticks(),
             key_frame: au.key_frame,
             rtp_timestamp: au.rtp_timestamp,

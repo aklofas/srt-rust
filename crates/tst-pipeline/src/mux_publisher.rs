@@ -109,9 +109,15 @@ impl<P: Publisher> MuxPublisher<P> {
         })
     }
 
-    /// Send one video access unit (Annex-B framing required).  Calls
-    /// [`Publisher::cut_segment_with_duration`] automatically when `key_frame` is true,
-    /// passing the PTS span of the segment that just ended.
+    /// Send one video access unit (Annex-B framing required).
+    ///
+    /// A keyframe BEGINS the next segment: before this AU is pushed, the
+    /// closing segment is flushed and cut (EXTINF = the exact PTS span
+    /// `segment_start..this keyframe`), then PSI (PAT/PMT) is re-emitted so
+    /// the new segment opens PAT → PMT → IDR and is independently decodable
+    /// (RFC 8216 §3). The keyframe's own bytes then land at the HEAD of the
+    /// fresh segment. The stream-head keyframe (no open segment yet) opens
+    /// the first segment without a spurious zero-duration cut.
     pub fn send_video(
         &self,
         nal: &[u8],
@@ -125,6 +131,24 @@ impl<P: Publisher> MuxPublisher<P> {
         if inner.closed {
             return Err(MuxPublisherError::Closed);
         }
+        // A keyframe BEGINS the next segment. Flush everything already muxed
+        // into the closing segment, cut (EXTINF = exact PTS span
+        // start..this keyframe), then re-emit PSI so the new segment opens
+        // PAT → PMT → IDR (RFC 8216 independent decodability). The pre-fix
+        // order pushed first and cut after, which put the IDR at the TAIL of
+        // the closing segment (DA-NET-1).
+        if key_frame && inner.segment_start_pts.is_some() {
+            Self::drain_locked(&mut inner)?;
+            let start = inner.segment_start_pts.unwrap_or(pts);
+            let media_dur = media_span(start, pts);
+            inner
+                .publisher
+                .cut_segment_with_duration(media_dur)
+                .map_err(MuxPublisherError::Publisher)?;
+            inner.stats.cut_calls = inner.stats.cut_calls.saturating_add(1);
+            inner.muxer.request_psi();
+            inner.segment_start_pts = None;
+        }
         if inner.segment_start_pts.is_none() {
             inner.segment_start_pts = Some(pts);
         }
@@ -134,16 +158,6 @@ impl<P: Publisher> MuxPublisher<P> {
             .map_err(MuxPublisherError::Mux)?;
         Self::drain_locked(&mut inner)?;
         inner.last_video_pts = Some(pts);
-        if key_frame {
-            let start = inner.segment_start_pts.unwrap_or(pts);
-            let media_dur = media_span(start, pts);
-            inner
-                .publisher
-                .cut_segment_with_duration(media_dur)
-                .map_err(MuxPublisherError::Publisher)?;
-            inner.stats.cut_calls = inner.stats.cut_calls.saturating_add(1);
-            inner.segment_start_pts = None;
-        }
         Ok(())
     }
 
@@ -250,6 +264,7 @@ impl<P: Publisher> MuxPublisher<P> {
             .cut_segment_with_duration(media_dur)
             .map_err(MuxPublisherError::Publisher)?;
         inner.stats.cut_calls = inner.stats.cut_calls.saturating_add(1);
+        inner.muxer.request_psi();
         inner.segment_start_pts = None;
         Ok(())
     }
@@ -583,9 +598,10 @@ mod tests {
 
     #[test]
     fn send_video_derives_media_duration_from_pts() {
-        // Sparse keyframes: IDR@0 closes a degenerate first segment (span 0);
-        // P@9000, P@18000 build segment 1; IDR@270000 closes it with the PTS
-        // span 9000..270000 = 261000 ticks = 2.9 s.
+        // Keyframes BEGIN segments (cut-before-push): IDR@0 is the stream
+        // head — it opens the first segment and emits NO cut. P@9000, P@18000
+        // extend it; IDR@270000 closes it with the PTS span 0..270000 =
+        // 270000 ticks = 3.0 s, then begins the next segment.
         let p = RecordingPublisher { cuts: vec![] };
         let mp = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
         let au = h264_au();
@@ -594,11 +610,108 @@ mod tests {
         mp.send_video(&au, Pts90khz::new(18000), false).unwrap();
         mp.send_video(&au, Pts90khz::new(270000), true).unwrap();
         let p = mp.finish().unwrap();
-        assert_eq!(p.cuts.len(), 2);
-        assert_eq!(p.cuts[0], Duration::ZERO);
+        assert_eq!(p.cuts.len(), 1, "stream-head IDR must not emit a cut");
         assert_eq!(
-            p.cuts[1],
-            Duration::from_nanos(261_000 * 1_000_000_000 / 90_000)
+            p.cuts[0],
+            Duration::from_nanos(270_000 * 1_000_000_000 / 90_000)
+        );
+    }
+
+    /// One recorded publisher operation, in call order.
+    #[derive(Debug, PartialEq)]
+    enum Op {
+        /// A `push_ts` of this many bytes.
+        Push(usize),
+        /// A `cut_segment_with_duration` of this media duration.
+        Cut(Duration),
+    }
+
+    /// Test double that records the exact interleaving of pushes and cuts so
+    /// tests can prove a GOP's bytes land in the segment that BEGINS with its
+    /// keyframe (i.e. all bytes of one GOP come before the cut, and the next
+    /// keyframe's bytes come after it).
+    struct OpLogPublisher {
+        ops: Vec<Op>,
+    }
+
+    impl Publisher for OpLogPublisher {
+        type Error = MemErr;
+        fn push_ts(&mut self, ts: &[u8]) -> Result<(), MemErr> {
+            self.ops.push(Op::Push(ts.len()));
+            Ok(())
+        }
+        fn cut_segment(&mut self) -> Result<(), MemErr> {
+            self.ops.push(Op::Cut(Duration::ZERO));
+            Ok(())
+        }
+        fn cut_segment_with_duration(&mut self, d: Duration) -> Result<(), MemErr> {
+            self.ops.push(Op::Cut(d));
+            Ok(())
+        }
+        fn finish(self) -> Result<(), MemErr> {
+            Ok(())
+        }
+        fn stats(&self) -> PublisherStats {
+            PublisherStats::default()
+        }
+    }
+
+    #[test]
+    fn keyframe_begins_segment_push_before_cut() {
+        // AU sequence K1 P P K2 P K3 at 9000-tick spacing. Segments begin with
+        // their keyframe: the first GOP (K1 P P) is pushed BEFORE the first cut,
+        // and K2's bytes land AFTER it. Exactly two cuts (for K2 and K3 — the
+        // stream-head K1 emits none). First cut span = pts(K2) - pts(K1).
+        let p = OpLogPublisher { ops: vec![] };
+        let mp = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
+        let au = h264_au();
+        let k1 = 0;
+        let k2 = 3 * 9000; // K1 + 3 AUs (K1 P P) → K2 at index 3
+        let k3 = 5 * 9000; // K2 + 2 AUs (K2 P) → K3 at index 5
+        mp.send_video(&au, Pts90khz::new(k1), true).unwrap(); // K1
+        mp.send_video(&au, Pts90khz::new(9000), false).unwrap(); // P
+        mp.send_video(&au, Pts90khz::new(18000), false).unwrap(); // P
+        mp.send_video(&au, Pts90khz::new(k2), true).unwrap(); // K2
+        mp.send_video(&au, Pts90khz::new(4 * 9000), false).unwrap(); // P
+        mp.send_video(&au, Pts90khz::new(k3), true).unwrap(); // K3
+        let p = mp.finish().unwrap();
+
+        // Exactly two cuts (K2, K3 — none for the stream-head K1).
+        let cut_positions: Vec<usize> = p
+            .ops
+            .iter()
+            .enumerate()
+            .filter(|(_, op)| matches!(op, Op::Cut(_)))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(cut_positions.len(), 2, "ops: {:?}", p.ops);
+
+        // Some GOP bytes were pushed before the first cut (K1 P P), and some
+        // after it (K2 …) — proving segments begin with the keyframe.
+        let first_cut = cut_positions[0];
+        assert!(
+            p.ops[..first_cut]
+                .iter()
+                .any(|op| matches!(op, Op::Push(_))),
+            "K1 GOP bytes must precede the first cut; ops: {:?}",
+            p.ops
+        );
+        assert!(
+            p.ops[first_cut + 1..]
+                .iter()
+                .any(|op| matches!(op, Op::Push(_))),
+            "K2 bytes must follow the first cut; ops: {:?}",
+            p.ops
+        );
+
+        // First cut duration == pts(K2) - pts(K1).
+        let first_cut_dur = match &p.ops[first_cut] {
+            Op::Cut(d) => *d,
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            first_cut_dur,
+            Duration::from_nanos((k2 - k1) as u64 * 1_000_000_000 / 90_000)
         );
     }
 }

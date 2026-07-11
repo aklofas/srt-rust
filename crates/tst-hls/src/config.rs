@@ -48,6 +48,17 @@ pub struct HlsConfig {
     /// Target segment duration.  Real segments cut on `cut_segment()` calls
     /// (IDR-aligned) OR when this duration is exceeded since the segment opened.
     pub segment_duration: Duration,
+    /// Hard upper bound on an open segment's wall-clock age.
+    ///
+    /// Only consulted once the stream has driven at least one explicit
+    /// (keyframe) cut: in that flow the next keyframe owns cutting, and this
+    /// cap only force-cuts when a keyframe is overdue (a stalled or very-long
+    /// GOP) so segments never grow unbounded. `None` defaults to
+    /// `2 × segment_duration`. Must be `≥ segment_duration`.
+    ///
+    /// In the raw pre-muxed `push_ts` relay flow (no keyframe signal) this is
+    /// ignored — wall-clock cutting at `segment_duration` is unchanged.
+    pub max_segment_duration: Option<Duration>,
     /// Number of segments visible in the LIVE playlist (rolling window).
     /// Ignored for Event/Vod modes.
     pub playlist_window: usize,
@@ -70,6 +81,7 @@ impl Default for HlsConfig {
             bind: "127.0.0.1:8080".parse().expect("hard-coded default"),
             output_dir: std::env::temp_dir().join("tstrans-hls"),
             segment_duration: Duration::from_secs(4),
+            max_segment_duration: None,
             playlist_window: 6,
             mode: HlsMode::Live,
             basic_auth: None,
@@ -112,6 +124,15 @@ impl HlsConfig {
     pub fn validate(&self) -> Option<String> {
         if self.segment_duration.is_zero() {
             return Some("segment_duration must be > 0".into());
+        }
+        if let Some(cap) = self.max_segment_duration {
+            if cap < self.segment_duration {
+                return Some(format!(
+                    "max_segment_duration ({:.3}s) must be >= segment_duration ({:.3}s)",
+                    cap.as_secs_f64(),
+                    self.segment_duration.as_secs_f64(),
+                ));
+            }
         }
         if matches!(self.mode, HlsMode::Live) {
             if self.playlist_window == 0 {
@@ -202,6 +223,30 @@ mod tests {
     fn default_live_config_satisfies_3x_target() {
         // default: window 6 × 4 s = 24 s ≥ 3 × 4 = 12 s.
         assert_eq!(HlsConfig::default().validate(), None);
+    }
+
+    #[test]
+    fn max_segment_duration_below_segment_duration_invalid() {
+        // A hard cap smaller than the target segment duration is nonsensical:
+        // every segment would force-cut before reaching its keyframe.
+        let cfg = HlsConfig {
+            segment_duration: Duration::from_secs(4),
+            max_segment_duration: Some(Duration::from_secs(3)),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        assert!(cfg.validate().is_some());
+    }
+
+    #[test]
+    fn max_segment_duration_at_or_above_segment_duration_valid() {
+        let cfg = HlsConfig {
+            segment_duration: Duration::from_secs(4),
+            max_segment_duration: Some(Duration::from_secs(4)),
+            mode: HlsMode::Event,
+            ..HlsConfig::default()
+        };
+        assert_eq!(cfg.validate(), None);
     }
 
     #[test]

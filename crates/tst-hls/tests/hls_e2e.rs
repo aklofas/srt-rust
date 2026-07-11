@@ -101,16 +101,16 @@ fn hls_extinf_is_media_derived_and_target_is_immutable() {
     let au = synthetic_h264_au();
     // GOP cadence: IDR@0, P@60000, P@120000, IDR@180000, P@240000, P@300000, IDR@360000.
     //
-    // Segment bookkeeping (segment_start_pts set on first push after a cut,
-    // reset to None immediately after each keyframe cut):
-    //   IDR@0:       start None→0; span(0,0)=0 → seg0 Duration::ZERO; reset.
-    //   P@60000:     start None→60000.
-    //   P@120000:    start stays 60000.
-    //   IDR@180000:  span(60000,180000)=120000 ticks = 120000×1e9/90000 ns
-    //                = 1_333_333_333 ns ≈ 1.333 s; reset.
-    //   P@240000:    start None→240000.
-    //   P@300000:    start stays 240000.
-    //   IDR@360000:  span(240000,360000)=120000 ticks = 1.333 s; reset.
+    // Keyframes now BEGIN segments (cut-before-push): the closing segment is
+    // cut when the NEXT keyframe arrives, with EXTINF = the full PTS span of
+    // that segment (its own opening keyframe through the AU before the next).
+    //   IDR@0:       stream head — opens seg0 at start 0, NO cut.
+    //   P@60000, P@120000: extend seg0 (start stays 0).
+    //   IDR@180000:  cut seg0 = span(0,180000) = 180000 ticks
+    //                = 180000×1e9/90000 = 2_000_000_000 ns = 2.000 s; opens seg1 at 180000.
+    //   P@240000, P@300000: extend seg1 (start stays 180000).
+    //   IDR@360000:  cut seg1 = span(180000,360000) = 180000 ticks = 2.000 s; opens seg2 at 360000.
+    //   finish():    finalize cuts seg2 (single AU) → wall-clock fallback (tiny).
     let idr_ticks = [0i64, 180_000, 360_000];
     for (gop, &idr) in idr_ticks.iter().enumerate() {
         pub_shell.send_video(&au, Pts90khz::new(idr), true).unwrap();
@@ -136,12 +136,13 @@ fn hls_extinf_is_media_derived_and_target_is_immutable() {
         rendered.contains("#EXT-X-TARGETDURATION:4"),
         "playlist:\n{rendered}"
     );
-    // Each non-degenerate segment carries a media-derived EXTINF of 1.333 s
-    // (120000-tick PTS span).  The old wall-clock code would have produced
-    // ~0.000 for fast ingestion.
+    // Each non-degenerate segment carries a media-derived EXTINF of 2.000 s
+    // (180000-tick PTS span — keyframe-to-keyframe, keyframe included since
+    // segments now begin with the IDR).  The old wall-clock code would have
+    // produced ~0.000 for fast ingestion.
     assert!(
-        rendered.contains("#EXTINF:1.333,"),
-        "expected a media-derived 1.333 s EXTINF, got:\n{rendered}"
+        rendered.contains("#EXTINF:2.000,"),
+        "expected a media-derived 2.000 s EXTINF, got:\n{rendered}"
     );
 }
 

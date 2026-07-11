@@ -43,6 +43,13 @@ pub(crate) struct Segmenter {
     history: VecDeque<Segment>,
     grace: VecDeque<GraceEntry>,
     current: Option<OpenSegment>,
+    /// True once at least one explicit (keyframe-driven) cut has been noted.
+    /// Switches `tick` from wall-clock segmenting to keyframe-owned cutting
+    /// where only the hard cap force-cuts (see [`Segmenter::tick_at`]).
+    has_explicit_cuts: bool,
+    /// Count of segments cut by the hard-cap fallback (a keyframe was overdue).
+    /// Surfaced via `HlsStats::forced_cuts`.
+    forced_cuts: u64,
 }
 
 struct OpenSegment {
@@ -85,6 +92,8 @@ impl Segmenter {
             history: VecDeque::new(),
             grace: VecDeque::new(),
             current: None,
+            has_explicit_cuts: false,
+            forced_cuts: 0,
         })
     }
 
@@ -124,14 +133,43 @@ impl Segmenter {
         Ok(())
     }
 
+    /// Note that an explicit (keyframe-driven) cut is driving segmentation.
+    /// Flips `tick` from wall-clock cutting to keyframe-owned cutting, where
+    /// only the hard cap force-cuts. Called by `HlsPublisher::cut_segment{,
+    /// _with_duration}` before delegating to the segmenter.
+    pub(crate) fn note_explicit_cut(&mut self) {
+        self.has_explicit_cuts = true;
+    }
+
     /// Check duration cap and cut if exceeded.
     pub(crate) fn tick(&mut self) -> Result<(), HlsError> {
-        let should_cut = self
-            .current
-            .as_ref()
-            .map(|o| o.opened_at.elapsed() >= self.config.segment_duration)
-            .unwrap_or(false);
-        if should_cut {
+        self.tick_at(Instant::now())
+    }
+
+    /// [`tick`](Self::tick) with an injectable `now` so tests advance time
+    /// deterministically (mirrors [`purge_grace`](Self::purge_grace)).
+    pub(crate) fn tick_at(&mut self, now: Instant) -> Result<(), HlsError> {
+        let Some(open) = self.current.as_ref() else {
+            return Ok(());
+        };
+        let elapsed = now.duration_since(open.opened_at);
+        if self.has_explicit_cuts {
+            // Keyframe-driven flow: the next explicit cut is coming; only the
+            // hard cap force-cuts (a mid-GOP cut yields a segment that does not
+            // start on an IDR — worth it only to bound unbounded growth).
+            let cap = self.config.max_segment_duration.unwrap_or_else(|| {
+                self.config
+                    .segment_duration
+                    .checked_mul(2)
+                    .unwrap_or(Duration::MAX)
+            });
+            if elapsed >= cap {
+                self.forced_cuts += 1;
+                self.cut()?;
+            }
+        } else if elapsed >= self.config.segment_duration {
+            // Raw push_ts flow (pre-muxed TS relay): no keyframe signal exists,
+            // wall-clock segmenting is all we have — unchanged v0.2.0 behavior.
             self.cut()?;
         }
         Ok(())
@@ -158,6 +196,11 @@ impl Segmenter {
     /// Number of segments completed in this run.
     pub(crate) fn segments_written(&self) -> u64 {
         self.next_seq
+    }
+
+    /// Segments cut by the hard-cap fallback (a keyframe was overdue).
+    pub(crate) fn forced_cuts(&self) -> u64 {
+        self.forced_cuts
     }
 
     pub(crate) fn current_segment_age(&self) -> Option<Duration> {
@@ -454,6 +497,74 @@ mod tests {
             4,
             "target must be immutable, not max-of-history"
         );
+    }
+
+    #[test]
+    fn explicit_mode_tick_does_not_cut_at_segment_duration() {
+        // After one note_explicit_cut(), the keyframe-driven flow owns cutting;
+        // tick() must NOT wall-clock-cut at segment_duration.
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            mode: HlsMode::Event,
+            segment_duration: Duration::from_secs(2),
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.note_explicit_cut();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        let open_at = s.current.as_ref().unwrap().opened_at;
+        // 3 s ≥ segment_duration (2 s) but < hard cap (2× = 4 s): no cut.
+        s.tick_at(open_at + Duration::from_secs(3)).unwrap();
+        assert!(
+            s.current.is_some(),
+            "explicit-mode tick must not cut at segment_duration"
+        );
+        assert_eq!(s.forced_cuts, 0);
+    }
+
+    #[test]
+    fn explicit_mode_tick_force_cuts_at_hard_cap() {
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            mode: HlsMode::Event,
+            segment_duration: Duration::from_secs(2), // hard cap defaults to 4 s
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.note_explicit_cut();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        let open_at = s.current.as_ref().unwrap().opened_at;
+        // 5 s ≥ hard cap (2× 2 s = 4 s): force-cut.
+        s.tick_at(open_at + Duration::from_secs(5)).unwrap();
+        assert!(s.current.is_none(), "hard cap must force a cut");
+        assert_eq!(s.forced_cuts, 1);
+        assert_eq!(s.segments_written(), 1);
+    }
+
+    #[test]
+    fn raw_mode_tick_cuts_at_segment_duration_and_forced_cuts_stays_zero() {
+        // No explicit cut ever → pre-muxed-TS relay flow: tick wall-clock-cuts
+        // at segment_duration exactly as before, and forced_cuts stays 0.
+        let cfg = HlsConfig {
+            output_dir: tmpdir(),
+            mode: HlsMode::Event,
+            segment_duration: Duration::from_secs(2),
+            ..HlsConfig::default()
+        };
+        let mut s = Segmenter::new(cfg).unwrap();
+        s.push_ts(&[0x47u8; 188]).unwrap();
+        let open_at = s.current.as_ref().unwrap().opened_at;
+        // Just under segment_duration: no cut.
+        s.tick_at(open_at + Duration::from_millis(1999)).unwrap();
+        assert!(s.current.is_some(), "must not cut before segment_duration");
+        // At segment_duration: cut.
+        s.tick_at(open_at + Duration::from_secs(2)).unwrap();
+        assert!(
+            s.current.is_none(),
+            "raw-mode tick must cut at segment_duration"
+        );
+        assert_eq!(s.forced_cuts, 0, "raw-mode cuts are not forced_cuts");
+        assert_eq!(s.segments_written(), 1);
     }
 
     #[test]

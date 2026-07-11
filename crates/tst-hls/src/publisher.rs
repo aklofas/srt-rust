@@ -85,6 +85,7 @@ impl HlsPublisher {
             segments_written: s.segmenter.segments_written(),
             bytes_pushed_total: s.bytes_pushed_total,
             open_segment_bytes: s.segmenter.open_segment_bytes(),
+            forced_cuts: s.segmenter.forced_cuts(),
         }
     }
 
@@ -119,6 +120,7 @@ impl Publisher for HlsPublisher {
             return Err(HlsError::Finished);
         }
         let mut s = self.state.lock().expect("HlsPublisher poisoned");
+        s.segmenter.note_explicit_cut();
         s.segmenter.cut()
     }
 
@@ -127,6 +129,7 @@ impl Publisher for HlsPublisher {
             return Err(HlsError::Finished);
         }
         let mut s = self.state.lock().expect("HlsPublisher poisoned");
+        s.segmenter.note_explicit_cut();
         s.segmenter.cut_with_duration(Some(media_duration))
     }
 

@@ -169,6 +169,12 @@ def test_h264_receiver_closed_recv_raises() -> None:
         rx.recv_au()
     # Either TRANSPORT or CANCELLED is acceptable for a closed receiver.
     assert exc_info.value.kind in (RtpErrorKind.TRANSPORT, RtpErrorKind.CANCELLED)
+    # local_addr follows the same closed-handle contract: it must raise,
+    # NOT return None — None is reserved for a live TCP-interleaved
+    # receiver where no UDP socket exists.
+    with pytest.raises(RtpError) as exc_info:
+        rx.local_addr()
+    assert exc_info.value.kind in (RtpErrorKind.TRANSPORT, RtpErrorKind.CANCELLED)
 
 
 # --------------------------------------------------------------------------- #

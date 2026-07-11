@@ -448,9 +448,9 @@ C symbol, signature, or struct layout changed.
   sender can produce), decoupled from the send-side packet-size budget
   on `Transport::max_payload`. Per transport: RTP returns 65523
   (65535 − 12-byte RTP header, both UDP and TCP-interleaved arms), SRT
-  returns at least the 1456 live-mode wire maximum, RIST returns at
-  least 65535. UDP already reported 65535; TCP (stream, no message
-  boundaries) is unchanged.
+  returns at least the 1456 live-mode wire maximum, RIST returns 65535.
+  UDP already reported 65535; TCP (stream, no message boundaries) is
+  unchanged.
 
 ### Fixed
 

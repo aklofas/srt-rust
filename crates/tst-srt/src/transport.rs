@@ -9,6 +9,14 @@ use crate::error::{SendError, SrtErrno};
 use std::sync::Arc;
 use tst_core::transport::{SocketStats, Transport, TransportCancel, TransportError};
 
+/// SRT live-mode wire ceiling for a single message payload — the
+/// maximum value libsrt accepts for `SRTO_PAYLOADSIZE`. The option is
+/// LOCAL (not negotiated between peers), so a foreign peer configured
+/// at the maximum can deliver messages of this size regardless of our
+/// local setting; the recv-side deliverable ceiling can never be below
+/// it.
+const SRT_LIVE_MAX_PAYLOAD: usize = 1456;
+
 /// SRT-backed [`Transport`] and [`tst_core::transport::RecvTransport`] impl.
 ///
 /// Wraps a connected [`Socket`] and translates libsrt send/receive errors
@@ -284,7 +292,14 @@ impl tst_core::transport::RecvTransport for SrtTransport {
     }
 
     fn max_payload(&self) -> usize {
-        self.max_payload
+        // Recv-side deliverable ceiling (see RecvTransport::max_payload
+        // in tst-core). SRTO_PAYLOADSIZE is a local option — a foreign
+        // peer at the live-mode max delivers 1456-byte messages
+        // regardless of our local value, and srt_recvmsg into a
+        // smaller buffer fails with SRT_ELARGEMSG. The max() keeps an
+        // explicitly-configured larger value honored. The send-side
+        // Transport::max_payload keeps returning the local budget.
+        self.max_payload.max(SRT_LIVE_MAX_PAYLOAD)
     }
 
     fn is_alive(&self) -> bool {

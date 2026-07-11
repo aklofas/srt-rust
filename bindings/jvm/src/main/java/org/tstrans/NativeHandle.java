@@ -26,7 +26,13 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>For consuming-native sites (ownership transfer — e.g. {@code intoSender()}):
  *       call {@link #consumeHandle()} to atomically zero-and-capture the handle
  *       <em>before</em> the native call; a subsequent {@link #close()} then finds 0
- *       and is a harmless no-op.
+ *       and is a harmless no-op. Conversely, a native that only <em>borrows</em>
+ *       the handle without transferring ownership (a <b>sanctioned lease</b> —
+ *       e.g. {@code RtspSession.intoDemuxReceiver()}, which moves the internal
+ *       data plane but leaves the session's control plane usable) reads via
+ *       {@link #peekHandle()} and does NOT consume; single-use enforcement for
+ *       such sites lives in the Rust layer (a second call throws), not in the
+ *       handle lifecycle.
  *   <li>Implement {@link #nativeClose(long)} by delegating to the subclass's own
  *       {@code private static native void nClose(long)} — JNI export names remain
  *       per-subclass, preserving the Maven ABI.

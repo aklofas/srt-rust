@@ -1434,7 +1434,10 @@ via `consumeHandle()` before the fallible native call (NativeHandle contract
 item 3 — double-free safety). On return — success **or** failure — this
 `RtspSession` wrapper is closed: subsequent `pause()` / `play()` / `teardown()`
 calls throw `IllegalStateException`. The `H264Receiver` takes over the full
-session (control connection, keepalives, teardown on `close()`).
+session (control connection, keepalives, teardown on `close()`). By contrast,
+`intoDemuxReceiver()` leases the session handle (a sanctioned borrow — only the
+data-plane transport moves into the receiver), so the control plane remains
+usable after the call.
 
 **Failure path note.** If `intoDemuxReceiver()` previously consumed the data
 plane, a subsequent `intoH264Receiver()` still consumes and tears down the

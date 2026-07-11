@@ -569,10 +569,10 @@ jobs:
           # cargo-public-api's internal rustdoc render — this job also carries a
           # rolling nightly (doc lints), so a bare +nightly would silently unpin.
           # To bump: pick a new date,
-          # re-render all 8 baselines with it, and land both together.
+          # re-render all 9 baselines with it, and land both together.
           rustup toolchain install nightly-2026-07-03 --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet
-          for crate in rist-sys tst-core tst-pipeline tst-rist tst-rtp tst-srt tst-tcp tst-udp; do
+          for crate in rist-sys tst-core tst-hls tst-pipeline tst-rist tst-rtp tst-srt tst-tcp tst-udp; do
             SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo +nightly-2026-07-03 public-api -p $crate --simplified > /tmp/public-api-current-$crate.txt
             if ! diff -u crates/$crate/public-api.txt /tmp/public-api-current-$crate.txt; then
               echo "Public API drift in $crate. Update crates/$crate/public-api.txt or revert the change." >&2

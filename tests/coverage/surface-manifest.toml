@@ -9304,231 +9304,231 @@ item = "tst_tcp::error::TcpErrorKind::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::HlsMode"
+item = "tst_hls::HlsMode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::HlsPublisher"
+item = "tst_hls::HlsPublisher"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::HlsPublisherBuilder"
+item = "tst_hls::HlsPublisherBuilder"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::HlsUrl"
+item = "tst_hls::HlsUrl"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder"
+item = "tst_hls::builder::HlsPublisherBuilder"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::basic_auth"
+item = "tst_hls::builder::HlsPublisherBuilder::basic_auth"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::bind"
+item = "tst_hls::builder::HlsPublisherBuilder::bind"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::build"
+item = "tst_hls::builder::HlsPublisherBuilder::build"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::clone"
+item = "tst_hls::builder::HlsPublisherBuilder::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::default"
+item = "tst_hls::builder::HlsPublisherBuilder::default"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::enable_tls"
+item = "tst_hls::builder::HlsPublisherBuilder::enable_tls"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::fmt"
+item = "tst_hls::builder::HlsPublisherBuilder::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::from_url"
+item = "tst_hls::builder::HlsPublisherBuilder::from_url"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::mode"
+item = "tst_hls::builder::HlsPublisherBuilder::mode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::new"
+item = "tst_hls::builder::HlsPublisherBuilder::new"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::output_dir"
+item = "tst_hls::builder::HlsPublisherBuilder::output_dir"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::playlist_window"
+item = "tst_hls::builder::HlsPublisherBuilder::playlist_window"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::builder::HlsPublisherBuilder::segment_duration"
+item = "tst_hls::builder::HlsPublisherBuilder::segment_duration"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsConfig::clone"
+item = "tst_hls::config::HlsConfig::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsConfig::default"
+item = "tst_hls::config::HlsConfig::default"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsConfig::fmt"
+item = "tst_hls::config::HlsConfig::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsConfig::merge_from_url"
+item = "tst_hls::config::HlsConfig::merge_from_url"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsConfig::validate"
+item = "tst_hls::config::HlsConfig::validate"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsMode"
+item = "tst_hls::config::HlsMode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsMode::clone"
+item = "tst_hls::config::HlsMode::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsMode::eq"
+item = "tst_hls::config::HlsMode::eq"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsMode::fmt"
+item = "tst_hls::config::HlsMode::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::config::HlsMode::hash"
+item = "tst_hls::config::HlsMode::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsError::fmt"
+item = "tst_hls::error::HlsError::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsError::from"
+item = "tst_hls::error::HlsError::from"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsError::kind"
+item = "tst_hls::error::HlsError::kind"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsError::source"
+item = "tst_hls::error::HlsError::source"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsErrorKind::clone"
+item = "tst_hls::error::HlsErrorKind::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsErrorKind::eq"
+item = "tst_hls::error::HlsErrorKind::eq"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsErrorKind::fmt"
+item = "tst_hls::error::HlsErrorKind::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::error::HlsErrorKind::hash"
+item = "tst_hls::error::HlsErrorKind::hash"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher"
+item = "tst_hls::publisher::HlsPublisher"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::Error"
+item = "tst_hls::publisher::HlsPublisher::Error"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::cut_segment"
+item = "tst_hls::publisher::HlsPublisher::cut_segment"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::cut_segment_with_duration"
+item = "tst_hls::publisher::HlsPublisher::cut_segment_with_duration"
 reason = "REF-HLS-03 WP-I/PR3; media-presentation EXTINF override; graduate to [[surface]] when HLS is ungated"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::finish"
+item = "tst_hls::publisher::HlsPublisher::finish"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::hls_stats"
+item = "tst_hls::publisher::HlsPublisher::hls_stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::local_addr"
+item = "tst_hls::publisher::HlsPublisher::local_addr"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::push_ts"
+item = "tst_hls::publisher::HlsPublisher::push_ts"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::render_playlist"
+item = "tst_hls::publisher::HlsPublisher::render_playlist"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::stats"
+item = "tst_hls::publisher::HlsPublisher::stats"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::publisher::HlsPublisher::with_config"
+item = "tst_hls::publisher::HlsPublisher::with_config"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::stats::HlsStats::clone"
+item = "tst_hls::stats::HlsStats::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::stats::HlsStats::default"
+item = "tst_hls::stats::HlsStats::default"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::stats::HlsStats::fmt"
+item = "tst_hls::stats::HlsStats::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrl"
+item = "tst_hls::url::HlsUrl"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrl::clone"
+item = "tst_hls::url::HlsUrl::clone"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrl::fmt"
+item = "tst_hls::url::HlsUrl::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrl::parse"
+item = "tst_hls::url::HlsUrl::parse"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrlError::fmt"
+item = "tst_hls::url::HlsUrlError::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrlError::from"
+item = "tst_hls::url::HlsUrlError::from"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
-item = "tst_tcp::hls::url::HlsUrlError::source"
+item = "tst_hls::url::HlsUrlError::source"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]

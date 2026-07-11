@@ -417,6 +417,227 @@ pub unsafe extern "C" fn tst_hls_publisher_render_playlist(
     })
 }
 
+/// Read the HLS `forced_cuts` counter into `*out`.
+///
+/// `forced_cuts` is the number of segments cut by the wall-clock hard-cap
+/// fallback because a keyframe was overdue (keyframe-driven flow only). A
+/// persistently non-zero value means the upstream GOP length exceeds the
+/// configured `max_segment_duration` cap.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+/// or `TST_E_HLS_CONFIG` if the publisher is finished / not an HLS
+/// publisher.
+///
+/// # Safety
+///
+/// `p` must be a valid `*mut TstPublisher`. `out` must point to a writable
+/// `uint64_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_publisher_get_forced_cuts(
+    p: *mut TstPublisher,
+    out: *mut u64,
+) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null publisher pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if out.is_null() {
+            set_last_error(TstError::InvalidConfig, "null out pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        match &handle.inner {
+            Some(PublisherImpl::Hls(h)) => {
+                unsafe { *out = h.hls_stats().forced_cuts };
+                0
+            }
+            None => {
+                set_last_error(
+                    TstError::HlsConfig,
+                    "publisher is finished or not an HLS publisher",
+                );
+                TstError::HlsConfig as i32
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// finish_serving + TstHlsServerHandle
+// ---------------------------------------------------------------------------
+
+/// Opaque handle that keeps a finished HLS stream's playlist and segments
+/// served by the built-in HTTP server until it is shut down or freed.
+///
+/// Returned by [`tst_hls_publisher_finish_serving`]. Query the bound
+/// address with [`tst_hls_server_handle_local_addr`], stop serving with
+/// [`tst_hls_server_handle_shutdown`], and release with
+/// [`tst_hls_server_handle_free`] (which also stops serving if still live).
+///
+/// `inner` is `None` only after [`tst_hls_server_handle_shutdown`] has
+/// taken it (idempotent terminal state).
+pub struct TstHlsServerHandle {
+    inner: Option<tst_hls::HlsServerHandle>,
+}
+
+/// Cleanly finalize the HLS publisher (flush the pending segment, write the
+/// `#EXT-X-ENDLIST` terminal playlist) but keep the built-in HTTP server
+/// serving the completed playlist + segments, returning a
+/// [`TstHlsServerHandle`] into `*out`.
+///
+/// This is how a VOD or EVENT stream becomes observable after the stream
+/// ends: the server stays up so clients can request the full playlist and
+/// all segment files until the returned handle is shut down or freed.
+///
+/// Consumes the publisher's inner on success — the `TstPublisher` handle is
+/// left allocated but terminal (subsequent push/cut/stats calls return
+/// `TST_E_HLS_FINISHED`); the caller must still `tst_publisher_free` it. On
+/// failure the inner is restored so the publisher stays usable.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if `p` or `out` is null,
+/// `TST_E_HLS_FINISHED` if the publisher was already finished, or another
+/// negative `TST_E_*` code on failure (e.g. the HTTP server was not
+/// running, or a filesystem error writing the terminal playlist). The
+/// returned handle (written to `*out` only on success) must eventually be
+/// freed with [`tst_hls_server_handle_free`].
+///
+/// # Safety
+///
+/// `p` must be a valid non-freed `*mut TstPublisher`. `out` must point to a
+/// writable `*mut TstHlsServerHandle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_publisher_finish_serving(
+    p: *mut TstPublisher,
+    out: *mut *mut TstHlsServerHandle,
+) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null publisher pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if out.is_null() {
+            set_last_error(TstError::InvalidConfig, "null out pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        // Take the inner BEFORE the fallible consuming call (consumes-by-value
+        // finish_serving needs ownership); restore it on failure so the
+        // publisher stays usable and there is no double-free.
+        match handle.inner.take() {
+            Some(PublisherImpl::Hls(h)) => match h.finish_serving() {
+                Ok(server) => {
+                    let boxed = Box::into_raw(Box::new(TstHlsServerHandle {
+                        inner: Some(server),
+                    }));
+                    unsafe { *out = boxed };
+                    0
+                }
+                Err(e) => {
+                    // finish_serving consumed the publisher by value on the
+                    // error path too — the inner cannot be restored, so the
+                    // handle stays terminal (subsequent calls: HlsFinished).
+                    let code = hls_error_to_code(&e);
+                    set_last_error(code, &format!("hls finish_serving: {e}"));
+                    code as i32
+                }
+            },
+            None => {
+                set_last_error(TstError::HlsFinished, "publisher already finished");
+                TstError::HlsFinished as i32
+            }
+        }
+    })
+}
+
+/// Write the bound HTTP server socket address (`"ip:port"`) of a live
+/// [`TstHlsServerHandle`] as a NUL-terminated string into `buf` (capacity
+/// `buf_len`).
+///
+/// Returns the number of bytes written **excluding** the NUL terminator on
+/// success, or a negative `TST_E_*` code: `TST_E_INVALID_CONFIG` if `h` or
+/// `buf` is null, `TST_E_HLS_CONFIG` if the handle has already been shut
+/// down, or `TST_E_HLS_CONFIG` with a "buffer too small" message if
+/// `buf_len` cannot hold the address plus its NUL terminator.
+///
+/// # Safety
+///
+/// `h` must be a valid non-freed `*mut TstHlsServerHandle`. `buf` must be
+/// writable for `buf_len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_server_handle_local_addr(
+    h: *mut TstHlsServerHandle,
+    buf: *mut c_char,
+    buf_len: usize,
+) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { h.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null server handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if buf.is_null() {
+            set_last_error(TstError::InvalidConfig, "null buf pointer");
+            return TstError::InvalidConfig as i32;
+        }
+        match &handle.inner {
+            Some(server) => unsafe {
+                write_cstr_to_buf(&server.local_addr().to_string(), buf, buf_len)
+            },
+            None => {
+                set_last_error(TstError::HlsConfig, "server handle already shut down");
+                TstError::HlsConfig as i32
+            }
+        }
+    })
+}
+
+/// Stop serving and drain the runtime for a [`TstHlsServerHandle`].
+///
+/// Idempotent: takes the inner handle, so calling it a second time (or
+/// after the server was already dropped) is a no-op that returns 0. The
+/// handle pointer stays allocated — the caller must still call
+/// [`tst_hls_server_handle_free`].
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if `h` is null.
+///
+/// # Safety
+///
+/// `h` must be a valid non-freed `*mut TstHlsServerHandle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_server_handle_shutdown(h: *mut TstHlsServerHandle) -> libc::c_int {
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { h.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null server handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if let Some(server) = handle.inner.take() {
+            server.shutdown();
+        }
+        0
+    })
+}
+
+/// Free a `TstHlsServerHandle`.
+///
+/// If the handle is still live, dropping it stops serving (same effect as
+/// [`tst_hls_server_handle_shutdown`]). Safe to call with `NULL` (no-op).
+/// After this call the pointer is invalid; passing the same non-null
+/// pointer twice is undefined behavior (use-after-free on the consumed
+/// `Box`).
+///
+/// # Safety
+///
+/// `h` must be NULL or a valid non-freed `*mut TstHlsServerHandle` returned
+/// by [`tst_hls_publisher_finish_serving`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_hls_server_handle_free(h: *mut TstHlsServerHandle) {
+    crate::panic::ffi_catch((), || {
+        if !h.is_null() {
+            // Dropping the boxed handle drops Option<HlsServerHandle>;
+            // dropping a live HlsServerHandle stops the HTTP server.
+            drop(unsafe { Box::from_raw(h) });
+        }
+    });
+}
+
 /// Copy `s` plus a NUL terminator into the C buffer `buf` of capacity
 /// `buf_len`. Returns the byte count written (excluding the NUL) on
 /// success, or a negative `TST_E_HLS_CONFIG` code (with a recorded
@@ -489,6 +710,41 @@ mod tests {
         assert_eq!(TstPublisherKind::Hls as u32, 0);
         // A null pointer still reports the (static) HLS kind.
         assert_eq!(unsafe { tst_publisher_get_kind(std::ptr::null_mut()) }, 0);
+    }
+
+    #[test]
+    fn null_get_forced_cuts_returns_invalid_config() {
+        let mut out: u64 = 0;
+        let rc = unsafe { tst_hls_publisher_get_forced_cuts(std::ptr::null_mut(), &mut out) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_finish_serving_returns_invalid_config() {
+        let mut out: *mut TstHlsServerHandle = std::ptr::null_mut();
+        let rc = unsafe { tst_hls_publisher_finish_serving(std::ptr::null_mut(), &mut out) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+        assert!(out.is_null());
+    }
+
+    #[test]
+    fn null_server_handle_local_addr_returns_invalid_config() {
+        let mut buf = [0 as c_char; 8];
+        let rc = unsafe {
+            tst_hls_server_handle_local_addr(std::ptr::null_mut(), buf.as_mut_ptr(), buf.len())
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_server_handle_shutdown_returns_invalid_config() {
+        let rc = unsafe { tst_hls_server_handle_shutdown(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_server_handle_free_is_safe() {
+        unsafe { tst_hls_server_handle_free(std::ptr::null_mut()) };
     }
 
     #[test]

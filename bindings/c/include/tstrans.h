@@ -56,7 +56,7 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 17` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 18` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  *
  * History (additive bumps only — major stays at 0 pre-1.0):
@@ -160,8 +160,19 @@
  *   (ISO/IEC 13818-1 §2.4.3.6) for B-frame-reordered streams. Additive —
  *   no symbol removed, no signature or struct layout changed. (AV1 mux
  *   carriage and the targeted `*_to` push family already shipped in ABI 14.)
+ * - `18` (tst-hls promotion, 2026-07-11): HLS publisher hardening surface
+ *   (all gated `TST_HAS_HLS`) — `tst_hls_publisher_finish_serving` +
+ *   the opaque `TstHlsServerHandle` (`tst_hls_server_handle_local_addr` /
+ *   `_shutdown` / `_free`) that keeps the built-in HTTP server serving a
+ *   finished VOD/EVENT stream; builder
+ *   `tst_hls_publisher_builder_max_segment_duration_ms` (wall-clock
+ *   force-cut cap; `0` leaves the default); and
+ *   `tst_hls_publisher_get_forced_cuts` (reads `HlsStats::forced_cuts` via
+ *   a getter — `TstHlsStats` layout unchanged). Additive — no existing
+ *   symbol or struct changed. The HLS surface moved from `tst-tcp` to the
+ *   new `tst-hls` crate (link-level only; no C ABI effect).
  */
-#define TST_ABI_VERSION_MINOR 17
+#define TST_ABI_VERSION_MINOR 18
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -991,6 +1002,22 @@ typedef struct TstDemuxer TstDemuxer;
  * [`tst_hls_publisher_builder_free`]).
  */
 typedef struct TstHlsPublisherBuilder TstHlsPublisherBuilder;
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Opaque handle that keeps a finished HLS stream's playlist and segments
+ * served by the built-in HTTP server until it is shut down or freed.
+ *
+ * Returned by [`tst_hls_publisher_finish_serving`]. Query the bound
+ * address with [`tst_hls_server_handle_local_addr`], stop serving with
+ * [`tst_hls_server_handle_shutdown`], and release with
+ * [`tst_hls_server_handle_free`] (which also stops serving if still live).
+ *
+ * `inner` is `None` only after [`tst_hls_server_handle_shutdown`] has
+ * taken it (idempotent terminal state).
+ */
+typedef struct TstHlsServerHandle TstHlsServerHandle;
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -5118,6 +5145,24 @@ void tst_hls_publisher_builder_free(struct TstHlsPublisherBuilder *b);
 
 #if defined(TST_HAS_HLS)
 /**
+ * Free a `TstHlsServerHandle`.
+ *
+ * If the handle is still live, dropping it stops serving (same effect as
+ * [`tst_hls_server_handle_shutdown`]). Safe to call with `NULL` (no-op).
+ * After this call the pointer is invalid; passing the same non-null
+ * pointer twice is undefined behavior (use-after-free on the consumed
+ * `Box`).
+ *
+ * # Safety
+ *
+ * `h` must be NULL or a valid non-freed `*mut TstHlsServerHandle` returned
+ * by [`tst_hls_publisher_finish_serving`].
+ */
+void tst_hls_server_handle_free(struct TstHlsServerHandle *h);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
  * Free a `tst_mux_publisher_t`.
  *
  * Dropping a live mux publisher drops its inner HLS publisher, which
@@ -5777,6 +5822,34 @@ int tst_hls_publisher_builder_from_url(struct TstHlsPublisherBuilder *b, const c
 
 #if defined(TST_HAS_HLS)
 /**
+ * Set the hard upper bound on an open segment's wall-clock age (in
+ * milliseconds) in the keyframe-driven flow. When a keyframe is overdue,
+ * the segmenter force-cuts at this cap so segments never grow unbounded.
+ *
+ * A non-zero `ms` must be at least the target segment duration; a smaller
+ * value is rejected later at `tst_hls_publisher_builder_build` with
+ * `TST_E_HLS_CONFIG`.
+ *
+ * Passing `ms == 0` is a no-op that leaves the library default in effect
+ * (`2 × segment_duration`). A fresh builder already carries this default,
+ * so `0` is only meaningful as "do not override the cap"; the underlying
+ * `tst-hls` builder exposes no reset-to-default setter, so a `0` after a
+ * prior non-zero call does **not** clear the earlier value. Callers that
+ * need the default should simply never call this setter.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null.
+ *
+ * # Safety
+ *
+ * `b` must be a valid non-freed builder.
+ */
+
+int tst_hls_publisher_builder_max_segment_duration_ms(struct TstHlsPublisherBuilder *b,
+                                                      uint64_t ms);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
  * Set the playlist mode: `0` = LIVE, `1` = EVENT, `2` = VOD.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if `b` is null, or
@@ -5848,6 +5921,58 @@ int tst_hls_publisher_builder_segment_duration_ms(struct TstHlsPublisherBuilder 
 
 #if defined(TST_HAS_HLS)
 /**
+ * Cleanly finalize the HLS publisher (flush the pending segment, write the
+ * `#EXT-X-ENDLIST` terminal playlist) but keep the built-in HTTP server
+ * serving the completed playlist + segments, returning a
+ * [`TstHlsServerHandle`] into `*out`.
+ *
+ * This is how a VOD or EVENT stream becomes observable after the stream
+ * ends: the server stays up so clients can request the full playlist and
+ * all segment files until the returned handle is shut down or freed.
+ *
+ * Consumes the publisher's inner on success — the `TstPublisher` handle is
+ * left allocated but terminal (subsequent push/cut/stats calls return
+ * `TST_E_HLS_FINISHED`); the caller must still `tst_publisher_free` it. On
+ * failure the inner is restored so the publisher stays usable.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `p` or `out` is null,
+ * `TST_E_HLS_FINISHED` if the publisher was already finished, or another
+ * negative `TST_E_*` code on failure (e.g. the HTTP server was not
+ * running, or a filesystem error writing the terminal playlist). The
+ * returned handle (written to `*out` only on success) must eventually be
+ * freed with [`tst_hls_server_handle_free`].
+ *
+ * # Safety
+ *
+ * `p` must be a valid non-freed `*mut TstPublisher`. `out` must point to a
+ * writable `*mut TstHlsServerHandle`.
+ */
+int tst_hls_publisher_finish_serving(struct TstPublisher *p, struct TstHlsServerHandle **out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Read the HLS `forced_cuts` counter into `*out`.
+ *
+ * `forced_cuts` is the number of segments cut by the wall-clock hard-cap
+ * fallback because a keyframe was overdue (keyframe-driven flow only). A
+ * persistently non-zero value means the upstream GOP length exceeds the
+ * configured `max_segment_duration` cap.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
+ * or `TST_E_HLS_CONFIG` if the publisher is finished / not an HLS
+ * publisher.
+ *
+ * # Safety
+ *
+ * `p` must be a valid `*mut TstPublisher`. `out` must point to a writable
+ * `uint64_t`.
+ */
+int tst_hls_publisher_get_forced_cuts(struct TstPublisher *p, uint64_t *out);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
  * Snapshot the HLS-specific richer stats into `*out`.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is null,
@@ -5910,6 +6035,44 @@ int tst_hls_publisher_render_playlist(struct TstPublisher *p,
                                       bool is_event,
                                       char *buf,
                                       size_t buf_len);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Write the bound HTTP server socket address (`"ip:port"`) of a live
+ * [`TstHlsServerHandle`] as a NUL-terminated string into `buf` (capacity
+ * `buf_len`).
+ *
+ * Returns the number of bytes written **excluding** the NUL terminator on
+ * success, or a negative `TST_E_*` code: `TST_E_INVALID_CONFIG` if `h` or
+ * `buf` is null, `TST_E_HLS_CONFIG` if the handle has already been shut
+ * down, or `TST_E_HLS_CONFIG` with a "buffer too small" message if
+ * `buf_len` cannot hold the address plus its NUL terminator.
+ *
+ * # Safety
+ *
+ * `h` must be a valid non-freed `*mut TstHlsServerHandle`. `buf` must be
+ * writable for `buf_len` bytes.
+ */
+int tst_hls_server_handle_local_addr(struct TstHlsServerHandle *h, char *buf, size_t buf_len);
+#endif
+
+#if defined(TST_HAS_HLS)
+/**
+ * Stop serving and drain the runtime for a [`TstHlsServerHandle`].
+ *
+ * Idempotent: takes the inner handle, so calling it a second time (or
+ * after the server was already dropped) is a no-op that returns 0. The
+ * handle pointer stays allocated — the caller must still call
+ * [`tst_hls_server_handle_free`].
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `h` is null.
+ *
+ * # Safety
+ *
+ * `h` must be a valid non-freed `*mut TstHlsServerHandle`.
+ */
+int tst_hls_server_handle_shutdown(struct TstHlsServerHandle *h);
 #endif
 
 #if defined(TST_HAS_HLS)

@@ -539,13 +539,16 @@ invocation.
 
 ## RTP transport (`tstrans.rtp`)
 
-`tstrans.rtp` wraps `tst_rtp` directly for MPEG-TS-over-RTP/UDP
-(RFC 2250): each `send` produces one RTP datagram (12-byte header + TS
-payload); each `recv` returns one datagram's TS payload with the header
-stripped. Unlike SRT, the raw `Sender` / `Receiver` are constructed with
-`__init__`, not `from_url`. RTP ships in published wheels (default-on).
-`RtpError` / `RtpErrorKind` and `RtspError` / `RtspErrorKind` live in
-`tstrans.exceptions`.
+`tstrans.rtp` wraps `tst_rtp` for two RTP receive shapes: **MPEG-TS-over-RTP
+(RFC 2250, PT=33)** via the `Sender` / `Receiver` / `MuxSender` /
+`DemuxReceiver` shells and the RTSP client/server, and **H.264-over-RTP
+(RFC 6184)** via `H264Receiver` and `RtspClient.connect_h264` (see the
+dedicated sub-section below). For the MPEG-TS path: each `send` produces one
+RTP datagram (12-byte header + TS payload); each `recv` returns one
+datagram's TS payload with the header stripped. Unlike SRT, the raw `Sender`
+/ `Receiver` are constructed with `__init__`, not `from_url`. RTP ships in
+published wheels (default-on). `RtpError` / `RtpErrorKind` and `RtspError` /
+`RtspErrorKind` live in `tstrans.exceptions`.
 
 ### Sender / Receiver hello
 
@@ -684,6 +687,88 @@ fields are forward-compat: setting `tls_cert_pem` / `tls_key_pem` raises
 `auth=BasicAuth("user", "pass", "realm")` — the realm is required
 server-side. `server.cancel_handle()` returns an `RtspServerCancelHandle`
 for an immediate hard teardown that bypasses the drain window.
+
+### H.264-over-RTP ingest (RFC 6184)
+
+`tstrans.rtp` ships `H264Receiver` and its companions for ingesting bare
+H.264 elementary streams over RTP/RTSP (RFC 6184 — single-NALU, STAP-A,
+FU-A; packetization modes 0 and 1). This covers cameras that expose H.264
+directly rather than wrapping video in MPEG-TS first. The gateway pattern
+— receive AUs and re-mux them into MPEG-TS — is the headline use case:
+
+```python
+from tstrans.rtp import RtspClient, RtspClientConfig
+from tstrans.mpegts import (
+    Muxer, MuxerConfigBuilder, MuxerProgramConfigBuilder, VideoCodec, Pts90khz,
+)
+
+cfg = RtspClientConfig("rtsp://cam.local/h264")
+# connect_h264 runs OPTIONS/DESCRIBE/SETUP/PLAY and stashes the negotiated
+# H264DepayConfig (payload type + sprop-parameter-sets NALUs from the SDP).
+with RtspClient.connect_h264(cfg) as session:
+    # into_h264_receiver() keeps the session alive (pause/play still work).
+    with session.into_h264_receiver() as rx:
+        prog = (
+            MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x100)
+            .add_video(0x101, VideoCodec.H264)
+            .build()
+        )
+        mux = Muxer(MuxerConfigBuilder().add_program(prog).build())
+        buf = bytearray(1316)
+        for au in rx:                              # recv_au(), GIL released
+            # au.pts is a 90 kHz decode-order timestamp — same clock as
+            # MPEG-TS PTS, no rescaling needed.
+            mux.push_video(au.annexb, pts=Pts90khz.from_raw(au.pts), key_frame=au.key_frame)
+            while (n := mux.pull(buf)) > 0:
+                pass   # write buf[:n] to file / SRT / etc.
+```
+
+**Types:**
+
+| Name | Notes |
+|---|---|
+| `H264Receiver` | `listen(url, config=None)` for direct UDP; `into_h264_receiver()` from an RTSP session. `recv_au()` → `H264AccessUnit \| None`. Also iterable: `for au in rx`. |
+| `H264AccessUnit` | `annexb: bytes`, `pts: int` (90 kHz ticks, i64), `key_frame: bool`, `rtp_timestamp: int`. |
+| `H264DepayConfig` | `payload_type=96`, `parameter_set_injection=ParameterSetInjection.BEFORE_IDR`, `initial_parameter_sets=[]`, `max_au_bytes=8388608`. All kwargs. |
+| `ParameterSetInjection` | `.NONE` — pass through as received; `.BEFORE_IDR` (default) — prepend cached SPS/PPS before each IDR. |
+| `H264DepayStats` | `aus_emitted`, `aus_dropped`, `seq_gaps`, `parameter_set_updates`, `ssrc_changes`, … (9 counters). |
+| `RtpStats` | `malformed_packets`. |
+
+**Integration notes:**
+
+- **`sprop-parameter-sets` handled automatically.** `connect_h264` decodes
+  the SDP `a=fmtp` attribute and stores the SPS/PPS NALUs in the
+  `H264DepayConfig` stashed on the session. With `BeforeIdr` (the default),
+  the depacketizer prepends them before every IDR frame — a decoder gets a
+  clean start even when the camera omits in-band parameter sets.
+
+- **`into_h264_receiver()` — session stays usable.** Unlike the JVM binding,
+  the Python `into_h264_receiver()` does **not** consume the session object;
+  `session.pause()` / `session.play()` remain available after the receiver is
+  created and while it is live.
+
+- **B-frame / DTS limitation.** `au.pts` is derived from the RTP timestamp
+  (decode order). Most live cameras do not use B-frames — PTS = DTS. If the
+  source uses B-frames, pass `au.pts` as the PTS and supply a separately-
+  derived DTS via the relevant muxer overload.
+
+- **Loss behavior.** A sequence-number gap drops the open AU and increments
+  `rx.depay_stats().aus_dropped` and `.seq_gaps`. Loss is whole-AU only.
+
+- **KLV pairing slot.** For a STANAG 4609 gateway, push KLV (from a
+  separate UDP feed or a second RTSP m-line) to the same muxer using
+  `mux.push_klv(klv_bytes, pts=Pts90khz.from_raw(au.pts), metadata_service_id=0x00)`.
+  Pair by PTS using `Pairer` if the feeds are asynchronous.
+
+- **RTCP is not implemented on the H.264 path (v1 decision).** No RTCP
+  socket is bound; no RR/SR is sent or received.
+
+- **Stats accessors:** `rx.depay_stats()`, `rx.rtp_stats()`,
+  `rx.socket_stats()` (returns a `SocketStats` — not Optional, unlike the
+  SRT path).
+
+**Rust twin:** [`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs)
+and Recipe 34 in the cookbook.
 
 ## UDP / TCP / RIST transports
 

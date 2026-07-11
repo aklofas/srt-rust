@@ -280,6 +280,84 @@ out each binding's deviations relative to this surface:
 The "Where this binding differs" section on each of those pages is the
 authoritative gap list. Anything not called out there matches Rust 1:1.
 
+## H.264-over-RTP ingest (RFC 6184)
+
+`tst-rtp` ships a blocking H.264 depacketizer and receiver that reassemble
+Annex-B access units from RFC 6184 RTP packets (single-NALU, STAP-A, FU-A;
+modes 0 and 1). Mode 2 (interleaved — STAP-B / MTAP / FU-B / DON) is
+rejected at SETUP with `RtspError::UnsupportedPacketizationMode(2)`.
+
+The canonical path for an RTSP camera is the four-step sequence in the
+example: `connect` → `describe` → `setup_h264_auto` → `into_h264_receiver`.
+Run it with:
+
+```bash
+cargo run -p tst-examples --example recv_rtsp_h264 -- rtsp://cam.local/h264
+# Force TCP-interleaved (useful when UDP is blocked by NAT):
+cargo run -p tst-examples --example recv_rtsp_h264 -- 'rtsp://cam.local/h264?transport=tcp'
+```
+
+The example is at
+[`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs).
+It covers every step with rich `// why + how` commentary.
+
+### Key types
+
+| Type | Notes |
+|---|---|
+| `H264Depacketizer` | Low-level state machine: `feed(header, payload)` / `next_au()` / `flush()`. Use when you are not going through `H264Receiver`. |
+| `H264Receiver` | High-level shell: `listen("rtp://…?pt=96")` or `session.into_h264_receiver(config)`. `recv_au()` → `Option<H264Au>`. |
+| `H264Au` | Output: `annexb` (Annex-B bytes), `pts: Pts90khz` (90 kHz decode-order), `key_frame`, `rtp_timestamp`. |
+| `H264DepayConfig` | `payload_type`, `parameter_set_injection: ParameterSetInjection`, `initial_parameter_sets`, `max_au_bytes` (8 MiB default cap). |
+| `ParameterSetInjection` | `None` — pass through as received; `BeforeIdr` (default) — prepend cached SPS/PPS before every IDR frame. |
+| `H264DepayStats` | `aus_emitted`, `aus_dropped`, `seq_gaps`, `parameter_set_updates`, … |
+
+### Minimal direct-UDP form
+
+```rust,no_run
+use tst_rtp::{H264DepayConfig, H264Receiver};
+
+let mut rx = H264Receiver::listen("rtp://0.0.0.0:5004?pt=96")?;
+// `into_h264_receiver` from an RTSP session is the more common path.
+// Direct UDP listen is available for custom RTP senders.
+while let Some(au) = rx.recv_au()? {
+    println!(
+        "AU: {} bytes, key={}, pts={}",
+        au.annexb.len(),
+        au.key_frame,
+        au.pts.as_ticks(),
+    );
+}
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### Integration notes
+
+- **`sprop-parameter-sets` handled automatically.** `setup_h264_auto` decodes the
+  `a=fmtp:N sprop-parameter-sets=…` SDP attribute from base64 into raw NALU
+  bytes and stores them in `H264DepayConfig::initial_parameter_sets`. With
+  `ParameterSetInjection::BeforeIdr` (the default), the depacketizer prepends
+  the stored SPS/PPS before every IDR frame — giving decoders a clean
+  self-contained start point even when the camera omits in-band parameter sets.
+
+- **B-frame / DTS limitation.** `H264Au::pts` is derived from the RTP
+  timestamp, which reflects decode order. If the source encoder uses B-frames
+  (PTS ≠ DTS), the `pts` values may be non-monotonic. Feed them directly to
+  `muxer.push_video` for low-latency live cameras (no B-frames, PTS = DTS); use
+  `push_video_to_with_dts` and derive DTS separately for B-frame content.
+
+- **Loss behavior.** A sequence-number gap poisons the currently-accumulating
+  AU and the AU this packet joins, then increments `H264DepayStats::aus_dropped`
+  and `seq_gaps`. Loss is whole-AU: no partial frames surface.
+
+- **KLV pairing slot.** In a STANAG 4609 gateway you push `au.pts` to
+  `muxer.push_video` and the matching KLV (from a separate UDP or SRT feed)
+  to `muxer.push_klv` using the same `pts`. See Recipe 34 in the cookbook.
+
+- **RTCP is not implemented on the H.264 path (v1 decision).** No RTCP
+  socket is bound; no RR/SR is sent or received. See
+  [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md).
+
 ## Where to go next
 
 - [`/docs/start/concepts.md`](/docs/start/concepts.md) — the conceptual

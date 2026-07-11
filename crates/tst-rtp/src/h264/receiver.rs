@@ -31,10 +31,14 @@
 //!
 //! # EOS contract
 //!
-//! `recv_au` returns `Ok(None)` in two situations:
-//! - `close()` was called (cancel flag set), or
-//! - The underlying source reports a clean disconnect (mpsc pump dropped
-//!   its `Sender`, indicating the RTSP teardown completed).
+//! `recv_au` always drains already-assembled AUs before signalling EOS:
+//!
+//! 1. On cancel (`close()`) or clean disconnect (mpsc pump dropped its
+//!    `Sender`, indicating RTSP teardown): the depacketizer is flushed,
+//!    which may yield one final partial AU. Any queued complete AUs are
+//!    returned first via `Ok(Some(au))`.
+//! 2. `Ok(None)` is the terminal value — it is returned only after all
+//!    queued and flushed AUs have been surfaced.
 //!
 //! Any other hard I/O error surfaces as `Err(TransportError::Broken {..})`.
 
@@ -352,8 +356,11 @@ impl H264Receiver {
         self.local_addr
     }
 
-    /// Return a clone of the cancel handle. Setting the flag causes the
-    /// next [`recv_au`](Self::recv_au) poll to return EOS.
+    /// Return a clone of the cancel handle. Setting the flag causes
+    /// [`recv_au`](Self::recv_au) to stop blocking on I/O; it will not
+    /// initiate any new reads. Already-assembled AUs and any partial AU
+    /// produced by the flush are still returned before the terminal
+    /// `Ok(None)` — see the [EOS contract](Self#eos-contract) above.
     ///
     /// The returned value is an `Arc<RtpCancelHandle>`-compatible clone —
     /// callers hold a shared reference and set it from any thread.

@@ -640,7 +640,7 @@ covers.
 | `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903), codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
-| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.17** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
+| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.18** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
 | `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.2.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
 | `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
@@ -654,7 +654,7 @@ For full build-target / CI gating coverage see "Build targets" at the top of thi
 | Rust (`tst-rtp`) | ✅ Full | `H264Depacketizer` / `H264Receiver` / `H264DepayConfig` / `H264Au` / `H264DepayStats`. Single-NALU, STAP-A, FU-A (modes 0 and 1). RTSP path via `setup_h264_auto` → `into_h264_receiver`. |
 | Python (`tstrans.rtp`) | ✅ Full | `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`, `ParameterSetInjection`, `H264DepayStats`, `RtpStats`. RTSP path via `RtspClient.connect_h264` → `session.into_h264_receiver()`. Ships in published wheels. |
 | JVM (`org.tstrans.rtp`) | ✅ Full | `H264Receiver`, `H264AccessUnit`, `H264DepayConfig`, `ParameterSetInjection`, `H264DepayStats`, `RtpStats`. RTSP path via `RtspClient.connectH264` → `session.intoH264Receiver()`. Note: `intoH264Receiver()` consumes the session (differs from Python). Ships in the published JAR. |
-| C (`tst-c`) | ❌ Deferred | No C-ABI `H264Receiver` family yet. Would be ABI minor 17 → 18. Trigger: a C/embedded consumer asks. See [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md). |
+| C (`tst-c`) | ❌ Deferred | No C-ABI `H264Receiver` family yet. Would be the next additive ABI minor bump. Trigger: a C/embedded consumer asks. See [`/docs/project/deferred-features.md`](/docs/project/deferred-features.md). |
 
 **Intentional per-language conveniences.** A small set of APIs exist only in
 one binding by design: `transmux` (Python-only convenience that bridges a

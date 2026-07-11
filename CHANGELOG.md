@@ -336,15 +336,11 @@ C symbol, signature, or struct layout changed.
   0.2.0, silent drops after the MP2T shape guard landed. The receive buffer
   is now sized to the 16-bit datagram ceiling (65535 bytes) on both the UDP
   and TCP-interleaved paths, so no legal datagram or interleaved frame can
-  truncate. The Python `tstrans.rtp.Receiver` and JVM `org.tstrans.rtp.Receiver`
-  wrappers shared the same 1304-byte limit and are fixed by the same change —
-  foreign full-MTU bundles that previously raised `Broken`-kind errors now
-  receive correctly. Only traffic from foreign senders was affected — the
-  in-tree sender caps datagrams below the old buffer size. Note: the pipeline
-  receive shells (`Receiver` / `DemuxReceiver`) still size their buffers to the
-  send-side budget (1304 bytes) and currently reject larger payloads with a
-  speaking error rather than truncating — lifting that ceiling is tracked as
-  a follow-up (PR #95).
+  truncate. Only traffic from foreign senders was affected — the in-tree
+  sender caps datagrams below the old buffer size. Note: this raised the
+  transport-level scratch ceiling only; the pipeline receive shells'
+  send-side-budget sizing (1304 bytes) has since been lifted too — see the
+  receive-side `max_payload()` entries below (PR #95).
 - RTSP: `extract_mount_path` now strips a single trailing `/` from the
   resolved path (except for the root `"/"`) so `rtsp://host/live/` and
   `rtsp://host/live` resolve to the same registered mount. Previously, a
@@ -464,7 +460,11 @@ C symbol, signature, or struct layout changed.
   corrupted — a full-MTU RTP bundle (7×188 = 1316 B > 1304) surfaced as
   `Broken("recv buf too small")`, a 1456-byte SRT message was silently
   truncated to 1316 bytes, and an oversize RIST block was silently
-  dropped. Completes the v0.2.0 recv-truncation fix, which had raised
+  dropped. The direct RTP receive wrappers in the bindings — Python
+  `tstrans.rtp.Receiver` and JVM `org.tstrans.rtp.Receiver` — had the
+  same 1304-byte limit (foreign full-MTU bundles raised their
+  `Broken`-kind errors) and are fixed by the same ceiling change.
+  Completes the v0.2.0 recv-truncation fix, which had raised
   the transport-level scratch ceiling but not the shell sizing.
 - `sprop-parameter-sets` entries without trailing `=` base64 padding
   (common camera/server spelling) are now decoded instead of being

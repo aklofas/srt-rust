@@ -1,6 +1,6 @@
 # tst-tcp integration-test map
 
-The tst-tcp test suite uses **five standalone binaries** — one file per domain.
+The tst-tcp test suite uses **four standalone binaries** — one file per domain.
 Unlike the crates that were reorganised into `#[path] mod` domain harnesses
 (tst-rtp, tst-srt, …), tst-tcp's tests were small enough to stay as individual
 top-level binaries; no test reorganisation has occurred. This file documents

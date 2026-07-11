@@ -160,13 +160,16 @@ impl H264FmtpParams {
 /// Discover the dynamic RTP payload type assigned to H.264 in an SDP media
 /// section by scanning `a=rtpmap` lines.
 ///
-/// Returns the payload type of the **first** `a=rtpmap` line that names
-/// `H264` (case-insensitive) AND whose payload type is listed in
-/// `media.payload_types`; `None` if no such line exists.
+/// Returns the payload type of the **first** `a=rtpmap` line that:
+/// - names `H264` (case-insensitive),
+/// - specifies a clock rate of exactly `90000` (RFC 6184 §8.1 mandates
+///   90 kHz; all downstream PTS arithmetic assumes this rate), **and**
+/// - whose payload type is listed in `media.payload_types`.
 ///
-/// Selection policy among multiple H.264 rtpmap lines (offers with several
-/// H.264 payload types) lives at the picker level (a later task) — this
-/// function deliberately takes the first in-media match.
+/// Lines that name `H264` but carry a wrong or absent clock-rate token are
+/// skipped with a [`tracing::warn!`] so that a non-conformant entry cannot
+/// shadow a valid one that appears later in the attribute list. `None` is
+/// returned only when no conformant H.264 rtpmap line exists.
 pub fn parse_rtpmap_h264(media: &SdpMedia) -> Option<u8> {
     media
         .attributes
@@ -179,11 +182,38 @@ pub fn parse_rtpmap_h264(media: &SdpMedia) -> Option<u8> {
             let pt_tok = parts.next()?.trim();
             let enc_tok = parts.next()?.trim();
             let pt: u8 = pt_tok.parse().ok()?;
-            // Encoding name is the first field before '/'.
-            let enc_name = enc_tok.split('/').next()?;
+
+            // Split "<encoding-name>/<clock-rate>[/<channels>]".
+            let mut enc_parts = enc_tok.splitn(3, '/');
+            let enc_name = enc_parts.next()?;
             if !enc_name.eq_ignore_ascii_case("H264") {
                 return None;
             }
+
+            // Clock rate MUST be present and equal to 90000 (RFC 6184 §8.1).
+            // A wrong or absent clock rate means the rtpmap is non-conformant;
+            // skip it so it cannot shadow a valid later entry.
+            match enc_parts.next() {
+                Some("90000") => {}
+                Some(rate) => {
+                    tracing::warn!(
+                        pt,
+                        clock_rate = rate,
+                        "H264 rtpmap: clock rate is not 90000 (RFC 6184 §8.1 mandates 90 kHz); \
+                         skipping this entry"
+                    );
+                    return None;
+                }
+                None => {
+                    tracing::warn!(
+                        pt,
+                        "H264 rtpmap: clock rate token absent (malformed rtpmap grammar); \
+                         skipping this entry"
+                    );
+                    return None;
+                }
+            }
+
             // The payload type must be listed in the m= line.
             if media.payload_types.contains(&pt) {
                 Some(pt)
@@ -304,5 +334,34 @@ mod tests {
         );
         let f = H264FmtpParams::parse(&m, 96);
         assert_eq!(f.sprop_parameter_sets.len(), 1); // bad entry dropped with a tracing warn
+    }
+
+    // --- rtpmap clock-rate validation tests ------------------------------------
+
+    /// Non-90000 clock rate is rejected — RFC 6184 §8.1 mandates 90 kHz.
+    #[test]
+    fn rtpmap_wrong_clock_rate_rejected() {
+        let m = media_with(&[("rtpmap", "96 H264/8000")], &[96]);
+        assert_eq!(parse_rtpmap_h264(&m), None);
+    }
+
+    /// Case-insensitive encoding name match still requires 90000 clock rate.
+    #[test]
+    fn rtpmap_case_insensitive_with_correct_clock() {
+        let m = media_with(&[("rtpmap", "96 h264/90000")], &[96]);
+        assert_eq!(parse_rtpmap_h264(&m), Some(96));
+    }
+
+    /// When a media section has both a non-conformant H264/8000 entry and a
+    /// valid H264/90000 entry for different PTs, the valid one wins.
+    #[test]
+    fn rtpmap_bad_clock_does_not_shadow_good_clock() {
+        // PT 95 has wrong clock; PT 96 has correct clock — pick_rtpmap must
+        // skip 95 and find 96.
+        let m = media_with(
+            &[("rtpmap", "95 H264/8000"), ("rtpmap", "96 H264/90000")],
+            &[95, 96],
+        );
+        assert_eq!(parse_rtpmap_h264(&m), Some(96));
     }
 }

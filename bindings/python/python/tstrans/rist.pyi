@@ -241,7 +241,8 @@ class RecvTransportBuilder:
         ...
 
     def pkt_size(self, v: int) -> Self:
-        """Override recv scratch-buffer size in bytes."""
+        """Expected send-side packet size; has no effect on the receive
+        buffer, which always accepts any legal block."""
         ...
 
     def build(self) -> RecvTransport:

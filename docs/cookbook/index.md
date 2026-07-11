@@ -40,11 +40,11 @@ Recipe numbers are stable across edits — existing inbound links stay valid as 
 - **Recipe 13: Sample-and-hold async-KLV against video frames** — [13-sample-hold-klv.md](receiving/13-sample-hold-klv.md) — KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video.
 - **Recipe 14: EO + IR sensor pair with shared async-KLV** — [14-eo-ir-shared-klv.md](receiving/14-eo-ir-shared-klv.md) — The platform carries two sensors (visible + thermal) and one async metadata stream serves both.
 - **Recipe 21: Extract subtitle PES bytes from a captured `.ts` file** — [21-extract-subtitle-pes.md](receiving/21-extract-subtitle-pes.md) — Receive-side inspection — discover what subtitle codecs are in a capture and read the cue text.
-- **Recipe 34: Ingest H.264 from an RTSP camera and remux to MPEG-TS** — [34-recv-rtsp-h264-to-ts.md](receiving/34-recv-rtsp-h264-to-ts.md) — Camera exposes bare H.264-over-RTP (RFC 6184); gateway pattern re-muxes access units into MPEG-TS. Python-first; Rust example twin available.
 - **Recipe 24: Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)** — [24-pairer-realtime.md](receiving/24-pairer-realtime.md) — You want the inline pattern from Recipe 12 expressed through the opt-in `Pairer` helper, with bounded history, telemetry counters, and typed projection structs.
 - **Recipe 25: Pair sync-KLV in batch mode (`PairerMode::Buffered`)** — [25-pairer-batch.md](receiving/25-pairer-batch.md) — KLV PES is interleaved *after* its matching video PES (some encoders), and Realtime mode misses the pairing.
 - **Recipe 26: Sample-and-hold async KLV via `Pairer::last_before_pts`** — [26-pairer-last-before-pts.md](receiving/26-pairer-last-before-pts.md) — Async-KLV streams where each video frame should attach the most recent KLV at `klv.pts <= video.pts`.
 - **Recipe 27: EO + IR composition with shared async-KLV** — [27-eo-ir-shared-klv-pairer.md](receiving/27-eo-ir-shared-klv-pairer.md) — Two video PIDs share one async-KLV PID and you want telemetry counters + typed output projections per branch.
+- **Recipe 34: Ingest H.264 from an RTSP camera and remux to MPEG-TS** — [34-recv-rtsp-h264-to-ts.md](receiving/34-recv-rtsp-h264-to-ts.md) — Camera exposes bare H.264-over-RTP (RFC 6184); gateway pattern re-muxes access units into MPEG-TS. Python-first; Rust example twin available.
 
 ### 🔑 KLV — encode and decode metadata directly
 

@@ -285,6 +285,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264Depacketizer
 #[non_exhaustive] pub struct tst_rtp::h264::depacketizer::H264DepayConfig
 pub tst_rtp::h264::depacketizer::H264DepayConfig::initial_parameter_sets: alloc::vec::Vec<alloc::vec::Vec<u8>>
+pub tst_rtp::h264::depacketizer::H264DepayConfig::max_au_bytes: usize
 pub tst_rtp::h264::depacketizer::H264DepayConfig::parameter_set_injection: tst_rtp::h264::depacketizer::ParameterSetInjection
 pub tst_rtp::h264::depacketizer::H264DepayConfig::payload_type: u8
 impl core::clone::Clone for tst_rtp::h264::depacketizer::H264DepayConfig
@@ -302,6 +303,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264DepayConfig
 #[non_exhaustive] pub struct tst_rtp::h264::depacketizer::H264DepayStats
 pub tst_rtp::h264::depacketizer::H264DepayStats::aus_dropped: u64
+pub tst_rtp::h264::depacketizer::H264DepayStats::aus_dropped_oversize: u64
 pub tst_rtp::h264::depacketizer::H264DepayStats::aus_emitted: u64
 pub tst_rtp::h264::depacketizer::H264DepayStats::duplicate_packets: u64
 pub tst_rtp::h264::depacketizer::H264DepayStats::nalus_discarded: u64
@@ -424,6 +426,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264Depacketizer
 #[non_exhaustive] pub struct tst_rtp::h264::H264DepayConfig
 pub tst_rtp::h264::H264DepayConfig::initial_parameter_sets: alloc::vec::Vec<alloc::vec::Vec<u8>>
+pub tst_rtp::h264::H264DepayConfig::max_au_bytes: usize
 pub tst_rtp::h264::H264DepayConfig::parameter_set_injection: tst_rtp::h264::depacketizer::ParameterSetInjection
 pub tst_rtp::h264::H264DepayConfig::payload_type: u8
 impl core::clone::Clone for tst_rtp::h264::depacketizer::H264DepayConfig
@@ -441,6 +444,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264DepayConfig
 #[non_exhaustive] pub struct tst_rtp::h264::H264DepayStats
 pub tst_rtp::h264::H264DepayStats::aus_dropped: u64
+pub tst_rtp::h264::H264DepayStats::aus_dropped_oversize: u64
 pub tst_rtp::h264::H264DepayStats::aus_emitted: u64
 pub tst_rtp::h264::H264DepayStats::duplicate_packets: u64
 pub tst_rtp::h264::H264DepayStats::nalus_discarded: u64
@@ -2122,6 +2126,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264Depacketizer
 #[non_exhaustive] pub struct tst_rtp::H264DepayConfig
 pub tst_rtp::H264DepayConfig::initial_parameter_sets: alloc::vec::Vec<alloc::vec::Vec<u8>>
+pub tst_rtp::H264DepayConfig::max_au_bytes: usize
 pub tst_rtp::H264DepayConfig::parameter_set_injection: tst_rtp::h264::depacketizer::ParameterSetInjection
 pub tst_rtp::H264DepayConfig::payload_type: u8
 impl core::clone::Clone for tst_rtp::h264::depacketizer::H264DepayConfig
@@ -2139,6 +2144,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::depacketizer::H2
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::depacketizer::H264DepayConfig
 #[non_exhaustive] pub struct tst_rtp::H264DepayStats
 pub tst_rtp::H264DepayStats::aus_dropped: u64
+pub tst_rtp::H264DepayStats::aus_dropped_oversize: u64
 pub tst_rtp::H264DepayStats::aus_emitted: u64
 pub tst_rtp::H264DepayStats::duplicate_packets: u64
 pub tst_rtp::H264DepayStats::nalus_discarded: u64

@@ -66,6 +66,28 @@ fn build_play_data(pkts: &[Vec<u8>]) -> Vec<u8> {
     buf
 }
 
+/// Build a minimal RTCP SR payload (28 bytes), routed on channel 1.
+///
+/// Content is arbitrary — the H.264 receiver discards RTCP frames; this
+/// just needs to be non-empty so the pump routes it to `rtcp_tx`.
+fn rtcp_sr_frame() -> Vec<u8> {
+    // RFC 3550 §6.4.1: 28-byte SR (V=2, RC=0, PT=200, length=6 words, rest zero)
+    let sr: [u8; 28] = [
+        0x80, 200, 0x00, 0x06, // header: V=2,P=0,RC=0 | PT=200 | length=6
+        0, 0, 0, 1, // SSRC of sender
+        0, 0, 0, 0, // NTP timestamp MSW
+        0, 0, 0, 0, // NTP timestamp LSW
+        0, 0, 0, 0, // RTP timestamp
+        0, 0, 0, 0, // sender's packet count
+        0, 0, 0, 0, // sender's octet count
+    ];
+    // RFC 7826 §14: `0x24 <channel:u8> <length:u16 BE> <payload>`
+    let len = sr.len() as u16;
+    let mut frame = vec![0x24u8, 1, (len >> 8) as u8, (len & 0xFF) as u8];
+    frame.extend_from_slice(&sr);
+    frame
+}
+
 /// Happy path: mode-1 H.264 SDP → `setup_h264_auto` → `into_h264_receiver`
 /// receives the injected SPS/PPS + IDR AU.
 ///
@@ -179,4 +201,92 @@ fn setup_h264_auto_mode2_rejected_before_setup() {
         count, 0,
         "SETUP must NOT be sent before UnsupportedPacketizationMode is returned"
     );
+}
+
+/// Regression: interleaved RTCP frames must NOT kill the session.
+///
+/// Before the fix, `into_h264_receiver` dropped `rtcp_rx`, so the pump's
+/// `rtcp_tx.try_send()` returned `TrySendError::Disconnected` at the first
+/// RTCP frame. The pump exited, dropping `data_tx`, which caused
+/// `H264Receiver::recv_au` to surface the MPSC_PUMP_DISCONNECTED sentinel —
+/// a false clean-EOS before any AU was received.
+///
+/// This test confirms the fix by interleaving RTCP SR frames (channel 1)
+/// between RTP data frames. The session must deliver all expected AUs despite
+/// the RTCP frames. The test FAILS against the pre-fix code (verified by
+/// reading the pump exit logic at `rtsp/client/interleaved_pump.rs` line 316:
+/// `Err(mpsc::TrySendError::Disconnected(_)) => return` on the RTCP sender).
+#[test]
+fn interleaved_rtcp_frames_do_not_kill_session() {
+    let sps = sps_nalu();
+    let pps = pps_nalu();
+    let sps_b64 = base64::engine::general_purpose::STANDARD.encode(&sps);
+    let pps_b64 = base64::engine::general_purpose::STANDARD.encode(&pps);
+    let sdp_body = h264_sdp(1, &sps_b64, &pps_b64);
+
+    const PT: u8 = 96;
+    const SSRC: u32 = 0xDEAD_BEEF;
+
+    // Three single-NALU AUs: two non-IDR + one IDR.
+    let au1 = vec![0x41u8, 0x01, 0x02]; // non-IDR slice, type 1
+    let au2 = vec![0x41u8, 0x03, 0x04]; // non-IDR slice, type 1
+    let au3 = vec![0x65u8, 0xAA, 0xBB]; // IDR slice, type 5
+    let aus = vec![
+        (90_000u32, vec![au1.clone()]),
+        (93_003u32, vec![au2.clone()]),
+        (96_006u32, vec![au3.clone()]),
+    ];
+    let rtp_pkts = packetize(&aus, 1400, 1, SSRC, PT);
+    assert_eq!(rtp_pkts.len(), 3, "one packet per AU");
+
+    // Interleave: RTCP SR before each RTP packet, and one after the last.
+    let mut play_data = Vec::new();
+    for pkt in &rtp_pkts {
+        play_data.extend(rtcp_sr_frame()); // RTCP before every RTP
+        play_data.extend(interleaved_frame(pkt));
+    }
+    play_data.extend(rtcp_sr_frame()); // trailing RTCP after all data
+
+    let fixture = FixtureHandle::spawn(FixtureConfig {
+        sdp_body,
+        play_data,
+        ..FixtureConfig::default()
+    });
+
+    let url = format!("rtsp://127.0.0.1:{}/?transport=tcp", fixture.port);
+    let mut client = RtspClient::connect(&url).unwrap();
+    let sdp = client.describe().unwrap();
+    let (session, config) = client.setup_h264_auto(&sdp).unwrap();
+    client.play().unwrap();
+    let mut rx = session.into_h264_receiver(config);
+
+    // Must receive all three AUs despite the interleaved RTCP frames.
+    let got1 = rx
+        .recv_au()
+        .expect("recv_au error on AU1")
+        .expect("expected AU1");
+    assert_eq!(got1.annexb, [0, 0, 0, 1, 0x41, 0x01, 0x02], "AU1 mismatch");
+
+    let got2 = rx
+        .recv_au()
+        .expect("recv_au error on AU2")
+        .expect("expected AU2");
+    assert_eq!(got2.annexb, [0, 0, 0, 1, 0x41, 0x03, 0x04], "AU2 mismatch");
+
+    let got3 = rx
+        .recv_au()
+        .expect("recv_au error on AU3")
+        .expect("expected AU3");
+    // AU3 is an IDR: BeforeIdr injection prepends SPS + PPS.
+    let mut expected3 = Vec::new();
+    expected3.extend_from_slice(&[0, 0, 0, 1]);
+    expected3.extend_from_slice(&sps);
+    expected3.extend_from_slice(&[0, 0, 0, 1]);
+    expected3.extend_from_slice(&pps);
+    expected3.extend_from_slice(&[0, 0, 0, 1]);
+    expected3.extend_from_slice(&au3);
+    assert_eq!(got3.annexb, expected3, "AU3 (IDR) mismatch");
+    assert!(got3.key_frame);
+
+    rx.close();
 }

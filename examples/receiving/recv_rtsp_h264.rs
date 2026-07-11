@@ -193,7 +193,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // already complete in a single packet (single-NALU / STAP-A mode).
         // It returns:
         //   Ok(Some(au)) — a ready AU; loop continues.
-        //   Ok(None)     — EOS (TEARDOWN / close / cancel fired).
+        //   Ok(None)     — EOS: for TCP-interleaved sessions this signals a
+        //                  clean TEARDOWN or cancel. Plain UDP sessions have
+        //                  no EOS signal; `recv_au` blocks indefinitely unless
+        //                  the cancel handle is set externally.
         //   Err(e)       — hard I/O error; propagate.
         let au = match h264_rx.recv_au()? {
             Some(a) => a,

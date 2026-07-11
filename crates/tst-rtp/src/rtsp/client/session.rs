@@ -148,8 +148,11 @@ impl RtspSession {
     /// the companion RTCP socket is dropped (RTCP is not implemented on
     /// the H.264 path — v1 decision; see `docs/project/deferred-features.md`).
     ///
-    /// For TCP-interleaved: takes the pump's data `mpsc::Receiver<Bytes>`;
-    /// the pump's RTCP channel (`rtcp_rx`) is dropped for the same reason.
+    /// For TCP-interleaved: takes both the pump's data channel and its RTCP
+    /// channel. The RTCP channel is kept alive inside the receiver and drained
+    /// (discard-only) on each `recv_au` iteration so the pump's
+    /// `rtcp_tx.try_send()` never sees `Disconnected` — which would otherwise
+    /// kill the session at the first server RTCP Sender Report.
     ///
     /// Use the `config` returned by
     /// [`RtspClient::setup_h264_auto`](crate::rtsp::client::RtspClient::setup_h264_auto)
@@ -166,9 +169,15 @@ impl RtspSession {
                     .data_rx
                     .take()
                     .expect("TcpInterleaved session has a pump data_rx");
-                // rtcp_rx is intentionally dropped — RTCP is not implemented
-                // on the H.264 path (v1 decision).
-                H264Receiver::from_mpsc_with(data_rx, config)
+                let rtcp_rx = self.rtcp_rx.take();
+                // RTCP frames are drained-and-discarded inside H264Receiver
+                // (no RTCP processing on the H.264 path — v1 decision; see
+                // `docs/project/deferred-features.md`). We pass `rtcp_rx`
+                // so the receiver holds the consumer end: if we dropped it
+                // here the pump's `rtcp_tx.try_send()` would return
+                // `Disconnected` at the first server RTCP Sender Report,
+                // causing the pump to exit and triggering a false clean-EOS.
+                H264Receiver::from_mpsc_with_rtcp_drain(data_rx, rtcp_rx, config)
             }
         }
     }

@@ -59,8 +59,11 @@ use crate::url::RtpUrl;
 /// - [`Self::listen_with`] — same, but from an already-parsed [`RtpUrl`].
 /// - `from_udp_socket_with` (`pub(crate)`) — wrap an already-bound socket;
 ///   used by the RTSP session bridge (Task 11).
-/// - `from_mpsc_with` (`pub(crate)`) — wrap a TCP-interleaved mpsc channel;
-///   used by the RTSP session bridge (Task 11).
+/// - `from_mpsc_with_rtcp_drain` (`pub(crate)`) — wrap a TCP-interleaved mpsc
+///   channel; used by the RTSP session bridge (Task 11). Accepts the pump's
+///   RTCP channel so the pump never sees `Disconnected` on it (which would
+///   kill the session at the first server RTCP Sender Report). Pass `None` for
+///   `rtcp_rx` on paths where there is no RTCP channel.
 ///
 /// # recv_au loop contract
 ///
@@ -106,6 +109,18 @@ pub struct H264Receiver {
     malformed_packets: u64,
     local_addr: Option<SocketAddr>,
     eos: bool,
+    /// For TCP-interleaved sessions: the pump's RTCP channel (`rtcp_rx` from
+    /// `RtspSession`). RTCP is not processed on the H.264 path (v1 decision;
+    /// see `docs/project/deferred-features.md`), but if this receiver is
+    /// dropped the pump's `rtcp_tx.try_send()` returns `Disconnected` and the
+    /// pump exits — which drops `data_tx` — causing `recv_au`'s next
+    /// `recv_raw` to return `MPSC_PUMP_DISCONNECTED` (a clean-EOS sentinel)
+    /// prematurely at the very first server RTCP SR. We keep the receiver here
+    /// and drain it on each `recv_au` iteration (non-blocking, discard-only),
+    /// ensuring the pump always finds its RTCP sender intact.
+    ///
+    /// `None` on UDP and plain-mpsc paths.
+    rtcp_drain: Option<std::sync::mpsc::Receiver<bytes::Bytes>>,
 }
 
 impl H264Receiver {
@@ -168,20 +183,29 @@ impl H264Receiver {
             malformed_packets: 0,
             local_addr,
             eos: false,
+            rtcp_drain: None,
         })
     }
 
-    /// Wrap an mpsc channel fed by the RTSP client's TCP-interleaved pump.
+    /// Wrap an mpsc channel fed by the RTSP client's TCP-interleaved pump,
+    /// optionally also holding the pump's RTCP channel so it is never
+    /// `Disconnected`.
     ///
-    /// The producer (pump thread) pushes **whole RTP packets** (header
-    /// intact). [`recv_au`](Self::recv_au) decodes the header, enforces the
-    /// configured PT, strips CSRC/extension/padding, and feeds the
-    /// depacketizer — mirroring the UDP arm end-to-end.
+    /// `rtcp_rx` should be `Some(_)` for TCP-interleaved sessions and `None`
+    /// for the plain-mpsc (non-RTSP) path. When `Some`, each [`recv_au`]
+    /// iteration drains the RTCP channel with `try_recv` (non-blocking,
+    /// discard-only). This keeps the pump's `rtcp_tx.try_send()` from ever
+    /// seeing `TrySendError::Disconnected`, which would cause the pump to exit
+    /// — dropping `data_tx` — and produce a premature clean-EOS at the first
+    /// server RTCP Sender Report.
+    ///
+    /// RTCP frames are discarded here; no RTCP processing is done on the
+    /// H.264 path (v1 decision; see `docs/project/deferred-features.md`).
     ///
     /// Used by Task 11's RTSP session bridge.
-    #[allow(dead_code)]
-    pub(crate) fn from_mpsc_with(
+    pub(crate) fn from_mpsc_with_rtcp_drain(
         rx: std::sync::mpsc::Receiver<bytes::Bytes>,
+        rtcp_rx: Option<std::sync::mpsc::Receiver<bytes::Bytes>>,
         config: H264DepayConfig,
     ) -> Self {
         let pt = config.payload_type;
@@ -196,6 +220,7 @@ impl H264Receiver {
             malformed_packets: 0,
             local_addr: None,
             eos: false,
+            rtcp_drain: rtcp_rx,
         }
     }
 
@@ -209,6 +234,20 @@ impl H264Receiver {
     /// full loop contract.
     pub fn recv_au(&mut self) -> Result<Option<H264Au>, TransportError> {
         loop {
+            // ── RTCP drain (TCP-interleaved sessions only) ─────────────────
+            // Keep the pump's RTCP sender alive by non-blocking-draining the
+            // channel before each recv_raw. RTCP SR cadence is typically one
+            // packet per few seconds; the CANCEL_POLL_INTERVAL (~100 ms)
+            // drains the 64-deep queue far faster than any legitimate server
+            // fills it. Without this drain the pump sees
+            // `TrySendError::Disconnected` on its first RTCP frame (we dropped
+            // `rtcp_rx` at construction), exits, drops `data_tx`, and
+            // `recv_raw` returns the MPSC_PUMP_DISCONNECTED sentinel — a false
+            // clean-EOS at the very first server Sender Report.
+            if let Some(rx) = &self.rtcp_drain {
+                while rx.try_recv().is_ok() {}
+            }
+
             // ── Step 1: drain the depacketizer's ready queue ──────────────
             if let Some(au) = self.depay.next_au() {
                 return Ok(Some(au));
@@ -418,7 +457,7 @@ mod tests {
         );
     }
 
-    /// `from_mpsc_with` + send a single IDR packet via the channel.
+    /// `from_mpsc_with_rtcp_drain(rx, None, config)` + send a single IDR packet via the channel.
     #[test]
     fn h264_receiver_mpsc_single_au() {
         use crate::packet::RTP_HEADER_LEN;
@@ -429,7 +468,7 @@ mod tests {
             payload_type: 96,
             ..H264DepayConfig::default()
         };
-        let mut receiver = H264Receiver::from_mpsc_with(rx, config);
+        let mut receiver = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, config);
 
         // Build a whole RTP packet (header + payload).
         let mut pkt = vec![0u8; RTP_HEADER_LEN];
@@ -454,7 +493,7 @@ mod tests {
             payload_type: 96,
             ..H264DepayConfig::default()
         };
-        let mut receiver = H264Receiver::from_mpsc_with(rx, config);
+        let mut receiver = H264Receiver::from_mpsc_with_rtcp_drain(rx, None, config);
         drop(tx); // causes Disconnected on recv_raw
         let result = receiver.recv_au().unwrap();
         assert!(result.is_none(), "expected Ok(None) at EOS, got {result:?}");

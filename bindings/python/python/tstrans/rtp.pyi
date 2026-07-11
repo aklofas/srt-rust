@@ -317,11 +317,15 @@ class RtspSession:
     `pause` / `play` / `teardown` and expose RTCP-derived stats.
 
     `into_demux_receiver()` — consume the data plane for MPEG-TS demuxing
-    (created by `RtspClient.connect()`).
+    (created by `RtspClient.connect()`). Raises `RtspError(PROTOCOL)` when
+    called on an H.264 session (created by `RtspClient.connect_h264()`) or
+    when the data plane has already been consumed.
     `into_h264_receiver()` — consume the data plane for H.264 AU iteration
-    (created by `RtspClient.connect_h264()`).
-    Calling either twice, or calling the wrong one for the session type,
-    raises `RtspError(PROTOCOL)`.
+    (created by `RtspClient.connect_h264()`). Raises `RtspError(PROTOCOL)`
+    when called on an MPEG-TS session (created by `RtspClient.connect()`)
+    or when the data plane has already been consumed.
+    Both directions are guarded — calling the wrong method for the session
+    type raises `RtspError(PROTOCOL)`.
     """
 
     def pause(self) -> None: ...

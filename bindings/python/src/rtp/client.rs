@@ -813,6 +813,22 @@ impl PyRtspSession {
         py: Python<'_>,
         demux_config: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyDemuxReceiver> {
+        // Guard: reject if this session was created by connect_h264() — the
+        // H264DepayConfig slot being Some signals an H.264 session.
+        {
+            let guard = self
+                .h264_depay_config
+                .lock()
+                .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
+            if guard.is_some() {
+                return Err(make_rtsp_error(
+                    py,
+                    "PROTOCOL",
+                    "RtspSession.into_demux_receiver: this session was negotiated \
+                     for H.264 elementary ingest — use into_h264_receiver() instead",
+                ));
+            }
+        }
         // Take the SETUP-time RtspSession; double-consume = protocol err.
         let session = {
             let mut guard = self

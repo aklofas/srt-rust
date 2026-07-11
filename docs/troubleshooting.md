@@ -75,6 +75,9 @@ Alternatively, run `accept()` on a dedicated thread and call `Listener::close` f
 Call `socket.stats()` on both sides. If `bytes_sent` is increasing on the sender but `bytes_received` isn't moving on the listener, the link is up but packets are being dropped on the path. Most often this is an MTU / path-MTU issue.
 
 Fix: confirm both sides are using SRT defaults (1316-byte payload), or set explicit `payload_size(...)` on both builders matching the actual path MTU minus the SRT/UDP/IP overhead.
+(The receive side sizes its buffer to the SRT live-mode maximum, so a
+peer with a larger `payload_size` no longer breaks the receiver — the
+matching-sizes advice is about send-path MTU fit, not receiver limits.)
 
 **`ConnectError::BadEncryption`**
 

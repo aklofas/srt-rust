@@ -442,6 +442,32 @@ C symbol, signature, or struct layout changed.
   hook) and stale FreeRTOS substrate comments (EMB-MUTEX-1 + T-G;
   doc-comments only, no behavior change).
 
+### Changed — receive-side `max_payload()` now reports the deliverable ceiling
+
+- `RecvTransport::max_payload` is now contractually the *deliverable
+  ceiling* of the protocol (the largest message a conformant remote
+  sender can produce), decoupled from the send-side packet-size budget
+  on `Transport::max_payload`. Per transport: RTP returns 65523
+  (65535 − 12-byte RTP header, both UDP and TCP-interleaved arms), SRT
+  returns at least the 1456 live-mode wire maximum, RIST returns at
+  least 65535. UDP already reported 65535; TCP (stream, no message
+  boundaries) is unchanged.
+
+### Fixed
+
+- Full-MTU foreign packets through the receive shells: `Receiver` /
+  `RawReceiver` / `DemuxReceiver` sized their buffers from the send-side
+  budget, so a conformant foreign sender's oversize message was lost or
+  corrupted — a full-MTU RTP bundle (7×188 = 1316 B > 1304) surfaced as
+  `Broken("recv buf too small")`, a 1456-byte SRT message was silently
+  truncated to 1316 bytes, and an oversize RIST block was silently
+  dropped. Completes the v0.2.0 recv-truncation fix, which had raised
+  the transport-level scratch ceiling but not the shell sizing.
+- `sprop-parameter-sets` entries without trailing `=` base64 padding
+  (common camera/server spelling) are now decoded instead of being
+  silently skipped, so out-of-band SPS/PPS injection works with such
+  sources. Invalid characters are still rejected.
+
 ---
 
 ## [0.2.0] — 2026-06-23

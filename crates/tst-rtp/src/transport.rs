@@ -138,6 +138,9 @@ impl RtpTransport {
     /// projected [`SocketStats`] fields) is a separate, working path and is
     /// not affected by this toggle.
     pub fn connect_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
+        if url.pt.is_some() {
+            return Err(ConnectError::PayloadTypeParam);
+        }
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {
                 host: url.host.clone(),
@@ -307,6 +310,10 @@ impl RtpTransport {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConnectError {
+    #[error("URL has ?pt= (elementary RTP): use H264Receiver, not the MP2T transport")]
+    PayloadTypeParam,
+    #[error("H264Receiver requires ?pt=<dynamic PT> on the URL")]
+    MissingPayloadTypeParam,
     #[error("URL parse failed: {0}")]
     Url(#[from] RtpUrlError),
     /// `RtpUrl::host` couldn't be parsed as a literal IP. Phase 1
@@ -427,7 +434,7 @@ fn random_u32() -> u32 {
 ///   excess bytes on a short `recv`.
 /// - **Mpsc (TCP-interleaved):** RFC 7826 §14 interleaved frames carry a
 ///   u16 length prefix, so the same 65535 ceiling applies.
-const RECV_SCRATCH_LEN: usize = 65535;
+pub(crate) const RECV_SCRATCH_LEN: usize = 65535;
 
 /// Inner data source for [`RtpRecvTransport`].
 ///
@@ -670,6 +677,9 @@ impl RtpRecvTransport {
     /// the TCP-interleaved RTSP `rtt_us` / `packets_lost_send` path) is a
     /// separate, working path and is not affected by this toggle.
     pub fn listen_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
+        if url.pt.is_some() {
+            return Err(ConnectError::PayloadTypeParam);
+        }
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {
                 host: url.host.clone(),
@@ -1405,6 +1415,34 @@ mod tests {
     #[test]
     fn rtp_listen_port_65535_does_not_panic() {
         let _ = RtpRecvTransport::listen("rtp://127.0.0.1:65535");
+    }
+
+    // ── ?pt= rejection guards ─────────────────────────────────────────────────
+
+    /// A `?pt=` URL must be rejected by the MP2T `RtpTransport::connect*` path.
+    #[test]
+    fn mp2t_connect_rejects_pt_param() {
+        let url = RtpUrl::parse("rtp://127.0.0.1:5004?pt=96").unwrap();
+        let err = RtpTransport::connect_with(&url)
+            .map(|_| ())
+            .expect_err("connect_with ?pt= must fail");
+        assert!(
+            matches!(err, ConnectError::PayloadTypeParam),
+            "expected PayloadTypeParam, got {err:?}"
+        );
+    }
+
+    /// A `?pt=` URL must be rejected by the MP2T `RtpRecvTransport::listen*` path.
+    #[test]
+    fn mp2t_listen_rejects_pt_param() {
+        let url = RtpUrl::parse("rtp://127.0.0.1:0?pt=96").unwrap();
+        let err = RtpRecvTransport::listen_with(&url)
+            .map(|_| ())
+            .expect_err("listen_with ?pt= must fail");
+        assert!(
+            matches!(err, ConnectError::PayloadTypeParam),
+            "expected PayloadTypeParam, got {err:?}"
+        );
     }
 
     // --- DA-RTP-5: MP2T payload shape validation ---

@@ -1592,6 +1592,11 @@ mod tests {
     /// silent drop once the DA-RTP-5 shape guard landed. The scratch is now
     /// sized to `RECV_SCRATCH_LEN` (the UDP datagram ceiling), so the whole
     /// payload must arrive intact with `malformed_packets == 0`.
+    ///
+    /// Pre-fix this test HANGS rather than failing cleanly: the truncated
+    /// payload fails the shape guard, is dropped, and `recv_bytes` blocks
+    /// waiting for a next packet that never comes (harness timeout catches
+    /// a regression).
     #[test]
     fn udp_full_mtu_datagram_delivered_whole() {
         let recv_sock = UdpSocket::bind("127.0.0.1:0").expect("bind recv socket");
@@ -1626,6 +1631,10 @@ mod tests {
     /// CSRC list, so the whole datagram is 12 + 60 + 1316 = 1388 bytes —
     /// larger than even `pkt_size + RTP_HEADER_LEN`. Conformant per
     /// RFC 3550 §5.1; must be delivered whole.
+    ///
+    /// Pre-fix this test HANGS rather than failing cleanly (truncated →
+    /// shape-guard drop → recv blocks on a packet that never comes);
+    /// the harness timeout catches a regression.
     #[test]
     fn udp_csrc_bearing_oversize_datagram_delivered_whole() {
         let recv_sock = UdpSocket::bind("127.0.0.1:0").expect("bind recv socket");

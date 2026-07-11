@@ -291,7 +291,11 @@ time — no C symbol, signature, or struct layout changed.
   is now sized to the 16-bit datagram ceiling (65535 bytes) on both the UDP
   and TCP-interleaved paths, so no legal datagram or interleaved frame can
   truncate. Only traffic from foreign senders was affected — the in-tree
-  sender caps datagrams below the old buffer size.
+  sender caps datagrams below the old buffer size. Note: the pipeline receive
+  shells (`Receiver` / `DemuxReceiver`) still size their buffers to the
+  send-side budget (1304 bytes) and currently reject larger payloads with a
+  speaking error rather than truncating — lifting that ceiling is tracked as
+  a follow-up.
 - RTSP: `extract_mount_path` now strips a single trailing `/` from the
   resolved path (except for the root `"/"`) so `rtsp://host/live/` and
   `rtsp://host/live` resolve to the same registered mount. Previously, a

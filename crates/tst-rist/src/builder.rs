@@ -177,7 +177,9 @@ impl RistRecvTransportBuilder {
         self
     }
 
-    /// Per-recv-call payload cap.
+    /// Expected packet size hint. The receive ceiling reported to the
+    /// pipeline shells is never below the 65535-byte UDP maximum, so
+    /// this only matters when set above it.
     pub fn pkt_size(mut self, n: usize) -> Self {
         self.config.pkt_size = n;
         self

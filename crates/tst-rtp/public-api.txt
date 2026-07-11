@@ -346,6 +346,26 @@ impl core::marker::UnsafeUnpin for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
 pub fn tst_rtp::h264::fmtp::parse_rtpmap_h264(&tst_rtp::sdp::SdpMedia) -> core::option::Option<u8>
+pub mod tst_rtp::h264::receiver
+pub struct tst_rtp::h264::receiver::H264Receiver
+impl tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::cancel_handle(&self) -> alloc::sync::Arc<tst_rtp::cancel::RtpCancelHandle>
+pub fn tst_rtp::h264::receiver::H264Receiver::close(&mut self)
+pub fn tst_rtp::h264::receiver::H264Receiver::depay_stats(&self) -> tst_rtp::h264::depacketizer::H264DepayStats
+pub fn tst_rtp::h264::receiver::H264Receiver::listen(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl, tst_rtp::h264::depacketizer::H264DepayConfig) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
+pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
+pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
+impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Send for tst_rtp::h264::receiver::H264Receiver
+impl !core::marker::Sync for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Unpin for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::UnsafeUnpin for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::receiver::H264Receiver
 #[non_exhaustive] pub enum tst_rtp::h264::ParameterSetInjection
 pub tst_rtp::h264::ParameterSetInjection::BeforeIdr
 pub tst_rtp::h264::ParameterSetInjection::None
@@ -462,6 +482,25 @@ impl core::marker::Unpin for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::marker::UnsafeUnpin for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
+pub struct tst_rtp::h264::H264Receiver
+impl tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::cancel_handle(&self) -> alloc::sync::Arc<tst_rtp::cancel::RtpCancelHandle>
+pub fn tst_rtp::h264::receiver::H264Receiver::close(&mut self)
+pub fn tst_rtp::h264::receiver::H264Receiver::depay_stats(&self) -> tst_rtp::h264::depacketizer::H264DepayStats
+pub fn tst_rtp::h264::receiver::H264Receiver::listen(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl, tst_rtp::h264::depacketizer::H264DepayConfig) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
+pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
+pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
+impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Send for tst_rtp::h264::receiver::H264Receiver
+impl !core::marker::Sync for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Unpin for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::UnsafeUnpin for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::receiver::H264Receiver
 pub fn tst_rtp::h264::parse_rtpmap_h264(&tst_rtp::sdp::SdpMedia) -> core::option::Option<u8>
 pub mod tst_rtp::init
 pub fn tst_rtp::init::init()
@@ -1272,6 +1311,8 @@ pub tst_rtp::transport::ConnectError::IfaceUnsupported
 pub tst_rtp::transport::ConnectError::IfaceUnsupported::detail: alloc::string::String
 pub tst_rtp::transport::ConnectError::IfaceUnsupported::iface: alloc::string::String
 pub tst_rtp::transport::ConnectError::Io(core::io::error::Error)
+pub tst_rtp::transport::ConnectError::MissingPayloadTypeParam
+pub tst_rtp::transport::ConnectError::PayloadTypeParam
 pub tst_rtp::transport::ConnectError::Url(tst_rtp::url::UrlError)
 impl core::convert::From<core::io::error::Error> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(core::io::error::Error) -> Self
@@ -1421,6 +1462,9 @@ pub tst_rtp::url::UrlError::BadHost
 pub tst_rtp::url::UrlError::BadHost::detail: alloc::string::String
 pub tst_rtp::url::UrlError::BadIface
 pub tst_rtp::url::UrlError::BadIface::got: alloc::string::String
+pub tst_rtp::url::UrlError::BadPayloadType
+pub tst_rtp::url::UrlError::BadPayloadType::detail: alloc::string::String
+pub tst_rtp::url::UrlError::BadPayloadType::got: alloc::string::String
 pub tst_rtp::url::UrlError::BadPktSize
 pub tst_rtp::url::UrlError::BadPktSize::detail: alloc::string::String
 pub tst_rtp::url::UrlError::BadPktSize::got: alloc::string::String
@@ -1492,6 +1536,7 @@ pub tst_rtp::url::RtpUrl::host: alloc::string::String
 pub tst_rtp::url::RtpUrl::iface: core::option::Option<alloc::string::String>
 pub tst_rtp::url::RtpUrl::pkt_size: usize
 pub tst_rtp::url::RtpUrl::port: u16
+pub tst_rtp::url::RtpUrl::pt: core::option::Option<u8>
 pub tst_rtp::url::RtpUrl::ssrc: core::option::Option<u32>
 pub tst_rtp::url::RtpUrl::ttl: core::option::Option<u8>
 impl tst_rtp::url::RtpUrl
@@ -1564,6 +1609,8 @@ pub tst_rtp::ConnectError::IfaceUnsupported
 pub tst_rtp::ConnectError::IfaceUnsupported::detail: alloc::string::String
 pub tst_rtp::ConnectError::IfaceUnsupported::iface: alloc::string::String
 pub tst_rtp::ConnectError::Io(core::io::error::Error)
+pub tst_rtp::ConnectError::MissingPayloadTypeParam
+pub tst_rtp::ConnectError::PayloadTypeParam
 pub tst_rtp::ConnectError::Url(tst_rtp::url::UrlError)
 impl core::convert::From<core::io::error::Error> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(core::io::error::Error) -> Self
@@ -1751,6 +1798,9 @@ pub tst_rtp::RtpUrlError::BadHost
 pub tst_rtp::RtpUrlError::BadHost::detail: alloc::string::String
 pub tst_rtp::RtpUrlError::BadIface
 pub tst_rtp::RtpUrlError::BadIface::got: alloc::string::String
+pub tst_rtp::RtpUrlError::BadPayloadType
+pub tst_rtp::RtpUrlError::BadPayloadType::detail: alloc::string::String
+pub tst_rtp::RtpUrlError::BadPayloadType::got: alloc::string::String
 pub tst_rtp::RtpUrlError::BadPktSize
 pub tst_rtp::RtpUrlError::BadPktSize::detail: alloc::string::String
 pub tst_rtp::RtpUrlError::BadPktSize::got: alloc::string::String
@@ -2109,6 +2159,25 @@ impl core::marker::Unpin for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::marker::UnsafeUnpin for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::fmtp::H264FmtpParams
+pub struct tst_rtp::H264Receiver
+impl tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::cancel_handle(&self) -> alloc::sync::Arc<tst_rtp::cancel::RtpCancelHandle>
+pub fn tst_rtp::h264::receiver::H264Receiver::close(&mut self)
+pub fn tst_rtp::h264::receiver::H264Receiver::depay_stats(&self) -> tst_rtp::h264::depacketizer::H264DepayStats
+pub fn tst_rtp::h264::receiver::H264Receiver::listen(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl, tst_rtp::h264::depacketizer::H264DepayConfig) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
+pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
+pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
+pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
+impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Send for tst_rtp::h264::receiver::H264Receiver
+impl !core::marker::Sync for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::Unpin for tst_rtp::h264::receiver::H264Receiver
+impl core::marker::UnsafeUnpin for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::h264::receiver::H264Receiver
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::h264::receiver::H264Receiver
 pub struct tst_rtp::InterleavedReader<R: std::io::BufRead>
 impl<R: std::io::BufRead> tst_rtp::rtsp::interleaved::InterleavedReader<R>
 pub fn tst_rtp::rtsp::interleaved::InterleavedReader<R>::new(R) -> Self
@@ -2519,6 +2588,7 @@ pub tst_rtp::RtpUrl::host: alloc::string::String
 pub tst_rtp::RtpUrl::iface: core::option::Option<alloc::string::String>
 pub tst_rtp::RtpUrl::pkt_size: usize
 pub tst_rtp::RtpUrl::port: u16
+pub tst_rtp::RtpUrl::pt: core::option::Option<u8>
 pub tst_rtp::RtpUrl::ssrc: core::option::Option<u32>
 pub tst_rtp::RtpUrl::ttl: core::option::Option<u8>
 impl tst_rtp::url::RtpUrl

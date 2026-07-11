@@ -45,6 +45,7 @@ impl RtpSocketBuilder {
                 iface: None,
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
+                pt: None,
             },
             rtcp: false,
         }
@@ -136,6 +137,7 @@ impl RtpRecvSocketBuilder {
                 iface: None,
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
+                pt: None,
             },
             rtcp: false,
         }

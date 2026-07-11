@@ -8190,6 +8190,54 @@ item = "tst_rtp::parse_rtpmap_h264"
 reason = "WP-1 RFC 6184 depacketizer; graduate to [[surface]] in WP-2 when integration tests land"
 
 [[exempt]]
+item = "tst_rtp::H264Receiver"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::H264Receiver"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::cancel_handle"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::close"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::depay_stats"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::drop"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::listen"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::listen_with"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::local_addr"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::recv_au"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
+item = "tst_rtp::h264::receiver::H264Receiver::rtp_stats"
+reason = "WP-2 RFC 6184 receiver I/O shell; graduate to [[surface]] in WP-3 when bindings land"
+
+[[exempt]]
 item = "tst_srt::Congestion"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 

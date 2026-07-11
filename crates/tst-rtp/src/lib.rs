@@ -60,7 +60,7 @@ pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
 
 // H.264 RTP payload format (RFC 6184).
 pub use h264::{
-    H264Au, H264Depacketizer, H264DepayConfig, H264DepayStats, H264FmtpParams,
+    H264Au, H264Depacketizer, H264DepayConfig, H264DepayStats, H264FmtpParams, H264Receiver,
     ParameterSetInjection, parse_rtpmap_h264,
 };
 

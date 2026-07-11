@@ -122,6 +122,10 @@ name = "recv_rtsp_camera"
 path = "receiving/recv_rtsp_camera.rs"
 
 [[example]]
+name = "recv_rtsp_h264"
+path = "receiving/recv_rtsp_h264.rs"
+
+[[example]]
 name = "klv_encode_minimal"
 path = "klv-metadata/klv_encode_minimal.rs"
 

@@ -197,6 +197,16 @@ public final class H264Receiver extends NativeHandle {
     /**
      * Cancel any in-progress {@link #recvAu()} and free the underlying receiver.
      * Idempotent. Safe to call from another thread to stop a parked recv.
+     *
+     * <p><b>May block briefly:</b> the cancel hook fires first (without taking
+     * the native resource lock), then the close waits for the woken
+     * {@code recvAu()} to release that lock. The parked recv polls its cancel
+     * flag at ~100&nbsp;ms granularity, so a cross-thread {@code close()} can
+     * take up to ~100&nbsp;ms (plus one packet-processing interval) to return.
+     *
+     * <p>For receivers created via {@link RtspSession#intoH264Receiver()}, this
+     * also issues a best-effort RTSP TEARDOWN — the receiver owns the session's
+     * control plane (the session wrapper was consumed at conversion).
      */
     @Override public void close() { super.close(); }
 

@@ -1,20 +1,27 @@
 package org.tstrans.rtp;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.tstrans.RtpException;
+import org.tstrans.RtspException;
+import org.tstrans.mpegts.MuxerConfig;
+import org.tstrans.mpegts.VideoCodec;
 
 /**
  * Unit tests for {@link H264Receiver}.
  *
- * <p>Tests are offline — no live RTSP server. The loopback test hand-builds a
- * single-NALU RFC 3550 + RFC 6184 packet (same bytes as the Rust and Python
- * loopback tests) and sends it to a locally-bound receiver via
- * {@link DatagramSocket}.
+ * <p>Mostly offline — the loopback test hand-builds a single-NALU RFC 3550 +
+ * RFC 6184 packet (same bytes as the Rust and Python loopback tests) and sends
+ * it to a locally-bound receiver via {@link DatagramSocket}. Tests 8a/8b spin
+ * the in-JVM {@link RtspServer} MP2T fixture (Linux-gated, same pattern as
+ * {@link RtspServerClientLoopbackTest}) to exercise the
+ * {@link RtspSession#intoH264Receiver()} guard paths.
  *
  * <h2>Packet layout (RFC 3550 §5.1 + RFC 6184 §5.6)</h2>
  * <pre>
@@ -182,15 +189,77 @@ class H264ReceiverTest {
             "listen without ?pt= must throw RtpException");
     }
 
-    // ── Test 8: RTSP session consumed-handle double-use ───────────────────────
-    // NOTE: This test requires a real RTSP server and is marked @Test but will
-    // only exercise the locally-testable path (session misuse without a server).
-    // Full RTSP consume-path is exercised in RtspServerClientLoopbackTest.
-    //
-    // We test that an RtspSession created by connect() (not connectH264()) raises
-    // RtspException(PROTOCOL) from intoH264Receiver() — the MP2T-vs-H264 guard.
-    // This test cannot run without a server, so we skip it here. The RTSP loopback
-    // test (RtspServerClientLoopbackTest) covers the session lifecycle end-to-end.
+    // ── Test 8a: MP2T session → intoH264Receiver() → PROTOCOL ────────────────
+
+    /**
+     * A session created by {@link RtspClient#connect} (the MP2T path) must reject
+     * {@link RtspSession#intoH264Receiver()} with {@link RtspException} of kind
+     * {@code PROTOCOL} — the "no H264DepayConfig stashed" guard. Fixture: the
+     * in-JVM {@link RtspServer} with a unicast MP2T mount; no media needs to
+     * flow — {@code connect()} drives OPTIONS/DESCRIBE/SETUP/PLAY against the
+     * mount's static SDP.
+     *
+     * <p>Also pins the consume-on-failure contract (NativeHandle contract item
+     * 3): the failed call consumed the session wrapper, so control methods
+     * throw {@link IllegalStateException} and {@code close()} is a harmless
+     * no-op (the native already tore the session down best-effort).
+     */
+    @Test
+    @Timeout(20)
+    void mp2tSessionIntoH264ReceiverThrowsProtocol() throws Exception {
+        assumeTrue(isLinux(),
+            "RTSP live fixture gated to Linux (real sockets + tokio runtime)");
+        try (RtspServer server = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            String addr = server.localAddr();
+            assertNotNull(addr, "server must be bound");
+            int port = Integer.parseInt(addr.substring(addr.lastIndexOf(':') + 1));
+            MountHandle mount = server.addUnicastMount("/live", mp2tCfg());
+            try {
+                RtspSession session = RtspClient.connect(
+                    RtspClientConfig.of("rtsp://127.0.0.1:" + port + "/live"));
+                RtspException ex = assertThrows(RtspException.class,
+                    session::intoH264Receiver,
+                    "intoH264Receiver() on a connect()-created (MP2T) session must throw");
+                assertEquals(RtspException.Kind.PROTOCOL, ex.kind(),
+                    "MP2T-vs-H264 guard must map to PROTOCOL");
+                // Consume-on-failure: the wrapper is dead; close() is a no-op.
+                assertThrows(IllegalStateException.class, session::pause,
+                    "session must be consumed by the failed intoH264Receiver()");
+                session.close();
+            } finally {
+                mount.close();
+            }
+        }
+    }
+
+    // ── Test 8b: closed session → intoH264Receiver() → IllegalStateException ─
+
+    /**
+     * {@code close()} then {@code intoH264Receiver()} must throw
+     * {@link IllegalStateException} from the {@code ensureOpen} guard — the
+     * consume-first path never reaches the native on an already-closed wrapper.
+     */
+    @Test
+    @Timeout(20)
+    void closedSessionIntoH264ReceiverThrowsIllegalState() throws Exception {
+        assumeTrue(isLinux(),
+            "RTSP live fixture gated to Linux (real sockets + tokio runtime)");
+        try (RtspServer server = RtspServer.start(RtspServerConfig.of("127.0.0.1:0"))) {
+            String addr = server.localAddr();
+            assertNotNull(addr, "server must be bound");
+            int port = Integer.parseInt(addr.substring(addr.lastIndexOf(':') + 1));
+            MountHandle mount = server.addUnicastMount("/live", mp2tCfg());
+            try {
+                RtspSession session = RtspClient.connect(
+                    RtspClientConfig.of("rtsp://127.0.0.1:" + port + "/live"));
+                session.close(); // best-effort teardown + handle zeroed
+                assertThrows(IllegalStateException.class, session::intoH264Receiver,
+                    "intoH264Receiver() on a closed session must throw IllegalStateException");
+            } finally {
+                mount.close();
+            }
+        }
+    }
 
     // ── Test 9: ParameterSetInjection enum ordinals ──────────────────────────
 
@@ -199,5 +268,18 @@ class H264ReceiverTest {
         // Ordinal stability: the JNI layer passes ordinals to Rust.
         assertEquals(0, ParameterSetInjection.NONE.ordinal());
         assertEquals(1, ParameterSetInjection.BEFORE_IDR.ordinal());
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
+
+    /** Minimal single-program H.264 MP2T mount config for the RTSP fixture. */
+    private static MuxerConfig mp2tCfg() {
+        return MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264).build();
     }
 }

@@ -103,37 +103,44 @@ public final class RtspSession extends NativeHandle {
     }
 
     /**
-     * Consume the session's data-plane and wrap it in an {@link H264Receiver} for
+     * Consume this session and wrap its data plane in an {@link H264Receiver} for
      * iterating reassembled H.264 Access Units.
      *
      * <p>Raises {@link RtspException} of kind {@code PROTOCOL} when:
      * <ul>
      *   <li>this session was created via {@link RtspClient#connect(RtspClientConfig)}
      *       (not {@link RtspClient#connectH264}), or
-     *   <li>{@code intoH264Receiver()} or {@link #intoDemuxReceiver()} has already
-     *       been called (data plane already consumed).
+     *   <li>{@link #intoDemuxReceiver()} has already consumed the data plane.
      * </ul>
      *
-     * <p>The control-plane methods ({@link #pause()}, {@link #play()},
-     * {@link #teardown()}, {@link #cancelHandle()}) remain usable after the call —
-     * only the data-plane {@code RtspSession} (the inner Rust value) is consumed.
-     *
-     * <p><b>Double-free safety:</b> the native session handle is zeroed via
-     * {@link #consumeHandle()} BEFORE the fallible native work to avoid
-     * double-free if construction raises.
+     * <p><b>Consumption semantics:</b> unlike {@link #intoDemuxReceiver()} (which
+     * leaves this wrapper's control-plane methods usable), the H.264 path follows
+     * the {@code NativeHandle} contract item 3 strictly: the session handle is
+     * zeroed via {@link #consumeHandle()} BEFORE the fallible native work
+     * (double-free safety), so this wrapper is closed on return — success
+     * <em>or</em> failure — and subsequent control calls throw
+     * {@link IllegalStateException} while {@link #close()} becomes a no-op. On
+     * success the returned {@link H264Receiver} takes over the whole session:
+     * the RTSP control connection (and keepalive) stays alive inside the
+     * receiver, and {@link H264Receiver#close()} performs the best-effort
+     * TEARDOWN. On failure the native tears the session down best-effort.
      *
      * @return an {@link H264Receiver} over the post-SETUP RTP data plane
      * @throws RtspException {@code PROTOCOL} if the session was not created by
      *     {@code connectH264}, or if the data plane has already been consumed
-     * @throws IllegalStateException if this session is closed
+     *     (this wrapper is consumed even when the call fails)
+     * @throws IllegalStateException if this session is already closed
      */
     public H264Receiver intoH264Receiver() throws RtspException {
         ensureOpen("RtspSession is closed");
-        // Zero the handle BEFORE the fallible native — the double-free lesson.
-        // The native takes + converts the internal data-plane; the control-plane
-        // Arcs are unaffected. If the native throws, the zeroed handle means
-        // subsequent close() is a harmless no-op.
-        long h = nIntoH264Receiver(peekHandle());
+        // Claim the registry id atomically BEFORE the fallible native
+        // (consume-first — NativeHandle contract item 3, same shape as
+        // srt Socket.intoSender()). The native takes the whole session slot out
+        // of its registry: success moves the control plane into the H264Receiver;
+        // failure tears the session down best-effort. Either way a subsequent
+        // close() finds 0 and is a harmless no-op.
+        long sessionH = consumeHandle();
+        long h = nIntoH264Receiver(sessionH);
         if (h == 0) {
             throw new RtspException(RtspException.Kind.PROTOCOL,
                 "nIntoH264Receiver returned 0 without throwing");

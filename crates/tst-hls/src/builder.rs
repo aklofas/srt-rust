@@ -1,13 +1,14 @@
-//! Builder for [`crate::hls::HlsPublisher`].
+//! Builder for [`crate::HlsPublisher`].
 
 use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::hls::config::{HlsConfig, HlsMode};
-use crate::hls::error::HlsError;
-use crate::hls::publisher::HlsPublisher;
-use crate::hls::url::{HlsUrl, HlsUrlError};
+use crate::config::{HlsConfig, HlsMode};
+use crate::error::HlsError;
+use crate::publisher::HlsPublisher;
+#[cfg(feature = "serve")]
+use crate::url::{HlsUrl, HlsUrlError};
 
 /// Builder for [`HlsPublisher`].
 #[must_use]
@@ -25,6 +26,7 @@ impl HlsPublisherBuilder {
     }
 
     /// Parse an `hls://` or `hlss://` URL and seed the config from it.
+    #[cfg(feature = "serve")]
     pub fn from_url(url: &str) -> Result<Self, HlsUrlError> {
         let parsed = HlsUrl::parse(url)?;
         let mut config = HlsConfig::default();
@@ -111,6 +113,7 @@ mod tests {
             .basic_auth("u", "p");
     }
 
+    #[cfg(feature = "serve")]
     #[test]
     fn from_url_seeds_config() {
         let b = HlsPublisherBuilder::from_url("hls://127.0.0.1:9100?mode=vod&playlist_window=10")
@@ -119,6 +122,7 @@ mod tests {
         assert_eq!(b.config.playlist_window, 10);
     }
 
+    #[cfg(feature = "serve")]
     #[test]
     fn builder_build_smoke() {
         let dir = std::env::temp_dir().join(format!(

@@ -1,0 +1,79 @@
+[package]
+name = "tst-hls"
+description = "HLS publisher for tstrans — MPEG-TS segmenter + playlist writer with an optional built-in HTTP server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# serve: the built-in HTTP server + hls:// URL parsing (tokio/hyper).
+# Disable for a segmenter-only build (writes segments + playlists to disk,
+# serving is the caller's business).
+default = ["serve", "tls"]
+serve = [
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:http-body-util",
+    "dep:bytes",
+    "dep:base64",
+]
+# tls: HTTPS (`hlss://`) for the built-in server. Implies serve.
+tls = ["serve", "dep:rustls", "dep:tokio-rustls", "dep:rustls-pemfile"]
+
+[dependencies]
+tst-core = { path = "../tst-core" }
+thiserror = { workspace = true }
+
+[dependencies.tokio]
+version  = "1"
+features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"]
+optional = true
+
+[dependencies.tokio-util]
+version  = "0.7"
+optional = true
+
+[dependencies.hyper]
+version  = "1.7"
+features = ["server", "http1"]
+optional = true
+
+[dependencies.hyper-util]
+version  = "0.1"
+features = ["server", "tokio", "service", "http1"]
+optional = true
+
+[dependencies.http-body-util]
+version  = "0.1"
+optional = true
+
+[dependencies.bytes]
+version  = "1"
+optional = true
+
+[dependencies.base64]
+version  = "0.22"
+optional = true
+
+[dependencies.rustls]
+version          = "0.23"
+optional         = true
+default-features = false
+features         = ["std", "ring"]
+
+[dependencies.tokio-rustls]
+version          = "0.26"
+default-features = false
+features         = ["ring"]
+optional = true
+
+[dependencies.rustls-pemfile]
+version  = "2"
+optional = true
+
+[dev-dependencies]
+tst-pipeline = { path = "../tst-pipeline" }

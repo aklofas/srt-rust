@@ -1,7 +1,7 @@
 //! m3u8 playlist writer (EXT-X-VERSION 6; LIVE / EVENT / VOD modes).
 
-use crate::hls::config::HlsMode;
-use crate::hls::segmenter::Segmenter;
+use crate::config::HlsMode;
+use crate::segmenter::Segmenter;
 
 /// Render the current playlist as m3u8 text.
 ///
@@ -42,7 +42,7 @@ pub(crate) fn render(segmenter: &Segmenter, is_final: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hls::config::HlsConfig;
+    use crate::config::HlsConfig;
 
     fn fresh_segmenter(mode: HlsMode) -> Segmenter {
         let dir = std::env::temp_dir().join(format!(

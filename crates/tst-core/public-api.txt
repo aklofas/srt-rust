@@ -5186,6 +5186,7 @@ pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::new(tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, &mut [u8]) -> usize
+pub fn tst_core::mpegts::mux::Muxer::request_psi(&mut self)
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::data_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::DataStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::data_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::DataStreamHandle>, tst_core::error::MuxError>

@@ -86,6 +86,53 @@ fn first_pull_includes_pat_pmt() {
     assert_eq!(pat_pid, 0x0000, "first packet should be PAT (PID 0)");
 }
 
+/// True if any TS packet in `buf[..n]` is a PAT (PID 0).
+fn contains_pat(buf: &[u8], n: usize) -> bool {
+    buf[..n].chunks_exact(188).any(|pkt| {
+        let pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        pid == 0x0000
+    })
+}
+
+#[test]
+fn request_psi_forces_pat_on_next_push() {
+    // Default psi_interval_ms = 100 → 9000 ticks. Push at PTS 0 (PSI emitted
+    // on the first push because slots start None), drain. A second push well
+    // within the interval emits NO PAT. After request_psi(), the very next
+    // push re-emits the PAT so the segment opens PAT → PMT → IDR.
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let nal = [0x00u8, 0x00, 0x01, 0x67];
+    let mut buf = [0u8; 188 * 32];
+
+    // First push: PSI due (slot None) → PAT present.
+    m.push_video(&nal, Pts90khz::new(0), true).unwrap();
+    let n = m.pull(&mut buf);
+    assert!(contains_pat(&buf, n), "first push must emit PAT");
+
+    // Second push inside the interval → no PAT.
+    m.push_video(&nal, Pts90khz::new(1000), false).unwrap();
+    let n = m.pull(&mut buf);
+    assert!(
+        !contains_pat(&buf, n),
+        "push inside psi_interval must NOT re-emit PAT"
+    );
+
+    // Force PSI, then push (still inside the interval) → PAT re-emitted, and
+    // it precedes the video PES payload for this push.
+    m.request_psi();
+    m.push_video(&nal, Pts90khz::new(2000), true).unwrap();
+    let n = m.pull(&mut buf);
+    assert!(
+        n >= 188,
+        "expected packets after request_psi + push, got {n} bytes"
+    );
+    let first_pid = ((buf[1] as u16 & 0x1F) << 8) | buf[2] as u16;
+    assert_eq!(
+        first_pid, 0x0000,
+        "after request_psi the next push must begin with a PAT (PID 0)"
+    );
+}
+
 // ── Buffer-full atomicity ─────────────────────────────────────────────────
 
 #[test]

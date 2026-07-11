@@ -125,6 +125,20 @@ public final class RtspSession extends NativeHandle {
      * receiver, and {@link H264Receiver#close()} performs the best-effort
      * TEARDOWN. On failure the native tears the session down best-effort.
      *
+     * <p><b>pause() / play() unavailable after conversion.</b> Because this method
+     * consumes the session, {@link #pause()} and {@link #play()} are no longer
+     * accessible once {@code intoH264Receiver()} returns. This differs from
+     * {@link #intoDemuxReceiver()}, which leaves the control-plane methods open,
+     * and from the Python binding ({@code session.into_h264_receiver()} keeps the
+     * session wrapper usable). If you need mid-stream pause/resume from Java, drive
+     * the control plane before calling this method and keep the interaction
+     * single-threaded.
+     *
+     * <p><b>Failure with a live DemuxReceiver.</b> If {@link #intoDemuxReceiver()}
+     * previously consumed the data plane, this call still consumes and tears down the
+     * session before throwing {@link RtspException}. Any live {@link DemuxReceiver}
+     * backed by this session will reach EOS on its next iteration.
+     *
      * @return an {@link H264Receiver} over the post-SETUP RTP data plane
      * @throws RtspException {@code PROTOCOL} if the session was not created by
      *     {@code connectH264}, or if the data plane has already been consumed

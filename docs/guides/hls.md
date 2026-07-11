@@ -65,9 +65,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shell.send_klv(&klv_bytes, Pts90khz::new(pts), 0)?;
 
     // LIVE mode: drop the shell to stop. To keep a completed EVENT/VOD
-    // playlist fetchable, use finish_serving() below instead.
+    // playlist fetchable after the stream ends, use finish_serving() instead.
     let publisher = shell.finish()?;
-    publisher.finish()?; // writes the terminal playlist + #EXT-X-ENDLIST
+    // finish() flushes the final segment and writes the playlist, then tears
+    // the server down. #EXT-X-ENDLIST is written only in EVENT/VOD mode — a
+    // LIVE playlist has no end tag, so a client keeps polling until the server
+    // stops responding.
+    publisher.finish()?;
     Ok(())
 }
 ```

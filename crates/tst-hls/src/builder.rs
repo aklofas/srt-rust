@@ -52,6 +52,14 @@ impl HlsPublisherBuilder {
         self
     }
 
+    /// Hard upper bound on an open segment's wall-clock age in the
+    /// keyframe-driven flow (force-cuts when a keyframe is overdue). Defaults
+    /// to `2 × segment_duration`; must be `≥ segment_duration`.
+    pub fn max_segment_duration(mut self, d: Duration) -> Self {
+        self.config.max_segment_duration = Some(d);
+        self
+    }
+
     /// Rolling window size in LIVE mode.
     pub fn playlist_window(mut self, n: usize) -> Self {
         self.config.playlist_window = n;

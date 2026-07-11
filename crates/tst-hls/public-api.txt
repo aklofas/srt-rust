@@ -7,6 +7,7 @@ pub fn tst_hls::builder::HlsPublisherBuilder::bind(self, core::net::socket_addr:
 pub fn tst_hls::builder::HlsPublisherBuilder::build(self) -> core::result::Result<tst_hls::publisher::HlsPublisher, tst_hls::error::HlsError>
 pub fn tst_hls::builder::HlsPublisherBuilder::enable_tls<P: core::convert::AsRef<std::path::Path>>(self, P, P) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::from_url(&str) -> core::result::Result<Self, tst_hls::url::HlsUrlError>
+pub fn tst_hls::builder::HlsPublisherBuilder::max_segment_duration(self, core::time::Duration) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::mode(self, tst_hls::config::HlsMode) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::new() -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::output_dir<P: core::convert::AsRef<std::path::Path>>(self, P) -> Self
@@ -51,6 +52,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_hls::config::HlsMode
 #[non_exhaustive] pub struct tst_hls::config::HlsConfig
 pub tst_hls::config::HlsConfig::basic_auth: core::option::Option<(alloc::string::String, alloc::string::String)>
 pub tst_hls::config::HlsConfig::bind: core::net::socket_addr::SocketAddr
+pub tst_hls::config::HlsConfig::max_segment_duration: core::option::Option<core::time::Duration>
 pub tst_hls::config::HlsConfig::mode: tst_hls::config::HlsMode
 pub tst_hls::config::HlsConfig::output_dir: std::path::PathBuf
 pub tst_hls::config::HlsConfig::playlist_window: usize
@@ -169,6 +171,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_hls::publisher::HlsServerHandl
 pub mod tst_hls::stats
 #[non_exhaustive] pub struct tst_hls::stats::HlsStats
 pub tst_hls::stats::HlsStats::bytes_pushed_total: u64
+pub tst_hls::stats::HlsStats::forced_cuts: u64
 pub tst_hls::stats::HlsStats::open_segment_bytes: u64
 pub tst_hls::stats::HlsStats::segments_written: u64
 impl core::clone::Clone for tst_hls::stats::HlsStats
@@ -346,6 +349,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_hls::url::HlsUrlError
 #[non_exhaustive] pub struct tst_hls::HlsConfig
 pub tst_hls::HlsConfig::basic_auth: core::option::Option<(alloc::string::String, alloc::string::String)>
 pub tst_hls::HlsConfig::bind: core::net::socket_addr::SocketAddr
+pub tst_hls::HlsConfig::max_segment_duration: core::option::Option<core::time::Duration>
 pub tst_hls::HlsConfig::mode: tst_hls::config::HlsMode
 pub tst_hls::HlsConfig::output_dir: std::path::PathBuf
 pub tst_hls::HlsConfig::playlist_window: usize
@@ -397,6 +401,7 @@ pub fn tst_hls::builder::HlsPublisherBuilder::bind(self, core::net::socket_addr:
 pub fn tst_hls::builder::HlsPublisherBuilder::build(self) -> core::result::Result<tst_hls::publisher::HlsPublisher, tst_hls::error::HlsError>
 pub fn tst_hls::builder::HlsPublisherBuilder::enable_tls<P: core::convert::AsRef<std::path::Path>>(self, P, P) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::from_url(&str) -> core::result::Result<Self, tst_hls::url::HlsUrlError>
+pub fn tst_hls::builder::HlsPublisherBuilder::max_segment_duration(self, core::time::Duration) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::mode(self, tst_hls::config::HlsMode) -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::new() -> Self
 pub fn tst_hls::builder::HlsPublisherBuilder::output_dir<P: core::convert::AsRef<std::path::Path>>(self, P) -> Self
@@ -428,6 +433,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_hls::publisher::HlsServerHa
 impl core::panic::unwind_safe::UnwindSafe for tst_hls::publisher::HlsServerHandle
 #[non_exhaustive] pub struct tst_hls::HlsStats
 pub tst_hls::HlsStats::bytes_pushed_total: u64
+pub tst_hls::HlsStats::forced_cuts: u64
 pub tst_hls::HlsStats::open_segment_bytes: u64
 pub tst_hls::HlsStats::segments_written: u64
 impl core::clone::Clone for tst_hls::stats::HlsStats

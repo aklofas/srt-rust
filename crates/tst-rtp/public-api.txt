@@ -357,6 +357,7 @@ pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl,
 pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
 pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
 pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+pub fn tst_rtp::h264::receiver::H264Receiver::socket_stats(&self) -> tst_core::transport::SocketStats
 impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
 pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
 impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver
@@ -492,6 +493,7 @@ pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl,
 pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
 pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
 pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+pub fn tst_rtp::h264::receiver::H264Receiver::socket_stats(&self) -> tst_core::transport::SocketStats
 impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
 pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
 impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver
@@ -2169,6 +2171,7 @@ pub fn tst_rtp::h264::receiver::H264Receiver::listen_with(&tst_rtp::url::RtpUrl,
 pub fn tst_rtp::h264::receiver::H264Receiver::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
 pub fn tst_rtp::h264::receiver::H264Receiver::recv_au(&mut self) -> core::result::Result<core::option::Option<tst_rtp::h264::depacketizer::H264Au>, tst_core::transport::TransportError>
 pub fn tst_rtp::h264::receiver::H264Receiver::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+pub fn tst_rtp::h264::receiver::H264Receiver::socket_stats(&self) -> tst_core::transport::SocketStats
 impl core::ops::drop::Drop for tst_rtp::h264::receiver::H264Receiver
 pub fn tst_rtp::h264::receiver::H264Receiver::drop(&mut self)
 impl core::marker::Freeze for tst_rtp::h264::receiver::H264Receiver

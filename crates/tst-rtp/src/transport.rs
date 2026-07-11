@@ -436,6 +436,13 @@ fn random_u32() -> u32 {
 ///   u16 length prefix, so the same 65535 ceiling applies.
 pub(crate) const RECV_SCRATCH_LEN: usize = 65535;
 
+/// Sentinel `TransportError::Broken.msg` emitted by [`Source::recv_raw`]'s
+/// mpsc arm when the interleaved pump thread drops its `Sender` (clean
+/// RTSP teardown). Consumers that treat this disconnect as EOS — e.g.
+/// `H264Receiver::recv_au` — match against this const, NOT a string
+/// literal, so a wording change can't silently break the EOS contract.
+pub(crate) const MPSC_PUMP_DISCONNECTED: &str = "interleaved pump bridge disconnected";
+
 /// Inner data source for [`RtpRecvTransport`].
 ///
 /// `Udp` — the Phase 1 default: read UDP datagrams off a bound socket
@@ -558,7 +565,7 @@ impl Source {
                         // broken transport so the recv shell can stop the
                         // demux loop.
                         return Err(TransportError::Broken {
-                            msg: "interleaved pump bridge disconnected".to_string(),
+                            msg: MPSC_PUMP_DISCONNECTED.to_string(),
                             errno_code: None,
                         });
                     }

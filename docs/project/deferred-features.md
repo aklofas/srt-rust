@@ -1603,3 +1603,47 @@ the trigger that would unblock it.
   reordering (e.g. multi-path satellite link) and requires in-order AU
   reconstruction, or RTCP RR feedback to the sender is needed for
   adaptive bitrate control.
+
+## `ManagedReceiveTransport::max_payload` during reconnect
+
+- **Status:** Deferred. While a `ManagedReceiveTransport` is between
+  connections — the inner transport has been torn down and the
+  replacement has not connected yet — `max_payload()` reports a fixed
+  1316-byte fallback, which sits below the receive-side
+  deliverable-ceiling contract the concrete transports honour since
+  PR #97 (RTP 65523, SRT at least 1456, RIST/UDP 65535). The pipeline
+  shells (`Receiver` / `RawReceiver` / `DemuxReceiver`) are unaffected:
+  they size their receive buffers once at construction from a live
+  inner transport, so the fallback is only observable to direct callers
+  polling `max_payload()` mid-reconnect.
+- **Why deferred:** Direct-caller edge only — no shell or binding path
+  can observe the window. Choosing the replacement value (a
+  per-transport ceiling, a conservative 65535, or caching the last live
+  transport's value) is a small standalone decision, queued together
+  with the recv-side `pkt_size` knob below rather than shipped as a
+  rider on the recv-ceiling arc.
+- **Trigger to revisit:** The planned pre-1.0 API pass covering this
+  and the recv-side `pkt_size` knob below, or a direct
+  `ManagedReceiveTransport` consumer sizing buffers from
+  `max_payload()` across reconnects.
+
+## Recv-side `pkt_size` knob (inert since the recv-ceiling change)
+
+- **Status:** Deferred decision. Since receive-side buffer sizing was
+  decoupled from the configured packet size (PR #97), the receive-path
+  `pkt_size` knobs are accepted but have no effect:
+  the Rust builders (`RtpRecvSocketBuilder::pkt_size`,
+  `RistRecvTransportBuilder::pkt_size`), the Python receive-side
+  `pkt_size` kwarg / builder method (`tstrans.rtp` / `tstrans.rist`),
+  the JVM `org.tstrans.rtp.Receiver.fromUrl(url, pktSize)` overload,
+  and `?pkt_size=` on receive URLs. The rustdoc / stubs / Javadoc
+  already state the knob has no receive-side effect; send-side
+  `pkt_size` is unchanged and still load-bearing.
+- **Why deferred:** Deprecate outright vs. repurpose (for example as an
+  opt-in receive-buffer cap) is a pre-1.0 API decision. Pre-1.0
+  breakage is allowed, so no deprecation cycle is required — but the
+  change should land as one consistent pass across the Rust, Python,
+  and JVM surfaces plus the URL grammar.
+- **Trigger to revisit:** The planned pre-1.0 API pass covering this
+  and the `ManagedReceiveTransport` reconnect fallback above, and in
+  any case before the v1.0 API freeze.

@@ -82,7 +82,13 @@ impl H264FmtpParams {
 
             if key.eq_ignore_ascii_case("packetization-mode") {
                 match val.parse::<u8>() {
-                    Ok(m) => out.packetization_mode = m,
+                    Ok(m) if m <= 2 => out.packetization_mode = m,
+                    Ok(m) => {
+                        tracing::warn!(
+                            value = m,
+                            "H264 fmtp: packetization-mode out of range (RFC 6184 §8.2.1 allows 0–2), using default 0"
+                        );
+                    }
                     Err(_) => {
                         tracing::warn!(
                             value = val,
@@ -264,6 +270,27 @@ mod tests {
         let f = H264FmtpParams::parse(&m, 96);
         assert_eq!(f.packetization_mode, 0); // warn + default, not an error
         assert_eq!(f.profile_level_id.as_deref(), Some("42001e")); // later params still parsed
+    }
+
+    #[test]
+    fn fmtp_out_of_range_packetization_mode_falls_back_to_0() {
+        // RFC 6184 §8.2.1: packetization-mode MUST be 0, 1, or 2.
+        // Values outside that range are treated the same as unparseable: warn + default 0.
+        let m = media_with(
+            &[("fmtp", "96 packetization-mode=7;profile-level-id=42001e")],
+            &[96],
+        );
+        let f = H264FmtpParams::parse(&m, 96);
+        assert_eq!(f.packetization_mode, 0); // out-of-range → default 0
+        assert_eq!(f.profile_level_id.as_deref(), Some("42001e")); // later params still parsed
+
+        // Value 2 is the upper bound of the valid range and must be stored as-is.
+        let m2 = media_with(
+            &[("fmtp", "96 packetization-mode=2;profile-level-id=42001e")],
+            &[96],
+        );
+        let f2 = H264FmtpParams::parse(&m2, 96);
+        assert_eq!(f2.packetization_mode, 2);
     }
 
     #[test]

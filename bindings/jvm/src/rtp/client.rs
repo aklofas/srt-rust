@@ -1,6 +1,7 @@
 //! `org.tstrans.rtp` RTSP client JNI surface — `RtspClient`, `RtspSession`,
 //! `RtspCancelHandle`, and the auth/config/stats value types' native backing.
 //! Ports tst-py's `bindings/python/src/rtp/client.rs`. Natives added in Tasks 4-5.
+//! Task 15 adds `nConnectH264` (RtspClient) + `nIntoH264Receiver` (RtspSession).
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +13,7 @@ use jni::sys::{jboolean, jint, jlong};
 
 use secrecy::SecretString;
 use tst_core::mpegts::demux::DemuxerConfig;
+use tst_rtp::H264DepayConfig;
 use tst_rtp::RtspClientBuilder;
 use tst_rtp::error::RtspError;
 use tst_rtp::rtsp::client::RtspCancelHandle as RustRtspCancel;
@@ -101,10 +103,18 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspCancelHandle_nClose(
 /// control natives clone the Arc and lock, never holding a `&mut` to the box;
 /// `cancel_handle` clones a self-contained handle out from under the lock);
 /// `torn_down` so a duplicate teardown is a no-op.
+///
+/// `h264_depay_config` is stashed only when created via `nConnectH264` (the H.264
+/// path — it carries the SDP-negotiated payload type and out-of-band SPS/PPS).
+/// `nIntoH264Receiver` takes it + the data-plane session together; `None` when
+/// the session was created via plain `nConnect` (MP2T path) or after consumption.
 struct JniRtspSession {
     client: Arc<Mutex<Option<RustRtspClient>>>,
     session: Arc<Mutex<Option<RustRtspSession>>>,
     torn_down: Arc<AtomicBool>,
+    /// `Some(_)` only for `nConnectH264`-created sessions (Task 15). `None` for
+    /// plain `nConnect` sessions and after `nIntoH264Receiver` has consumed it.
+    h264_depay_config: Arc<Mutex<Option<H264DepayConfig>>>,
 }
 
 /// `RtspClient.nConnect(url, authUser, authPassword, keepalive)` — run
@@ -191,6 +201,93 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
             client: Arc::new(Mutex::new(Some(client))),
             session: Arc::new(Mutex::new(Some(session))),
             torn_down: Arc::new(AtomicBool::new(false)),
+            h264_depay_config: Arc::new(Mutex::new(None)), // MP2T path — no H.264 config
+        }) as jlong
+    })
+}
+
+/// `RtspClient.nConnectH264(url, authUser, authPassword, keepalive)` — run
+/// OPTIONS/DESCRIBE/SETUP for H.264 media/PLAY; return a `JniRtspSession` handle
+/// with the session slot holding an `H264DepayConfig`. Ports
+/// `PyRtspClient::connect_h264`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnectH264(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    url: JString<'_>,
+    auth_user: JString<'_>,
+    auth_password: JString<'_>,
+    keepalive: jboolean,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        let url_str: String = match env.get_string(&url) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                return 0;
+            }
+        };
+
+        let mut builder = match RtspClientBuilder::new(&url_str) {
+            Ok(b) => b,
+            Err(e) => {
+                rtsp_error_to_jvm(env, &e);
+                return 0;
+            }
+        };
+
+        if !auth_user.is_null() {
+            let user: String = match env.get_string(&auth_user) {
+                Ok(s) => s.into(),
+                Err(e) => {
+                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                    return 0;
+                }
+            };
+            let pw: String = if auth_password.is_null() {
+                String::new()
+            } else {
+                match env.get_string(&auth_password) {
+                    Ok(s) => s.into(),
+                    Err(e) => {
+                        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                        return 0;
+                    }
+                }
+            };
+            builder = builder.auth(user, SecretString::from(pw));
+        }
+
+        if keepalive == 0 {
+            builder = builder.no_auto_keepalive(true);
+        }
+
+        // Drive OPTIONS / DESCRIBE / SETUP (H.264 path) / PLAY.
+        let result: Result<(RustRtspClient, RustRtspSession, H264DepayConfig), RtspError> =
+            (|| {
+                let mut client = builder.connect()?;
+                let _opts = client.options()?;
+                let sdp = client.describe()?;
+                let (session, depay_config) = client.setup_h264_auto(&sdp)?;
+                let _info = client.play()?;
+                Ok((client, session, depay_config))
+            })();
+
+        let (client, session, depay_config) = match result {
+            Ok(triple) => triple,
+            Err(e) => {
+                rtsp_error_to_jvm(env, &e);
+                return 0;
+            }
+        };
+
+        // Stash the H264DepayConfig in the session slot alongside the data-plane
+        // RtspSession. `nIntoH264Receiver` takes both atomically.
+        REGISTRY_SESSION.insert(JniRtspSession {
+            client: Arc::new(Mutex::new(Some(client))),
+            session: Arc::new(Mutex::new(Some(session))),
+            torn_down: Arc::new(AtomicBool::new(false)),
+            h264_depay_config: Arc::new(Mutex::new(Some(depay_config))),
         }) as jlong
     })
 }
@@ -377,6 +474,84 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoDemuxReceiver(
             None
         };
         demux_receiver_handle_from_transport(transport, opts)
+    })
+}
+
+/// `RtspSession.nIntoH264Receiver` — take the H264DepayConfig stashed at
+/// `nConnectH264` time AND the data-plane `RtspSession`, convert them into an
+/// `H264Receiver`, and return its handle. Ports `PyRtspSession::into_h264_receiver`.
+///
+/// Double-consume (calling `intoDemuxReceiver` or `intoH264Receiver` twice) →
+/// `RtspException(PROTOCOL)`. Calling on a plain `nConnect`-created session (no
+/// stashed config) → `RtspException(PROTOCOL)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_rtp_RtspSession_nIntoH264Receiver(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    crate::panic::jni_catch(&mut env, 0, |env| {
+        // Step 1: lease the session and clone both Arcs out.
+        let Some((depay_config_arc, session_arc)) = REGISTRY_SESSION.with(handle as u64, |s| {
+            (s.h264_depay_config.clone(), s.session.clone())
+        }) else {
+            crate::error::throw_closed(env, "RtspSession");
+            return 0;
+        };
+
+        // Step 2: take the H264DepayConfig. None = wrong path (plain connect) or
+        // already consumed.
+        let depay_config = {
+            let mut guard = match depay_config_arc.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    throw_rtsp(env, "PROTOCOL", "RtspSession H264DepayConfig lock poisoned");
+                    return 0;
+                }
+            };
+            match guard.take() {
+                Some(cfg) => cfg,
+                None => {
+                    throw_rtsp(
+                        env,
+                        "PROTOCOL",
+                        "RtspSession.intoH264Receiver: session was not created by \
+                         connectH264(), or the H264DepayConfig has already been consumed",
+                    );
+                    return 0;
+                }
+            }
+        };
+
+        // Step 3: take the data-plane RtspSession. Double-consume = protocol error.
+        // This is zeroed BEFORE the fallible `into_h264_receiver` call
+        // (double-free lesson — mirrors Python's `guard.take()` before conversion).
+        let session = {
+            let mut guard = match session_arc.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    throw_rtsp(env, "PROTOCOL", "RtspSession data-plane lock poisoned");
+                    return 0;
+                }
+            };
+            match guard.take() {
+                Some(sess) => sess,
+                None => {
+                    throw_rtsp(
+                        env,
+                        "PROTOCOL",
+                        "RtspSession.intoH264Receiver: data plane already consumed",
+                    );
+                    return 0;
+                }
+            }
+        };
+
+        // Step 4: convert — infallible on valid SETUP-succeeded paths.
+        let receiver = session.into_h264_receiver(depay_config);
+
+        // Step 5: wrap in registry and return the handle.
+        super::h264_receiver::h264_receiver_handle_from_receiver(receiver)
     })
 }
 

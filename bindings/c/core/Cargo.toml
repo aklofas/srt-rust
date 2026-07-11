@@ -27,7 +27,7 @@ rtp     = ["std", "dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
 udp     = ["std", "dep:tst-udp"]
 tcp     = ["std", "dep:tst-tcp"]
-hls     = ["std", "dep:tst-hls"]
+hls     = ["std", "dep:tst-hls", "tst-hls?/serve"]
 rist    = ["std", "dep:tst-rist"]
 
 [dependencies]

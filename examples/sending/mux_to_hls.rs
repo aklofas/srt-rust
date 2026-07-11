@@ -27,7 +27,7 @@ use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::publisher::Publisher;
 use tst_pipeline::MuxPublisher;
-use tst_tcp::hls::{HlsMode, HlsPublisherBuilder};
+use tst_hls::{HlsMode, HlsPublisherBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);

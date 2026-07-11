@@ -139,7 +139,7 @@ pub enum TstError {
 
     // Plan A5a — HLS error codes (-34..=-37).
     /// (-34) HLS HTTP server bind/listen failure.
-    /// Maps from `tst_tcp::hls::HlsErrorKind::{BindFailed, Io}`.
+    /// Maps from `tst_hls::HlsErrorKind::{BindFailed, Io}`.
     HlsIo = -34,
     /// (-35) HLS configuration invalid (bad output_dir, segment_duration < 1s, etc.).
     /// Maps from `HlsErrorKind::{Url, InvalidConfig, UnalignedPushTs}`.
@@ -730,8 +730,8 @@ pub(crate) fn tcp_error_to_code(e: &tst_tcp::error::TcpError) -> TstError {
 }
 
 #[cfg(feature = "hls")]
-pub(crate) fn hls_error_to_code(e: &tst_tcp::hls::HlsError) -> TstError {
-    use tst_tcp::hls::HlsErrorKind;
+pub(crate) fn hls_error_to_code(e: &tst_hls::HlsError) -> TstError {
+    use tst_hls::HlsErrorKind;
     // Exhaustive match — every HlsErrorKind variant maps to a single TstError
     // code. CI ratchet scripts/check-hls-error-mapping-coverage.sh enforces
     // this completeness.

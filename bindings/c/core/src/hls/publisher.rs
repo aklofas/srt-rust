@@ -44,7 +44,7 @@ use crate::stats::{TstHlsStats, TstPublisherStats};
 /// both produce this same enum.
 pub(crate) enum PublisherImpl {
     /// HLS publisher (internal tokio HTTP server + on-disk segments).
-    Hls(tst_tcp::hls::HlsPublisher),
+    Hls(tst_hls::HlsPublisher),
 }
 
 /// Discriminator for the concrete publisher behind a `TstPublisher`,

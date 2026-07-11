@@ -1,6 +1,6 @@
 //! Plan A5b Wave C T12 — `HlsPublisher` + `HlsPublisherBuilder`.
 //!
-//! `tstrans.hls.HlsPublisher` wraps `tst_tcp::hls::HlsPublisher`: an
+//! `tstrans.hls.HlsPublisher` wraps `tst_hls::HlsPublisher`: an
 //! outbound-only, segment-aware MPEG-TS sink that writes `.ts` segments +
 //! a `playlist.m3u8` to disk and serves them over a built-in HTTP(S)
 //! server. It is a concrete `impl Publisher` (NOT bridged through
@@ -31,14 +31,14 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 use tst_core::publisher::Publisher;
-use tst_tcp::hls::{HlsMode, HlsPublisher, HlsPublisherBuilder};
+use tst_hls::{HlsMode, HlsPublisher, HlsPublisherBuilder};
 
 use crate::hls::config::{PyHlsMode, PyHlsStats};
 use crate::hls::publisher_abc::PyPublisherStats;
 use crate::hls::{make_hls_error, map_hls_error, map_hls_url_error};
 
 // ---------------------------------------------------------------------------
-// PyHlsPublisher — wraps tst_tcp::hls::HlsPublisher
+// PyHlsPublisher — wraps tst_hls::HlsPublisher
 // ---------------------------------------------------------------------------
 
 /// HLS publisher (`tstrans.hls.HlsPublisher`). Segments MPEG-TS to disk +
@@ -249,7 +249,7 @@ impl PyHlsPublisher {
 
 /// Builder for `HlsPublisher`. Chain setters then call `.build()`.
 ///
-/// The setters mirror `tst_tcp::hls::HlsPublisherBuilder`. Each setter
+/// The setters mirror `tst_hls::HlsPublisherBuilder`. Each setter
 /// returns `self` for chaining.
 #[pyclass(name = "HlsPublisherBuilder", module = "tstrans.hls")]
 #[derive(Default)]

@@ -1528,13 +1528,13 @@ the trigger that would unblock it.
 
 ## RTP H.264 depayloader (RFC 6184)
 
-- **Status:** Shipped — v0.2.x (PRs #94 / #95 / WP-3). The
+- **Status:** Shipped — v0.2.x (PRs #94 / #95 / #96). The
   depacketizer (`H264Depacketizer`), receiver shell (`H264Receiver`),
   and RTSP path (`setup_h264_auto` / `into_h264_receiver`) are all
   implemented in Rust (`tst-rtp`) and mirrored in the Python and JVM
   bindings. Covered: single-NAL unit, STAP-A aggregation, FU-A
   fragmentation (packetization modes 0 and 1). Design document:
-  `docs/specs/2026-07-10-rfc6184-design.md`.
+  `docs/specs/2026-07-10-tst-rtp-rfc6184-depayloader.md`.
 - **What remains open:** See the four entries below
   (C-ABI receiver, payloader send side, interleaved mode 2, and
   RTP jitter/RTCP).
@@ -1591,7 +1591,8 @@ the trigger that would unblock it.
   RTP path (interleaved pump) but was not wired to the H.264 path.
 - **Open decision on large-payload loss.** The current `Receiver<R>` /
   `DemuxReceiver<R>` pipeline shells cap their receive scratch buffer at
-  `RECV_SCRATCH_LEN` (1304 bytes) to match the standard RTP payload size.
+  1304 bytes (derived from `max_payload()` — packet size 1316 minus the
+  12-byte RTP header) to match the standard RTP payload size.
   Payloads larger than this surface as `TransportError::Broken` rather
   than being rejected cleanly. This is a known gap in the Receiver/
   DemuxReceiver path for non-standard configurations; `H264Receiver`

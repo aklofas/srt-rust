@@ -1589,14 +1589,16 @@ the trigger that would unblock it.
   reordered FU-A fragment may arrive after the next AU's start). The
   design is non-trivial. RTCP SR/RR support exists on the MPEG-TS-over-
   RTP path (interleaved pump) but was not wired to the H.264 path.
-- **Open decision on large-payload loss.** The current `Receiver<R>` /
-  `DemuxReceiver<R>` pipeline shells cap their receive scratch buffer at
-  1304 bytes (derived from `max_payload()` — packet size 1316 minus the
-  12-byte RTP header) to match the standard RTP payload size.
-  Payloads larger than this surface as `TransportError::Broken` rather
-  than being rejected cleanly. This is a known gap in the Receiver/
-  DemuxReceiver path for non-standard configurations; `H264Receiver`
-  is unaffected (its scratch buffer is large enough for any single NALU).
+- **Large-payload handling (resolved 2026-07-11).** Receive-side
+  `max_payload()` now reports each transport's *deliverable ceiling*
+  (RTP: 65523; SRT: at least the 1456 live-mode wire max; RIST/UDP:
+  65535) instead of the send-side packet-size budget, so the
+  `Receiver` / `DemuxReceiver` shells size their buffers to accept any
+  legal message from a conformant foreign sender. Full-MTU 7×188 RTP
+  bundles, 1456-byte SRT messages, and oversize RIST blocks are all
+  delivered intact instead of surfacing `Broken`, being silently
+  truncated, or being silently dropped.
+  `H264Receiver` was never affected.
 - **Trigger to revisit:** A deployment sees significant packet
   reordering (e.g. multi-path satellite link) and requires in-order AU
   reconstruction, or RTCP RR feedback to the sender is needed for

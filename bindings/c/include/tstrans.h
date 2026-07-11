@@ -5930,10 +5930,11 @@ int tst_hls_publisher_builder_segment_duration_ms(struct TstHlsPublisherBuilder 
  * ends: the server stays up so clients can request the full playlist and
  * all segment files until the returned handle is shut down or freed.
  *
- * Consumes the publisher's inner on success — the `TstPublisher` handle is
- * left allocated but terminal (subsequent push/cut/stats calls return
- * `TST_E_HLS_FINISHED`); the caller must still `tst_publisher_free` it. On
- * failure the inner is restored so the publisher stays usable.
+ * Consumes the publisher's inner on **both success and failure** — the
+ * `TstPublisher` handle is left allocated but terminal regardless of the
+ * return code (subsequent push/cut/stats calls return `TST_E_HLS_FINISHED`);
+ * the caller must still `tst_publisher_free` it and must not reuse it after
+ * a failure return.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if `p` or `out` is null,
  * `TST_E_HLS_FINISHED` if the publisher was already finished, or another

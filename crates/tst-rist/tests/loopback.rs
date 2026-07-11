@@ -216,10 +216,10 @@ fn oversize_foreign_block_delivered_not_dropped() {
         .profile(RistProfile::Simple)
         .listen()
         .expect("listen");
-    assert!(
-        RecvTransport::max_payload(&recv) >= 65535,
-        "recv-side ceiling must be the UDP datagram maximum, got {}",
-        RecvTransport::max_payload(&recv)
+    assert_eq!(
+        RecvTransport::max_payload(&recv),
+        65535,
+        "recv-side ceiling must be the UDP datagram maximum"
     );
 
     let (tx_payloads, rx_payloads) = mpsc::channel::<Vec<Vec<u8>>>();

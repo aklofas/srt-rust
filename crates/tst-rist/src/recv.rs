@@ -54,7 +54,6 @@ fn classify_block(payload_len: usize, payload_null: bool, buf_len: usize) -> Blo
 /// Drop calls `rist_destroy`.
 pub struct RistRecvTransport {
     ctx: *mut rist_sys::rist_ctx,
-    pkt_size: usize,
     bind_url: String,
     alive: Arc<AtomicBool>,
     stats: Arc<Mutex<RistStats>>,
@@ -168,7 +167,6 @@ impl RistRecvTransport {
         ctx_guard.disarm();
         Ok(Self {
             ctx,
-            pkt_size: cfg.pkt_size,
             bind_url: bind_url_str,
             alive: Arc::new(AtomicBool::new(true)),
             stats,
@@ -286,14 +284,15 @@ impl RecvTransport for RistRecvTransport {
     fn max_payload(&self) -> usize {
         // Recv-side deliverable ceiling (see RecvTransport::max_payload
         // in tst-core): RIST rides RTP over UDP, so the 16-bit UDP
-        // length field bounds any block librist can deliver. The
-        // configured pkt_size is the send-side budget; a foreign
-        // sender bundling more per block previously fell into the
-        // DropOversize arm (silent loss). classify_block keeps the
-        // oversize guard as defence-in-depth for direct callers with
-        // smaller buffers. The max() keeps an absurdly-large explicit
-        // configuration honored rather than silently clamped.
-        self.pkt_size.max(65535)
+        // length field (65535) bounds any datagram, and vendored
+        // librist additionally caps every delivered block at
+        // RIST_MAX_PACKET_SIZE = 10000 (rist-private.h — its enc/dec/
+        // recv buffers are all this size) — 65535 is a generous,
+        // allocation-cheap upper bound matching the UDP transport's
+        // convention. pkt_size is the send-side budget and deliberately
+        // does not factor in. classify_block keeps the oversize guard
+        // as defence-in-depth for direct callers with smaller buffers.
+        65535
     }
 
     fn is_alive(&self) -> bool {

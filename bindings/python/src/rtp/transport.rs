@@ -322,9 +322,10 @@ impl PySender {
 /// Python RTP receiver — wraps `tst_rtp::RtpRecvTransport`.
 ///
 /// Binds to `url` (literal IP:port). For multicast URLs, joins the
-/// group automatically. `pkt_size` sizes the recv scratch buffer; the
-/// 12-byte RTP header is stripped internally so `.recv()` returns just
-/// the TS payload bytes.
+/// group automatically. `pkt_size` describes the expected send-side
+/// packet size; it has no effect on the receive buffer, which always
+/// accepts any legal datagram. The 12-byte RTP header is stripped
+/// internally so `.recv()` returns just the TS payload bytes.
 #[pyclass(name = "Receiver", module = "tstrans.rtp")]
 pub(crate) struct PyReceiver {
     inner: Option<RtpRecvTransport>,
@@ -343,7 +344,8 @@ impl PyReceiver {
     /// Bind a receiver to `url` (e.g. `"rtp://127.0.0.1:5004"` for
     /// unicast or `"rtp://239.0.0.1:5004"` for multicast).
     ///
-    /// `pkt_size` overrides the recv scratch buffer size.
+    /// `pkt_size` describes the expected send-side packet size; it has
+    /// no effect on the receive buffer, which always accepts any legal datagram.
     #[new]
     #[pyo3(signature = (url, *, pkt_size = 1316))]
     fn new(py: Python<'_>, url: &str, pkt_size: usize) -> PyResult<Self> {

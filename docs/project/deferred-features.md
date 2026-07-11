@@ -1591,8 +1591,8 @@ the trigger that would unblock it.
   RTP path (interleaved pump) but was not wired to the H.264 path.
 - **Large-payload handling (resolved 2026-07-11).** Receive-side
   `max_payload()` now reports each transport's *deliverable ceiling*
-  (RTP: 65523; SRT: at least the 1456 live-mode wire max; RIST/UDP:
-  65535) instead of the send-side packet-size budget, so the
+  (RTP: 65523; SRT: at least the 1456 live-mode wire max; RIST: at least
+  65535; UDP: 65535) instead of the send-side packet-size budget, so the
   `Receiver` / `DemuxReceiver` shells size their buffers to accept any
   legal message from a conformant foreign sender. Full-MTU 7×188 RTP
   bundles, 1456-byte SRT messages, and oversize RIST blocks are all

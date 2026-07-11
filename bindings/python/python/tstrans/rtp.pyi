@@ -125,7 +125,9 @@ class Receiver:
     """Python RTP receiver wrapping `tst_rtp::RtpRecvTransport`.
 
     Binds to `url` (literal IP:port). For multicast URLs, joins the
-    group automatically. `pkt_size` sizes the recv scratch buffer.
+    group automatically. `pkt_size` describes the expected send-side
+    packet size; it has no effect on the receive buffer, which always
+    accepts any legal datagram.
     """
 
     def __init__(self, url: str, *, pkt_size: int = ...) -> None: ...

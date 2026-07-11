@@ -5,17 +5,18 @@ use std::time::Duration;
 
 use tst_core::publisher::{Publisher, PublisherStats};
 
-use crate::hls::config::HlsConfig;
-use crate::hls::error::HlsError;
-use crate::hls::playlist;
-use crate::hls::segmenter::Segmenter;
-use crate::hls::stats::HlsStats;
+use crate::config::HlsConfig;
+use crate::error::HlsError;
+use crate::playlist;
+use crate::segmenter::Segmenter;
+use crate::stats::HlsStats;
 
 /// HLS publisher.
 pub struct HlsPublisher {
     pub(crate) state: Arc<Mutex<State>>,
     pub(crate) finished: bool,
-    pub(crate) server: Option<crate::hls::http_server::ServerHandle>,
+    #[cfg(feature = "serve")]
+    pub(crate) server: Option<crate::http_server::ServerHandle>,
 }
 
 pub(crate) struct State {
@@ -28,12 +29,14 @@ impl HlsPublisher {
         if let Some(msg) = config.validate() {
             return Err(HlsError::InvalidConfig(msg));
         }
+        #[cfg(feature = "serve")]
         let bind = config.bind;
+        #[cfg(feature = "serve")]
         let basic_auth = config.basic_auth.clone();
 
         #[cfg(feature = "tls")]
         let tls_config = match (&config.tls_cert, &config.tls_key) {
-            (Some(cert), Some(key)) => Some(crate::hls::tls::load_server_config(cert, key)?),
+            (Some(cert), Some(key)) => Some(crate::tls::load_server_config(cert, key)?),
             _ => None,
         };
         #[cfg(not(feature = "tls"))]
@@ -47,7 +50,8 @@ impl HlsPublisher {
             bytes_pushed_total: 0,
         }));
 
-        let server = crate::hls::http_server::ServerHandle::start(
+        #[cfg(feature = "serve")]
+        let server = crate::http_server::ServerHandle::start(
             state.clone(),
             bind,
             basic_auth,
@@ -58,11 +62,14 @@ impl HlsPublisher {
         Ok(Self {
             state,
             finished: false,
+            #[cfg(feature = "serve")]
             server: Some(server),
         })
     }
 
     /// Local socket address the HTTP server bound to.
+    /// Returns `None` when the `serve` feature is disabled.
+    #[cfg(feature = "serve")]
     pub fn local_addr(&self) -> Option<std::net::SocketAddr> {
         self.server.as_ref().map(|s| s.local_addr())
     }
@@ -131,6 +138,7 @@ impl Publisher for HlsPublisher {
             (s.segmenter.output_dir().to_path_buf(), pl)
         };
         std::fs::write(output_dir.join("playlist.m3u8"), &final_pl).map_err(HlsError::Io)?;
+        #[cfg(feature = "serve")]
         if let Some(server) = self.server.take() {
             server.shutdown();
         }
@@ -151,7 +159,7 @@ impl Publisher for HlsPublisher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hls::config::HlsMode;
+    use crate::config::HlsMode;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -208,6 +216,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "serve")]
     #[test]
     fn http_serves_playlist_and_segment() {
         let dir = tmpdir("http");
@@ -266,6 +275,7 @@ mod tests {
         p.finish().unwrap();
     }
 
+    #[cfg(feature = "serve")]
     #[test]
     fn basic_auth_rejects_unauthorized() {
         let dir = tmpdir("auth");

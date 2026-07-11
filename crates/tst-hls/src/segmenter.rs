@@ -6,8 +6,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::hls::config::{HlsConfig, HlsMode};
-use crate::hls::error::HlsError;
+use crate::config::{HlsConfig, HlsMode};
+use crate::error::HlsError;
 
 /// One completed segment on disk.
 #[derive(Debug, Clone)]

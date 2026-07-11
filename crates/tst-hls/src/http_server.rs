@@ -18,10 +18,10 @@ use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
-use crate::hls::auth::check_basic_auth;
-use crate::hls::error::HlsError;
-use crate::hls::playlist;
-use crate::hls::publisher::State;
+use crate::auth::check_basic_auth;
+use crate::error::HlsError;
+use crate::playlist;
+use crate::publisher::State;
 
 /// Handle owned by the publisher; cancels + joins the runtime on drop.
 pub(crate) struct ServerHandle {
@@ -39,7 +39,7 @@ impl ServerHandle {
     ) -> Result<Self, HlsError> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
-            .thread_name("tst-tcp-hls-rt")
+            .thread_name("tst-hls-rt")
             .enable_all()
             .build()
             .map_err(HlsError::Io)?;
@@ -155,7 +155,7 @@ async fn serve(
         if !check_basic_auth(user, pass, header) {
             return Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
-                .header(WWW_AUTHENTICATE, r#"Basic realm="tst-tcp HLS""#)
+                .header(WWW_AUTHENTICATE, r#"Basic realm="tst-hls""#)
                 .body(Full::new(Bytes::from_static(b"Unauthorized")))
                 .unwrap();
         }

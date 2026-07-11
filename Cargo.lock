@@ -1996,6 +1996,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tst-hls"
+version = "0.2.0"
+dependencies = [
+ "base64",
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rustls",
+ "rustls-pemfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tst-core",
+ "tst-pipeline",
+]
+
+[[package]]
 name = "tst-integration"
 version = "0.2.0"
 dependencies = [

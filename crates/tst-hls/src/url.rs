@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::hls::config::HlsMode;
+use crate::config::HlsMode;
 
 /// Parsed HLS publisher URL.
 #[derive(Debug, Clone)]

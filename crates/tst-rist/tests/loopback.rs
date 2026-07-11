@@ -46,6 +46,7 @@ static SERIAL: Mutex<()> = Mutex::new(());
 /// Main Profile multiplexes RTCP into the same socket so any port works.
 const PORT_SIMPLE: u16 = 33010;
 const PORT_AES: u16 = 33013;
+const PORT_OVERSIZE: u16 = 33016;
 
 /// 188 bytes of arbitrary payload — one MPEG-TS packet's worth.
 fn synthetic_ts_packet(seq_byte: u8) -> [u8; 188] {
@@ -194,4 +195,72 @@ fn main_profile_aes256_loopback_round_trip() {
         let matched = pkts.iter().any(|orig| got.as_slice() == orig.as_slice());
         assert!(matched, "decrypted payload mismatch");
     }
+}
+
+/// A foreign RIST sender may bundle more bytes per block than our
+/// configured pkt_size — RIST rides RTP over UDP, so anything up to the
+/// 16-bit datagram ceiling is legal on the wire. Before the
+/// recv-ceiling fix, max_payload() returned pkt_size (1316 default), so
+/// a buffer sized from it sent every oversize block into the
+/// DropOversize arm: silent stream loss (packets_dropped ticked, data
+/// gone). The recv-side ceiling must accept any legal block.
+#[test]
+fn oversize_foreign_block_delivered_not_dropped() {
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let port = PORT_OVERSIZE;
+    let bind_url = format!("rist://@127.0.0.1:{port}");
+    let connect_url = format!("rist://127.0.0.1:{port}");
+
+    let recv = RistRecvTransportBuilder::new(&bind_url)
+        .unwrap()
+        .profile(RistProfile::Simple)
+        .listen()
+        .expect("listen");
+    assert!(
+        RecvTransport::max_payload(&recv) >= 65535,
+        "recv-side ceiling must be the UDP datagram maximum, got {}",
+        RecvTransport::max_payload(&recv)
+    );
+
+    let (tx_payloads, rx_payloads) = mpsc::channel::<Vec<Vec<u8>>>();
+    let _recv_thread = thread::spawn(move || {
+        // drain_n sizes its buffer from recv.max_payload() — the same
+        // idiom the pipeline shells use, so this pins shell behavior.
+        let collected = drain_n(recv, 1, Duration::from_secs(8));
+        let _ = tx_payloads.send(collected);
+    });
+
+    thread::sleep(Duration::from_millis(200));
+    let mut send = RistTransportBuilder::new(&connect_url)
+        .unwrap()
+        .profile(RistProfile::Simple)
+        .pkt_size(1880) // the "foreign" sender's bigger bundle budget
+        .connect()
+        .expect("connect");
+    thread::sleep(Duration::from_millis(600));
+
+    // One 10×188 = 1880-byte block — bigger than the receiver's 1316
+    // default pkt_size. Send several times: librist may lose the first
+    // packets during handshake settling (same tolerance as the sibling
+    // round-trip test).
+    let mut block = Vec::with_capacity(1880);
+    for i in 1..=10u8 {
+        block.extend_from_slice(&synthetic_ts_packet(i));
+    }
+    for _ in 0..5 {
+        send.send_bytes(&block).expect("send oversize block");
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    let collected = rx_payloads
+        .recv_timeout(Duration::from_secs(10))
+        .expect("recv thread didn't return in time");
+    assert!(
+        !collected.is_empty(),
+        "oversize foreign block must be delivered, not silently dropped"
+    );
+    assert_eq!(
+        collected[0], block,
+        "delivered block must be byte-identical"
+    );
 }

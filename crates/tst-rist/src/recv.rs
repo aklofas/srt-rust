@@ -284,7 +284,16 @@ impl RecvTransport for RistRecvTransport {
     }
 
     fn max_payload(&self) -> usize {
-        self.pkt_size
+        // Recv-side deliverable ceiling (see RecvTransport::max_payload
+        // in tst-core): RIST rides RTP over UDP, so the 16-bit UDP
+        // length field bounds any block librist can deliver. The
+        // configured pkt_size is the send-side budget; a foreign
+        // sender bundling more per block previously fell into the
+        // DropOversize arm (silent loss). classify_block keeps the
+        // oversize guard as defence-in-depth for direct callers with
+        // smaller buffers. The max() keeps an absurdly-large explicit
+        // configuration honored rather than silently clamped.
+        self.pkt_size.max(65535)
     }
 
     fn is_alive(&self) -> bool {

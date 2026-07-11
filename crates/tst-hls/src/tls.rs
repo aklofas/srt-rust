@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use rustls::ServerConfig;
 
-use crate::hls::error::HlsError;
+use crate::error::HlsError;
 
 /// Load a server certificate + key from PEM files.
 pub(crate) fn load_server_config(cert: &Path, key: &Path) -> Result<Arc<ServerConfig>, HlsError> {

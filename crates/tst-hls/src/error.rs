@@ -8,8 +8,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum HlsError {
+    #[cfg(feature = "serve")]
     #[error("URL parse failed: {0}")]
-    Url(#[from] crate::hls::url::HlsUrlError),
+    Url(#[from] crate::url::HlsUrlError),
 
     #[error("filesystem I/O error: {0}")]
     Io(#[from] io::Error),
@@ -56,6 +57,7 @@ pub enum HlsErrorKind {
 impl HlsError {
     pub fn kind(&self) -> HlsErrorKind {
         match self {
+            #[cfg(feature = "serve")]
             Self::Url(_) => HlsErrorKind::Url,
             Self::Io(_) => HlsErrorKind::Io,
             Self::BindFailed(_) => HlsErrorKind::BindFailed,

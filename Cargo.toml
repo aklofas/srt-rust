@@ -6,6 +6,7 @@ members = [
     "bindings/c",
     "bindings/c/core",
     "crates/tst-core",
+    "crates/tst-hls",
     "crates/tst-integration",
     "crates/tst-pipeline",
     "bindings/python",

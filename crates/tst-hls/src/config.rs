@@ -4,7 +4,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::hls::url::HlsUrl;
+#[cfg(feature = "serve")]
+use crate::url::HlsUrl;
 
 /// HLS playlist mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,13 +26,14 @@ pub enum HlsMode {
 /// Configuration for [`HlsPublisher`].
 ///
 /// Use [`HlsConfig::default`] then mutate, or build via
-/// [`crate::hls::HlsPublisherBuilder`].
+/// [`crate::HlsPublisherBuilder`].
 ///
-/// [`HlsPublisher`]: crate::hls::HlsPublisher
+/// [`HlsPublisher`]: crate::HlsPublisher
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct HlsConfig {
     /// Where the HTTP server binds.
+    /// Ignored when the `serve` feature is disabled.
     pub bind: SocketAddr,
     /// Filesystem directory where segments + playlist are written.
     /// Created if it doesn't exist; emptied of stale `segment_*.ts` /
@@ -46,10 +48,13 @@ pub struct HlsConfig {
     /// Playlist mode.
     pub mode: HlsMode,
     /// Optional HTTP Basic auth (user, password).  None disables auth.
+    /// Ignored when the `serve` feature is disabled.
     pub basic_auth: Option<(String, String)>,
     /// Optional TLS server cert path (PEM).  Required if [`Self::tls_key`] set.
+    /// Ignored when the `serve` feature is disabled.
     pub tls_cert: Option<PathBuf>,
     /// Optional TLS server key path (PEM).  Required if [`Self::tls_cert`] set.
+    /// Ignored when the `serve` feature is disabled.
     pub tls_key: Option<PathBuf>,
 }
 
@@ -70,6 +75,7 @@ impl Default for HlsConfig {
 
 impl HlsConfig {
     /// Overlay URL-derived values on top of an existing config.
+    #[cfg(feature = "serve")]
     pub fn merge_from_url(&mut self, url: &HlsUrl) {
         self.bind = SocketAddr::new(url.addr, url.port);
         if let Some(dir) = &url.output_dir {
@@ -194,6 +200,7 @@ mod tests {
         assert_eq!(cfg.validate(), None);
     }
 
+    #[cfg(feature = "serve")]
     #[test]
     fn merge_overlay() {
         let mut cfg = HlsConfig::default();

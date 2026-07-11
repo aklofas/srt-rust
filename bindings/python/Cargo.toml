@@ -41,7 +41,7 @@ tcp     = ["dep:tst-tcp"]
 # hls: EXPERIMENTAL — not shipped in published wheels/JAR; see
 # docs/project/deferred-features.md (path-traversal CWE-22 + TARGETDURATION
 # floor + VOD-never-served, all on an unauthenticated all-interfaces server).
-hls     = ["dep:tst-hls", "dep:tst-pipeline"]
+hls     = ["dep:tst-hls", "tst-hls?/serve", "dep:tst-pipeline"]
 rist    = ["dep:tst-rist", "dep:secrecy"]
 # pipeline pulls tst-pipeline for the ext::pairing PairingDemuxer composite.
 pipeline = ["dep:tst-pipeline"]

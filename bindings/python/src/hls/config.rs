@@ -1,10 +1,10 @@
 //! Plan A5b Wave C T13 — `HlsMode` enum + `HlsStats` frozen dataclass.
 //!
-//! `HlsMode` mirrors `tst_tcp::hls::HlsMode` (Live / Event / Vod). It is
+//! `HlsMode` mirrors `tst_hls::HlsMode` (Live / Event / Vod). It is
 //! an int-comparable PyEnum (`#[pyclass(eq, eq_int)]`) so Python callers
 //! can do `mode == HlsMode.LIVE` and `IntEnum`-style ordering.
 //!
-//! `HlsStats` mirrors `tst_tcp::hls::HlsStats` — the richer per-impl
+//! `HlsStats` mirrors `tst_hls::HlsStats` — the richer per-impl
 //! snapshot (3 u64 fields). NOTE: this deviates from the plan T13 sketch,
 //! which guessed a 4-field shape with `current_segment_age_us` /
 //! `last_segment_duration_us`. The real upstream `HlsStats` carries
@@ -17,7 +17,7 @@
 use pyo3::prelude::*;
 
 // ---------------------------------------------------------------------------
-// HlsMode — PyEnum mirror of tst_tcp::hls::HlsMode
+// HlsMode — PyEnum mirror of tst_hls::HlsMode
 // ---------------------------------------------------------------------------
 
 /// HLS playlist mode (`tstrans.hls.HlsMode`).
@@ -36,14 +36,14 @@ use pyo3::prelude::*;
 pub(crate) enum PyHlsMode {
     // SCREAMING_SNAKE variant names so Python sees `HlsMode.LIVE` etc.
     // (matches the tst-py pyclass-enum convention — cf. rtp's TransportPref
-    // `AUTO`/`UDP`/`TCP`). The upstream `tst_tcp::hls::HlsMode` uses
+    // `AUTO`/`UDP`/`TCP`). The upstream `tst_hls::HlsMode` uses
     // `Live`/`Event`/`Vod`; the `From` impls bridge the two namings.
     LIVE,
     EVENT,
     VOD,
 }
 
-impl From<PyHlsMode> for tst_tcp::hls::HlsMode {
+impl From<PyHlsMode> for tst_hls::HlsMode {
     fn from(m: PyHlsMode) -> Self {
         match m {
             PyHlsMode::LIVE => Self::Live,
@@ -53,12 +53,12 @@ impl From<PyHlsMode> for tst_tcp::hls::HlsMode {
     }
 }
 
-impl From<tst_tcp::hls::HlsMode> for PyHlsMode {
-    fn from(m: tst_tcp::hls::HlsMode) -> Self {
+impl From<tst_hls::HlsMode> for PyHlsMode {
+    fn from(m: tst_hls::HlsMode) -> Self {
         match m {
-            tst_tcp::hls::HlsMode::Live => Self::LIVE,
-            tst_tcp::hls::HlsMode::Event => Self::EVENT,
-            tst_tcp::hls::HlsMode::Vod => Self::VOD,
+            tst_hls::HlsMode::Live => Self::LIVE,
+            tst_hls::HlsMode::Event => Self::EVENT,
+            tst_hls::HlsMode::Vod => Self::VOD,
         }
     }
 }
@@ -75,12 +75,12 @@ impl PyHlsMode {
 }
 
 // ---------------------------------------------------------------------------
-// HlsStats — frozen mirror of tst_tcp::hls::HlsStats
+// HlsStats — frozen mirror of tst_hls::HlsStats
 // ---------------------------------------------------------------------------
 
 /// Richer HLS-specific stats snapshot (`tstrans.hls.HlsStats`).
 ///
-/// Mirrors `tst_tcp::hls::HlsStats`. For cross-publisher metrics use
+/// Mirrors `tst_hls::HlsStats`. For cross-publisher metrics use
 /// `HlsPublisher.stats()` (returns `PublisherStats`) instead.
 #[pyclass(name = "HlsStats", module = "tstrans.hls", frozen, get_all)]
 #[derive(Clone)]
@@ -93,8 +93,8 @@ pub(crate) struct PyHlsStats {
     pub open_segment_bytes: u64,
 }
 
-impl From<tst_tcp::hls::HlsStats> for PyHlsStats {
-    fn from(s: tst_tcp::hls::HlsStats) -> Self {
+impl From<tst_hls::HlsStats> for PyHlsStats {
+    fn from(s: tst_hls::HlsStats) -> Self {
         Self {
             segments_written: s.segments_written,
             bytes_pushed_total: s.bytes_pushed_total,

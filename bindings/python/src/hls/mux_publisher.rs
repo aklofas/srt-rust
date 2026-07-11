@@ -1,7 +1,7 @@
 //! Plan A5b Wave C T11 — `MuxPublisher` shell (concrete `HlsPublisher`).
 //!
 //! `tstrans.hls.MuxPublisher` wraps
-//! `tst_pipeline::MuxPublisher<tst_tcp::hls::HlsPublisher>`: it owns a
+//! `tst_pipeline::MuxPublisher<tst_hls::HlsPublisher>`: it owns a
 //! `Muxer` + an `HlsPublisher`, accepts elementary streams
 //! (video / klv / audio / subtitle), muxes them into MPEG-TS, and pushes
 //! the resulting bytes into the HLS sink (which segments + serves them).
@@ -35,7 +35,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 use tst_pipeline::{MuxPublisher as RustMuxPublisher, MuxPublisherError};
-use tst_tcp::hls::HlsPublisher;
+use tst_hls::HlsPublisher;
 
 use crate::hls::publisher::PyHlsPublisher;
 use crate::hls::publisher_abc::PyPublisherStats;
@@ -118,7 +118,7 @@ impl PyMuxPublisher {
     where
         F: FnOnce(
             &RustMuxPublisher<HlsPublisher>,
-        ) -> Result<R, MuxPublisherError<tst_tcp::hls::HlsError>>,
+        ) -> Result<R, MuxPublisherError<tst_hls::HlsError>>,
     {
         let guard = self
             .inner

@@ -668,7 +668,7 @@ impl From<&tst_core::publisher::PublisherStats> for TstPublisherStats {
     }
 }
 
-/// `repr(C)` mirror of `tst_tcp::hls::HlsStats` — HLS-specific richer
+/// `repr(C)` mirror of `tst_hls::HlsStats` — HLS-specific richer
 /// stats. Returned by `tst_hls_publisher_get_hls_stats`. Size 24 B.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -687,8 +687,8 @@ const _TST_HLS_STATS_SIZE: () = assert!(
 );
 
 #[cfg(feature = "hls")]
-impl From<&tst_tcp::hls::HlsStats> for TstHlsStats {
-    fn from(s: &tst_tcp::hls::HlsStats) -> Self {
+impl From<&tst_hls::HlsStats> for TstHlsStats {
+    fn from(s: &tst_hls::HlsStats) -> Self {
         Self {
             bytes_pushed_total: s.bytes_pushed_total,
             open_segment_bytes: s.open_segment_bytes,

@@ -98,6 +98,7 @@ impl Default for HlsPublisherBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "serve")]
     use tst_core::publisher::Publisher;
 
     #[test]

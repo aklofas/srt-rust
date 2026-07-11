@@ -348,12 +348,15 @@ enum tst_e
    */
   TST_E_RTSP_AUTH_REQUIRED = -18,
   /**
-   * (-19) RTSP 404 from server, or no mp2t SDP media found.
+   * (-19) RTSP 404 from server, or no uniquely-identified SDP media
+   * found (MP2T or H.264 — none present, or more than one).
    */
   TST_E_RTSP_NOT_FOUND = -19,
   /**
    * (-20) RTSP 461 Unsupported Transport — all transport preferences
-   * (UDP + TCP-interleaved) exhausted by server.
+   * (UDP + TCP-interleaved) exhausted by server. Also fires when the
+   * H.264 media advertises an unsupported RFC 6184 packetization-mode
+   * (interleaved mode 2).
    */
   TST_E_RTSP_UNSUPPORTED = -20,
   /**

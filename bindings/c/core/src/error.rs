@@ -85,10 +85,13 @@ pub enum TstError {
     /// (-18) RTSP server requires authentication but client has no
     /// credentials, or the offered auth scheme is unsupported.
     RtspAuthRequired = -18,
-    /// (-19) RTSP 404 from server, or no mp2t SDP media found.
+    /// (-19) RTSP 404 from server, or no uniquely-identified SDP media
+    /// found (MP2T or H.264 — none present, or more than one).
     RtspNotFound = -19,
     /// (-20) RTSP 461 Unsupported Transport — all transport preferences
-    /// (UDP + TCP-interleaved) exhausted by server.
+    /// (UDP + TCP-interleaved) exhausted by server. Also fires when the
+    /// H.264 media advertises an unsupported RFC 6184 packetization-mode
+    /// (interleaved mode 2).
     RtspUnsupported = -20,
     /// (-21) rustls TLS handshake or certificate validation failure
     /// (only emitted for rtsps:// connections; feature `tls`).

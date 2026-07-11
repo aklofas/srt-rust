@@ -798,7 +798,9 @@ class H264Receiver:
     Acts as its own iterator: `for au in receiver: ...` yields AUs until EOS.
 
     `depay_stats()` / `rtp_stats()` / `socket_stats()` — snapshot counters.
-    `local_addr()` — UDP bind address as `"host:port"`, or `None` for TCP.
+    `local_addr()` — UDP bind address as `"host:port"`. `None` only for a
+    live TCP-interleaved (RTSP) receiver where no UDP socket exists;
+    raises `RtpError(TRANSPORT)` if the receiver is closed.
     `cancel_handle()` — returns a `CancelHandle` for cross-thread cancellation.
     `close()` — idempotent; fires cancel + drops the socket.
     """

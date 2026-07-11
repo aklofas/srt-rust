@@ -519,12 +519,18 @@ impl PyH264Receiver {
     }
 
     /// Local address the UDP socket is bound to, as `"host:port"` string.
-    /// Returns `None` for the TCP-interleaved (RTSP) path where no UDP
-    /// socket exists.
-    fn local_addr(&self) -> Option<String> {
-        self.inner
+    /// Returns `None` only for a live TCP-interleaved (RTSP) receiver
+    /// where no UDP socket exists.
+    ///
+    /// Raises `RtpError(TRANSPORT, "receiver is closed")` on a closed
+    /// handle — matching the module's closed-handle contract — so `None`
+    /// is never ambiguous between "closed" and "no UDP socket".
+    fn local_addr(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let inner = self
+            .inner
             .as_ref()
-            .and_then(|r| r.local_addr().map(|a| a.to_string()))
+            .ok_or_else(|| make_rtp_error(py, "TRANSPORT", "receiver is closed"))?;
+        Ok(inner.local_addr().map(|a| a.to_string()))
     }
 
     /// Return a shareable cancel handle. Calling `.cancel()` on the

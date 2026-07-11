@@ -7,14 +7,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening + RFC 6184 H.264 ingest
+## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening + RFC 6184 H.264 ingest + HLS promotion
 
 Remediation of the two 2026-07-01 audits (correctness/spec/safety and
 simplification/refactor/dependency), landed as PRs #58–#84, plus the embedded
 audit arc (WP-EMB-1–6, PRs #85/#86/#88/#89/#90), the field-feedback hardening
 (PR #87 / #91–#93), and the RFC 6184 H.264-over-RTP depayloader feature arc
-(PRs #94–#96). The C ABI stayed frozen at minor **17** the entire time — no
-C symbol, signature, or struct layout changed.
+(PRs #94–#96). The C ABI stayed frozen at minor **17** through that work; the
+HLS promotion (below) is the one additive bump, to minor **18** — no C symbol,
+signature, or struct layout was removed or changed.
 
 ### Changed (breaking, pre-1.0) — SRT buffer-size options are now byte-valued
 
@@ -75,6 +76,43 @@ C symbol, signature, or struct layout changed.
   is kept. The demuxer's unrelated `link_klv` API is untouched (PR #69).
 - `KlvFieldError::InvalidSentinel` is removed. ST 0601 sentinel values are now
   modeled explicitly rather than rejected — see the Added entry below (PR #79).
+
+### Changed (breaking, pre-1.0) — HLS moved to its own `tst-hls` crate
+
+- The HLS publisher moved out of `tst-tcp` into a new segmenter-first
+  `tst-hls` crate. `tst-tcp` no longer carries the `hls` feature — callers
+  that built `tst-tcp` with `--features hls` now depend on `tst-hls`
+  directly (Rust import path `tst_hls::*` instead of `tst_tcp::hls::*`).
+- The HTTP server now **binds loopback (`127.0.0.1:8080`) by default**
+  instead of all interfaces; binding `0.0.0.0` is an explicit opt-in.
+- The default `output_dir` is now a portable temp dir
+  (`<temp_dir>/tstrans-hls`) instead of a hard-coded `/tmp/hls`.
+- **Keyframes now begin segments.** Each segment opens on a decodable
+  boundary — PAT → PMT → IDR — so a joining player can decode the first
+  segment it fetches (previously a segment could start mid-GOP).
+
+### Added — HLS promoted to a supported feature
+
+- The HLS publisher is now a **supported** feature (no longer experimental
+  or excluded from published artifacts). The `hls` feature is default-on in
+  the Python wheels (`tstrans.hls` imports out of the box) and opt-in in the
+  C binding (`TST_HAS_HLS`). The JVM binding does not yet expose HLS.
+- **Path traversal (CWE-22) is closed** — the built-in HTTP server serves
+  only files from a known set it wrote itself; request paths are not used to
+  open arbitrary files under the output directory.
+- **VOD / EVENT serving is closed** — `HlsPublisher::finish_serving` returns
+  an `HlsServerHandle` that keeps the built-in server up so a completed VOD
+  or EVENT playlist and its segments stay fetchable after the stream ends
+  (Rust + C `tst_hls_publisher_finish_serving` + `TstHlsServerHandle` +
+  Python `HlsPublisher.finish_serving()`).
+- **`forced_cuts` stats + `max_segment_duration` cap** — a hard wall-clock
+  ceiling force-cuts an overdue keyframe (stalled / very long GOP) so
+  segments never grow unbounded; each force-cut increments the new
+  `forced_cuts` counter. Exposed on the Rust builder / stats, the C ABI
+  (`tst_hls_publisher_builder_max_segment_duration_ms` /
+  `tst_hls_publisher_get_forced_cuts`), and Python.
+- **C ABI minor 17 → 18** (additive; all new symbols gated `TST_HAS_HLS`;
+  no existing symbol, signature, or struct layout changed).
 
 ### Added — H.264-over-RTP ingest (RFC 6184)
 

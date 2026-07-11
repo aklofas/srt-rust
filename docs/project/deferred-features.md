@@ -4,33 +4,100 @@ Things deliberately out of scope today with a clear path back if they
 become load-bearing. Each entry records the reason it was deferred and
 the trigger that would unblock it.
 
-## HLS publisher (deferred from v0.1.0)
+## HLS publisher — SUPPORTED
 
-- **Status:** EXPERIMENTAL. The `hls` Cargo feature (the `tst-tcp`
-  HLS publisher + built-in HTTP server, plus the `tst_core` /
-  `tst-pipeline` `Publisher` trait shell) exists and compiles, but is
-  **gated out of the v0.1.0 published artifacts** — it is not enabled in
-  the PyPI wheels (`python-wheels.yml`) and is not present in the JVM fat
-  JAR (`tst-jni` pulls no HLS dependency). It is no longer in the
-  `bindings/python` crate's `default` feature set. You can still enable
-  it for local / experimental builds with `--features hls`.
-- **Why deferred:** playlist-model RFC 8216 conformance (target-duration
-  ceiling, duration-floor eviction, media-PTS `#EXTINF`) was fixed in
-  v0.2.0; segment-initial decodability and HTTP-server hardening (path
-  traversal) remain open, so HLS stays gated out of published artifacts
-  pending those and a security review. Specifically, the built-in HTTP
-  server is still not release-ready:
-  - **Path traversal (CWE-22)** — segment requests are served from an
-    unauthenticated server bound to all interfaces, with no validated
-    confinement of the request path to the output directory.
-  - **VOD never served** — `HlsMode::Vod` segments/playlist are written
-    but the built-in server does not serve a completed VOD playlist.
-  - The whole unauthenticated, all-interfaces server surface needs a
-    dedicated security review before it can be a supported feature.
-- **Trigger to revisit:** HLS is hardened as a real, supported feature —
-  the path-traversal fix, VOD serving, and a security review of the
-  unauthenticated server surface all land together. Until then it stays
-  experimental and out of published builds.
+- **Status:** SUPPORTED. The HLS publisher ships in its own segmenter-first
+  `tst-hls` crate. The Python wheels enable it by default (`tstrans.hls`
+  imports out of the box); the C binding exposes it behind the opt-in `hls`
+  Cargo feature (`TST_HAS_HLS`). It is no longer gated out of published
+  artifacts. The security items that previously blocked promotion are
+  closed:
+  - **Path traversal (CWE-22)** is closed — the built-in HTTP server serves
+    only files from a known set it wrote itself; request paths are not used
+    to open arbitrary files under the output directory.
+  - **VOD / EVENT serving** is closed — `HlsPublisher::finish_serving`
+    returns an `HlsServerHandle` that keeps the built-in server up so a
+    completed VOD or EVENT playlist and its segments stay fetchable after
+    the stream ends.
+  - **Bind default is loopback** (`127.0.0.1:8080`); binding all interfaces
+    is now an explicit opt-in, and the guide points operators at fronting
+    the output directory with a reverse proxy / CDN for exposure.
+  - Segments open on a decodable boundary (PAT → PMT → IDR), so a joining
+    player can decode the first segment it fetches.
+- See the [HLS guide](/docs/guides/hls.md) for the full surface, serving
+  guidance, KLV ride-along, and latency tuning. The JVM binding does not
+  yet expose HLS (see below).
+
+## HLS fMP4 / CMAF segments + emsg-v1 KLV (MISB ST 1910.1)
+
+- **Status:** Not implemented. `tst-hls` emits MPEG-2 TS (`.ts`) segments
+  only. Fragmented-MP4 / CMAF (`.m4s`) segmentation, and carrying KLV in
+  CMAF `emsg` v1 boxes per MISB ST 1910.1 (scheme
+  `urn:misb:KLV:bin:1910.1`), are not done.
+- **Why deferred:** TS segments are the STANAG 4609 lingua franca and ride
+  through the existing MPEG-TS muxer unchanged. CMAF/fMP4 is a distinct
+  packaging path (init segment + moof/mdat framing) and the emsg-v1 KLV
+  binding is a separate wire shape — real work with no current consumer
+  driving it. TS-in-HLS covers the shipping use case, including KLV
+  ride-along.
+- **Trigger to revisit:** Low-latency / LL-HLS demand (CMAF is the natural
+  carrier), or a consumer that needs Safari-native timed metadata (Safari
+  surfaces `emsg` KLV where it does not surface TS private-data KLV).
+
+## LL-HLS protocol (EXT-X-PART / blocking playlist reload / preload hints)
+
+- **Status:** Not implemented. `tst-hls` writes standard RFC 8216 playlists
+  (full-segment granularity). The LL-HLS additions — partial segments
+  (`#EXT-X-PART`), blocking playlist reload (`_HLS_msn` / `_HLS_part`),
+  preload hints (`#EXT-X-PRELOAD-HINT`), and rendition reports — are absent.
+- **Why deferred:** LL-HLS meaningfully lowers glass-to-glass latency only
+  with a CMAF/fMP4 packaging path (partial segments are typically CMAF
+  chunks), so it couples to the fMP4 entry above. The internal
+  renderer/dispatcher bones (segmenter, playlist renderer, HTTP dispatcher)
+  are in place, so adding the LL-HLS machinery is bounded once the packaging
+  path exists.
+- **Trigger to revisit:** A consumer needs sub-two-second HLS latency, or
+  the fMP4/CMAF path lands (LL-HLS rides with it).
+
+## ID3v2-wrapped KLV (timed-metadata ID3 frames)
+
+- **Status:** Not implemented. KLV rides HLS segments as an MPEG-TS
+  elementary stream (`PrivateData` / stream_type 0x06 + KLVA, or
+  `SynchronousMetadata` / 0x15). Wrapping KLV in ID3v2 `PRIV`/`GEOB` frames
+  on a timed-metadata PID — the shape some web players expect via the
+  ID3 event path — is not emitted.
+- **Why deferred:** The native private-data KLV path already reaches
+  hls.js (`enableEmsgKLVMetadata`) and STANAG toolchains; ID3-wrapping is
+  an extra encoding with no current consumer. It is additive, not a
+  replacement.
+- **Trigger to revisit:** A target player exposes timed metadata only via
+  ID3 frames (no raw private-data / emsg path).
+
+## JVM HLS surface
+
+- **Status:** Not implemented. The HLS publisher is exposed in Rust, C
+  (`TST_HAS_HLS`), and Python (wheels ship it), but the JVM binding
+  (`tst-jni`) carries no HLS dependency and exposes no `HlsPublisher` /
+  `MuxPublisher` classes.
+- **Why deferred:** No JVM consumer has asked. The publisher surface maps
+  mechanically onto the JNI patterns already used for the mux-sender family
+  (builder + handle + `finish_serving` handle), so the port is bounded when
+  a consumer arrives.
+- **Trigger to revisit:** A JVM consumer asks for HLS output.
+
+## In-memory HLS `SegmentSink`
+
+- **Status:** Not implemented. `tst-hls` writes segments and the playlist
+  to a filesystem `output_dir`. There is no pluggable sink to receive
+  segment bytes + playlist in memory (for an object store, an embedded
+  no-filesystem target, or a custom uploader) instead of touching disk.
+- **Why deferred:** The filesystem sink plus the built-in server (or a
+  reverse-proxied `output_dir`) covers the shipping deployments. A
+  `SegmentSink` trait is a clean extension point but carries no weight
+  without a driving consumer.
+- **Trigger to revisit:** An embedded / no-filesystem consumer, or one that
+  wants to push segments straight to an object store / CDN origin without a
+  disk round-trip.
 
 ## Other PMT entries / auxiliary services
 

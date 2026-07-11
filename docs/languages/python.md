@@ -41,12 +41,12 @@ on `tstrans` and its topic submodules — `tstrans.io`, `tstrans.mpegts`,
 `tstrans.pipeline` pairer, and the optional `tstrans.pandas`. Don't reach
 into `tstrans._native` directly; it may reorganize between versions.
 
-Wheels ship the UDP, TCP, RTP/RTSP, SRT, and RIST transports
-on by default — with two caveats: **RIST is excluded from the Windows
-wheel** (the Linux and macOS wheels include it), and the **experimental
-HLS publisher (`tstrans.hls`) is not in any published wheel** — it is
-available only in a source build compiled with `--features hls` (see
-[HLS publisher](#hls-publisher-tstranshls) below).
+Wheels ship the UDP, TCP, RTP/RTSP, SRT, RIST, and HLS surfaces
+on by default — with one caveat: **RIST is excluded from the Windows
+wheel** (the Linux and macOS wheels include it). The HLS publisher
+(`tstrans.hls`) imports out of the box from a published wheel (see
+[HLS publisher](#hls-publisher-tstranshls) below); it is unavailable only
+in a `--no-default-features` source build that omits `hls`.
 
 > **Status:** `tstrans` ships the full surface — offline file inspection
 > + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV
@@ -55,7 +55,8 @@ available only in a source build compiled with `--features hls` (see
 > MPEG-2 audio, optional pandas DataFrame adapters + NumPy snapshot views
 > via `pip install tstrans[pandas]`, the live transports
 > `tstrans.{srt,rtp,udp,tcp,rist}` (with RTSP client + server and SRT
-> auto-reconnect), and `tstrans.pipeline.Pairer`. ~1149 pytest tests.
+> auto-reconnect), the HLS publisher (`tstrans.hls`), and
+> `tstrans.pipeline.Pairer`. ~1149 pytest tests.
 
 ## Hello world
 
@@ -851,10 +852,12 @@ snapshot from `stats()`.
 
 ## HLS publisher (`tstrans.hls`)
 
-> **Experimental — not in published wheels.** `tstrans.hls` is available
-> only in a source build compiled with `--features hls`. From a PyPI
-> wheel, `import tstrans.hls` raises `ImportError`. The surface and its
-> on-disk / HTTP behavior may change.
+> **Ships in the wheels.** `tstrans.hls` imports out of the box from a
+> published wheel (the `hls` feature is default-on). It is unavailable only
+> in a `--no-default-features` source build that omits `hls`, where
+> `import tstrans.hls` raises `ImportError`. See the
+> [HLS guide](/docs/guides/hls.md) for serving guidance, the KLV
+> ride-along carriage modes, and latency tuning.
 
 `HlsPublisher` segments pre-muxed MPEG-TS to disk and serves an HTTP
 playlist; `MuxPublisher` is the pipeline shell that owns a muxer + an
@@ -889,6 +892,21 @@ pub.finish()
 `HlsError(UNALIGNED_PUSH_TS)` otherwise; once consumed (by `finish()` or
 `with_config_hls`) further calls raise `HlsError(FINISHED)`.
 `HlsMode.LIVE` / `EVENT` / `VOD` selects playlist behavior.
+
+### Keeping a completed VOD / EVENT playlist served
+
+`finish()` writes the terminal playlist and tears the server down, so a VOD
+stops being fetchable when the stream ends. Call `finish_serving()` instead
+to finalize the playlist but keep the built-in HTTP server up — it returns
+an `HlsServerHandle` with `local_addr()` and `shutdown()`:
+
+```python
+pub = mp.finish_into_publisher()
+handle = pub.finish_serving()      # #EXT-X-ENDLIST written; server keeps serving
+print("VOD at http://%s/playlist.m3u8" % handle.local_addr())
+# ... hold the handle while clients should be able to fetch ...
+handle.shutdown()
+```
 
 The full `Publisher` ABC surface exposed through `tstrans.hls`:
 
@@ -1309,9 +1327,10 @@ output directly when absolute byte offsets matter.
   `Transport` / `RecvTransport` (e.g. `tstrans.udp.Transport`) — there is
   no `RawSender` / `RawReceiver`. The composite shells keep the qualified
   `MuxSender` / `DemuxReceiver` names.
-- **HLS is experimental and not in published wheels.** `tstrans.hls`
-  imports only in a source build compiled with `--features hls`; from a
-  PyPI wheel `import tstrans.hls` raises `ImportError`.
+- **HLS ships in the wheels.** `tstrans.hls` imports out of the box from a
+  published wheel (the `hls` feature is default-on); it raises
+  `ImportError` only in a `--no-default-features` source build that omits
+  `hls`.
 - **RIST is excluded from the Windows wheel.** The Linux and macOS wheels
   bundle librist; the Windows wheel does not. (UDP / TCP / RTP / SRT ship
   on every platform.)
@@ -1346,7 +1365,8 @@ See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-
 
 The full surface has shipped — offline file I/O, typed KLV decode /
 encode, codec parsers, pandas / NumPy adapters, the UDP / TCP / RTP / RTSP /
-SRT / RIST transports, and `tstrans.pipeline.Pairer`. Wheels publish to PyPI on tagged releases. Remaining items are incremental: a
-zero-copy Python-buffer-protocol path for the NumPy accessors (today each
-access copies once — see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)),
-and graduating the experimental HLS publisher into the published wheels.
+SRT / RIST transports, the HLS publisher, and `tstrans.pipeline.Pairer`.
+Wheels publish to PyPI on tagged releases. The remaining item is
+incremental: a zero-copy Python-buffer-protocol path for the NumPy accessors
+(today each access copies once — see
+[Snapshot vs zero-copy](#snapshot-vs-zero-copy)).

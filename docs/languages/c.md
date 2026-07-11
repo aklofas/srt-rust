@@ -60,7 +60,7 @@ Every release exposes two pairs of macros in `tstrans.h` plus matching runtime a
 #define TST_VERSION_MINOR        2
 #define TST_VERSION_PATCH        0
 #define TST_ABI_VERSION_MAJOR    0   // C ABI contract version
-#define TST_ABI_VERSION_MINOR    17
+#define TST_ABI_VERSION_MINOR    18
 ```
 
 The **ABI** pair is what binding consumers should pin against. Minor bumps are additive (new entry points / new enum variants); a future major bump will be breaking (none yet — sitting at `0` pre-1.0). Check at process startup:
@@ -287,6 +287,17 @@ The receiver is the higher-level of three concentric shapes. Pick by what you ac
 | Typed demux events | `tst_demux_receiver_t` | One `tst_event_t` per `_recv_event` call |
 
 Add the `tst_managed_*` prefix for any of the three to get automatic reconnect — see [Pipeline guide](/docs/guides/pipeline.md). Full receiver examples in [`examples/receiving/`](../../bindings/c/examples/receiving/).
+
+## HLS publisher (`TST_HAS_HLS`)
+
+The HLS publisher segments MPEG-TS to `.ts` files and serves them (plus a rolling `.m3u8`) over an optional built-in HTTP server. It is gated behind the opt-in `hls` Cargo feature; `tstrans.h` exposes the surface only when built with `--features hls`, guarded by `#ifdef TST_HAS_HLS`. The surface (`tst_hls_publisher_builder_*`, `tst_mux_publisher_*`) mirrors the Rust `tst-hls` crate.
+
+The ABI-18 additions harden the terminal-playlist story:
+
+- `tst_hls_publisher_finish_serving` returns an opaque `TstHlsServerHandle` (`tst_hls_server_handle_local_addr` / `_shutdown` / `_free`) that keeps the built-in server up so a completed VOD/EVENT playlist and its segments stay fetchable after the stream ends.
+- `tst_hls_publisher_builder_max_segment_duration_ms` sets the wall-clock force-cut cap for an overdue keyframe (`0` leaves the `2 × segment_duration` default); `tst_hls_publisher_get_forced_cuts` reads how often it fired.
+
+See the [HLS guide](/docs/guides/hls.md) for serving guidance, the KLV ride-along carriage modes, and latency tuning.
 
 ## Language-specific gotchas
 

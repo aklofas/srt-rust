@@ -73,7 +73,7 @@ C (`tstrans.h`), and the JVM (`org.tstrans`).
 | **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3 |
 | **Subtitles** | DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS |
 | **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI); ST 1402 carriage + H.222.0 §2.12.4.2 Metadata AU cells |
-| **Transport** | UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT 1.5 (Haivision libsrt, vendored), RIST (VideoLAN librist) — all shipping. HLS publisher is experimental and excluded from published artifacts (see [`docs/project/deferred-features.md`](docs/project/deferred-features.md)). |
+| **Transport** | UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT 1.5 (Haivision libsrt, vendored), RIST (VideoLAN librist), and an HLS publisher (segmenter + optional built-in HTTP server) — all shipping. See the [HLS guide](docs/guides/hls.md). |
 | **Encryption** | AES-128 / 192 / 256 over SRT via vendored mbedTLS 3.6 LTS, on by default |
 
 Full feature-by-feature matrix: [`docs/reference/compatibility.md`](docs/reference/compatibility.md).

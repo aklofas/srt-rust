@@ -29,7 +29,9 @@ public final class Receiver extends NativeHandle {
      * Bind a receiver to {@code url}.
      *
      * @param url     {@code rtp://host:port} (unicast or multicast)
-     * @param pktSize recv scratch buffer size; must be &ge; 0
+     * @param pktSize expected send-side packet size (URL validation only); has no
+     *                effect on the receive buffer, which always accepts any legal
+     *                datagram; must be &ge; 0
      * @throws RtpException {@code TRANSPORT} on URL-parse / bind failure
      * @throws IllegalArgumentException if {@code pktSize} is negative
      */

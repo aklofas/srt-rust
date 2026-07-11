@@ -336,9 +336,12 @@ C symbol, signature, or struct layout changed.
   0.2.0, silent drops after the MP2T shape guard landed. The receive buffer
   is now sized to the 16-bit datagram ceiling (65535 bytes) on both the UDP
   and TCP-interleaved paths, so no legal datagram or interleaved frame can
-  truncate. Only traffic from foreign senders was affected — the in-tree
-  sender caps datagrams below the old buffer size. Note: the pipeline receive
-  shells (`Receiver` / `DemuxReceiver`) still size their buffers to the
+  truncate. The Python `tstrans.rtp.Receiver` and JVM `org.tstrans.rtp.Receiver`
+  wrappers shared the same 1304-byte limit and are fixed by the same change —
+  foreign full-MTU bundles that previously raised `Broken`-kind errors now
+  receive correctly. Only traffic from foreign senders was affected — the
+  in-tree sender caps datagrams below the old buffer size. Note: the pipeline
+  receive shells (`Receiver` / `DemuxReceiver`) still size their buffers to the
   send-side budget (1304 bytes) and currently reject larger payloads with a
   speaking error rather than truncating — lifting that ceiling is tracked as
   a follow-up (PR #95).

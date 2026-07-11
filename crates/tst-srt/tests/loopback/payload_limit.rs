@@ -96,8 +96,9 @@ fn srt_transport_inherits_configured_payload_size() {
 /// is not negotiated down to our value. A peer configured at the
 /// live-mode maximum (1456) delivers 1456-byte messages to a receiver
 /// that kept the 1316 default, so a receive buffer sized from the old
-/// recv-side max_payload() (= local option) hit `SRT_ELARGEMSG` →
-/// Broken("recv buf too small"). The recv-side ceiling must cover the
+/// recv-side max_payload() (= local option) was SILENTLY TRUNCATED to
+/// the buffer size on vendored libsrt 1.5.5 (the BufferTooSmall→Broken
+/// mapping never fired; kept as defence). The recv-side ceiling must cover the
 /// live-mode wire maximum regardless of the local option.
 #[test]
 fn oversize_foreign_payload_through_raw_receiver_shell() {

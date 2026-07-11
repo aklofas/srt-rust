@@ -1952,6 +1952,7 @@ dependencies = [
  "spin",
  "thiserror 2.0.18",
  "tst-core",
+ "tst-hls",
  "tst-pipeline",
  "tst-rist",
  "tst-rtp",
@@ -1987,6 +1988,7 @@ name = "tst-examples"
 version = "0.0.0"
 dependencies = [
  "tst-core",
+ "tst-hls",
  "tst-pipeline",
  "tst-rist",
  "tst-rtp",
@@ -2059,6 +2061,7 @@ dependencies = [
  "pyo3-build-config",
  "secrecy",
  "tst-core",
+ "tst-hls",
  "tst-pipeline",
  "tst-rist",
  "tst-rtp",
@@ -2133,11 +2136,6 @@ dependencies = [
 name = "tst-tcp"
 version = "0.2.0"
 dependencies = [
- "base64",
- "bytes",
- "http-body-util",
- "hyper",
- "hyper-util",
  "rcgen",
  "rustls",
  "rustls-native-certs",
@@ -2145,9 +2143,6 @@ dependencies = [
  "socket2 0.5.10",
  "tempfile",
  "thiserror 2.0.18",
- "tokio",
- "tokio-rustls",
- "tokio-util",
  "tracing",
  "tst-core",
  "tst-pipeline",

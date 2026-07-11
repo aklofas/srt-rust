@@ -9,26 +9,9 @@ description = "Raw MPEG-TS over TCP (caller + listener, plain + TLS via rustls) 
 
 [features]
 # tls stays default-on: TCP transport security is tst-tcp's core value
-# proposition (tcps:// encrypted streams out of the box). HLS is experimental
-# and security-gated (path-traversal CWE-22, unauthenticated HTTP server) —
-# see docs/project/deferred-features.md. Opt in with --features hls.
+# proposition (tcps:// encrypted streams out of the box).
 default = ["tls"]
 tls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile"]
-# hls: EXPERIMENTAL — not shipped in published wheels/JAR; security-gated
-# (path-traversal CWE-22 + TARGETDURATION floor + VOD-never-served, all on an
-# unauthenticated all-interfaces server); see docs/project/deferred-features.md.
-hls = [
-    "dep:tokio",
-    "dep:tokio-util",
-    "dep:hyper",
-    "dep:hyper-util",
-    "dep:http-body-util",
-    "dep:bytes",
-    "dep:base64",
-    "dep:rustls-pemfile",
-    "dep:tokio-rustls",
-    "dep:rustls",
-]
 
 [dependencies]
 tst-core   = { path = "../tst-core" }
@@ -49,43 +32,6 @@ optional = true
 [dependencies.rustls-pemfile]
 version  = "2"
 optional = true
-
-[dependencies.tokio]
-version  = "1"
-features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"]
-optional = true
-
-[dependencies.tokio-util]
-version  = "0.7"
-optional = true
-
-[dependencies.hyper]
-version  = "1.7"
-features = ["server", "http1"]
-optional = true
-
-[dependencies.hyper-util]
-version  = "0.1"
-features = ["server", "tokio", "service", "http1"]
-optional = true
-
-[dependencies.http-body-util]
-version  = "0.1"
-optional = true
-
-[dependencies.bytes]
-version  = "1"
-optional = true
-
-[dependencies.base64]
-version  = "0.22"
-optional = true
-
-[dependencies.tokio-rustls]
-version          = "0.26"
-default-features = false
-features         = ["ring"]
-optional         = true
 
 [dev-dependencies]
 tst-pipeline = { path = "../tst-pipeline" }

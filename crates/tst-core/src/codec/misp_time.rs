@@ -140,6 +140,8 @@ pub(crate) fn sei_payload(
 /// that would follow two consecutive zero bytes gets a 0x03 inserted
 /// before it. `out`'s existing tail does not count toward the zero run
 /// (callers append the NAL header first — headers are non-zero here).
+// Consumed by build_sei_nal (next task); the allow comes off with it.
+#[allow(dead_code)]
 pub(crate) fn append_rbsp_escaped(out: &mut Vec<u8>, rbsp: &[u8]) {
     let mut zeros = 0u32;
     for &b in rbsp {

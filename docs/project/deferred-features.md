@@ -1791,7 +1791,7 @@ the trigger that would unblock it.
   (`org.tstrans.srt.MuxSender`, etc.) do not expose a
   `send_video_misp_to` / `sendVideoMispTo` method.
 - **Why deferred:** Follows the binding DTS precedent: the
-  `push_video_to_with_dts` / `send_video_misp_to` method family was
+  `push_video_misp_to` / `send_video_misp_to` method family was
   added to `Muxer` and `MuxSender` in Rust, then mirrored into the C
   ABI at `bindings/c` in the same arc (PR #53 / BIND-01). The Python
   and JVM binding-shell mirrors follow separately once a binding-user

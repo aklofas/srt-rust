@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Simulated per-frame data — replace with real encoder/sensor output.
     let frame_pts_us: u64 = 1_700_000_000_000_000; // MISP timestamp (microseconds)
-    let frame_pts_90khz = Pts90khz::new((frame_pts_us / 1_000_000) * 90_000);
+    let frame_pts_90khz = Pts90khz::new(((frame_pts_us / 1_000_000) * 90_000) as i64);
     let nal: Vec<u8> = vec![/* H.264 Annex-B NAL bytes from your encoder */];
     let is_key_frame = true;
 
@@ -205,7 +205,7 @@ klv_handle = muxer.klv_stream_handle(0)
 sensor_uuid = bytes.fromhex("0123456789abcdef0123456789abcdef")
 core_id = CoreId(
     version=1,
-    sensor=(IdType.Physical, sensor_uuid),
+    sensor=(IdType.PHYSICAL, sensor_uuid),
     platform=None,
     window=None,
     minor=None,

@@ -628,7 +628,8 @@ mod tests {
 
         let mut buf = [0u8; 16];
         let _ = m.recv_bytes(&mut buf); // serves 1 byte
-        let _ = m.recv_bytes(&mut buf); // breaks; factory fails; budget exhausts
+        let result = m.recv_bytes(&mut buf); // breaks; factory fails; budget exhausts
+        assert!(result.is_err(), "budget-exhausted recv must error");
         assert_eq!(
             m.max_payload(),
             9000,

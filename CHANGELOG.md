@@ -522,7 +522,7 @@ signature, or struct layout was removed or changed.
 - Receive-side URLs now REJECT `?pkt_size=` with a teaching error
   ("pkt_size is a send-side knob…") instead of silently ignoring it —
   `rtp://` receive entry points (including the H.264 elementary path) and
-  `udp://` receive builders, across Rust, C, Python, and JVM. Strip the
+  `udp://` receive entry points, across Rust, C, Python, and JVM. Strip the
   parameter from URLs shared verbatim with senders.
 
 ### Fixed

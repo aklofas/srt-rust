@@ -299,7 +299,11 @@ fn scan_sei_nal(
                 break;
             }
         }
-        let Some(payload) = rbsp.get(p..p + payload_size) else {
+        // Compute the end index with overflow protection: an enormous
+        // payload_size from a saturating-accumulated 0xFF chain must not
+        // wrap p + payload_size before .get() can return None.
+        let payload_end = p.checked_add(payload_size).unwrap_or(usize::MAX);
+        let Some(payload) = rbsp.get(p..payload_end) else {
             // The declared payload_size runs past the RBSP end. Check
             // whether this truncated message is a MISP one: if
             // payload_type == 5 AND at least 16 bytes remain AND those
@@ -308,7 +312,8 @@ fn scan_sei_nal(
             // available bytes means the identifier is unconfirmable,
             // so we fall through to Ok(None) (no confirmed MISP match).
             if payload_type == 5 {
-                if let Some(head) = rbsp.get(p..p + 16) {
+                let id_end = p.checked_add(16).unwrap_or(usize::MAX);
+                if let Some(head) = rbsp.get(p..id_end) {
                     if head == MISP_MICROSEC_ID_H264
                         || head == MISP_MICROSEC_ID_H265
                         || head == MISP_NANOSEC_ID_H265
@@ -353,7 +358,7 @@ fn scan_sei_nal(
                 }));
             }
         }
-        p += payload_size;
+        p = payload_end; // payload_end is p + payload_size; overflow already handled above
         // rbsp_trailing_bits: a 0x80 (or padding) terminates the walk.
         if rbsp.get(p).is_none_or(|&b| b == 0x80) {
             return Ok(None);
@@ -378,7 +383,14 @@ fn first_vcl_prefix_offset(au: &[u8], codec: VideoCodec) -> Option<usize> {
                 i += 1;
                 continue;
             };
-            if data_at < au.len() {
+            // H.265 NAL header is 2 bytes (forbidden_zero_bit | nal_unit_type | nuh_layer_id
+            // | nuh_temporal_id_plus1); require both bytes to be present before classifying
+            // H.265 VCL so a 1-byte truncated tail is never accepted as VCL.
+            let has_header = match codec {
+                VideoCodec::H265 => data_at + 1 < au.len(),
+                _ => data_at < au.len(),
+            };
+            if has_header {
                 let header = au[data_at];
                 let is_vcl = match codec {
                     VideoCodec::H264 => (1..=5).contains(&(header & 0x1F)),
@@ -705,6 +717,71 @@ mod tests {
             extract(&au, VideoCodec::H265).unwrap(),
             Some(ts),
             "SUFFIX_SEI (type 40) must be extracted"
+        );
+    }
+
+    // Finding 1 regression: a 0xFF-chain payload_size that overflows usize MUST NOT
+    // panic in debug builds. The RBSP here is: payload_type=5 (user_data_unregistered),
+    // then 64 bytes of 0xFF (accumulated size = 64*255 = 16320, far past end), then a
+    // non-0xFF terminator 0x00 ending the size accumulation, followed by 16 bytes
+    // matching MISP_MICROSEC_ID_H264 as the "payload start" — so the identifier-peek
+    // path fires and must return Err(TruncatedSei) (confirmed MISP, payload overruns).
+    // A variant with fewer than 16 bytes after the chain must return Ok(None) instead.
+    #[test]
+    fn scan_sei_saturating_payload_size_no_panic() {
+        // Construct raw RBSP: type=5, then 64×0xFF + 0x00 (terminates size loop
+        // with accumulated size = 64*255 + 0 = 16320), then 16 MISP id bytes.
+        // The SEI NAL for H.264 has a 1-byte header (0x06).
+        let mut nal: Vec<u8> = Vec::new();
+        nal.push(0x06); // H.264 SEI NAL header (nal_unit_type=6)
+        // RBSP body (no emulation prevention bytes needed here — 0xFF is never escaped):
+        nal.push(0x05); // payload_type = 5 (user_data_unregistered)
+        nal.extend(core::iter::repeat(0xFF).take(64)); // 64-byte 0xFF size chain
+        nal.push(0x00); // terminator byte (size accumulation ends, adds 0)
+        nal.extend_from_slice(&MISP_MICROSEC_ID_H264); // 16 identifier bytes at "payload start"
+        // Wrap as an Annex-B NAL (3-byte start code).
+        let mut au: Vec<u8> = vec![0, 0, 1];
+        au.extend_from_slice(&nal);
+        // MUST NOT panic; confirmed MISP id present but payload overruns → TruncatedSei.
+        assert_eq!(
+            extract(&au, VideoCodec::H264),
+            Err(MispTimeExtractError::TruncatedSei),
+            "saturating payload_size + confirmed MISP id must be Err(TruncatedSei)"
+        );
+
+        // Variant: fewer than 16 bytes after the size chain → identifier unconfirmable.
+        let mut nal2: Vec<u8> = Vec::new();
+        nal2.push(0x06);
+        nal2.push(0x05);
+        nal2.extend(core::iter::repeat(0xFF).take(64));
+        nal2.push(0x00);
+        nal2.extend_from_slice(&MISP_MICROSEC_ID_H264[..8]); // only 8 bytes — < 16
+        let mut au2: Vec<u8> = vec![0, 0, 1];
+        au2.extend_from_slice(&nal2);
+        assert_eq!(
+            extract(&au2, VideoCodec::H264),
+            Ok(None),
+            "saturating payload_size + <16 identifier bytes must be Ok(None)"
+        );
+    }
+
+    // Finding 2 regression: H.265 AU ending in a 1-byte truncated NAL stub whose
+    // single header byte pattern-matches a VCL type must NOT be treated as VCL.
+    // AU: VPS (non-VCL type 32), then a 1-byte stub 0x26 (IDR_W_RADL first byte).
+    // insert_sei_before_first_vcl must return Err(NoVclNal) — no complete VCL present.
+    #[test]
+    fn h265_one_byte_vcl_stub_not_classified_as_vcl() {
+        // VPS NAL: type 32 -> first header byte = (32 << 1) = 0x40, second = 0x01.
+        // Stub: just the single byte 0x26 = (19 << 1) which looks like IDR_W_RADL
+        // but is truncated (missing the second header byte).
+        let mut au = Vec::new();
+        au.extend_from_slice(&[0, 0, 0, 1, 0x40, 0x01, 0xAA]); // VPS (type 32, non-VCL)
+        au.extend_from_slice(&[0, 0, 1, 0x26]); // 3-byte start + 1-byte stub (type 19 first byte)
+        let sei = build_sei_nal(VideoCodec::H265, &MispTimestamp::micros(1, 0x1F)).unwrap();
+        assert_eq!(
+            insert_sei_before_first_vcl(&au, &sei, VideoCodec::H265),
+            Err(MispTimeError::NoVclNal),
+            "1-byte H.265 NAL stub must not be accepted as VCL"
         );
     }
 }

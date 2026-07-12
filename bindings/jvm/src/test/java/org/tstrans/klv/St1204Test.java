@@ -213,6 +213,118 @@ class St1204Test {
     }
 
     // -----------------------------------------------------------------------
+    // validateMismms — missing security sub-item
+    // -----------------------------------------------------------------------
+
+    @Test
+    void validateMismmsMissingSecurityItem() {
+        UasDatalinkLs base = fullMismmsRecord();
+        // Rebuild security LS without the caveats item (Tag 5 in Security LS).
+        SecurityLs secNoCaveats = new SecurityLs.Builder()
+                .securityClassification(SecurityClassification.UNCLASSIFIED)
+                .classifyingCountryCodingMethod(ClassifyingCountryCodingMethod.ISO_3166_THREE_LETTER)
+                .classifyingCountry("//USA")
+                .sciShiInfo("SCI")
+                // Omit caveats (Tag 5 in Security LS)
+                .releasingInstructions("USA")
+                .objectCountryCodingMethod(ObjectCountryCodingMethod.ISO_3166_THREE_LETTER)
+                .objectCountryCodes("USA")
+                .version(12)
+                .build();
+        byte[] secBytesNoCaveats;
+        try {
+            secBytesNoCaveats = Klv.encodeSecurity(secNoCaveats);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to encode security LS without caveats for test", e);
+        }
+
+        UasDatalinkLs noCaveats = new UasDatalinkLs.Builder()
+                .universalLabel(base.universalLabel())
+                .declaredVersion(base.declaredVersion())
+                .missionId(base.missionId())
+                .platformHeadingDeg(base.platformHeadingDeg())
+                .platformPitchDeg(base.platformPitchDeg())
+                .platformRollDeg(base.platformRollDeg())
+                .platformDesignation(base.platformDesignation())
+                .imageSourceSensor(base.imageSourceSensor())
+                .imageCoordinateSystem(base.imageCoordinateSystem())
+                .timestampUs(base.timestampUs())
+                .sensorLatDeg(base.sensorLatDeg())
+                .sensorLonDeg(base.sensorLonDeg())
+                .sensorAltM(base.sensorAltM())
+                .sensorHfovDeg(base.sensorHfovDeg())
+                .sensorVfovDeg(base.sensorVfovDeg())
+                .sensorRelAzDeg(base.sensorRelAzDeg())
+                .sensorRelElDeg(base.sensorRelElDeg())
+                .sensorRelRollDeg(base.sensorRelRollDeg())
+                .slantRangeM(base.slantRangeM())
+                .targetWidthM(base.targetWidthM())
+                .frameCenterLatDeg(base.frameCenterLatDeg())
+                .frameCenterLonDeg(base.frameCenterLonDeg())
+                .frameCenterElevM(base.frameCenterElevM())
+                .securityLocalSet(ByteBuffer.wrap(secBytesNoCaveats))
+                .miisCoreId(base.miisCoreId())
+                .build();
+        List<MismmsViolation> violations = Klv.validateMismms(noCaveats);
+        boolean hasMissingSecurity = violations.stream()
+                .anyMatch(v -> "missing_security".equals(v.kind()) && v.tag() == 5);
+        assertTrue(hasMissingSecurity,
+                "missing caveats in security LS should yield a 'missing_security' violation for tag 5; got: "
+                        + violations);
+    }
+
+    // -----------------------------------------------------------------------
+    // validateMismms — zero-length item
+    // -----------------------------------------------------------------------
+
+    @Test
+    void validateMismmsZeroLengthItem() {
+        UasDatalinkLs base = fullMismmsRecord();
+        // Inject tag 96 (zero-length) and omit tag 22 from a full record.
+        // This should produce: kind=="zero_length" with tag==96 AND kind=="missing" with tag==22.
+        List<KlvUnknownField> unk = java.util.Arrays.asList(
+                new KlvUnknownField(96L, ByteBuffer.wrap(new byte[0]))  // Tag 96, zero-length
+        );
+        UasDatalinkLs withZeroLength = new UasDatalinkLs.Builder()
+                .universalLabel(base.universalLabel())
+                .declaredVersion(base.declaredVersion())
+                .missionId(base.missionId())
+                .platformHeadingDeg(base.platformHeadingDeg())
+                .platformPitchDeg(base.platformPitchDeg())
+                .platformRollDeg(base.platformRollDeg())
+                .platformDesignation(base.platformDesignation())
+                .imageSourceSensor(base.imageSourceSensor())
+                .imageCoordinateSystem(base.imageCoordinateSystem())
+                .timestampUs(base.timestampUs())
+                .sensorLatDeg(base.sensorLatDeg())
+                .sensorLonDeg(base.sensorLonDeg())
+                .sensorAltM(base.sensorAltM())
+                .sensorHfovDeg(base.sensorHfovDeg())
+                .sensorVfovDeg(base.sensorVfovDeg())
+                .sensorRelAzDeg(base.sensorRelAzDeg())
+                .sensorRelElDeg(base.sensorRelElDeg())
+                .sensorRelRollDeg(base.sensorRelRollDeg())
+                .slantRangeM(base.slantRangeM())
+                // Omit targetWidthM (Tag 22); inject zero-length tag 96 via unknown
+                .frameCenterLatDeg(base.frameCenterLatDeg())
+                .frameCenterLonDeg(base.frameCenterLonDeg())
+                .frameCenterElevM(base.frameCenterElevM())
+                .securityLocalSet(base.securityLocalSet())
+                .miisCoreId(base.miisCoreId())
+                .unknown(unk)
+                .build();
+        List<MismmsViolation> violations = Klv.validateMismms(withZeroLength);
+        boolean hasZeroLength = violations.stream()
+                .anyMatch(v -> "zero_length".equals(v.kind()) && v.tag() == 96);
+        boolean hasMissing22 = violations.stream()
+                .anyMatch(v -> "missing".equals(v.kind()) && v.tag() == 22);
+        assertTrue(hasZeroLength,
+                "tag 96 with zero-length should yield a 'zero_length' violation; got: " + violations);
+        assertTrue(hasMissing22,
+                "missing tag 22 should yield a 'missing' violation; got: " + violations);
+    }
+
+    // -----------------------------------------------------------------------
     // validateMismms — alternation conflict
     // -----------------------------------------------------------------------
 

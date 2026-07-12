@@ -451,8 +451,14 @@ fn build_violation<'local>(
         MismmsViolation::AlternationConflict { tag_a, tag_b } => {
             ("alternation_conflict", *tag_a, None, *tag_b)
         }
-        // Non-exhaustive guard for future variants.
-        _ => ("missing", 0, None, 0),
+        // Non-exhaustive guard: any future variant is unknown — throw rather than fabricate.
+        _ => {
+            let _ = env.throw_new(
+                "org/tstrans/KlvDecodeException",
+                "Unknown MismmsViolation variant from Rust validator crossing the JNI boundary",
+            );
+            return Err(jni::errors::Error::JavaException);
+        }
     };
 
     let kind_jstr = env.new_string(kind_str)?;

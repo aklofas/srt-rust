@@ -241,7 +241,7 @@ fn sentinel_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
 /// fallback emission. Do NOT reuse this visitor for `patch()` sizing —
 /// `patch()` never auto-injects Tag 65 (it builds output `Vec`s
 /// directly and never calls this).
-fn each_typed_field<F: FnMut(u8, usize)>(
+pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
     record: &UasDatalinkLs,
     _opts: &EncodeConfig,
     mut visit: F,

@@ -1907,6 +1907,36 @@ pub fn tst_core::klv::st0102::encode_strict_compliance(&tst_core::klv::SecurityL
 pub fn tst_core::klv::st0102::encode_to_vec(&tst_core::klv::SecurityLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0102::encoded_len(&tst_core::klv::SecurityLs) -> usize
 pub mod tst_core::klv::st0601
+#[non_exhaustive] pub enum tst_core::klv::st0601::MismmsViolation
+pub tst_core::klv::st0601::MismmsViolation::AlternationConflict
+pub tst_core::klv::st0601::MismmsViolation::AlternationConflict::tag_a: u8
+pub tst_core::klv::st0601::MismmsViolation::AlternationConflict::tag_b: u8
+pub tst_core::klv::st0601::MismmsViolation::MissingItem
+pub tst_core::klv::st0601::MismmsViolation::MissingItem::name: &'static str
+pub tst_core::klv::st0601::MismmsViolation::MissingItem::tag: u8
+pub tst_core::klv::st0601::MismmsViolation::MissingSecurityItem
+pub tst_core::klv::st0601::MismmsViolation::MissingSecurityItem::name: &'static str
+pub tst_core::klv::st0601::MismmsViolation::MissingSecurityItem::tag: u8
+pub tst_core::klv::st0601::MismmsViolation::ZeroLengthItem
+pub tst_core::klv::st0601::MismmsViolation::ZeroLengthItem::tag: u8
+impl core::clone::Clone for tst_core::klv::st0601::MismmsViolation
+pub fn tst_core::klv::st0601::MismmsViolation::clone(&self) -> tst_core::klv::st0601::MismmsViolation
+impl core::cmp::Eq for tst_core::klv::st0601::MismmsViolation
+impl core::cmp::PartialEq for tst_core::klv::st0601::MismmsViolation
+pub fn tst_core::klv::st0601::MismmsViolation::eq(&self, &tst_core::klv::st0601::MismmsViolation) -> bool
+impl core::error::Error for tst_core::klv::st0601::MismmsViolation
+impl core::fmt::Debug for tst_core::klv::st0601::MismmsViolation
+pub fn tst_core::klv::st0601::MismmsViolation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::klv::st0601::MismmsViolation
+pub fn tst_core::klv::st0601::MismmsViolation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::MismmsViolation
+impl core::marker::Freeze for tst_core::klv::st0601::MismmsViolation
+impl core::marker::Send for tst_core::klv::st0601::MismmsViolation
+impl core::marker::Sync for tst_core::klv::st0601::MismmsViolation
+impl core::marker::Unpin for tst_core::klv::st0601::MismmsViolation
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::MismmsViolation
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::MismmsViolation
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::MismmsViolation
 #[non_exhaustive] pub enum tst_core::klv::st0601::OutOfRangePolicy
 pub tst_core::klv::st0601::OutOfRangePolicy::Error
 pub tst_core::klv::st0601::OutOfRangePolicy::Indicator
@@ -2140,6 +2170,7 @@ pub fn tst_core::klv::st0601::encoded_len(&tst_core::UasDatalinkLs) -> usize
 pub fn tst_core::klv::st0601::encoded_len_with(&tst_core::UasDatalinkLs, &tst_core::klv::st0601::EncodeConfig) -> usize
 pub fn tst_core::klv::st0601::patch(&[u8], &tst_core::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvPatchError>
 pub fn tst_core::klv::st0601::st0601_sentinel_meaning(u32) -> core::option::Option<tst_core::klv::st0601::St0601SentinelMeaning>
+pub fn tst_core::klv::st0601::validate_mismms(&tst_core::UasDatalinkLs) -> alloc::vec::Vec<tst_core::klv::st0601::MismmsViolation>
 pub mod tst_core::klv::st0605
 pub struct tst_core::klv::st0605::PrecisionTimeStampPack
 pub tst_core::klv::st0605::PrecisionTimeStampPack::time_status: tst_core::klv::TimeStatus

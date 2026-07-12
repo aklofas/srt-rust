@@ -48,13 +48,24 @@ fn java_video_codec_ordinal_to_rust(env: &mut JNIEnv, ordinal: jint) -> Option<V
 }
 
 /// Build the Java `org.tstrans.codec.MispTimeKind` enum constant.
+/// Throws `CodecParseException(ENGINE_ERROR)` and returns `Err(())` for
+/// unrecognised variants (non_exhaustive guard); never returns silently.
 fn build_kind<'local>(env: &mut JNIEnv<'local>, kind: MispTimeKind) -> Result<JObject<'local>, ()> {
     let name = match kind {
         MispTimeKind::Micro => "MICRO",
         MispTimeKind::Nano => "NANO",
-        // MispTimeKind is non_exhaustive; new variants must be treated as
-        // ENGINE_ERROR by the caller (the match guard on kind in the native).
-        _ => return Err(()),
+        // MispTimeKind is non_exhaustive; an unrecognised variant is an
+        // ENGINE_ERROR (not silent null — throw so the caller sees an exception).
+        _ => {
+            throw_codec(
+                env,
+                "ENGINE_ERROR",
+                "misp_time",
+                &CodecErrFields::default(),
+                "unknown MispTimeKind variant crossing JNI",
+            );
+            return Err(());
+        }
     };
     env.get_static_field(
         "org/tstrans/codec/MispTimeKind",

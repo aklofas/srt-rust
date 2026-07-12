@@ -4,81 +4,89 @@
 
 > **You will learn:**
 > - Where to find a recipe by topic
-> - How recipes group by reader intent (sending, receiving, KLV, codecs, operations)
+> - How recipes group by reader intent (muxing, sending, receiving, pairing, KLV, codecs, operations)
 > - Where to find the full runnable example for each recipe (where one exists)
 
-Recipe numbers are stable across edits — existing inbound links stay valid as recipes are added or rearranged. Within each section, recipes are listed in numeric order, not narrative order. Run any example with `cargo run -p tst-examples --example <name>`.
+Recipes are task-named — find them by scanning the section that matches what you're doing. Within each section, recipes run simple → complex. Run any example with `cargo run -p tst-examples --example <name>`.
 
-## Browse by section
+## 🧱 Muxing — build a TS, no network
 
-### 🛰 Sending — produce a TS stream
+Start here if your job is producing MPEG-TS bytes: files, fixtures, multi-stream programs.
 
-- **Recipe 0: Send a single TS packet to any `Transport`** — [00-send-single-packet.md](sending/00-send-single-packet.md) — The simplest possible sender — open a transport, push 188 bytes, drop.
-- **Recipe 1: Send video + KLV with passphrase encryption** — [01-send-encrypted.md](sending/01-send-encrypted.md) — You need a secure SRT uplink with passphrase-derived AES-CTR encryption negotiated at handshake.
-- **Recipe 3: Mux to a file (no SRT, no transport)** — [03-mux-to-file.md](sending/03-mux-to-file.md) — You want the muxer's output without any networking — building test fixtures, validating output against TSDuck/ffprobe, or running an offline pipeline.
-- **Recipe 8: Use a custom (non-SRT) transport** — [08-custom-transport.md](sending/08-custom-transport.md) — The sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol.
-- **Recipe 9a: Send MPEG-TS over UDP** — [udp.md](sending/udp.md) — Raw UDP unicast or multicast transport — lowest-common-denominator for compatibility with ffmpeg, VLC, and STANAG 4609 receivers.
-- **Recipe 9b: Send MPEG-TS over TCP** — [tcp.md](sending/tcp.md) — Reliable-bytestream sibling of UDP, with optional TLS via rustls; pairs with `ffmpeg -listen 1 -i tcp://...` on the receiver side.
-- **Recipe 9c: Publish MPEG-TS as an HLS stream** — [hls.md](sending/hls.md) — Segmenter-first `tst-hls`: `.ts` segments + rolling `.m3u8` playlist; LIVE/EVENT/VOD + `finish_serving`; optional built-in HTTP server (Basic auth + HTTPS via rustls). Ships in the Python wheels; opt-in `hls` feature in C.
-- **Recipe 9d: Send MPEG-TS over RIST** — [rist.md](sending/rist.md) — VideoLAN librist 0.2.16 bindings; ARQ-recovered UDP with Simple + Main profiles and AES-128/192/256 PSK encryption. Sender side.
-- **Recipe 9e: KLV-over-HLS to a browser (hls.js)** — [hls-klv-to-web.md](sending/hls-klv-to-web.md) — Carry MISB KLV inside HLS segments as private data; hls.js client pulls it via the native `misbklv` path or a UL-anchored fallback and schedules it against playback time.
-- **Recipe 9: Mux H.265 + sync KLV** — [09-mux-h265-with-klv.md](sending/09-mux-h265-with-klv.md) — The encoder produces HEVC, or the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape.
-- **Recipe 11: Open a sender from an `srt://...?...` URL** — [11-sender-from-url.md](sending/11-sender-from-url.md) — The connection target and tuning live in deployment config files or are passed in by an orchestrator.
-- **Recipe 15: Label EO + IR + KLV streams in a multi-stream program** — [15-mux-eo-ir-klv.md](sending/15-mux-eo-ir-klv.md) — Multi-stream programs (Path 3) carry several PIDs in one program; per-stream PMT descriptors let receivers (TSDuck, ffprobe, our `Demuxer`) render which PID is which.
-- **Recipe 16: Repack two single-program inputs into one multi-program TS** — [16-repack-multi-program.md](sending/16-repack-multi-program.md) — You have two independent (EO + IR + KLV) feeds and need to ship them through one SRT socket without forcing each to its own UDP port.
-- **Recipe 19: Mux audio + video + KLV in a single program** — [19-mux-audio-video-klv.md](sending/19-mux-audio-video-klv.md) — Build a three-stream program where audio PTS-aligns with video for synchronized playback and KLV records emit on the same PCR clock.
-- **Recipe 22: Streaming H.266 / VVC video with synchronous KLV metadata** — [22-mux-h266-with-klv.md](sending/22-mux-h266-with-klv.md) — The encoder produces H.266 (VVC) and the receiver requires strict ST 1402 sync KLV metadata.
-- **Recipe 23: Streaming AV1 video with KLV metadata** — [23-mux-av1-with-klv.md](sending/23-mux-av1-with-klv.md) — The encoder produces AV1 — note OBU framing replaces Annex-B NAL framing.
+- **[Mux to a file (no SRT, no transport)](/docs/cookbook/muxing/mux-to-file.md)** — The muxer's output without any networking — test fixtures, TSDuck/ffprobe validation, offline pipelines.
+- **[Mux H.265 + sync KLV](/docs/cookbook/muxing/mux-h265-with-klv.md)** — The encoder produces HEVC, or the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15).
+- **[Mux H.266 / VVC video with synchronous KLV](/docs/cookbook/muxing/mux-h266-with-klv.md)** — The encoder produces H.266 (VVC) and the receiver requires strict ST 1402 sync KLV.
+- **[Mux AV1 video with KLV](/docs/cookbook/muxing/mux-av1-with-klv.md)** — The encoder produces AV1 — OBU framing replaces Annex-B NAL framing.
+- **[Mux audio + video + KLV in a single program](/docs/cookbook/muxing/mux-audio-video-klv.md)** — A three-stream program where audio PTS-aligns with video and KLV rides the same PCR clock.
+- **[Label EO + IR + KLV streams in a multi-stream program](/docs/cookbook/muxing/mux-eo-ir-klv.md)** — Per-stream PMT descriptors let receivers (TSDuck, ffprobe, our `Demuxer`) render which PID is which.
+- **[Repack two single-program inputs into one multi-program TS](/docs/cookbook/muxing/repack-multi-program.md)** — Ship two independent feeds through one socket without forcing each onto its own port.
 
-### 📡 Receiving — consume a TS stream (includes KLV-to-video pairing)
+## 🛰 Sending — put a TS on the wire
 
-- **Recipe 4: Relay a captured `.ts` file over SRT** — [04-relay-file-to-srt.md](receiving/04-relay-file-to-srt.md) — You have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline.
-- **Recipe 4a: Receive MPEG-TS over UDP** — [udp.md](receiving/udp.md) — Raw UDP unicast or multicast receiver — ingest from ffmpeg, VLC, or STANAG 4609 senders.
-- **Recipe 4b: Receive MPEG-TS over TCP** — [tcp.md](receiving/tcp.md) — Reliable receiver — accept inbound caller (listener) or connect to a producer (caller-side receive). TLS supported via `tcps://`.
-- **Recipe 4c: Receive MPEG-TS over RIST** — [rist.md](receiving/rist.md) — Receiver side of Recipe 9d. Bind URL form (`rist://@host:port`) with optional AES PSK decryption.
-- **Recipe 5: Receive into a file** — [05-receive-to-file.md](receiving/05-receive-to-file.md) — Archiving a stream or building a test fixture from a live producer.
-- **Recipe 12: Pair sync-KLV with video AUs by nearest PTS** — [12-pair-klv-by-pts.md](receiving/12-pair-klv-by-pts.md) — An encoder emits sync-KLV synchronized to video frames (one KLV per frame, KLV PES PTS = frame PTS) and you want to consume frame + telemetry as a paired record.
-- **Recipe 13: Sample-and-hold async-KLV against video frames** — [13-sample-hold-klv.md](receiving/13-sample-hold-klv.md) — KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video.
-- **Recipe 14: EO + IR sensor pair with shared async-KLV** — [14-eo-ir-shared-klv.md](receiving/14-eo-ir-shared-klv.md) — The platform carries two sensors (visible + thermal) and one async metadata stream serves both.
-- **Recipe 21: Extract subtitle PES bytes from a captured `.ts` file** — [21-extract-subtitle-pes.md](receiving/21-extract-subtitle-pes.md) — Receive-side inspection — discover what subtitle codecs are in a capture and read the cue text.
-- **Recipe 24: Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)** — [24-pairer-realtime.md](receiving/24-pairer-realtime.md) — You want the inline pattern from Recipe 12 expressed through the opt-in `Pairer` helper, with bounded history, telemetry counters, and typed projection structs.
-- **Recipe 25: Pair sync-KLV in batch mode (`PairerMode::Buffered`)** — [25-pairer-batch.md](receiving/25-pairer-batch.md) — KLV PES is interleaved *after* its matching video PES (some encoders), and Realtime mode misses the pairing.
-- **Recipe 26: Sample-and-hold async KLV via `Pairer::last_before_pts`** — [26-pairer-last-before-pts.md](receiving/26-pairer-last-before-pts.md) — Async-KLV streams where each video frame should attach the most recent KLV at `klv.pts <= video.pts`.
-- **Recipe 27: EO + IR composition with shared async-KLV** — [27-eo-ir-shared-klv-pairer.md](receiving/27-eo-ir-shared-klv-pairer.md) — Two video PIDs share one async-KLV PID and you want telemetry counters + typed output projections per branch.
-- **Recipe 34: Ingest H.264 from an RTSP camera and remux to MPEG-TS** — [34-recv-rtsp-h264-to-ts.md](receiving/34-recv-rtsp-h264-to-ts.md) — Camera exposes bare H.264-over-RTP (RFC 6184); gateway pattern re-muxes access units into MPEG-TS. Python-first; Rust example twin available.
+- **[Send a single TS packet to any `Transport`](/docs/cookbook/sending/send-single-packet.md)** — The simplest possible sender — open a transport, push 188 bytes, drop.
+- **[Open a sender from an `srt://...?...` URL](/docs/cookbook/sending/sender-from-url.md)** — Connection target and tuning live in deployment config or an orchestrator.
+- **[Send video + KLV with passphrase encryption](/docs/cookbook/sending/send-encrypted.md)** — A secure SRT uplink with passphrase-derived AES-CTR encryption negotiated at handshake.
+- **[Send MPEG-TS over UDP](/docs/cookbook/sending/udp.md)** — Raw UDP unicast/multicast — lowest-common-denominator for ffmpeg, VLC, and STANAG 4609 receivers.
+- **[Send MPEG-TS over TCP](/docs/cookbook/sending/tcp.md)** — Reliable-bytestream sibling of UDP, optional TLS via rustls.
+- **[Send MPEG-TS over RIST](/docs/cookbook/sending/rist.md)** — ARQ-recovered UDP; Simple + Main profiles; AES PSK encryption.
+- **[Publish MPEG-TS as an HLS stream](/docs/cookbook/sending/hls.md)** — `.ts` segments + rolling `.m3u8`; LIVE/EVENT/VOD + `finish_serving`; optional built-in HTTP server.
+- **[Send KLV over HLS to a browser (hls.js)](/docs/cookbook/sending/hls-klv-to-web.md)** — MISB KLV inside HLS segments; hls.js pulls it via the native `misbklv` path or a UL-anchored fallback.
+- **[Relay a captured `.ts` file over SRT](/docs/cookbook/sending/relay-file-to-srt.md)** — Replay a capture: regression-testing receivers, rebroadcasting an archive.
+- **[Use a custom (non-SRT) transport](/docs/cookbook/sending/custom-transport.md)** — The sender shells fit but the wire is your own protocol or an in-memory harness.
 
-### 🔑 KLV — encode and decode metadata directly
+## 📡 Receiving — take a TS off the wire
 
-- **Recipe 6: Decode ST 0601 from a captured `.klv` blob** — [06-decode-st0601-blob.md](klv/06-decode-st0601-blob.md) — Validating producer output, building dashboards on captured data, or debugging a receiver.
-- **Recipe 7: Encode ST 0601 from typed values** — [07-encode-st0601.md](klv/07-encode-st0601.md) — Synthesizing KLV for tests, generating fixtures, or translating from a different metadata format in a gateway.
-- **Recipe 28: Decode security metadata from an ST 0601 record** — [28-decode-security-metadata.md](klv/28-decode-security-metadata.md) — ST 0601 Tag 48 (Security Local Set) is populated and you need ST 0102 classification, country codes, and version info.
-- **Recipe 30: Decode VMTI per-target detections from an ST 0601 stream** — [30-decode-vmti.md](klv/30-decode-vmti.md) — ISR capture analysis — surface detected/tracked targets per frame via Tag 74 (VMTI Local Set).
-- **Recipe 35: Build a STANAG 4609-conformant stream** — [35-stanag-4609-stream.md](klv/35-stanag-4609-stream.md) — ST 0604 per-frame MISP timestamps + ST 0902 MISMMS validator gate + strict-compliance encode + Tag 94 Core ID. Rust primary + Python variant.
+- **[Receive MPEG-TS over UDP](/docs/cookbook/receiving/udp.md)** — Ingest from ffmpeg, VLC, or STANAG 4609 senders; unicast or multicast.
+- **[Receive MPEG-TS over TCP](/docs/cookbook/receiving/tcp.md)** — Accept an inbound caller (listener) or connect to a producer; TLS via `tcps://`.
+- **[Receive MPEG-TS over RIST](/docs/cookbook/receiving/rist.md)** — Bind URL form (`rist://@host:port`) with optional AES PSK decryption.
+- **[Receive into a file](/docs/cookbook/receiving/receive-to-file.md)** — Archive a stream or build a test fixture from a live producer.
+- **[Ingest H.264 from an RTSP camera and remux to MPEG-TS](/docs/cookbook/receiving/recv-rtsp-h264-to-ts.md)** — Bare H.264-over-RTP (RFC 6184) gateway pattern. Python-first; Rust example twin.
+- **[Extract subtitle PES bytes from a captured `.ts` file](/docs/cookbook/receiving/extract-subtitle-pes.md)** — Discover subtitle codecs in a capture and read the cue text.
 
-### 🎞 Codecs — parse video and audio elementary streams
+## 🔗 Pairing — align KLV with video frames
 
-- **Recipe 17: Extract video resolution and profile from a demuxed stream** — [17-extract-resolution-profile.md](codecs/17-extract-resolution-profile.md) — You need typed codec information (width, height, profile, level, frame rate, color) and are already demuxing the stream.
-- **Recipe 18: Reconstitute Annex B parameter sets for decoder replay** — [18-reconstitute-annex-b.md](codecs/18-reconstitute-annex-b.md) — You need to hand SPS / PPS bytes to a hardware decoder, encoder re-init, or a library that expects Annex-B-framed codec configuration.
-- **Recipe 29: Pull sample rate and channel count out of an audio stream** — [29-extract-audio-format.md](codecs/29-extract-audio-format.md) — Inspect a `.ts` file and report typed audio metadata (sample rate, channel count, codec layer/profile) per audio PID.
-- **Recipe 32: Decode video frames in-memory with PyAV (Python)** — [32-decode-frames-pyav.md](codecs/32-decode-frames-pyav.md) — Decode frames straight from `DemuxEvent.Video.raw` (or processed `ev.parse()` NAL units) in the same demux pass that yields your KLV — no file re-open, no OpenCV. Includes gapless windowed (time-slice) decode. Python-only (PyAV).
+Receiving a stream and want video + telemetry as one record? This is the section.
 
-### ⚙ Operations — lifecycle, stats, shutdown, fixtures
+- **[Pair sync-KLV with video AUs by nearest PTS](/docs/cookbook/pairing/pair-klv-by-pts.md)** — One KLV per frame with KLV PES PTS = frame PTS; consume frame + telemetry paired.
+- **[Sample-and-hold async-KLV against video frames](/docs/cookbook/pairing/sample-hold-klv.md)** — 1–10 Hz async metadata against 25–60 fps video.
+- **[EO + IR sensor pair with shared async-KLV](/docs/cookbook/pairing/eo-ir-shared-klv.md)** — Two sensors, one async metadata stream serving both.
+- **[Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)](/docs/cookbook/pairing/pairer-realtime.md)** — The inline PTS pattern expressed through the opt-in `Pairer` helper, with bounded history and telemetry counters.
+- **[Pair sync-KLV in batch mode (`PairerMode::Buffered`)](/docs/cookbook/pairing/pairer-batch.md)** — KLV PES interleaves *after* its matching video PES and Realtime mode misses the pairing.
+- **[Sample-and-hold async KLV via `Pairer::last_before_pts`](/docs/cookbook/pairing/pairer-last-before-pts.md)** — Attach the most recent KLV at `klv.pts <= video.pts` to each frame.
+- **[EO + IR composition with shared async-KLV](/docs/cookbook/pairing/eo-ir-shared-klv-pairer.md)** — Two video PIDs share one async-KLV PID, with typed projections per branch.
 
-- **Recipe 2: Survive a flaky transport with reconnect + gap buffer** — [02-managed-transport-reconnect.md](operations/02-managed-transport-reconnect.md) — The wire is lossy — radio links, NAT timeouts, listener restarts.
-- **Recipe 10: Print live `Stats` from a sender** — [10-print-live-stats.md](operations/10-print-live-stats.md) — Building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field.
-- **Recipe 20: Inject WebVTT POI cues into a live MPEG-TS uplink** — [20-inject-webvtt-cues.md](operations/20-inject-webvtt-cues.md) — A sensor/orchestrator wants to mark Points of Interest in a live SRT/TS stream so the downstream HLS player can render them as captions.
-- **Recipe 31: Graceful shutdown from another thread via `SrtCancelHandle`** — [31-graceful-shutdown.md](operations/31-graceful-shutdown.md) — The main thread is parked in `send_*` / `recv_*` and a sibling thread (signal handler, watchdog, FFI lifecycle observer) needs to wake it.
-- **Recipe: Capture a regression fixture from a corpus `.ts` file** — [99-capture-regression-fixture.md](operations/99-capture-regression-fixture.md) — The gitignored corpus surfaces a parser or demuxer bug and you want to preserve a minimal reproducer as a committed regression test.
+## 🔑 KLV — encode and decode metadata directly
+
+- **[Decode ST 0601 from a captured `.klv` blob](/docs/cookbook/klv/decode-st0601-blob.md)** — Validate producer output, build dashboards, debug a receiver.
+- **[Encode ST 0601 from typed values](/docs/cookbook/klv/encode-st0601.md)** — Synthesize KLV for tests, fixtures, or gateway translation.
+- **[Decode security metadata from an ST 0601 record](/docs/cookbook/klv/decode-security-metadata.md)** — Tag 48 → ST 0102 classification, country codes, version info.
+- **[Decode VMTI per-target detections from an ST 0601 stream](/docs/cookbook/klv/decode-vmti.md)** — Surface detected/tracked targets per frame via Tag 74.
+- **[Build a STANAG 4609-conformant stream](/docs/cookbook/klv/stanag-4609-stream.md)** — ST 0604 MISP timestamps + ST 0902 MISMMS gate + strict-compliance encode + Tag 94 Core ID.
+
+## 🎞 Codecs — parse video and audio elementary streams
+
+- **[Extract video resolution and profile from a demuxed stream](/docs/cookbook/codecs/extract-resolution-profile.md)** — Typed codec info (width, height, profile, level, frame rate, color) while demuxing.
+- **[Reconstitute Annex B parameter sets for decoder replay](/docs/cookbook/codecs/reconstitute-annex-b.md)** — Hand SPS/PPS bytes to a hardware decoder or encoder re-init.
+- **[Pull sample rate and channel count out of an audio stream](/docs/cookbook/codecs/extract-audio-format.md)** — Typed audio metadata (sample rate, channels, codec layer/profile) per audio PID.
+- **[Decode video frames in-memory with PyAV (Python)](/docs/cookbook/codecs/decode-frames-pyav.md)** — Decode frames straight from `DemuxEvent.Video.raw` in the same pass that yields your KLV.
+
+## ⚙ Operations — lifecycle, stats, shutdown, fixtures
+
+- **[Survive a flaky transport with reconnect + gap buffer](/docs/cookbook/operations/managed-transport-reconnect.md)** — Radio links, NAT timeouts, listener restarts.
+- **[Print live `Stats` from a sender](/docs/cookbook/operations/print-live-stats.md)** — Dashboards, production telemetry, field packet-loss debugging.
+- **[Graceful shutdown from another thread via `SrtCancelHandle`](/docs/cookbook/operations/graceful-shutdown.md)** — Wake a thread parked in `send_*` / `recv_*` from a signal handler or watchdog.
+- **[Inject WebVTT POI cues into a live MPEG-TS uplink](/docs/cookbook/operations/inject-webvtt-cues.md)** — Mark Points of Interest so a downstream HLS player renders captions.
+- **[Capture a regression fixture from a corpus `.ts` file](/docs/cookbook/operations/capture-regression-fixture.md)** — Preserve a minimal reproducer as a committed regression test.
 
 ## Browse by example program
 
-Only examples explicitly invoked via `cargo run -p tst-examples --example <name>` in a recipe body are listed here. Examples referenced as runnable file paths (most of the muxing / sending recipes) appear in the recipe's "Related" header — browse the [examples/](../../examples/) tree for the full catalog.
+Only examples explicitly invoked via `cargo run -p tst-examples --example <name>` in a recipe body are listed here. Examples referenced as runnable file paths appear in each recipe's "Related" header — browse the [examples/](/examples/) tree for the full catalog.
 
-| Example | Recipe(s) |
+| Example | Recipe |
 |---|---|
-| `decode_vmti_metadata` | [Recipe 30](klv/30-decode-vmti.md) |
-| `demux_subtitle_file` | [Recipe 21](receiving/21-extract-subtitle-pes.md) |
-| `mux_dual_camera` | [Recipe 15](sending/15-mux-eo-ir-klv.md) |
-| `mux_with_webvtt_subtitles` | [Recipe 20](operations/20-inject-webvtt-cues.md) |
-| `pair_klv_pipeline` | [Recipe 24](receiving/24-pairer-realtime.md) |
-| `parse_audio_frames` | [Recipe 29](codecs/29-extract-audio-format.md) |
+| `decode_vmti_metadata` | [Decode VMTI per-target detections](/docs/cookbook/klv/decode-vmti.md) |
+| `demux_subtitle_file` | [Extract subtitle PES bytes](/docs/cookbook/receiving/extract-subtitle-pes.md) |
+| `mux_dual_camera` | [Label EO + IR + KLV streams](/docs/cookbook/muxing/mux-eo-ir-klv.md) |
+| `mux_with_webvtt_subtitles` | [Inject WebVTT POI cues](/docs/cookbook/operations/inject-webvtt-cues.md) |
+| `pair_klv_pipeline` | [Pair sync-KLV via `Pairer` (Realtime)](/docs/cookbook/pairing/pairer-realtime.md) |
+| `parse_audio_frames` | [Pull sample rate and channel count](/docs/cookbook/codecs/extract-audio-format.md) |

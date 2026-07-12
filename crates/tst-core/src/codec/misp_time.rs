@@ -204,6 +204,10 @@ pub(crate) fn insert_sei_before_first_vcl(
 /// need). Liberal on input: all three ST 0604 identifiers are matched
 /// on both codecs; SEI NALs anywhere in the AU are scanned (prefix AND
 /// suffix positions); non-MISP SEI content is skipped, even if broken.
+///
+/// # C ABI
+///
+/// `tst_misp_time_extract` — see `bindings/c/include/tstrans.h`.
 pub fn extract(
     au: &[u8],
     codec: VideoCodec,

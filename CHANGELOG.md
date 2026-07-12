@@ -164,6 +164,29 @@ signature, or struct layout was removed or changed.
 - **`tst-core`:** `codec::misp_time` — MISB ST 0604 MISP Precision / Nano Precision Time
   Stamp SEI build + extract (H.264/H.265).
 
+- **`tst-core`:** `Muxer::push_video_misp_to` / `push_video_misp_to_with_dts` — targeted
+  mux push variants that splice a MISP Precision or Nano Precision Time Stamp SEI NAL
+  immediately before the first VCL NAL of the access unit. `MuxError::MispTime` is the
+  new error variant if the SEI build or splice fails.
+
+- **`tst-pipeline`:** `MuxSender::send_video_misp_to` / `send_video_misp_to_with_dts` and
+  `MuxPublisher::send_video_misp` / `send_video_misp_to` — pipeline-shell variants that
+  forward to the muxer's MISP-splice push path.
+
+- **C ABI minor 18 → 19** (additive; no existing symbol, signature, or struct layout
+  changed): `tst_muxer_push_video_misp_to`, `tst_muxer_push_video_misp_to_with_dts`
+  (push + splice on the muxer handle), `tst_misp_time_extract` (scan an Annex-B access
+  unit and return the first MISP timestamp), error codes
+  `TST_E_MISP_BUILD_FAILED = -45` and `TST_E_MISP_EXTRACT_FAILED = -46`.
+
+- **Python (`tstrans.codec`):** `MispTimestamp` type (with `kind`, `microseconds`,
+  `nanoseconds` fields), `extract_misp_timestamp(au_bytes, codec)` helper.
+  `Muxer.push_video_misp_to` / `push_video_misp_to_with_dts` push + splice variants.
+
+- **JVM (`org.tstrans.codec`):** `MispTimestamp` type, `MispTimestamp.extractFrom(byte[],
+  VideoCodec)` static helper. `Muxer.pushVideoMispTo` / `pushVideoMispToWithDts` push +
+  splice variants.
+
 - `tcp://` and `tcps://` caller URLs now accept DNS hostnames in addition to IP
   literals. Resolution happens at connect time (never at parse time). For
   `tcps://`, TLS presents the dialed name as the SNI and verifies the server

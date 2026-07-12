@@ -1,4 +1,4 @@
-# Recipe 12: Pair sync-KLV with video AUs by nearest PTS
+# Pair sync-KLV with video AUs by nearest PTS
 
 > **When to use this:** An encoder emits sync-KLV synchronized to video frames (one KLV per frame, KLV PES PTS = frame PTS) and you want to consume frame + telemetry as a paired record.
 

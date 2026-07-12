@@ -1,4 +1,4 @@
-# Recipe 34: Ingest H.264 from an RTSP camera and remux to MPEG-TS
+# Ingest H.264 from an RTSP camera and remux to MPEG-TS
 
 > **When to use this:** You have an IP camera (ONVIF / generic RTSP) that
 > exposes a bare H.264 elementary stream over RTSP (no MPEG-TS wrapper), and

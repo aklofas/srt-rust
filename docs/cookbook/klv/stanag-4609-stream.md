@@ -1,4 +1,4 @@
-# Recipe 35: Building a STANAG 4609-conformant stream
+# Build a STANAG 4609-conformant stream
 
 > **When to use this:** You need a stream that satisfies the STANAG 4609 /
 > MISP conformance requirements end-to-end — ST 0604 per-frame timestamps,

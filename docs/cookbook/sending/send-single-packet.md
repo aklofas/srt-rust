@@ -1,4 +1,4 @@
-# Recipe 0: Send a single TS packet to any `Transport`
+# Send a single TS packet to any `Transport`
 
 > **When to use this:** The simplest possible sender — open a transport, push 188 bytes, drop.
 

@@ -1,4 +1,4 @@
-# Recipe 28: Decode security metadata from an ST 0601 record
+# Decode security metadata from an ST 0601 record
 
 > **When to use this:** ST 0601 Tag 48 (Security Local Set) is populated and you need ST 0102 classification, country codes, and version info.
 

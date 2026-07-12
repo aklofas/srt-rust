@@ -1,4 +1,4 @@
-# Recipe 22: Streaming H.266 / VVC video with synchronous KLV metadata
+# Mux H.266 / VVC video with synchronous KLV
 
 > **When to use this:** The encoder produces H.266 (VVC) and the receiver requires strict ST 1402 sync KLV metadata.
 

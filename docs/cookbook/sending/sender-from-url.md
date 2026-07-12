@@ -1,4 +1,4 @@
-# Recipe 11: Open a sender from an `srt://...?...` URL
+# Open a sender from an `srt://...?...` URL
 
 > **When to use this:** The connection target and tuning live in deployment config files or are passed in by an orchestrator.
 

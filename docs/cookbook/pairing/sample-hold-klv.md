@@ -1,4 +1,4 @@
-# Recipe 13: Sample-and-hold async-KLV against video frames
+# Sample-and-hold async-KLV against video frames
 
 > **When to use this:** KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video.
 

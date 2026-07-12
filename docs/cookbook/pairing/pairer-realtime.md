@@ -1,4 +1,4 @@
-# Recipe 24: Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)
+# Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)
 
 > **When to use this:** You want the inline pattern from Recipe 12 expressed through the opt-in `Pairer` helper, with bounded history, telemetry counters, and typed projection structs.
 

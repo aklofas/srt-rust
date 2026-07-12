@@ -1,4 +1,4 @@
-# Recipe 18: Reconstitute Annex B parameter sets for decoder replay
+# Reconstitute Annex B parameter sets for decoder replay
 
 > **When to use this:** You need to hand SPS / PPS bytes to a hardware decoder, encoder re-init, or a library that expects Annex-B-framed codec configuration.
 

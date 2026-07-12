@@ -1,4 +1,4 @@
-# Recipe 15: Label EO + IR + KLV streams in a multi-stream program
+# Label EO + IR + KLV streams in a multi-stream program
 
 > **When to use this:** Multi-stream programs (Path 3) carry several PIDs in one program; per-stream PMT descriptors let receivers (TSDuck, ffprobe, our `Demuxer`) render which PID is which.
 

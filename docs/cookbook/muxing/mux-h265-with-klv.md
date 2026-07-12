@@ -1,4 +1,4 @@
-# Recipe 9: Mux H.265 + sync KLV
+# Mux H.265 + sync KLV
 
 > **When to use this:** The encoder produces HEVC, or the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape.
 

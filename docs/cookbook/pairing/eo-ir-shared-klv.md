@@ -1,4 +1,4 @@
-# Recipe 14: EO + IR sensor pair with shared async-KLV
+# EO + IR sensor pair with shared async-KLV
 
 > **When to use this:** The platform carries two sensors (visible + thermal) and one async metadata stream serves both.
 

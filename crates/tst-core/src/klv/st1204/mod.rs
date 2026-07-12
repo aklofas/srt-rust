@@ -383,6 +383,26 @@ impl fmt::Display for CoreId {
 }
 
 impl CoreId {
+    /// Construct a [`CoreId`] from its component fields.
+    ///
+    /// Provided for downstream crates that cannot use the struct literal
+    /// form due to the `#[non_exhaustive]` attribute.
+    pub fn new(
+        version: u8,
+        sensor: Option<(IdType, [u8; 16])>,
+        platform: Option<(IdType, [u8; 16])>,
+        window: Option<[u8; 16]>,
+        minor: Option<[u8; 16]>,
+    ) -> Self {
+        Self {
+            version,
+            sensor,
+            platform,
+            window,
+            minor,
+        }
+    }
+
     /// Reconstruct the usage byte from the decoded fields.
     fn usage_byte(&self) -> u8 {
         let mut usage: u8 = 0;

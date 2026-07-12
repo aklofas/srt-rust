@@ -1,4 +1,4 @@
-"""tstrans.klv — KLV typed sets (ST 0601, ST 0102, ST 0605, ST 0903).
+"""tstrans.klv — KLV typed sets (ST 0601, ST 0102, ST 0605, ST 0903, ST 1204).
 
 Decode surface:
 
@@ -11,9 +11,14 @@ Decode surface:
 - `VmtiLs` (alias `Klv0903`) — ST 0903 VMTI LS
 - `GeoPoint`, `Attitude`, `FieldOfView`, `Corners` — ST 0601 composites
 - `UasDatalinkLs` (alias `Klv0601`) — ST 0601 UAS Datalink LS
+- `IdType` — ST 1204.3 sensor/platform UUID source type enum
+- `CoreId` — ST 1204.3 MIIS Core Identifier
+- `MismmsViolation` — ST 0902.8 Minimum Metadata Set violation
 - `KlvFieldError`, `KlvFieldErrorKind` — non-fatal per-field errors
 - `decode_uas_datalink`, `decode_security`, `decode_precision_timestamp`,
-  `decode_vmti` — per-set entry points
+  `decode_vmti`, `decode_core_id` — per-set entry points
+- `encode_core_id`, `core_id_text` — ST 1204 encode + textual format
+- `validate_mismms` — ST 0902.8 record-level MISMMS validator
 - `parse_klv_universal` — UL-dispatching universal entry point
 - `ST_0601_UL`, `SECURITY_LS_UL`, `PRECISION_TIMESTAMP_PACK_UL`,
   `VMTI_LS_UL` — well-known 16-byte UL constants
@@ -581,6 +586,7 @@ class UasDatalinkLs:
     generic_flag_data: int | None = None
     security_local_set: bytes | None = None  # Tag 48 → ST 0102
     vmti: bytes | None = None  # Tag 74 → ST 0903
+    miis_core_id: bytes | None = None  # Tag 94 → ST 1204
     # Pass-through
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
@@ -708,6 +714,88 @@ OutOfRangePolicy = _native_mod.OutOfRangePolicy
 decode_uas_datalink = _native_mod.decode_uas_datalink
 encode_uas_datalink = _native_mod.encode_uas_datalink
 encode_uas_datalink_strict_compliance = _native_mod.encode_uas_datalink_strict_compliance
+
+
+# ---------------------------------------------------------------------------
+# ST 1204.3 MIIS Core Identifier
+# ---------------------------------------------------------------------------
+
+
+class IdType(enum.Enum):
+    """Source type for a sensor or platform UUID within a CoreId.
+
+    Maps to the two-bit field in the ST 1204.3 §7.3.1 Table 3 usage byte:
+    ``11`` → Physical, ``10`` → Virtual, ``01`` → Managed."""
+
+    PHYSICAL = "physical"
+    VIRTUAL = "virtual"
+    MANAGED = "managed"
+
+
+@dataclass(frozen=True, slots=True)
+class CoreId:
+    """MISB ST 1204.3 MIIS Core Identifier typed view.
+
+    A MIIS Core Identifier uniquely identifies a motion imagery source.
+    It consists of a version byte and up to four optional 16-byte UUIDs
+    (sensor, platform, window, minor). The ``minor`` field is mutually
+    exclusive with sensor/platform/window (EBNF rule from ST 1204.3 §7.3.1).
+
+    Carriage sites:
+    - ST 0601 Tag 94 (``UasDatalinkLs.miis_core_id``) — primary path.
+    - ST 0903 VTarget Tag 13 (``VTargetPack.miis_id``) — per-target.
+
+    Use ``decode_core_id`` to parse raw bytes and ``encode_core_id`` to
+    round-trip back to bytes. ``core_id_text`` returns the ST 1204.3
+    §7.4.2 textual representation."""
+
+    version: int
+    sensor: tuple[IdType, bytes] | None = None
+    platform: tuple[IdType, bytes] | None = None
+    window: bytes | None = None
+    minor: bytes | None = None
+
+    def with_(self, **changes: object) -> "CoreId":
+        """Return a copy with the named fields replaced."""
+        return replace(self, **changes)
+
+
+decode_core_id = _native_mod.decode_core_id
+encode_core_id = _native_mod.encode_core_id
+core_id_text = _native_mod.core_id_text
+
+
+# ---------------------------------------------------------------------------
+# ST 0902.8 Minimum Metadata Set (MISMMS) violation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class MismmsViolation:
+    """A violation of the ST 0902.8 Minimum Metadata Set requirements.
+
+    ``kind`` is one of:
+
+    - ``"missing"`` — a required MISMMS item is absent from the record;
+      for Tag 48, also covers a ST 0102 decode failure.
+    - ``"missing_security"`` — a required sub-item of the ST 0102 Security
+      Local Set (Tag 48) is absent.
+    - ``"zero_length"`` — the tag is present but has a zero-length wire
+      value, which does NOT satisfy MISMMS presence (ST 0902.8-05).
+    - ``"alternation_conflict"`` — Tags 75 and 104 are both present within
+      the ``15|75|104`` group; they are mutually exclusive.
+
+    ``tag`` is the primary (or only) tag involved. For
+    ``"alternation_conflict"``, ``tag_b`` carries the second tag (104).
+    ``name`` is the human-readable MISMMS item label when available."""
+
+    kind: str  # "missing" | "missing_security" | "zero_length" | "alternation_conflict"
+    tag: int
+    name: str | None = None
+    tag_b: int | None = None
+
+
+validate_mismms = _native_mod.validate_mismms
 
 
 def patch_uas_datalink(raw: bytes, edits: UasDatalinkLs | dict[str, object]) -> bytes:
@@ -903,4 +991,11 @@ __all__: list[str] = [
     "encode_uas_datalink_strict_compliance",
     "patch_uas_datalink",
     "parse_klv_universal",
+    "IdType",
+    "CoreId",
+    "decode_core_id",
+    "encode_core_id",
+    "core_id_text",
+    "MismmsViolation",
+    "validate_mismms",
 ]

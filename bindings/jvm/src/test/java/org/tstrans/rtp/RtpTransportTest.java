@@ -70,4 +70,12 @@ class RtpTransportTest {
         RtpException ex = assertThrows(RtpException.class, () -> Receiver.fromUrl("not-a-url"));
         assertEquals(RtpException.Kind.TRANSPORT, ex.kind());
     }
+
+    @Test
+    void receiverRejectsPktSizeQuery() {
+        RtpException ex = assertThrows(RtpException.class,
+                () -> Receiver.fromUrl("rtp://127.0.0.1:0?pkt_size=1316"));
+        assertTrue(ex.getMessage().contains("send-side knob"),
+                "teaching text expected, got: " + ex.getMessage());
+    }
 }

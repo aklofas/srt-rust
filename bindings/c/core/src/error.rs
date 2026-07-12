@@ -182,6 +182,14 @@ pub enum TstError {
     /// instead of raw elementary OBUs.
     /// Maps from `MuxError::InvalidAv1Obu`.
     InvalidAv1Obu = -44,
+    /// (-45) A MISP-timestamp push could not build/splice the ST 0604
+    /// SEI (nano on H.264, AV1/H.266 stream, or no VCL NAL in the AU).
+    /// Maps from `MuxError::MispTime`.
+    MispTime = -45,
+    /// (-46) `tst_misp_time_extract` matched a MISP SEI identifier but
+    /// the payload is malformed (truncated / bad 0xFF guard byte).
+    /// Maps from `codec::misp_time::MispTimeExtractError`.
+    MispTimeMalformed = -46,
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +378,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     //
     //   MuxError::InvalidNal              -> TstError::InvalidNal     [override]
     //   MuxError::InvalidAv1Obu          -> TstError::InvalidAv1Obu  [override]
+    //   MuxError::MispTime(_)            -> TstError::MispTime        [override]
     //   MuxError::KlvTooLarge             -> TstError::KlvTooLarge    [override]
     //   MuxError::AudioTooLarge           -> TstError::InvalidUsage   (InputMalformed kind default)
     //   MuxError::SubtitleTooLarge        -> TstError::InvalidUsage   (InputMalformed kind default)
@@ -408,10 +417,11 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     let code = match e {
         // InputMalformed bucket — variant-specific code overrides.
         // The kind-default for InputMalformed maps to InvalidUsage;
-        // these 3 variants project to more specific codes for
+        // these variants project to more specific codes for
         // diagnostic precision.
         MuxError::InvalidNal => TstError::InvalidNal,
         MuxError::InvalidAv1Obu => TstError::InvalidAv1Obu,
+        MuxError::MispTime(_) => TstError::MispTime,
         MuxError::KlvTooLarge { .. } => TstError::KlvTooLarge,
 
         // All other variants route via the kind() projection.
@@ -962,6 +972,14 @@ mod tests {
             ),
             (MuxError::InvalidNal, TstError::InvalidNal),
             (MuxError::InvalidAv1Obu, TstError::InvalidAv1Obu),
+            (
+                MuxError::MispTime(
+                    tst_core::codec::misp_time::MispTimeError::UnsupportedCodec {
+                        codec: tst_core::mpegts::mux::VideoCodec::Av1,
+                    },
+                ),
+                TstError::MispTime,
+            ),
             (
                 MuxError::BufferFull {
                     capacity_packets: 1,

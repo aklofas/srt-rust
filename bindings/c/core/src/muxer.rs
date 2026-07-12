@@ -364,6 +364,133 @@ pub unsafe extern "C" fn tst_muxer_push_video_to_with_dts(
     )
 }
 
+/// Push one access unit with an ST 0604 MISP timestamp SEI spliced in
+/// before the first VCL NAL, targeting a specific video stream.
+///
+/// `misp_kind`: 0 = microsecond Precision Time Stamp (H.264 and H.265),
+/// 1 = nanosecond (H.265-only per ST 0604.6 §12.2).
+/// `time_status` is the MISB ST 0603 status byte; `value` is the
+/// timestamp in the kind's unit.
+///
+/// # Errors
+///
+/// - `TST_E_MISP_TIME` — nano on H.264, AV1/H.266 stream, no VCL NAL,
+///   or `misp_kind` out of range (not 0 or 1).
+/// - plus everything `tst_muxer_push_video_to` raises.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_misp_to(
+    p: *mut TstMuxer,
+    handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+    misp_kind: u8,
+    time_status: u8,
+    value: u64,
+) -> crate::c_types::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
+    let misp = match misp_kind {
+        0 => tst_core::codec::misp_time::MispTimestamp::micros(value, time_status),
+        1 => tst_core::codec::misp_time::MispTimestamp::nanos(value, time_status),
+        _ => {
+            set_last_error(
+                TstError::MispTime,
+                "misp_kind must be 0 (micro) or 1 (nano)",
+            );
+            return TstError::MispTime as i32;
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    h.inner.with_inner_mut(
+        |m| match m.push_video_misp_to(stream, slice, pts, key_frame, &misp) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        },
+    )
+}
+
+/// Push one access unit with an ST 0604 MISP timestamp SEI and explicit
+/// decode timestamp (DTS), targeting a specific video stream. Required for
+/// codecs that emit reordered output (B-frames in H.264/H.265).
+///
+/// See `tst_muxer_push_video_misp_to` for the MISP parameter contract and
+/// `tst_muxer_push_video_to_with_dts` for the DTS contract.
+///
+/// # Errors
+///
+/// - `TST_E_MISP_TIME` — nano on H.264, AV1/H.266 stream, no VCL NAL,
+///   or `misp_kind` out of range.
+/// - plus everything `tst_muxer_push_video_to_with_dts` raises.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_video_misp_to_with_dts(
+    p: *mut TstMuxer,
+    handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    dts_90khz: i64,
+    key_frame: bool,
+    misp_kind: u8,
+    time_status: u8,
+    value: u64,
+) -> crate::c_types::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
+    let misp = match misp_kind {
+        0 => tst_core::codec::misp_time::MispTimestamp::micros(value, time_status),
+        1 => tst_core::codec::misp_time::MispTimestamp::nanos(value, time_status),
+        _ => {
+            set_last_error(
+                TstError::MispTime,
+                "misp_kind must be 0 (micro) or 1 (nano)",
+            );
+            return TstError::MispTime as i32;
+        }
+    };
+    let pts = Pts90khz::new(pts_90khz);
+    let dts = Pts90khz::new(dts_90khz);
+    h.inner.with_inner_mut(|m| {
+        match m.push_video_misp_to_with_dts(stream, slice, pts, dts, key_frame, &misp) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        }
+    })
+}
+
 /// PTS+DTS variant of `tst_muxer_push_video_wire_to` — pushes an
 /// already-carried on-wire video AU (verbatim, no framing transform)
 /// targeting a specific video stream, with explicit decode timestamp.

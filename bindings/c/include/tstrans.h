@@ -171,8 +171,12 @@
  *   a getter — `TstHlsStats` layout unchanged). Additive — no existing
  *   symbol or struct changed. The HLS surface moved from `tst-tcp` to the
  *   new `tst-hls` crate (link-level only; no C ABI effect).
+ * - `19` (ST 0604 MISP timestamps, 2026-07-11): `tst_muxer_push_video_misp_to`,
+ *   `tst_muxer_push_video_misp_to_with_dts`, `tst_misp_time_extract`,
+ *   `TST_E_MISP_TIME` (-45), `TST_E_MISP_TIME_MALFORMED` (-46).
+ *   Additive — no struct growth, no signature changes.
  */
-#define TST_ABI_VERSION_MINOR 18
+#define TST_ABI_VERSION_MINOR 19
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -215,6 +219,20 @@
  */
 #define TST_VERSION_PATCH 0
 
+enum tst_video_codec
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_VIDEO_CODEC_H264 = 0,
+  TST_VIDEO_CODEC_H265 = 1,
+  TST_VIDEO_CODEC_H266 = 2,
+  TST_VIDEO_CODEC_AV1 = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_video_codec;
+#endif // __cplusplus
+
 /**
  * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
  * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
@@ -238,20 +256,6 @@ typedef enum tst_klv_stream_type {
   TST_KLV_STREAM_TYPE_PRIVATE_DATA = 0,
   TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA = 1,
 } tst_klv_stream_type;
-
-enum tst_video_codec
-#ifdef __cplusplus
-  : int32_t
-#endif // __cplusplus
- {
-  TST_VIDEO_CODEC_H264 = 0,
-  TST_VIDEO_CODEC_H265 = 1,
-  TST_VIDEO_CODEC_H266 = 2,
-  TST_VIDEO_CODEC_AV1 = 3,
-};
-#ifndef __cplusplus
-typedef int32_t tst_video_codec;
-#endif // __cplusplus
 
 typedef enum tst_overflow_policy {
   TST_OVERFLOW_POLICY_DROP_OLDEST = 0,
@@ -498,6 +502,18 @@ enum tst_e
    * Maps from `MuxError::InvalidAv1Obu`.
    */
   TST_E_INVALID_AV1_OBU = -44,
+  /**
+   * (-45) A MISP-timestamp push could not build/splice the ST 0604
+   * SEI (nano on H.264, AV1/H.266 stream, or no VCL NAL in the AU).
+   * Maps from `MuxError::MispTime`.
+   */
+  TST_E_MISP_TIME = -45,
+  /**
+   * (-46) `tst_misp_time_extract` matched a MISP SEI identifier but
+   * the payload is malformed (truncated / bad 0xFF guard byte).
+   * Maps from `codec::misp_time::MispTimeExtractError`.
+   */
+  TST_E_MISP_TIME_MALFORMED = -46,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;
@@ -3580,6 +3596,58 @@ int tst_muxer_push_video(struct tst_muxer_t *p,
                          bool key_frame);
 
 /**
+ * Push one access unit with an ST 0604 MISP timestamp SEI spliced in
+ * before the first VCL NAL, targeting a specific video stream.
+ *
+ * `misp_kind`: 0 = microsecond Precision Time Stamp (H.264 and H.265),
+ * 1 = nanosecond (H.265-only per ST 0604.6 §12.2).
+ * `time_status` is the MISB ST 0603 status byte; `value` is the
+ * timestamp in the kind's unit.
+ *
+ * # Errors
+ *
+ * - `TST_E_MISP_TIME` — nano on H.264, AV1/H.266 stream, no VCL NAL,
+ *   or `misp_kind` out of range (not 0 or 1).
+ * - plus everything `tst_muxer_push_video_to` raises.
+ */
+
+int tst_muxer_push_video_misp_to(struct tst_muxer_t *p,
+                                 tst_video_stream_handle_t handle,
+                                 const uint8_t *nal,
+                                 size_t len,
+                                 int64_t pts_90khz,
+                                 bool key_frame,
+                                 uint8_t misp_kind,
+                                 uint8_t time_status,
+                                 uint64_t value);
+
+/**
+ * Push one access unit with an ST 0604 MISP timestamp SEI and explicit
+ * decode timestamp (DTS), targeting a specific video stream. Required for
+ * codecs that emit reordered output (B-frames in H.264/H.265).
+ *
+ * See `tst_muxer_push_video_misp_to` for the MISP parameter contract and
+ * `tst_muxer_push_video_to_with_dts` for the DTS contract.
+ *
+ * # Errors
+ *
+ * - `TST_E_MISP_TIME` — nano on H.264, AV1/H.266 stream, no VCL NAL,
+ *   or `misp_kind` out of range.
+ * - plus everything `tst_muxer_push_video_to_with_dts` raises.
+ */
+
+int tst_muxer_push_video_misp_to_with_dts(struct tst_muxer_t *p,
+                                          tst_video_stream_handle_t handle,
+                                          const uint8_t *nal,
+                                          size_t len,
+                                          int64_t pts_90khz,
+                                          int64_t dts_90khz,
+                                          bool key_frame,
+                                          uint8_t misp_kind,
+                                          uint8_t time_status,
+                                          uint64_t value);
+
+/**
  * Push one Annex-B NAL targeting a specific video elementary stream.
  *
  * `handle` is obtained from `tst_mux_config_add_video_stream` at config
@@ -6075,6 +6143,33 @@ int tst_hls_server_handle_local_addr(struct TstHlsServerHandle *h, char *buf, si
  */
 int tst_hls_server_handle_shutdown(struct TstHlsServerHandle *h);
 #endif
+
+/**
+ * Scan an Annex-B access unit for an ST 0604 MISP timestamp SEI.
+ *
+ * Returns 0 and fills the out-params when found; 1 when no MISP SEI is
+ * present (out-params untouched); negative `TST_E_*` on null arguments
+ * or a malformed MISP payload. `out_kind`: 0 = micro, 1 = nano.
+ *
+ * `au` must point to `len` bytes of an Annex-B access unit. The codec
+ * selects which SEI UUID families to scan (H.264: microsecond only;
+ * H.265: microsecond + nanosecond). AV1 and H.266 always return 1
+ * (absent) because ST 0604 defines no SEI carriage for them.
+ *
+ * # Safety
+ *
+ * - `au` must be valid for `len` bytes (or null with `len == 0`).
+ * - `out_kind`, `out_time_status`, `out_value` must each be a valid
+ *   non-null writable pointer to the respective type when the call
+ *   may return 0 (found). They are untouched on any non-zero return.
+ */
+
+int tst_misp_time_extract(const uint8_t *au,
+                          size_t len,
+                          tst_video_codec codec,
+                          uint8_t *out_kind,
+                          uint8_t *out_time_status,
+                          uint64_t *out_value);
 
 #if defined(TST_HAS_HLS)
 /**

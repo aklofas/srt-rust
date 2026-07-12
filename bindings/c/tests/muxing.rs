@@ -27,3 +27,5 @@ mod stats;
 mod demuxer_offline;
 #[path = "muxing/muxer_dts.rs"]
 mod muxer_dts;
+#[path = "muxing/muxer_misp.rs"]
+mod muxer_misp;

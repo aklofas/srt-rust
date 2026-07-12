@@ -14,6 +14,7 @@
 //! written code in this module has no unsafe blocks.
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
+use pyo3::exceptions::PyValueError;
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -1564,8 +1565,9 @@ fn convert_mismms_violation(py: Python<'_>, v: &RustMismmsViolation) -> PyResult
             kwargs.set_item("tag_b", *tag_b as u32)?;
         }
         _ => {
-            kwargs.set_item("kind", "missing")?;
-            kwargs.set_item("tag", 0u32)?;
+            return Err(PyValueError::new_err(
+                "unknown MismmsViolation variant crossing the binding",
+            ));
         }
     }
 

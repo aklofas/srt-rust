@@ -376,3 +376,42 @@ fn full_mtu_foreign_bundle_through_receiver_shell() {
     }
     recv_thread.join().unwrap();
 }
+
+/// Recv-side URL rejection: `?pkt_size=` is a send-side knob since the
+/// recv-ceiling change; receive entry points reject it with a teaching
+/// error rather than silently ignoring it.
+#[test]
+fn recv_url_pkt_size_rejected_with_teaching_error() {
+    let result = tst_rtp::RtpRecvTransport::listen("rtp://127.0.0.1:0?pkt_size=1316");
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("recv URL with ?pkt_size= must be rejected"),
+    };
+    assert!(
+        matches!(
+            err,
+            tst_rtp::ConnectError::Url(tst_rtp::RtpUrlError::RecvPktSize)
+        ),
+        "wrong error variant: {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("send-side knob"), "teaching text missing: {msg}");
+}
+
+/// Send-side URL `?pkt_size=` still works and still drives the send
+/// budget (max_payload = pkt_size - RTP_HEADER_LEN), i.e. the
+/// Option-ification did not change send behavior.
+#[test]
+fn send_url_pkt_size_still_drives_send_budget() {
+    use tst_core::transport::Transport;
+    // RTP header is 12 bytes; max_payload() returns pkt_size - 12.
+    let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004?pkt_size=376")
+        .expect("send URL with ?pkt_size= must still parse");
+    let t = b.connect().expect("unicast connect");
+    assert_eq!(t.max_payload(), 376 - 12, "explicit pkt_size drives send budget");
+
+    let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004")
+        .expect("bare send URL");
+    let t = b.connect().expect("unicast connect");
+    assert_eq!(t.max_payload(), 1316 - 12, "absent pkt_size resolves the 1316 default");
+}

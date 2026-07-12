@@ -151,6 +151,9 @@ impl H264Receiver {
     /// Returns [`ConnectError::MissingPayloadTypeParam`] when `url.pt` is
     /// `None`, or [`ConnectError::Io`] on bind failure.
     pub fn listen_with(url: &RtpUrl, mut config: H264DepayConfig) -> Result<Self, ConnectError> {
+        if url.pkt_size.is_some() {
+            return Err(ConnectError::Url(crate::url::UrlError::RecvPktSize));
+        }
         let pt = url.pt.ok_or(ConnectError::MissingPayloadTypeParam)?;
         config.payload_type = pt;
         let ip: std::net::IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {

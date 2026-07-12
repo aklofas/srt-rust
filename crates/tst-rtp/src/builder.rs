@@ -19,7 +19,7 @@ use crate::error::{RtspError, RtspServerError};
 use crate::rtsp::client::{ConnectParams, RtspClient};
 use crate::rtsp::message::validate_header_field;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
-use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
+use crate::url::{RtpUrl, RtspUrl, UrlError as RtpUrlError};
 
 /// Fluent builder for send-side [`RtpTransport`].
 #[must_use]
@@ -43,7 +43,7 @@ impl RtpSocketBuilder {
                 port,
                 ttl: None,
                 iface: None,
-                pkt_size: DEFAULT_PKT_SIZE,
+                pkt_size: None,
                 ssrc: None,
                 pt: None,
             },
@@ -76,7 +76,7 @@ impl RtpSocketBuilder {
 
     /// UDP payload size (188-multiple). Default 1316.
     pub fn pkt_size(&mut self, n: usize) -> &mut Self {
-        self.url.pkt_size = n;
+        self.url.pkt_size = Some(n);
         self
     }
 
@@ -135,7 +135,7 @@ impl RtpRecvSocketBuilder {
                 port,
                 ttl: None,
                 iface: None,
-                pkt_size: DEFAULT_PKT_SIZE,
+                pkt_size: None,
                 ssrc: None,
                 pt: None,
             },
@@ -155,15 +155,6 @@ impl RtpRecvSocketBuilder {
     /// Override the multicast-recv interface.
     pub fn iface(&mut self, name_or_ip: impl Into<String>) -> &mut Self {
         self.url.iface = Some(name_or_ip.into());
-        self
-    }
-
-    /// Expected send-side UDP packet size (the 188-multiple check is
-    /// applied only when supplied via a `?pkt_size=` URL query). Has no
-    /// effect on the receive buffer, which always accepts any legal
-    /// datagram. Default 1316.
-    pub fn pkt_size(&mut self, n: usize) -> &mut Self {
-        self.url.pkt_size = n;
         self
     }
 

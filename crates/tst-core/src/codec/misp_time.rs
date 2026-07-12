@@ -181,10 +181,71 @@ pub fn build_sei_nal(
     Ok(out)
 }
 
+#[allow(dead_code)]
+// Consumed by Muxer::push_video_misp_to (PR2); the allow comes off with it.
+pub(crate) fn insert_sei_before_first_vcl(
+    au: &[u8],
+    sei_nal: &[u8],
+    codec: VideoCodec,
+) -> Result<Vec<u8>, MispTimeError> {
+    let at = first_vcl_prefix_offset(au, codec).ok_or(MispTimeError::NoVclNal)?;
+    let mut out = Vec::with_capacity(au.len() + 3 + sei_nal.len());
+    out.extend_from_slice(&au[..at]);
+    out.extend_from_slice(&[0, 0, 1]);
+    out.extend_from_slice(sei_nal);
+    out.extend_from_slice(&au[at..]);
+    Ok(out)
+}
+
+/// Byte offset of the START-CODE PREFIX of the first VCL NAL in an
+/// Annex-B AU, or `None` when no VCL NAL is present. VCL = H.264
+/// `nal_unit_type` 1..=5 (§7.4.1); H.265 `nal_unit_type` 0..=31
+/// (§7.4.2.2, all VCL types are < 32). Only H.264/H.265 reach this —
+/// build_sei_nal() has already rejected other codecs.
+fn first_vcl_prefix_offset(au: &[u8], codec: VideoCodec) -> Option<usize> {
+    let mut i = 0usize;
+    while i + 3 <= au.len() {
+        if au[i] == 0 && au[i + 1] == 0 {
+            let (prefix_len, data_at) = if au[i + 2] == 1 {
+                (3, i + 3)
+            } else if i + 4 <= au.len() && au[i + 2] == 0 && au[i + 3] == 1 {
+                (4, i + 4)
+            } else {
+                i += 1;
+                continue;
+            };
+            if data_at < au.len() {
+                let header = au[data_at];
+                let is_vcl = match codec {
+                    VideoCodec::H264 => (1..=5).contains(&(header & 0x1F)),
+                    VideoCodec::H265 => ((header >> 1) & 0x3F) <= 31,
+                    VideoCodec::H266 | VideoCodec::Av1 => false,
+                };
+                if is_vcl {
+                    return Some(i);
+                }
+            }
+            i += prefix_len;
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mpegts::mux::VideoCodec;
+
+    // Minimal Annex-B AU builders for splice tests.
+    fn h264_au(nal_headers: &[u8]) -> Vec<u8> {
+        let mut v = Vec::new();
+        for &h in nal_headers {
+            v.extend_from_slice(&[0, 0, 0, 1, h, 0xAA, 0xBB]);
+        }
+        v
+    }
 
     #[test]
     fn identifier_constants_match_st0604() {
@@ -285,5 +346,50 @@ mod tests {
         assert!(nal.len() > 3 + 28 + 1, "escapes must lengthen the NAL");
         // No unescaped start-code-like sequence may remain anywhere.
         assert!(!nal.windows(3).any(|w| w == [0, 0, 0] || w == [0, 0, 1] || w == [0, 0, 2]));
+    }
+
+    #[test]
+    fn splice_lands_after_parameter_sets_before_idr() {
+        // AUD(9), SPS(7), PPS(8), IDR(5): SEI must go right before the IDR.
+        let au = h264_au(&[0x09, 0x67, 0x68, 0x65]); // types 9,7,8,5
+        let sei = build_sei_nal(VideoCodec::H264, &MispTimestamp::micros(1, 0x1F)).unwrap();
+        let out = insert_sei_before_first_vcl(&au, &sei, VideoCodec::H264).unwrap();
+        // Expected: AUD+SPS+PPS bytes, then 00 00 01 + sei, then IDR NAL.
+        let idr_at = au.len() - 7; // last NAL starts 7 bytes from the end
+        assert_eq!(&out[..idr_at], &au[..idr_at]);
+        assert_eq!(&out[idr_at..idr_at + 3], &[0, 0, 1]);
+        assert_eq!(&out[idr_at + 3..idr_at + 3 + sei.len()], &sei[..]);
+        assert_eq!(&out[idr_at + 3 + sei.len()..], &au[idr_at..]);
+    }
+
+    #[test]
+    fn splice_before_lone_vcl() {
+        let au = h264_au(&[0x41]); // type 1 non-IDR slice, nal_ref_idc=2
+        let sei = build_sei_nal(VideoCodec::H264, &MispTimestamp::micros(1, 0x1F)).unwrap();
+        let out = insert_sei_before_first_vcl(&au, &sei, VideoCodec::H264).unwrap();
+        assert_eq!(&out[..3], &[0, 0, 1]); // SEI first (3-byte prefix)
+        assert_eq!(&out[3..3 + sei.len()], &sei[..]);
+    }
+
+    #[test]
+    fn splice_h265_vcl_detection() {
+        // H.265 IDR_W_RADL = type 19 -> header byte (19 << 1) = 0x26, 0x01.
+        let mut au = Vec::new();
+        au.extend_from_slice(&[0, 0, 0, 1, 0x40, 0x01, 0xAA]); // VPS (32)
+        au.extend_from_slice(&[0, 0, 0, 1, 0x26, 0x01, 0xBB]); // IDR_W_RADL (19)
+        let sei = build_sei_nal(VideoCodec::H265, &MispTimestamp::micros(1, 0x1F)).unwrap();
+        let out = insert_sei_before_first_vcl(&au, &sei, VideoCodec::H265).unwrap();
+        assert_eq!(&out[..7], &au[..7]);
+        assert_eq!(&out[7..10], &[0, 0, 1]);
+    }
+
+    #[test]
+    fn splice_no_vcl_errors() {
+        let au = h264_au(&[0x09, 0x67]); // AUD + SPS only
+        let sei = build_sei_nal(VideoCodec::H264, &MispTimestamp::micros(1, 0x1F)).unwrap();
+        assert!(matches!(
+            insert_sei_before_first_vcl(&au, &sei, VideoCodec::H264),
+            Err(MispTimeError::NoVclNal)
+        ));
     }
 }

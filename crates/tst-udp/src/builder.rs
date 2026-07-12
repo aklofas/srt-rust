@@ -83,6 +83,9 @@ pub struct UdpRecvTransportBuilder {
 impl UdpRecvTransportBuilder {
     pub fn from_url(url: &str) -> Result<Self, UdpUrlError> {
         let url = UdpUrl::parse(url)?;
+        if url.pkt_size.is_some() {
+            return Err(UdpUrlError::RecvPktSize);
+        }
         let mut config = SocketConfig::default();
         config.merge_from_url(&url);
         Ok(Self { url, config })
@@ -95,11 +98,6 @@ impl UdpRecvTransportBuilder {
 
     pub fn rcvbuf(&mut self, n: usize) -> &mut Self {
         self.config.rcvbuf = Some(n);
-        self
-    }
-
-    pub fn pkt_size(&mut self, n: usize) -> &mut Self {
-        self.config.pkt_size = Some(n);
         self
     }
 
@@ -132,5 +130,20 @@ mod tests {
     #[test]
     fn sender_rejects_at_prefix() {
         assert!(UdpTransportBuilder::from_url("udp://@239.10.0.1:5004").is_err());
+    }
+
+    #[test]
+    fn recv_from_url_rejects_pkt_size() {
+        let err = UdpRecvTransportBuilder::from_url("udp://@127.0.0.1:0?pkt_size=1316")
+            .expect_err("recv URL with ?pkt_size= must be rejected");
+        assert!(matches!(err, UdpUrlError::RecvPktSize), "got: {err:?}");
+        assert!(err.to_string().contains("send-side knob"));
+    }
+
+    #[test]
+    fn send_from_url_pkt_size_still_accepted() {
+        let b = UdpTransportBuilder::from_url("udp://239.10.0.1:5004?pkt_size=1316")
+            .expect("send URL keeps ?pkt_size=");
+        assert_eq!(b.config.pkt_size, Some(1316));
     }
 }

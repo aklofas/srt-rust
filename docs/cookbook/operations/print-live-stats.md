@@ -1,4 +1,4 @@
-# Recipe 10: Print live `Stats` from a sender
+# Print live `Stats` from a sender
 
 > **When to use this:** Building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field.
 

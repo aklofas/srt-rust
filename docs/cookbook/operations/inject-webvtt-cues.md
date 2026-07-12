@@ -1,4 +1,4 @@
-# Recipe 20: Inject WebVTT POI cues into a live MPEG-TS uplink
+# Inject WebVTT POI cues into a live MPEG-TS uplink
 
 > **When to use this:** A sensor/orchestrator wants to mark Points of Interest in a live SRT/TS stream so the downstream HLS player can render them as captions.
 

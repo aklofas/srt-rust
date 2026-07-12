@@ -1,4 +1,4 @@
-# Recipe 29: Pull sample rate and channel count out of an audio stream
+# Pull sample rate and channel count out of an audio stream
 
 > **When to use this:** Inspect a `.ts` file and report typed audio metadata (sample rate, channel count, codec layer/profile) per audio PID.
 

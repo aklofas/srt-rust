@@ -1,4 +1,4 @@
-# Recipe 32: Decode video frames in-memory with PyAV (Python)
+# Decode video frames in-memory with PyAV (Python)
 
 > **When to use this:** You're demuxing a `.ts` with `tstrans` (for KLV, timing, or
 > transmux) and also want the decoded frames — without re-opening the file in OpenCV

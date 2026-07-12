@@ -1,4 +1,4 @@
-# Recipe: Capture a regression fixture from a corpus `.ts` file
+# Capture a regression fixture from a corpus `.ts` file
 
 > **When to use this:** The gitignored corpus surfaces a parser or demuxer bug and you want to preserve a minimal reproducer as a committed regression test.
 

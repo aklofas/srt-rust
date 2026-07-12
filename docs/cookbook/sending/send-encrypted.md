@@ -1,4 +1,4 @@
-# Recipe 1: Send video + KLV with passphrase encryption
+# Send video + KLV with passphrase encryption
 
 > **When to use this:** You need a secure SRT uplink with passphrase-derived AES-CTR encryption negotiated at handshake.
 

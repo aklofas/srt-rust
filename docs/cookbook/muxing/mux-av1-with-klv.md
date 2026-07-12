@@ -1,4 +1,4 @@
-# Recipe 23: Streaming AV1 video with KLV metadata
+# Mux AV1 video with KLV
 
 > **When to use this:** The encoder produces AV1 — note OBU framing replaces Annex-B NAL framing.
 

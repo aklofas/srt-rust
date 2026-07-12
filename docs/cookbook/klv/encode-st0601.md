@@ -1,4 +1,4 @@
-# Recipe 7: Encode ST 0601 from typed values
+# Encode ST 0601 from typed values
 
 > **When to use this:** Synthesizing KLV for tests, generating fixtures, or translating from a different metadata format in a gateway.
 

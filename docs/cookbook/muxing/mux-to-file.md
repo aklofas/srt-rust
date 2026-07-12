@@ -1,4 +1,4 @@
-# Recipe 3: Mux to a file (no SRT, no transport)
+# Mux to a file (no SRT, no transport)
 
 > **When to use this:** You want the muxer's output without any networking — building test fixtures, validating output against TSDuck/ffprobe, or running an offline pipeline.
 

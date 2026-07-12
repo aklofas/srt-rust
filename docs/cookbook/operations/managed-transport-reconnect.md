@@ -1,4 +1,4 @@
-# Recipe 2: Survive a flaky transport with reconnect + gap buffer
+# Survive a flaky transport with reconnect + gap buffer
 
 > **When to use this:** The wire is lossy — radio links, NAT timeouts, listener restarts.
 

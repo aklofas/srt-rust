@@ -1,4 +1,4 @@
-# Recipe 25: Pair sync-KLV in batch mode (`PairerMode::Buffered`)
+# Pair sync-KLV in batch mode (`PairerMode::Buffered`)
 
 > **When to use this:** KLV PES is interleaved *after* its matching video PES (some encoders), and Realtime mode misses the pairing.
 

@@ -1,4 +1,4 @@
-# Recipe 9e: KLV-over-HLS to a browser (hls.js)
+# Send KLV over HLS to a browser (hls.js)
 
 You want a browser-based map client to render live MISB KLV telemetry
 alongside the video, delivered as HLS. KLV rides **inside** the `.ts`

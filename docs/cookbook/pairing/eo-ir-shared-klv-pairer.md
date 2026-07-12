@@ -1,4 +1,4 @@
-# Recipe 27: EO + IR composition with shared async-KLV
+# EO + IR composition with shared async-KLV
 
 > **When to use this:** Two video PIDs share one async-KLV PID and you want telemetry counters + typed output projections per branch.
 

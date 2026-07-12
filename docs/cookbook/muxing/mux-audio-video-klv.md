@@ -1,4 +1,4 @@
-# Recipe 19: Mux audio + video + KLV in a single program
+# Mux audio + video + KLV in a single program
 
 > **When to use this:** Build a three-stream program where audio PTS-aligns with video for synchronized playback and KLV records emit on the same PCR clock.
 

@@ -1,4 +1,4 @@
-# Recipe 6: Decode ST 0601 from a captured `.klv` blob
+# Decode ST 0601 from a captured `.klv` blob
 
 > **When to use this:** Validating producer output, building dashboards on captured data, or debugging a receiver.
 

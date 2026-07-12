@@ -1,4 +1,4 @@
-# Recipe 21: Extract subtitle PES bytes from a captured `.ts` file
+# Extract subtitle PES bytes from a captured `.ts` file
 
 > **When to use this:** Receive-side inspection — discover what subtitle codecs are in a capture and read the cue text.
 

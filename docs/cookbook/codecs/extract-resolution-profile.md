@@ -1,4 +1,4 @@
-# Recipe 17: Extract video resolution and profile from a demuxed stream
+# Extract video resolution and profile from a demuxed stream
 
 > **When to use this:** You need typed codec information (width, height, profile, level, frame rate, color) and are already demuxing the stream.
 

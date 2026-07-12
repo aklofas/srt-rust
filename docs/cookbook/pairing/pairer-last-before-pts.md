@@ -1,4 +1,4 @@
-# Recipe 26: Sample-and-hold async KLV via `Pairer::last_before_pts`
+# Sample-and-hold async KLV via `Pairer::last_before_pts`
 
 > **When to use this:** Async-KLV streams where each video frame should attach the most recent KLV at `klv.pts <= video.pts`.
 

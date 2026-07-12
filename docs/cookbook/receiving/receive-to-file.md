@@ -1,4 +1,4 @@
-# Recipe 5: Receive into a file
+# Receive into a file
 
 > **When to use this:** Archiving a stream or building a test fixture from a live producer.
 

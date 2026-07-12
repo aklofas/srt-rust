@@ -1,4 +1,4 @@
-# Recipe 8: Use a custom (non-SRT) transport
+# Use a custom (non-SRT) transport
 
 > **When to use this:** The sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol.
 

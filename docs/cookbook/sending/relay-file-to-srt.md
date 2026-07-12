@@ -1,4 +1,4 @@
-# Recipe 4: Relay a captured `.ts` file over SRT
+# Relay a captured `.ts` file over SRT
 
 > **When to use this:** You have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline.
 

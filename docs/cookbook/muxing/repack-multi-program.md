@@ -1,4 +1,4 @@
-# Recipe 16: Repack two single-program inputs into one multi-program TS
+# Repack two single-program inputs into one multi-program TS
 
 > **When to use this:** You have two independent (EO + IR + KLV) feeds and need to ship them through one SRT socket without forcing each to its own UDP port.
 

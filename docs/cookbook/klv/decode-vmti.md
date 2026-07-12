@@ -1,4 +1,4 @@
-# Recipe 30: Decode VMTI per-target detections from an ST 0601 stream
+# Decode VMTI per-target detections from an ST 0601 stream
 
 > **When to use this:** ISR capture analysis — surface detected/tracked targets per frame via Tag 74 (VMTI Local Set).
 

@@ -32,7 +32,7 @@
 //! (extended platform / sensor / altitude fields), tag 74 (VMTI LS
 //! bytes — typed via [`crate::klv::st0903`]), tags 75–91 (ellipsoid
 //! heights + full corners + extended attitude), and tag 94 (MIIS Core
-//! Identifier bytes — typed decode via `crate::klv::st1204` (future module).
+//! Identifier bytes — typed decode via [`crate::klv::st1204`]).
 //!
 //! **Tags preserved as `unknown` (`OwnedRawField`):** any tag not
 //! in the typed-modeled set above — full payload bytes preserved per

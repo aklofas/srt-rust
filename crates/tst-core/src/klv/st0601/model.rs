@@ -53,7 +53,7 @@ pub struct UasDatalinkLs {
     /// Full-range twin of [`Self::platform_roll_deg`] (Item 7, ±50°).
     pub platform_roll_full_deg: Option<f64>,
     /// Item 94: MIIS Core Identifier (MISB ST 1204 binary format).
-    /// Raw bytes — decode/inspect via `crate::klv::st1204` (future module).
+    /// Raw bytes — decode/inspect via [`crate::klv::st1204`].
     pub miis_core_id: Option<Vec<u8>>,
     /// Item 50: Platform Angle of Attack — encode range [-20, 20] deg (int16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].

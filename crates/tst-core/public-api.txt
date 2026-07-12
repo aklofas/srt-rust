@@ -2310,6 +2310,74 @@ pub fn tst_core::klv::st0903::encode_to_vec(&tst_core::klv::VmtiLs) -> core::res
 pub fn tst_core::klv::st0903::encode_to_vec_standalone(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encoded_len(&tst_core::klv::VmtiLs) -> usize
 pub fn tst_core::klv::st0903::encoded_len_standalone(&tst_core::klv::VmtiLs) -> usize
+pub mod tst_core::klv::st1204
+#[non_exhaustive] pub enum tst_core::klv::st1204::IdType
+pub tst_core::klv::st1204::IdType::Managed
+pub tst_core::klv::st1204::IdType::Physical
+pub tst_core::klv::st1204::IdType::Virtual
+impl core::clone::Clone for tst_core::klv::st1204::IdType
+pub fn tst_core::klv::st1204::IdType::clone(&self) -> tst_core::klv::st1204::IdType
+impl core::cmp::Eq for tst_core::klv::st1204::IdType
+impl core::cmp::PartialEq for tst_core::klv::st1204::IdType
+pub fn tst_core::klv::st1204::IdType::eq(&self, &tst_core::klv::st1204::IdType) -> bool
+impl core::fmt::Debug for tst_core::klv::st1204::IdType
+pub fn tst_core::klv::st1204::IdType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st1204::IdType
+impl core::marker::StructuralPartialEq for tst_core::klv::st1204::IdType
+impl core::marker::Freeze for tst_core::klv::st1204::IdType
+impl core::marker::Send for tst_core::klv::st1204::IdType
+impl core::marker::Sync for tst_core::klv::st1204::IdType
+impl core::marker::Unpin for tst_core::klv::st1204::IdType
+impl core::marker::UnsafeUnpin for tst_core::klv::st1204::IdType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1204::IdType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1204::IdType
+#[non_exhaustive] pub enum tst_core::klv::st1204::St1204Error
+pub tst_core::klv::st1204::St1204Error::InvalidUsage
+pub tst_core::klv::st1204::St1204Error::ReservedBitsSet
+pub tst_core::klv::st1204::St1204Error::TrailingBytes
+pub tst_core::klv::st1204::St1204Error::Truncated
+pub tst_core::klv::st1204::St1204Error::UnsupportedVersion(u8)
+impl core::clone::Clone for tst_core::klv::st1204::St1204Error
+pub fn tst_core::klv::st1204::St1204Error::clone(&self) -> tst_core::klv::st1204::St1204Error
+impl core::cmp::Eq for tst_core::klv::st1204::St1204Error
+impl core::cmp::PartialEq for tst_core::klv::st1204::St1204Error
+pub fn tst_core::klv::st1204::St1204Error::eq(&self, &tst_core::klv::st1204::St1204Error) -> bool
+impl core::error::Error for tst_core::klv::st1204::St1204Error
+impl core::fmt::Debug for tst_core::klv::st1204::St1204Error
+pub fn tst_core::klv::st1204::St1204Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::klv::st1204::St1204Error
+pub fn tst_core::klv::st1204::St1204Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st1204::St1204Error
+impl core::marker::Freeze for tst_core::klv::st1204::St1204Error
+impl core::marker::Send for tst_core::klv::st1204::St1204Error
+impl core::marker::Sync for tst_core::klv::st1204::St1204Error
+impl core::marker::Unpin for tst_core::klv::st1204::St1204Error
+impl core::marker::UnsafeUnpin for tst_core::klv::st1204::St1204Error
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1204::St1204Error
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1204::St1204Error
+#[non_exhaustive] pub struct tst_core::klv::st1204::CoreId
+pub tst_core::klv::st1204::CoreId::minor: core::option::Option<[u8; 16]>
+pub tst_core::klv::st1204::CoreId::platform: core::option::Option<(tst_core::klv::st1204::IdType, [u8; 16])>
+pub tst_core::klv::st1204::CoreId::sensor: core::option::Option<(tst_core::klv::st1204::IdType, [u8; 16])>
+pub tst_core::klv::st1204::CoreId::version: u8
+pub tst_core::klv::st1204::CoreId::window: core::option::Option<[u8; 16]>
+impl core::clone::Clone for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::CoreId::clone(&self) -> tst_core::klv::st1204::CoreId
+impl core::cmp::Eq for tst_core::klv::st1204::CoreId
+impl core::cmp::PartialEq for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::CoreId::eq(&self, &tst_core::klv::st1204::CoreId) -> bool
+impl core::fmt::Debug for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::CoreId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st1204::CoreId
+impl core::marker::Freeze for tst_core::klv::st1204::CoreId
+impl core::marker::Send for tst_core::klv::st1204::CoreId
+impl core::marker::Sync for tst_core::klv::st1204::CoreId
+impl core::marker::Unpin for tst_core::klv::st1204::CoreId
+impl core::marker::UnsafeUnpin for tst_core::klv::st1204::CoreId
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1204::CoreId
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::decode(&[u8]) -> core::result::Result<tst_core::klv::st1204::CoreId, tst_core::klv::st1204::St1204Error>
+pub fn tst_core::klv::st1204::encode_to_vec(&tst_core::klv::st1204::CoreId) -> alloc::vec::Vec<u8>
 pub mod tst_core::klv::universal_label
 pub struct tst_core::klv::universal_label::UniversalLabel(pub [u8; 16])
 impl tst_core::klv::universal_label::UniversalLabel

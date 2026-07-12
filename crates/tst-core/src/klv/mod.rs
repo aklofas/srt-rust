@@ -34,6 +34,7 @@ pub mod st0102;
 pub mod st0601;
 pub mod st0605;
 pub mod st0903;
+pub mod st1204;
 pub mod universal_label;
 
 pub use pack::{OwnedRawField, RawField};

@@ -226,6 +226,35 @@ signature, or struct layout was removed or changed.
   Python `out_of_range_policy=` kwarg; JVM `encodeUasDatalink(record, policy)`
   overload. Default behavior unchanged. (PR #92)
 
+- **`tst-core` — ST 0601 Tag 94 (MIIS Core Identifier) and `klv::st1204`
+  binary codec:** `UasDatalinkLs` gains a `miis_core_id: Option<Vec<u8>>`
+  field (Tag 94). The new `tst_core::klv::st1204` module provides
+  `CoreId` / `IdType` / `St1204Error`, with `decode(&[u8]) → Result<CoreId,
+  St1204Error>`, `encode_to_vec(&CoreId) → Vec<u8>`, `CoreId::new(…)`,
+  `check_value(…)` (Appendix B check-digit function), and `Display` for
+  `CoreId` per ST 1204.3 §7.4.2 textual format. The textual form is
+  verified against the Appendix B check-value vector.
+
+- **`tst-core` — ST 0902 MISMMS record validator:** `st0601::validate_mismms`
+  checks an encoded `UasDatalinkLs` for MISMMS (Minimum Interoperability
+  Set for Metadata Management Systems) conformance and returns a
+  `Vec<MismmsViolation>`. `MismmsViolation` (non_exhaustive) carries the
+  violated item and a human-readable description. No C ABI change — KLV
+  validation stays out of the C ABI, matching the encode-hardening precedent
+  (WP-F, PR #51).
+
+- **Python (`tstrans.klv`):** `decode_core_id(buf)` / `encode_core_id(core_id)`
+  / `core_id_text(core_id)` functions; `IdType` / `CoreId` / `MismmsViolation`
+  dataclasses; `validate_mismms(record)` validator; `UasDatalinkLs.miis_core_id`
+  field (Tag 94, `bytes | None`).
+
+- **JVM (`org.tstrans.klv`):** `Klv.decodeCoreId(byte[]) → CoreId` /
+  `Klv.encodeCoreId(CoreId) → byte[]` / `Klv.coreIdText(CoreId) → String` /
+  `Klv.validateMismms(UasDatalinkLs) → List<MismmsViolation>` static
+  helpers; `IdType` enum; `CoreId` / `MismmsViolation` records;
+  `UasDatalinkLs.miisCoreId()` accessor and `Builder.miisCoreId(byte[])`.
+  No C ABI change (same as above).
+
 ### Changed — default features and transport behavior
 
 - `tst-tcp`'s default features drop the experimental `hls` feature:

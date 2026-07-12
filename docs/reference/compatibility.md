@@ -615,7 +615,7 @@ covers.
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ⚙️ Opt-in validator — `klv::st0601::validate_mismms` returns a `Vec<MismmsViolation>` per record; stream-level cadence tracker deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ✅ §7.1.2 / §7.2 + §7.1.3 / §7.2.3 special values (`ImapbSpecial`, encode + decode); IMAPA form deferred |
-| **MISB ST 1204.3** | Motion Imagery Identification System (MIIS) Core Identifier | ✅ `klv::st1204::{decode, encode_to_vec}` + ST 0601 Tag 94 (`miis_core_id`). Rust, Python, and JVM (KLV is not exposed in the C ABI). See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
+| **MISB ST 1204.3** | Motion Imagery Identification System (MIIS) Core Identifier | ✅ `klv::st1204::{decode, encode_to_vec}` + ST 0601 Tag 94 (`miis_core_id`). Rust, Python, and JVM (the C ABI carries raw KLV but exposes no typed KLV APIs). See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
 | **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |

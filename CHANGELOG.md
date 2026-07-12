@@ -614,8 +614,9 @@ signature, or struct layout was removed or changed.
 
 ### Fixed — documentation accuracy
 - STANAG 4609 conformance matrix: the ST 0902 `validate_mismms` and ST 1204
-  Core Identifier rows said "All four language bindings"; KLV is not exposed
-  in the C ABI, so they now read "Rust, Python, and JVM".
+  Core Identifier rows said "All four language bindings"; the typed KLV set
+  APIs are not exposed in the C ABI (which carries raw KLV bytes only), so
+  they now read "Rust, Python, and JVM".
 - C `tst_hls_publisher_builder_new` rustdoc (and the generated `tstrans.h`)
   documented stale defaults (`0.0.0.0:0`, 6 s segments, no output dir); they
   now state the actual loopback bind `127.0.0.1:8080`, 4 s segments, and the

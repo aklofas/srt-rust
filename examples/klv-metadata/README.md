@@ -12,7 +12,7 @@ cargo run -p tst-examples --example klv_encode_minimal
 Build the smallest valid ST 0601 record: timestamp + UAS LS version,
 encode to bytes, print hex. The encoder side of the substrate.
 
-Cookbook: [Recipe 7 — Encode ST 0601 from typed values](../../docs/cookbook/klv/07-encode-st0601.md).
+Cookbook: [Encode ST 0601 from typed values](../../docs/cookbook/klv/encode-st0601.md).
 
 ## 2. `extract_klv.rs` — extract KLV from a `.ts` file
 
@@ -34,7 +34,7 @@ Read one `.klv` blob produced by §2 (or any other source), decode it
 through the strictness ladder (`decode_lenient` /
 `decode_strict_compliance` / `decode_strict`), print the typed fields.
 
-Cookbook: [Recipe 6 — Decode ST 0601 from a captured `.klv` blob](../../docs/cookbook/klv/06-decode-st0601-blob.md).
+Cookbook: [Decode ST 0601 from a captured `.klv` blob](../../docs/cookbook/klv/decode-st0601-blob.md).
 
 ## 4. `decode_security_metadata.rs` — ST 0102 (Security LS)
 
@@ -46,7 +46,7 @@ Diff from §3: ST 0102 instead of ST 0601. The Security LS lives at
 ST 0601 Tag 48 (pass-through) and is decoded by a sibling-layer parser
 in `klv::st0102`.
 
-Cookbook: [Recipe 28 — Decode security metadata from an ST 0601 record](../../docs/cookbook/klv/28-decode-security-metadata.md).
+Cookbook: [Decode security metadata from an ST 0601 record](../../docs/cookbook/klv/decode-security-metadata.md).
 
 ## 5. `decode_vmti_metadata.rs` — ST 0903 (VMTI LS)
 
@@ -59,4 +59,4 @@ pass-through) with a richer nested structure: `VTargetSeries` of
 `VTargetPack` records with optional sub-LSes. Demonstrates the
 `Encoding::VarUint` substrate.
 
-Cookbook: [Recipe 30 — Decode VMTI per-target detections from an ST 0601 stream](../../docs/cookbook/klv/30-decode-vmti.md).
+Cookbook: [Decode VMTI per-target detections from an ST 0601 stream](../../docs/cookbook/klv/decode-vmti.md).

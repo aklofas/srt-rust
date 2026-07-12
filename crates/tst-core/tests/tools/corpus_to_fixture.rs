@@ -1,7 +1,7 @@
 //! corpus_to_fixture — extract a minimal TS-packet sub-sequence from a `.ts`
 //! file as a committed regression fixture. Optional Rust shim generation.
 //!
-//! See `docs/cookbook/operations/99-capture-regression-fixture.md` and
+//! See `docs/cookbook/operations/capture-regression-fixture.md` and
 //! `crates/tst-core/tests/fixtures/regression/README.md` for the workflow.
 //!
 //! Usage:

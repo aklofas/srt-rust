@@ -60,9 +60,9 @@
 //!
 //! # Cookbook
 //!
-//! See `docs/cookbook/receiving/24-pairer-realtime.md`,
-//! `25-pairer-batch.md`, `26-pairer-last-before-pts.md`, and
-//! `27-eo-ir-shared-klv-pairer.md` for canonical realtime, batch-ingest,
+//! See `docs/cookbook/pairing/pairer-realtime.md`,
+//! `pairer-batch.md`, `pairer-last-before-pts.md`, and
+//! `eo-ir-shared-klv-pairer.md` for canonical realtime, batch-ingest,
 //! async sample-and-hold, and EO+IR composition patterns.
 
 mod demuxer;

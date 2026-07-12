@@ -352,7 +352,7 @@ while let Some(au) = rx.recv_au()? {
 
 - **KLV pairing slot.** In a STANAG 4609 gateway you push `au.pts` to
   `muxer.push_video` and the matching KLV (from a separate UDP or SRT feed)
-  to `muxer.push_klv` using the same `pts`. See Recipe 34 in the cookbook.
+  to `muxer.push_klv` using the same `pts`. See [Ingest H.264 from an RTSP camera and remux to MPEG-TS](/docs/cookbook/receiving/recv-rtsp-h264-to-ts.md) in the cookbook.
 
 - **RTCP is not implemented on the H.264 path (v1 decision).** No RTCP
   socket is bound; no RR/SR is sent or received. See

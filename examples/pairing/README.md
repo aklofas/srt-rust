@@ -15,7 +15,7 @@ the nearest-PTS match. The "see exactly what's happening" recipe —
 useful when you want to understand the matching shape before reaching
 for the helper.
 
-Cookbook: [Recipe 12 — Pair sync-KLV with video AUs by nearest PTS](../../docs/cookbook/receiving/12-pair-klv-by-pts.md).
+Cookbook: [Pair sync-KLV with video AUs by nearest PTS](../../docs/cookbook/pairing/pair-klv-by-pts.md).
 
 ## 2. `pair_klv_pipeline.rs` — using `pipeline::Pairer`
 
@@ -30,7 +30,7 @@ is the production shape — less boilerplate, same result.
 
 Cookbook recipes:
 
-- [Recipe 24 — Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)](../../docs/cookbook/receiving/24-pairer-realtime.md)
-- [Recipe 25 — Pair sync-KLV in batch mode (`PairerMode::Buffered`)](../../docs/cookbook/receiving/25-pairer-batch.md)
-- [Recipe 26 — Sample-and-hold async KLV via `Pairer::last_before_pts`](../../docs/cookbook/receiving/26-pairer-last-before-pts.md)
-- [Recipe 27 — EO + IR composition with shared async-KLV](../../docs/cookbook/receiving/27-eo-ir-shared-klv-pairer.md)
+- [Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)](../../docs/cookbook/pairing/pairer-realtime.md)
+- [Pair sync-KLV in batch mode (`PairerMode::Buffered`)](../../docs/cookbook/pairing/pairer-batch.md)
+- [Sample-and-hold async KLV via `Pairer::last_before_pts`](../../docs/cookbook/pairing/pairer-last-before-pts.md)
+- [EO + IR composition with shared async-KLV](../../docs/cookbook/pairing/eo-ir-shared-klv-pairer.md)

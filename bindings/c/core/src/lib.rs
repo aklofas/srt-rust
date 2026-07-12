@@ -13,7 +13,7 @@
 //! transport surfaces are gated on the `rtp` cargo feature. The
 //! offline byte-feeding `tst_demuxer_*` surface is unconditional (no
 //! feature gate), as is the offline `tst_muxer_*` surface (un-gated from
-//! `srt` in ABI 0.9). ABI minor is `0.18` (see [`TST_ABI_VERSION_MINOR`]).
+//! `srt` in ABI 0.9). ABI minor is `0.19` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
@@ -88,6 +88,7 @@ pub mod demuxer;
 pub mod error;
 pub mod event;
 pub mod handle;
+pub mod misp_time;
 pub mod muxer;
 pub mod stats;
 mod ffi_slice;
@@ -317,7 +318,11 @@ pub const TST_ABI_VERSION_MAJOR: crate::c_types::c_int = 0;
 ///   a getter — `TstHlsStats` layout unchanged). Additive — no existing
 ///   symbol or struct changed. The HLS surface moved from `tst-tcp` to the
 ///   new `tst-hls` crate (link-level only; no C ABI effect).
-pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 18;
+/// - `19` (ST 0604 MISP timestamps, 2026-07-11): `tst_muxer_push_video_misp_to`,
+///   `tst_muxer_push_video_misp_to_with_dts`, `tst_misp_time_extract`,
+///   `TST_E_MISP_TIME` (-45), `TST_E_MISP_TIME_MALFORMED` (-46).
+///   Additive — no struct growth, no signature changes.
+pub const TST_ABI_VERSION_MINOR: crate::c_types::c_int = 19;
 
 // =========================================================================
 // Runtime version accessors

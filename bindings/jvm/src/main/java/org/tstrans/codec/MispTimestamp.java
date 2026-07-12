@@ -42,7 +42,7 @@ public record MispTimestamp(MispTimeKind kind, int timeStatus, long value) {
      * H.265-only per ST 0604.6 §12.2; passing this to
      * {@link org.tstrans.mpegts.Muxer#pushVideoMispTo} on an H.264 stream
      * will throw {@link org.tstrans.MuxException} with kind
-     * {@code INVALID_USAGE}.
+     * {@code INPUT_MALFORMED}.
      *
      * @param valueNs    nanoseconds since the MISP epoch (unsigned 64-bit
      *                   crossing)

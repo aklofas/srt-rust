@@ -157,11 +157,14 @@ mod tests {
         assert!(!pl_live.contains("#EXT-X-ENDLIST"));
     }
 
-    // Differential test: render(segmenter, is_final) == PlaylistModel::from_segmenter(segmenter, is_final).render()
-    // Covers all (mode x is_final x segment_count) combinations.
-    fn fresh_segmenter_with_two_segments(mode: HlsMode) -> Segmenter {
+    /// A segmenter holding two real, closed segments with deterministic
+    /// media-PTS durations (2.000 s and 2.500 s). `push_ts` opens each
+    /// segment before `cut_with_duration` closes it — cutting a segmenter
+    /// with no open segment is a documented no-op, so the segments must be
+    /// opened first or the fixture produces an empty history.
+    fn segmenter_with_two_segments(mode: HlsMode) -> Segmenter {
         let dir = std::env::temp_dir().join(format!(
-            "hls-pl-diff-{}-{}",
+            "hls-pl-golden-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -173,38 +176,60 @@ mod tests {
         let cfg = HlsConfig {
             output_dir: dir,
             mode,
+            segment_duration: std::time::Duration::from_secs(4),
             playlist_window: 6,
             ..HlsConfig::default()
         };
         let mut s = Segmenter::new(cfg).unwrap();
-        // Cut two segments with distinct durations by using cut_with_duration.
+        s.push_ts(&[0u8; 188]).unwrap();
         s.cut_with_duration(Some(std::time::Duration::from_millis(2000)))
             .unwrap();
+        s.push_ts(&[0u8; 188]).unwrap();
         s.cut_with_duration(Some(std::time::Duration::from_millis(2500)))
             .unwrap();
         s
     }
 
-    #[test]
-    fn model_render_matches_direct_render() {
-        for mode in [HlsMode::Live, HlsMode::Event, HlsMode::Vod] {
-            for is_final in [false, true] {
-                // 0 segments
-                let s0 = fresh_segmenter(mode);
-                assert_eq!(
-                    render(&s0, is_final),
-                    PlaylistModel::from_segmenter(&s0, is_final).render(),
-                    "mode={mode:?} is_final={is_final} 0-segments"
-                );
+    // Golden byte-level tests: pin the exact m3u8 the renderer produces so any
+    // drift in `render()`/`PlaylistModel` is caught. (The old differential test
+    // compared `render()` against the identical `PlaylistModel::from_segmenter
+    // (..).render()` expression — `render()` is literally that call — so it was
+    // tautological and could never fail; its fixture also cut a fresh segmenter
+    // with no open segment, producing zero segments.)
 
-                // 2 segments
-                let s2 = fresh_segmenter_with_two_segments(mode);
-                assert_eq!(
-                    render(&s2, is_final),
-                    PlaylistModel::from_segmenter(&s2, is_final).render(),
-                    "mode={mode:?} is_final={is_final} 2-segments"
-                );
-            }
-        }
+    #[test]
+    fn live_playlist_renders_expected_bytes() {
+        let s = segmenter_with_two_segments(HlsMode::Live);
+        // Live: no PLAYLIST-TYPE tag, and no ENDLIST even when is_final.
+        let expected = "#EXTM3U\n\
+             #EXT-X-VERSION:6\n\
+             #EXT-X-TARGETDURATION:4\n\
+             #EXT-X-MEDIA-SEQUENCE:0\n\
+             #EXTINF:2.000,\n\
+             segment_00000.ts\n\
+             #EXTINF:2.500,\n\
+             segment_00001.ts\n";
+        assert_eq!(render(&s, false), expected);
+        assert_eq!(render(&s, true), expected, "Live ignores is_final");
+    }
+
+    #[test]
+    fn vod_playlist_renders_type_and_conditional_endlist() {
+        let s = segmenter_with_two_segments(HlsMode::Vod);
+        let body = "#EXTM3U\n\
+             #EXT-X-VERSION:6\n\
+             #EXT-X-TARGETDURATION:4\n\
+             #EXT-X-MEDIA-SEQUENCE:0\n\
+             #EXT-X-PLAYLIST-TYPE:VOD\n\
+             #EXTINF:2.000,\n\
+             segment_00000.ts\n\
+             #EXTINF:2.500,\n\
+             segment_00001.ts\n";
+        assert_eq!(render(&s, false), body, "no ENDLIST before finish");
+        assert_eq!(
+            render(&s, true),
+            format!("{body}#EXT-X-ENDLIST\n"),
+            "ENDLIST appended on finish"
+        );
     }
 }

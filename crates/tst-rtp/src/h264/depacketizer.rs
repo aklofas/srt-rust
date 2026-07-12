@@ -550,6 +550,15 @@ impl H264Depacketizer {
             if !prefix.is_empty() {
                 prefix.extend_from_slice(&self.au_buf);
                 self.au_buf = prefix;
+                // Injection prepends cached parameter sets AFTER the append-time
+                // cap checks, so a tiny in-cap IDR AU plus large cached SPS/PPS
+                // could otherwise emit an AU exceeding max_au_bytes. Re-enforce
+                // the cap here and drop the AU (fu is already None at this point).
+                if self.check_and_apply_oversize_cap() {
+                    self.stats.aus_dropped += 1;
+                    self.reset_au();
+                    return;
+                }
             }
         }
 
@@ -1281,6 +1290,29 @@ mod tests {
         let clean = d.next_au().expect("subsequent clean AU must succeed");
         assert_eq!(clean.annexb, [0, 0, 0, 1, 0x41, 0x01]);
         assert_eq!(d.stats().aus_dropped_oversize, 1, "no new oversize drops");
+    }
+
+    /// Parameter-set injection must not bypass the cap. A bare IDR AU that
+    /// fits under the cap on its own is pushed over once cached SPS/PPS are
+    /// prepended in `complete_au()`; the injected AU must be dropped, never
+    /// emitted above the advertised `max_au_bytes`.
+    #[test]
+    fn injection_cannot_bypass_max_au_bytes() {
+        // Bare IDR au_buf = 4 (start code) + 2 = 6 bytes, under CAP=8.
+        // Injection prepends (4+4) SPS + (4+4) PPS = 16 bytes → 22 > 8.
+        const CAP: usize = 8;
+        let mut d = H264Depacketizer::new(H264DepayConfig {
+            max_au_bytes: CAP,
+            initial_parameter_sets: vec![sps(), pps()], // BeforeIdr default
+            ..H264DepayConfig::default()
+        });
+        d.feed(&hdr(1, 1000, true), &[0x65, 0xAA]); // bare IDR, marker closes
+        assert!(
+            d.next_au().is_none(),
+            "injected AU exceeding the cap must be dropped, not emitted"
+        );
+        assert_eq!(d.stats().aus_dropped_oversize, 1);
+        assert_eq!(d.stats().aus_dropped, 1);
     }
 
     /// Single-NALU AU that exceeds the cap: `aus_dropped_oversize` ticks and

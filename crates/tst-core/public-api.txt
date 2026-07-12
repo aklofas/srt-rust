@@ -788,6 +788,8 @@ pub fn tst_core::codec::misp_time::MispTimeError::clone(&self) -> tst_core::code
 impl core::cmp::Eq for tst_core::codec::misp_time::MispTimeError
 impl core::cmp::PartialEq for tst_core::codec::misp_time::MispTimeError
 pub fn tst_core::codec::misp_time::MispTimeError::eq(&self, &tst_core::codec::misp_time::MispTimeError) -> bool
+impl core::convert::From<tst_core::codec::misp_time::MispTimeError> for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::from(tst_core::codec::misp_time::MispTimeError) -> Self
 impl core::error::Error for tst_core::codec::misp_time::MispTimeError
 impl core::fmt::Debug for tst_core::codec::misp_time::MispTimeError
 pub fn tst_core::codec::misp_time::MispTimeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1475,6 +1477,7 @@ pub tst_core::error::MuxError::MalformedDescriptor
 pub tst_core::error::MuxError::MalformedDescriptor::descriptor_index: usize
 pub tst_core::error::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::error::MuxError::MalformedDescriptor::stream_index: usize
+pub tst_core::error::MuxError::MispTime(tst_core::codec::misp_time::MispTimeError)
 pub tst_core::error::MuxError::NoAudioStreamsConfigured
 pub tst_core::error::MuxError::NoDataStreamsConfigured
 pub tst_core::error::MuxError::NoKlvStreamsConfigured
@@ -1519,7 +1522,10 @@ pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError
 impl core::cmp::PartialEq for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::eq(&self, &tst_core::error::MuxError) -> bool
+impl core::convert::From<tst_core::codec::misp_time::MispTimeError> for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::from(tst_core::codec::misp_time::MispTimeError) -> Self
 impl core::error::Error for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_core::error::MuxError
@@ -4966,6 +4972,7 @@ pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor
 pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::descriptor_index: usize
 pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::mpegts::mux::_detail::MuxError::MalformedDescriptor::stream_index: usize
+pub tst_core::mpegts::mux::_detail::MuxError::MispTime(tst_core::codec::misp_time::MispTimeError)
 pub tst_core::mpegts::mux::_detail::MuxError::NoAudioStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoDataStreamsConfigured
 pub tst_core::mpegts::mux::_detail::MuxError::NoKlvStreamsConfigured
@@ -5010,7 +5017,10 @@ pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError
 impl core::cmp::PartialEq for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::eq(&self, &tst_core::error::MuxError) -> bool
+impl core::convert::From<tst_core::codec::misp_time::MispTimeError> for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::from(tst_core::codec::misp_time::MispTimeError) -> Self
 impl core::error::Error for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_core::error::MuxError
@@ -5308,6 +5318,8 @@ pub fn tst_core::mpegts::mux::Muxer::subtitle_handles(&self) -> alloc::vec::Vec<
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>, tst_core::error::MuxError>
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::push_video(&mut self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_video_misp_to(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool, &tst_core::codec::misp_time::MispTimestamp) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_video_misp_to_with_dts(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool, &tst_core::codec::misp_time::MispTimestamp) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_to(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_to_with_dts(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_wire_to(&mut self, tst_core::mpegts::mux::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_core::error::MuxError>
@@ -6095,6 +6107,7 @@ pub tst_core::MuxError::MalformedDescriptor
 pub tst_core::MuxError::MalformedDescriptor::descriptor_index: usize
 pub tst_core::MuxError::MalformedDescriptor::reason: &'static str
 pub tst_core::MuxError::MalformedDescriptor::stream_index: usize
+pub tst_core::MuxError::MispTime(tst_core::codec::misp_time::MispTimeError)
 pub tst_core::MuxError::NoAudioStreamsConfigured
 pub tst_core::MuxError::NoDataStreamsConfigured
 pub tst_core::MuxError::NoKlvStreamsConfigured
@@ -6139,7 +6152,10 @@ pub fn tst_core::error::MuxError::clone(&self) -> tst_core::error::MuxError
 impl core::cmp::Eq for tst_core::error::MuxError
 impl core::cmp::PartialEq for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::eq(&self, &tst_core::error::MuxError) -> bool
+impl core::convert::From<tst_core::codec::misp_time::MispTimeError> for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::from(tst_core::codec::misp_time::MispTimeError) -> Self
 impl core::error::Error for tst_core::error::MuxError
+pub fn tst_core::error::MuxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_core::error::MuxError
 pub fn tst_core::error::MuxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_core::error::MuxError

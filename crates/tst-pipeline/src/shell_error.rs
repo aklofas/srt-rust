@@ -205,6 +205,7 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
         MuxError::NoPcrEligibleStream { .. } => ConfigInvalid,
         MuxError::DescriptorIndexOutOfRange { .. } => ConfigInvalid,
         MuxError::AbsIndexOutOfRange { .. } => ConfigInvalid,
+        MuxError::MispTime(_) => InputMalformed,
         // Required by #[non_exhaustive]. CI ratchet
         // scripts/check/rust/pipeline-kind-classification.sh enforces every
         // upstream MuxError variant is matched above before this arm.

@@ -385,6 +385,7 @@ class UasDatalinkLs:
     generic_flag_data: Optional[int] = ...
     security_local_set: Optional[bytes] = ...
     vmti: Optional[bytes] = ...
+    miis_core_id: Optional[bytes] = ...
     unknown: Tuple[Tuple[int, bytes], ...] = ...
     field_errors: Tuple[KlvFieldError, ...] = ...
     sentinel_tags: Tuple[int, ...] = ...
@@ -437,6 +438,49 @@ def parse_klv_universal(
     buf: bytes, *, strict: bool = ...
 ) -> Optional[Union[UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs]]: ...
 
+# ---------------------------------------------------------------------------
+# ST 1204.3 MIIS Core Identifier
+# ---------------------------------------------------------------------------
+
+class IdType(enum.Enum):
+    """Source type for a sensor or platform UUID within a CoreId.
+
+    Maps to the two-bit field in ST 1204.3 §7.3.1 Table 3 usage byte."""
+
+    PHYSICAL = "physical"
+    VIRTUAL = "virtual"
+    MANAGED = "managed"
+
+@dataclass(frozen=True, slots=True)
+class CoreId:
+    """MISB ST 1204.3 MIIS Core Identifier typed view."""
+
+    version: int
+    sensor: Optional[Tuple[IdType, bytes]] = ...
+    platform: Optional[Tuple[IdType, bytes]] = ...
+    window: Optional[bytes] = ...
+    minor: Optional[bytes] = ...
+    def with_(self, **changes: object) -> CoreId: ...
+
+def decode_core_id(buf: _BytesLike) -> CoreId: ...
+def encode_core_id(core_id: CoreId) -> bytes: ...
+def core_id_text(core_id: CoreId) -> str: ...
+
+# ---------------------------------------------------------------------------
+# ST 0902.8 Minimum Metadata Set (MISMMS) violation
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class MismmsViolation:
+    """A violation of the ST 0902.8 Minimum Metadata Set requirements."""
+
+    kind: str
+    tag: int
+    name: Optional[str] = ...
+    tag_b: Optional[int] = ...
+
+def validate_mismms(record: UasDatalinkLs) -> list[MismmsViolation]: ...
+
 __all__ = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -478,4 +522,11 @@ __all__ = [
     "encode_uas_datalink_strict_compliance",
     "patch_uas_datalink",
     "parse_klv_universal",
+    "IdType",
+    "CoreId",
+    "decode_core_id",
+    "encode_core_id",
+    "core_id_text",
+    "MismmsViolation",
+    "validate_mismms",
 ]

@@ -10448,6 +10448,13 @@ bindings = []
 scenario_ids = []
 tier = "A"
 
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::new"
+owning_tests = ["bindings/python/tests/test_klv_st1204_mismms.py"]
+bindings = ["python:encode_core_id"]
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::klv::st1204::CoreId::clone"
 reason = "derive impl for st1204 CoreId; covered by decode/encode tests"

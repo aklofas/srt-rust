@@ -2392,6 +2392,8 @@ pub tst_core::klv::st1204::CoreId::platform: core::option::Option<(tst_core::klv
 pub tst_core::klv::st1204::CoreId::sensor: core::option::Option<(tst_core::klv::st1204::IdType, [u8; 16])>
 pub tst_core::klv::st1204::CoreId::version: u8
 pub tst_core::klv::st1204::CoreId::window: core::option::Option<[u8; 16]>
+impl tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::CoreId::new(u8, core::option::Option<(tst_core::klv::st1204::IdType, [u8; 16])>, core::option::Option<(tst_core::klv::st1204::IdType, [u8; 16])>, core::option::Option<[u8; 16]>, core::option::Option<[u8; 16]>) -> Self
 impl core::clone::Clone for tst_core::klv::st1204::CoreId
 pub fn tst_core::klv::st1204::CoreId::clone(&self) -> tst_core::klv::st1204::CoreId
 impl core::cmp::Eq for tst_core::klv::st1204::CoreId

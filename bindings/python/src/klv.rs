@@ -30,11 +30,13 @@ use tst_core::klv::st0102::{
     encode_strict_compliance as encode_st0102_strict_compliance, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
-    EncodeConfig as St0601EncodeConfig, OutOfRangePolicy as RustOutOfRangePolicy, UasDatalinkLs,
-    decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
+    EncodeConfig as St0601EncodeConfig, MismmsViolation as RustMismmsViolation,
+    OutOfRangePolicy as RustOutOfRangePolicy, UasDatalinkLs, decode as decode_st0601_lenient,
+    decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
     encode_strict_compliance as encode_st0601_strict_compliance,
     encode_to_vec_with as encode_st0601_with, patch as patch_st0601,
+    validate_mismms as rust_validate_mismms,
 };
 use tst_core::klv::st0605::{
     PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
@@ -46,6 +48,10 @@ use tst_core::klv::st0903::{
     encode_standalone_strict_compliance as encode_st0903_standalone_strict_compliance,
     encode_strict_compliance as encode_st0903_strict_compliance, encode_to_vec as encode_st0903,
     encode_to_vec_standalone as encode_st0903_standalone,
+};
+use tst_core::klv::st1204::{
+    CoreId as RustCoreId, IdType as RustIdType, St1204Error, decode as decode_st1204,
+    encode_to_vec as encode_st1204,
 };
 
 use crate::errors::{klv_encode_error_to_pyerr, make_klv_error};
@@ -80,6 +86,24 @@ pub(crate) fn klv_decode_error_to_pyerr(py: Python<'_>, e: KlvDecodeError) -> Py
         | KlvDecodeError::ReservedBitsInvalid { .. }
         | KlvDecodeError::St0903InvalidVTargetPack { .. }
         | KlvDecodeError::FieldError(_) => "MALFORMED_BYTES",
+        _ => "INTERNAL",
+    };
+    make_klv_error(py, kind, &msg)
+}
+
+// ---------------------------------------------------------------------------
+// St1204Error → KlvError mapping
+// ---------------------------------------------------------------------------
+
+/// Map a Rust `St1204Error` to a Python `KlvError` instance.
+fn st1204_error_to_pyerr(py: Python<'_>, e: St1204Error) -> PyErr {
+    let msg = format!("{e}");
+    let kind = match &e {
+        St1204Error::Truncated => "TRUNCATED_SET",
+        St1204Error::UnsupportedVersion(_) => "MALFORMED_BYTES",
+        St1204Error::ReservedBitsSet => "MALFORMED_BYTES",
+        St1204Error::InvalidUsage => "MALFORMED_BYTES",
+        St1204Error::TrailingBytes => "MALFORMED_BYTES",
         _ => "INTERNAL",
     };
     make_klv_error(py, kind, &msg)
@@ -250,10 +274,10 @@ fn is_st0102_typed_tag(tag: u32) -> bool {
 
 /// ST 0601 LS typed + reserved tags. Reserved structural tags: 1 (Checksum),
 /// 2 (PrecisionTimeStamp), 65 (LS Version). Typed range: 5..=91 (the
-/// encoder's `tags::TAGS` inventory). Tags 3, 4, 92..=255 are forward-
-/// compat and may legitimately appear in `unknown`.
+/// encoder's `tags::TAGS` inventory) + 94 (MIIS Core Identifier). Tags 3, 4,
+/// 92..=93, 95..=255 are forward-compat and may legitimately appear in `unknown`.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(tag, 1 | 2 | 65 | 5..=91)
+    matches!(tag, 1 | 2 | 65 | 94 | 5..=91)
 }
 
 /// ST 0903.6 VMTI LS typed tags: 1 (Checksum), 2..=13, 101..=103.
@@ -1040,6 +1064,7 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
     op!("generic_flag_data", r.generic_flag_data);
     ob!("security_local_set", r.security_local_set);
     ob!("vmti", r.vmti);
+    ob!("miis_core_id", r.miis_core_id);
 
     kwargs.set_item("unknown", convert_unknown(py, &r.unknown)?)?;
     kwargs.set_item("field_errors", convert_field_errors(py, &r.field_errors)?)?;
@@ -1213,6 +1238,7 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     op!(generic_flag_data, u8);
     ob!(security_local_set);
     ob!(vmti);
+    ob!(miis_core_id);
 
     r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
 
@@ -1328,6 +1354,239 @@ fn patch_uas_datalink_py(
 }
 
 // ---------------------------------------------------------------------------
+// ST 1204.3 — MIIS Core Identifier
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `IdType` to the matching Python `tstrans.klv.IdType`
+/// enum member.
+fn convert_id_type(py: Python<'_>, ty: RustIdType) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "IdType"))?;
+    let variant = match ty {
+        RustIdType::Physical => "PHYSICAL",
+        RustIdType::Virtual => "VIRTUAL",
+        RustIdType::Managed => "MANAGED",
+        _ => "MANAGED",
+    };
+    Ok(cls.getattr(variant)?.unbind())
+}
+
+/// Translate a Rust `CoreId` to a Python `tstrans.klv.CoreId` dataclass.
+fn convert_core_id(py: Python<'_>, id: &RustCoreId) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "CoreId"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    kwargs.set_item("version", id.version)?;
+
+    if let Some((ref ty, ref uuid)) = id.sensor {
+        let id_type_py = convert_id_type(py, *ty)?;
+        let uuid_bytes = pyo3::types::PyBytes::new_bound(py, uuid.as_slice());
+        let tuple = pyo3::types::PyTuple::new_bound(py, [id_type_py, uuid_bytes.unbind().into()]);
+        kwargs.set_item("sensor", tuple)?;
+    }
+
+    if let Some((ref ty, ref uuid)) = id.platform {
+        let id_type_py = convert_id_type(py, *ty)?;
+        let uuid_bytes = pyo3::types::PyBytes::new_bound(py, uuid.as_slice());
+        let tuple = pyo3::types::PyTuple::new_bound(py, [id_type_py, uuid_bytes.unbind().into()]);
+        kwargs.set_item("platform", tuple)?;
+    }
+
+    if let Some(ref uuid) = id.window {
+        kwargs.set_item(
+            "window",
+            pyo3::types::PyBytes::new_bound(py, uuid.as_slice()),
+        )?;
+    }
+    if let Some(ref uuid) = id.minor {
+        kwargs.set_item(
+            "minor",
+            pyo3::types::PyBytes::new_bound(py, uuid.as_slice()),
+        )?;
+    }
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Inverse of `convert_id_type`: extract an `IdType` from a Python
+/// `tstrans.klv.IdType` enum member.
+fn py_to_id_type(p: &Bound<'_, PyAny>) -> PyResult<RustIdType> {
+    let name: String = p.getattr("name")?.extract()?;
+    match name.as_str() {
+        "PHYSICAL" => Ok(RustIdType::Physical),
+        "VIRTUAL" => Ok(RustIdType::Virtual),
+        "MANAGED" => Ok(RustIdType::Managed),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown IdType variant: {other}"
+        ))),
+    }
+}
+
+/// Inverse of `convert_core_id`: extract a Rust `CoreId` from a Python
+/// `tstrans.klv.CoreId` dataclass.
+fn py_to_core_id(p: &Bound<'_, PyAny>) -> PyResult<RustCoreId> {
+    let py = p.py();
+
+    let version: u8 = p.getattr(intern!(py, "version"))?.extract()?;
+
+    let sensor_obj = p.getattr(intern!(py, "sensor"))?;
+    let sensor = if sensor_obj.is_none() {
+        None
+    } else {
+        let (ty_py, uuid_bytes): (Bound<'_, PyAny>, Vec<u8>) = sensor_obj.extract()?;
+        let ty = py_to_id_type(&ty_py)?;
+        if uuid_bytes.len() != 16 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "CoreId.sensor UUID must be 16 bytes, got {}",
+                uuid_bytes.len()
+            )));
+        }
+        let mut uuid = [0u8; 16];
+        uuid.copy_from_slice(&uuid_bytes);
+        Some((ty, uuid))
+    };
+
+    let platform_obj = p.getattr(intern!(py, "platform"))?;
+    let platform = if platform_obj.is_none() {
+        None
+    } else {
+        let (ty_py, uuid_bytes): (Bound<'_, PyAny>, Vec<u8>) = platform_obj.extract()?;
+        let ty = py_to_id_type(&ty_py)?;
+        if uuid_bytes.len() != 16 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "CoreId.platform UUID must be 16 bytes, got {}",
+                uuid_bytes.len()
+            )));
+        }
+        let mut uuid = [0u8; 16];
+        uuid.copy_from_slice(&uuid_bytes);
+        Some((ty, uuid))
+    };
+
+    let window_obj = p.getattr(intern!(py, "window"))?;
+    let window = if window_obj.is_none() {
+        None
+    } else {
+        let bytes: Vec<u8> = window_obj.extract()?;
+        if bytes.len() != 16 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "CoreId.window UUID must be 16 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        let mut uuid = [0u8; 16];
+        uuid.copy_from_slice(&bytes);
+        Some(uuid)
+    };
+
+    let minor_obj = p.getattr(intern!(py, "minor"))?;
+    let minor = if minor_obj.is_none() {
+        None
+    } else {
+        let bytes: Vec<u8> = minor_obj.extract()?;
+        if bytes.len() != 16 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "CoreId.minor UUID must be 16 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        let mut uuid = [0u8; 16];
+        uuid.copy_from_slice(&bytes);
+        Some(uuid)
+    };
+
+    Ok(RustCoreId::new(version, sensor, platform, window, minor))
+}
+
+/// Decode a MISB ST 1204.3 MIIS Core Identifier from binary wire form.
+/// `buf` must be exactly the bytes of one Core Identifier (no framing).
+/// Raises `KlvError` on any decode failure.
+#[pyfunction]
+#[pyo3(name = "decode_core_id")]
+fn decode_core_id_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObject> {
+    match decode_st1204(buf) {
+        Ok(id) => convert_core_id(py, &id),
+        Err(e) => Err(st1204_error_to_pyerr(py, e)),
+    }
+}
+
+/// Encode a Python `CoreId` to its binary wire form. Returns `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_core_id")]
+fn encode_core_id_py(py: Python<'_>, core_id: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_id = py_to_core_id(core_id)?;
+    let bytes = encode_st1204(&rust_id);
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Return the ST 1204.3 §7.4.2 textual representation of a `CoreId`.
+#[pyfunction]
+#[pyo3(name = "core_id_text")]
+fn core_id_text_py(_py: Python<'_>, core_id: &Bound<'_, PyAny>) -> PyResult<String> {
+    let rust_id = py_to_core_id(core_id)?;
+    Ok(rust_id.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// ST 0902.8 MISMMS validator
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `MismmsViolation` to a Python `tstrans.klv.MismmsViolation`
+/// dataclass instance.
+fn convert_mismms_violation(py: Python<'_>, v: &RustMismmsViolation) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "MismmsViolation"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    match v {
+        RustMismmsViolation::MissingItem { tag, name } => {
+            kwargs.set_item("kind", "missing")?;
+            kwargs.set_item("tag", *tag as u32)?;
+            kwargs.set_item("name", *name)?;
+        }
+        RustMismmsViolation::MissingSecurityItem { tag, name } => {
+            kwargs.set_item("kind", "missing_security")?;
+            kwargs.set_item("tag", *tag as u32)?;
+            kwargs.set_item("name", *name)?;
+        }
+        RustMismmsViolation::ZeroLengthItem { tag } => {
+            kwargs.set_item("kind", "zero_length")?;
+            kwargs.set_item("tag", *tag as u32)?;
+        }
+        RustMismmsViolation::AlternationConflict { tag_a, tag_b } => {
+            kwargs.set_item("kind", "alternation_conflict")?;
+            kwargs.set_item("tag", *tag_a as u32)?;
+            kwargs.set_item("tag_b", *tag_b as u32)?;
+        }
+        _ => {
+            kwargs.set_item("kind", "missing")?;
+            kwargs.set_item("tag", 0u32)?;
+        }
+    }
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Validate a Python `UasDatalinkLs` record against the ST 0902.8 Minimum
+/// Metadata Set (Table 1). Returns a `list[MismmsViolation]`; an empty list
+/// means the record satisfies every MISMMS requirement at the record level.
+///
+/// Reuses `py_to_uas_datalink_ls` — the same converter used by
+/// `encode_uas_datalink` — so the Rust-side check sees an identical record.
+#[pyfunction]
+#[pyo3(name = "validate_mismms")]
+fn validate_mismms_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_uas_datalink_ls(record)?;
+    let violations = rust_validate_mismms(&rust_rec);
+    let items: Vec<PyObject> = violations
+        .iter()
+        .map(|v| convert_mismms_violation(py, v))
+        .collect::<PyResult<Vec<_>>>()?;
+    Ok(pyo3::types::PyList::new_bound(py, items).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -1353,5 +1612,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         encode_vmti_standalone_strict_compliance_py,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(decode_core_id_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_core_id_py, m)?)?;
+    m.add_function(wrap_pyfunction!(core_id_text_py, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_mismms_py, m)?)?;
     Ok(())
 }

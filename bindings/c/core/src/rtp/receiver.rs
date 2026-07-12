@@ -59,6 +59,8 @@ pub struct TstRtpReceiver {
 ///
 /// Port `0` causes the kernel to assign an ephemeral port.
 ///
+/// `?pkt_size=` is send-side only and is rejected on receive URLs.
+///
 /// # Safety
 ///
 /// `url` must be a NUL-terminated C string. The returned handle must
@@ -74,7 +76,6 @@ pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpRec
         if let Some(ref iface) = rtp_url.iface {
             builder.iface(iface.clone());
         }
-        builder.pkt_size(rtp_url.pkt_size);
         let transport = match builder.listen() {
             Ok(t) => t,
             Err(e) => {

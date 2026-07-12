@@ -72,7 +72,9 @@ pub unsafe extern "C" fn tst_rtp_sender_open(url: *const c_char) -> *mut TstRtpS
         if let Some(ref iface) = rtp_url.iface {
             builder.iface(iface.clone());
         }
-        builder.pkt_size(rtp_url.pkt_size);
+        if let Some(n) = rtp_url.pkt_size {
+            builder.pkt_size(n);
+        }
         if let Some(ssrc) = rtp_url.ssrc {
             builder.ssrc(ssrc);
         }

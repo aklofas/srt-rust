@@ -509,6 +509,29 @@ signature, or struct layout was removed or changed.
   silently skipped, so out-of-band SPS/PPS injection works with such
   sources. Invalid characters are still rejected.
 
+### Removed (breaking, pre-1.0)
+- Receive-side `pkt_size` knobs, inert since the recv-ceiling change
+  ([Unreleased] above): Rust `RtpRecvSocketBuilder::pkt_size` /
+  `UdpRecvTransportBuilder::pkt_size` / `RistRecvTransportBuilder::pkt_size`,
+  Python `tstrans.rtp.Receiver(pkt_size=)` kwarg and the udp/rist receive
+  builders' `pkt_size` methods, and JVM
+  `org.tstrans.rtp.Receiver.fromUrl(url, pktSize)`. Send-side `pkt_size`
+  everywhere and TCP's receive-side read-granularity knob are unchanged.
+
+### Changed (breaking, pre-1.0)
+- Receive-side URLs now REJECT `?pkt_size=` with a teaching error
+  ("pkt_size is a send-side knob…") instead of silently ignoring it —
+  `rtp://` receive entry points (including the H.264 elementary path) and
+  `udp://` receive builders, across Rust, C, Python, and JVM. Strip the
+  parameter from URLs shared verbatim with senders.
+
+### Fixed
+- `ManagedRecvTransport::max_payload` no longer reports a fixed 1316 while
+  the inner transport is mid-reconnect; it reports the most recent live
+  inner's deliverable ceiling (cached at construction, refreshed per
+  successful rebuild). Direct-caller edge only — pipeline shells were
+  unaffected.
+
 ---
 
 ## [0.2.0] — 2026-06-23

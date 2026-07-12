@@ -21,7 +21,6 @@ for event in &mut receiver {
 |---|---|---|
 | `iface` | OS default | Multicast join interface (IP addr or interface name) |
 | `rcvbuf` | OS default | SO_RCVBUF in bytes (`8M` typical for high-bitrate streams) |
-| `pkt_size` | 1316 | Recv buffer hint per call |
 
 For unicast bind, prefix the host with `@` to make intent explicit:
 `udp://@0.0.0.0:5004`.

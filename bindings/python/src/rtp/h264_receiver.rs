@@ -143,7 +143,7 @@ impl PyH264DepayConfig {
         parameter_set_injection: Option<PyParameterSetInjection>,
         initial_parameter_sets: Option<Vec<Vec<u8>>>,
         max_au_bytes: Option<usize>,
-    ) -> Self {
+    ) -> PyResult<Self> {
         // Start from Rust defaults so we never re-state literal values here.
         let mut inner = H264DepayConfig::default();
         if let Some(pt) = payload_type {
@@ -156,9 +156,16 @@ impl PyH264DepayConfig {
             inner.initial_parameter_sets = ps;
         }
         if let Some(m) = max_au_bytes {
+            // Reject a zero cap (matches the JVM builder): a zero-byte AU cap
+            // drops every AU and is never useful for real depacketization.
+            if m == 0 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "max_au_bytes must be positive",
+                ));
+            }
             inner.max_au_bytes = m;
         }
-        Self { inner }
+        Ok(Self { inner })
     }
 
     #[getter]

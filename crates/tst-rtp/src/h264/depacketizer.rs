@@ -168,6 +168,10 @@ pub struct H264DepayConfig {
     /// timestamp and send contiguous sequence numbers indefinitely, causing
     /// `au_buf` to grow without limit. The default (8 MiB) is generous for
     /// any real H.264 AU; lower the value in memory-constrained environments.
+    ///
+    /// A value of `0` is degenerate: every non-empty AU exceeds a zero cap and
+    /// is dropped, so nothing is ever emitted. The Python and JVM config
+    /// builders reject `0`; the raw Rust struct accepts it (documented here).
     pub max_au_bytes: usize,
 }
 
@@ -300,7 +304,7 @@ pub struct H264Depacketizer {
 
 impl H264Depacketizer {
     /// Construct a new depacketizer with the given configuration.
-    pub fn new(config: H264DepayConfig) -> Self {
+    pub fn new(mut config: H264DepayConfig) -> Self {
         // Seed parameter-set cache from initial_parameter_sets. Last of each
         // type wins. Does NOT tick parameter_set_updates (seeding ≠ an update).
         let mut sps_cache: Option<Vec<u8>> = None;
@@ -319,6 +323,11 @@ impl H264Depacketizer {
                 _ => {} // other types ignored defensively
             }
         }
+        // The seed vectors are consumed into the caches above and never read
+        // again (nothing accesses `config.initial_parameter_sets` after
+        // construction, and there is no config accessor). Drop them so a large
+        // caller-supplied seed is not retained for the depacketizer's lifetime.
+        config.initial_parameter_sets = Vec::new();
         Self {
             config,
             sps_cache,
@@ -548,31 +557,47 @@ impl H264Depacketizer {
         if self.au_has_idr
             && self.config.parameter_set_injection == ParameterSetInjection::BeforeIdr
         {
-            let mut prefix: Vec<u8> = Vec::new();
-            if !self.au_has_sps {
-                if let Some(ref sps) = self.sps_cache {
-                    prefix.extend_from_slice(&ANNEXB_START_CODE);
-                    prefix.extend_from_slice(sps);
-                }
-            }
-            if !self.au_has_pps {
-                if let Some(ref pps) = self.pps_cache {
-                    prefix.extend_from_slice(&ANNEXB_START_CODE);
-                    prefix.extend_from_slice(pps);
-                }
-            }
-            if !prefix.is_empty() {
-                prefix.extend_from_slice(&self.au_buf);
-                self.au_buf = prefix;
-                // Injection prepends cached parameter sets AFTER the append-time
-                // cap checks, so a tiny in-cap IDR AU plus large cached SPS/PPS
-                // could otherwise emit an AU exceeding max_au_bytes. Re-enforce
-                // the cap here and drop the AU (fu is already None at this point).
-                if self.check_and_apply_oversize_cap() {
+            // Framed length of each cached set that WOULD be injected (0 when the
+            // AU already carries it in-band or the cache is empty).
+            let sps_inject = if !self.au_has_sps {
+                self.sps_cache
+                    .as_ref()
+                    .map_or(0, |s| ANNEXB_START_CODE.len() + s.len())
+            } else {
+                0
+            };
+            let pps_inject = if !self.au_has_pps {
+                self.pps_cache
+                    .as_ref()
+                    .map_or(0, |p| ANNEXB_START_CODE.len() + p.len())
+            } else {
+                0
+            };
+            let inject_len = sps_inject + pps_inject;
+            if inject_len > 0 {
+                // Preflight the cap BEFORE allocating/copying the prefix:
+                // injection prepends cached sets after the append-time checks, so
+                // individually-in-cap SPS/PPS combined with the IDR AU can still
+                // exceed the cap. Drop early — never build an over-cap prefix (fu
+                // is already None here).
+                let total = inject_len.saturating_add(self.au_buf.len());
+                if total > self.config.max_au_bytes {
+                    self.stats.aus_dropped_oversize += 1;
                     self.stats.aus_dropped += 1;
                     self.reset_au();
                     return;
                 }
+                let mut prefix = Vec::with_capacity(total);
+                if sps_inject > 0 {
+                    prefix.extend_from_slice(&ANNEXB_START_CODE);
+                    prefix.extend_from_slice(self.sps_cache.as_deref().unwrap());
+                }
+                if pps_inject > 0 {
+                    prefix.extend_from_slice(&ANNEXB_START_CODE);
+                    prefix.extend_from_slice(self.pps_cache.as_deref().unwrap());
+                }
+                prefix.extend_from_slice(&self.au_buf);
+                self.au_buf = prefix;
             }
         }
 
@@ -1383,6 +1408,30 @@ mod tests {
             .expect("tiny IDR emits clean; over-cap seed was skipped");
         assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xAA]);
         assert_eq!(d.stats().aus_dropped_oversize, 0);
+    }
+
+    /// SPS and PPS each fit the cap individually, but their combined injection
+    /// plus a tiny IDR AU exceeds it. The AU must be dropped as oversize — the
+    /// `complete_au` preflight computes the injected length and drops before
+    /// allocating/copying the over-cap prefix.
+    #[test]
+    fn injection_preflights_combined_over_cap_and_drops() {
+        const CAP: usize = 20;
+        let sps6 = vec![0x67u8, 1, 2, 3, 4, 5]; // framed 4 + 6 = 10 <= CAP
+        let pps6 = vec![0x68u8, 1, 2, 3, 4, 5]; // framed 4 + 6 = 10 <= CAP
+        let mut d = H264Depacketizer::new(H264DepayConfig {
+            max_au_bytes: CAP,
+            initial_parameter_sets: vec![sps6, pps6],
+            ..H264DepayConfig::default()
+        });
+        // Injection 10 + 10 = 20, plus IDR au_buf 6 = 26 > CAP.
+        d.feed(&hdr(1, 1000, true), &[0x65, 0xAA]);
+        assert!(
+            d.next_au().is_none(),
+            "combined over-cap injection AU dropped"
+        );
+        assert_eq!(d.stats().aus_dropped_oversize, 1);
+        assert_eq!(d.stats().aus_dropped, 1);
     }
 
     /// Single-NALU AU that exceeds the cap: `aus_dropped_oversize` ticks and

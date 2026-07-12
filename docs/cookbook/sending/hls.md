@@ -67,9 +67,9 @@ println!("VOD at http://{}/playlist.m3u8", handle.local_addr());
 handle.shutdown();
 ```
 
-`PublisherStats.forced_cuts` counts how often `max_segment_duration`
-force-cut an overdue keyframe — a persistently non-zero value means your GOP
-cadence and `segment_duration` are mismatched.
+`HlsStats.forced_cuts` (from `publisher.hls_stats()`) counts how often
+`max_segment_duration` force-cut an overdue keyframe — a persistently non-zero
+value means your GOP cadence and `segment_duration` are mismatched.
 
 ## Verify with ffmpeg / VLC / mpv
 
@@ -92,7 +92,7 @@ mpv    'http://localhost:8080/playlist.m3u8'
 | Parameter | Default | Meaning |
 |---|---|---|
 | `output_dir` | `<temp_dir>/tstrans-hls` | Filesystem dir for `.ts` + `.m3u8` (portable temp dir) |
-| `segment_duration` | `4` (seconds) | Duration cap before forced cut |
+| `segment_duration` | `4` (seconds) | Target segment duration (keyframe-aligned cuts aim for this; `max_segment_duration` is the hard force-cut cap) |
 | `playlist_window` | `6` | Rolling window size (LIVE mode only) |
 | `mode` | `live` | One of `live`/`event`/`vod` |
 | `auth_user`/`auth_pass` | none | Basic auth credentials |

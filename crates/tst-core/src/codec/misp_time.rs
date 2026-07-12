@@ -135,6 +135,23 @@ pub(crate) fn sei_payload(
     Ok(out)
 }
 
+/// Append `rbsp` to `out` with `emulation_prevention_three_byte`
+/// insertion (H.264 §7.4.1 / H.265 §7.4.2): any byte value 0x00–0x03
+/// that would follow two consecutive zero bytes gets a 0x03 inserted
+/// before it. `out`'s existing tail does not count toward the zero run
+/// (callers append the NAL header first — headers are non-zero here).
+pub(crate) fn append_rbsp_escaped(out: &mut Vec<u8>, rbsp: &[u8]) {
+    let mut zeros = 0u32;
+    for &b in rbsp {
+        if zeros >= 2 && b <= 0x03 {
+            out.push(0x03);
+            zeros = 0;
+        }
+        out.push(b);
+        if b == 0 { zeros += 1 } else { zeros = 0 }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +203,24 @@ mod tests {
                 sei_payload(c, &micro),
                 Err(MispTimeError::UnsupportedCodec { .. })
             ));
+        }
+    }
+
+    #[test]
+    fn rbsp_escape_inserts_before_low_bytes() {
+        for (raw, escaped) in [
+            (&[0x00, 0x00, 0x00][..], &[0x00, 0x00, 0x03, 0x00][..]),
+            (&[0x00, 0x00, 0x01][..], &[0x00, 0x00, 0x03, 0x01][..]),
+            (&[0x00, 0x00, 0x02][..], &[0x00, 0x00, 0x03, 0x02][..]),
+            (&[0x00, 0x00, 0x03][..], &[0x00, 0x00, 0x03, 0x03][..]),
+            (&[0x00, 0x00, 0x04][..], &[0x00, 0x00, 0x04][..]),
+            // Escape resets the zero-run: 00 00 00 00 -> 00 00 03 00 00.
+            (&[0x00, 0x00, 0x00, 0x00][..], &[0x00, 0x00, 0x03, 0x00, 0x00][..]),
+            (&[0xAA, 0x00, 0x00, 0x01, 0xBB][..], &[0xAA, 0x00, 0x00, 0x03, 0x01, 0xBB][..]),
+        ] {
+            let mut out = Vec::new();
+            append_rbsp_escaped(&mut out, raw);
+            assert_eq!(out, escaped, "raw={raw:02X?}");
         }
     }
 }

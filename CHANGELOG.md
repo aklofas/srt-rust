@@ -255,6 +255,13 @@ signature, or struct layout was removed or changed.
   `UasDatalinkLs.miisCoreId()` accessor and `Builder.miisCoreId(byte[])`.
   No C ABI change (same as above).
 
+- **Docs:** `docs/reference/stanag-4609.md` — STANAG 4609 / MISP conformance
+  reference page (conformance matrix, per-language snippets for the MISP
+  timestamp push and MISMMS validator, deferred-features cross-links). Cookbook
+  Recipe 35 "Building a STANAG 4609-conformant stream" — H.264 + sync-KLV muxer
+  with per-frame MISP timestamp splice, MISMMS validator gate, strict-compliance
+  encode, and Tag 94 Core ID; Rust primary + Python variant.
+
 ### Changed — default features and transport behavior
 
 - `tst-tcp`'s default features drop the experimental `hls` feature:

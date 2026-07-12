@@ -1693,3 +1693,110 @@ the trigger that would unblock it.
   ignoring it. Send-side `pkt_size` everywhere and TCP's receive-side
   read-granularity knob are unchanged. See the `### Removed` and
   `### Changed` entries in the `[Unreleased]` CHANGELOG section.
+
+## ST 0604 Commercial Time Stamp (UTC wall-clock SEI, `payloadType=21`)
+
+- **Status:** Deferred. The library's ST 0604 support covers the MISP
+  Precision Time Stamp (Class 0 microsecond and Class 1 nanosecond
+  precision) via `MispTimestamp::micros` / `::nanos` and
+  `push_video_misp_to`. The "Commercial Time Stamp" sub-family
+  (`payloadType=21`, UTC wall-clock values tied to the video bitstream
+  via H.264 SPS `vui_parameters` / HRD timing / `pic_timing` SEI /
+  `time_code` SEI) is not implemented.
+- **Why deferred:** Commercial Time Stamp requires tightly coupling the
+  SEI payload to SPS HRD / VUI timing parameters (CPB removal delay,
+  coded picture buffer, output delay). The library does not own or
+  inspect the encoder; reproducing a conformant `pic_timing` SEI from
+  outside the codec pipeline is error-prone and would require at
+  minimum parsing and echoing the SPS HRD fields from the caller's
+  video stream. No current consumer has requested it.
+- **Trigger to revisit:** An integrator requests timecode interop
+  with a receiver toolchain that consumes `payloadType=21` UTC
+  wall-clock SEI, specifically requiring the SPS/HRD coupling.
+
+## H.262 / MPEG-2 video user_data timestamps (ST 0604 §10)
+
+- **Status:** Deferred. ST 0604.6 §10 defines timestamp embedding for
+  H.262 (MPEG-2 Video) via MPEG-2 user_data bytes in picture headers.
+  The library has no H.262 video carriage path — `VideoCodec::H262` is
+  not a variant; H.262 PIDs surface as `Unknown` on the demux side.
+- **Why deferred:** H.262 write-side carriage (a new `VideoCodec`
+  variant + PES `stream_id` selection + sequence/GOP/picture header
+  emitter) is a full video-carriage scope item tracked under the MPEG-2
+  Video roadmap item (P5). ST 0604 timestamp embedding rides with that
+  item, not independently.
+- **Trigger to revisit:** The P5 MPEG-2 Video carriage roadmap item
+  is prioritized, OR a consumer specifically requests legacy-capture
+  read-side H.262 user_data timestamp extraction.
+
+## AV1 / H.266 MISP timestamp carriage (ST 0604 future extension)
+
+- **Status:** Deferred. `push_video_misp_to` / `send_video_misp_to`
+  splice the MISP SEI for H.264 and H.265 access units only. AV1 and
+  H.266 are not supported.
+- **Why deferred:** MISB has not defined a standardized MISP timestamp
+  carriage shape for AV1 or H.266. AV1 has no SEI NAL unit mechanism
+  (metadata OBUs are defined but no SMPTE-registered MISP payload has
+  been specified); H.266 has SEI but the MISB spec does not currently
+  reference it. Implementing an unstandardized shape risks interop
+  failures with receivers that await the official definition.
+- **Trigger to revisit:** MISB publishes a carriage spec for AV1 or
+  H.266 MISP timestamps (either via MISB ST 0604 revision or a new
+  supplemental spec), or a consumer reports a concrete interop
+  agreement with a known receiver on a proposed shape.
+
+## EG 0104 legacy "Predator" metadata decode
+
+- **Status:** Deferred. The EG 0104 metadata format is a pre-ST 0601
+  legacy format used in early STANAG 4609-era captures ("Predator
+  metadata"). It is not an ST 0601 variant — it has a completely
+  different tag numbering, encoding rules, and payload shape. No decode
+  path exists; an EG 0104-bearing PES surfaces as `Unknown` metadata.
+- **Why deferred:** EG 0104 is formally withdrawn in favor of ST 0601;
+  no current consumer workflow ingests it. Adding a decoder means
+  acquiring the spec (it is a publicly available MISB document) and
+  writing a full per-tag decode table that would carry permanent
+  maintenance weight for a format with no new producers.
+- **Trigger to revisit:** A consumer requests legacy-capture interop
+  for EG 0104-bearing `.ts` files, with a concrete corpus of files to
+  validate against.
+
+## MISMMS 30-second reporting-cadence tracker (stream-level)
+
+- **Status:** Deferred. `klv::st0601::validate_mismms` is a
+  per-record snapshot check — it tells the caller which of the 10
+  required ST 0902.8 Table 1 fields are absent or out of range in a
+  single decoded `UasDatalinkLs`. It does not track cadence across
+  records: ST 0902.3 §4 and ST 1204.1-34 both require stream-level
+  compliance (at least one conformant KLV record per 30 seconds for
+  MISMMS, or at least one Core ID record per second for ST 1204), and
+  the per-record validator cannot check this without state across calls.
+- **Why deferred:** Stream-level cadence tracking is consumer-owned
+  state (a rolling timestamp window + counter), not a record-level
+  decode concern. Adding a stateful `MismmsTracker` struct that the
+  caller ticks on each record would expand the API surface meaningfully
+  for an audience that today can implement the 30-second window in ten
+  lines. No conformance-audit tooling consumer has asked for it.
+- **Trigger to revisit:** A conformance-audit pipeline or a recording-
+  system consumer asks for a ready-made cadence tracker rather than
+  implementing the window themselves.
+
+## Binding-side `MuxSender` MISP timestamp mirrors (Python / JVM)
+
+- **Status:** Deferred. `Muxer::push_video_misp_to` and the C ABI
+  `tst_muxer_push_video_misp_to` are the only shipping call sites for
+  ST 0604 MISP timestamp splice. The `MuxSender` pipeline-shell
+  wrappers in Python (`tstrans.srt.MuxSender` / `ManagedMuxSender`,
+  `tstrans.rtp.MuxSender`, etc.) and in the JVM
+  (`org.tstrans.srt.MuxSender`, etc.) do not expose a
+  `send_video_misp_to` / `sendVideoMispTo` method.
+- **Why deferred:** Follows the binding DTS precedent: the
+  `push_video_to_with_dts` / `send_video_misp_to` method family was
+  added to `Muxer` and `MuxSender` in Rust, then mirrored into the C
+  ABI at `bindings/c` in the same arc (PR #53 / BIND-01). The Python
+  and JVM binding-shell mirrors follow separately once a binding-user
+  request drives them. The Rust `MuxSender::send_video_misp_to` already
+  ships; it is the Python/JVM shell layer that is missing.
+- **Trigger to revisit:** A Python or JVM consumer asks for MISP
+  timestamp push through the pipeline-shell layer rather than using
+  `Muxer` directly.

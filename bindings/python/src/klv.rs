@@ -1358,7 +1358,7 @@ fn patch_uas_datalink_py(
 // ---------------------------------------------------------------------------
 
 /// Translate a Rust `IdType` to the matching Python `tstrans.klv.IdType`
-/// enum member.
+/// enum member. Returns an error if an unknown variant is encountered.
 fn convert_id_type(py: Python<'_>, ty: RustIdType) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;
     let cls = klv_mod.getattr(intern!(py, "IdType"))?;
@@ -1366,7 +1366,11 @@ fn convert_id_type(py: Python<'_>, ty: RustIdType) -> PyResult<PyObject> {
         RustIdType::Physical => "PHYSICAL",
         RustIdType::Virtual => "VIRTUAL",
         RustIdType::Managed => "MANAGED",
-        _ => "MANAGED",
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "unknown IdType variant crossing the binding",
+            ));
+        }
     };
     Ok(cls.getattr(variant)?.unbind())
 }

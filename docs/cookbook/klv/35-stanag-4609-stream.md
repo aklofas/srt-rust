@@ -96,7 +96,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Simulated per-frame data — replace with real encoder/sensor output.
     let frame_pts_us: u64 = 1_700_000_000_000_000; // MISP timestamp (microseconds)
-    let frame_pts_90khz = Pts90khz::new(((frame_pts_us / 1_000_000) * 90_000) as i64);
+    // 90 kHz ticks from microseconds: ×9/100 keeps sub-second precision.
+    // (u64 headroom: even year-2100 epoch-µs × 9 stays far below u64::MAX.)
+    let frame_pts_90khz = Pts90khz::new((frame_pts_us * 9 / 100) as i64);
     let nal: Vec<u8> = vec![/* H.264 Annex-B NAL bytes from your encoder */];
     let is_key_frame = true;
 
@@ -215,7 +217,8 @@ core_id_bytes = encode_core_id(core_id)
 # ── Per-frame loop ────────────────────────────────────────────────────────────
 
 frame_pts_us: int = 1_700_000_000_000_000   # capture wall-clock (µs)
-frame_pts_90k = Pts90khz((frame_pts_us // 1_000_000) * 90_000)
+# 90 kHz ticks from microseconds: ×9/100 keeps sub-second precision.
+frame_pts_90k = Pts90khz(frame_pts_us * 9 // 100)
 nal = bytes()       # replace: H.264 Annex-B NAL bytes from your encoder
 time_status = 0x01  # 0x01 = PPS-locked (ST 0603)
 

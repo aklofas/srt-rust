@@ -1,4 +1,5 @@
-//! MISB ST 1204.3 MIIS Core Identifier — binary decode/encode.
+//! MISB ST 1204.3 MIIS Core Identifier — binary decode/encode, textual format,
+//! and Appendix B check value.
 //!
 //! A MIIS Core Identifier is a compact binary record that uniquely identifies
 //! a motion imagery source. It consists of a version byte, a usage byte, and
@@ -14,6 +15,14 @@
 //!
 //! Both fields carry raw bytes; use [`decode`] to parse them into a typed
 //! [`CoreId`] and [`encode_to_vec`] to round-trip back to bytes.
+//!
+//! ## Textual format
+//!
+//! [`CoreId`] implements [`core::fmt::Display`] per ST 1204.3 §7.4.2:
+//! `VVUU:XXXX-XXXX-…/XXXX-XXXX-…:CC` where `VV` and `UU` are the version
+//! and usage bytes as uppercase hex, each UUID is 8 dash-separated 4-hex-char
+//! groups, multiple UUID components are '/'-separated, and `CC` is the
+//! Appendix B check value as 2-digit uppercase hex.
 //!
 //! ## Spec coverage
 //!
@@ -34,11 +43,9 @@
 //! **EBNF rule:** a Minor Core Id (`minor` present) must have sensor,
 //! platform, and window all absent. Usage byte `0x00` (all-None) is
 //! invalid per ST 1204.3 §7.3.1. Reserved bits b7 or b0 set → error.
-//!
-//! **Not implemented here:** textual format (ST 1204.3 §7.4) and the
-//! check-value (ST 1204.3 §7.5) — those are Task 16.
 
 use alloc::vec::Vec;
+use core::fmt;
 use thiserror::Error;
 
 // ── public types ────────────────────────────────────────────────────────────
@@ -293,6 +300,195 @@ fn id_type_to_bits(ty: &IdType) -> u8 {
     }
 }
 
+// ── textual format (ST 1204.3 §7.4.2) ────────────────────────────────────────
+
+/// Display a [`CoreId`] in the ST 1204.3 §7.4.2 textual format.
+///
+/// Format: `VVUU:XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX/…:CC`
+///
+/// - `VV` = version byte as 2 uppercase hex digits.
+/// - `UU` = usage byte as 2 uppercase hex digits.
+/// - Each present UUID is 8 groups of 4 hex chars, dash-separated.
+/// - Multiple UUID components (sensor, platform, window, or minor) are
+///   separated by `/`.
+/// - `CC` = Appendix B check value over all hex digits emitted (excluding
+///   separators), as 2 uppercase hex digits.
+impl fmt::Display for CoreId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Collect all hex digits emitted (for check-value computation) while
+        // also building the formatted string in a single pass.
+        //
+        // We write via a wrapper that accumulates hex digits as we go.
+        let mut hex_digits: alloc::vec::Vec<char> = alloc::vec::Vec::with_capacity(68);
+
+        // Helper: push 2-digit hex for one byte into both the display and the
+        // digit accumulator.
+        macro_rules! emit_byte {
+            ($b:expr) => {{
+                let b: u8 = $b;
+                let hi = core::char::from_digit((b >> 4) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase();
+                let lo = core::char::from_digit((b & 0xF) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase();
+                hex_digits.push(hi);
+                hex_digits.push(lo);
+                write!(f, "{}{}", hi, lo)?;
+            }};
+        }
+
+        // Version + usage.
+        emit_byte!(self.version);
+        emit_byte!(self.usage_byte());
+        write!(f, ":")?;
+
+        // Collect present UUIDs in EBNF order: sensor, platform, window, minor.
+        let uuids: alloc::vec::Vec<&[u8; 16]> = [
+            self.sensor.as_ref().map(|(_, u)| u),
+            self.platform.as_ref().map(|(_, u)| u),
+            self.window.as_ref(),
+            self.minor.as_ref(),
+        ]
+        .iter()
+        .filter_map(|opt| *opt)
+        .collect();
+
+        for (ui, uuid) in uuids.iter().enumerate() {
+            if ui > 0 {
+                write!(f, "/")?;
+            }
+            // Each UUID: 16 bytes → 8 groups of 2 bytes (4 hex chars), dash-separated.
+            for group in 0..8usize {
+                if group > 0 {
+                    write!(f, "-")?;
+                }
+                emit_byte!(uuid[group * 2]);
+                emit_byte!(uuid[group * 2 + 1]);
+            }
+        }
+
+        // Check value over all hex digits emitted.
+        let cv = check_value(hex_digits.iter().copied());
+        // Emit CV as 2 uppercase hex chars — these are NOT included in the
+        // check-value computation (Appendix B covers version+usage+UUIDs only).
+        let cv_hi = core::char::from_digit((cv >> 4) as u32, 16)
+            .unwrap()
+            .to_ascii_uppercase();
+        let cv_lo = core::char::from_digit((cv & 0xF) as u32, 16)
+            .unwrap()
+            .to_ascii_uppercase();
+        write!(f, ":{}{}", cv_hi, cv_lo)
+    }
+}
+
+impl CoreId {
+    /// Reconstruct the usage byte from the decoded fields.
+    fn usage_byte(&self) -> u8 {
+        let mut usage: u8 = 0;
+        if let Some((ref ty, _)) = self.sensor {
+            usage |= id_type_to_bits(ty) << 5;
+        }
+        if let Some((ref ty, _)) = self.platform {
+            usage |= id_type_to_bits(ty) << 3;
+        }
+        if self.window.is_some() {
+            usage |= 1 << 2;
+        }
+        if self.minor.is_some() {
+            usage |= 1 << 1;
+        }
+        usage
+    }
+}
+
+// ── Appendix B check value ─────────────────────────────────────────────────────
+
+/// Apply the ST 1204.3 Appendix B.1 `pMap` permutation to a nibble.
+///
+/// Bits are labeled MSB-first: `nibble = (a<<3)|(b<<2)|(c<<1)|d`.
+/// `pMap([a,b,c,d]) = [a^b, c, d, a]`.
+fn p_map(nibble: u8) -> u8 {
+    let a = (nibble >> 3) & 1;
+    let b = (nibble >> 2) & 1;
+    let c = (nibble >> 1) & 1;
+    let d = nibble & 1;
+    ((a ^ b) << 3) | (c << 2) | (d << 1) | a
+}
+
+/// Apply the ST 1204.3 Appendix B.1 `qMap` permutation to a nibble.
+///
+/// Bits are labeled MSB-first: `nibble = (a<<3)|(b<<2)|(c<<1)|d`.
+/// `qMap([a,b,c,d]) = [d, a^d, b, c]`.
+fn q_map(nibble: u8) -> u8 {
+    let a = (nibble >> 3) & 1;
+    let b = (nibble >> 2) & 1;
+    let c = (nibble >> 1) & 1;
+    let d = nibble & 1;
+    (d << 3) | ((a ^ d) << 2) | (b << 1) | c
+}
+
+/// Build the 15×16 lookup tables P and Q for Appendix B check-value
+/// computation (ST 1204.3 Appendix B.1).
+///
+/// `P[0][j] = Q[0][j] = j` (identity); each subsequent row applies the
+/// corresponding permutation to the previous row.
+fn build_pq_tables() -> ([[u8; 16]; 15], [[u8; 16]; 15]) {
+    let mut p = [[0u8; 16]; 15];
+    let mut q = [[0u8; 16]; 15];
+
+    // Row 0: identity.
+    for j in 0..16usize {
+        p[0][j] = j as u8;
+        q[0][j] = j as u8;
+    }
+    // Rows 1..14: apply pMap / qMap to the previous row.
+    for i in 1..15usize {
+        for j in 0..16usize {
+            p[i][j] = p_map(p[i - 1][j]);
+            q[i][j] = q_map(q[i - 1][j]);
+        }
+    }
+
+    (p, q)
+}
+
+/// Compute the ST 1204.3 Appendix B check value over a sequence of uppercase
+/// hex digit characters.
+///
+/// The caller must supply only valid hex digits (`'0'`–`'9'`, `'A'`–`'F'`;
+/// lowercase `'a'`–`'f'` are also accepted). Non-hex characters must not be
+/// fed — behaviour is unspecified (the digit value will be treated as 0).
+///
+/// The index into the P/Q tables is **1-based**: position 1, 2, 3, … (the
+/// first digit is at index 1, not 0). The table wraps modulo 15.
+///
+/// Returns the packed check byte `(p << 4) | q`.
+///
+/// # Example
+///
+/// ```
+/// use tst_core::klv::st1204::check_value;
+/// // ST 1204.3 Appendix B.2 worked example.
+/// assert_eq!(check_value("031FA3".chars()), 0x79);
+/// ```
+pub fn check_value(hex_digits: impl Iterator<Item = char>) -> u8 {
+    let (p_table, q_table) = build_pq_tables();
+    let mut p_acc: u8 = 0;
+    let mut q_acc: u8 = 0;
+
+    for (zero_idx, ch) in hex_digits.enumerate() {
+        // 1-based index into the tables.
+        let i = zero_idx + 1;
+        let row = i % 15; // wraps to 0..14; row 0 is the identity row
+        let digit = ch.to_digit(16).unwrap_or(0) as usize;
+        p_acc ^= p_table[row][digit];
+        q_acc ^= q_table[row][digit];
+    }
+
+    (p_acc << 4) | q_acc
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -426,5 +622,38 @@ mod tests {
             decode(&[0x01, 0x71]),
             Err(St1204Error::ReservedBitsSet)
         ));
+    }
+
+    // ── Appendix B check-value tests ─────────────────────────────────────────
+
+    #[test]
+    fn p_map_q_map_worked_examples() {
+        // ST 1204.3 Appendix B.1 worked examples: pMap(13)=3, qMap(13)=10.
+        assert_eq!(p_map(13), 3);
+        assert_eq!(q_map(13), 10);
+    }
+
+    #[test]
+    fn p_table_row1_matches_spec_table14() {
+        // ST 1204.3 Table 14 row 1: {0,2,4,6,8,A,C,E,9,B,D,F,1,3,5,7}.
+        let (p, _q) = build_pq_tables();
+        let expected: [u8; 16] = [0, 2, 4, 6, 8, 0xA, 0xC, 0xE, 9, 0xB, 0xD, 0xF, 1, 3, 5, 7];
+        assert_eq!(p[1], expected);
+    }
+
+    #[test]
+    fn check_value_appendix_b_vector() {
+        // Appendix B.2: "031FA3" -> 0x79.
+        assert_eq!(check_value("031FA3".chars()), 0x79);
+    }
+
+    #[test]
+    fn display_matches_spec_example() {
+        // §7.4.2 example (same bytes as TABLE7), check value D3.
+        let id = decode(&TABLE7).unwrap();
+        assert_eq!(
+            id.to_string(),
+            "0170:F592-F023-7336-4AF8-AA91-62C0-0F2E-B2DA/16B7-4341-0008-41A0-BE36-5B5A-B96A-3645:D3"
+        );
     }
 }

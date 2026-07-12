@@ -183,8 +183,6 @@ pub fn build_sei_nal(codec: VideoCodec, ts: &MispTimestamp) -> Result<Vec<u8>, M
     Ok(out)
 }
 
-#[allow(dead_code)]
-// Consumed by Muxer::push_video_misp_to (PR2); the allow comes off with it.
 pub(crate) fn insert_sei_before_first_vcl(
     au: &[u8],
     sei_nal: &[u8],

@@ -217,6 +217,98 @@ impl Muxer {
         )
     }
 
+    /// Push one H.264 / H.265 access unit with an ST 0604 MISP
+    /// timestamp SEI spliced in before the first VCL NAL.
+    ///
+    /// The SEI (`user_data_unregistered`, ST 0604.6 §11.1/§12.1-2)
+    /// binds the absolute capture time in `misp` to this frame. The
+    /// splice lands after any AUD / SPS / PPS, so emitted AUs satisfy
+    /// the NAL-order constraints. Targeted-only (like DTS pushes);
+    /// elementary Annex-B input only — there is no wire-form variant
+    /// (`push_video_wire_to` keeps its verbatim contract).
+    ///
+    /// Stats note: per-stream byte counters see the spliced AU (SEI
+    /// bytes included).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video_misp_to` — see `bindings/c/include/tstrans.h`.
+    ///
+    /// # Errors
+    /// - [`MuxError::MispTime`] — nano on H.264, AV1/H.266 stream, or no
+    ///   VCL NAL in `nal`.
+    /// - Everything [`Self::push_video_to`] raises (`InvalidStreamHandle`,
+    ///   `InvalidNal`, `BufferFull`).
+    pub fn push_video_misp_to(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        key_frame: bool,
+        misp: &crate::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxError> {
+        let spliced = self.splice_misp_sei(handle, nal, misp)?;
+        self.push_video_to_internal(
+            handle,
+            &spliced,
+            PesPtsField::PtsOnly(pts),
+            pts,
+            key_frame,
+            VideoInputForm::Elementary,
+        )
+    }
+
+    /// PTS+DTS variant of [`Self::push_video_misp_to`] for reordered
+    /// streams. Same contract as [`Self::push_video_to_with_dts`] plus
+    /// the MISP SEI splice.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video_misp_to_with_dts` — see
+    /// `bindings/c/include/tstrans.h`.
+    pub fn push_video_misp_to_with_dts(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        dts: Pts90khz,
+        key_frame: bool,
+        misp: &crate::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxError> {
+        let spliced = self.splice_misp_sei(handle, nal, misp)?;
+        self.push_video_to_internal(
+            handle,
+            &spliced,
+            PesPtsField::PtsAndDts { pts, dts },
+            pts,
+            key_frame,
+            VideoInputForm::Elementary,
+        )
+    }
+
+    /// Shared front half of the misp pushes: resolve the stream's codec,
+    /// validate Annex-B, build the SEI NAL, splice before the first VCL.
+    fn splice_misp_sei(
+        &self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        misp: &crate::codec::misp_time::MispTimestamp,
+    ) -> Result<Vec<u8>, MuxError> {
+        let (prog_idx, within_idx) = handle.unpack();
+        if prog_idx >= self.video_streams.len() || within_idx >= self.video_streams[prog_idx].len()
+        {
+            return Err(MuxError::InvalidStreamHandle {
+                kind: StreamKind::Video,
+                index: handle.0 as usize,
+            });
+        }
+        let codec = self.video_streams[prog_idx][within_idx].codec;
+        validate_annex_b(nal)?;
+        let sei = crate::codec::misp_time::build_sei_nal(codec, misp)?;
+        crate::codec::misp_time::insert_sei_before_first_vcl(nal, &sei, codec)
+            .map_err(MuxError::from)
+    }
+
     /// Push one video access unit that is ALREADY in the muxer's configured
     /// on-wire carriage form — emitted verbatim as the PES payload with no
     /// framing transformation and no Annex-B validation.

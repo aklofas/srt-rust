@@ -315,6 +315,12 @@ pub enum MuxError {
     )]
     InvalidAv1Obu,
 
+    /// A MISP-timestamp push (`push_video_misp_to*`) could not build or
+    /// splice the ST 0604 SEI: nano-precision on H.264, an AV1/H.266
+    /// stream, or an access unit with no VCL NAL.
+    #[error("MISP timestamp SEI: {0}")]
+    MispTime(#[from] crate::codec::misp_time::MispTimeError),
+
     #[error("muxer packet buffer is full ({capacity_packets} packets); drain via pull and retry")]
     BufferFull { capacity_packets: u64 },
 
@@ -612,7 +618,8 @@ pub enum MuxErrorKind {
     /// Caller pushed input bytes that don't conform to the expected
     /// shape. Includes non-Annex-B NAL units
     /// ([`MuxError::InvalidNal`]), non-well-formed AV1 OBU streams
-    /// ([`MuxError::InvalidAv1Obu`]), KLV blobs over the
+    /// ([`MuxError::InvalidAv1Obu`]), MISP SEI build/splice failures
+    /// ([`MuxError::MispTime`]), KLV blobs over the
     /// `PES_packet_length` ceiling ([`MuxError::KlvTooLarge`]), and
     /// audio / subtitle / data PES payloads over the PES cap
     /// ([`MuxError::AudioTooLarge`], [`MuxError::SubtitleTooLarge`],
@@ -714,10 +721,11 @@ impl MuxError {
         // variants are explicitly classified".
         #[allow(unreachable_patterns)]
         match self {
-            // === InputMalformed (6 variants) ===
+            // === InputMalformed (7 variants) ===
             // Caller pushed bytes that don't conform to the expected shape.
             MuxError::InvalidNal => InputMalformed,
             MuxError::InvalidAv1Obu => InputMalformed,
+            MuxError::MispTime(_) => InputMalformed,
             MuxError::KlvTooLarge { .. } => InputMalformed,
             MuxError::AudioTooLarge { .. } => InputMalformed,
             MuxError::SubtitleTooLarge { .. } => InputMalformed,

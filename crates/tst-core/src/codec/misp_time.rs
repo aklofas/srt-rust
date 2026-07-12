@@ -280,7 +280,7 @@ fn scan_sei_nal(
         loop {
             let Some(&b) = rbsp.get(p) else { return Ok(None) };
             p += 1;
-            payload_type += b as usize;
+            payload_type = payload_type.saturating_add(b as usize);
             if b != 0xFF {
                 break;
             }
@@ -289,15 +289,29 @@ fn scan_sei_nal(
         loop {
             let Some(&b) = rbsp.get(p) else { return Ok(None) };
             p += 1;
-            payload_size += b as usize;
+            payload_size = payload_size.saturating_add(b as usize);
             if b != 0xFF {
                 break;
             }
         }
         let Some(payload) = rbsp.get(p..p + payload_size) else {
-            // Truncated non-MISP message: skip the NAL (foreign junk
-            // must not break extraction). A MISP match below can no
-            // longer occur once we cannot slice the payload.
+            // The declared payload_size runs past the RBSP end. Check
+            // whether this truncated message is a MISP one: if
+            // payload_type == 5 AND at least 16 bytes remain AND those
+            // bytes match a known MISP identifier, the caller needs to
+            // know the SEI was present but malformed. Fewer than 16
+            // available bytes means the identifier is unconfirmable,
+            // so we fall through to Ok(None) (no confirmed MISP match).
+            if payload_type == 5 {
+                if let Some(head) = rbsp.get(p..p + 16) {
+                    if head == MISP_MICROSEC_ID_H264
+                        || head == MISP_MICROSEC_ID_H265
+                        || head == MISP_NANOSEC_ID_H265
+                    {
+                        return Err(MispTimeExtractError::TruncatedSei);
+                    }
+                }
+            }
             return Ok(None);
         };
         if payload_type == 5 && payload_size >= 16 {
@@ -593,5 +607,63 @@ mod tests {
         let sei = build_sei_nal(VideoCodec::H264, &ts).unwrap();
         let au = insert_sei_before_first_vcl(&h264_au(&[0x65]), &sei, VideoCodec::H264).unwrap();
         assert_eq!(extract(&au, VideoCodec::H264).unwrap(), Some(ts));
+    }
+
+    // Finding 1: TruncatedSei when a confirmed MISP identifier is present but
+    // the declared payload_size runs past the RBSP end.
+    #[test]
+    fn extract_truncated_misp_sei_errors() {
+        let ts = MispTimestamp::micros(0x0102_0304_0506_0708, 0x9F);
+        let sei = build_sei_nal(VideoCodec::H264, &ts).unwrap();
+        // Drop the last 6 bytes of the SEI NAL (mid-payload truncation).
+        // Wrap it as a lone NAL: [0,0,1] + truncated_nal.
+        let mut au = vec![0u8, 0, 1];
+        au.extend_from_slice(&sei[..sei.len() - 6]);
+        assert_eq!(
+            extract(&au, VideoCodec::H264),
+            Err(MispTimeExtractError::TruncatedSei),
+            "confirmed MISP identifier + truncated payload must be Err"
+        );
+    }
+
+    // Finding 1 companion: fewer than 16 bytes available = identifier
+    // unconfirmable = Ok(None) (not Err).
+    #[test]
+    fn extract_truncated_before_full_identifier_is_none() {
+        let ts = MispTimestamp::micros(0x0102_0304_0506_0708, 0x9F);
+        let sei = build_sei_nal(VideoCodec::H264, &ts).unwrap();
+        // Keep only the NAL header byte (0x06), payload_type (0x05),
+        // payload_size (28) and 10 identifier bytes — fewer than 16.
+        // NAL layout: [0x06, 0x05, 28, id[0..10]]; p lands at byte 3,
+        // so keep sei[0..3+10] = 13 bytes total.
+        let mut au = vec![0u8, 0, 1];
+        au.extend_from_slice(&sei[..3 + 10]);
+        assert_eq!(
+            extract(&au, VideoCodec::H264),
+            Ok(None),
+            "fewer than 16 identifier bytes = unconfirmable = Ok(None)"
+        );
+    }
+
+    // Finding 3: H.265 SUFFIX_SEI (NAL type 40) is matched by the parser but
+    // was previously untested.
+    #[test]
+    fn extract_h265_suffix_sei_round_trips() {
+        let ts = MispTimestamp::micros(0xDEAD_BEEF_CAFE_0001, 0x3F);
+        // Build a normal PREFIX_SEI (type 39), then rewrite its 2-byte header
+        // to SUFFIX_SEI (type 40): (40 << 1) | 0 = 0x50, nuh_temporal_id_plus1 = 1.
+        let mut sei = build_sei_nal(VideoCodec::H265, &ts).unwrap();
+        assert_eq!(sei[0], 0x4E, "sanity: first byte should be PREFIX_SEI header");
+        sei[0] = 0x50; // (40 << 1) = 0x50
+        sei[1] = 0x01; // nuh_layer_id=0, nuh_temporal_id_plus1=1
+        // Build an AU: a VCL NAL first, then the suffix SEI.
+        let mut au = vec![0u8, 0, 0, 1, 0x26, 0x01, 0xBB]; // IDR_W_RADL
+        au.extend_from_slice(&[0, 0, 1]);
+        au.extend_from_slice(&sei);
+        assert_eq!(
+            extract(&au, VideoCodec::H265).unwrap(),
+            Some(ts),
+            "SUFFIX_SEI (type 40) must be extracted"
+        );
     }
 }

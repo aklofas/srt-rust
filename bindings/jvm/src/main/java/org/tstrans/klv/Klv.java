@@ -1,7 +1,9 @@
 package org.tstrans.klv;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -425,6 +427,91 @@ public final class Klv {
 
     private static native byte[] nEncodeUasDatalinkStrictCompliance(UasDatalinkLs record)
             throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
+    // ST 1204 — MIIS Core Identifier
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode a MIIS Core Identifier from its binary wire form (ST 1204.3 §7.3).
+     *
+     * <p>Expects exactly the bytes of one Core Identifier — no framing, no BER
+     * length wrapper. Rejects trailing bytes, unsupported version bytes,
+     * reserved-bit violations, and invalid usage-byte combinations.
+     * Mirrors tst-py's {@code decode_core_id(buf)}.
+     *
+     * @param klv raw Core Identifier bytes (no UL / outer BER length)
+     * @return the decoded {@link CoreId}
+     * @throws org.tstrans.KlvDecodeException if the buffer is malformed or
+     *         contains an unsupported version or invalid usage byte
+     */
+    public static CoreId decodeCoreId(byte[] klv) throws org.tstrans.KlvDecodeException {
+        return decodeCoreIdNative(klv);
+    }
+
+    /**
+     * Encode a {@link CoreId} to its binary wire form (ST 1204.3 §7.3).
+     *
+     * <p>Returns the two-byte header (version + usage) followed by the UUIDs in
+     * EBNF order: sensor, platform, window, minor. Encoding is infallible;
+     * the caller is responsible for maintaining the ST 1204.3 EBNF constraint
+     * ({@code minorId} must be {@code null} when any other UUID field is present).
+     * Mirrors tst-py's {@code encode_core_id(id)}.
+     *
+     * @param id the Core Identifier to encode
+     * @return binary wire bytes (no UL / outer BER length)
+     */
+    public static byte[] encodeCoreId(CoreId id) {
+        return encodeCoreIdNative(id);
+    }
+
+    /**
+     * Return the ST 1204.3 §7.4.2 textual representation of a {@link CoreId}.
+     *
+     * <p>Format: {@code VVUU:XXXX-XXXX-…/XXXX-XXXX-…:CC} where {@code VV} and
+     * {@code UU} are the version and usage bytes as uppercase hex, each UUID is
+     * 8 groups of 4 hex chars dash-separated, multiple UUIDs are {@code /}-separated,
+     * and {@code CC} is the Appendix B check value.
+     * Mirrors tst-py's {@code core_id_text(id)}.
+     *
+     * @param id the Core Identifier to format
+     * @return the ST 1204.3 textual representation
+     */
+    public static String coreIdText(CoreId id) {
+        return coreIdTextNative(id);
+    }
+
+    /**
+     * Validate a {@link UasDatalinkLs} record against the ST 0902.8 Minimum
+     * Metadata Set (MISMMS, Table 1).
+     *
+     * <p>Returns all violations found; an empty list means the record satisfies
+     * every MISMMS requirement at the record level. Violations are instances of
+     * {@link MismmsViolation} with {@code kind} ∈ {@code {"missing",
+     * "missing_security", "zero_length", "alternation_conflict"}}.
+     *
+     * <p>The Tag 48 Security Local Set sub-item check decodes the security bytes via
+     * ST 0102 and verifies the 9 required sub-items (classification, classifying
+     * country coding method, classifying country, SCI/SHI info, caveats, releasing
+     * instructions, object country coding method, object country codes, version).
+     *
+     * <p>Mirrors tst-py's {@code validate_mismms(record)}.
+     *
+     * @param record the UAS Datalink LS to validate
+     * @return a list of all MISMMS violations (empty if compliant)
+     */
+    public static List<MismmsViolation> validateMismms(UasDatalinkLs record) {
+        return validateMismmsNative(record);
+    }
+
+    private static native CoreId decodeCoreIdNative(byte[] klv)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] encodeCoreIdNative(CoreId id);
+
+    private static native String coreIdTextNative(CoreId id);
+
+    private static native List<MismmsViolation> validateMismmsNative(UasDatalinkLs record);
 
     // -----------------------------------------------------------------------
     // UL dispatcher

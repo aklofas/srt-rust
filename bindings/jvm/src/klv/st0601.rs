@@ -592,6 +592,17 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         env.call_method(&b, "vmti", BUILDER_SIG_BUF, &[JValue::Object(&buf)])?;
     }
 
+    // Tag 94 — miisCoreId (Vec<u8> → byte[])
+    if let Some(ref bs) = r.miis_core_id {
+        let arr = env.byte_array_from_slice(bs)?;
+        env.call_method(
+            &b,
+            "miisCoreId",
+            "([B)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&arr)],
+        )?;
+    }
+
     // --- fieldErrors — always set (even if empty) ---
     let fe_list = build_field_errors(env, &r.field_errors)?;
     env.call_method(
@@ -819,6 +830,15 @@ fn read_uas_datalink(
     r.security_local_set = read_nullable_byte_buffer(env, rec, "securityLocalSet")?;
     r.vmti = read_nullable_byte_buffer(env, rec, "vmti")?;
 
+    // --- miisCoreId: nullable byte[] → Option<Vec<u8>> ---
+    {
+        let arr_val = env.call_method(rec, "miisCoreId", "()[B", &[])?.l()?;
+        if !arr_val.is_null() {
+            let arr: jni::objects::JByteArray<'_> = arr_val.into();
+            r.miis_core_id = Some(env.convert_byte_array(&arr)?);
+        }
+    }
+
     // --- unknown: List<KlvUnknownField> with is_st0601_typed_tag collision-drop ---
     {
         let unk_obj = env
@@ -853,4 +873,13 @@ fn read_uas_datalink(
 
     // field_errors is a decoder-only diagnostic; not round-tripped (mirrors tst-py).
     Ok(r)
+}
+
+/// Thin public wrapper so `st1204::validateMismmsNative` can call the shared
+/// reader without duplicating it. All the real logic lives in `read_uas_datalink`.
+pub fn read_uas_datalink_for_validate(
+    env: &mut JNIEnv<'_>,
+    rec: &JObject<'_>,
+) -> jni::errors::Result<UasDatalinkLs> {
+    read_uas_datalink(env, rec)
 }

@@ -155,6 +155,13 @@ public record UasDatalinkLs(
         ByteBuffer securityLocalSet,
         ByteBuffer vmti,
 
+        /**
+         * Tag 94 — MIIS Core Identifier raw bytes (ST 0601.19 §8.94 / ST 1204.3).
+         * {@code null} when absent. Call {@link Klv#decodeCoreId(byte[])} to parse
+         * these bytes into a typed {@link CoreId}.
+         */
+        byte[] miisCoreId,
+
         // Pass-through
         List<KlvUnknownField> unknown,
         List<KlvFieldError> fieldErrors,
@@ -354,6 +361,7 @@ public record UasDatalinkLs(
         private Integer genericFlagData;
         private ByteBuffer securityLocalSet;
         private ByteBuffer vmti;
+        private byte[] miisCoreId;
         private List<KlvUnknownField> unknown = Collections.emptyList();
         private List<KlvFieldError> fieldErrors = Collections.emptyList();
         private List<Long> sentinelTags = Collections.emptyList();
@@ -412,6 +420,7 @@ public record UasDatalinkLs(
         public Builder genericFlagData(int v) { this.genericFlagData = v; return this; }
         public Builder securityLocalSet(ByteBuffer v) { this.securityLocalSet = v; return this; }
         public Builder vmti(ByteBuffer v) { this.vmti = v; return this; }
+        public Builder miisCoreId(byte[] v) { this.miisCoreId = v; return this; }
         public Builder unknown(List<KlvUnknownField> v) { this.unknown = v; return this; }
         public Builder fieldErrors(List<KlvFieldError> v) { this.fieldErrors = v; return this; }
         public Builder sentinelTags(List<Long> v) { this.sentinelTags = v; return this; }
@@ -443,6 +452,7 @@ public record UasDatalinkLs(
                     cornerLatP4Deg, cornerLonP4Deg,
                     genericFlagData,
                     securityLocalSet, vmti,
+                    miisCoreId,
                     unknown, fieldErrors,
                     sentinelTags
             );

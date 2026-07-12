@@ -615,7 +615,7 @@ covers.
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ⚙️ Opt-in validator — `klv::st0601::validate_mismms` returns a `Vec<MismmsViolation>` per record; stream-level cadence tracker deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ✅ §7.1.2 / §7.2 + §7.1.3 / §7.2.3 special values (`ImapbSpecial`, encode + decode); IMAPA form deferred |
-| **MISB ST 1204.3** | Motion Imagery Identification System (MIIS) Core Identifier | ✅ `klv::st1204::{decode, encode_to_vec}` + ST 0601 Tag 94 (`miis_core_id`). All four language bindings. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
+| **MISB ST 1204.3** | Motion Imagery Identification System (MIIS) Core Identifier | ✅ `klv::st1204::{decode, encode_to_vec}` + ST 0601 Tag 94 (`miis_core_id`). Rust, Python, and JVM (KLV is not exposed in the C ABI). See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
 | **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
@@ -641,7 +641,7 @@ covers.
 | `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903), codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
-| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.18** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
+| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.19** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
 | `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.2.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
 | `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |

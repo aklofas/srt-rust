@@ -71,6 +71,16 @@ const SSRC_RESET_PTS_STEP: i64 = 3003;
 /// Annex B framing start code prepended to each NALU.
 const ANNEXB_START_CODE: [u8; 4] = [0, 0, 0, 1];
 
+/// Whether a parameter set is small enough to retain in the SPS/PPS cache.
+///
+/// A parameter set whose Annex-B-framed length (`start code + NALU`) exceeds
+/// `max_au_bytes` can never appear in a conformant emitted AU, so caching it
+/// would grow retained memory beyond the advertised cap and rebuild an
+/// over-cap injection prefix (only to drop it) on every later IDR.
+fn ps_within_cap(nalu_len: usize, max_au_bytes: usize) -> bool {
+    ANNEXB_START_CODE.len() + nalu_len <= max_au_bytes
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Public types (frozen — later tasks and two binding mirrors depend on
 // these exact names / signatures).
@@ -297,6 +307,10 @@ impl H264Depacketizer {
         let mut pps_cache: Option<Vec<u8>> = None;
         for nalu in &config.initial_parameter_sets {
             if nalu.is_empty() {
+                continue;
+            }
+            // Skip parameter sets too large to fit the AU cap (see ps_within_cap).
+            if !ps_within_cap(nalu.len(), config.max_au_bytes) {
                 continue;
             }
             match nalu[0] & 0x1F {
@@ -643,16 +657,22 @@ impl H264Depacketizer {
             5 => self.au_has_idr = true,
             7 => {
                 self.au_has_sps = true;
-                // Update SPS cache; tick the counter only when bytes change.
-                if self.sps_cache.as_deref() != Some(bytes.as_slice()) {
+                // Update SPS cache (only if it fits the AU cap; see ps_within_cap);
+                // tick the counter only when bytes change.
+                if ps_within_cap(bytes.len(), self.config.max_au_bytes)
+                    && self.sps_cache.as_deref() != Some(bytes.as_slice())
+                {
                     self.sps_cache = Some(bytes.clone());
                     self.stats.parameter_set_updates += 1;
                 }
             }
             8 => {
                 self.au_has_pps = true;
-                // Update PPS cache; tick the counter only when bytes change.
-                if self.pps_cache.as_deref() != Some(bytes.as_slice()) {
+                // Update PPS cache (only if it fits the AU cap; see ps_within_cap);
+                // tick the counter only when bytes change.
+                if ps_within_cap(bytes.len(), self.config.max_au_bytes)
+                    && self.pps_cache.as_deref() != Some(bytes.as_slice())
+                {
                     self.pps_cache = Some(bytes.clone());
                     self.stats.parameter_set_updates += 1;
                 }
@@ -1313,6 +1333,56 @@ mod tests {
         );
         assert_eq!(d.stats().aus_dropped_oversize, 1);
         assert_eq!(d.stats().aus_dropped, 1);
+    }
+
+    /// A build helper: an SPS (NAL type 7) whose Annex-B-framed length
+    /// exceeds `cap` bytes.
+    fn oversize_sps(cap: usize) -> Vec<u8> {
+        let mut v = vec![0x67u8]; // NAL type 7 (SPS)
+        v.resize(cap + 4, 0xAA); // 4 (start code) + (cap+4) len > cap
+        v
+    }
+
+    /// An over-cap SPS arriving in-band must NOT be retained in the cache.
+    /// If it were, every later IDR would rebuild an over-cap injection prefix
+    /// and be dropped — `max_au_bytes` would fail to bound cached parameter-set
+    /// memory. With the SPS uncached, a later tiny IDR emits clean.
+    #[test]
+    fn oversize_inband_sps_is_not_retained_in_cache() {
+        const CAP: usize = 8;
+        let mut d = H264Depacketizer::new(H264DepayConfig {
+            max_au_bytes: CAP,
+            ..H264DepayConfig::default() // BeforeIdr injection is the default
+        });
+        d.feed(&hdr(1, 1000, true), &oversize_sps(CAP)); // dropped oversize
+        assert!(d.next_au().is_none(), "over-cap SPS AU dropped");
+        assert_eq!(d.stats().aus_dropped_oversize, 1);
+
+        // Tiny IDR must not inherit the over-cap SPS from cache.
+        d.feed(&hdr(2, 4003, true), &[0x65, 0xAA]); // 4 + 2 = 6 <= CAP
+        let au = d
+            .next_au()
+            .expect("tiny IDR emits clean (no stale over-cap SPS in cache)");
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xAA]);
+        assert_eq!(d.stats().aus_dropped_oversize, 1, "no second oversize drop");
+    }
+
+    /// Over-cap `initial_parameter_sets` (e.g. seeded from an SDP
+    /// `sprop-parameter-sets`) must not be seeded into the cache either.
+    #[test]
+    fn oversize_initial_parameter_sets_are_not_seeded() {
+        const CAP: usize = 8;
+        let mut d = H264Depacketizer::new(H264DepayConfig {
+            max_au_bytes: CAP,
+            initial_parameter_sets: vec![oversize_sps(CAP)],
+            ..H264DepayConfig::default()
+        });
+        d.feed(&hdr(1, 1000, true), &[0x65, 0xAA]); // tiny IDR
+        let au = d
+            .next_au()
+            .expect("tiny IDR emits clean; over-cap seed was skipped");
+        assert_eq!(au.annexb, [0, 0, 0, 1, 0x65, 0xAA]);
+        assert_eq!(d.stats().aus_dropped_oversize, 0);
     }
 
     /// Single-NALU AU that exceeds the cap: `aus_dropped_oversize` ticks and

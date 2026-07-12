@@ -1309,6 +1309,51 @@ static uint8_t *remux_video_dts_roundtrip(size_t *out_len) {
     return produced;
 }
 
+/* Re-mux the `video-misp-roundtrip` recipe in C — single H.264 IDR with a
+ * spliced ST 0604 MISP microsecond timestamp via tst_muxer_push_video_misp_to.
+ * Mirrors video_misp_roundtrip_ts_bytes() in tst-integration byte-for-byte:
+ * program_number=1, pmt_pid=0x1000, video pid=0x1011 H264.
+ * MispTimestamp: kind=0 (Micro), time_status=0x1F, value=0x0005F5E100000001.
+ * PTS=9000 ticks (90 kHz) — fixed so the golden is stable.
+ * Returns malloc'd bytes via *out_len, or NULL on failure. */
+static uint8_t *remux_video_misp_roundtrip(size_t *out_len) {
+    struct tst_mux_config_t *cfg = tst_mux_config_new();
+    if (!cfg) { fprintf(stderr, "ERROR: tst_mux_config_new failed\n"); return NULL; }
+    tst_program_handle_t prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+    if (prog == TST_INVALID_PROGRAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_program failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    tst_video_stream_handle_t vstream =
+        tst_mux_config_add_video_stream(cfg, prog, 0x1011, TST_VIDEO_CODEC_H264);
+    if (vstream == TST_INVALID_STREAM_HANDLE) {
+        fprintf(stderr, "ERROR: add_video_stream failed\n"); tst_mux_config_free(cfg); return NULL;
+    }
+    struct tst_muxer_t *mux = tst_muxer_open(cfg);
+    tst_mux_config_free(cfg);
+    if (!mux) { fprintf(stderr, "ERROR: tst_muxer_open failed\n"); return NULL; }
+
+    uint8_t idr[20];
+    size_t idr_len = synth_h264_idr(idr);
+    /* MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F) — kind=0, status=0x1F */
+    if (tst_muxer_push_video_misp_to(mux, vstream, idr, idr_len,
+                                     /*pts=*/9000,
+                                     /*key_frame=*/true,
+                                     /*misp_kind=*/0,
+                                     /*time_status=*/0x1F,
+                                     /*value=*/UINT64_C(0x0005F5E100000001)) != 0) {
+        fprintf(stderr, "ERROR: tst_muxer_push_video_misp_to failed\n");
+        tst_muxer_close(mux); return NULL;
+    }
+
+    uint8_t *produced = NULL; size_t produced_len = 0, produced_cap = 0;
+    if (drain_muxer(mux, &produced, &produced_len, &produced_cap) != 0) {
+        fprintf(stderr, "ERROR: OOM draining mux\n"); free(produced); tst_muxer_close(mux); return NULL;
+    }
+    tst_muxer_close(mux);
+    *out_len = produced_len;
+    return produced;
+}
+
 /* ── Roundtrip scenario runner ── */
 static int run_roundtrip(const char *scenarios_dir_path,
                          const scenario_entry_t *entry,
@@ -1347,6 +1392,8 @@ static int run_roundtrip(const char *scenarios_dir_path,
         produced = remux_audio_klv_roundtrip(&produced_len);
     } else if (strcmp(entry->id, "video-dts-roundtrip") == 0) {
         produced = remux_video_dts_roundtrip(&produced_len);
+    } else if (strcmp(entry->id, "video-misp-roundtrip") == 0) {
+        produced = remux_video_misp_roundtrip(&produced_len);
     } else {
         fprintf(stderr, "ERROR: unknown roundtrip scenario id '%s'\n", entry->id);
         free(committed);
@@ -1367,12 +1414,89 @@ static int run_roundtrip(const char *scenarios_dir_path,
     /* sha256 parity with the golden. */
     char digest_hex[65];
     sha256_hex(produced, produced_len, digest_hex);
-    free(produced); free(committed);
+    free(committed);
     if (strcmp(digest_hex, expected_sha256) != 0) {
         fprintf(stderr, "FAIL [%s]: sha256 mismatch\n  computed : %s\n  expected : %s\n",
             entry->id, digest_hex, expected_sha256);
-        return -1;
+        free(produced); return -1;
     }
+
+    /* video-misp-roundtrip: demux the produced TS, extract the MISP timestamp
+     * from the first video AU, and assert it matches the golden's committed
+     * misp_kind/misp_time_status/misp_value fields. */
+    if (strcmp(entry->id, "video-misp-roundtrip") == 0) {
+        /* Read expected MISP fields from golden extensions. */
+        int64_t golden_kind_i64 = 0, golden_status_i64 = 0, golden_value_i64 = 0;
+        if (!json_extract_int64(golden_json, 0, "misp_kind", &golden_kind_i64)
+            || !json_extract_int64(golden_json, 0, "misp_time_status", &golden_status_i64)
+            || !json_extract_int64(golden_json, 0, "misp_value", &golden_value_i64)) {
+            fprintf(stderr, "ERROR [%s]: cannot read misp fields from golden\n", entry->id);
+            free(produced); return -1;
+        }
+        uint8_t golden_kind   = (uint8_t)golden_kind_i64;
+        uint8_t golden_status = (uint8_t)golden_status_i64;
+        uint64_t golden_value = (uint64_t)golden_value_i64;
+
+        /* Demux the produced TS to get the video AU. */
+        struct TstDemuxer *demuxer = tst_demuxer_open();
+        if (!demuxer) {
+            fprintf(stderr, "ERROR [%s]: tst_demuxer_open failed\n", entry->id);
+            free(produced); return -1;
+        }
+        int feed_rc = tst_demuxer_feed(demuxer, produced, produced_len);
+        if (feed_rc < 0) {
+            fprintf(stderr, "ERROR [%s]: tst_demuxer_feed failed rc=%d\n", entry->id, feed_rc);
+            tst_demuxer_close(demuxer); free(produced); return -1;
+        }
+        tst_demuxer_flush(demuxer);
+
+        int misp_found = 0;
+        tst_event_t ev;
+        memset(&ev, 0, sizeof(ev));
+        while (1) {
+            int rc = tst_demuxer_next_event(demuxer, &ev);
+            if (rc == TST_E_NOT_AVAILABLE) break;
+            if (rc != 0) { break; }
+            if (ev.kind == TST_EVENT_KIND_SAMPLE
+                && ev.u.sample.stream_kind == TST_STREAM_KIND_VIDEO
+                && ev.u.sample.payload && ev.u.sample.payload_len > 0) {
+                /* Extract MISP timestamp while the borrowed pointer is still valid. */
+                uint8_t out_kind = 0, out_status = 0;
+                uint64_t out_value = 0;
+                int misp_rc = tst_misp_time_extract(ev.u.sample.payload,
+                                                    ev.u.sample.payload_len,
+                                                    TST_VIDEO_CODEC_H264,
+                                                    &out_kind, &out_status, &out_value);
+                if (misp_rc != 0) {
+                    fprintf(stderr, "FAIL [%s]: tst_misp_time_extract rc=%d — MISP SEI not found\n",
+                        entry->id, misp_rc);
+                    tst_demuxer_close(demuxer); free(produced); return -1;
+                }
+                if (out_kind != golden_kind || out_status != golden_status
+                    || out_value != golden_value) {
+                    fprintf(stderr,
+                        "FAIL [%s]: MISP extract mismatch — "
+                        "got kind=%u status=%u value=%llu, "
+                        "expected kind=%u status=%u value=%llu\n",
+                        entry->id,
+                        (unsigned)out_kind, (unsigned)out_status,
+                        (unsigned long long)out_value,
+                        (unsigned)golden_kind, (unsigned)golden_status,
+                        (unsigned long long)golden_value);
+                    tst_demuxer_close(demuxer); free(produced); return -1;
+                }
+                misp_found = 1;
+                break;
+            }
+        }
+        tst_demuxer_close(demuxer);
+        if (!misp_found) {
+            fprintf(stderr, "FAIL [%s]: no video AU found after demux\n", entry->id);
+            free(produced); return -1;
+        }
+    }
+
+    free(produced);
     return 0;
 }
 

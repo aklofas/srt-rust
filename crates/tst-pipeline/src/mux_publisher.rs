@@ -7,7 +7,7 @@ use std::time::Duration;
 use tracing::info_span;
 use tst_core::error::MuxError;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::mux::{Muxer, MuxerConfig};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, StreamKind};
 use tst_core::publisher::{Publisher, PublisherStats};
 
 use crate::shell_error::{ShellErrorKind, kind_from_mux};
@@ -124,6 +124,29 @@ impl<P: Publisher> MuxPublisher<P> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxPublisherError<P::Error>> {
+        self.send_video_inner(nal, pts, key_frame, None)
+    }
+
+    /// [`Self::send_video`] plus an ST 0604 MISP timestamp SEI spliced
+    /// before the first VCL NAL (see `Muxer::push_video_misp_to`).
+    /// Requires exactly one configured video stream (like `send_video`).
+    pub fn send_video_misp(
+        &self,
+        nal: &[u8],
+        pts: Pts90khz,
+        key_frame: bool,
+        misp: &tst_core::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxPublisherError<P::Error>> {
+        self.send_video_inner(nal, pts, key_frame, Some(misp))
+    }
+
+    fn send_video_inner(
+        &self,
+        nal: &[u8],
+        pts: Pts90khz,
+        key_frame: bool,
+        misp: Option<&tst_core::codec::misp_time::MispTimestamp>,
+    ) -> Result<(), MuxPublisherError<P::Error>> {
         let mut inner = self
             .inner
             .lock()
@@ -152,10 +175,25 @@ impl<P: Publisher> MuxPublisher<P> {
         if inner.segment_start_pts.is_none() {
             inner.segment_start_pts = Some(pts);
         }
-        inner
-            .muxer
-            .push_video(nal, pts, key_frame)
-            .map_err(MuxPublisherError::Mux)?;
+        match misp {
+            None => inner
+                .muxer
+                .push_video(nal, pts, key_frame)
+                .map_err(MuxPublisherError::Mux)?,
+            Some(m) => {
+                let handles = inner.muxer.video_handles();
+                let [handle] = handles.as_slice() else {
+                    return Err(MuxPublisherError::Mux(MuxError::AmbiguousTarget {
+                        kind: StreamKind::Video,
+                        count: handles.len(),
+                    }));
+                };
+                inner
+                    .muxer
+                    .push_video_misp_to(*handle, nal, pts, key_frame, m)
+                    .map_err(MuxPublisherError::Mux)?;
+            }
+        }
         Self::drain_locked(&mut inner)?;
         inner.last_video_pts = Some(pts);
         Ok(())
@@ -712,6 +750,73 @@ mod tests {
         assert_eq!(
             first_cut_dur,
             Duration::from_nanos((k2 - k1) as u64 * 1_000_000_000 / 90_000)
+        );
+    }
+
+    /// `send_video_misp` splices the ST 0604 SEI; bytes demux to a Video
+    /// sample from which `misp_time::extract` recovers the timestamp.
+    #[test]
+    fn send_video_misp_recovers_timestamp() {
+        use tst_core::codec::misp_time::MispTimestamp;
+        use tst_core::mpegts::demux::event::{DemuxEvent, SamplePayload};
+        use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+        use tst_core::mpegts::mux::VideoCodec;
+
+        let p = MemoryPublisher { buffers: vec![] };
+        let mp = MuxPublisher::with_config(p, test_muxer_config()).unwrap();
+
+        // AUD + SPS + PPS + IDR — canonical H.264 keyframe AU.
+        let au: Vec<u8> = {
+            fn nal(nal_type: u8, nri: u8, body: &[u8]) -> Vec<u8> {
+                let mut v = vec![0x00, 0x00, 0x00, 0x01, (nri << 5) | nal_type];
+                v.extend_from_slice(body);
+                v
+            }
+            let mut au = Vec::new();
+            au.extend(nal(9, 0b00, &[0xF0])); // AUD
+            au.extend(nal(7, 0b11, &[0x42, 0xC0, 0x28])); // SPS
+            au.extend(nal(8, 0b11, &[0xCE, 0x38])); // PPS
+            au.extend(nal(5, 0b11, &[0x88, 0x84, 0x0A])); // IDR
+            au
+        };
+        let misp = MispTimestamp::micros(0xDEAD_BEEF_0000_0001, 0x3F);
+        mp.send_video_misp(&au, Pts90khz::new(0), true, &misp)
+            .unwrap();
+
+        let publisher = mp.finish().unwrap();
+        // The MemoryPublisher accumulates TS bytes in its first buffer.
+        let ts_bytes: Vec<u8> = publisher.buffers.into_iter().flatten().collect();
+        assert!(
+            !ts_bytes.is_empty(),
+            "publisher must have received TS bytes"
+        );
+
+        let mut demuxer = Demuxer::with_config(DemuxerConfig::builder().build());
+        demuxer.feed(&ts_bytes).unwrap();
+        demuxer.flush();
+        let mut found_misp: Option<MispTimestamp> = None;
+        loop {
+            match demuxer.next_event() {
+                Some(DemuxEvent::Sample {
+                    payload: SamplePayload::Video { raw, .. },
+                    ..
+                }) => {
+                    let extracted =
+                        tst_core::codec::misp_time::extract(&raw, VideoCodec::H264).unwrap();
+                    if extracted.is_some() {
+                        found_misp = extracted;
+                        break;
+                    }
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        let recovered = found_misp.expect("MISP timestamp must be present in demuxed AU");
+        assert_eq!(recovered.value, misp.value, "timestamp value mismatch");
+        assert_eq!(
+            recovered.time_status, misp.time_status,
+            "status byte mismatch"
         );
     }
 }

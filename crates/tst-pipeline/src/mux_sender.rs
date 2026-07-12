@@ -456,6 +456,86 @@ impl<T: Transport> MuxSender<T> {
         inner.send_video_to_with_dts(handle, nal, pts.as_ticks(), dts.as_ticks(), key_frame)
     }
 
+    /// Send one video access unit with an ST 0604 MISP timestamp SEI spliced
+    /// before the first VCL NAL. Annex-B framing is required.
+    ///
+    /// Splices the ST 0604 MISP SEI — see `Muxer::push_video_misp_to`.
+    /// See [`Self::send_video_to`] for the input-consumption/retry contract.
+    ///
+    /// # C ABI — not exposed
+    ///
+    /// Not yet exposed via the C ABI. Open an issue if C support is needed.
+    ///
+    /// # Errors
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner
+    ///   muxer (same variants as [`Self::send_video_to`], plus
+    ///   [`tst_core::error::MuxError::MispTime`] when the SEI cannot be built).
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
+    pub fn send_video_misp_to(
+        &self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        key_frame: bool,
+        misp: &tst_core::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxSenderError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_video_misp_to"))?;
+        inner.send_video_misp_to(handle, nal, pts.as_ticks(), key_frame, misp)
+    }
+
+    /// PTS+DTS variant of [`Self::send_video_misp_to`] for reordered codecs.
+    ///
+    /// Splices the ST 0604 MISP SEI — see `Muxer::push_video_misp_to`.
+    /// See [`Self::send_video_to_with_dts`] for the DTS contract and the
+    /// input-consumption/retry pointer.
+    ///
+    /// **Caller invariant:** `dts <= pts` per ISO/IEC 13818-1 §2.4.3.6.
+    ///
+    /// # C ABI — not exposed
+    ///
+    /// Not yet exposed via the C ABI. Open an issue if C support is needed.
+    ///
+    /// # Errors
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner
+    ///   muxer (same variants as [`Self::send_video_to`], plus
+    ///   [`tst_core::error::MuxError::MispTime`] when the SEI cannot be built).
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    ///   Whether the input was consumed depends on the failure point — see
+    ///   the module-level *Input consumption and retry* section before
+    ///   deciding whether to resend.
+    pub fn send_video_misp_to_with_dts(
+        &self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        dts: Pts90khz,
+        key_frame: bool,
+        misp: &tst_core::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxSenderError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| lock_poisoned("send_video_misp_to_with_dts"))?;
+        inner.send_video_misp_to_with_dts(
+            handle,
+            nal,
+            pts.as_ticks(),
+            dts.as_ticks(),
+            key_frame,
+            misp,
+        )
+    }
+
     /// Send one KLV blob to a specific configured KLV stream.
     ///
     /// `metadata_service_id` is written into the AU cell header per
@@ -1064,6 +1144,40 @@ impl<T: Transport> Inner<T> {
         })
     }
 
+    fn send_video_misp_to(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+        misp: &tst_core::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxSenderError> {
+        self.push_then_drain(|m| {
+            m.push_video_misp_to(handle, nal, Pts90khz::new(pts_90khz), key_frame, misp)
+        })
+    }
+
+    fn send_video_misp_to_with_dts(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        dts_90khz: i64,
+        key_frame: bool,
+        misp: &tst_core::codec::misp_time::MispTimestamp,
+    ) -> Result<(), MuxSenderError> {
+        self.push_then_drain(|m| {
+            m.push_video_misp_to_with_dts(
+                handle,
+                nal,
+                Pts90khz::new(pts_90khz),
+                Pts90khz::new(dts_90khz),
+                key_frame,
+                misp,
+            )
+        })
+    }
+
     fn send_klv_to(
         &mut self,
         handle: KlvStreamHandle,
@@ -1361,6 +1475,96 @@ mod multi_stream_tests {
         // We can't read the transport bytes directly from outside the lock,
         // but we can confirm the call returns Ok and the sender is alive.
         assert!(s.is_alive());
+    }
+
+    /// `send_video_misp_to` splices the ST 0604 SEI and emits valid TS bytes
+    /// that can be demuxed; `misp_time::extract` recovers the timestamp.
+    #[test]
+    fn sender_send_video_misp_to_recovers_timestamp() {
+        use tst_core::codec::misp_time::MispTimestamp;
+        use tst_core::mpegts::demux::event::{DemuxEvent, SamplePayload};
+        use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.pcr_pid(0x1011);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+
+        // Collect transport bytes via snoop transport.
+        let snoop = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        struct SnoopTransport(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl Transport for SnoopTransport {
+            fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(())
+            }
+            fn max_payload(&self) -> usize {
+                1316
+            }
+            fn close(&mut self) {}
+            fn is_alive(&self) -> bool {
+                true
+            }
+        }
+
+        let s = MuxSender::new(SnoopTransport(snoop.clone()), cfg).unwrap();
+        let handle = s.video_handles()[0];
+
+        // AUD + SPS + PPS + IDR — canonical H.264 keyframe AU.
+        let nal: Vec<u8> = {
+            fn nal(nal_type: u8, nri: u8, body: &[u8]) -> Vec<u8> {
+                let mut v = vec![0x00, 0x00, 0x00, 0x01, (nri << 5) | nal_type];
+                v.extend_from_slice(body);
+                v
+            }
+            let mut au = Vec::new();
+            au.extend(nal(9, 0b00, &[0xF0])); // AUD
+            au.extend(nal(7, 0b11, &[0x42, 0xC0, 0x28])); // SPS
+            au.extend(nal(8, 0b11, &[0xCE, 0x38])); // PPS
+            au.extend(nal(5, 0b11, &[0x88, 0x84, 0x0A])); // IDR
+            au
+        };
+        let misp = MispTimestamp::micros(0x0102_0304_0506_0708, 0x1F);
+        s.send_video_misp_to(handle, &nal, Pts90khz::new(90_000), true, &misp)
+            .unwrap();
+        drop(s);
+
+        // Demux the captured TS bytes and extract the MISP timestamp.
+        let ts_bytes = snoop.lock().unwrap().clone();
+        let mut demuxer = Demuxer::with_config(DemuxerConfig::builder().build());
+        let mut found_misp: Option<MispTimestamp> = None;
+        demuxer.feed(&ts_bytes).unwrap();
+        demuxer.flush();
+        loop {
+            match demuxer.next_event() {
+                Some(DemuxEvent::Sample {
+                    payload: SamplePayload::Video { raw, .. },
+                    ..
+                }) => {
+                    let extracted = tst_core::codec::misp_time::extract(
+                        &raw,
+                        tst_core::mpegts::mux::VideoCodec::H264,
+                    )
+                    .unwrap();
+                    if extracted.is_some() {
+                        found_misp = extracted;
+                        break;
+                    }
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        let recovered = found_misp.expect("MISP timestamp must be present in demuxed AU");
+        assert_eq!(recovered.value, misp.value, "timestamp value mismatch");
+        assert_eq!(
+            recovered.time_status, misp.time_status,
+            "status byte mismatch"
+        );
     }
 
     #[test]

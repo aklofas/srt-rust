@@ -410,10 +410,13 @@ impl<E: std::error::Error + Send + Sync + 'static> MuxPublisherError<E> {
 /// scope — a single segment does not span the ~26.5 h 33-bit PTS period.
 fn media_span(start: Pts90khz, end: Pts90khz) -> Duration {
     let ticks = end.as_ticks().saturating_sub(start.as_ticks()).max(0) as u64;
-    // u128 intermediate: `ticks * 1e9` overflows u64 past ~56.9 h of delta.
-    // Clamp the result to u64 nanoseconds (Duration::from_nanos ceiling).
-    let nanos = (ticks as u128) * 1_000_000_000 / 90_000;
-    Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
+    // Split into whole seconds + sub-second nanos rather than computing
+    // `ticks * 1e9` (which overflows u64 past ~56.9 h of delta). `ticks / 90_000`
+    // always fits u64 and `(ticks % 90_000) * 1e9 < 9e13` cannot overflow, so
+    // this is exact for every representable tick count — no clamp, no truncation.
+    let secs = ticks / 90_000;
+    let subsec_nanos = ((ticks % 90_000) * 1_000_000_000 / 90_000) as u32;
+    Duration::new(secs, subsec_nanos)
 }
 
 #[cfg(test)]
@@ -468,11 +471,11 @@ mod tests {
         // A PTS delta beyond ~56.9 h (u64::MAX / 1e9 ticks) overflowed the
         // intermediate `ticks * 1e9` multiply — debug panic / release wrap.
         // 20e9 ticks is above that threshold; the span must be computed
-        // correctly (20e9 / 90_000 = 222_222.22 s) without panicking.
+        // exactly (20e9 / 90_000 = 222_222.222222222 s) without panicking.
         let start = Pts90khz::new(0);
         let end = Pts90khz::new(20_000_000_000);
         let span = media_span(start, end);
-        assert_eq!(span.as_secs(), 222_222);
+        assert_eq!(span, Duration::new(222_222, 222_222_222));
     }
 
     #[test]

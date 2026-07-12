@@ -7,6 +7,7 @@
 //! (`nPushVideo` / `nPushVideoWire` / `nPushKlv` / `nPushAudio` / `nPushSubtitle` /
 //! `nPushData` / `nPushDataTo` / `nPushVideoTo` / `nPushVideoWireTo` /
 //! `nPushVideoToWithDts` / `nPushVideoWireToWithDts` /
+//! `nPushVideoMispTo` / `nPushVideoMispToWithDts` /
 //! `nPushKlvTo` / `nPushAudioTo` / `nPushSubtitleTo`) reads the Java `byte[]`,
 //! calls the matching `Muxer::push_*`,
 //! and maps any [`MuxError`] to a thrown `org.tstrans.MuxException` via
@@ -578,6 +579,86 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'lo
     })
 }
 
+/// `nPushVideoMispTo(handle, streamHandleRaw, nal, pts, keyFrame, kind, timeStatus, value)` —
+/// targeted Annex-B AU push with a MISB ST 0604 MISP timestamp SEI spliced
+/// before the first VCL NAL. `kind` is the `MispTimeKind` ordinal (0=MICRO,
+/// 1=NANO); `value` is treated as unsigned 64-bit (bit-pattern reinterpret from
+/// `jlong`). Out-of-range kind → `MuxException(INVALID_USAGE)`. An H.264 stream
+/// with `kind=NANO` → `MuxException(INVALID_USAGE)` via the Rust `MispTimeError`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoMispTo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    key_frame: jboolean,
+    kind: jint,
+    time_status: jint,
+    value: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let misp = match build_misp(env, kind, time_status, value) {
+            Some(m) => m,
+            None => return,
+        };
+        let Some(buf) = read_mux_bytes(env, &nal) else {
+            return;
+        };
+        with_mux_push(env, handle, |mux| {
+            mux.push_video_misp_to(h, &buf, Pts90khz::new(pts), key_frame != 0, &misp)
+        });
+    })
+}
+
+/// `nPushVideoMispToWithDts(handle, streamHandleRaw, nal, pts, dts, keyFrame, kind, timeStatus, value)` —
+/// targeted Annex-B AU push with explicit DTS and MISP SEI splice.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoMispToWithDts<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    stream_handle_raw: jlong,
+    nal: JByteArray<'local>,
+    pts: jlong,
+    dts: jlong,
+    key_frame: jboolean,
+    kind: jint,
+    time_status: jint,
+    value: jlong,
+) {
+    crate::panic::jni_catch(&mut env, (), |env| {
+        let Some(h) = decode_stream_handle(stream_handle_raw, VideoStreamHandle::try_from_raw)
+        else {
+            throw_mux(env, "INVALID_USAGE", "invalid video stream handle");
+            return;
+        };
+        let misp = match build_misp(env, kind, time_status, value) {
+            Some(m) => m,
+            None => return,
+        };
+        let Some(buf) = read_mux_bytes(env, &nal) else {
+            return;
+        };
+        with_mux_push(env, handle, |mux| {
+            mux.push_video_misp_to_with_dts(
+                h,
+                &buf,
+                Pts90khz::new(pts),
+                Pts90khz::new(dts),
+                key_frame != 0,
+                &misp,
+            )
+        });
+    })
+}
+
 /// `nPushKlvTo(handle, streamHandleRaw, klv, pts, metadataServiceId)` —
 /// targeted KLV push. The raw stream handle is validated via
 /// `KlvStreamHandle::try_from_raw`.
@@ -963,6 +1044,32 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nClose<'local>(
         // let it drop here.
         let _ = REGISTRY.close(handle as u64);
     })
+}
+
+/// Construct a `MispTimestamp` from the JNI scalar fields (kind ordinal 0/1,
+/// timeStatus as low byte, value as unsigned reinterpret). Returns `None`
+/// (with a `MuxException(INVALID_USAGE)` thrown) when `kind` is out of range.
+fn build_misp(
+    env: &mut JNIEnv,
+    kind: jint,
+    time_status: jint,
+    value: jlong,
+) -> Option<tst_core::codec::misp_time::MispTimestamp> {
+    use tst_core::codec::misp_time::MispTimestamp;
+    let ts = time_status as u8;
+    let v = value as u64;
+    match kind {
+        0 => Some(MispTimestamp::micros(v, ts)),
+        1 => Some(MispTimestamp::nanos(v, ts)),
+        _ => {
+            throw_mux(
+                env,
+                "INVALID_USAGE",
+                "misp kind must be 0 (micro) or 1 (nano)",
+            );
+            None
+        }
+    }
 }
 
 /// Read a Java `byte[]`, throwing `MuxException(INTERNAL)` on failure.

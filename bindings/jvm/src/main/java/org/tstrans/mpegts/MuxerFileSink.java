@@ -175,6 +175,20 @@ public final class MuxerFileSink implements AutoCloseable {
         drain();
     }
 
+    /** Push a video AU with MISP SEI splice to a specific video stream (see {@link Muxer#pushVideoMispTo}). Drains after pushing. */
+    public void pushVideoMispTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame,
+            org.tstrans.codec.MispTimestamp misp) throws MuxException, IOException {
+        muxer.pushVideoMispTo(h, nal, pts, keyFrame, misp);
+        drain();
+    }
+
+    /** Push a video AU with MISP SEI splice and explicit DTS to a specific video stream (see {@link Muxer#pushVideoMispTo(VideoStreamHandle, byte[], long, long, boolean, org.tstrans.codec.MispTimestamp)}). Drains after pushing. */
+    public void pushVideoMispTo(VideoStreamHandle h, byte[] nal, long pts, long dts,
+            boolean keyFrame, org.tstrans.codec.MispTimestamp misp) throws MuxException, IOException {
+        muxer.pushVideoMispTo(h, nal, pts, dts, keyFrame, misp);
+        drain();
+    }
+
     /**
      * Mark the write successful. In atomic mode, only a committed sink promotes the
      * {@code *.partial} temp to the destination on {@link #close()}; without it,

@@ -20,24 +20,14 @@ public final class Receiver extends NativeHandle {
 
     Receiver(long h) { setHandle(h); }
 
-    /** Bind a receiver to {@code url} with the default {@code pktSize}. */
-    public static Receiver fromUrl(String url) throws RtpException {
-        return fromUrl(url, Sender.DEFAULT_PKT_SIZE);
-    }
-
-    /**
-     * Bind a receiver to {@code url}.
+    /** Bind a receiver to {@code url} ({@code rtp://host:port}, unicast or
+     *  multicast). The receive buffer sizes itself to the transport's
+     *  deliverable ceiling; {@code ?pkt_size=} on a receiver URL is rejected.
      *
-     * @param url     {@code rtp://host:port} (unicast or multicast)
-     * @param pktSize expected send-side packet size; has no effect on the receive
-     *                buffer, which always accepts any legal datagram; must be
-     *                &ge; 0
      * @throws RtpException {@code TRANSPORT} on URL-parse / bind failure
-     * @throws IllegalArgumentException if {@code pktSize} is negative
      */
-    public static Receiver fromUrl(String url, int pktSize) throws RtpException {
-        if (pktSize < 0) throw new IllegalArgumentException("pktSize must be >= 0: " + pktSize);
-        long h = nFromUrl(url, pktSize);
+    public static Receiver fromUrl(String url) throws RtpException {
+        long h = nFromUrl(url);
         if (h == 0) {
             throw new RtpException(RtpException.Kind.TRANSPORT, "nFromUrl returned 0 without throwing");
         }
@@ -76,7 +66,7 @@ public final class Receiver extends NativeHandle {
 
     @Override protected void nativeClose(long h) { nClose(h); }
 
-    private static native long   nFromUrl(String url, int pktSize) throws RtpException;
+    private static native long   nFromUrl(String url) throws RtpException;
     private static native byte[] nRecv(long handle) throws RtpException;
     private static native SocketStats nSocketStats(long handle);
     private static native long   nCancelHandle(long handle);

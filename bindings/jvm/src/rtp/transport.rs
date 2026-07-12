@@ -208,7 +208,6 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nFromUrl(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     url: JString<'_>,
-    pkt_size: jint,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let url_str: String = match env.get_string(&url) {
@@ -218,14 +217,13 @@ pub extern "system" fn Java_org_tstrans_rtp_Receiver_nFromUrl(
                 return 0;
             }
         };
-        let mut builder = match RtpRecvSocketBuilder::from_url(&url_str) {
+        let builder = match RtpRecvSocketBuilder::from_url(&url_str) {
             Ok(b) => b,
             Err(e) => {
                 throw_rtp(env, "TRANSPORT", &e.to_string());
                 return 0;
             }
         };
-        builder.pkt_size(pkt_size.max(0) as usize);
         let inner = match builder.build() {
             Ok(t) => t,
             Err(e) => {

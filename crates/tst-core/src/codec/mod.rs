@@ -21,6 +21,7 @@ pub(crate) mod framing;
 pub mod h264;
 pub mod h265;
 pub mod h266;
+pub mod misp_time;
 pub mod mpegaudio;
 pub mod util;
 

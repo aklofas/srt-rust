@@ -63,10 +63,9 @@ fn id_type_from_ordinal<'local>(
 fn map_st1204_error(env: &mut JNIEnv, e: &St1204Error) {
     let msg = e.to_string();
     match e {
-        St1204Error::Truncated | St1204Error::TrailingBytes => {
-            throw_klv_decode(env, "TRUNCATED_SET", &msg)
-        }
-        St1204Error::UnsupportedVersion(_)
+        St1204Error::Truncated => throw_klv_decode(env, "TRUNCATED_SET", &msg),
+        St1204Error::TrailingBytes
+        | St1204Error::UnsupportedVersion(_)
         | St1204Error::ReservedBitsSet
         | St1204Error::InvalidUsage => throw_klv_decode(env, "MALFORMED_BYTES", &msg),
         _ => throw_klv_decode(env, "MALFORMED_BYTES", &msg),

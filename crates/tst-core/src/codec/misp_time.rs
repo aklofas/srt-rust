@@ -197,6 +197,145 @@ pub(crate) fn insert_sei_before_first_vcl(
     Ok(out)
 }
 
+/// Extract the first MISP timestamp SEI from an Annex-B access unit.
+///
+/// `Ok(None)` = no MISP SEI present. `Err` = a MISP identifier matched
+/// but its payload is malformed (the distinction conformance checkers
+/// need). Liberal on input: all three ST 0604 identifiers are matched
+/// on both codecs; SEI NALs anywhere in the AU are scanned (prefix AND
+/// suffix positions); non-MISP SEI content is skipped, even if broken.
+pub fn extract(
+    au: &[u8],
+    codec: VideoCodec,
+) -> Result<Option<MispTimestamp>, MispTimeExtractError> {
+    let mut i = 0usize;
+    while i + 3 <= au.len() {
+        if !(au[i] == 0 && au[i + 1] == 0) {
+            i += 1;
+            continue;
+        }
+        let data_at = if au[i + 2] == 1 {
+            i + 3
+        } else if i + 4 <= au.len() && au[i + 2] == 0 && au[i + 3] == 1 {
+            i + 4
+        } else {
+            i += 1;
+            continue;
+        };
+        // Find this NAL's end (next start code or EOF).
+        let mut end = data_at;
+        while end + 3 <= au.len() {
+            if au[end] == 0 && au[end + 1] == 0 && (au[end + 2] == 1
+                || (end + 4 <= au.len() && au[end + 2] == 0 && au[end + 3] == 1))
+            {
+                break;
+            }
+            end += 1;
+        }
+        if end + 3 > au.len() {
+            end = au.len();
+        }
+        let nal = &au[data_at..end];
+        if let Some(found) = scan_sei_nal(nal, codec)? {
+            return Ok(Some(found));
+        }
+        i = end;
+    }
+    Ok(None)
+}
+
+/// If `nal` is an SEI NAL for `codec`, walk its messages for a MISP
+/// user_data_unregistered payload. Non-SEI NALs and non-MISP messages
+/// yield `Ok(None)`.
+fn scan_sei_nal(
+    nal: &[u8],
+    codec: VideoCodec,
+) -> Result<Option<MispTimestamp>, MispTimeExtractError> {
+    let (is_sei, header_len) = match codec {
+        VideoCodec::H264 => (!nal.is_empty() && nal[0] & 0x1F == 6, 1),
+        VideoCodec::H265 => (
+            nal.len() >= 2 && matches!((nal[0] >> 1) & 0x3F, 39 | 40),
+            2,
+        ),
+        VideoCodec::H266 | VideoCodec::Av1 => (false, 0),
+    };
+    if !is_sei {
+        return Ok(None);
+    }
+    // Strip emulation-prevention bytes from the RBSP.
+    let mut rbsp = Vec::with_capacity(nal.len() - header_len);
+    let mut zeros = 0u32;
+    for &b in &nal[header_len..] {
+        if zeros >= 2 && b == 0x03 {
+            zeros = 0;
+            continue; // the escape byte itself is dropped
+        }
+        rbsp.push(b);
+        if b == 0 { zeros += 1 } else { zeros = 0 }
+    }
+    // Walk SEI messages: ff-accumulated payload_type, then payload_size.
+    let mut p = 0usize;
+    loop {
+        let mut payload_type = 0usize;
+        loop {
+            let Some(&b) = rbsp.get(p) else { return Ok(None) };
+            p += 1;
+            payload_type += b as usize;
+            if b != 0xFF {
+                break;
+            }
+        }
+        let mut payload_size = 0usize;
+        loop {
+            let Some(&b) = rbsp.get(p) else { return Ok(None) };
+            p += 1;
+            payload_size += b as usize;
+            if b != 0xFF {
+                break;
+            }
+        }
+        let Some(payload) = rbsp.get(p..p + payload_size) else {
+            // Truncated non-MISP message: skip the NAL (foreign junk
+            // must not break extraction). A MISP match below can no
+            // longer occur once we cannot slice the payload.
+            return Ok(None);
+        };
+        if payload_type == 5 && payload_size >= 16 {
+            let kind = if payload[..16] == MISP_MICROSEC_ID_H264
+                || payload[..16] == MISP_MICROSEC_ID_H265
+            {
+                Some(MispTimeKind::Micro)
+            } else if payload[..16] == MISP_NANOSEC_ID_H265 {
+                Some(MispTimeKind::Nano)
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
+                if payload_size < 28 {
+                    return Err(MispTimeExtractError::TruncatedSei);
+                }
+                if payload[19] != 0xFF || payload[22] != 0xFF || payload[25] != 0xFF {
+                    return Err(MispTimeExtractError::BadGuardByte);
+                }
+                let v = [
+                    payload[17], payload[18], payload[20], payload[21],
+                    payload[23], payload[24], payload[26], payload[27],
+                ];
+                return Ok(Some(MispTimestamp {
+                    kind,
+                    time_status: payload[16],
+                    value: u64::from_be_bytes(v),
+                }));
+            }
+        }
+        p += payload_size;
+        // rbsp_trailing_bits: a 0x80 (or padding) terminates the walk.
+        if rbsp.get(p).is_none_or(|&b| b == 0x80) {
+            return Ok(None);
+        }
+    }
+}
+
 /// Byte offset of the START-CODE PREFIX of the first VCL NAL in an
 /// Annex-B AU, or `None` when no VCL NAL is present. VCL = H.264
 /// `nal_unit_type` 1..=5 (§7.4.1); H.265 `nal_unit_type` 0..=31
@@ -391,5 +530,68 @@ mod tests {
             insert_sei_before_first_vcl(&au, &sei, VideoCodec::H264),
             Err(MispTimeError::NoVclNal)
         ));
+    }
+
+    #[test]
+    fn extract_round_trips_all_kinds() {
+        for (codec, ts) in [
+            (VideoCodec::H264, MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F)),
+            (VideoCodec::H265, MispTimestamp::micros(42, 0x00)),
+            (VideoCodec::H265, MispTimestamp::nanos(u64::MAX, 0x9F)),
+        ] {
+            let sei = build_sei_nal(codec, &ts).unwrap();
+            let au_tail = match codec {
+                VideoCodec::H264 => h264_au(&[0x65]),
+                _ => {
+                    let mut v = Vec::new();
+                    v.extend_from_slice(&[0, 0, 0, 1, 0x26, 0x01, 0xBB]);
+                    v
+                }
+            };
+            let au = insert_sei_before_first_vcl(&au_tail, &sei, codec).unwrap();
+            assert_eq!(extract(&au, codec).unwrap(), Some(ts), "{codec:?}");
+        }
+    }
+
+    #[test]
+    fn extract_absent_is_none() {
+        assert_eq!(extract(&h264_au(&[0x65]), VideoCodec::H264).unwrap(), None);
+        assert_eq!(extract(&[], VideoCodec::H264).unwrap(), None);
+    }
+
+    #[test]
+    fn extract_foreign_uuid_is_none() {
+        // A user_data_unregistered SEI with a non-MISP UUID: skipped.
+        let mut nal = vec![0x06, 0x05, 28];
+        nal.extend_from_slice(&[0x11; 28]);
+        nal.push(0x80);
+        let mut au = vec![0, 0, 1];
+        au.extend_from_slice(&nal);
+        au.extend_from_slice(&h264_au(&[0x65]));
+        assert_eq!(extract(&au, VideoCodec::H264).unwrap(), None);
+    }
+
+    #[test]
+    fn extract_bad_guard_byte_errors() {
+        let ts = MispTimestamp::micros(0x0102_0304_0506_0708, 0x9F);
+        let mut sei = build_sei_nal(VideoCodec::H264, &ts).unwrap();
+        // Payload starts at offset 3 (header, type, size); guard #1 is
+        // payload[19] -> NAL offset 3 + 19 (no escapes in this payload).
+        sei[3 + 19] = 0x00;
+        let au = insert_sei_before_first_vcl(&h264_au(&[0x65]), &sei, VideoCodec::H264).unwrap();
+        assert!(matches!(
+            extract(&au, VideoCodec::H264),
+            Err(MispTimeExtractError::BadGuardByte)
+        ));
+    }
+
+    #[test]
+    fn extract_survives_escaped_payload() {
+        // The all-zero timestamp forces emulation-prevention bytes on
+        // build; extract must transparently strip them.
+        let ts = MispTimestamp::micros(0, 0x00);
+        let sei = build_sei_nal(VideoCodec::H264, &ts).unwrap();
+        let au = insert_sei_before_first_vcl(&h264_au(&[0x65]), &sei, VideoCodec::H264).unwrap();
+        assert_eq!(extract(&au, VideoCodec::H264).unwrap(), Some(ts));
     }
 }

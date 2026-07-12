@@ -205,6 +205,13 @@ def test_h264_depay_config_kwargs() -> None:
     assert cfg.max_au_bytes == 1024 * 1024
 
 
+def test_h264_depay_config_rejects_zero_max_au_bytes() -> None:
+    """max_au_bytes=0 is rejected (matches the JVM builder); a zero cap would
+    drop every AU and is never useful."""
+    with pytest.raises(ValueError):
+        tstrans.rtp.H264DepayConfig(max_au_bytes=0)
+
+
 def test_parameter_set_injection_enum() -> None:
     """ParameterSetInjection has NONE and BEFORE_IDR variants."""
     assert tstrans.rtp.ParameterSetInjection.NONE != tstrans.rtp.ParameterSetInjection.BEFORE_IDR

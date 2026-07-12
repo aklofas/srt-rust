@@ -598,11 +598,17 @@ signature, or struct layout was removed or changed.
 ### Fixed — post-v0.2.0 review hardening
 - H.264-over-RTP depacketizer: cached SPS/PPS parameter-set injection
   (`ParameterSetInjection::BeforeIdr`) no longer bypasses the
-  `H264DepayConfig::max_au_bytes` cap. Injection prepends the cached sets
-  after the append-time checks, so a small in-cap IDR access unit plus large
-  cached (or attacker-supplied `sprop-parameter-sets`) parameter sets could
-  emit an AU exceeding the advertised cap; the cap is now re-enforced after
-  injection and an over-cap AU is dropped (ticks `aus_dropped_oversize`).
+  `H264DepayConfig::max_au_bytes` cap, on three levels: (1) an over-cap
+  injected AU is dropped instead of emitted; (2) the injected AU length is
+  now preflighted so the over-cap prefix is never allocated/copied (closing a
+  memcpy-amplification vector where primed near-cap SPS+PPS made every later
+  IDR rebuild and drop a large prefix); and (3) parameter sets whose framed
+  length alone exceeds the cap are never retained in the SPS/PPS cache, whether
+  in-band or seeded from `initial_parameter_sets` / SDP `sprop-parameter-sets`.
+- H.264-over-RTP: `H264DepayConfig(max_au_bytes=0)` is now rejected by the
+  Python binding (raises `ValueError`), matching the JVM builder. A zero cap
+  drops every AU and is never useful; the raw Rust struct still accepts it
+  (documented as degenerate).
 - HLS `#EXTINF` duration: `MuxPublisher`'s media-span computation no longer
   overflows its intermediate `ticks * 1_000_000_000` product for PTS deltas
   beyond ~56.9 h (debug panic / release wrap). The math now decomposes the

@@ -87,8 +87,9 @@ fn build_core_id(env: &mut JNIEnv<'_>, id: &CoreId) -> jni::errors::Result<jobje
     let (sensor_type_obj, sensor_id_arr) = if let Some((ref ty, ref uuid)) = id.sensor {
         let ordinal = id_type_ordinal(ty);
         if ordinal < 0 {
-            let _ = env.throw_new(
-                "org/tstrans/KlvDecodeException",
+            throw_klv_decode(
+                env,
+                "INTERNAL",
                 "Unknown IdType variant from Rust st1204 decoder",
             );
             return Err(jni::errors::Error::JavaException);
@@ -104,8 +105,9 @@ fn build_core_id(env: &mut JNIEnv<'_>, id: &CoreId) -> jni::errors::Result<jobje
     let (plat_type_obj, plat_id_arr) = if let Some((ref ty, ref uuid)) = id.platform {
         let ordinal = id_type_ordinal(ty);
         if ordinal < 0 {
-            let _ = env.throw_new(
-                "org/tstrans/KlvDecodeException",
+            throw_klv_decode(
+                env,
+                "INTERNAL",
                 "Unknown IdType variant from Rust st1204 decoder",
             );
             return Err(jni::errors::Error::JavaException);
@@ -452,8 +454,9 @@ fn build_violation<'local>(
         }
         // Non-exhaustive guard: any future variant is unknown — throw rather than fabricate.
         _ => {
-            let _ = env.throw_new(
-                "org/tstrans/KlvDecodeException",
+            throw_klv_decode(
+                env,
+                "INTERNAL",
                 "Unknown MismmsViolation variant from Rust validator crossing the JNI boundary",
             );
             return Err(jni::errors::Error::JavaException);

@@ -66,8 +66,8 @@ pub enum MismmsViolation {
     #[error("MISMMS Security LS (Tag 48) missing required sub-item: Tag {tag} ({name})")]
     MissingSecurityItem { tag: u8, name: &'static str },
 
-    /// Tag `tag` is present in `record.unknown` but its wire value is
-    /// zero-length, which does NOT satisfy MISMMS presence (ST 0902.8-05).
+    /// Tag `tag` has a zero-length wire value (from either a typed field or a
+    /// `record.unknown` entry), which does NOT satisfy MISMMS presence (ST 0902.8-05).
     #[error("MISMMS Tag {tag} has zero-length wire value (does not satisfy presence)")]
     ZeroLengthItem { tag: u8 },
 
@@ -287,15 +287,16 @@ pub fn validate_mismms(record: &UasDatalinkLs) -> Vec<MismmsViolation> {
     // Only run the sub-item check if Tag 48 is present (typed or unknown).
     // If absent, the MissingItem{48} violation was already added in Step 3.
     if present(48) {
-        // The typed field or an unknown entry with tag 48 provides the bytes.
-        let security_bytes: Option<&[u8]> = if let Some(ref v) = record.security_local_set {
-            Some(v.as_slice())
-        } else {
-            record
+        // Prefer the typed field only when non-empty; otherwise use the first
+        // non-empty unknown Tag 48 entry.  A typed Some(vec![]) does not satisfy
+        // presence and must not shadow a non-empty unknown entry.
+        let security_bytes: Option<&[u8]> = match &record.security_local_set {
+            Some(v) if !v.is_empty() => Some(v.as_slice()),
+            _ => record
                 .unknown
                 .iter()
-                .find(|f| f.tag == 48)
-                .map(|f| f.value.as_slice())
+                .find(|f| f.tag == 48 && !f.value.is_empty())
+                .map(|f| f.value.as_slice()),
         };
 
         match security_bytes {
@@ -593,6 +594,40 @@ mod tests {
             v.len(),
             2,
             "should produce exactly 2 violations for empty security_local_set; got: {v:?}"
+        );
+    }
+
+    #[test]
+    fn empty_typed_security_ls_with_non_empty_unknown_tag48() {
+        // security_local_set = Some(vec![]) (typed, empty) PLUS a non-empty valid
+        // unknown Tag 48 entry.  The source-selection fix must prefer the unknown
+        // non-empty bytes over the typed empty vec so the sub-item check runs.
+        let mut record = full_mismms_record();
+        record.security_local_set = Some(vec![]); // typed but empty → ZeroLengthItem{48}
+        record.unknown.push(OwnedRawField {
+            tag: 48,
+            value: full_security_ls_bytes(), // non-empty valid ST 0102 bytes
+        });
+
+        let v = validate_mismms(&record);
+
+        // The typed empty still fires ZeroLengthItem{48}.
+        assert!(
+            v.contains(&MismmsViolation::ZeroLengthItem { tag: 48 }),
+            "typed empty security_local_set should still produce ZeroLengthItem{{48}}; got: {v:?}"
+        );
+
+        // But the sub-item check must run against the unknown non-empty bytes →
+        // no MissingItem{48} and no MissingSecurityItem.
+        assert!(
+            !v.iter()
+                .any(|vi| matches!(vi, MismmsViolation::MissingItem { tag: 48, .. })),
+            "non-empty unknown Tag 48 must satisfy presence; got: {v:?}"
+        );
+        assert!(
+            !v.iter()
+                .any(|vi| matches!(vi, MismmsViolation::MissingSecurityItem { .. })),
+            "sub-item check should pass against the non-empty unknown bytes; got: {v:?}"
         );
     }
 }

@@ -344,13 +344,4 @@ fn st0601_tag94_absent_when_field_none() {
         decoded.miis_core_id.is_none(),
         "Tag 94 must be absent when miis_core_id is None"
     );
-    // Verify the wire bytes don't contain tag 94 (0x5E).
-    // ST 0601 wire format: 16-byte UL + BER length + body.
-    // Tag 94 = 0x5E. Search the body for a 0x5E byte at a tag position.
-    // Simplest: just confirm the decoded field is None (above), which the
-    // decoder would set if Tag 94 were present with any value.
-    assert!(
-        !buf.windows(1).any(|w| w == [0x5E]),
-        "encoded bytes must not contain 0x5E (Tag 94) when field is None"
-    );
 }

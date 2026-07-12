@@ -225,7 +225,7 @@ fn id_type_from_bits(bits: u8) -> IdType {
         0b10 => IdType::Virtual,
         0b01 => IdType::Managed,
         // 0b00 (None) should never reach here — callers check has_sensor/platform first.
-        _ => IdType::Managed, // unreachable in valid call paths
+        _ => unreachable!("id_type_from_bits called with unvalidated bits"),
     }
 }
 

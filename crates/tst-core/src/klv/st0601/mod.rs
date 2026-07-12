@@ -54,6 +54,7 @@
 pub(crate) mod decode;
 pub(crate) mod encode;
 pub(crate) mod mapping;
+pub(crate) mod mismms;
 pub(crate) mod model;
 pub(crate) mod patch;
 pub(crate) mod tags;
@@ -67,6 +68,7 @@ pub use encode::{
     encode_with, encoded_len, encoded_len_with,
 };
 pub use mapping::{St0601SentinelMeaning, st0601_sentinel_meaning};
+pub use mismms::{MismmsViolation, validate_mismms};
 pub use model::{
     Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, OutOfRangePolicy, UasDatalinkLs,
 };

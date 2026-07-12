@@ -277,6 +277,7 @@ fn each_typed_field<F: FnMut(u8, usize)>(
                 .map(|_| 1)
                 .or(if auto_version { Some(1) } else { None }),
             74 => record.vmti.as_ref().map(|v| v.len()),
+            94 => record.miis_core_id.as_ref().map(|v| v.len()),
             // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so
             // that `byte_length` comes from the single `tags::TAGS` source.
             _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
@@ -340,6 +341,7 @@ pub(super) fn encode_tag_value(
             (None, None) => None,
         },
         74 => record.vmti.clone(),
+        94 => record.miis_core_id.clone(),
         // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so the
         // tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {

@@ -305,3 +305,52 @@ fn st0601_default_encode_does_not_strip_control_chars() {
         "default encode must NOT strip control chars"
     );
 }
+
+// ── Tag 94: MIIS Core Identifier ────────────────────────────────────────────
+
+/// The 34-byte Foundational Core Identifier from ST 1204.3 Table 7.
+/// This is the binary value of the KLV example in that table (key + length
+/// stripped — only the value bytes are stored in `miis_core_id`).
+const ST1204_TABLE7_VALUE: &[u8] = &[
+    0x01, 0x70, 0xF5, 0x92, 0xF0, 0x23, 0x73, 0x36, 0x4A, 0xF8, 0xAA, 0x91, 0x62, 0xC0, 0x0F, 0x2E,
+    0xB2, 0xDA, 0x16, 0xB7, 0x43, 0x41, 0x00, 0x08, 0x41, 0xA0, 0xBE, 0x36, 0x5B, 0x5A, 0xB9, 0x6A,
+    0x36, 0x45,
+];
+
+#[test]
+fn st0601_tag94_miis_core_id_decode_roundtrip() {
+    // Encode a record with miis_core_id set to the ST 1204 Table 7 example.
+    let record = UasDatalinkLs {
+        miis_core_id: Some(ST1204_TABLE7_VALUE.to_vec()),
+        ..Default::default()
+    };
+    let buf = encode_to_vec(&record).expect("encode must succeed");
+    let decoded = decode(&buf).expect("decode must succeed");
+    assert_eq!(
+        decoded.miis_core_id.as_deref(),
+        Some(ST1204_TABLE7_VALUE),
+        "Tag 94 bytes must survive encode→decode round-trip byte-identical"
+    );
+    assert!(decoded.field_errors.is_empty(), "no field errors expected");
+}
+
+#[test]
+fn st0601_tag94_absent_when_field_none() {
+    // A record without miis_core_id must not emit Tag 94.
+    let record = UasDatalinkLs::default();
+    let buf = encode_to_vec(&record).expect("encode must succeed");
+    let decoded = decode(&buf).expect("decode must succeed");
+    assert!(
+        decoded.miis_core_id.is_none(),
+        "Tag 94 must be absent when miis_core_id is None"
+    );
+    // Verify the wire bytes don't contain tag 94 (0x5E).
+    // ST 0601 wire format: 16-byte UL + BER length + body.
+    // Tag 94 = 0x5E. Search the body for a 0x5E byte at a tag position.
+    // Simplest: just confirm the decoded field is None (above), which the
+    // decoder would set if Tag 94 were present with any value.
+    assert!(
+        !buf.windows(1).any(|w| w == [0x5E]),
+        "encoded bytes must not contain 0x5E (Tag 94) when field is None"
+    );
+}

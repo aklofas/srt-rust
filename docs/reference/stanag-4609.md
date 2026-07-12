@@ -40,7 +40,7 @@ conformance still depends on the caller supplying correct timestamps and require
 | Video coding — H.264 | MISB RP 0802.2 | ✅ Carriage supported | Annex-B NAL push (`push_video_to`); SPS/PPS parameter-set parsing (`codec::h264`). Encoding is the caller's responsibility (out of library scope). |
 | Video coding — H.265 | H.265 / HEVC | ✅ Carriage supported | Annex-B NAL push; VPS/SPS/PPS parsing (`codec::h265`). Encoding is the caller's responsibility. |
 | Commercial Time Stamp (UTC wall-clock SEI) | MISB ST 0604.6 §7.3 | ⏳ Deferred | No consumer has requested the `payloadType=21` UTC wall-clock SEI family. See [deferred-features.md](/docs/project/deferred-features.md). |
-| H.262 timestamps | MISB ST 0604.6 §6 | ❌ Deferred | H.262 (MPEG-2 Video) carriage is not planned. See [deferred-features.md](/docs/project/deferred-features.md). |
+| H.262 timestamps | MISB ST 0604.6 §10 | ❌ Deferred | H.262 (MPEG-2 Video) carriage is not planned. See [deferred-features.md](/docs/project/deferred-features.md). |
 | AV1 / H.266 MISP SEI splice | ST 0604.6 (future) | ⏳ Deferred | The MISP SEI splice is implemented for H.264 and H.265 only; AV1 and H.266 do not yet have a standardized MISP timestamp SEI payload. See [deferred-features.md](/docs/project/deferred-features.md). |
 | Legacy EG 0104 metadata | MISB EG 0104 | ❌ Deferred | The EG 0104 "Predator" metadata format predates ST 0601 and is not in any planned consumer's workflow. See [deferred-features.md](/docs/project/deferred-features.md). |
 | MISMMS cadence tracker | ST 0902.8 | ⏳ Deferred | `validate_mismms` is a per-record snapshot check. A stream-level cadence tracker (verifying 1-Hz or better KLV delivery across multiple records) is not yet implemented. See [deferred-features.md](/docs/project/deferred-features.md). |
@@ -132,7 +132,7 @@ if (!violations.isEmpty()) {
 
 /* Splice a MISP SEI into the access unit and push to the muxer.
    misp_kind=0 → microsecond precision (ST 0604 Class 0).
-   misp_kind=1 → nanosecond precision.
+   misp_kind=1 → nanosecond precision (H.265-only per ST 0604.6 §12.2; returns TST_E_MISP_TIME on H.264).
    time_status is the ST 0603 byte (0x01 = locked).
    Returns 0 on success; call tst_get_last_error() on failure. */
 int rc = tst_muxer_push_video_misp_to(

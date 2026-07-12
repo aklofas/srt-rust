@@ -18,11 +18,12 @@ within the library's scope is satisfied, and additional features (such as ST
 1204 Core Identifier support) from later MISP revisions are also available.
 
 Consumers whose ground-station or recorder toolchain is contractually pinned to
-STANAG 4609 Edition 5 (= MISP-2019.1) should note that the library's output is
-fully compatible with that baseline. The extra MISP-post-2019.1 features the
+STANAG 4609 Edition 5 (= MISP-2019.1) should note that the library's output satisfies
+the in-scope requirements of that baseline. The extra MISP-post-2019.1 features the
 library exposes — ST 0604 video timestamps, the ST 0902 MISMMS validator, and
 ST 1204 Core Identifier — are **opt-in**: a stream produced with only the
-base APIs is STANAG 4609 Ed 5 compliant.
+base APIs meets the library's obligations under STANAG 4609 Ed 5 — end-to-end
+conformance still depends on the caller supplying correct timestamps and required metadata.
 
 ---
 
@@ -55,9 +56,9 @@ guides for full context on muxer setup and handle acquisition.
 ### Rust
 
 ```rust
-use tst_core::codec::misp_time::{MispTimestamp, MispTimeKind};
+use tst_core::codec::misp_time::MispTimestamp;
 use tst_core::klv::st0601::validate_mismms;
-use tst_core::mpegts::common::{Pts90khz, VideoStreamHandle};
+use tst_core::mpegts::mux::VideoStreamHandle;
 
 // Build a microsecond-precision MISP timestamp (H.264 or H.265).
 // time_status carries the ST 0603 byte — 0x00 = unsynchronised, 0x01 = locked.
@@ -86,7 +87,7 @@ misp = MispTimestamp.micros(system_time_us, time_status=0x01)
 
 # Splice the MISP SEI and push to the muxer.
 # dts=None uses pts as DTS (no B-frame reordering).
-muxer.push_video_misp_to(handle, nal, pts, dts=None, key_frame=True, misp=misp)
+muxer.push_video_misp_to(handle, nal, pts=pts, dts=None, key_frame=True, misp=misp)
 
 # Extract a MISP timestamp from a received access unit (returns None when absent).
 ts = extract_misp_timestamp(au_bytes, VideoCodec.H264)

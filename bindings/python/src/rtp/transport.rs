@@ -322,10 +322,10 @@ impl PySender {
 /// Python RTP receiver — wraps `tst_rtp::RtpRecvTransport`.
 ///
 /// Binds to `url` (literal IP:port). For multicast URLs, joins the
-/// group automatically. `pkt_size` describes the expected send-side
-/// packet size; it has no effect on the receive buffer, which always
-/// accepts any legal datagram. The 12-byte RTP header is stripped
-/// internally so `.recv()` returns just the TS payload bytes.
+/// group automatically. The receive buffer sizes itself to the
+/// transport's deliverable ceiling; `?pkt_size=` on a receiver URL is
+/// rejected. The 12-byte RTP header is stripped internally so `.recv()`
+/// returns just the TS payload bytes.
 #[pyclass(name = "Receiver", module = "tstrans.rtp")]
 pub(crate) struct PyReceiver {
     inner: Option<RtpRecvTransport>,
@@ -344,14 +344,12 @@ impl PyReceiver {
     /// Bind a receiver to `url` (e.g. `"rtp://127.0.0.1:5004"` for
     /// unicast or `"rtp://239.0.0.1:5004"` for multicast).
     ///
-    /// `pkt_size` describes the expected send-side packet size; it has
-    /// no effect on the receive buffer, which always accepts any legal datagram.
+    /// The receive buffer sizes itself to the transport's deliverable
+    /// ceiling; `?pkt_size=` on a receiver URL is rejected.
     #[new]
-    #[pyo3(signature = (url, *, pkt_size = 1316))]
-    fn new(py: Python<'_>, url: &str, pkt_size: usize) -> PyResult<Self> {
-        let mut builder = RtpRecvSocketBuilder::from_url(url)
+    fn new(py: Python<'_>, url: &str) -> PyResult<Self> {
+        let builder = RtpRecvSocketBuilder::from_url(url)
             .map_err(|e| make_rtp_error(py, "TRANSPORT", &e.to_string()))?;
-        builder.pkt_size(pkt_size);
         let inner = builder.build().map_err(|e| connect_error_to_pyerr(py, e))?;
         let scratch_len = inner.max_payload();
         let cancel = inner

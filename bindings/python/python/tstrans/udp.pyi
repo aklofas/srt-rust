@@ -266,10 +266,6 @@ class RecvTransportBuilder:
         """``SO_RCVBUF`` size in bytes."""
         ...
 
-    def pkt_size(self, v: int) -> RecvTransportBuilder:
-        """Override recv scratch-buffer size (must be ≥ max datagram)."""
-        ...
-
     def iface(self, s: str) -> RecvTransportBuilder:
         """Multicast interface name or literal IP for the join call."""
         ...

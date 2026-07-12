@@ -170,3 +170,15 @@ def test_udp_error_wiring_via_test_helper() -> None:
         with pytest.raises(UdpError) as excinfo:
             _raise_udp_error_for_test(kind.name, f"test {kind.name}")
         assert excinfo.value.kind == kind
+
+
+# ---------------------------------------------------------------------------
+# pkt_size recv rejection
+# ---------------------------------------------------------------------------
+
+
+def test_recv_builder_rejects_pkt_size_url():
+    b = udp.RecvTransport.builder().bind_url("udp://@127.0.0.1:0?pkt_size=1316")
+    with pytest.raises(UdpError) as ei:
+        b.build()
+    assert "send-side knob" in str(ei.value)

@@ -240,11 +240,6 @@ class RecvTransportBuilder:
         """Session timeout, milliseconds."""
         ...
 
-    def pkt_size(self, v: int) -> Self:
-        """Expected send-side packet size; has no effect on the receive
-        buffer, which always accepts any legal block."""
-        ...
-
     def build(self) -> RecvTransport:
         """Build the ``RecvTransport``.
 

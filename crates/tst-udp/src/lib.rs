@@ -8,7 +8,7 @@
 //! - `udp://@group:port` — multicast recv (the `@` prefix is the ffmpeg convention)
 //! - `udp://group:port` (group in 224.0.0.0/4 or ff00::/8) — multicast send
 //!
-//! Query parameters: `iface`, `ttl`, `tos`, `rcvbuf`, `sndbuf`, `pkt_size`, `localaddr`.
+//! Query parameters: `iface`, `ttl`, `tos`, `rcvbuf`, `sndbuf`, `pkt_size (send-only)`, `localaddr`.
 //!
 //! # Examples
 //!

@@ -53,6 +53,9 @@ impl UdpRecvTransport {
     /// - For multicast groups, the socket joins the group on bind.
     pub fn listen(url: &str) -> Result<Self, UdpError> {
         let url = UdpUrl::parse(url)?;
+        if url.pkt_size.is_some() {
+            return Err(UdpError::Url(crate::url::UdpUrlError::RecvPktSize));
+        }
         let mut cfg = SocketConfig::default();
         cfg.merge_from_url(&url);
         Self::with_config(&url, &cfg)
@@ -346,6 +349,27 @@ mod tests {
             "expected 2000 bytes, got {got} (truncation may have occurred)"
         );
         assert_eq!(&buf[..got], &payload[..], "payload content mismatch");
+    }
+
+    /// `listen` must reject `?pkt_size=` the same way the builder path does.
+    ///
+    /// Before the fix, the public direct-listen entry parsed the URL itself and
+    /// called `with_config` directly, bypassing the builder's rejection check.
+    #[test]
+    fn listen_rejects_pkt_size_query() {
+        let result = UdpRecvTransport::listen("udp://@127.0.0.1:0?pkt_size=1316");
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("direct listen must reject ?pkt_size= like the builder path"),
+        };
+        assert!(
+            matches!(err, UdpError::Url(crate::url::UdpUrlError::RecvPktSize)),
+            "expected UdpError::Url(RecvPktSize), got: {err:?}"
+        );
+        assert!(
+            err.to_string().contains("send-side knob"),
+            "error message must teach the caller: got: {err}"
+        );
     }
 
     /// DA-NET-7: two receivers joining the same multicast group on loopback

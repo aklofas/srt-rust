@@ -56,6 +56,10 @@ name = "klv_st0903_decode"
 
 [[target]]
 crate = "tst-core"
+name = "misp_sei_extract"
+
+[[target]]
+crate = "tst-core"
 name = "mpegts_au_cell_read"
 
 [[target]]

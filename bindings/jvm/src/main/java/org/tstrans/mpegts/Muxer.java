@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import org.tstrans.MuxException;
 import org.tstrans.NativeHandle;
+import org.tstrans.codec.MispTimestamp;
 
 /**
  * Stateful MPEG-TS multiplexer (sender side). Mirrors {@code tstrans.mpegts.Muxer}.
@@ -264,6 +265,58 @@ public final class Muxer extends NativeHandle {
     }
 
     /**
+     * Push one H.264 or H.265 access unit onto a specific configured video
+     * stream, splicing the MISB ST 0604 MISP timestamp SEI in front of the
+     * first VCL NAL. Mirrors {@code Muxer::push_video_misp_to}.
+     *
+     * <p>The {@code misp} record's {@code value} is treated as unsigned 64-bit
+     * (bit-pattern reinterpretation across the JNI boundary).
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param nal      the access unit bytes (Annex-B start-code prefixed)
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param keyFrame whether this AU is a random-access point
+     * @param misp     the MISP timestamp to splice into the SEI
+     * @throws MuxException {@code INVALID_USAGE} (malformed handle, or
+     *     {@link org.tstrans.codec.MispTimeKind#NANO} on H.264),
+     *     {@code INPUT_MALFORMED} (not Annex-B, or no VCL NAL), or
+     *     {@code BACKPRESSURE}.
+     */
+    public void pushVideoMispTo(VideoStreamHandle h, byte[] nal, long pts, boolean keyFrame,
+            MispTimestamp misp) throws MuxException {
+        ensureOpen("Muxer is closed");
+        nPushVideoMispTo(peekHandle(), h.raw(), nal, pts, keyFrame,
+                misp.kind().ordinal(), misp.timeStatus(), misp.value());
+    }
+
+    /**
+     * Push one H.264 or H.265 access unit onto a specific configured video
+     * stream, splicing the MISB ST 0604 MISP timestamp SEI in front of the
+     * first VCL NAL, with an explicit decode timestamp for B-frame reordered
+     * streams. Mirrors {@code Muxer::push_video_misp_to_with_dts}.
+     *
+     * <p>The {@code misp} record's {@code value} is treated as unsigned 64-bit
+     * (bit-pattern reinterpretation across the JNI boundary).
+     *
+     * @param h        handle of the target video stream (from this muxer)
+     * @param nal      the access unit bytes (Annex-B start-code prefixed)
+     * @param pts      90&nbsp;kHz presentation timestamp
+     * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
+     * @param keyFrame whether this AU is a random-access point
+     * @param misp     the MISP timestamp to splice into the SEI
+     * @throws MuxException {@code INVALID_USAGE} (malformed handle, or
+     *     {@link org.tstrans.codec.MispTimeKind#NANO} on H.264),
+     *     {@code INPUT_MALFORMED} (not Annex-B, or no VCL NAL), or
+     *     {@code BACKPRESSURE}.
+     */
+    public void pushVideoMispTo(VideoStreamHandle h, byte[] nal, long pts, long dts,
+            boolean keyFrame, MispTimestamp misp) throws MuxException {
+        ensureOpen("Muxer is closed");
+        nPushVideoMispToWithDts(peekHandle(), h.raw(), nal, pts, dts, keyFrame,
+                misp.kind().ordinal(), misp.timeStatus(), misp.value());
+    }
+
+    /**
      * Push one KLV local-set onto a specific configured KLV stream. Same
      * pass-through and AU-cell-wrap semantics as {@link #pushKlv}; obtain {@code h}
      * from {@link #klvStreamHandle(int)}.
@@ -479,6 +532,11 @@ public final class Muxer extends NativeHandle {
             long pts, long dts, boolean keyFrame) throws MuxException;
     private static native void nPushVideoWireToWithDts(long handle, long streamHandleRaw,
             byte[] wire, long pts, long dts, boolean keyFrame) throws MuxException;
+    private static native void nPushVideoMispTo(long handle, long streamHandleRaw, byte[] nal,
+            long pts, boolean keyFrame, int kind, int timeStatus, long value) throws MuxException;
+    private static native void nPushVideoMispToWithDts(long handle, long streamHandleRaw, byte[] nal,
+            long pts, long dts, boolean keyFrame, int kind, int timeStatus, long value)
+            throws MuxException;
     private static native void nPushKlvTo(long handle, long streamHandleRaw, byte[] klv,
             long pts, int metadataServiceId) throws MuxException;
     private static native void nPushAudioTo(long handle, long streamHandleRaw, byte[] frames,

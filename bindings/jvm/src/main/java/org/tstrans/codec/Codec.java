@@ -393,6 +393,32 @@ public final class Codec {
         return nParseAacFramesWithResync(bytes);
     }
 
+    // --- MISP timestamp native entry point --------------------------------
+    // nExtractMispTimestamp scans an Annex-B AU for the first ST 0604 MISP
+    // SEI. Returns null when absent; leaves a pending CodecParseException
+    // (ENGINE_ERROR) when a MISP identifier is found but the payload is
+    // malformed. Package-private: called only via MispTimestamp.extract.
+
+    private static native MispTimestamp nExtractMispTimestamp(byte[] au, int codecOrdinal);
+
+    /**
+     * Scan an Annex-B access unit for the first MISB ST 0604 MISP timestamp
+     * SEI and return it, or {@code null} when absent. Called by
+     * {@link MispTimestamp#extract}; package-private to keep the public API
+     * on {@code MispTimestamp}.
+     *
+     * @param au           Annex-B access unit bytes
+     * @param codecOrdinal Java {@code VideoCodec} ordinal (0=H264, 1=H265,
+     *                     2=H266, 3=AV1)
+     * @return the first MISP timestamp found, or {@code null}
+     * @throws CodecParseException if a MISP identifier matched but the
+     *         payload is malformed
+     */
+    static MispTimestamp extractMispTimestamp(byte[] au, int codecOrdinal)
+            throws CodecParseException {
+        return nExtractMispTimestamp(au, codecOrdinal);
+    }
+
     // --- MPEG audio native entry points ----------------------------------
     // nParseMpeg2AudioFrames is strict: it leaves a pending
     // CodecParseException and returns null on the first parse error.

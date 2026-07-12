@@ -54,13 +54,13 @@
 //!   [`ManagedRecvTransport::reconnects_count`] accessor exposes the
 //!   rebuild count for callers that want to build their own reset
 //!   logic.
-//! - **`max_payload` is assumed stable across reconnects.** The
-//!   `RecvTransport` value reported here is the live inner's current
-//!   value, but consumers that cache it at construction time (e.g.
-//!   `Receiver`'s `recv_buf`) won't re-size if a reconnected peer
-//!   advertises a different `SRTO_PAYLOADSIZE`. In practice every libsrt
-//!   peer uses the 1316-byte default; a remote changing it across
-//!   reconnects is exotic.
+//! - **`max_payload` during reconnect.** While the inner is alive the
+//!   reported value is the live inner's current value. While mid-reconnect
+//!   (`inner` is `None`) the last live inner's value is returned from a
+//!   cached field — never a fixed constant that could understate the
+//!   deliverable ceiling. Consumers that cache `max_payload` at construction
+//!   time (e.g. `Receiver`'s `recv_buf`) still won't re-size on reconnect,
+//!   but they won't be told a falsely-small ceiling either.
 //! - **Demuxer flush is not invoked.** Terminal `TransportError::Closed`
 //!   from this decorator means the reconnect budget is exhausted; the
 //!   higher-level shell (`DemuxReceiver`) is responsible for calling
@@ -70,7 +70,6 @@ use crate::reconnect::ReconnectPolicy;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
-use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -123,6 +122,15 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     /// observers can hold a handle independent of the decorator's
     /// lifetime.
     reconnects: Arc<AtomicU64>,
+    /// Deliverable ceiling reported while `inner` is `None`
+    /// (mid-reconnect): the most recent live inner's `max_payload()`.
+    /// Initialized from the construction-time inner and refreshed on
+    /// every successful factory rebuild, so the module-doc "max_payload
+    /// is assumed stable across reconnects" contract holds through the
+    /// window. Deliberate asymmetry with the send-side wrapper (see
+    /// `reconnect::mod` max_payload): understating a send budget is
+    /// safe; understating a recv ceiling was the PR #97 bug class.
+    last_live_max_payload: usize,
 }
 
 impl<R: RecvTransport> ManagedRecvTransport<R> {
@@ -139,6 +147,7 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
         let inner_cancel: Arc<
             Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>,
         > = Arc::new(Mutex::new(inner.cancel_handle()));
+        let last_live_max_payload = inner.max_payload();
         Self {
             inner: Some(inner),
             factory,
@@ -148,6 +157,7 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inner_cancel,
             reconnects: Arc::new(AtomicU64::new(0)),
+            last_live_max_payload,
         }
     }
 
@@ -267,6 +277,7 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         })?;
                         *guard = t.cancel_handle();
                         drop(guard);
+                        self.last_live_max_payload = t.max_payload();
                         self.inner = Some(t);
                         // Observable post-rebuild — higher-level shells
                         // (`ManagedDemuxReceiver`) read this counter between
@@ -298,14 +309,13 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
     }
 
     fn max_payload(&self) -> usize {
-        // SRT_TS_BUNDLE_BYTES (1316) is libsrt's universal SRT_DEFAULT_PAYLOADSIZE; used as a
-        // safe fallback when the inner is mid-reconnect (None). Receive
-        // shells that cache this on construction won't observe the None
-        // window since they only call max_payload at construction time.
+        // Live inner: report its current value. Mid-reconnect (None):
+        // report the most recent live inner's value — never a fixed
+        // constant that could understate the deliverable ceiling.
         self.inner
             .as_ref()
             .map(|i| i.max_payload())
-            .unwrap_or(SRT_TS_BUNDLE_BYTES)
+            .unwrap_or(self.last_live_max_payload)
     }
 
     fn is_alive(&self) -> bool {
@@ -565,6 +575,77 @@ mod tests {
                 cancelled: self.cancelled.clone(),
             }))
         }
+    }
+
+    /// Recv mock with an explicit deliverable ceiling; breaks after
+    /// `ok_until` reads like FlakyRecv.
+    struct CeilingRecv {
+        ceiling: usize,
+        calls: usize,
+        ok_until: usize,
+    }
+
+    impl RecvTransport for CeilingRecv {
+        fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+            self.calls += 1;
+            if self.calls <= self.ok_until {
+                buf[0] = self.calls as u8;
+                Ok(1)
+            } else {
+                Err(TransportError::Broken {
+                    msg: "ceiling test transport".into(),
+                    errno_code: None,
+                })
+            }
+        }
+        fn max_payload(&self) -> usize {
+            self.ceiling
+        }
+        fn is_alive(&self) -> bool {
+            self.calls < self.ok_until
+        }
+    }
+
+    /// Mid-reconnect (inner torn down, factory exhausted), max_payload
+    /// reports the LAST LIVE inner's ceiling — not a 1316 constant.
+    /// 9000 is deliberately != 1316 and != any transport default so a
+    /// regression to either is caught (non-vacuous).
+    #[test]
+    fn max_payload_mid_reconnect_reports_cached_ceiling() {
+        let factory = Box::new(|| {
+            Err(TransportError::Broken {
+                msg: "factory always fails".into(),
+                errno_code: None,
+            })
+        });
+        let initial = CeilingRecv { ceiling: 9000, calls: 0, ok_until: 1 };
+        let mut m = ManagedRecvTransport::new(initial, factory, fast_policy(Some(2)));
+        assert_eq!(m.max_payload(), 9000, "live inner's ceiling");
+
+        let mut buf = [0u8; 16];
+        let _ = m.recv_bytes(&mut buf); // serves 1 byte
+        let _ = m.recv_bytes(&mut buf); // breaks; factory fails; budget exhausts
+        assert_eq!(
+            m.max_payload(),
+            9000,
+            "cached last-live ceiling during/after the None window, not 1316"
+        );
+    }
+
+    /// A successful rebuild refreshes the cache to the NEW inner's ceiling.
+    #[test]
+    fn max_payload_refreshes_on_successful_rebuild() {
+        let factory = Box::new(|| {
+            Ok(CeilingRecv { ceiling: 7000, calls: 0, ok_until: 10 })
+        });
+        let initial = CeilingRecv { ceiling: 9000, calls: 0, ok_until: 1 };
+        let mut m = ManagedRecvTransport::new(initial, factory, fast_policy(Some(5)));
+
+        let mut buf = [0u8; 16];
+        let _ = m.recv_bytes(&mut buf); // initial serves 1
+        let n = m.recv_bytes(&mut buf).expect("reconnects to fresh inner");
+        assert_eq!(n, 1);
+        assert_eq!(m.max_payload(), 7000, "ceiling follows the rebuilt inner");
     }
 
     #[test]

@@ -53,6 +53,7 @@ Recipe numbers are stable across edits — existing inbound links stay valid as 
 - **Recipe 7: Encode ST 0601 from typed values** — [07-encode-st0601.md](klv/07-encode-st0601.md) — Synthesizing KLV for tests, generating fixtures, or translating from a different metadata format in a gateway.
 - **Recipe 28: Decode security metadata from an ST 0601 record** — [28-decode-security-metadata.md](klv/28-decode-security-metadata.md) — ST 0601 Tag 48 (Security Local Set) is populated and you need ST 0102 classification, country codes, and version info.
 - **Recipe 30: Decode VMTI per-target detections from an ST 0601 stream** — [30-decode-vmti.md](klv/30-decode-vmti.md) — ISR capture analysis — surface detected/tracked targets per frame via Tag 74 (VMTI Local Set).
+- **Recipe 35: Build a STANAG 4609-conformant stream** — [35-stanag-4609-stream.md](klv/35-stanag-4609-stream.md) — ST 0604 per-frame MISP timestamps + ST 0902 MISMMS validator gate + strict-compliance encode + Tag 94 Core ID. Rust primary + Python variant.
 
 ### 🎞 Codecs — parse video and audio elementary streams
 

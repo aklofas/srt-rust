@@ -277,7 +277,7 @@ public final class Muxer extends NativeHandle {
      * @param pts      90&nbsp;kHz presentation timestamp
      * @param keyFrame whether this AU is a random-access point
      * @param misp     the MISP timestamp to splice into the SEI
-     * @throws MuxException {@code INVALID_USAGE} (malformed handle, or
+     * @throws MuxException {@code INPUT_MALFORMED} (malformed handle, or
      *     {@link org.tstrans.codec.MispTimeKind#NANO} on H.264),
      *     {@code INPUT_MALFORMED} (not Annex-B, or no VCL NAL), or
      *     {@code BACKPRESSURE}.
@@ -304,7 +304,7 @@ public final class Muxer extends NativeHandle {
      * @param dts      90&nbsp;kHz decode timestamp (must be &le; {@code pts})
      * @param keyFrame whether this AU is a random-access point
      * @param misp     the MISP timestamp to splice into the SEI
-     * @throws MuxException {@code INVALID_USAGE} (malformed handle, or
+     * @throws MuxException {@code INPUT_MALFORMED} (malformed handle, or
      *     {@link org.tstrans.codec.MispTimeKind#NANO} on H.264),
      *     {@code INPUT_MALFORMED} (not Annex-B, or no VCL NAL), or
      *     {@code BACKPRESSURE}.

@@ -584,7 +584,7 @@ pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoWireToWithDts<'lo
 /// before the first VCL NAL. `kind` is the `MispTimeKind` ordinal (0=MICRO,
 /// 1=NANO); `value` is treated as unsigned 64-bit (bit-pattern reinterpret from
 /// `jlong`). Out-of-range kind → `MuxException(INVALID_USAGE)`. An H.264 stream
-/// with `kind=NANO` → `MuxException(INVALID_USAGE)` via the Rust `MispTimeError`.
+/// with `kind=NANO` → `MuxException(INPUT_MALFORMED)` via the Rust `MispTimeError`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_mpegts_Muxer_nPushVideoMispTo<'local>(
     mut env: JNIEnv<'local>,

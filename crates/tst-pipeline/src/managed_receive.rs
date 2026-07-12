@@ -125,11 +125,13 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     /// Deliverable ceiling reported while `inner` is `None`
     /// (mid-reconnect): the most recent live inner's `max_payload()`.
     /// Initialized from the construction-time inner and refreshed on
-    /// every successful factory rebuild, so the module-doc "max_payload
-    /// is assumed stable across reconnects" contract holds through the
-    /// window. Deliberate asymmetry with the send-side wrapper (see
-    /// `reconnect::mod` max_payload): understating a send budget is
-    /// safe; understating a recv ceiling was the PR #97 bug class.
+    /// every successful factory rebuild, so `max_payload()` keeps
+    /// reporting the last live ceiling through the window (see the
+    /// module-doc "`max_payload` during reconnect" bullet) — never a
+    /// fixed constant that could understate it. Deliberate asymmetry
+    /// with the send-side wrapper (see `reconnect::mod` max_payload):
+    /// understating a send budget is safe; understating a recv ceiling
+    /// was the PR #97 bug class.
     last_live_max_payload: usize,
 }
 

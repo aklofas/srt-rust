@@ -13,7 +13,7 @@
 > **Related:**
 > - [languages/python.md](/docs/languages/python.md) — the `tstrans` Python surface
 > - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — raw-first `Video` events + opt-in `.parse()`
-> - [Recipe 18](18-reconstitute-annex-b.md) — Annex-B reconstruction (Rust)
+> - [Reconstitute Annex B parameter sets for decoder replay](/docs/cookbook/codecs/reconstitute-annex-b.md) — Annex-B reconstruction (Rust)
 
 Under the raw-first model, `DemuxEvent.Video.raw` is the exact encoded Annex-B access
 unit. Feed those bytes to a PyAV decoder `CodecContext` — no container, no file — and

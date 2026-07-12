@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-See [`srt-cancel-handle.md`](../../reference/srt-cancel-handle.md) for the full pattern,
+See [`srt-cancel-handle.md`](/docs/reference/srt-cancel-handle.md) for the full pattern,
 threading guarantees, and per-language idiom table (Java/Kotlin,
 Swift, Python, C). No standalone example; the snippet above runs as
 a doctest.

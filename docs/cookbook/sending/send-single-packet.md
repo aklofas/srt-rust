@@ -4,8 +4,8 @@
 
 > **Related:**
 > - [guides/pipeline.md](/docs/guides/pipeline.md) — the `Transport` trait and the sender shells that compose over it
-> - [Recipe 11](11-sender-from-url.md) — real SRT transport from a URL
-> - [Recipe 8](08-custom-transport.md) — implementing a custom (non-SRT) transport
+> - [Open a sender from an `srt://...?...` URL](/docs/cookbook/sending/sender-from-url.md) — real SRT transport from a URL
+> - [Use a custom (non-SRT) transport](/docs/cookbook/sending/custom-transport.md) — implementing a custom (non-SRT) transport
 
 The simplest possible sender: open a transport, push 188 bytes, drop.
 

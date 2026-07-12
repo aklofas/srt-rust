@@ -38,4 +38,4 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-Runnable: [../../../examples/muxing/mux_to_file.rs](../../../examples/muxing/mux_to_file.rs).
+Runnable: [examples/muxing/mux_to_file.rs](/examples/muxing/mux_to_file.rs).

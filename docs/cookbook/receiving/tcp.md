@@ -1,5 +1,12 @@
 # Receive MPEG-TS over TCP
 
+> **When to use this:** Reliable ingest — accept an inbound caller (listener) or connect out to a producer; TLS via `tcps://`.
+
+> **Related:**
+> - [Send MPEG-TS over TCP](/docs/cookbook/sending/tcp.md)
+> - [MPEG-TS demux guide](/docs/guides/mpegts-demux.md)
+> - [Receive MPEG-TS over UDP](/docs/cookbook/receiving/udp.md)
+
 ```rust
 use tst_pipeline::DemuxReceiver;
 use tst_tcp::TcpListener;
@@ -65,8 +72,3 @@ use tst_tcp::TcpTransport;
 let rx = TcpTransport::connect("tcp://192.168.1.10:7001")?;
 let mut receiver = DemuxReceiver::new(rx);
 ```
-
-## See also
-
-- [Send MPEG-TS over TCP](../sending/tcp.md)
-- [Receive MPEG-TS over UDP](udp.md)

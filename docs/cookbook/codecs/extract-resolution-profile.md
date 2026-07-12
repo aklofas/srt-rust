@@ -50,4 +50,4 @@ For H.265 substitute `h265::parse_parameter_sets` and use
 4.0 is stored as 120). The pattern is identical; only the import and field
 names differ.
 
-Runnable: [../../../examples/codec-parsing/parse_video_parameters.rs](../../../examples/codec-parsing/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
+Runnable: [examples/codec-parsing/parse_video_parameters.rs](/examples/codec-parsing/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.

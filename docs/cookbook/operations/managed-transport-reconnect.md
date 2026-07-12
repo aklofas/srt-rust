@@ -44,4 +44,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/operations/managed_reconnect.rs](../../../examples/operations/managed_reconnect.rs).
+Runnable: [examples/operations/managed_reconnect.rs](/examples/operations/managed_reconnect.rs).

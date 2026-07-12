@@ -43,4 +43,4 @@ for frame_idx in 0..30 {
 }
 ```
 
-Full example: [`../../../examples/muxing/mux_audio_video_klv.rs`](../../../examples/muxing/mux_audio_video_klv.rs).
+Full example: [`examples/muxing/mux_audio_video_klv.rs`](/examples/muxing/mux_audio_video_klv.rs).

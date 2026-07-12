@@ -65,4 +65,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/codec-parsing/parse_video_parameters.rs](../../../examples/codec-parsing/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guides/codec.md` for the decoder-replay section.
+Runnable: [examples/codec-parsing/parse_video_parameters.rs](/examples/codec-parsing/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guides/codec.md` for the decoder-replay section.

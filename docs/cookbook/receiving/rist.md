@@ -1,6 +1,12 @@
 # Receive MPEG-TS over RIST
 
-Companion to [Send over RIST](../sending/rist.md). Binds a RIST receiver
+> **When to use this:** Receiver side of RIST — bind URL form (`rist://@host:port`) with optional AES PSK decryption.
+
+> **Related:**
+> - [Send MPEG-TS over RIST](/docs/cookbook/sending/rist.md)
+> - [Receive MPEG-TS over UDP](/docs/cookbook/receiving/udp.md) — lower-level alternative without recovery
+
+Companion to [Send MPEG-TS over RIST](/docs/cookbook/sending/rist.md). Binds a RIST receiver
 using the ffmpeg `@`-prefix convention for "listen on this address."
 
 ## Code
@@ -65,8 +71,3 @@ loop {
 ffmpeg -f mpegts -i 'video.ts' \
     -c copy -f rtp_mpegts 'rist://10.0.0.5:9000?profile=simple&buffer=200'
 ```
-
-## See also
-
-- [Send over RIST](../sending/rist.md)
-- [Receive over UDP](udp.md) — lower-level alternative without recovery

@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — `ProgramMap`, `KlvLink`, and `metadata_descriptor` discovery
-> - [Recipe 27](27-eo-ir-shared-klv-pairer.md) — the typed-projection version using two `Pairer` instances
+> - [EO + IR composition with shared async-KLV](/docs/cookbook/pairing/eo-ir-shared-klv-pairer.md) — the typed-projection version using two `Pairer` instances
 
 Reach for this when the platform carries two sensors (visible + thermal) and one async metadata stream serves both. Both video streams attach the same KLV state; there is no per-stream pairing logic. The demuxer surfaces the topology as a `ProgramMap` with two `StreamInfo` rows of `StreamKind::Video(_)` and one `StreamKind::KlvAsync`; the `klv_links` table reports the encoder-declared (or inferred / overridden) linkage.
 
@@ -38,4 +38,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
 
-Runnable: see [../../../examples/receiving/demux_to_events.rs](../../../examples/receiving/demux_to_events.rs) for the file-feed shape; [../../../examples/pairing/pair_sync_klv.rs](../../../examples/pairing/pair_sync_klv.rs) is the related sync-KLV sibling.
+Runnable: see [examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs) for the file-feed shape; [examples/pairing/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs) is the related sync-KLV sibling.

@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — async-KLV carriage and PES timestamps
-> - [Recipe 26](26-pairer-last-before-pts.md) — the typed-projection version using `Pairer`
+> - [Sample-and-hold async KLV via `Pairer::last_before_pts`](/docs/cookbook/pairing/pairer-last-before-pts.md) — the typed-projection version using `Pairer`
 
 Reach for this when KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video. The canonical pairing is "the most recent KLV record where `klv.pts <= frame.pts`." There is no ambiguity about which KLV pairs with which frame; the only knob is whether to drop a frame when the most recent KLV is too stale.
 
@@ -32,4 +32,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: see [../../../examples/receiving/demux_to_events.rs](../../../examples/receiving/demux_to_events.rs) for the file-feed shape; [../../../examples/pairing/pair_sync_klv.rs](../../../examples/pairing/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
+Runnable: see [examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs) for the file-feed shape; [examples/pairing/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.

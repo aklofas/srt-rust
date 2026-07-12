@@ -29,4 +29,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/klv-metadata/extract_klv.rs](../../../examples/klv-metadata/extract_klv.rs) and [../../../examples/klv-metadata/klv_decode_file.rs](../../../examples/klv-metadata/klv_decode_file.rs).
+Runnable: [examples/klv-metadata/extract_klv.rs](/examples/klv-metadata/extract_klv.rs) and [examples/klv-metadata/klv_decode_file.rs](/examples/klv-metadata/klv_decode_file.rs).

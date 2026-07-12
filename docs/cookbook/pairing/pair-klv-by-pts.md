@@ -63,6 +63,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../../../examples/pairing/pair_sync_klv.rs) for the full runnable form.
+Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs) for the full runnable form.
 
-Runnable: [../../../examples/pairing/pair_sync_klv.rs](../../../examples/pairing/pair_sync_klv.rs); see also [../../../examples/receiving/demux_to_events.rs](../../../examples/receiving/demux_to_events.rs) for the file-feed shape.
+Runnable: [examples/pairing/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs); see also [examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs) for the file-feed shape.

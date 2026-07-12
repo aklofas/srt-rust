@@ -46,4 +46,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/muxing/mux_av1_with_klv.rs](../../../examples/muxing/mux_av1_with_klv.rs).
+Runnable: [examples/muxing/mux_av1_with_klv.rs](/examples/muxing/mux_av1_with_klv.rs).

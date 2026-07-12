@@ -37,4 +37,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/receiving/srt_listener_to_file.rs](../../../examples/receiving/srt_listener_to_file.rs).
+Runnable: [examples/receiving/srt_listener_to_file.rs](/examples/receiving/srt_listener_to_file.rs).

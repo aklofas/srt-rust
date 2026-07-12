@@ -4,9 +4,9 @@
 
 > **Related:**
 > - [guides/pipeline.md](/docs/guides/pipeline.md) — composing two `Pairer` instances
-> - [Recipe 14](14-eo-ir-shared-klv.md) — the inline `Option<Vec<u8>>` equivalent
+> - [EO + IR sensor pair with shared async-KLV](/docs/cookbook/pairing/eo-ir-shared-klv.md) — the inline `Option<Vec<u8>>` equivalent
 
-Two video PIDs sharing one async-KLV PID. Recipe 14's inline
+Two video PIDs sharing one async-KLV PID. The [EO + IR sensor pair](/docs/cookbook/pairing/eo-ir-shared-klv.md) recipe's inline
 `Option<Vec<u8>>` pattern remains valid; this recipe shows the same
 shape via two `Pairer` instances (one per video PID).
 

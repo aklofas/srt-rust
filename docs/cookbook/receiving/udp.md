@@ -1,5 +1,11 @@
 # Receive MPEG-TS over UDP
 
+> **When to use this:** Ingest raw UDP unicast or multicast MPEG-TS from ffmpeg, VLC, or STANAG 4609 senders.
+
+> **Related:**
+> - [Send MPEG-TS over UDP](/docs/cookbook/sending/udp.md)
+> - [MPEG-TS demux guide](/docs/guides/mpegts-demux.md)
+
 ```rust
 use tst_pipeline::DemuxReceiver;
 use tst_udp::UdpRecvTransport;
@@ -24,7 +30,3 @@ for event in &mut receiver {
 
 For unicast bind, prefix the host with `@` to make intent explicit:
 `udp://@0.0.0.0:5004`.
-
-## See also
-
-- [Send MPEG-TS over UDP](../sending/udp.md)

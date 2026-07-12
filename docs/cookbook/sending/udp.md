@@ -1,5 +1,13 @@
 # Send MPEG-TS over UDP
 
+> **When to use this:** Raw UDP unicast or multicast is the lowest-common-denominator transport — ffmpeg, VLC, TSDuck, and STANAG 4609 receivers ingest it directly.
+
+> **Related:**
+> - [Receive MPEG-TS over UDP](/docs/cookbook/receiving/udp.md)
+> - [Pipeline guide](/docs/guides/pipeline.md) — the `MuxSender` / `Sender` shells
+> - [Open a sender from an `srt://...?...` URL](/docs/cookbook/sending/sender-from-url.md) — reliable/encrypted alternative
+> - [Use a custom (non-SRT) transport](/docs/cookbook/sending/custom-transport.md) — RTP-wrapped UDP and other wires
+
 Raw MPEG-TS over UDP is the lowest-common-denominator broadcast transport.
 ffmpeg, VLC, GStreamer, and most STANAG 4609 ground stations consume it
 without configuration.
@@ -41,9 +49,3 @@ ffmpeg -i 'udp://0.0.0.0:5004?fifo_size=1000000' -c copy out.ts
 | `tos` | none | IP TOS / DSCP byte (e.g., `0xb8` for EF) |
 | `sndbuf` | OS default | SO_SNDBUF in bytes (suffixes: `K`, `M`) |
 | `pkt_size` | 1316 (7×188) | Datagram payload size |
-
-## See also
-
-- [Receive MPEG-TS over UDP](../receiving/udp.md)
-- [Send MPEG-TS over SRT](../sending/11-sender-from-url.md) — for reliable/encrypted transport
-- [Send MPEG-TS over RTP](../sending/08-custom-transport.md) — for RTP-wrapped UDP

@@ -3470,6 +3470,181 @@ fn parse_audio(
     Ok(list.into_py(py))
 }
 
+// === MISP timestamp (ST 0604) ===
+
+/// Which MISP time base a [`MispTimestamp`] carries.
+///
+/// `MICRO` — microseconds since the MISP epoch (valid for H.264 + H.265).
+/// `NANO`  — nanoseconds since the MISP epoch (H.265-only, ST 0604.6 §12.2).
+#[pyclass(eq, eq_int, name = "MispTimeKind", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MispTimeKindPy {
+    #[pyo3(name = "MICRO")]
+    Micro,
+    #[pyo3(name = "NANO")]
+    Nano,
+}
+
+impl From<tst_core::codec::misp_time::MispTimeKind> for MispTimeKindPy {
+    fn from(k: tst_core::codec::misp_time::MispTimeKind) -> Self {
+        match k {
+            tst_core::codec::misp_time::MispTimeKind::Nano => Self::Nano,
+            // MispTimeKind is #[non_exhaustive] — default to Micro.
+            _ => Self::Micro,
+        }
+    }
+}
+
+impl From<MispTimeKindPy> for tst_core::codec::misp_time::MispTimeKind {
+    fn from(k: MispTimeKindPy) -> Self {
+        match k {
+            MispTimeKindPy::Micro => Self::Micro,
+            MispTimeKindPy::Nano => Self::Nano,
+        }
+    }
+}
+
+/// One MISP timestamp destined for (or extracted from) a video SEI.
+///
+/// Construct via `MispTimestamp.micros(value_us, time_status)` or
+/// `MispTimestamp.nanos(value_ns, time_status)`.  Direct construction
+/// via `MispTimestamp(kind, time_status, value)` is also accepted.
+///
+/// `kind` — `MispTimeKind.MICRO` or `MispTimeKind.NANO`.
+/// `time_status` — MISB ST 0603 Time Status byte (0x00 = unknown).
+/// `value` — microseconds or nanoseconds since the MISP epoch.
+#[pyclass(name = "MispTimestamp", module = "tstrans.codec", frozen)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MispTimestampPy {
+    pub kind: MispTimeKindPy,
+    pub time_status: u8,
+    pub value: u64,
+}
+
+#[pymethods]
+impl MispTimestampPy {
+    #[new]
+    fn new(kind: MispTimeKindPy, time_status: u8, value: u64) -> Self {
+        Self {
+            kind,
+            time_status,
+            value,
+        }
+    }
+
+    #[getter]
+    fn kind(&self) -> MispTimeKindPy {
+        self.kind
+    }
+
+    #[getter]
+    fn time_status(&self) -> u8 {
+        self.time_status
+    }
+
+    #[getter]
+    fn value(&self) -> u64 {
+        self.value
+    }
+
+    /// Construct a microsecond-precision timestamp (valid for H.264 + H.265).
+    #[staticmethod]
+    fn micros(value_us: u64, time_status: u8) -> Self {
+        Self {
+            kind: MispTimeKindPy::Micro,
+            time_status,
+            value: value_us,
+        }
+    }
+
+    /// Construct a nanosecond-precision timestamp (H.265-only, ST 0604.6 §12.2).
+    #[staticmethod]
+    fn nanos(value_ns: u64, time_status: u8) -> Self {
+        Self {
+            kind: MispTimeKindPy::Nano,
+            time_status,
+            value: value_ns,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        let kind_str = match self.kind {
+            MispTimeKindPy::Micro => "MispTimeKind.MICRO",
+            MispTimeKindPy::Nano => "MispTimeKind.NANO",
+        };
+        format!(
+            "MispTimestamp(kind={}, time_status={:#04X}, value={})",
+            kind_str, self.time_status, self.value
+        )
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+impl From<tst_core::codec::misp_time::MispTimestamp> for MispTimestampPy {
+    fn from(ts: tst_core::codec::misp_time::MispTimestamp) -> Self {
+        Self {
+            kind: MispTimeKindPy::from(ts.kind),
+            time_status: ts.time_status,
+            value: ts.value,
+        }
+    }
+}
+
+impl From<MispTimestampPy> for tst_core::codec::misp_time::MispTimestamp {
+    fn from(ts: MispTimestampPy) -> Self {
+        use tst_core::codec::misp_time::MispTimestamp;
+        match ts.kind {
+            MispTimeKindPy::Micro => MispTimestamp::micros(ts.value, ts.time_status),
+            MispTimeKindPy::Nano => MispTimestamp::nanos(ts.value, ts.time_status),
+        }
+    }
+}
+
+/// Extract the first MISP timestamp SEI from an Annex-B access unit.
+///
+/// `au` — bytes-like access unit (Annex-B encoded, as delivered by the
+/// demuxer's `DemuxEvent.Video.raw`).
+/// `codec` — a `VideoCodec` enum member identifying the codec (`H264` or
+/// `H265`; the function is liberal and accepts any codec value but will
+/// return `None` for `H266` / `AV1` as ST 0604 defines no carriage for
+/// them).
+///
+/// Returns:
+/// - `None` — no MISP SEI present in the AU.
+/// - `MispTimestamp` — the first MISP SEI found.
+/// - Raises `ValueError` — a MISP identifier matched but the payload is
+///   malformed (truncated payload or bad guard byte).
+#[pyfunction]
+fn extract_misp_timestamp(
+    py: Python<'_>,
+    au: &Bound<'_, PyAny>,
+    codec: &Bound<'_, PyAny>,
+) -> PyResult<Option<MispTimestampPy>> {
+    use tst_core::codec::misp_time::{MispTimeExtractError, extract};
+    let coerced = crate::util::coerce_bytes_like(py, au)?;
+    let au_bytes = coerced.as_bytes();
+    // Bridge via the demux codec converter, then to the mux codec via From.
+    let demux_codec = py_video_codec_to_rust(py, codec)?;
+    let mux_codec = tst_core::mpegts::mux::VideoCodec::from(demux_codec);
+    let result = py.allow_threads(|| extract(au_bytes, mux_codec));
+    match result {
+        Ok(None) => Ok(None),
+        Ok(Some(ts)) => Ok(Some(MispTimestampPy::from(ts))),
+        Err(MispTimeExtractError::TruncatedSei) => Err(pyo3::exceptions::PyValueError::new_err(
+            "MISP SEI payload truncated (need 28 bytes)",
+        )),
+        Err(MispTimeExtractError::BadGuardByte) => Err(pyo3::exceptions::PyValueError::new_err(
+            "MISP SEI modified-timestamp guard byte is not 0xFF",
+        )),
+        Err(_) => Err(pyo3::exceptions::PyValueError::new_err(
+            "malformed MISP SEI payload",
+        )),
+    }
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -3572,5 +3747,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Opt-in ES parse functions (Task 4.1)
     m.add_function(wrap_pyfunction!(split_units, m)?)?;
     m.add_function(wrap_pyfunction!(parse_audio, m)?)?;
+    // MISP timestamp (ST 0604) — Task 10
+    m.add_class::<MispTimeKindPy>()?;
+    m.add_class::<MispTimestampPy>()?;
+    m.add_function(wrap_pyfunction!(extract_misp_timestamp, m)?)?;
     Ok(())
 }

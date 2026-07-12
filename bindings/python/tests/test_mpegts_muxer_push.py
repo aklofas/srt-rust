@@ -1249,3 +1249,81 @@ def test_push_video_bytes_fast_path_unchanged():
     assert m.pending_packets() > 0
     ts = _pull_all(m)
     assert len(ts) > 0 and len(ts) % 188 == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 10 — push_video_misp_to + extract_misp_timestamp round-trip
+# ---------------------------------------------------------------------------
+
+
+def _h264_idr_au() -> bytes:
+    """Minimal Annex-B H.264 AU with an IDR slice (type 5).
+
+    Start code + AUD (type 9) + IDR (type 5).  The IDR NAL is the first
+    VCL NAL, so `push_video_misp_to` can splice the SEI before it.
+    """
+    # AUD: nal_unit_type=9, primary_pic_type=7 (any), RBSP trailing 0x80
+    aud = b"\x00\x00\x00\x01\x09\xF0"
+    # IDR: nal_unit_type=5 (IDR slice), minimal non-empty body
+    idr = b"\x00\x00\x00\x01\x65\x88\x84\x00\x33\xff"
+    return aud + idr
+
+
+def test_push_video_misp_to_round_trips_misp_timestamp():
+    """push_video_misp_to splices a MISP SEI into the AU; the muxer emits TS;
+    the demuxer delivers a Video event; extract_misp_timestamp recovers the
+    same timestamp."""
+    from tstrans.codec import MispTimestamp, extract_misp_timestamp
+    from tstrans.mpegts import Demuxer, DemuxerConfig, DemuxEvent
+
+    ts_in = MispTimestamp.micros(0x0005_F5E1_0000_0001, 0x1F)
+    m = Muxer(_simple_config())
+    handle = m.video_handles()[0]
+    m.push_video_misp_to(
+        handle, _h264_idr_au(), pts=Pts90khz.from_raw(900_000), misp=ts_in
+    )
+    assert m.pending_packets() > 0
+    ts_bytes = _pull_all(m)
+    assert len(ts_bytes) > 0
+
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    video_events = [e for e in d if isinstance(e, DemuxEvent.Video)]
+    assert video_events, "expected at least one Video event"
+
+    ts_out = extract_misp_timestamp(video_events[0].raw, VideoCodec.H264)
+    assert ts_out is not None, "extract returned None — MISP SEI was not found"
+    assert ts_out == ts_in, f"round-trip failed: {ts_out!r} != {ts_in!r}"
+
+
+def test_push_video_misp_to_nano_on_h264_raises():
+    """Nano-precision is H.265-only; pushing it on an H.264 stream must
+    raise MuxError(INPUT_MALFORMED) (MispTime variant)."""
+    from tstrans.codec import MispTimestamp
+
+    nano_ts = MispTimestamp.nanos(12345, 0x00)
+    m = Muxer(_simple_config())
+    handle = m.video_handles()[0]
+    with pytest.raises(MuxError) as ei:
+        m.push_video_misp_to(
+            handle, _h264_idr_au(), pts=Pts90khz.from_raw(900_000), misp=nano_ts
+        )
+    assert ei.value.kind is MuxErrorKind.INPUT_MALFORMED
+
+
+def test_push_video_misp_to_with_dts():
+    """push_video_misp_to accepts an optional dts kwarg and emits TS."""
+    from tstrans.codec import MispTimestamp
+
+    ts_in = MispTimestamp.micros(42, 0x00)
+    m = Muxer(_simple_config())
+    handle = m.video_handles()[0]
+    m.push_video_misp_to(
+        handle,
+        _h264_idr_au(),
+        pts=Pts90khz.from_raw(990_000),
+        dts=Pts90khz.from_raw(900_000),
+        misp=ts_in,
+    )
+    assert m.pending_packets() > 0

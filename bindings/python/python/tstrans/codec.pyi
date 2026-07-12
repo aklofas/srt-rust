@@ -768,6 +768,62 @@ def parse_audio(
     strict: bool = ...,
 ) -> List[Any]: ...   # List[AdtsFrame] | List[Mpeg2AudioFrame] | []
 
+# --- MISP timestamp (MISB ST 0604) ---
+
+@final
+class MispTimeKind:
+    """Which MISP time base a MispTimestamp carries.
+
+    MICRO — microseconds since the MISP epoch (valid for H.264 + H.265).
+    NANO  — nanoseconds since the MISP epoch (H.265-only, ST 0604.6 §12.2).
+    """
+
+    MICRO: MispTimeKind
+    NANO: MispTimeKind
+
+@final
+class MispTimestamp:
+    """One MISP timestamp destined for (or extracted from) a video SEI.
+
+    Construct via the staticmethods `MispTimestamp.micros(value_us, time_status)`
+    or `MispTimestamp.nanos(value_ns, time_status)`.  Direct construction via
+    `MispTimestamp(kind, time_status, value)` is also accepted.
+    """
+
+    def __new__(
+        cls, kind: MispTimeKind, time_status: int, value: int
+    ) -> MispTimestamp: ...
+    @staticmethod
+    def micros(value_us: int, time_status: int) -> MispTimestamp:
+        """Microsecond-precision timestamp (valid for H.264 and H.265)."""
+        ...
+    @staticmethod
+    def nanos(value_ns: int, time_status: int) -> MispTimestamp:
+        """Nanosecond-precision timestamp (H.265-only, ST 0604.6 §12.2)."""
+        ...
+    @property
+    def kind(self) -> MispTimeKind: ...
+    @property
+    def time_status(self) -> int: ...
+    @property
+    def value(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object, /) -> bool: ...
+
+def extract_misp_timestamp(
+    au: _BytesLike,
+    codec: Any,
+) -> Optional[MispTimestamp]:
+    """Extract the first MISP timestamp SEI from an Annex-B access unit.
+
+    Returns ``None`` if no MISP SEI is present.  Raises ``ValueError`` if a
+    MISP identifier matched but the payload is malformed (truncated or bad
+    guard byte).
+
+    ``codec`` is a ``VideoCodec`` enum member (H264 or H265).
+    """
+    ...
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -838,4 +894,7 @@ __all__ = [
     "parse_mpeg2_audio_frames_with_resync",
     "split_units",
     "parse_audio",
+    "MispTimeKind",
+    "MispTimestamp",
+    "extract_misp_timestamp",
 ]

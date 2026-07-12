@@ -1381,7 +1381,7 @@ class MuxerDrainProxy:
     # silent-BufferFull gap class) or vice versa.
     _PUSH_METHODS = frozenset({
         "push_video", "push_video_to", "push_video_to_with_dts",
-        "push_video_wire_to",
+        "push_video_wire_to", "push_video_misp_to",
         "push_audio", "push_audio_to",
         "push_klv", "push_klv_to",
         "push_subtitle", "push_subtitle_to",

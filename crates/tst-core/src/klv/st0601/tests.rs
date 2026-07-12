@@ -689,6 +689,7 @@ fn every_typed_tag_round_trips() {
             59 => record.platform_call_sign = Some("CS".to_string()),
             65 => record.uas_ls_version = Some(0x13),
             74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+            94 => record.miis_core_id = Some(vec![0x01, 0x70, 0xCA, 0xFE]),
             _ => {
                 // Ranged numeric: pick a value at the midpoint of the spec range.
                 let r = spec.range.expect("ranged tag has range");
@@ -724,6 +725,7 @@ fn every_typed_tag_round_trips() {
             59 => back.platform_call_sign.is_some(),
             65 => back.uas_ls_version.is_some(),
             74 => back.vmti.is_some(),
+            94 => back.miis_core_id.is_some(),
             2 => back.timestamp_us.is_some(),
             _ => {
                 // For ranged numeric, presence == any of our ranged fields is set.

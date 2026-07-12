@@ -52,6 +52,9 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     /// Full-range twin of [`Self::platform_roll_deg`] (Item 7, ±50°).
     pub platform_roll_full_deg: Option<f64>,
+    /// Item 94: MIIS Core Identifier (MISB ST 1204 binary format).
+    /// Raw bytes — decode/inspect via `crate::klv::st1204` (future module).
+    pub miis_core_id: Option<Vec<u8>>,
     /// Item 50: Platform Angle of Attack — encode range [-20, 20] deg (int16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub platform_angle_of_attack_deg: Option<f64>,
@@ -228,6 +231,7 @@ impl Default for UasDatalinkLs {
             platform_indicated_airspeed: None,
             platform_pitch_full_deg: None,
             platform_roll_full_deg: None,
+            miis_core_id: None,
             platform_angle_of_attack_deg: None,
             sensor_lat_deg: None,
             sensor_lon_deg: None,

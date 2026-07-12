@@ -547,6 +547,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
             max: 90.0,
         }),
     },
+    TagSpec {
+        id: 94,
+        name: "MIIS Core Identifier",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
 ];
 
 /// Lookup a tag by ID. Returns None for tags we don't typed-model.

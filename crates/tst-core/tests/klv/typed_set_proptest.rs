@@ -373,6 +373,18 @@ proptest! {
         prop_assert_eq!(decoded.vmti.as_deref(), Some(bytes.as_slice()));
     }
 
+    /// Tag 94 miis_core_id opaque pass-through — mirrors the Tag 74 vmti
+    /// pattern; the ST 1204 binary payload is carried verbatim.
+    #[test]
+    fn st0601_miis_core_id_passthrough_roundtrip(
+        bytes in proptest::collection::vec(any::<u8>(), 1..=64),
+    ) {
+        let record = UasDatalinkLs { miis_core_id: Some(bytes.clone()), ..Default::default() };
+        let buf = st0601::encode_to_vec(&record).expect("encode");
+        let decoded = st0601::decode(&buf).expect("decode");
+        prop_assert_eq!(decoded.miis_core_id.as_deref(), Some(bytes.as_slice()));
+    }
+
     /// IMAPB f64 tags: pick one ranged tag uniformly, encode value at
     /// random `t ∈ [0,1]` lerped into the tag's [min, max] range,
     /// decode, assert within IMAPB tolerance.

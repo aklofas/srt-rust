@@ -433,6 +433,7 @@ fn apply_typed_tag(
         Encoding::RawBytes => match tag {
             48 => record.security_local_set = Some(f.value.to_vec()),
             74 => record.vmti = Some(f.value.to_vec()),
+            94 => record.miis_core_id = Some(f.value.to_vec()),
             _ => unreachable!(),
         },
         Encoding::U8Range

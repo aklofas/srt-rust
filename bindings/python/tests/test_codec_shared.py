@@ -89,8 +89,9 @@ def test_codec_module_exports():
 def test_misp_time_kind_variants():
     from tstrans.codec import MispTimeKind
 
-    assert MispTimeKind.MICRO
-    assert MispTimeKind.NANO
+    assert MispTimeKind.MICRO == MispTimeKind.MICRO
+    assert MispTimeKind.NANO == MispTimeKind.NANO
+    assert MispTimeKind.MICRO != MispTimeKind.NANO
 
 
 def test_misp_timestamp_micros_staticmethod():
@@ -158,7 +159,6 @@ def test_extract_misp_timestamp_malformed_raises():
     # Reuse the Rust-level golden for H.264 micros: the SEI NAL starts at offset 3
     # (after 3-byte start code), and cutting the last 6 bytes produces a confirmed
     # MISP identifier with a declared payload_size that runs past the end.
-    from tstrans.codec import extract_misp_timestamp  # noqa: F811
 
     # We can't easily call build_sei_nal from Python, so craft minimal raw bytes:
     # Start code + H.264 SEI header (0x06) + payload_type 5 + size 28 +

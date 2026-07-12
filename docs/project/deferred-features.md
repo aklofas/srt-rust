@@ -1671,7 +1671,7 @@ the trigger that would unblock it.
   reconstruction, or RTCP RR feedback to the sender is needed for
   adaptive bitrate control.
 
-## `ManagedReceiveTransport::max_payload` during reconnect
+## `ManagedRecvTransport::max_payload` during reconnect
 
 - **Status:** Resolved 2026-07-11 (recv API pass). `ManagedRecvTransport::max_payload`
   now caches the deliverable ceiling from the most recent live inner transport

@@ -109,7 +109,7 @@ Mirrors the Rust [`mux_dual_camera.rs`](../../../examples/muxing/mux_dual_camera
 Diff from §4: two PMTs in one PAT, each with its own video + KLV
 streams. Shows the `tst_program_handle_t` flow and the
 `tst_*_to(prog_handle, ...)` siblings. No Rust twin yet — the equivalent
-recipe lives in the cookbook ([Recipe 16](../../../docs/cookbook/sending/16-repack-multi-program.md))
+recipe lives in the cookbook ([Repack two single-program inputs into one multi-program TS](../../../docs/cookbook/muxing/repack-multi-program.md))
 under a different shape (demux + re-mux instead of synthetic frames).
 
 ### 6. `operations/poll_socket_stats.c` — live libsrt wire-stats polling

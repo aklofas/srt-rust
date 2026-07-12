@@ -2,7 +2,7 @@
 //! `tst_pipeline::ext::pairing::Pairer`.
 //!
 //! This example is the `Pairer`-using sibling of the inline cookbook
-//! recipe in `docs/cookbook/receiving/12-pair-klv-by-pts.md`. The cookbook recipe shows the
+//! recipe in `docs/cookbook/pairing/pair-klv-by-pts.md`. The cookbook recipe shows the
 //! ~20-line pattern using just `DemuxEvent` matches; this example
 //! shows the same workflow expressed through the opt-in `Pairer`
 //! convenience type.

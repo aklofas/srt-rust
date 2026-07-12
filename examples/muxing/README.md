@@ -16,7 +16,7 @@ The smallest "make a real `.ts` file" example. One H.264 video + one
 async-KLV stream on one program. Plays under ffprobe / VLC / mpv. Use
 this as the baseline before you add anything.
 
-Cookbook: [Recipe 3 — Mux to a file](../../docs/cookbook/sending/03-mux-to-file.md).
+Cookbook: [Mux to a file](../../docs/cookbook/muxing/mux-to-file.md).
 
 ### 2. `mux_h265_with_klv.rs` — switch H.264 → H.265, plus sync KLV
 
@@ -29,7 +29,7 @@ Diff from §1: `VideoCodec::H265` instead of `H264`, plus
 in the PES header — auto-wrapped in a 5-byte AU cell header per
 ITU-T H.222.0 V9 §2.12.4.2).
 
-Cookbook: [Recipe 9 — Mux H.265 + sync KLV](../../docs/cookbook/sending/09-mux-h265-with-klv.md).
+Cookbook: [Mux H.265 + sync KLV](../../docs/cookbook/muxing/mux-h265-with-klv.md).
 
 ### 3. `mux_h266_with_klv.rs` — H.265 → H.266 / VVC
 
@@ -39,7 +39,7 @@ cargo run -p tst-examples --example mux_h266_with_klv -- /tmp/h266.ts
 
 Diff from §2: `VideoCodec::H266`, stream_type 0x33. KLV side identical.
 
-Cookbook: [Recipe 22 — Streaming H.266 / VVC video with synchronous KLV metadata](../../docs/cookbook/sending/22-mux-h266-with-klv.md).
+Cookbook: [Mux H.266 / VVC video with synchronous KLV](../../docs/cookbook/muxing/mux-h266-with-klv.md).
 
 ### 4. `mux_av1_with_klv.rs` — H.266 → AV1
 
@@ -52,7 +52,7 @@ Diff from §3: `VideoCodec::Av1` (stream_type 0x06 with auto-emitted
 elementary stream is OBU-framed instead of NAL-framed; same
 `Muxer::push_video` API.
 
-Cookbook: [Recipe 23 — Streaming AV1 video with KLV metadata](../../docs/cookbook/sending/23-mux-av1-with-klv.md).
+Cookbook: [Mux AV1 video with KLV](../../docs/cookbook/muxing/mux-av1-with-klv.md).
 
 ## Independent variations
 
@@ -65,7 +65,7 @@ cargo run -p tst-examples --example mux_audio_video_klv -- /tmp/avk.ts
 Add an audio stream alongside video + KLV. MP2 carriage in this example;
 the API is the same for AAC ADTS / AAC LATM / AC-3 (swap `AudioCodec`).
 
-Cookbook: [Recipe 19 — Mux audio + video + KLV in a single program](../../docs/cookbook/sending/19-mux-audio-video-klv.md).
+Cookbook: [Mux audio + video + KLV in a single program](../../docs/cookbook/muxing/mux-audio-video-klv.md).
 
 ### 6. `mux_with_webvtt_subtitles.rs` — adding subtitles
 
@@ -88,7 +88,7 @@ EO + IR camera pair sharing one PCR + KLV stream within a single
 program. Demonstrates `add_video_to(handle, ...)` and the
 `video_handles_for_program()` accessor.
 
-Cookbook: [Recipe 15 — Label EO + IR + KLV streams in a multi-stream program](../../docs/cookbook/sending/15-mux-eo-ir-klv.md).
+Cookbook: [Label EO + IR + KLV streams in a multi-stream program](../../docs/cookbook/muxing/mux-eo-ir-klv.md).
 
 ### 8. `repack_two_programs.rs` — demux → remux round-trip
 
@@ -100,4 +100,4 @@ Take two single-program input `.ts` files, demux both, mux a single
 output with both programs side-by-side. Exercises the receive →
 transmit round-trip without an SRT link.
 
-Cookbook: [Recipe 16 — Repack two single-program inputs into one multi-program TS](../../docs/cookbook/sending/16-repack-multi-program.md).
+Cookbook: [Repack two single-program inputs into one multi-program TS](../../docs/cookbook/muxing/repack-multi-program.md).

@@ -31,7 +31,7 @@ the progression is cumulative.
 
 | Folder | Covers | Cookbook |
 |---|---|---|
-| [`getting-started/`](getting-started/) | 1-page first-encounter example | [Recipe 0](../docs/cookbook/sending/00-send-single-packet.md) |
+| [`getting-started/`](getting-started/) | 1-page first-encounter example | [Send a single TS packet](../docs/cookbook/sending/send-single-packet.md) |
 | [`sending/`](sending/) | SRT + transport-trait senders | [Sending](../docs/cookbook/index.md#-sending--produce-a-ts-stream) |
 | [`muxing/`](muxing/) | File-only mux (no SRT); single + multi-program; codecs | [Sending (mux recipes)](../docs/cookbook/index.md#-sending--produce-a-ts-stream) |
 | [`receiving/`](receiving/) | SRT receivers + file-replay demux | [Receiving](../docs/cookbook/index.md#-receiving--consume-a-ts-stream-includes-klv-to-video-pairing) |

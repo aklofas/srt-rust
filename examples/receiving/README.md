@@ -13,7 +13,7 @@ The simplest receiver: connect as a caller, write raw TS bytes to disk.
 Pair with [`../sending/srt_serve_ts_file.rs`](../sending/srt_serve_ts_file.rs)
 or any other listener.
 
-Cookbook: [Recipe 5 — Receive into a file](../../docs/cookbook/receiving/05-receive-to-file.md).
+Cookbook: [Receive into a file](../../docs/cookbook/receiving/receive-to-file.md).
 
 ## 2. `srt_listener_to_file.rs` — listener-mode SRT receiver
 
@@ -49,7 +49,7 @@ captured stream without standing up a live encoder. Pair with
 `srt-live-transmit srt://:9000 file:///tmp/out.ts` (or another
 SRT-aware listener) on the receiver side.
 
-Cookbook: [Recipe 4 — Relay a captured `.ts` file over SRT](../../docs/cookbook/receiving/04-relay-file-to-srt.md).
+Cookbook: [Relay a captured `.ts` file over SRT](../../docs/cookbook/sending/relay-file-to-srt.md).
 
 ## 5. `demux_to_events.rs` — full file-feed demux loop
 
@@ -62,5 +62,5 @@ PSI + per-stream sample headers + non-conformant issues. Use this as
 the diagnostic example when you want to see what the demuxer thinks
 of a capture.
 
-Cookbook: [Recipe 21 — Extract subtitle PES bytes from a captured `.ts` file](../../docs/cookbook/receiving/21-extract-subtitle-pes.md)
+Cookbook: [Extract subtitle PES bytes from a captured `.ts` file](../../docs/cookbook/receiving/extract-subtitle-pes.md)
 (adjacent recipe — the same demux loop with subtitle filtering).

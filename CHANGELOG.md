@@ -491,6 +491,12 @@ signature, or struct layout was removed or changed.
 
 ### Changed — documentation
 
+- The cookbook was reorganized for task-first browsing: recipes are no longer
+  numbered (references are title links now), files carry descriptive slugs, and
+  recipes live under seven task sections — `muxing/`, `sending/`, `receiving/`,
+  `pairing/`, `klv/`, `codecs/`, `operations/`. Deep links into the old
+  `docs/cookbook/<section>/<NN>-*.md` paths must be re-resolved via
+  [the cookbook index](docs/cookbook/index.md).
 - Added an embedded (`no_std` / bare-metal) entry page at `docs/languages/embedded.md` with index + README routing (WP-EMB-6).
 - The MPEG-TS demux guide (`docs/guides/mpegts-demux.md`) now documents
   the sync-ingress ceiling (`DemuxerConfig::sync_buf_cap`, default 4 MiB),

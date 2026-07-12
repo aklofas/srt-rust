@@ -769,7 +769,7 @@ with RtspClient.connect_h264(cfg) as session:
   SRT path).
 
 **Rust twin:** [`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs)
-and Recipe 34 in the cookbook.
+and the cookbook recipe [Ingest H.264 from an RTSP camera and remux to MPEG-TS](/docs/cookbook/receiving/recv-rtsp-h264-to-ts.md).
 
 ## UDP / TCP / RIST transports
 

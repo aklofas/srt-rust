@@ -14,7 +14,7 @@ Walks every video stream in a `.ts` file, dispatches on `VideoCodec`,
 prints resolution + profile + level for H.264 and H.265 in one pass.
 The "what's in this capture?" diagnostic.
 
-Cookbook: [Recipe 17 — Extract video resolution and profile from a demuxed stream](../../docs/cookbook/codecs/17-extract-resolution-profile.md).
+Cookbook: [Extract video resolution and profile from a demuxed stream](../../docs/cookbook/codecs/extract-resolution-profile.md).
 
 ## 2. `parse_audio_frames.rs` — MP2 / AAC frame iteration
 
@@ -26,7 +26,7 @@ Diff from §1: audio side. Lazy stateless iterator over MPEG audio
 (MP1 / MP2 / MP3 / MPEG-2 LSF / MPEG-2.5) and AAC ADTS frames; pulls
 sample rate, channel count, frame size out of the headers.
 
-Cookbook: [Recipe 29 — Pull sample rate and channel count out of an audio stream](../../docs/cookbook/codecs/29-extract-audio-format.md).
+Cookbook: [Pull sample rate and channel count out of an audio stream](../../docs/cookbook/codecs/extract-audio-format.md).
 
 ## 3. `extract_video_au.rs` — extract video AUs to disk
 
@@ -49,7 +49,7 @@ Strip `0x000003` emulation prevention bytes from a NAL unit, write the
 raw RBSP. The minimal recipe for "I have an Annex B byte stream and
 want the RBSP for parameter-set parsing." H.265-specific.
 
-Cookbook: [Recipe 18 — Reconstitute Annex B parameter sets for decoder replay](../../docs/cookbook/codecs/18-reconstitute-annex-b.md).
+Cookbook: [Reconstitute Annex B parameter sets for decoder replay](../../docs/cookbook/codecs/reconstitute-annex-b.md).
 
 ## 5. `extract_h266_sps_to_rbsp.rs` — same recipe, H.266 / VVC
 
@@ -71,4 +71,4 @@ DVB-sub / DVB-teletext / CEA-708 / WebVTT-in-TS all share
 example walks every subtitle stream in a capture and reports which
 codec each one carries.
 
-Cookbook: [Recipe 21 — Extract subtitle PES bytes from a captured `.ts` file](../../docs/cookbook/receiving/21-extract-subtitle-pes.md).
+Cookbook: [Extract subtitle PES bytes from a captured `.ts` file](../../docs/cookbook/receiving/extract-subtitle-pes.md).

@@ -605,10 +605,12 @@ signature, or struct layout was removed or changed.
   injection and an over-cap AU is dropped (ticks `aus_dropped_oversize`).
 - HLS `#EXTINF` duration: `MuxPublisher`'s media-span computation no longer
   overflows its intermediate `ticks * 1_000_000_000` product for PTS deltas
-  beyond ~56.9 h (debug panic / release wrap). The math now uses a `u128`
-  intermediate and clamps to the `Duration` ceiling. Not reachable from
-  conformant 33-bit MPEG-TS PTS, only via large synthetic/mis-scaled PTS
-  through the public publisher API.
+  beyond ~56.9 h (debug panic / release wrap). The math now decomposes the
+  tick count into whole seconds (`ticks / 90_000`) plus sub-second nanoseconds
+  (`(ticks % 90_000) * 1e9 / 90_000`), neither of which can overflow, so the
+  span is exact with no clamp or truncation. Not reachable from conformant
+  33-bit MPEG-TS PTS, only via large synthetic/mis-scaled PTS through the
+  public publisher API.
 
 ### Fixed — documentation accuracy
 - STANAG 4609 conformance matrix: the ST 0902 `validate_mismms` and ST 1204

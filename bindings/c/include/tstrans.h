@@ -5934,8 +5934,8 @@ int tst_hls_publisher_builder_mode(struct TstHlsPublisherBuilder *b, uint32_t mo
 #if defined(TST_HAS_HLS)
 /**
  * Create a new HLS publisher builder seeded with library defaults
- * (LIVE mode, 6 s segments, bind `0.0.0.0:0`, no output dir). Returns
- * `NULL` only on allocation failure.
+ * (LIVE mode, 4 s segments, bind `127.0.0.1:8080`, output dir
+ * `<system-temp>/tstrans-hls`). Returns `NULL` only on allocation failure.
  *
  * # Safety
  *
@@ -6151,10 +6151,12 @@ int tst_hls_server_handle_shutdown(struct TstHlsServerHandle *h);
  * present (out-params untouched); negative `TST_E_*` on null arguments
  * or a malformed MISP payload. `out_kind`: 0 = micro, 1 = nano.
  *
- * `au` must point to `len` bytes of an Annex-B access unit. The codec
- * selects which SEI UUID families to scan (H.264: microsecond only;
- * H.265: microsecond + nanosecond). AV1 and H.266 always return 1
- * (absent) because ST 0604 defines no SEI carriage for them.
+ * `au` must point to `len` bytes of an Annex-B access unit. The `codec`
+ * argument selects how SEI NAL units are located (H.264 vs H.265 NAL
+ * structure); once an SEI payload is found, extraction accepts any known
+ * ST 0604 MISP UUID (microsecond or nanosecond) regardless of codec. AV1
+ * and H.266 always return 1 (absent) because ST 0604 defines no SEI
+ * carriage for them.
  *
  * # Safety
  *

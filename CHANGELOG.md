@@ -595,6 +595,33 @@ signature, or struct layout was removed or changed.
   successful rebuild). Direct-caller edge only — pipeline shells were
   unaffected.
 
+### Fixed — post-v0.2.0 review hardening
+- H.264-over-RTP depacketizer: cached SPS/PPS parameter-set injection
+  (`ParameterSetInjection::BeforeIdr`) no longer bypasses the
+  `H264DepayConfig::max_au_bytes` cap. Injection prepends the cached sets
+  after the append-time checks, so a small in-cap IDR access unit plus large
+  cached (or attacker-supplied `sprop-parameter-sets`) parameter sets could
+  emit an AU exceeding the advertised cap; the cap is now re-enforced after
+  injection and an over-cap AU is dropped (ticks `aus_dropped_oversize`).
+- HLS `#EXTINF` duration: `MuxPublisher`'s media-span computation no longer
+  overflows its intermediate `ticks * 1_000_000_000` product for PTS deltas
+  beyond ~56.9 h (debug panic / release wrap). The math now uses a `u128`
+  intermediate and clamps to the `Duration` ceiling. Not reachable from
+  conformant 33-bit MPEG-TS PTS, only via large synthetic/mis-scaled PTS
+  through the public publisher API.
+
+### Fixed — documentation accuracy
+- STANAG 4609 conformance matrix: the ST 0902 `validate_mismms` and ST 1204
+  Core Identifier rows said "All four language bindings"; KLV is not exposed
+  in the C ABI, so they now read "Rust, Python, and JVM".
+- C `tst_hls_publisher_builder_new` rustdoc (and the generated `tstrans.h`)
+  documented stale defaults (`0.0.0.0:0`, 6 s segments, no output dir); they
+  now state the actual loopback bind `127.0.0.1:8080`, 4 s segments, and the
+  `<system-temp>/tstrans-hls` output dir. The bind default is security-relevant.
+- C `tst_misp_time_extract` rustdoc implied codec-gated UUID acceptance; the
+  extractor accepts any known ST 0604 MISP UUID once an SEI payload is found,
+  and the doc now says so.
+
 ---
 
 ## [0.2.0] — 2026-06-23

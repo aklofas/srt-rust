@@ -9,10 +9,12 @@ use crate::error::{TstError, set_last_error};
 /// present (out-params untouched); negative `TST_E_*` on null arguments
 /// or a malformed MISP payload. `out_kind`: 0 = micro, 1 = nano.
 ///
-/// `au` must point to `len` bytes of an Annex-B access unit. The codec
-/// selects which SEI UUID families to scan (H.264: microsecond only;
-/// H.265: microsecond + nanosecond). AV1 and H.266 always return 1
-/// (absent) because ST 0604 defines no SEI carriage for them.
+/// `au` must point to `len` bytes of an Annex-B access unit. The `codec`
+/// argument selects how SEI NAL units are located (H.264 vs H.265 NAL
+/// structure); once an SEI payload is found, extraction accepts any known
+/// ST 0604 MISP UUID (microsecond or nanosecond) regardless of codec. AV1
+/// and H.266 always return 1 (absent) because ST 0604 defines no SEI
+/// carriage for them.
 ///
 /// # Safety
 ///

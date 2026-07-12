@@ -59,8 +59,8 @@ fn map_inner(
 // ---------------------------------------------------------------------------
 
 /// Create a new HLS publisher builder seeded with library defaults
-/// (LIVE mode, 6 s segments, bind `0.0.0.0:0`, no output dir). Returns
-/// `NULL` only on allocation failure.
+/// (LIVE mode, 4 s segments, bind `127.0.0.1:8080`, output dir
+/// `<system-temp>/tstrans-hls`). Returns `NULL` only on allocation failure.
 ///
 /// # Safety
 ///

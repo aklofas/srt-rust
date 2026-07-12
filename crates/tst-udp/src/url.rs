@@ -6,7 +6,7 @@
 //! - `udp://@group:port` — multicast recv (the `@` prefix is the ffmpeg convention)
 //! - `udp://group:port` (group in 224.0.0.0/4 or ff00::/8) — multicast send
 //!
-//! Query parameters: `iface`, `ttl`, `tos`, `rcvbuf`, `sndbuf`, `pkt_size`, `localaddr`.
+//! Query parameters: `iface`, `ttl`, `tos`, `rcvbuf`, `sndbuf`, `pkt_size` (send-only), `localaddr`.
 
 use std::net::IpAddr;
 
@@ -53,6 +53,13 @@ pub enum UdpUrlError {
         value: String,
         detail: String,
     },
+    /// `?pkt_size=` supplied on a receive-side URL. Send-side only since
+    /// the recv-ceiling change: the receive buffer always accepts any
+    /// legal datagram (65535 ceiling).
+    #[error(
+        "pkt_size is a send-side knob; receive buffers size to the transport's deliverable ceiling automatically — remove ?pkt_size= from receiver URLs"
+    )]
+    RecvPktSize,
     #[error("URL parse failed: {0}")]
     Parse(#[from] tst_core::url::common::UrlError),
 }

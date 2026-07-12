@@ -7171,6 +7171,8 @@ int tst_rtp_demux_receiver_next_event(struct TstRtpDemuxReceiver *p,
  * For unicast, pass `rtp://0.0.0.0:port`. For multicast, pass the group
  * address (`rtp://239.0.0.1:port?iface=eth0`).
  *
+ * `?pkt_size=` is send-side only and is rejected on receive URLs.
+ *
  * # Safety
  *
  * `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
@@ -7561,6 +7563,8 @@ int tst_rtp_receiver_reset_stats(struct TstRtpReceiver *p);
  * `iface` (or the OS-default interface when absent).
  *
  * Port `0` causes the kernel to assign an ephemeral port.
+ *
+ * `?pkt_size=` is send-side only and is rejected on receive URLs.
  *
  * # Safety
  *

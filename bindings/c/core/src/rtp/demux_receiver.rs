@@ -59,6 +59,8 @@ pub struct TstRtpDemuxReceiver {
 /// For unicast, pass `rtp://0.0.0.0:port`. For multicast, pass the group
 /// address (`rtp://239.0.0.1:port?iface=eth0`).
 ///
+/// `?pkt_size=` is send-side only and is rejected on receive URLs.
+///
 /// # Safety
 ///
 /// `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
@@ -78,7 +80,6 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
         if let Some(ref iface) = rtp_url.iface {
             builder.iface(iface.clone());
         }
-        builder.pkt_size(rtp_url.pkt_size);
         let transport = match builder.listen() {
             Ok(t) => t,
             Err(e) => {

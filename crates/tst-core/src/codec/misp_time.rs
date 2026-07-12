@@ -13,18 +13,17 @@
 //! (ST 0604 defines no carriage for them).
 
 use crate::mpegts::mux::VideoCodec;
+use alloc::vec::Vec;
 
 /// ST 0604.6 §7.1 Table 1 — H.262/H.264 Precision Time Stamp Identifier.
 pub const MISP_MICROSEC_ID_H264: [u8; 16] = *b"MISPmicrosectime";
 /// ST 0604.6 §7.2 — H.265 Precision (microsecond) Time Stamp Identifier.
 pub const MISP_MICROSEC_ID_H265: [u8; 16] = [
-    0xa8, 0x68, 0x7d, 0xd4, 0xd7, 0x59, 0x37, 0x58,
-    0xa5, 0xce, 0xf0, 0x33, 0x8b, 0x65, 0x45, 0xf1,
+    0xa8, 0x68, 0x7d, 0xd4, 0xd7, 0x59, 0x37, 0x58, 0xa5, 0xce, 0xf0, 0x33, 0x8b, 0x65, 0x45, 0xf1,
 ];
 /// ST 0604.6 §8.1 — H.265 Nano Precision Time Stamp Identifier.
 pub const MISP_NANOSEC_ID_H265: [u8; 16] = [
-    0xcf, 0x84, 0x82, 0x78, 0xee, 0x23, 0x30, 0x6c,
-    0x92, 0x65, 0xe8, 0xfe, 0xf2, 0x2f, 0xb8, 0xb8,
+    0xcf, 0x84, 0x82, 0x78, 0xee, 0x23, 0x30, 0x6c, 0x92, 0x65, 0xe8, 0xfe, 0xf2, 0x2f, 0xb8, 0xb8,
 ];
 
 /// Which MISP time base a [`MispTimestamp`] carries.
@@ -53,12 +52,20 @@ pub struct MispTimestamp {
 impl MispTimestamp {
     /// Microsecond-precision timestamp (valid for H.264 and H.265).
     pub fn micros(value_us: u64, time_status: u8) -> Self {
-        Self { kind: MispTimeKind::Micro, time_status, value: value_us }
+        Self {
+            kind: MispTimeKind::Micro,
+            time_status,
+            value: value_us,
+        }
     }
 
     /// Nanosecond-precision timestamp (H.265-only per ST 0604.6 §12.2).
     pub fn nanos(value_ns: u64, time_status: u8) -> Self {
-        Self { kind: MispTimeKind::Nano, time_status, value: value_ns }
+        Self {
+            kind: MispTimeKind::Nano,
+            time_status,
+            value: value_ns,
+        }
     }
 }
 
@@ -102,9 +109,7 @@ pub fn identifier_for(
         }
         (VideoCodec::H265, MispTimeKind::Micro) => Ok(&MISP_MICROSEC_ID_H265),
         (VideoCodec::H265, MispTimeKind::Nano) => Ok(&MISP_NANOSEC_ID_H265),
-        (VideoCodec::H266 | VideoCodec::Av1, _) => {
-            Err(MispTimeError::UnsupportedCodec { codec })
-        }
+        (VideoCodec::H266 | VideoCodec::Av1, _) => Err(MispTimeError::UnsupportedCodec { codec }),
     }
 }
 
@@ -159,10 +164,7 @@ pub(crate) fn append_rbsp_escaped(out: &mut Vec<u8>, rbsp: &[u8]) {
 /// (type 39, `nuh_layer_id=0`, `nuh_temporal_id_plus1=1`). The SEI
 /// message is `user_data_unregistered` (payloadType 5) with the fixed
 /// 28-byte ST 0604 payload.
-pub fn build_sei_nal(
-    codec: VideoCodec,
-    ts: &MispTimestamp,
-) -> Result<Vec<u8>, MispTimeError> {
+pub fn build_sei_nal(codec: VideoCodec, ts: &MispTimestamp) -> Result<Vec<u8>, MispTimeError> {
     let payload = sei_payload(codec, ts)?;
     // RBSP = payload_type(5) + payload_size(28) + payload + trailing 0x80.
     let mut rbsp = [0u8; 31];
@@ -225,8 +227,10 @@ pub fn extract(
         // Find this NAL's end (next start code or EOF).
         let mut end = data_at;
         while end + 3 <= au.len() {
-            if au[end] == 0 && au[end + 1] == 0 && (au[end + 2] == 1
-                || (end + 4 <= au.len() && au[end + 2] == 0 && au[end + 3] == 1))
+            if au[end] == 0
+                && au[end + 1] == 0
+                && (au[end + 2] == 1
+                    || (end + 4 <= au.len() && au[end + 2] == 0 && au[end + 3] == 1))
             {
                 break;
             }
@@ -253,10 +257,7 @@ fn scan_sei_nal(
 ) -> Result<Option<MispTimestamp>, MispTimeExtractError> {
     let (is_sei, header_len) = match codec {
         VideoCodec::H264 => (!nal.is_empty() && nal[0] & 0x1F == 6, 1),
-        VideoCodec::H265 => (
-            nal.len() >= 2 && matches!((nal[0] >> 1) & 0x3F, 39 | 40),
-            2,
-        ),
+        VideoCodec::H265 => (nal.len() >= 2 && matches!((nal[0] >> 1) & 0x3F, 39 | 40), 2),
         VideoCodec::H266 | VideoCodec::Av1 => (false, 0),
     };
     if !is_sei {
@@ -278,7 +279,9 @@ fn scan_sei_nal(
     loop {
         let mut payload_type = 0usize;
         loop {
-            let Some(&b) = rbsp.get(p) else { return Ok(None) };
+            let Some(&b) = rbsp.get(p) else {
+                return Ok(None);
+            };
             p += 1;
             payload_type = payload_type.saturating_add(b as usize);
             if b != 0xFF {
@@ -287,7 +290,9 @@ fn scan_sei_nal(
         }
         let mut payload_size = 0usize;
         loop {
-            let Some(&b) = rbsp.get(p) else { return Ok(None) };
+            let Some(&b) = rbsp.get(p) else {
+                return Ok(None);
+            };
             p += 1;
             payload_size = payload_size.saturating_add(b as usize);
             if b != 0xFF {
@@ -332,8 +337,14 @@ fn scan_sei_nal(
                     return Err(MispTimeExtractError::BadGuardByte);
                 }
                 let v = [
-                    payload[17], payload[18], payload[20], payload[21],
-                    payload[23], payload[24], payload[26], payload[27],
+                    payload[17],
+                    payload[18],
+                    payload[20],
+                    payload[21],
+                    payload[23],
+                    payload[24],
+                    payload[26],
+                    payload[27],
                 ];
                 return Ok(Some(MispTimestamp {
                     kind,
@@ -407,14 +418,18 @@ mod tests {
         // §7.2: a8687dd4-d759-3758-a5ce-f0338b6545f1
         assert_eq!(
             MISP_MICROSEC_ID_H265,
-            [0xa8, 0x68, 0x7d, 0xd4, 0xd7, 0x59, 0x37, 0x58,
-             0xa5, 0xce, 0xf0, 0x33, 0x8b, 0x65, 0x45, 0xf1]
+            [
+                0xa8, 0x68, 0x7d, 0xd4, 0xd7, 0x59, 0x37, 0x58, 0xa5, 0xce, 0xf0, 0x33, 0x8b, 0x65,
+                0x45, 0xf1
+            ]
         );
         // §8.1: cf848278-ee23-306c-9265-e8fef22fb8b8
         assert_eq!(
             MISP_NANOSEC_ID_H265,
-            [0xcf, 0x84, 0x82, 0x78, 0xee, 0x23, 0x30, 0x6c,
-             0x92, 0x65, 0xe8, 0xfe, 0xf2, 0x2f, 0xb8, 0xb8]
+            [
+                0xcf, 0x84, 0x82, 0x78, 0xee, 0x23, 0x30, 0x6c, 0x92, 0x65, 0xe8, 0xfe, 0xf2, 0x2f,
+                0xb8, 0xb8
+            ]
         );
     }
 
@@ -427,7 +442,9 @@ mod tests {
         assert_eq!(p[16], 0x9F);
         assert_eq!(
             &p[17..28],
-            &[0x01, 0x02, 0xFF, 0x03, 0x04, 0xFF, 0x05, 0x06, 0xFF, 0x07, 0x08]
+            &[
+                0x01, 0x02, 0xFF, 0x03, 0x04, 0xFF, 0x05, 0x06, 0xFF, 0x07, 0x08
+            ]
         );
     }
 
@@ -440,7 +457,10 @@ mod tests {
         ));
         assert!(sei_payload(VideoCodec::H265, &nano).is_ok());
         let micro = MispTimestamp::micros(1, 0x1F);
-        assert_eq!(&sei_payload(VideoCodec::H265, &micro).unwrap()[..16], &MISP_MICROSEC_ID_H265);
+        assert_eq!(
+            &sei_payload(VideoCodec::H265, &micro).unwrap()[..16],
+            &MISP_MICROSEC_ID_H265
+        );
         for c in [VideoCodec::H266, VideoCodec::Av1] {
             assert!(matches!(
                 sei_payload(c, &micro),
@@ -458,8 +478,14 @@ mod tests {
             (&[0x00, 0x00, 0x03][..], &[0x00, 0x00, 0x03, 0x03][..]),
             (&[0x00, 0x00, 0x04][..], &[0x00, 0x00, 0x04][..]),
             // Escape resets the zero-run: 00 00 00 00 -> 00 00 03 00 00.
-            (&[0x00, 0x00, 0x00, 0x00][..], &[0x00, 0x00, 0x03, 0x00, 0x00][..]),
-            (&[0xAA, 0x00, 0x00, 0x01, 0xBB][..], &[0xAA, 0x00, 0x00, 0x03, 0x01, 0xBB][..]),
+            (
+                &[0x00, 0x00, 0x00, 0x00][..],
+                &[0x00, 0x00, 0x03, 0x00, 0x00][..],
+            ),
+            (
+                &[0xAA, 0x00, 0x00, 0x01, 0xBB][..],
+                &[0xAA, 0x00, 0x00, 0x03, 0x01, 0xBB][..],
+            ),
         ] {
             let mut out = Vec::new();
             append_rbsp_escaped(&mut out, raw);
@@ -498,7 +524,10 @@ mod tests {
         let nal = build_sei_nal(VideoCodec::H264, &ts).unwrap();
         assert!(nal.len() > 3 + 28 + 1, "escapes must lengthen the NAL");
         // No unescaped start-code-like sequence may remain anywhere.
-        assert!(!nal.windows(3).any(|w| w == [0, 0, 0] || w == [0, 0, 1] || w == [0, 0, 2]));
+        assert!(
+            !nal.windows(3)
+                .any(|w| w == [0, 0, 0] || w == [0, 0, 1] || w == [0, 0, 2])
+        );
     }
 
     #[test]
@@ -549,7 +578,10 @@ mod tests {
     #[test]
     fn extract_round_trips_all_kinds() {
         for (codec, ts) in [
-            (VideoCodec::H264, MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F)),
+            (
+                VideoCodec::H264,
+                MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F),
+            ),
             (VideoCodec::H265, MispTimestamp::micros(42, 0x00)),
             (VideoCodec::H265, MispTimestamp::nanos(u64::MAX, 0x9F)),
         ] {
@@ -648,12 +680,21 @@ mod tests {
     // Finding 3: H.265 SUFFIX_SEI (NAL type 40) is matched by the parser but
     // was previously untested.
     #[test]
+    fn demux_codec_converts_for_extract() {
+        let d = crate::mpegts::demux::VideoCodec::H265;
+        assert_eq!(VideoCodec::from(d), VideoCodec::H265);
+    }
+
+    #[test]
     fn extract_h265_suffix_sei_round_trips() {
         let ts = MispTimestamp::micros(0xDEAD_BEEF_CAFE_0001, 0x3F);
         // Build a normal PREFIX_SEI (type 39), then rewrite its 2-byte header
         // to SUFFIX_SEI (type 40): (40 << 1) | 0 = 0x50, nuh_temporal_id_plus1 = 1.
         let mut sei = build_sei_nal(VideoCodec::H265, &ts).unwrap();
-        assert_eq!(sei[0], 0x4E, "sanity: first byte should be PREFIX_SEI header");
+        assert_eq!(
+            sei[0], 0x4E,
+            "sanity: first byte should be PREFIX_SEI header"
+        );
         sei[0] = 0x50; // (40 << 1) = 0x50
         sei[1] = 0x01; // nuh_layer_id=0, nuh_temporal_id_plus1=1
         // Build an AU: a VCL NAL first, then the suffix SEI.

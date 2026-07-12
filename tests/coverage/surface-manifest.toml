@@ -1845,6 +1845,138 @@ reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asse
 item = "tst_core::codec::h266::H266Vps::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimeError"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeError::clone"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeError::eq"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeError::fmt"
+reason = "derived trait method (Debug + Display); module covered by misp_time tests"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimeExtractError"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeExtractError::clone"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeExtractError::eq"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeExtractError::fmt"
+reason = "derived trait method (Debug + Display); module covered by misp_time tests"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimeKind"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeKind::clone"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeKind::eq"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimeKind::fmt"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimestamp"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimestamp::micros"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MispTimestamp::nanos"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimestamp::clone"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimestamp::eq"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[exempt]]
+item = "tst_core::codec::misp_time::MispTimestamp::fmt"
+reason = "derived trait method; module covered by misp_time tests"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MISP_MICROSEC_ID_H264"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MISP_MICROSEC_ID_H265"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::MISP_NANOSEC_ID_H265"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::build_sei_nal"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::extract"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::codec::misp_time::identifier_for"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+tier = "B"
+
 [[exempt]]
 item = "tst_core::codec::mpegaudio::ChannelMode"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
@@ -3190,6 +3322,14 @@ item = "tst_core::mpegts::demux::VideoCodec"
 owning_tests = ["crates/tst-core/tests/mpegts/demux.rs"]
 bindings = ["java:org.tstrans.mpegts.VideoCodec"]
 tier = "A"
+
+[[surface]]
+kind = "rust"
+crate = "tst-core"
+item = "tst_core::mpegts::mux::VideoCodec::from"
+owning_tests = ["crates/tst-core/src/codec/misp_time.rs"]
+# demux→mux codec bridge for misp_time::extract; tested in misp_time::tests::demux_codec_converts_for_extract
+tier = "B"
 
 [[exempt]]
 item = "tst_core::mpegts::demux::VideoPayload"

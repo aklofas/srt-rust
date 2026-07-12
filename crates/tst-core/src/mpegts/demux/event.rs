@@ -149,6 +149,20 @@ pub enum VideoCodec {
     Av1,
 }
 
+impl From<VideoCodec> for crate::mpegts::mux::VideoCodec {
+    /// Demux-side to mux-side codec bridge — the two enums have
+    /// identical variants; this exists so receive-side callers can feed
+    /// [`crate::codec::misp_time::extract`] without a hand-match.
+    fn from(c: VideoCodec) -> Self {
+        match c {
+            VideoCodec::H264 => Self::H264,
+            VideoCodec::H265 => Self::H265,
+            VideoCodec::H266 => Self::H266,
+            VideoCodec::Av1 => Self::Av1,
+        }
+    }
+}
+
 /// Audio codec carried in `SamplePayload::Audio`. Identifies the codec
 /// for typed dispatch but does not parse the bitstream — `frames` holds
 /// the raw PES payload bytes.

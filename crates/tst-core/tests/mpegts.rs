@@ -72,6 +72,8 @@ mod mux_ffprobe;
 mod mux_klv_pes;
 #[path = "mpegts/mux_local.rs"]
 mod mux_local;
+#[path = "mpegts/mux_misp_push.rs"]
+mod mux_misp_push;
 #[path = "mpegts/mux_multi_program.rs"]
 mod mux_multi_program;
 #[path = "mpegts/mux_multi_stream.rs"]

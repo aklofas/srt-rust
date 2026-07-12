@@ -10338,6 +10338,13 @@ bindings = []
 scenario_ids = []
 tier = "A"
 
+[[surface]]
+item = "tst_core::klv::st1204::check_value"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::klv::st1204::CoreId::clone"
 reason = "derive impl for st1204 CoreId; covered by decode/encode tests"

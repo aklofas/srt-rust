@@ -2368,6 +2368,8 @@ impl core::cmp::PartialEq for tst_core::klv::st1204::CoreId
 pub fn tst_core::klv::st1204::CoreId::eq(&self, &tst_core::klv::st1204::CoreId) -> bool
 impl core::fmt::Debug for tst_core::klv::st1204::CoreId
 pub fn tst_core::klv::st1204::CoreId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::CoreId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_core::klv::st1204::CoreId
 impl core::marker::Freeze for tst_core::klv::st1204::CoreId
 impl core::marker::Send for tst_core::klv::st1204::CoreId
@@ -2376,6 +2378,7 @@ impl core::marker::Unpin for tst_core::klv::st1204::CoreId
 impl core::marker::UnsafeUnpin for tst_core::klv::st1204::CoreId
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1204::CoreId
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1204::CoreId
+pub fn tst_core::klv::st1204::check_value(impl core::iter::traits::iterator::Iterator<Item = char>) -> u8
 pub fn tst_core::klv::st1204::decode(&[u8]) -> core::result::Result<tst_core::klv::st1204::CoreId, tst_core::klv::st1204::St1204Error>
 pub fn tst_core::klv::st1204::encode_to_vec(&tst_core::klv::st1204::CoreId) -> alloc::vec::Vec<u8>
 pub mod tst_core::klv::universal_label

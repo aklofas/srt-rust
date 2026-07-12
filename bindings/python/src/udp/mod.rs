@@ -460,7 +460,6 @@ impl PyUdpRecvTransport {
 pub(crate) struct PyUdpRecvTransportBuilder {
     url: Option<String>,
     rcvbuf: Option<usize>,
-    pkt_size: Option<usize>,
     iface: Option<String>,
 }
 
@@ -476,12 +475,6 @@ impl PyUdpRecvTransportBuilder {
     /// `SO_RCVBUF` size in bytes.
     fn rcvbuf(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
         slf.rcvbuf = Some(v);
-        slf
-    }
-
-    /// Override the recv scratch-buffer size (must be ≥ max expected datagram).
-    fn pkt_size(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
-        slf.pkt_size = Some(v);
         slf
     }
 
@@ -503,16 +496,13 @@ impl PyUdpRecvTransportBuilder {
         if let Some(v) = self.rcvbuf {
             b.rcvbuf(v);
         }
-        if let Some(v) = self.pkt_size {
-            b.pkt_size(v);
-        }
         if let Some(ref s) = self.iface {
             b.iface(s.as_str());
         }
         let t = b.build().map_err(|e| map_udp_error(py, e))?;
         // Size the scratch buffer to hold the largest legal datagram.
-        // max_payload() reflects the pkt_size knob; 65_536 is the
-        // hard upper bound for a UDP datagram payload.
+        // Recv max_payload() is a flat 65535 deliverable ceiling; 65_536
+        // keeps the historical scratch size.
         let scratch_len = t.max_payload().max(65_536);
         Ok(PyUdpRecvTransport {
             inner: Some(t),

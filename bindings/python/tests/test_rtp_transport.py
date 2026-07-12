@@ -315,3 +315,19 @@ def test_cancel_handle_repr() -> None:
     with tstrans.rtp.Sender(f"rtp://127.0.0.1:{port}") as s:
         ch = s.cancel_handle()
         assert repr(ch) == "CancelHandle()"
+
+
+# ---------------------------------------------------------------------------
+# pkt_size recv rejection
+# ---------------------------------------------------------------------------
+
+
+def test_receiver_rejects_pkt_size_url():
+    with pytest.raises(RtpError) as ei:
+        tstrans.rtp.Receiver("rtp://127.0.0.1:0?pkt_size=1316")
+    assert "send-side knob" in str(ei.value)
+
+
+def test_receiver_has_no_pkt_size_kwarg():
+    with pytest.raises(TypeError):
+        tstrans.rtp.Receiver("rtp://127.0.0.1:0", pkt_size=1316)

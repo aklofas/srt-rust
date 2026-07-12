@@ -631,7 +631,6 @@ pub(crate) struct PyRistRecvTransportBuilder {
     cname: Option<String>,
     encryption: Option<PyObject>,
     session_timeout_ms: Option<u64>,
-    pkt_size: Option<usize>,
 }
 
 #[pymethods]
@@ -675,13 +674,6 @@ impl PyRistRecvTransportBuilder {
         slf
     }
 
-    /// Expected send-side packet size. Has no effect on the receive
-    /// buffer, which always accepts any legal block.
-    fn pkt_size(mut slf: PyRefMut<'_, Self>, v: usize) -> PyRefMut<'_, Self> {
-        slf.pkt_size = Some(v);
-        slf
-    }
-
     /// Build the `RecvTransport`. Raises `RistError(kind=URL)` for a bad bind
     /// URL, `RistError(kind=INVALID_CONFIG)` if the `@` prefix is missing,
     /// and `RistError(kind=CONTEXT_CREATE_FAILED)` / `PEER_CREATE_FAILED` for
@@ -708,9 +700,6 @@ impl PyRistRecvTransportBuilder {
         }
         if let Some(ms) = self.session_timeout_ms {
             b = b.session_timeout(std::time::Duration::from_millis(ms));
-        }
-        if let Some(v) = self.pkt_size {
-            b = b.pkt_size(v);
         }
         let t = py
             .allow_threads(|| b.listen())

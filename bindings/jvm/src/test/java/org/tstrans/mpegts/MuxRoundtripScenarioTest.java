@@ -7,7 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.tstrans.codec.MispTimeKind;
+import org.tstrans.codec.MispTimestamp;
 
 /**
  * Cross-binding byte-exactness proofs for the offline {@link Muxer}.
@@ -130,6 +134,94 @@ class MuxRoundtripScenarioTest {
         return acc.toByteArray();
     }
 
+    // ── video-misp-roundtrip ────────────────────────────────────────────────
+
+    /**
+     * Cross-binding acceptance criterion for the ST 0604 MISP timestamp mux path.
+     *
+     * <p>Replicates {@code video_misp_roundtrip_ts_bytes()} from
+     * {@code crates/tst-integration/src/scenarios/mod.rs}: a single-video-stream
+     * muxer pushes one synthetic H.264 IDR at PTS=9000 (90 kHz ticks) via
+     * {@link Muxer#pushVideoMispTo} with
+     * {@code MispTimestamp.micros(0x0005_F5E1_0000_0001L, 0x1F)}.
+     *
+     * <p>The test:
+     * <ol>
+     *   <li>Asserts the SHA-256 of the JNI muxer's TS output equals the committed
+     *       golden's {@code extensions.output_sha256}.</li>
+     *   <li>Demuxes the produced bytes, finds the first Video event, extracts the
+     *       MISP timestamp, and asserts it matches the golden's
+     *       {@code misp_kind} / {@code misp_time_status} / {@code misp_value}.</li>
+     * </ol>
+     */
+    @Test
+    void reproducesVideoMispRoundtripBytesExactly() throws Exception {
+        Path goldenPath = scenarioDir("video-misp-roundtrip").resolve("golden.json");
+        assertTrue(Files.isRegularFile(goldenPath),
+            "video-misp-roundtrip golden missing (expected committed fixture): " + goldenPath);
+        String goldenJson = Files.readString(goldenPath, StandardCharsets.UTF_8);
+
+        String expectedSha = extractString(goldenJson, "output_sha256");
+        long goldenMispKind    = extractLong(goldenJson, "misp_kind");
+        long goldenTimeStatus  = extractLong(goldenJson, "misp_time_status");
+        long goldenMispValue   = extractLong(goldenJson, "misp_value");
+
+        byte[] tsOut = videoMispRoundtripMuxAndDrain();
+
+        // 1. SHA-256 byte-identity parity.
+        assertEquals(expectedSha, sha256Hex(tsOut),
+            "JNI muxer MISP output must be byte-identical to the committed golden");
+
+        // 2. MISP extract equality: demux, find the video AU, extract and compare.
+        List<DemuxEvent.Video> videos = new ArrayList<>();
+        try (Demuxer d = new Demuxer()) {
+            d.feed(tsOut);
+            d.flush();
+            for (DemuxEvent ev : d) {
+                if (ev instanceof DemuxEvent.Video v) videos.add(v);
+            }
+        }
+        assertFalse(videos.isEmpty(), "video-misp-roundtrip: no video event after demux");
+        DemuxEvent.Video v = videos.get(0);
+
+        byte[] rawBytes = new byte[v.raw().remaining()];
+        v.raw().duplicate().get(rawBytes);
+
+        MispTimestamp extracted = MispTimestamp.extract(rawBytes, VideoCodec.H264);
+        assertNotNull(extracted, "MISP SEI must be present in the demuxed AU");
+
+        MispTimeKind expectedKind = (goldenMispKind == 0) ? MispTimeKind.MICRO : MispTimeKind.NANO;
+        assertEquals(expectedKind, extracted.kind(), "misp kind mismatch");
+        assertEquals((int) goldenTimeStatus, extracted.timeStatus(), "misp time_status mismatch");
+        assertEquals(goldenMispValue, extracted.value(), "misp value mismatch (unsigned 64-bit)");
+    }
+
+    /**
+     * Replicate {@code video_misp_roundtrip_ts_bytes()}: config + videoStreamHandle(0)
+     * + pushVideoMispTo(handle, au, pts=9000, keyFrame=true,
+     *   MispTimestamp.micros(0x0005_F5E1_0000_0001L, 0x1F)) + drain.
+     */
+    private static byte[] videoMispRoundtripMuxAndDrain() throws Exception {
+        MuxerConfig cfg = MuxerConfig.builder()
+            .programNumber(1).pmtPid(0x1000)
+            .addVideo(0x1011, VideoCodec.H264)
+            .build();
+        MispTimestamp misp = MispTimestamp.micros(0x0005_F5E1_0000_0001L, 0x1F);
+        ByteArrayOutputStream acc = new ByteArrayOutputStream();
+        byte[] out = new byte[8192];
+        try (Muxer m = new Muxer(cfg)) {
+            VideoStreamHandle h = m.videoStreamHandle(0)
+                .orElseThrow(() -> new IllegalStateException("no video handle at index 0"));
+            // PTS=9000 ticks (90 kHz) — fixed so golden is stable.
+            m.pushVideoMispTo(h, syntheticH264Idr(), /*pts=*/ 9000L, /*keyFrame=*/ true, misp);
+            int n;
+            while ((n = m.pull(out)) > 0) {
+                acc.write(out, 0, n);
+            }
+        }
+        return acc.toByteArray();
+    }
+
     // ── Shared helpers ───────────────────────────────────────────────────────
 
     private static String sha256Hex(byte[] bytes) throws Exception {
@@ -152,5 +244,26 @@ class MuxRoundtripScenarioTest {
         int lastQuote = json.indexOf('"', firstQuote + 1);
         assertTrue(lastQuote > firstQuote, "unterminated golden string field \"" + key + "\"");
         return json.substring(firstQuote + 1, lastQuote);
+    }
+
+    /** Read a numeric-valued JSON field {@code "key": <number>} (minimal; junit-only classpath). */
+    private static long extractLong(String json, String key) {
+        String needle = "\"" + key + "\"";
+        int k = json.indexOf(needle);
+        assertTrue(k >= 0, "golden missing numeric field \"" + key + "\": " + json);
+        int colon = json.indexOf(':', k + needle.length());
+        assertTrue(colon >= 0, "malformed golden field \"" + key + "\"");
+        int start = colon + 1;
+        while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '\n'
+               || json.charAt(start) == '\r' || json.charAt(start) == '\t')) {
+            start++;
+        }
+        int end = start;
+        while (end < json.length() && (Character.isDigit(json.charAt(end))
+               || json.charAt(end) == '-')) {
+            end++;
+        }
+        assertTrue(end > start, "empty numeric value for field \"" + key + "\"");
+        return Long.parseUnsignedLong(json.substring(start, end));
     }
 }

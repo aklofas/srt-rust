@@ -96,7 +96,8 @@ fn run_demux(input: &[u8]) -> Vec<CoreEvent> {
 fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<CoreEvent> {
     use sha2::{Digest, Sha256};
     use tst_integration::scenarios::{
-        audio_klv_roundtrip_ts_bytes, video_dts_roundtrip_ts_bytes, video_roundtrip_ts_bytes,
+        audio_klv_roundtrip_ts_bytes, video_dts_roundtrip_ts_bytes, video_misp_roundtrip_ts_bytes,
+        video_roundtrip_ts_bytes,
     };
 
     // Re-run the generator's exact recipe — no hand-retyped mux.
@@ -104,6 +105,7 @@ fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<C
         "video-roundtrip" => video_roundtrip_ts_bytes(),
         "audio-klv-roundtrip" => audio_klv_roundtrip_ts_bytes(),
         "video-dts-roundtrip" => video_dts_roundtrip_ts_bytes(),
+        "video-misp-roundtrip" => video_misp_roundtrip_ts_bytes(),
         other => panic!("unknown roundtrip scenario: {other}"),
     };
 
@@ -132,6 +134,59 @@ fn run_roundtrip(id: &str, committed_output_ts: &[u8], golden: &Golden) -> Vec<C
         digest, expected,
         "roundtrip sha256 mismatch: TS output changed"
     );
+
+    // 3. For video-misp-roundtrip: demux the TS, extract the MISP timestamp,
+    //    and assert it matches the golden's committed extract fields.
+    if id == "video-misp-roundtrip" {
+        use tst_core::codec::misp_time::{MispTimeKind, extract as misp_extract};
+        use tst_core::mpegts::demux::event::SamplePayload;
+        use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+        use tst_core::mpegts::mux::VideoCodec;
+
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&fresh).expect("misp demux feed");
+        demuxer.flush();
+        let mut found = false;
+        while let Some(event) = demuxer.next_event() {
+            if let DemuxEvent::Sample {
+                payload: SamplePayload::Video { raw, .. },
+                ..
+            } = event
+            {
+                let extracted = misp_extract(&raw, VideoCodec::H264)
+                    .expect("misp_extract error")
+                    .expect("no MISP timestamp found in demuxed video AU");
+
+                let kind_u8 = match extracted.kind {
+                    MispTimeKind::Micro => 0u8,
+                    MispTimeKind::Nano => 1u8,
+                    _ => panic!("unknown MispTimeKind variant"),
+                };
+
+                let ext = &golden.extensions;
+                let golden_kind = ext["misp_kind"]
+                    .as_u64()
+                    .expect("golden misp_kind must be u64") as u8;
+                let golden_status = ext["misp_time_status"]
+                    .as_u64()
+                    .expect("golden misp_time_status must be u64")
+                    as u8;
+                let golden_value = ext["misp_value"]
+                    .as_u64()
+                    .expect("golden misp_value must be u64");
+
+                assert_eq!(kind_u8, golden_kind, "misp kind mismatch");
+                assert_eq!(
+                    extracted.time_status, golden_status,
+                    "misp time_status mismatch"
+                );
+                assert_eq!(extracted.value, golden_value, "misp value mismatch");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "video-misp-roundtrip: no video AU found after demux");
+    }
 
     // Roundtrip scenarios carry no media events.
     vec![]

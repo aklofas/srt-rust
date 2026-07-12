@@ -18,6 +18,7 @@ pub mod golden;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+use tst_core::codec::misp_time::{MispTimestamp, extract as misp_extract};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec,
@@ -56,6 +57,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(UnknownStreamType),
         Box::new(AudioKlvRoundtrip),
         Box::new(VideoDtsRoundtrip),
+        Box::new(VideoMispRoundtrip),
         Box::new(DropIdempotence),
         Box::new(ForgedHandle),
         Box::new(ExceptionKindStability),
@@ -1625,6 +1627,137 @@ pub fn video_dts_roundtrip_ts_bytes() -> Vec<u8> {
     )
     .expect("push_video_to_with_dts");
     drain_mux(&mut mux)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 15b — video-misp-roundtrip (roundtrip)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `kind = "roundtrip"`: muxes one H.264 AU with an embedded ST 0604 MISP
+/// microsecond timestamp, then the adapters demux the TS, extract the MISP
+/// timestamp, and assert round-trip equality.
+///
+/// Uses `push_video_misp_to` so the PES carries a MISP SEI NAL before the
+/// first VCL NAL.  Fixed parameters: `MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F)`,
+/// `PTS = 9000` ticks (90 kHz), matching the DTS-roundtrip PTS so the two
+/// scenarios share the same timestamp slot.
+///
+/// The golden `extensions` carries three fields:
+///   - `output_sha256`  — byte-identity digest of the whole TS output.
+///   - `misp_kind`      — 0 = Micro (u8).
+///   - `misp_time_status` — 0x1F (u8).
+///   - `misp_value`     — 0x0005F5E100000001 as a decimal u64 string.
+///
+/// This generator NEVER reads from `testfiles/`, `local/`, or any real corpus.
+struct VideoMispRoundtrip;
+
+impl Scenario for VideoMispRoundtrip {
+    fn id(&self) -> &'static str {
+        "video-misp-roundtrip"
+    }
+    fn kind(&self) -> &'static str {
+        "roundtrip"
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+    fn tier(&self) -> &'static str {
+        "A"
+    }
+
+    fn generate(&self, out_dir: &Path) -> (PathBuf, Golden) {
+        // Produced via the shared single-source-of-truth helper.
+        // This generator NEVER reads from testfiles/ or local/ directories.
+        let ts_bytes = video_misp_roundtrip_ts_bytes();
+        let digest = sha256_hex(&ts_bytes);
+
+        // Write input artifact (the TS output IS the golden artifact for
+        // roundtrip verification).
+        let artifact_rel = PathBuf::from(self.id()).join("output.ts");
+        let artifact_abs = out_dir.join(&artifact_rel);
+        write_file(&artifact_abs, &ts_bytes);
+
+        // Extract the MISP timestamp from the muxed AU to record in the golden.
+        // We demux the TS to recover the AU bytes, then call misp_extract.
+        let misp_golden = extract_misp_from_ts(&ts_bytes);
+
+        let golden = Golden {
+            schema_version: 0,
+            lossy: false,
+            core: vec![],
+            extensions: serde_json::json!({
+                "output_sha256": digest,
+                "misp_kind": misp_golden.0,
+                "misp_time_status": misp_golden.1,
+                "misp_value": misp_golden.2,
+            }),
+        };
+        (artifact_rel, golden)
+    }
+}
+
+/// Re-run the `video-misp-roundtrip` mux and return the deterministic TS bytes.
+///
+/// Single source of truth shared by `VideoMispRoundtrip::generate` and the Rust
+/// adapter test — no hand-retyped mux recipe.
+///
+/// Uses `push_video_misp_to` so the PES header carries an embedded MISP SEI NAL.
+/// Fixed timestamp: `MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F)`.
+/// Fixed PTS: 9000 ticks (90 kHz).
+pub fn video_misp_roundtrip_ts_bytes() -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("valid muxer config")
+    };
+    let mut mux = Muxer::new(cfg).expect("muxer init");
+    // Fetch the lone video-stream handle so push_video_misp_to can target it.
+    let handle = mux.video_stream_handle(0).expect("video handle 0");
+    let misp = MispTimestamp::micros(0x0005_F5E1_0000_0001, 0x1F);
+    // PTS 9000 ticks (90 kHz) — fixed so the golden is stable.
+    mux.push_video_misp_to(
+        handle,
+        &synthetic_h264_idr(),
+        Pts90khz::new(9_000),
+        true,
+        &misp,
+    )
+    .expect("push_video_misp_to");
+    drain_mux(&mut mux)
+}
+
+/// Demux a TS produced by `video_misp_roundtrip_ts_bytes`, find the first Video
+/// AU, extract the MISP timestamp, and return `(kind_u8, time_status, value)`.
+///
+/// Panics if the MISP timestamp is not found — used only during golden
+/// generation to derive the committed golden values.
+fn extract_misp_from_ts(ts_bytes: &[u8]) -> (u8, u8, u64) {
+    use tst_core::mpegts::demux::event::SamplePayload;
+    use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+    let mut demuxer = Demuxer::new();
+    demuxer.feed(ts_bytes).expect("demux feed");
+    demuxer.flush();
+    while let Some(event) = demuxer.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { raw, .. },
+            ..
+        } = event
+        {
+            let extracted = misp_extract(&raw, VideoCodec::H264)
+                .expect("misp_extract error")
+                .expect("no MISP timestamp found in video AU");
+            use tst_core::codec::misp_time::MispTimeKind;
+            let kind_u8 = match extracted.kind {
+                MispTimeKind::Micro => 0u8,
+                MispTimeKind::Nano => 1u8,
+                _ => panic!("unknown MispTimeKind variant"),
+            };
+            return (kind_u8, extracted.time_status, extracted.value);
+        }
+    }
+    panic!("no video event found in MISP-roundtrip TS — cannot derive golden values");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

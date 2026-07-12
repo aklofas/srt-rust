@@ -388,7 +388,7 @@ sha256 = "637525b5bf575a8a337f838ccd9495d589198ad6c2dfd0d6c563ff7b60551341"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/scenarios.toml"
-sha256 = "567679c41fcd0771a18d4cf0f2d89784f43c0e52f81c4e5588ded2b64eea1f4b"
+sha256 = "8102aa5a267e7104e0f4f9e0ae49d42ac37a6de6a32f7aaaea8584889d3bbc1b"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/strict-rejection/golden.json"
@@ -400,7 +400,7 @@ sha256 = "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/golden.json"
-sha256 = "d286c668ca0d58516305ec9d175caefd600939d2dfebbdee378203bf4dd98823"
+sha256 = "ba7d9ca66dc1fa1a389c779b31ee7b0b06f0a385fd1d93622eda605dbde29821"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/unknown-stream-type/input.ts"
@@ -413,6 +413,14 @@ sha256 = "504e297a48a0db9f40abccf26d38264494e8ed86a896a7be20ee98b554140106"
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/video-dts-roundtrip/output.ts"
 sha256 = "551c8f17f8d7635573cbbaa75b8ca309949bfaad9bcc80afd69fd93c11408850"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/video-misp-roundtrip/golden.json"
+sha256 = "8586fc00685b74153848655fa3f53a2c9a9699035e9612dfb89e00326aa2c654"
+
+[[file]]
+path = "crates/tst-integration/tests/fixtures/scenarios/video-misp-roundtrip/output.ts"
+sha256 = "f545fb3bf43f93995686d65e725dedc49cfe465fa19deaab2c874937b0834c19"
 
 [[file]]
 path = "crates/tst-integration/tests/fixtures/scenarios/video-roundtrip/golden.json"

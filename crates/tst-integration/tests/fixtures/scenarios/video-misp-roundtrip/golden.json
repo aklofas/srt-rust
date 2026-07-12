@@ -1,0 +1,11 @@
+{
+  "schema_version": 0,
+  "lossy": false,
+  "core": [],
+  "extensions": {
+    "misp_kind": 0,
+    "misp_time_status": 31,
+    "misp_value": 1677721600000001,
+    "output_sha256": "f545fb3bf43f93995686d65e725dedc49cfe465fa19deaab2c874937b0834c19"
+  }
+}

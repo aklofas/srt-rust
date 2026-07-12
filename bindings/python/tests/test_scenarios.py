@@ -428,6 +428,43 @@ def _video_dts_roundtrip_ts_bytes() -> bytes:
     return bytes(out)
 
 
+def _video_misp_roundtrip_ts_bytes() -> bytes:
+    """Reproduce the ``video-misp-roundtrip`` mux recipe byte-for-byte.
+
+    Single H.264 video stream (program 1, pmt_pid 0x1000, video pid 0x1011);
+    one IDR pushed via ``push_video_misp_to`` with
+    ``MispTimestamp.micros(0x0005_F5E1_0000_0001, 0x1F)`` and PTS 9000 ticks.
+    The committed ``output_sha256`` is shared with the Rust/C/JVM adapters.
+    """
+    from tstrans.codec import MispTimestamp
+
+    prog = (
+        MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x1000)
+        .add_video(pid=0x1011, codec=VideoCodec.H264)
+        .build()
+    )
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    mux = Muxer(cfg)
+    handle = mux.video_stream_handle(0)
+    assert handle is not None
+    misp = MispTimestamp.micros(0x0005_F5E1_0000_0001, 0x1F)
+    mux.push_video_misp_to(
+        handle,
+        _synthetic_h264_idr(),
+        pts=Pts90khz.from_raw(9000),
+        key_frame=True,
+        misp=misp,
+    )
+    out = bytearray()
+    buf = bytearray(1316)  # 7 × 188
+    while True:
+        n = mux.pull(buf)
+        if n == 0:
+            break
+        out.extend(buf[:n])
+    return bytes(out)
+
+
 def _audio_klv_roundtrip_ts_bytes() -> bytes:
     """Python mirror of ``audio_klv_roundtrip_ts_bytes()`` in the Rust crate.
 
@@ -486,6 +523,8 @@ def _run_roundtrip(
         fresh = _audio_klv_roundtrip_ts_bytes()
     elif scenario_id == "video-dts-roundtrip":
         fresh = _video_dts_roundtrip_ts_bytes()
+    elif scenario_id == "video-misp-roundtrip":
+        fresh = _video_misp_roundtrip_ts_bytes()
     else:
         pytest.fail(f"unknown roundtrip scenario id: {scenario_id!r}")
 
@@ -501,6 +540,39 @@ def _run_roundtrip(
         f"[{scenario_id}] sha256 mismatch: got {actual_sha256!r}, "
         f"expected {expected_sha256!r}"
     )
+
+    # video-misp-roundtrip: demux the produced TS, extract the MISP timestamp,
+    # and assert it matches the golden's committed misp_* fields.
+    if scenario_id == "video-misp-roundtrip":
+        from tstrans.codec import MispTimestamp, MispTimeKind, extract_misp_timestamp
+
+        d = Demuxer(DemuxerConfig())
+        d.feed(fresh)
+        d.flush()
+        video_events = [e for e in d if isinstance(e, DemuxEvent.Video)]
+        assert video_events, f"[{scenario_id}] no video event after demux"
+
+        ts_out = extract_misp_timestamp(video_events[0].raw, VideoCodec.H264)
+        assert ts_out is not None, f"[{scenario_id}] extract_misp_timestamp returned None"
+
+        golden_kind = golden_extensions.get("misp_kind")
+        golden_status = golden_extensions.get("misp_time_status")
+        golden_value = golden_extensions.get("misp_value")
+
+        expected_kind = MispTimeKind.MICRO if golden_kind == 0 else MispTimeKind.NANO
+        assert ts_out.kind == expected_kind, (
+            f"[{scenario_id}] misp kind mismatch: got {ts_out.kind!r}, "
+            f"expected kind={golden_kind}"
+        )
+        assert ts_out.time_status == golden_status, (
+            f"[{scenario_id}] misp time_status mismatch: "
+            f"got {ts_out.time_status}, expected {golden_status}"
+        )
+        assert ts_out.value == golden_value, (
+            f"[{scenario_id}] misp value mismatch: "
+            f"got {ts_out.value}, expected {golden_value}"
+        )
+
     return []
 
 

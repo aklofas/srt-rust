@@ -177,15 +177,16 @@ signature, or struct layout was removed or changed.
   changed): `tst_muxer_push_video_misp_to`, `tst_muxer_push_video_misp_to_with_dts`
   (push + splice on the muxer handle), `tst_misp_time_extract` (scan an Annex-B access
   unit and return the first MISP timestamp), error codes
-  `TST_E_MISP_BUILD_FAILED = -45` and `TST_E_MISP_EXTRACT_FAILED = -46`.
+  `TST_E_MISP_TIME = -45` and `TST_E_MISP_TIME_MALFORMED = -46`.
 
-- **Python (`tstrans.codec`):** `MispTimestamp` type (with `kind`, `microseconds`,
-  `nanoseconds` fields), `extract_misp_timestamp(au_bytes, codec)` helper.
-  `Muxer.push_video_misp_to` / `push_video_misp_to_with_dts` push + splice variants.
+- **Python (`tstrans.codec`):** `MispTimestamp` type (`kind` / `time_status` / `value`
+  properties, `micros()` / `nanos()` constructors), `extract_misp_timestamp(au_bytes,
+  codec)` helper. `Muxer.push_video_misp_to(handle, nal, *, pts, dts=None, key_frame,
+  misp)` push + splice variant.
 
-- **JVM (`org.tstrans.codec`):** `MispTimestamp` type, `MispTimestamp.extractFrom(byte[],
-  VideoCodec)` static helper. `Muxer.pushVideoMispTo` / `pushVideoMispToWithDts` push +
-  splice variants.
+- **JVM (`org.tstrans.codec`):** `MispTimestamp` record (`micros` / `nanos` factories),
+  `MispTimestamp.extract(byte[], VideoCodec)` static helper. `Muxer.pushVideoMispTo`
+  overloads (with and without DTS) push + splice variants.
 
 - `tcp://` and `tcps://` caller URLs now accept DNS hostnames in addition to IP
   literals. Resolution happens at connect time (never at parse time). For

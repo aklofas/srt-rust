@@ -6,10 +6,11 @@
 //! (the 23-item Minimum Metadata Set). All violations found are returned;
 //! an empty `Vec` means the record satisfies the MISMMS requirements.
 //!
-//! **Presence** is satisfied when a typed field is `Some(_)` OR when
-//! `record.unknown` contains an entry with that tag number and a non-empty
-//! value. Zero-length wire values do NOT satisfy presence and additionally
-//! produce a [`MismmsViolation::ZeroLengthItem`] (ST 0902.8-05).
+//! **Presence** is satisfied when a typed field is `Some(_)` with non-empty
+//! content OR when `record.unknown` contains an entry with that tag number
+//! and a non-empty value. Zero-length wire values do NOT satisfy presence
+//! and additionally produce a [`MismmsViolation::ZeroLengthItem`] (ST 0902.8-05).
+//! This applies to both typed fields and unknown entries.
 //!
 //! **Alternation groups** (Note 1):
 //! - Tags 6 | 90 — inclusive-or (either satisfies the requirement).
@@ -218,11 +219,18 @@ pub fn validate_mismms(record: &UasDatalinkLs) -> Vec<MismmsViolation> {
     // ----------------------------------------------------------------
     // Step 1: collect present typed tags via the encode visitor.
     // EncodeConfig::default() is fine — _opts is unused in the visitor.
+    // Zero-length typed values do NOT satisfy presence.
     // ----------------------------------------------------------------
     let opts = EncodeConfig::default();
     let mut typed_present: [bool; 256] = [false; 256];
-    each_typed_field(record, &opts, |tag, _len| {
-        typed_present[tag as usize] = true;
+    each_typed_field(record, &opts, |tag, len| {
+        if len == 0 {
+            // Zero-length typed value — record violation but do not set presence.
+            violations.push(MismmsViolation::ZeroLengthItem { tag });
+        } else {
+            // Non-empty typed value satisfies presence.
+            typed_present[tag as usize] = true;
+        }
     });
     // Tag 65 is auto-emitted by the visitor (auto_version branch); exclude it
     // from the presence map so it cannot contaminate MISMMS checks.
@@ -520,6 +528,71 @@ mod tests {
                 name: "Target Width",
             }),
             "absent Tag 22 with zero-length Tag 96 should yield MissingItem{{22}}; got: {v:?}"
+        );
+    }
+
+    #[test]
+    fn zero_length_typed_vmti() {
+        // vmti = Some(vec![]) — empty typed bytes vector.
+        // Expect: ZeroLengthItem{74} AND MissingItem{20} (Tag 74 is not in MISMMS,
+        // but to get a required tag with zero-length, use miis_core_id at Tag 94).
+        // For a simpler test, use unknown with a MISMMS tag instead.
+        // Actually, let's test that a typed-field zero-length still triggers
+        // the violation even if it's not in MISMMS — use Tag 74 (VMTI).
+        let mut record = full_mismms_record();
+        record.vmti = Some(vec![]); // empty, not None
+        let v = validate_mismms(&record);
+
+        let zero_length_count = v
+            .iter()
+            .filter(|vi| matches!(vi, MismmsViolation::ZeroLengthItem { tag: 74 }))
+            .count();
+        assert_eq!(
+            zero_length_count, 1,
+            "should produce exactly one ZeroLengthItem{{tag:74}}; got: {v:?}"
+        );
+        // Tag 74 is not in the MISMMS requirement table, so there should be
+        // no MissingItem for it — just the ZeroLengthItem.
+    }
+
+    #[test]
+    fn zero_length_typed_security_local_set() {
+        // security_local_set = Some(vec![]) — empty typed bytes.
+        // Expect: ZeroLengthItem{48} AND MissingItem{48} (empty doesn't satisfy presence).
+        let mut record = full_mismms_record();
+        record.security_local_set = Some(vec![]); // empty, not None
+        let v = validate_mismms(&record);
+
+        let zero_length_count = v
+            .iter()
+            .filter(|vi| matches!(vi, MismmsViolation::ZeroLengthItem { tag: 48 }))
+            .count();
+        assert_eq!(
+            zero_length_count, 1,
+            "should produce exactly one ZeroLengthItem{{tag:48}}; got: {v:?}"
+        );
+
+        let missing_count = v
+            .iter()
+            .filter(|vi| {
+                matches!(
+                    vi,
+                    MismmsViolation::MissingItem {
+                        tag: 48,
+                        name: "Security Local Set"
+                    }
+                )
+            })
+            .count();
+        assert_eq!(
+            missing_count, 1,
+            "should produce exactly one MissingItem{{tag:48, name:\"Security Local Set\"}}; got: {v:?}"
+        );
+
+        assert_eq!(
+            v.len(),
+            2,
+            "should produce exactly 2 violations for empty security_local_set; got: {v:?}"
         );
     }
 }

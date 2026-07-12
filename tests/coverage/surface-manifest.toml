@@ -10211,3 +10211,165 @@ reason = "ST 0604 MISP-SEI splice push; exercised by video-misp-roundtrip scenar
 [[exempt]]
 item = "tst_core::mpegts::mux::Muxer::push_video_misp_to_with_dts"
 reason = "ST 0604 MISP-SEI splice push with explicit DTS; exercised by video-misp-roundtrip scenario + muxer_misp integration tests"
+
+[[surface]]
+item = "tst_core::klv::st1204::IdType"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::IdType::Managed"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::IdType::Physical"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::IdType::Virtual"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error::InvalidUsage"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error::ReservedBitsSet"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error::TrailingBytes"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error::Truncated"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::St1204Error::UnsupportedVersion"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::minor"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::platform"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::sensor"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::version"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::CoreId::window"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::decode"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1204::encode_to_vec"
+owning_tests = ["crates/tst-core/src/klv/st1204/mod.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_core::klv::st1204::CoreId::clone"
+reason = "derive impl for st1204 CoreId; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::CoreId::eq"
+reason = "derive impl for st1204 CoreId; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::CoreId::fmt"
+reason = "derive impl for st1204 CoreId; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::IdType::clone"
+reason = "derive impl for st1204 IdType; covered by decode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::IdType::eq"
+reason = "derive impl for st1204 IdType; covered by decode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::IdType::fmt"
+reason = "derive impl for st1204 IdType; covered by decode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::St1204Error::clone"
+reason = "derive impl for st1204 error; covered by error-path tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::St1204Error::eq"
+reason = "derive impl for st1204 error; covered by error-path tests"
+
+[[exempt]]
+item = "tst_core::klv::st1204::St1204Error::fmt"
+reason = "derive impl for st1204 error; covered by error-path tests"

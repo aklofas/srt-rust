@@ -618,7 +618,11 @@ mod tests {
                 errno_code: None,
             })
         });
-        let initial = CeilingRecv { ceiling: 9000, calls: 0, ok_until: 1 };
+        let initial = CeilingRecv {
+            ceiling: 9000,
+            calls: 0,
+            ok_until: 1,
+        };
         let mut m = ManagedRecvTransport::new(initial, factory, fast_policy(Some(2)));
         assert_eq!(m.max_payload(), 9000, "live inner's ceiling");
 
@@ -636,9 +640,17 @@ mod tests {
     #[test]
     fn max_payload_refreshes_on_successful_rebuild() {
         let factory = Box::new(|| {
-            Ok(CeilingRecv { ceiling: 7000, calls: 0, ok_until: 10 })
+            Ok(CeilingRecv {
+                ceiling: 7000,
+                calls: 0,
+                ok_until: 10,
+            })
         });
-        let initial = CeilingRecv { ceiling: 9000, calls: 0, ok_until: 1 };
+        let initial = CeilingRecv {
+            ceiling: 9000,
+            calls: 0,
+            ok_until: 1,
+        };
         let mut m = ManagedRecvTransport::new(initial, factory, fast_policy(Some(5)));
 
         let mut buf = [0u8; 16];

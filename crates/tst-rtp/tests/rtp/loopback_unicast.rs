@@ -395,7 +395,10 @@ fn recv_url_pkt_size_rejected_with_teaching_error() {
         "wrong error variant: {err:?}"
     );
     let msg = err.to_string();
-    assert!(msg.contains("send-side knob"), "teaching text missing: {msg}");
+    assert!(
+        msg.contains("send-side knob"),
+        "teaching text missing: {msg}"
+    );
 }
 
 /// Send-side URL `?pkt_size=` still works and still drives the send
@@ -408,10 +411,17 @@ fn send_url_pkt_size_still_drives_send_budget() {
     let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004?pkt_size=376")
         .expect("send URL with ?pkt_size= must still parse");
     let t = b.connect().expect("unicast connect");
-    assert_eq!(t.max_payload(), 376 - 12, "explicit pkt_size drives send budget");
+    assert_eq!(
+        t.max_payload(),
+        376 - 12,
+        "explicit pkt_size drives send budget"
+    );
 
-    let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004")
-        .expect("bare send URL");
+    let b = tst_rtp::RtpSocketBuilder::from_url("rtp://127.0.0.1:5004").expect("bare send URL");
     let t = b.connect().expect("unicast connect");
-    assert_eq!(t.max_payload(), 1316 - 12, "absent pkt_size resolves the 1316 default");
+    assert_eq!(
+        t.max_payload(),
+        1316 - 12,
+        "absent pkt_size resolves the 1316 default"
+    );
 }

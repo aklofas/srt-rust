@@ -22,7 +22,7 @@ use crate::rtcp::ingest::{ingest_rr, ingest_sr};
 use crate::rtcp::reporter::RtcpReporterHandle;
 use crate::rtcp::stats::RtcpStats;
 use crate::rtcp::{ReceiverReport, SdesPacket, SenderReport};
-use crate::url::{RtpUrl, UrlError as RtpUrlError};
+use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
 /// Convert an `io::Error` from the shared UDP socket helpers into a
 /// `ConnectError`. `io::ErrorKind::Unsupported` (produced by
@@ -188,6 +188,7 @@ impl RtpTransport {
         rtcp_socket: Option<UdpSocket>,
         peer: SocketAddr,
     ) -> Self {
+        let pkt_size = url.pkt_size.unwrap_or(DEFAULT_PKT_SIZE);
         let ssrc = url.ssrc.unwrap_or_else(random_u32);
         let next_seq = random_u32() as u16;
         let start_ticks = random_u32();
@@ -205,7 +206,7 @@ impl RtpTransport {
                         tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
                         return Self {
                             socket: Some(socket),
-                            max_payload: url.pkt_size,
+                            max_payload: pkt_size,
                             clock: RtpClock::new(start_ticks),
                             ssrc,
                             next_seq,
@@ -215,7 +216,7 @@ impl RtpTransport {
                             rtcp_socket,
                             rtcp_stats,
                             rtcp_reporter: None,
-                            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
+                            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + pkt_size),
                         };
                     }
                 };
@@ -227,7 +228,7 @@ impl RtpTransport {
                     tracing::warn!("peer port 65535 has no RTCP companion; skipping SR reporter");
                     return Self {
                         socket: Some(socket),
-                        max_payload: url.pkt_size,
+                        max_payload: pkt_size,
                         clock: RtpClock::new(start_ticks),
                         ssrc,
                         next_seq,
@@ -237,7 +238,7 @@ impl RtpTransport {
                         rtcp_socket,
                         rtcp_stats,
                         rtcp_reporter: None,
-                        send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
+                        send_scratch: Vec::with_capacity(RTP_HEADER_LEN + pkt_size),
                     };
                 };
                 let rtcp_target = SocketAddr::new(peer.ip(), rtcp_companion_port);
@@ -282,7 +283,7 @@ impl RtpTransport {
         };
         Self {
             socket: Some(socket),
-            max_payload: url.pkt_size,
+            max_payload: pkt_size,
             clock: RtpClock::new(start_ticks),
             ssrc,
             next_seq,
@@ -292,7 +293,7 @@ impl RtpTransport {
             rtcp_socket,
             rtcp_stats,
             rtcp_reporter,
-            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + url.pkt_size),
+            send_scratch: Vec::with_capacity(RTP_HEADER_LEN + pkt_size),
         }
     }
 
@@ -680,6 +681,9 @@ impl RtpRecvTransport {
     /// the TCP-interleaved RTSP `rtt_us` / `packets_lost_send` path) is a
     /// separate, working path and is not affected by this toggle.
     pub fn listen_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
+        if url.pkt_size.is_some() {
+            return Err(ConnectError::Url(RtpUrlError::RecvPktSize));
+        }
         if url.pt.is_some() {
             return Err(ConnectError::PayloadTypeParam);
         }

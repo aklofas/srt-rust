@@ -286,3 +286,18 @@ fn randomized_loss_soak_no_panic_and_byte_identity() {
         "loss-soak: no AUs emitted at all — receiver or payloader is broken"
     );
 }
+
+/// `?pkt_size=` on an elementary-RTP receive URL is rejected the same
+/// way as on the MP2T receive path.
+#[test]
+fn h264_listen_rejects_pkt_size_query() {
+    let result = tst_rtp::H264Receiver::listen("rtp://127.0.0.1:0?pt=96&pkt_size=1316");
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("h264 recv URL with ?pkt_size= must be rejected"),
+    };
+    assert!(matches!(
+        err,
+        tst_rtp::ConnectError::Url(tst_rtp::RtpUrlError::RecvPktSize)
+    ));
+}

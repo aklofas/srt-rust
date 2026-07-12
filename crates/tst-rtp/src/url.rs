@@ -12,7 +12,7 @@
 //! |---|---|---|
 //! | `ttl` | 1..=255 | 1 (unicast); 8 (multicast send) |
 //! | `iface` | interface name (`eth0`) or IPv4 literal | OS default |
-//! | `pkt_size` | positive multiple of 188 | 1316 |
+//! | `pkt_size` | positive multiple of 188 (send URLs only; rejected on receive URLs) | 1316 |
 //! | `ssrc` | u32 decimal or `0x`-prefixed hex | random |
 //! | `pt` | 1..=127, 33 rejected (MPEG-TS) | absent — required by `H264Receiver::listen` |
 //!
@@ -62,8 +62,12 @@ pub struct RtpUrl {
     pub ttl: Option<u8>,
     /// `?iface=eth0` or `?iface=192.168.1.50` — empty when absent.
     pub iface: Option<String>,
-    /// `?pkt_size=N` — bytes per UDP datagram (188-multiple).
-    pub pkt_size: usize,
+    /// `?pkt_size=N` — bytes per UDP datagram (188-multiple). `None` when
+    /// the query key is absent; the send path resolves
+    /// [`DEFAULT_PKT_SIZE`] at build time. Receive-side entry points
+    /// reject `Some` with [`UrlError::RecvPktSize`] — the knob is
+    /// send-side only since the recv-ceiling change.
+    pub pkt_size: Option<usize>,
     /// `?ssrc=N` — explicit SSRC; `None` means "randomize at construct".
     pub ssrc: Option<u32>,
     /// `?pt=N` — RTP payload type for elementary-stream (H.264) ingest.
@@ -102,6 +106,13 @@ pub enum UrlError {
     /// `?pkt_size=` not a positive multiple of 188.
     #[error("invalid pkt_size '{got}': {detail}")]
     BadPktSize { got: String, detail: String },
+    /// `?pkt_size=` supplied to a receive-side entry point. The knob is
+    /// send-side only since the recv-ceiling change (PR #97): receive
+    /// buffers size to the transport's deliverable ceiling automatically.
+    #[error(
+        "pkt_size is a send-side knob; receive buffers size to the transport's deliverable ceiling automatically — remove ?pkt_size= from receiver URLs"
+    )]
+    RecvPktSize,
     /// `?ssrc=` couldn't be parsed as decimal or `0x`-prefixed hex.
     #[error("invalid ssrc '{got}': {detail}")]
     BadSsrc { got: String, detail: String },
@@ -182,14 +193,14 @@ impl RtpUrl {
         let port = port.ok_or(UrlError::MissingPort)?;
         let mut ttl = None;
         let mut iface = None;
-        let mut pkt_size = DEFAULT_PKT_SIZE;
+        let mut pkt_size = None;
         let mut ssrc = None;
         let mut pt = None;
         for (k, v) in query.iter() {
             match k.as_ref() {
                 "ttl" => ttl = Some(parse_ttl(v.as_ref())?),
                 "iface" => iface = Some(parse_iface(v.as_ref())?),
-                "pkt_size" => pkt_size = parse_pkt_size(v.as_ref())?,
+                "pkt_size" => pkt_size = Some(parse_pkt_size(v.as_ref())?),
                 "ssrc" => ssrc = Some(parse_ssrc(v.as_ref())?),
                 "pt" => pt = Some(parse_pt(v.as_ref())?),
                 other => {
@@ -584,7 +595,7 @@ mod tests {
         assert_eq!(u.port, 5004);
         assert!(u.ttl.is_none());
         assert!(u.iface.is_none());
-        assert_eq!(u.pkt_size, DEFAULT_PKT_SIZE);
+        assert_eq!(u.pkt_size, None);
         assert!(u.ssrc.is_none());
     }
 
@@ -599,7 +610,7 @@ mod tests {
     #[test]
     fn parse_url_with_pkt_size_and_ssrc() {
         let u = RtpUrl::parse("rtp://239.10.10.1:5004?pkt_size=1316&ssrc=0xCAFEBABE").unwrap();
-        assert_eq!(u.pkt_size, 1316);
+        assert_eq!(u.pkt_size, Some(1316));
         assert_eq!(u.ssrc, Some(0xCAFE_BABE));
     }
 

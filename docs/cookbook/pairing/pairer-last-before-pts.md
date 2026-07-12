@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/pipeline.md](/docs/guides/pipeline.md) — `Pairer::last_before_pts` and freshness ceilings
-> - [Recipe 13](13-sample-hold-klv.md) — the inline pattern this replaces
+> - [Sample-and-hold async-KLV against video frames](/docs/cookbook/pairing/sample-hold-klv.md) — the inline pattern this replaces
 
 Replaces the cookbook recipe 13 inline pattern. Each video frame
 attaches the most recent KLV at `klv.pts <= video.pts`.

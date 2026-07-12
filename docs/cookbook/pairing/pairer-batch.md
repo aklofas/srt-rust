@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/pipeline.md](/docs/guides/pipeline.md) — `PairerMode::Buffered` semantics and `max_lag`
-> - [Recipe 24](24-pairer-realtime.md) — the Realtime sibling
+> - [Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)](/docs/cookbook/pairing/pairer-realtime.md) — the Realtime sibling
 
 When KLV PES is interleaved *after* its matching video PES (some
 encoders), Realtime mode misses the pairing. Buffered mode holds video

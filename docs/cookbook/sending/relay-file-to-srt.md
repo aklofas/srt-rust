@@ -38,4 +38,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/receiving/ts_relay_from_file.rs](../../../examples/receiving/ts_relay_from_file.rs).
+Runnable: [examples/receiving/ts_relay_from_file.rs](/examples/receiving/ts_relay_from_file.rs).

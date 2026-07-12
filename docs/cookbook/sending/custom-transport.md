@@ -35,4 +35,4 @@ impl Transport for MemTransport {
 }
 ```
 
-Runnable: [../../../examples/sending/custom_transport.rs](../../../examples/sending/custom_transport.rs).
+Runnable: [examples/sending/custom_transport.rs](/examples/sending/custom_transport.rs).

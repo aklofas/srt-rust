@@ -1,5 +1,13 @@
 # Send MPEG-TS over RIST
 
+> **When to use this:** ARQ-recovered UDP for lossy WAN links — VideoLAN librist with Simple + Main profiles and AES-128/192/256 PSK encryption.
+
+> **Related:**
+> - [Receive MPEG-TS over RIST](/docs/cookbook/receiving/rist.md)
+> - [Pipeline guide](/docs/guides/pipeline.md)
+> - [Send MPEG-TS over UDP](/docs/cookbook/sending/udp.md) — lower-level alternative without recovery
+> - [SRT guide](/docs/guides/srt.md) — heavier alternative with a bigger feature set
+
 RIST (Reliable Internet Stream Transport, VSF TR-06-1 / TR-06-2) adds ARQ
 retransmission to UDP — useful for moderate-loss links (cellular, congested
 WiFi) where SRT's full handshake-and-encryption shape is too heavy.
@@ -71,9 +79,3 @@ For Main Profile + AES:
 ffmpeg -i 'rist://@:9000?profile=main&aes-type=256&secret=shared-psk-here' \
     -c copy out.ts
 ```
-
-## See also
-
-- [Receive over RIST](../receiving/rist.md)
-- [Send over UDP](udp.md) — lower-level alternative without recovery
-- [Send over SRT](../../guides/srt.md) — heavier alternative with bigger feature set

@@ -1,5 +1,13 @@
 # Publish MPEG-TS as an HLS stream
 
+> **When to use this:** Browsers and CDNs pull the stream over plain HTTP — the segmenter writes `.ts` segments + a rolling `.m3u8`, with an optional built-in HTTP server (Basic auth + HTTPS).
+
+> **Related:**
+> - [HLS guide](/docs/guides/hls.md) — serving modes, KLV carriage, latency tuning
+> - [Send KLV over HLS to a browser (hls.js)](/docs/cookbook/sending/hls-klv-to-web.md)
+> - [Send MPEG-TS over TCP](/docs/cookbook/sending/tcp.md) — same crate family, raw TCP variant
+> - [Open a sender from an `srt://...?...` URL](/docs/cookbook/sending/sender-from-url.md) — reliable point-to-point
+
 > **Conformance notes (RFC 8216):** `#EXTINF` reflects media-presentation
 > (PTS) duration when driven through `MuxPublisher`; raw `push_ts` callers
 > fall back to wall-clock. `#EXT-X-TARGETDURATION` is fixed at the ceiling
@@ -16,7 +24,7 @@ segments — STANAG 4609-aware players continue to decode telemetry.
 See the [HLS guide](/docs/guides/hls.md) for serving guidance, the KLV
 ride-along carriage modes, and latency tuning. For the browser + hls.js
 client contract, see
-[Recipe 9e: KLV-over-HLS to a browser](hls-klv-to-web.md).
+[Send KLV over HLS to a browser (hls.js)](/docs/cookbook/sending/hls-klv-to-web.md).
 
 ## Code
 
@@ -97,8 +105,3 @@ mpv    'http://localhost:8080/playlist.m3u8'
 | `mode` | `live` | One of `live`/`event`/`vod` |
 | `auth_user`/`auth_pass` | none | Basic auth credentials |
 | `cert`/`key` | none | HTTPS cert + key paths (PEM) |
-
-## See also
-
-- [Send MPEG-TS over TCP](tcp.md) — same crate, raw TCP variant
-- [Send MPEG-TS over SRT](11-sender-from-url.md) — for reliable point-to-point

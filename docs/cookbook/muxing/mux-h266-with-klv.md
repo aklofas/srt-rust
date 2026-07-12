@@ -4,7 +4,7 @@
 
 > **Related:**
 > - [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — H.266 stream_type 0x33 and AU-cell auto-wrap
-> - [Recipe 9](09-mux-h265-with-klv.md) — same shape, H.265 codec
+> - [Mux H.265 + sync KLV](/docs/cookbook/muxing/mux-h265-with-klv.md) — same shape, H.265 codec
 > - [Example: `mux_h266_with_klv`](/examples/muxing/mux_h266_with_klv.rs)
 
 H.266 (VVC) carries in MPEG-TS under PMT `stream_type = 0x33` per the
@@ -41,4 +41,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/muxing/mux_h266_with_klv.rs](../../../examples/muxing/mux_h266_with_klv.rs).
+Runnable: [examples/muxing/mux_h266_with_klv.rs](/examples/muxing/mux_h266_with_klv.rs).

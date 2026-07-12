@@ -27,4 +27,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/sending/sender_from_url.rs](../../../examples/sending/sender_from_url.rs).
+Runnable: [examples/sending/sender_from_url.rs](/examples/sending/sender_from_url.rs).

@@ -1,9 +1,14 @@
 # Send KLV over HLS to a browser (hls.js)
 
-You want a browser-based map client to render live MISB KLV telemetry
-alongside the video, delivered as HLS. KLV rides **inside** the `.ts`
-segments as a private-data elementary stream; a JavaScript player pulls the
-KLV out of the fragment metadata and schedules it against playback time.
+> **When to use this:** A browser-based map client should render live MISB KLV telemetry alongside the video, delivered as HLS — no native player, no plugin.
+
+> **Related:**
+> - [Publish MPEG-TS as an HLS stream](/docs/cookbook/sending/hls.md) — the base sender loop
+> - [HLS guide](/docs/guides/hls.md) — serving modes, KLV carriage, latency tuning
+
+KLV rides **inside** the `.ts` segments as a private-data elementary stream;
+a JavaScript player pulls the KLV out of the fragment metadata and schedules
+it against playback time.
 
 This recipe covers both the producer side (a Python `MuxPublisher` with a
 `PrivateData` KLV stream) and the client side (an hls.js snippet that handles
@@ -156,5 +161,5 @@ Pick the mode when you build the program; the two are different PMT
 ## See also
 
 - [HLS guide](/docs/guides/hls.md) — modes, serving guidance, latency tuning.
-- [Recipe 9c: Publish MPEG-TS as an HLS stream](hls.md) — the base sender loop.
+- [Publish MPEG-TS as an HLS stream](/docs/cookbook/sending/hls.md) — the base sender loop.
 - [KLV guide](/docs/guides/klv.md) — building the ST 0601 records you push.

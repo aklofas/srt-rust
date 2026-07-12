@@ -1,10 +1,10 @@
 # Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)
 
-> **When to use this:** You want the inline pattern from Recipe 12 expressed through the opt-in `Pairer` helper, with bounded history, telemetry counters, and typed projection structs.
+> **When to use this:** You want the inline nearest-PTS pattern ([Pair sync-KLV with video AUs by nearest PTS](/docs/cookbook/pairing/pair-klv-by-pts.md)) expressed through the opt-in `Pairer` helper, with bounded history, telemetry counters, and typed projection structs.
 
 > **Related:**
 > - [guides/pipeline.md](/docs/guides/pipeline.md) — `Pairer`, `PairerMode`, and the typed output projections
-> - [Recipe 12](12-pair-klv-by-pts.md) — the inline ~20-line equivalent
+> - [Pair sync-KLV with video AUs by nearest PTS](/docs/cookbook/pairing/pair-klv-by-pts.md) — the inline ~20-line equivalent
 > - [Example: `pair_klv_pipeline`](/examples/pairing/pair_klv_pipeline.rs)
 
 The cookbook recipe 12 inline pattern in ~20 lines, expressed through

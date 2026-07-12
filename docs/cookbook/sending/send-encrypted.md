@@ -30,4 +30,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/sending/encrypted_send_recv.rs](../../../examples/sending/encrypted_send_recv.rs).
+Runnable: [examples/sending/encrypted_send_recv.rs](/examples/sending/encrypted_send_recv.rs).

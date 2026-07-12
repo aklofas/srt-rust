@@ -51,4 +51,4 @@ receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
 renumber program 2's input PIDs into a non-conflicting range during the
 demux→remux step.
 
-Runnable: [../../../examples/muxing/repack_two_programs.rs](../../../examples/muxing/repack_two_programs.rs).
+Runnable: [examples/muxing/repack_two_programs.rs](/examples/muxing/repack_two_programs.rs).

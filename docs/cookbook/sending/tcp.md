@@ -1,5 +1,13 @@
 # Send MPEG-TS over TCP
 
+> **When to use this:** You want UDP's payload with a reliable bytestream (and optional TLS via rustls) — pairs with `ffmpeg -listen 1 -i tcp://…` on the receive side.
+
+> **Related:**
+> - [Receive MPEG-TS over TCP](/docs/cookbook/receiving/tcp.md)
+> - [Pipeline guide](/docs/guides/pipeline.md)
+> - [Send MPEG-TS over UDP](/docs/cookbook/sending/udp.md) — when latency matters more than reliability
+> - [Open a sender from an `srt://...?...` URL](/docs/cookbook/sending/sender-from-url.md) — reliable + encrypted transport
+
 Raw MPEG-TS over TCP is the reliable-bytestream sibling of UDP. Useful when
 packet loss matters more than latency, or when firewall topology blocks
 multicast. `ffmpeg -listen 1 -i tcp://...` and GStreamer's `tcpsink` are
@@ -81,9 +89,3 @@ ffmpeg -listen 1 -i tcp://0.0.0.0:7001 -c copy out.ts
 # Then caller (from our send_tcp example):
 cargo run -p tst-examples --example send_tcp -- input.ts tcp://127.0.0.1:7001
 ```
-
-## See also
-
-- [Receive MPEG-TS over TCP](../receiving/tcp.md)
-- [Send MPEG-TS over UDP](udp.md) — when latency matters more than reliability
-- [Send MPEG-TS over SRT](11-sender-from-url.md) — for reliable + encrypted transport with FEC

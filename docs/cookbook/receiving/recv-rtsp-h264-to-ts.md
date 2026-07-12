@@ -8,8 +8,8 @@
 > **Related:**
 > - [`/docs/languages/python.md#h264-over-rtp-ingest-rfc-6184`](/docs/languages/python.md#h264-over-rtp-ingest-rfc-6184) — full Python API reference
 > - [`examples/receiving/recv_rtsp_h264.rs`](/examples/receiving/recv_rtsp_h264.rs) — Rust runnable twin with full commentary
-> - [Recipe 12: Pair sync-KLV with video by PTS](12-pair-klv-by-pts.md) — once you have AUs, pairing with KLV
-> - [Recipe 4a: Receive MPEG-TS over UDP / RTSP](udp.md) — for cameras that expose MPEG-TS-over-RTP (use `RtspClient.connect()` → `into_demux_receiver()` for that shape)
+> - [Pair sync-KLV with video AUs by nearest PTS](/docs/cookbook/pairing/pair-klv-by-pts.md) — once you have AUs, pairing with KLV
+> - [Receive MPEG-TS over UDP](/docs/cookbook/receiving/udp.md) — for cameras that expose MPEG-TS-over-RTP (use `RtspClient.connect()` → `into_demux_receiver()` for that shape)
 
 Most surveillance cameras and gimbal sensor pods use one of two RTSP shapes:
 
@@ -85,7 +85,7 @@ with RtspClient.connect_h264(cfg) as session:
 
             # KLV pairing slot: if this camera also sends telemetry on a
             # separate UDP feed or a second RTSP m-line, push it here with
-            # the same pts. See Recipe 12 for the pairing pattern.
+            # the same pts. See the pair-klv-by-pts recipe for the pairing pattern.
             # mux.push_klv(klv_bytes, pts=Pts90khz.from_raw(au.pts), metadata_service_id=0x00)
 
             while (n := mux.pull(buf)) > 0:

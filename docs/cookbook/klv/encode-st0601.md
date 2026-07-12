@@ -29,4 +29,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../../../examples/klv-metadata/klv_encode_minimal.rs](../../../examples/klv-metadata/klv_encode_minimal.rs).
+Runnable: [examples/klv-metadata/klv_encode_minimal.rs](/examples/klv-metadata/klv_encode_minimal.rs).

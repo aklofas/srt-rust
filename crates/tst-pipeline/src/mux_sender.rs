@@ -1568,6 +1568,96 @@ mod multi_stream_tests {
     }
 
     #[test]
+    fn sender_send_video_misp_to_with_dts_recovers_timestamp() {
+        use tst_core::codec::misp_time::MispTimestamp;
+        use tst_core::mpegts::demux::event::{DemuxEvent, SamplePayload};
+        use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
+
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.pcr_pid(0x1011);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+
+        // Collect transport bytes via snoop transport.
+        let snoop = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        struct SnoopTransport(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl Transport for SnoopTransport {
+            fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(())
+            }
+            fn max_payload(&self) -> usize {
+                1316
+            }
+            fn close(&mut self) {}
+            fn is_alive(&self) -> bool {
+                true
+            }
+        }
+
+        let s = MuxSender::new(SnoopTransport(snoop.clone()), cfg).unwrap();
+        let handle = s.video_handles()[0];
+
+        // AUD + SPS + PPS + IDR — canonical H.264 keyframe AU.
+        let nal: Vec<u8> = {
+            fn nal(nal_type: u8, nri: u8, body: &[u8]) -> Vec<u8> {
+                let mut v = vec![0x00, 0x00, 0x00, 0x01, (nri << 5) | nal_type];
+                v.extend_from_slice(body);
+                v
+            }
+            let mut au = Vec::new();
+            au.extend(nal(9, 0b00, &[0xF0])); // AUD
+            au.extend(nal(7, 0b11, &[0x42, 0xC0, 0x28])); // SPS
+            au.extend(nal(8, 0b11, &[0xCE, 0x38])); // PPS
+            au.extend(nal(5, 0b11, &[0x88, 0x84, 0x0A])); // IDR
+            au
+        };
+        let misp = MispTimestamp::micros(0x0102_0304_0506_0708, 0x1F);
+        let pts = Pts90khz::new(90_000);
+        let dts = Pts90khz::new(87_000); // DTS strictly less than PTS
+        s.send_video_misp_to_with_dts(handle, &nal, pts, dts, true, &misp)
+            .unwrap();
+        drop(s);
+
+        // Demux the captured TS bytes and extract the MISP timestamp.
+        let ts_bytes = snoop.lock().unwrap().clone();
+        let mut demuxer = Demuxer::with_config(DemuxerConfig::builder().build());
+        let mut found_misp: Option<MispTimestamp> = None;
+        demuxer.feed(&ts_bytes).unwrap();
+        demuxer.flush();
+        loop {
+            match demuxer.next_event() {
+                Some(DemuxEvent::Sample {
+                    payload: SamplePayload::Video { raw, .. },
+                    ..
+                }) => {
+                    let extracted = tst_core::codec::misp_time::extract(
+                        &raw,
+                        tst_core::mpegts::mux::VideoCodec::H264,
+                    )
+                    .unwrap();
+                    if extracted.is_some() {
+                        found_misp = extracted;
+                        break;
+                    }
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        let recovered = found_misp.expect("MISP timestamp must be present in demuxed AU");
+        assert_eq!(recovered.value, misp.value, "timestamp value mismatch");
+        assert_eq!(
+            recovered.time_status, misp.time_status,
+            "status byte mismatch"
+        );
+    }
+
+    #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
         let cfg = {
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

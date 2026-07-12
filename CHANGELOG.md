@@ -159,6 +159,11 @@ signature, or struct layout was removed or changed.
   exercises the depacketizer state machine against arbitrary byte sequences
   (arbitrary `RtpHeader` + payload, repeated feed/next_au cycles).
 
+### Added — ST 0604 MISP timestamp SEI
+
+- **`tst-core`:** `codec::misp_time` — MISB ST 0604 MISP Precision / Nano Precision Time
+  Stamp SEI build + extract (H.264/H.265).
+
 ### Added
 
 - `tcp://` and `tcps://` caller URLs now accept DNS hostnames in addition to IP

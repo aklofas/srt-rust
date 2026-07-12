@@ -7,7 +7,6 @@ pub fn tst_rtp::builder::RtpRecvSocketBuilder::from_url(&str) -> core::result::R
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn tst_rtp::builder::RtpRecvSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::rtcp(self, bool) -> Self
 impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::clone(&self) -> tst_rtp::builder::RtpRecvSocketBuilder
@@ -1506,6 +1505,7 @@ pub tst_rtp::url::UrlError::BadTtl
 pub tst_rtp::url::UrlError::BadTtl::detail: alloc::string::String
 pub tst_rtp::url::UrlError::BadTtl::got: alloc::string::String
 pub tst_rtp::url::UrlError::MissingPort
+pub tst_rtp::url::UrlError::RecvPktSize
 pub tst_rtp::url::UrlError::Syntax(tst_core::url::common::UrlError)
 pub tst_rtp::url::UrlError::UnknownKey
 pub tst_rtp::url::UrlError::UnknownKey::got: alloc::string::String
@@ -1560,7 +1560,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::MulticastGroup
 pub struct tst_rtp::url::RtpUrl
 pub tst_rtp::url::RtpUrl::host: alloc::string::String
 pub tst_rtp::url::RtpUrl::iface: core::option::Option<alloc::string::String>
-pub tst_rtp::url::RtpUrl::pkt_size: usize
+pub tst_rtp::url::RtpUrl::pkt_size: core::option::Option<usize>
 pub tst_rtp::url::RtpUrl::port: u16
 pub tst_rtp::url::RtpUrl::pt: core::option::Option<u8>
 pub tst_rtp::url::RtpUrl::ssrc: core::option::Option<u32>
@@ -1842,6 +1842,7 @@ pub tst_rtp::RtpUrlError::BadTtl
 pub tst_rtp::RtpUrlError::BadTtl::detail: alloc::string::String
 pub tst_rtp::RtpUrlError::BadTtl::got: alloc::string::String
 pub tst_rtp::RtpUrlError::MissingPort
+pub tst_rtp::RtpUrlError::RecvPktSize
 pub tst_rtp::RtpUrlError::Syntax(tst_core::url::common::UrlError)
 pub tst_rtp::RtpUrlError::UnknownKey
 pub tst_rtp::RtpUrlError::UnknownKey::got: alloc::string::String
@@ -2529,7 +2530,6 @@ pub fn tst_rtp::builder::RtpRecvSocketBuilder::from_url(&str) -> core::result::R
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
-pub fn tst_rtp::builder::RtpRecvSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::rtcp(self, bool) -> Self
 impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
 pub fn tst_rtp::builder::RtpRecvSocketBuilder::clone(&self) -> tst_rtp::builder::RtpRecvSocketBuilder
@@ -2632,7 +2632,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpTransport
 pub struct tst_rtp::RtpUrl
 pub tst_rtp::RtpUrl::host: alloc::string::String
 pub tst_rtp::RtpUrl::iface: core::option::Option<alloc::string::String>
-pub tst_rtp::RtpUrl::pkt_size: usize
+pub tst_rtp::RtpUrl::pkt_size: core::option::Option<usize>
 pub tst_rtp::RtpUrl::port: u16
 pub tst_rtp::RtpUrl::pt: core::option::Option<u8>
 pub tst_rtp::RtpUrl::ssrc: core::option::Option<u32>

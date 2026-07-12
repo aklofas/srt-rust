@@ -8,7 +8,6 @@ pub fn tst_rist::builder::RistRecvTransportBuilder::config(&self) -> &tst_rist::
 pub fn tst_rist::builder::RistRecvTransportBuilder::encryption(self, tst_rist::config::EncryptionKey) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::listen(self) -> core::result::Result<tst_rist::recv::RistRecvTransport, tst_rist::error::RistError>
 pub fn tst_rist::builder::RistRecvTransportBuilder::new(&str) -> core::result::Result<Self, tst_rist::error::RistError>
-pub fn tst_rist::builder::RistRecvTransportBuilder::pkt_size(self, usize) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::profile(self, tst_rist::config::RistProfile) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::session_timeout(self, core::time::Duration) -> Self
 impl core::marker::Freeze for tst_rist::builder::RistRecvTransportBuilder
@@ -499,7 +498,6 @@ pub fn tst_rist::builder::RistRecvTransportBuilder::config(&self) -> &tst_rist::
 pub fn tst_rist::builder::RistRecvTransportBuilder::encryption(self, tst_rist::config::EncryptionKey) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::listen(self) -> core::result::Result<tst_rist::recv::RistRecvTransport, tst_rist::error::RistError>
 pub fn tst_rist::builder::RistRecvTransportBuilder::new(&str) -> core::result::Result<Self, tst_rist::error::RistError>
-pub fn tst_rist::builder::RistRecvTransportBuilder::pkt_size(self, usize) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::profile(self, tst_rist::config::RistProfile) -> Self
 pub fn tst_rist::builder::RistRecvTransportBuilder::session_timeout(self, core::time::Duration) -> Self
 impl core::marker::Freeze for tst_rist::builder::RistRecvTransportBuilder

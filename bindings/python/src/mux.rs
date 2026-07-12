@@ -1354,6 +1354,62 @@ impl PyMuxer {
         res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
+    /// Push an H.264 or H.265 access unit with a MISB ST 0604 MISP timestamp
+    /// SEI spliced in before the first VCL NAL.
+    ///
+    /// `misp` is a required keyword argument of type `MispTimestamp` (from
+    /// `tstrans.codec`).  The MISP SEI is built from `misp` and inserted into
+    /// `nal` before the first VCL NAL unit.
+    ///
+    /// Errors:
+    /// - `MuxError(INPUT_MALFORMED)` — nano-precision on H.264, H.266/AV1
+    ///   stream, or no VCL NAL present in the access unit.
+    /// - `MuxError(INVALID_USAGE)` — invalid stream handle.
+    /// - `MuxError(BACKPRESSURE)` — buffer full.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (handle, nal, *, pts, dts = None, key_frame = false, misp))]
+    pub fn push_video_misp_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyVideoStreamHandle>,
+        nal: &Bound<'_, PyAny>,
+        pts: &Bound<'_, PyAny>,
+        dts: Option<&Bound<'_, PyAny>>,
+        key_frame: bool,
+        misp: PyRef<'_, crate::codec::MispTimestampPy>,
+    ) -> PyResult<()> {
+        use tst_core::codec::misp_time::MispTimestamp;
+        let rust_pts = py_pts90khz(pts)?;
+        let rust_dts = match dts {
+            Some(v) => Some(py_pts90khz(v)?),
+            None => None,
+        };
+        let coerced = crate::util::coerce_bytes_like(py, nal)?;
+        let nal_slice = coerced.as_bytes();
+        // Build the Rust MispTimestamp BEFORE releasing the GIL — misp is a
+        // GIL-bound PyRef.
+        let rust_misp = MispTimestamp::from(*misp);
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| match rust_dts {
+            None => self.inner.push_video_misp_to(
+                handle_inner,
+                nal_slice,
+                rust_pts,
+                key_frame,
+                &rust_misp,
+            ),
+            Some(rust_dts) => self.inner.push_video_misp_to_with_dts(
+                handle_inner,
+                nal_slice,
+                rust_pts,
+                rust_dts,
+                key_frame,
+                &rust_misp,
+            ),
+        });
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
     /// Push pre-framed (on-wire) video bytes to a specific stream without
     /// re-wrapping. For AV1, `wire` is the exact PES payload as demuxed
     /// (binding-framed or raw-OBU depending on the muxer's `av1_carriage`

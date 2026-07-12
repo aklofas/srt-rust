@@ -37,7 +37,7 @@ from typing import (
     final,
 )
 
-from tstrans.codec import NalUnit, Obu, ObuExtension
+from tstrans.codec import MispTimestamp, NalUnit, Obu, ObuExtension
 from tstrans.klv import (
     PrecisionTimeStampPack,
     SecurityLs,
@@ -683,6 +683,16 @@ class Muxer:
         pts: Pts90khz,
         dts: Optional[Pts90khz] = ...,
         key_frame: bool = ...,
+    ) -> None: ...
+    def push_video_misp_to(
+        self,
+        handle: VideoStreamHandle,
+        nal: _BytesLike,
+        *,
+        pts: Pts90khz,
+        dts: Optional[Pts90khz] = ...,
+        key_frame: bool = ...,
+        misp: MispTimestamp,
     ) -> None: ...
     def push_video_wire_to(
         self,

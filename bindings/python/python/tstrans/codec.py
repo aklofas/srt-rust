@@ -95,6 +95,11 @@ parse_mpeg2_audio_frames_with_resync = _native_mod.parse_mpeg2_audio_frames_with
 split_units = _native_mod.split_units
 parse_audio = _native_mod.parse_audio
 
+# MISP timestamp (ST 0604) — Task 10
+MispTimeKind = _native_mod.MispTimeKind
+MispTimestamp = _native_mod.MispTimestamp
+extract_misp_timestamp = _native_mod.extract_misp_timestamp
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -172,6 +177,10 @@ __all__ = [
     # Opt-in ES parse functions
     "split_units",
     "parse_audio",
+    # MISP timestamp (ST 0604)
+    "MispTimeKind",
+    "MispTimestamp",
+    "extract_misp_timestamp",
 ]
 
 

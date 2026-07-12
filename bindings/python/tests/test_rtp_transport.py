@@ -325,6 +325,7 @@ def test_cancel_handle_repr() -> None:
 def test_receiver_rejects_pkt_size_url():
     with pytest.raises(RtpError) as ei:
         tstrans.rtp.Receiver("rtp://127.0.0.1:0?pkt_size=1316")
+    assert ei.value.kind == RtpErrorKind.TRANSPORT
     assert "send-side knob" in str(ei.value)
 
 

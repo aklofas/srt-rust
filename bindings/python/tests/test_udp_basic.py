@@ -181,4 +181,5 @@ def test_recv_builder_rejects_pkt_size_url():
     b = udp.RecvTransport.builder().bind_url("udp://@127.0.0.1:0?pkt_size=1316")
     with pytest.raises(UdpError) as ei:
         b.build()
+    assert ei.value.kind == UdpErrorKind.URL
     assert "send-side knob" in str(ei.value)

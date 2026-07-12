@@ -170,7 +170,7 @@ signature, or struct layout was removed or changed.
   new error variant if the SEI build or splice fails.
 
 - **`tst-pipeline`:** `MuxSender::send_video_misp_to` / `send_video_misp_to_with_dts` and
-  `MuxPublisher::send_video_misp` / `send_video_misp_to_with_dts` — pipeline-shell variants that
+  `MuxPublisher::send_video_misp` — pipeline-shell variants that
   forward to the muxer's MISP-splice push path.
 
 - **C ABI minor 18 → 19** (additive; no existing symbol, signature, or struct layout

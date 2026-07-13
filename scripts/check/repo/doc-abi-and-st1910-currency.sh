@@ -134,7 +134,8 @@ PKG_MAJOR=$(echo "$PKG_VERSION" | cut -d. -f1)
 PKG_MINOR=$(echo "$PKG_VERSION" | cut -d. -f2)
 PKG_PATCH=$(echo "$PKG_VERSION" | cut -d. -f3)
 
-BAD_README=$(grep -nE 'ABI 0\.[0-9]+' README.md | { grep -vE "ABI 0\.${CURRENT_MINOR}([^0-9]|\$)" || true; })
+# \*{0,2} admits the bolded form (`C ABI **0.19**`) alongside plain `ABI 0.19`.
+BAD_README=$(grep -nE 'ABI \*{0,2}0\.[0-9]+' README.md | { grep -vE "ABI \*{0,2}0\.${CURRENT_MINOR}([^0-9]|\$)" || true; })
 if [ -n "$BAD_README" ]; then
     echo "FAIL: README.md quotes a non-current ABI minor (current: 0.${CURRENT_MINOR}):"
     echo "$BAD_README" | sed 's/^/  README.md:/'

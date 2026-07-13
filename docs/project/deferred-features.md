@@ -1800,3 +1800,29 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A Python or JVM consumer asks for MISP
   timestamp push through the pipeline-shell layer rather than using
   `Muxer` directly.
+
+## CI: freertos-QEMU gate timeout flake (squash for good)
+
+- **Status:** Known flake class on the `no_std bare-metal` CI job's
+  freertos-srt QEMU runtime legs (most recently the `loopback-arq aes`
+  leg: `qemu rc=124, elapsed=150s of 150s budget`,
+  `qemu-system-arm: terminating on signal 15`, and no labeled
+  `FAIL[...]` line). The deterministic wedge roots were fixed in the
+  embedded audit arc (per-task newlib locks; the connect-fail join
+  wedge, now guarded by the `arq-connfail` hard gate); the residue is
+  timeout starvation — TCG-emulating the ARQ + AES handshake
+  occasionally exceeds the fixed gate budget on loaded shared runners.
+  It fired twice on 2026-07-12/13 alone (the first runs of PRs #107
+  and #108; #107 passed untouched on rerun).
+- **Why deferred:** Not a correctness bug — the gate's speaking-failure
+  discrimination separates hang/timeout from labeled assertion exits,
+  and reruns pass with byte-identical inputs. A durable fix is
+  CI-infrastructure work; candidates, roughly cheapest first:
+  (a) auto-retry once *inside* the gate script when the failure shape
+  is exactly rc=124-at-full-budget (targeted; keeps labeled failures
+  hard); (b) run QEMU with `-icount` deterministic virtual time so
+  emulated time stops depending on host load; (c) scale the budget from
+  a host-speed probe instead of a fixed 150 s; (d) a larger runner
+  class for the embedded job.
+- **Trigger to revisit:** The next time this flake blocks a merge — or
+  before adding any new QEMU runtime leg to CI.

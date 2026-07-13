@@ -190,7 +190,7 @@ above. See the **Sync vs. async** section in
 
 ## See also
 
-- [`architecture.md`](./architecture.md) — Cross-thread shutdown section.
-- [`binding-authors.md`](./binding-authors.md) — Cancel handles for binding authors.
+- [`architecture.md`](/docs/reference/architecture.md) — Cross-thread shutdown section.
+- [`binding-authors.md`](/docs/reference/binding-authors.md) — Cancel handles for binding authors.
 - [Graceful shutdown from another thread via `SrtCancelHandle`](/docs/cookbook/operations/graceful-shutdown.md) — the cookbook recipe.
 - [`guides/pipeline.md`](/docs/guides/pipeline.md) — Pipeline shell composition (where `cancel_handle()` lives).

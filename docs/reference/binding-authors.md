@@ -265,7 +265,7 @@ baseline (by design)" for the full rationale.
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **17** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **19** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
@@ -360,6 +360,17 @@ baseline (by design)" for the full rationale.
       to the targeted video push, emitting PES with `PTS_DTS_flags = '11'`
       (ISO/IEC 13818-1 §2.4.3.6). Additive — no symbol removed, no
       signature or struct layout changed.
+    - `18` — HLS promotion (tst-hls restructure): `tst_hls_publisher_finish_serving`
+      returning the new opaque `TstHlsServerHandle` (`_local_addr` / `_shutdown` /
+      `_free`) so VOD/EVENT playlists stay served after `finish`;
+      `tst_hls_publisher_builder_max_segment_duration_ms` (wall-clock force-cut
+      cap) + `tst_hls_publisher_get_forced_cuts`. All gated `TST_HAS_HLS`; no
+      struct growth (`TstHlsStats` stays 24 B — the counter rides a getter).
+    - `19` — MISP timestamps (ST 0604): `tst_muxer_push_video_misp_to` /
+      `tst_muxer_push_video_misp_to_with_dts` (SEI splice before the first VCL
+      NAL) + `tst_misp_time_extract`, with error codes `TST_E_MISP_TIME` (−45)
+      and `TST_E_MISP_TIME_MALFORMED` (−46). Additive — no symbol, signature,
+      or struct layout changed.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

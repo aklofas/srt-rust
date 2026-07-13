@@ -60,7 +60,7 @@ Every release exposes two pairs of macros in `tstrans.h` plus matching runtime a
 #define TST_VERSION_MINOR        2
 #define TST_VERSION_PATCH        0
 #define TST_ABI_VERSION_MAJOR    0   // C ABI contract version
-#define TST_ABI_VERSION_MINOR    18
+#define TST_ABI_VERSION_MINOR    19
 ```
 
 The **ABI** pair is what binding consumers should pin against. Minor bumps are additive (new entry points / new enum variants); a future major bump will be breaking (none yet — sitting at `0` pre-1.0). Check at process startup:
@@ -290,12 +290,20 @@ Add the `tst_managed_*` prefix for any of the three to get automatic reconnect �
 
 ## HLS publisher (`TST_HAS_HLS`)
 
-The HLS publisher segments MPEG-TS to `.ts` files and serves them (plus a rolling `.m3u8`) over an optional built-in HTTP server. It is gated behind the opt-in `hls` Cargo feature; `tstrans.h` exposes the surface only when built with `--features hls`, guarded by `#ifdef TST_HAS_HLS`. The surface (`tst_hls_publisher_builder_*`, `tst_mux_publisher_*`) mirrors the Rust `tst-hls` crate.
+The HLS publisher segments MPEG-TS to `.ts` files and serves them (plus a rolling `.m3u8`) over an optional built-in HTTP server. It is a supported feature, opt-in at build time: `tstrans.h` exposes the surface only when built with `--features hls`, guarded by `#ifdef TST_HAS_HLS`. The surface (`tst_hls_publisher_builder_*`, `tst_mux_publisher_*`) mirrors the Rust `tst-hls` crate.
 
 The ABI-18 additions harden the terminal-playlist story:
 
 - `tst_hls_publisher_finish_serving` returns an opaque `TstHlsServerHandle` (`tst_hls_server_handle_local_addr` / `_shutdown` / `_free`) that keeps the built-in server up so a completed VOD/EVENT playlist and its segments stay fetchable after the stream ends.
 - `tst_hls_publisher_builder_max_segment_duration_ms` sets the wall-clock force-cut cap for an overdue keyframe (`0` leaves the `2 × segment_duration` default); `tst_hls_publisher_get_forced_cuts` reads how often it fired.
+
+The ABI-19 additions carry MISB ST 0604 MISP timestamps through the C ABI:
+
+- `tst_muxer_push_video_misp_to` / `tst_muxer_push_video_misp_to_with_dts` push an access unit and splice a MISP Precision (or Nano Precision) Time Stamp SEI immediately before its first VCL NAL.
+- `tst_misp_time_extract` scans an Annex-B access unit and returns the first MISP timestamp found.
+- Error codes `TST_E_MISP_TIME` (−45, SEI build/splice failure) and `TST_E_MISP_TIME_MALFORMED` (−46, present-but-malformed timestamp).
+
+Typed KLV set encode/decode (including the ST 1204 Core ID codec) intentionally stays out of the C ABI — C carries raw KLV bytes via the `push_klv` families; see the [STANAG 4609 reference](/docs/reference/stanag-4609.md).
 
 See the [HLS guide](/docs/guides/hls.md) for serving guidance, the KLV ride-along carriage modes, and latency tuning.
 

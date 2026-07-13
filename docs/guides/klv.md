@@ -160,7 +160,7 @@ fn try_all(buf: &[u8]) -> Result<UasDatalinkLs, Box<dyn std::error::Error>> {
 ```
 
 For the worked example with per-rung error reporting, see
-[../examples/klv-metadata/klv_decode_file.rs](../examples/klv-metadata/klv_decode_file.rs).
+[../examples/klv-metadata/klv_decode_file.rs](/examples/klv-metadata/klv_decode_file.rs).
 
 ## Typed ST 0601 — `UasDatalinkLs`
 
@@ -248,7 +248,7 @@ fn build_minimal() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 
 For a worked example with attitude + sensor pose + frame center, plus
 explicit `LinearRange` step-size calculations for each ranged tag, see
-[../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs).
+[../examples/klv-metadata/klv_encode_minimal.rs](/examples/klv-metadata/klv_encode_minimal.rs).
 
 ### Strict-compliance encode
 
@@ -606,7 +606,7 @@ based on the spec — callers don't normally call either directly.
   `S16Range` / `S32Range`). Uniform linear mapping with step
   `(max - min) / 2^bits`. This is what every ranged tag in the typed
   ST 0601 table currently uses (see
-  [../crates/tst-core/src/klv/st0601/tags.rs](../crates/tst-core/src/klv/st0601/tags.rs)).
+  [../crates/tst-core/src/klv/st0601/tags.rs](/crates/tst-core/src/klv/st0601/tags.rs)).
 - `klv::imapb` (ST 1201.5 IMAPB). Power-of-two-aligned scale factor
   with INT_MIN reserved as INVALID — a different scheme; not
   interchangeable with `LinearRange`. Exposed as substrate so callers
@@ -621,8 +621,8 @@ mapping of `0..360°` into 2 bytes unsigned. The step size is
 `360 / 65535 ≈ 5.49e-3 °/step` — a heading of 217.456° quantizes to
 one of two adjacent codepoints around that resolution and recovers
 within `~5e-3°` on decode. Per-tag precision is documented in
-[../crates/tst-core/src/klv/st0601/tags.rs](../crates/tst-core/src/klv/st0601/tags.rs);
-[../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs)
+[../crates/tst-core/src/klv/st0601/tags.rs](/crates/tst-core/src/klv/st0601/tags.rs);
+[../examples/klv-metadata/klv_encode_minimal.rs](/examples/klv-metadata/klv_encode_minimal.rs)
 walks four representative `LinearRange` tags with their step
 calculations spelled out in comments.
 

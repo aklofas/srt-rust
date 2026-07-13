@@ -115,7 +115,7 @@ your raw KLV LS bytes through to the muxer; the muxer does the wrap.
 PTS lives in the PES header (per § 2.12.4.1). See
 [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) for the wire-format details.
 
-Mirroring [../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs):
+Mirroring [../examples/sending/send_pipeline_to_socket.rs](/examples/sending/send_pipeline_to_socket.rs):
 
 ```rust,no_run
 use tst_core::mpegts::common::Pts90khz;
@@ -186,7 +186,7 @@ and `Transport(TransportError)`.
 (bytes discarded while acquiring or re-acquiring sync, RECOVER mode
 only), `resync_events`, `packets_sent` — all `u64`.
 
-Mirroring [../examples/receiving/ts_relay_from_file.rs](../examples/receiving/ts_relay_from_file.rs):
+Mirroring [../examples/receiving/ts_relay_from_file.rs](/examples/receiving/ts_relay_from_file.rs):
 
 ```rust,no_run
 use tst_pipeline::{Sender, SenderConfig};
@@ -271,7 +271,7 @@ Implement `Transport` for any byte sink that isn't an SRT socket: UDP,
 file, in-memory test harness, named pipe, TCP, your own protocol. The
 shells don't care which.
 
-Mirroring [../examples/sending/custom_transport.rs](../examples/sending/custom_transport.rs):
+Mirroring [../examples/sending/custom_transport.rs](/examples/sending/custom_transport.rs):
 
 ```rust,no_run
 use tst_pipeline::{Transport, TransportError};
@@ -555,7 +555,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Mirroring [../examples/receiving/srt_recv_typed.rs](../examples/receiving/srt_recv_typed.rs).
+Mirroring [../examples/receiving/srt_recv_typed.rs](/examples/receiving/srt_recv_typed.rs).
 
 ### `add_byte_sink` fan-out
 
@@ -585,7 +585,7 @@ Contract:
   workflows or expensive work, push to a channel and let a worker
   thread do the slow work.
 
-Mirroring [../examples/operations/tee_disk_and_demux.rs](../examples/operations/tee_disk_and_demux.rs).
+Mirroring [../examples/operations/tee_disk_and_demux.rs](/examples/operations/tee_disk_and_demux.rs).
 
 ### `Receiver` and `RawReceiver`
 
@@ -810,30 +810,30 @@ Eight runnable examples cover the pipeline surface — four send, four receive.
 
 Send side:
 
-- [../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs)
+- [../examples/sending/send_pipeline_to_socket.rs](/examples/sending/send_pipeline_to_socket.rs)
   — `MuxSender` → `SrtTransport` → connected SRT socket. The canonical
   setup.
-- [../examples/receiving/ts_relay_from_file.rs](../examples/receiving/ts_relay_from_file.rs)
+- [../examples/receiving/ts_relay_from_file.rs](/examples/receiving/ts_relay_from_file.rs)
   — `Sender` reading a `.ts` file and relaying to an SRT peer.
-- [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs)
+- [../examples/operations/managed_reconnect.rs](/examples/operations/managed_reconnect.rs)
   — `ManagedTransport<SrtTransport>` plus a deliberately flaky peer
   thread; demonstrates the reconnect + gap-buffer + drain cycle
   end-to-end.
-- [../examples/sending/custom_transport.rs](../examples/sending/custom_transport.rs)
+- [../examples/sending/custom_transport.rs](/examples/sending/custom_transport.rs)
   — implementing the `Transport` trait against an in-memory byte
   collector. Template for any non-SRT sink.
 
 Receive side:
 
-- [../examples/receiving/srt_recv_typed.rs](../examples/receiving/srt_recv_typed.rs)
+- [../examples/receiving/srt_recv_typed.rs](/examples/receiving/srt_recv_typed.rs)
   — `DemuxReceiver` → `SrtTransport` → typed `DemuxEvent` stream from a
   live SRT peer. Mirror of `send_pipeline_to_socket.rs`.
-- [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs)
+- [../examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs)
   — `Demuxer` driven by a file (no transport). Triage-grade
   diagnostic for any `.ts` capture.
-- [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs)
+- [../examples/pairing/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs)
   — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
-- [../examples/operations/tee_disk_and_demux.rs](../examples/operations/tee_disk_and_demux.rs)
+- [../examples/operations/tee_disk_and_demux.rs](/examples/operations/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming
   typed events, in a single pass.
 

@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs).
+Runnable: [../examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs).
 
 ## Public surface
 
@@ -114,7 +114,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `pts_to_duration(pts: Pts90khz) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
 
 The complete enum / struct definitions live in
-[../crates/tst-core/src/mpegts/demux/event.rs](../crates/tst-core/src/mpegts/demux/event.rs).
+[../crates/tst-core/src/mpegts/demux/event.rs](/crates/tst-core/src/mpegts/demux/event.rs).
 
 **Event variants in brief.** `DemuxEvent::ProgramMap` arrives when the
 demuxer first sees a PAT/PMT or on any PSI version bump, and carries the
@@ -396,7 +396,7 @@ with codec-tagged headers on `NalUnit::H264` / `NalUnit::H265`. Callers
 re-emitting to a downstream Annex-B sink that already have `raw` in hand
 can forward it verbatim; callers reconstituting from split NALs prepend
 `0x00 0x00 0x00 0x01` between them — see
-[../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
+[../examples/codec-parsing/extract_video_au.rs](/examples/codec-parsing/extract_video_au.rs).
 
 **Sync KLV (`stream_type=0x15`).** The demuxer detects the H.222.0
 § 2.12.4.2 `Metadata_AU_cell` shape (5-byte header followed by an
@@ -625,7 +625,7 @@ but once you split it with `split_video(&raw, codec, av1_carriage.unwrap_or_defa
 start codes have been stripped. Re-emit start codes between NALs yourself if
 writing split NALs back to an Annex-B sink (or just forward `raw`, which is
 already framed). Pattern shown in
-[../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
+[../examples/codec-parsing/extract_video_au.rs](/examples/codec-parsing/extract_video_au.rs).
 
 **Treating `Closed` as an error.** It isn't. `pipeline::Receiver` turns
 `TransportError::Closed` into iterator termination — the `for` loop

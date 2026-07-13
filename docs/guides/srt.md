@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Listener, accepting one peer and draining to EOF (compare
-[examples/srt_listener_to_file.rs](../examples/receiving/srt_listener_to_file.rs)):
+[examples/srt_listener_to_file.rs](/examples/receiving/srt_listener_to_file.rs)):
 
 ```rust,no_run
 use tst_srt::error::RecvError;
@@ -235,7 +235,7 @@ sender preset internally.
   on the caller and `AcceptError::PeerRejected` on the listener.
 
 Paired listener and caller, mirroring
-[examples/encrypted_send_recv.rs](../examples/sending/encrypted_send_recv.rs):
+[examples/encrypted_send_recv.rs](/examples/sending/encrypted_send_recv.rs):
 
 ```rust,no_run
 use tst_srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder};
@@ -492,7 +492,7 @@ via `Socket::set_recv_timeout` / `Socket::set_send_timeout`.
 `SRTO_RCVTIMEO` — `ListenerBuilder::recv_timeout` and
 `Listener::set_recv_timeout` apply to *accepted sockets*, not to the
 `accept` call itself. To impose a deadline on the accept call, use
-[`Listener::accept_timeout(duration)`](../crates/tst-srt/src/listener.rs)
+[`Listener::accept_timeout(duration)`](/crates/tst-srt/src/listener.rs)
 instead of `listener.accept()`. It registers the listener fd with a
 one-shot `srt_epoll_wait` and returns `AcceptError::TimedOut` when
 `duration` elapses with no incoming connection.

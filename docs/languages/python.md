@@ -1356,11 +1356,6 @@ output directly when absolute byte offsets matter.
 [Pandas + NumPy adapters](#pandas--numpy-adapters) sub-section under
 "Language-specific gotchas" above.)
 
-## Design
-
-See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-design.md)
-(at parent-level project tree, outside the published repo).
-
 ## Roadmap
 
 The full surface has shipped — offline file I/O, typed KLV decode /

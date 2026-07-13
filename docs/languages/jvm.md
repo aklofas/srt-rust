@@ -1618,11 +1618,6 @@ See [`/docs/languages/rust.md`](/docs/languages/rust.md) for the full
 surface and [`/docs/languages/python.md`](/docs/languages/python.md) for the
 Python binding's gaps.
 
-## Design
-
-See [docs/specs/2026-05-27-tst-jni-design.md](../../docs/specs/2026-05-27-tst-jni-design.md)
-(at parent-level project tree, outside the published repo).
-
 ## Roadmap
 
 - **Bootstrap (`org.tstrans.Version`) — SHIPPED.** Proves the

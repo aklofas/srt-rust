@@ -26,7 +26,7 @@ let rx = RistRecvTransportBuilder::new("rist://@0.0.0.0:9000")?
 let mut receiver = DemuxReceiver::new(rx);
 for event in &mut receiver {
     let event = event?;
-    // event is a DemuxEvent — VideoSample, KlvSample, ProgramMap, ...
+    // event is a DemuxEvent — ProgramMap, Sample (video/audio), Metadata (KLV), ...
 }
 ```
 

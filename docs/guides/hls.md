@@ -192,7 +192,16 @@ the full producer + JavaScript client contract for both hls.js paths.
 - **Segments open on a decodable boundary.** Each segment begins with the
   PAT, the PMT, and an IDR (keyframe) access unit — in that order — so a
   player joining the stream can decode the first segment it fetches without
-  waiting for a later keyframe.
+  waiting for a later keyframe. **One bounded exception:** the segmenter
+  learns the stream is keyframe-driven at the first keyframe *cut* (i.e. the
+  second keyframe it sees), so if the **first GOP is longer than
+  `segment_duration`**, segment 0 alone can be wall-clock-cut mid-GOP — and
+  that initial cut is not counted in `forced_cuts`. This is only reachable
+  when the encoder's keyframe interval exceeds `segment_duration` (the
+  inverse of normal HLS configuration); keep the GOP at or below the segment
+  target and segment 0 opens on the IDR like every other segment. A
+  keyframe-intent signal that closes this window is tracked in
+  [deferred-features](/docs/project/deferred-features.md).
 - **Per-GOP duration.** When you push through `MuxPublisher`, a
   `send_video(..., key_frame=true)` cuts a segment at that keyframe, so
   segment length follows your GOP structure. `segment_duration` is the

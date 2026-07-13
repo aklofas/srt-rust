@@ -57,8 +57,12 @@ Central Portal in a **staged** state that a maintainer releases manually.
 
    The rail does **not** cover everything the version sweep must touch —
    also update by hand:
-   - the workspace `Cargo.lock` and the fuzz-workspace lockfiles
-     (`crates/*/fuzz/Cargo.lock`), which record workspace crate versions;
+   - the workspace `Cargo.lock`, the fuzz-workspace lockfiles
+     (`crates/*/fuzz/Cargo.lock`), **and the embedded sub-project lockfiles**
+     (`embedded/baremetal-qemu{,-c}/Cargo.lock`,
+     `embedded/freertos-srt/example/host/Cargo.lock`) — all record workspace
+     crate versions, and the embedded QEMU gates build `--locked`, so a stale
+     one fails CI loudly (a `cargo metadata` run in each directory re-syncs);
    - the regenerated committed `tstrans.h` (regeneration picks up the new
      `TST_VERSION_*` values);
    - the `#define TST_VERSION_*` snippet in `docs/languages/c.md` — the

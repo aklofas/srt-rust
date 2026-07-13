@@ -7,7 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Post-v0.2.0: audit remediation, API consistency, RFC 6184 H.264 ingest, HLS promotion, STANAG 4609 / MISP conformance, hardening
+## [Unreleased]
+
+_Nothing yet._
+
+---
+
+## [0.3.0] — 2026-07-13
+
+Post-v0.2.0: audit remediation, API consistency, RFC 6184 H.264 ingest, HLS
+promotion, STANAG 4609 / MISP conformance, hardening.
 
 ### Release highlights
 

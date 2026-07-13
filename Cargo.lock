@@ -1300,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "rist-sys"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bindgen",
  "cc",
@@ -1595,7 +1595,7 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "srt-sys"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -1930,7 +1930,7 @@ dependencies = [
 
 [[package]]
 name = "tst-c"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cbindgen",
  "libc",
@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "tst-c-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "critical-section",
  "libc",
@@ -1963,7 +1963,7 @@ dependencies = [
 
 [[package]]
 name = "tst-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "hashbrown 0.15.5",
@@ -1999,7 +1999,7 @@ dependencies = [
 
 [[package]]
 name = "tst-hls"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "bytes",
@@ -2018,7 +2018,7 @@ dependencies = [
 
 [[package]]
 name = "tst-integration"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2029,7 +2029,7 @@ dependencies = [
 
 [[package]]
 name = "tst-jni"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jni",
  "secrecy",
@@ -2041,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "tst-pipeline"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -2055,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "tst-py"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "pyo3",
  "pyo3-build-config",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "tst-rist"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "rist-sys",
@@ -2086,7 +2086,7 @@ dependencies = [
 
 [[package]]
 name = "tst-rtp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "bytes",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "tst-srt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "os_socketaddr",
@@ -2134,7 +2134,7 @@ dependencies = [
 
 [[package]]
 name = "tst-tcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rcgen",
  "rustls",
@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "tst-udp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "socket2 0.5.10",

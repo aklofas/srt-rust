@@ -2,7 +2,7 @@
 # Plan #96 Wave D ratchet: keep ABI-version docs and ST 1910 citations
 # from regressing.
 #
-# Three rules:
+# Four rules:
 #
 #   1. README.md, docs/, and crate-level rustdoc must not mention
 #      a stale ABI minor (`ABI version 0.0`..`0.4`). Current value is
@@ -20,6 +20,10 @@
 #
 #   3. tst-c crate-level docs must not say receiver / demux surfaces
 #      are "pending" — those surfaces shipped in plan #62 + validate-1.
+#
+#   4. Pinned current-version doc sites must match the source constants
+#      (TST_ABI_VERSION_MINOR + the workspace Cargo.toml version) — the
+#      ABI-minor staleness class recurred at 0.17 → 0.18 → 0.19.
 #
 # Bash 3.2-portable: no `mapfile`, no `declare -A`, no `readarray`
 # (see feedback_bash_ratchets_macos_portability.md). Uses
@@ -114,8 +118,47 @@ if [ -f "$TSTC_LIB" ]; then
     fi
 fi
 
+# -----------------------------------------------------------------------
+# Rule 4 — pinned current-version doc sites (docs deep edit, 2026-07-12)
+# -----------------------------------------------------------------------
+#
+# The ABI-minor staleness class recurred at 0.17 → 0.18 → 0.19: each time,
+# the three sites below quoted a superseded minor. Pin them to
+# bindings/c/core/src/lib.rs + the workspace Cargo.toml so they cannot
+# drift silently again. Historical mentions ("added in ABI 0.1", the
+# version-history list in binding-authors.md) are deliberately NOT
+# checked — only these current-value assertion sites are.
+CURRENT_MINOR=$(grep -E '^pub const TST_ABI_VERSION_MINOR' bindings/c/core/src/lib.rs | grep -oE '[0-9]+' | tail -1)
+PKG_VERSION=$(grep -E '^version' Cargo.toml | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+PKG_MAJOR=$(echo "$PKG_VERSION" | cut -d. -f1)
+PKG_MINOR=$(echo "$PKG_VERSION" | cut -d. -f2)
+PKG_PATCH=$(echo "$PKG_VERSION" | cut -d. -f3)
+
+BAD_README=$(grep -nE 'ABI 0\.[0-9]+' README.md | { grep -vE "ABI 0\.${CURRENT_MINOR}([^0-9]|\$)" || true; })
+if [ -n "$BAD_README" ]; then
+    echo "FAIL: README.md quotes a non-current ABI minor (current: 0.${CURRENT_MINOR}):"
+    echo "$BAD_README" | sed 's/^/  README.md:/'
+    FAILED=1
+fi
+
+if ! grep -qE "#define TST_ABI_VERSION_MINOR +${CURRENT_MINOR}( |\$)" docs/languages/c.md; then
+    echo "FAIL: docs/languages/c.md '#define TST_ABI_VERSION_MINOR' is not ${CURRENT_MINOR}"
+    FAILED=1
+fi
+if ! grep -qE "#define TST_VERSION_MAJOR +${PKG_MAJOR}( |\$)" docs/languages/c.md \
+|| ! grep -qE "#define TST_VERSION_MINOR +${PKG_MINOR}( |\$)" docs/languages/c.md \
+|| ! grep -qE "#define TST_VERSION_PATCH +${PKG_PATCH}( |\$)" docs/languages/c.md; then
+    echo "FAIL: docs/languages/c.md '#define TST_VERSION_*' does not match workspace version ${PKG_VERSION}"
+    FAILED=1
+fi
+
+if ! grep -q "\*\*${CURRENT_MINOR}\*\* today" docs/reference/binding-authors.md; then
+    echo "FAIL: docs/reference/binding-authors.md ABI-minor 'today' line is not ${CURRENT_MINOR}"
+    FAILED=1
+fi
+
 if [ "$FAILED" -ne 0 ]; then
     exit 1
 fi
 
-echo "OK: ABI-version docs are current, ST 1910 mis-cites scrubbed, tst-c crate docs reflect shipped state"
+echo "OK: ABI-version docs are current, ST 1910 mis-cites scrubbed, tst-c crate docs reflect shipped state, pinned version sites match"

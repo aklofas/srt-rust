@@ -160,7 +160,7 @@ clock); `key_frame` should be true for IDR frames.
 
 In production, replace the synthetic generator with your encoder's
 output. See
-[../examples/sending/send_pipeline_to_socket.rs](../examples/sending/send_pipeline_to_socket.rs)
+[../examples/sending/send_pipeline_to_socket.rs](/examples/sending/send_pipeline_to_socket.rs)
 for a runnable version with five frames and pacing.
 
 ## Run the example pair
@@ -242,6 +242,6 @@ Useful filter targets:
 - [guides/pipeline.md](/docs/guides/pipeline.md) — picking among `MuxSender`,
   `Sender`, and `RawSender`.
 - [cookbook/index.md](/docs/cookbook/index.md) — recipes for common multi-step tasks.
-- [troubleshooting.md](troubleshooting.md) — common failure modes.
+- [troubleshooting.md](/docs/troubleshooting.md) — common failure modes.
 - [reference/compatibility.md](/docs/reference/compatibility.md) — feature-by-feature support
   matrix.

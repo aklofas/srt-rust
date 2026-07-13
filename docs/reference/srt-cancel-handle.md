@@ -19,8 +19,8 @@ sentinel). Pick the one whose layer you're on:
 
 | Layer | Type | Where it lives |
 |-------|------|----------------|
-| Pipeline (trait, dynamic dispatch) | [`TransportCancel`](../crates/tst-core/src/transport.rs) (trait) | `tst_pipeline::TransportCancel` (re-export of `tst_core::transport::TransportCancel`) |
-| Concrete primitive (SRT-shaped) | [`SrtCancelHandle`](../crates/tst-core/src/cancel.rs) (struct) | `tst_pipeline::SrtCancelHandle` (re-export of `tst_core::SrtCancelHandle`); also re-exported as `tst_srt::SrtCancelHandle` |
+| Pipeline (trait, dynamic dispatch) | [`TransportCancel`](/crates/tst-core/src/transport.rs) (trait) | `tst_pipeline::TransportCancel` (re-export of `tst_core::transport::TransportCancel`) |
+| Concrete primitive (SRT-shaped) | [`SrtCancelHandle`](/crates/tst-core/src/cancel.rs) (struct) | `tst_pipeline::SrtCancelHandle` (re-export of `tst_core::SrtCancelHandle`); also re-exported as `tst_srt::SrtCancelHandle` |
 
 Pipeline shells return the trait shape:
 

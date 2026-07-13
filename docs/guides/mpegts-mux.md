@@ -360,9 +360,9 @@ All four are first-class. Mid-stream codec change is out of scope — destroy
 the muxer and create a new one if you need to switch codecs in a single
 output file.
 
-The diff between [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs)
+The diff between [../examples/muxing/mux_to_file.rs](/examples/muxing/mux_to_file.rs)
 (H.264 + async KLV via `MuxerConfig::default()`) and
-[../examples/muxing/mux_h265_with_klv.rs](../examples/muxing/mux_h265_with_klv.rs)
+[../examples/muxing/mux_h265_with_klv.rs](/examples/muxing/mux_h265_with_klv.rs)
 (H.265 + sync KLV via the field-update form) is exactly the codec and
 KLV-mode knobs:
 
@@ -515,7 +515,7 @@ Required:
   failure.
 
 `MuxError` variants (full list in
-[../crates/tst-core/src/error.rs](../crates/tst-core/src/error.rs)):
+[../crates/tst-core/src/error.rs](/crates/tst-core/src/error.rs)):
 
 - `InvalidConfig(&'static str)` — `MuxerConfig::validate` rejected the
   configuration; the message names the failed rule.

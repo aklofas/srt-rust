@@ -274,7 +274,15 @@ jobs:
         # H.222.0 §2.12.4.2; `ST 1910.1` with the .1 suffix is allowed
         # everywhere since it's a distinct CMAF/HLS standard), and on
         # `receiver-surface ... pending` wording in tst-c crate docs.
+        # Rule 4 (docs deep edit 2026-07-12) pins README / languages/c.md /
+        # binding-authors.md current-version sites to the source constants.
         run: bash scripts/check/repo/doc-abi-and-st1910-currency.sh
+
+      - name: Check docs internal links
+        # Docs deep-edit rail (2026-07-12) — every intra-repo markdown link
+        # in README.md, docs/, and examples/ must resolve to an existing
+        # file (guards the cookbook re-slug and future doc moves).
+        run: bash scripts/check/repo/docs-internal-links.sh
 
       - name: Check udp/tcp/hls/rist C ABI error-mapping coverage
         # Each tst-c transport family's *_error_to_code converter must

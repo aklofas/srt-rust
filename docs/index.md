@@ -1,8 +1,12 @@
 # ts-transformer
 
-> ts-transformer streams live H.264 / H.265 video plus typed KLV metadata over an unreliable network — from a camera, sensor pod, or sensor platform to a viewer — in ~30 lines of code. Reconnect, encryption, and typed metadata decoding are handled.
+> ts-transformer reads, builds, and transforms MPEG-TS — mux + demux, typed
+> MISB ST 0601 KLV encode/decode, H.264 / H.265 / H.266 / AV1 parsing — and,
+> when you need a wire, streams it over UDP, TCP, RTP, SRT, or RIST (or
+> publishes HLS) with reconnect, encryption, and typed metadata decoding
+> handled. From a `.ts` file on disk to a live encrypted uplink in ~30 lines.
 >
-> Rust core. C, Python, and JVM bindings. MPEG-TS + MISB ST 0601 over UDP, TCP, RTP, SRT, and RIST.
+> Rust core. C, Python, and JVM bindings.
 
 > 🆕  **First time touching MPEG-TS, KLV, or SRT?**
 > Read [start/concepts.md](/docs/start/concepts.md) first — five minutes of plain-language explainers before anything else.

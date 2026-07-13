@@ -7,15 +7,45 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Post-v0.2.0 audit remediation + API consistency + embedded hardening + RFC 6184 H.264 ingest + HLS promotion
+## [Unreleased] — Post-v0.2.0: audit remediation, API consistency, RFC 6184 H.264 ingest, HLS promotion, STANAG 4609 / MISP conformance, hardening
+
+### Release highlights
+
+The integrator-facing changes at a glance (full detail in the sections below):
+
+- **HLS is a supported feature** in its own `tst-hls` crate — path traversal
+  (CWE-22) closed, VOD/EVENT playlists stay served after finish, segments open
+  on a decodable PAT → PMT → IDR boundary, loopback bind by default; ships in
+  the Python wheels and the C ABI (minor 18).
+- **H.264-over-RTP ingest (RFC 6184)** — `H264Depacketizer` + `H264Receiver` +
+  RTSP auto-setup across Rust / Python / JVM, with a hardened `max_au_bytes`
+  DoS cap.
+- **STANAG 4609 / MISP conformance** — ST 0604 MISP SEI timestamps
+  (`push_video_misp_to`, C ABI minor 19), ST 1204 Core ID + ST 0601 Tag 94,
+  ST 0902 `validate_mismms`, and the `docs/reference/stanag-4609.md`
+  conformance matrix.
+- **Integrator field-report fixes** — `DemuxerConfig::sync_buf_cap` (the 4 MiB
+  whole-file `feed()` ceiling is configurable and the error names the knob),
+  ST 0601 out-of-range errors hint their full-range twin tags, opt-in
+  `OutOfRangePolicy::Indicator`, and `tcp://` / `tcps://` hostname TLS.
+- **Receive-side contract** — `RecvTransport::max_payload` is now the
+  deliverable ceiling (full-MTU traffic from foreign senders no longer
+  truncates or drops); the inert receive-side `pkt_size` knobs are removed.
+- **Consistency renames** (breaking, pre-1.0): `SrtError`, `MuxErrorKind`,
+  `is_cancelled`, `DemuxerConfigBuilder`, Python/JVM `send_*` live-push family,
+  `DemuxEvent.Metadata` (`Klv` alias kept until 1.0), byte-valued
+  `recv_buf_bytes` / `send_buf_bytes`, `TcpUrl::host`.
 
 Remediation of the two 2026-07-01 audits (correctness/spec/safety and
 simplification/refactor/dependency), landed as PRs #58–#84, plus the embedded
-audit arc (WP-EMB-1–6, PRs #85/#86/#88/#89/#90), the field-feedback hardening
-(PR #87 / #91–#93), and the RFC 6184 H.264-over-RTP depayloader feature arc
-(PRs #94–#96). The C ABI stayed frozen at minor **17** through that work; the
-HLS promotion (below) is the one additive bump, to minor **18** — no C symbol,
-signature, or struct layout was removed or changed.
+audit arc (WP-EMB-1–6, PRs #85/#86/#88–#90), the field-feedback hardening
+(PR #87 / #91–#93), the RFC 6184 H.264-over-RTP depayloader arc (PRs #94–#96),
+the receive-ceiling contract normalization (PRs #97 / #101), the tst-hls
+restructure + promotion (PRs #98–#100), the STANAG 4609 / MISP conformance arc
+(PRs #102–#105), and the post-v0.2.0 review hardening (PR #106). The C ABI
+stayed frozen at minor **17** through the audit work and has bumped twice —
+additively — since: to **18** (HLS promotion) and **19** (MISP timestamps). No
+C symbol, signature, or struct layout was removed or changed.
 
 ### Changed (breaking, pre-1.0) — SRT buffer-size options are now byte-valued
 
@@ -491,6 +521,10 @@ signature, or struct layout was removed or changed.
 
 ### Changed — documentation
 
+- README and the docs landing/overview pages were rewritten MPEG-TS-first:
+  parse/build/inspect leads, transports follow; the "what it isn't / look
+  elsewhere" sections were replaced by positive scope framing ("Works with
+  your stack" / "Scope boundaries — and what to pair it with").
 - The cookbook was reorganized for task-first browsing: recipes are no longer
   numbered (references are title links now), files carry descriptive slugs, and
   recipes live under seven task sections — `muxing/`, `sending/`, `receiving/`,

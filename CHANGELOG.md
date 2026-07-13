@@ -15,8 +15,9 @@ The integrator-facing changes at a glance (full detail in the sections below):
 
 - **HLS is a supported feature** in its own `tst-hls` crate — path traversal
   (CWE-22) closed, VOD/EVENT playlists stay served after finish, segments open
-  on a decodable PAT → PMT → IDR boundary, loopback bind by default; ships in
-  the Python wheels and the C ABI (minor 18).
+  on a decodable PAT → PMT → IDR boundary (segment 0 excepted when the first
+  GOP outruns `segment_duration` — deferred fix tracked), loopback bind by
+  default; ships in the Python wheels and the C ABI (minor 18).
 - **H.264-over-RTP ingest (RFC 6184)** — `H264Depacketizer` + `H264Receiver` +
   RTSP auto-setup across Rust / Python / JVM, with a hardened `max_au_bytes`
   DoS cap.
@@ -119,7 +120,11 @@ C symbol, signature, or struct layout was removed or changed.
   (`<temp_dir>/tstrans-hls`) instead of a hard-coded `/tmp/hls`.
 - **Keyframes now begin segments.** Each segment opens on a decodable
   boundary — PAT → PMT → IDR — so a joining player can decode the first
-  segment it fetches (previously a segment could start mid-GOP).
+  segment it fetches (previously a segment could start mid-GOP). One bounded
+  exception remains: if the *first* GOP exceeds `segment_duration`, segment 0
+  can still be wall-clock-cut mid-GOP (self-heals at the second keyframe);
+  the closing keyframe-intent signal is deferred — see
+  `docs/project/deferred-features.md`.
 
 ### Added — HLS promoted to a supported feature
 

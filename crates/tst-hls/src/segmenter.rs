@@ -178,10 +178,15 @@ impl Segmenter {
             // wall-clock-cut mid-GOP — breaking the "segments begin with IDR"
             // guarantee for segment 0 only. This is unreachable in normal
             // config (a keyframe interval shorter than `segment_duration` cuts
-            // the first segment before this fires); under the misconfiguration
-            // GOP > segment_duration it is bounded by the hard cap and shows up
-            // in `forced_cuts`. A complete fix needs a keyframe-driven-intent
-            // signal through the `Publisher` trait (tracked as a follow-up).
+            // the first segment before this fires). Under the misconfiguration
+            // GOP > segment_duration the cut fires here at `segment_duration`
+            // and is deliberately NOT counted in `forced_cuts` (pinned by
+            // raw_mode_tick_cuts_at_segment_duration_and_forced_cuts_stays_zero),
+            // so segment-0 mid-GOP cuts are invisible in telemetry today. A
+            // complete fix needs a keyframe-driven-intent signal through the
+            // `Publisher` trait — deferred, see
+            // docs/project/deferred-features.md ("HLS: keyframe-driven-intent
+            // signal").
             self.cut()?;
         }
         Ok(())

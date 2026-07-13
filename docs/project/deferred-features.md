@@ -1826,3 +1826,30 @@ the trigger that would unblock it.
   class for the embedded job.
 - **Trigger to revisit:** The next time this flake blocks a merge — or
   before adding any new QEMU runtime leg to CI.
+
+## HLS: keyframe-driven-intent signal (segment-0 mid-GOP window)
+
+- **Status:** Deferred to a post-v0.3.0 release (maintainer decision
+  2026-07-13; HLS is still maturing as a supported feature). The segmenter
+  enters keyframe-driven mode at the FIRST explicit cut — which
+  `MuxPublisher` issues at the *second* keyframe — so segment 0 rides the
+  wall-clock (raw `push_ts`) mode. If the first GOP is longer than
+  `segment_duration`, segment 0 alone can be cut mid-GOP, breaking the
+  PAT → PMT → IDR opening for that one segment. The initial raw-mode
+  wall-clock cut is deliberately NOT counted in `forced_cuts` (pinned by
+  test), so the window is currently invisible in telemetry. The HLS guide
+  and CHANGELOG qualify the boundary guarantee accordingly. Surfaced
+  independently by the 2026-07-13 v0.3.0 release-gate static audit (B2).
+- **Why deferred:** Only reachable when the encoder's keyframe interval
+  exceeds `segment_duration` (the inverse of normal HLS configuration),
+  bounded to segment 0, and self-healing at the second keyframe. The clean
+  fix is a default-no-op `Publisher` trait method (keyframe-driven intent)
+  that `MuxPublisher` calls when the stream-head keyframe opens a segment
+  and `HlsPublisher` overrides to pre-arm `note_explicit_cut()` — a trait
+  surface change not worth rushing into a release.
+- **Trigger to revisit:** the first field report of a mid-GOP segment 0
+  (player-join artifact at stream start), or the next tst-hls feature arc
+  (LL-HLS / fMP4), whichever comes first. Ship with a regression test
+  proving no segment starts mid-GOP for an initial GOP > `segment_duration`,
+  and decide the telemetry story (count it in `forced_cuts` or a dedicated
+  counter).

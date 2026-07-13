@@ -3,20 +3,27 @@
 > **Who this is for:** You've landed on the project and want to know in five minutes what it does, what it doesn't do, and whether to keep reading.
 
 > **You will learn:**
-> - What ts-transformer streams and what it doesn't
+> - What ts-transformer does, and where its scope ends
 > - The three places this library sits in a system: source, middle, display
 > - What protocols and metadata standards are involved (in plain terms)
 > - What's in the box today (Rust + C + Python + JVM)
-> - What's not in the box, with links to deferred-features
+> - The scope boundaries, and which companion tool covers each
 > - Where to read next based on what you're doing
 
-## What it streams
+## What it does
 
-ts-transformer streams **live video and metadata over an unreliable network**. The classic shape:
+ts-transformer is an MPEG-TS + KLV toolkit. It **builds** transport streams
+(mux encoded video, audio, subtitles, and typed MISB KLV into conformant
+MPEG-TS), **reads** them (demux any TS byte source into typed events), and
+**transforms** them (repack programs, pair KLV to frames, re-serve) — offline
+against files, or live over a network.
+
+Live is where it earns its keep: **video and metadata over an unreliable
+network**. The classic shape:
 
 > A camera on a sensor platform — a drone, an aircraft, a helicopter with an EO/IR turret, a ground vehicle, or a fixed installation — encodes H.264 or H.265 video. Alongside each frame, the platform's sensors emit telemetry: latitude, longitude, altitude, heading, sensor pointing angles. All of it gets multiplexed into one byte stream, encrypted, and pushed across a flaky network — satellite, cellular, mesh radio — to a ground station or cloud ingest. On the other end, a viewer or a processing pipeline pulls it apart: video to a decoder, metadata to a database, both stamped with the same timestamp so they line up on a map.
 
-That's the shape. ts-transformer handles the encoding side, the metadata multiplexing, the wire format, the reconnect, and the encryption. **Your code is the camera, the metadata source, the viewer, or the processing pipeline.** The library is the plumbing between them.
+That's the shape. ts-transformer handles the metadata multiplexing, the wire format, the reconnect, and the encryption. **Your code is the camera, the metadata source, the viewer, or the processing pipeline.** The library is the plumbing between them.
 
 ## Where it sits
 
@@ -40,15 +47,28 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 - **Python bindings** (`tst-py`, on PyPI as `tstrans`) — offline `.ts` inspection/construction plus live UDP / TCP / RTP (incl. RTSP) / SRT / RIST; typed KLV decode/encode; raw-first `DemuxEvent.Video` / `DemuxEvent.Audio` (each carries the raw access-unit / frame bytes); optional pandas + NumPy adapters.
 - **JVM bindings** — `tst-jni`, distributed as `tstrans-jvm` (`org.tstrans`) on Maven Central. Package-for-package mirror of the Python surface (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`).
 
-## What's NOT in the box
+## Scope boundaries — and what to pair it with
 
-ts-transformer is intentionally narrow. If you need any of these, look elsewhere or pair the library with a complementary tool:
+ts-transformer is deliberately narrow: MPEG-TS as the container, MISB KLV as
+the metadata language, the wire format as the job. Each boundary has a
+well-worn companion tool:
 
-- **Other containers** — MPEG-TS only. No MP4, MKV, fMP4, DASH. (The HLS publisher segments MPEG-TS itself; it does not repackage to fMP4/CMAF. You can transcode + repackage on the receiver side using FFmpeg, GStreamer, etc.)
-- **Other transports** — **SRT** 1.5 (Haivision libsrt, vendored), **RTP** (incl. RTSP client + server), **raw TCP / TLS**, **UDP**, **RIST** (VideoLAN librist), and a supported **HLS** publisher (segmenter + optional built-in HTTP server, see the [HLS guide](/docs/guides/hls.md)) all ship today. **RTMP** and **WebRTC** are not on the roadmap.
-- **Other metadata formats** — MISB KLV only. No arbitrary user data, no raw timestamps, no proprietary metadata schemas. See [`project/deferred-features.md`](/docs/project/deferred-features.md) for what's deferred.
-- **Video encoding / decoding** — wire-format only. You bring the encoded NAL units / OBU frames; the library multiplexes them. Pair with x264 / x265 / FFmpeg / NVENC / GStreamer for the actual encode side; PyAV / FFmpeg / a hardware decoder for display.
-- **GUI** — no display layer. Pair with VLC, mpv, MPV.js, a custom decoder + framebuffer, or any other player that consumes MPEG-TS.
+- **Container: MPEG-TS.** Single- and multi-program; the HLS publisher
+  segments MPEG-TS natively. For MP4 / MKV / fMP4 / DASH delivery, repackage
+  downstream with FFmpeg or GStreamer.
+- **Transports: UDP, raw TCP / TLS, RTP (incl. RTSP client + server), SRT 1.5
+  (Haivision libsrt, vendored), RIST (VideoLAN librist), and the HLS publisher**
+  (segmenter + optional built-in HTTP server — see the
+  [HLS guide](/docs/guides/hls.md)). RTMP and WebRTC aren't planned — front
+  with a media server (e.g. MediaMTX) where you need those endpoints.
+- **Metadata: MISB KLV** (ST 0601 / 0102 / 0605 / 0903 / 1204). Other schemas
+  ride as opaque private data; see
+  [`project/deferred-features.md`](/docs/project/deferred-features.md).
+- **Codec work stays outside.** Bring encoded NAL units / OBU frames from
+  x264 / x265 / FFmpeg / NVENC / GStreamer; on the display side, pair with
+  PyAV / FFmpeg / a hardware decoder.
+- **Display stays outside.** Any MPEG-TS-capable player works: VLC, mpv,
+  MPV.js, or your own decoder + UI.
 
 For the full feature-by-feature support matrix, see [`reference/compatibility.md`](/docs/reference/compatibility.md). For things deferred with a rationale + revisit trigger, see [`project/deferred-features.md`](/docs/project/deferred-features.md).
 

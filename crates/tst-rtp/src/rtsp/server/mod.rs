@@ -496,11 +496,13 @@ impl RtspServer {
         let is_tls = matches!(self.state.builder.bind_url.scheme(), RtspScheme::Rtsps);
         // TLS material on a non-rtsps bind: refuse to start. The old
         // behavior silently ignored tls_cert()/tls_key() and came up
-        // PLAINTEXT — the caller believed TLS was armed. Cross-surface
-        // guard: the C ABI and Python feed this same builder, so erroring
-        // here closes all of them at once (the JVM additionally fails
-        // fast at build()). The fields only exist under the `tls`
-        // feature, so no cfg(not(tls)) twin is needed.
+        // PLAINTEXT — the caller believed TLS was armed. Python feeds this
+        // same builder, so erroring here closes both surfaces at once; the
+        // JVM fails fast earlier at build(), and the C ABI — which cannot
+        // reach this guard (tst-c builds without the `tls` feature) —
+        // carries its own equivalent refusal in build_server. The fields
+        // only exist under the `tls` feature, so no cfg(not(tls)) twin is
+        // needed.
         #[cfg(feature = "tls")]
         if !is_tls
             && (self.state.builder.tls_cert_path.is_some()

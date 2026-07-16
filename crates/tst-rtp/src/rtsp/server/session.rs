@@ -506,6 +506,9 @@ mod session_tests {
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
+                #[cfg(feature = "tls")]
+                tls_config: std::sync::Mutex::new(None),
+                startup_tx: std::sync::Mutex::new(None),
             });
             // Mimic the accept loop: reserve a slot, then move the guard
             // into the session task.
@@ -570,6 +573,9 @@ mod session_tests {
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
                 notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
+                #[cfg(feature = "tls")]
+                tls_config: std::sync::Mutex::new(None),
+                startup_tx: std::sync::Mutex::new(None),
             });
             // Mimic the accept loop: reserve a slot, then move the guard
             // into the session task.
@@ -630,6 +636,9 @@ mod session_tests {
             local_addr: std::sync::Mutex::new(None),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
+            #[cfg(feature = "tls")]
+            tls_config: std::sync::Mutex::new(None),
+            startup_tx: std::sync::Mutex::new(None),
         })
     }
 

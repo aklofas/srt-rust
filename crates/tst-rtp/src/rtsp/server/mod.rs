@@ -30,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 use crate::builder::RtspServerBuilder;
 use crate::cancel::RtspServerCancelHandle;
 use crate::error::RtspServerError;
+use crate::url::RtspScheme;
 
 /// Internal server state shared between the listener task, per-session
 /// tasks, and mount handles. `Arc<ServerState>` lives as long as any
@@ -75,6 +76,20 @@ pub(crate) struct ServerState {
     /// CSeqs (which always start at 1). The client doesn't ACK
     /// ANNOUNCE; this is a unidirectional notification.
     pub(crate) notice_cseq: AtomicU64,
+    /// Pre-loaded TLS acceptor config for `rtsps://` binds. Loaded
+    /// SYNCHRONOUSLY by `start()` — so bad cert/key paths fail `start()`
+    /// itself instead of killing the listener task after `start()` has
+    /// returned (the old silent-death wart). Taken by the listener task;
+    /// `None` for plaintext binds.
+    #[cfg(feature = "tls")]
+    pub(crate) tls_config: std::sync::Mutex<Option<crate::rtsp::server::tls::TlsServerConfig>>,
+    /// One-shot startup-result channel. `start()` installs the sender and
+    /// blocks on the receiver; the listener task takes the sender and
+    /// reports bind success (resolved local addr) or the typed bind error.
+    /// This is what makes listener startup failures surface as `start()`
+    /// errors instead of log-only silent death.
+    pub(crate) startup_tx:
+        std::sync::Mutex<Option<std::sync::mpsc::Sender<Result<SocketAddr, RtspServerError>>>>,
 }
 
 /// Lightweight per-session record kept on [`ServerState::sessions`] for
@@ -270,6 +285,9 @@ impl RtspServer {
             local_addr: std::sync::Mutex::new(None),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: AtomicU64::new(1_000_000),
+            #[cfg(feature = "tls")]
+            tls_config: std::sync::Mutex::new(None),
+            startup_tx: std::sync::Mutex::new(None),
         });
         Ok(Self {
             state,
@@ -451,15 +469,18 @@ impl RtspServer {
         Ok(crate::rtsp::server::mount::MountHandle { state: mount_state })
     }
 
-    /// Begin accepting client connections. Spawns the listener task on
-    /// the internal runtime and spin-waits up to 1 s for the listener to
-    /// bind. Returns once `local_addr()` reflects the bound port.
+    /// Begin accepting client connections. Loads + validates any TLS
+    /// config synchronously, then spawns the listener task on the
+    /// internal runtime and blocks (bounded) on its startup report.
+    /// Returns once `local_addr()` reflects the bound port.
     ///
     /// # Errors
     /// - [`RtspServerError::AlreadyStarted`] if called twice.
     /// - [`RtspServerError::Shutdown`] if called after `stop()`.
-    /// - [`RtspServerError::Io`] on listener bind failure (Task 8 wires
-    ///   the real bind; this stub returns Ok immediately).
+    /// - [`RtspServerError::Tls`] on a missing/malformed cert or key path
+    ///   for an `rtsps://` bind, or if the `tls` feature isn't enabled.
+    /// - [`RtspServerError::BindAddrInUse`] / [`RtspServerError::Io`] on
+    ///   listener bind failure.
     pub fn start(&self) -> Result<(), RtspServerError> {
         if self.state.shutdown.load(Ordering::Relaxed) {
             return Err(RtspServerError::Shutdown);
@@ -467,6 +488,40 @@ impl RtspServer {
         if self.state.started.swap(true, Ordering::AcqRel) {
             return Err(RtspServerError::AlreadyStarted);
         }
+        // Load + validate the TLS config SYNCHRONOUSLY, before the
+        // listener task exists: a bad cert/key path must fail start()
+        // itself. The loaded config rides ServerState for the listener.
+        let is_tls = matches!(self.state.builder.bind_url.scheme(), RtspScheme::Rtsps);
+        #[cfg(feature = "tls")]
+        if is_tls {
+            let loaded = (|| {
+                let cert = self.state.builder.tls_cert_path.as_ref().ok_or_else(|| {
+                    RtspServerError::Tls("rtsps:// bind requires tls_cert() builder call".into())
+                })?;
+                let key = self.state.builder.tls_key_path.as_ref().ok_or_else(|| {
+                    RtspServerError::Tls("rtsps:// bind requires tls_cert() builder call".into())
+                })?;
+                crate::rtsp::server::tls::TlsServerConfig::load(cert, key)
+            })();
+            match loaded {
+                Ok(cfg) => *self.state.tls_config.lock().unwrap() = Some(cfg),
+                Err(e) => {
+                    // Nothing was spawned — un-latch `started` so the
+                    // caller isn't left holding a wedged object.
+                    self.state.started.store(false, Ordering::Release);
+                    return Err(e);
+                }
+            }
+        }
+        #[cfg(not(feature = "tls"))]
+        if is_tls {
+            self.state.started.store(false, Ordering::Release);
+            return Err(RtspServerError::Tls(
+                "rtsps:// bind requires the 'tls' cargo feature".into(),
+            ));
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        *self.state.startup_tx.lock().unwrap() = Some(tx);
         let state = self.state.clone();
         let rt = self.runtime.as_ref().expect("runtime present until Drop");
         rt.spawn(async move {
@@ -474,19 +529,23 @@ impl RtspServer {
                 tracing::error!(target: "tst_rtp::server", error = ?e, "listener exited with error");
             }
         });
-        // Spin-wait up to 1 s for the listener to bind + populate local_addr.
-        // Once Task 8 wires the real listener, this is the synchronization
-        // point that lets callers `local_addr()` immediately after `start()`.
-        let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while std::time::Instant::now() < deadline {
-            if self.state.local_addr.lock().unwrap().is_some() {
-                return Ok(());
+        // Block (bounded) on the listener's startup report. Ok(addr)
+        // means bound + local_addr published (callers may local_addr()
+        // immediately). Err is the typed bind failure — BindAddrInUse
+        // stops being log-only silent death here.
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(_addr)) => Ok(()),
+            Ok(Err(e)) => {
+                // The listener reported and exited — provably dead, so
+                // un-latch `started`.
+                self.state.started.store(false, Ordering::Release);
+                Err(e)
             }
-            std::thread::sleep(Duration::from_millis(10));
+            // Runtime never scheduled the bind within 5 s. `started`
+            // stays latched: the task state is unknown and a retry
+            // could double-spawn a listener.
+            Err(_) => Err(RtspServerError::Io(std::io::ErrorKind::TimedOut)),
         }
-        // Listener stub didn't set local_addr — this is expected pre-Task 8.
-        // Once Task 8 lands, this branch becomes an error rather than Ok.
-        Ok(())
     }
 
     /// Graceful shutdown. Sends an RFC 7826 §13.5.1 Notice 5402
@@ -807,18 +866,13 @@ mod listener_tests {
         let first = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
         first.start().unwrap();
         let port = first.local_addr().unwrap().port();
-        // Try to bind ANOTHER server to the same port.
+        // Try to bind ANOTHER server to the same port. start() now blocks
+        // on the listener's startup-result channel, so the bind failure
+        // surfaces as a typed error from start() itself instead of only
+        // being observable by polling local_addr() afterward.
         let second = RtspServer::bind(&format!("rtsp://127.0.0.1:{port}")).unwrap();
-        // start() should observe the bind failure as the listener task
-        // exits with an error and never sets local_addr. Spin-wait
-        // in start() times out, but T7's stub returns Ok regardless;
-        // post-T8, the listener fails the bind and start() returns Io.
-        // Since the spin-wait returns Ok if local_addr never populates,
-        // we instead poll local_addr — it should be None after start()
-        // returns.
-        second.start().unwrap();
-        // Give the listener task a moment to fail+exit.
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        let e = second.start().unwrap_err();
+        assert!(matches!(e, RtspServerError::BindAddrInUse), "got {e:?}");
         assert!(
             second.local_addr().is_none(),
             "second bind should have failed"

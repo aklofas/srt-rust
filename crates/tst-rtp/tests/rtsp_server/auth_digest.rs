@@ -101,12 +101,19 @@ fn digest_md5_full_session_authenticates_every_method() {
     let port = server.local_addr().expect("local_addr after start").port();
     let url = format!("rtsp://admin:secret@127.0.0.1:{port}/live?transport=tcp");
     let mut client = RtspClient::connect(&url).expect("connect");
+    // OPTIONS first — our server deliberately leaves OPTIONS un-gated
+    // (lockout design, session.rs), so this pins that an unchallenged
+    // OPTIONS still succeeds through the authenticated send path.
+    client.options().expect("OPTIONS before any challenge");
     let sdp = client.describe().expect("DESCRIBE with creds");
     let session = client
         .setup_mp2t_auto(&sdp)
         .expect("SETUP must carry pre-emptive credentials (server challenges every method)");
     let _recv = session.into_recv_transport();
     client.play().expect("PLAY must carry credentials");
+    // OPTIONS again — a challenge is now cached, so this request goes out
+    // pre-emptively signed; an un-gated server must still 200 it.
+    client.options().expect("OPTIONS with cached credentials");
     client.teardown().expect("TEARDOWN must carry credentials");
     server.stop().ok();
 }

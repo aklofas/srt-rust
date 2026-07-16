@@ -11,8 +11,11 @@ import java.util.Optional;
  * {@link RtspServer#start}; bad paths throw {@link org.tstrans.RtspException} of kind
  * {@code TLS} from {@code start()}. {@link Builder#build} ENFORCES that they are set
  * together (both or neither) and that the bind address carries an explicit
- * {@code rtsps://} scheme — a plaintext bind would otherwise silently ignore the TLS
- * paths, since tst-rtp keys TLS off the URL scheme (mirrors tst-py).
+ * {@code rtsps://} scheme. This is no longer the only guard against that
+ * misconfiguration — tst-rtp's {@code RtspServer::start()} now refuses a plaintext
+ * bind carrying TLS paths too (kind {@code TLS}) — but the build()-time check stays
+ * because it throws earlier, with a clearer error, before any native call
+ * (mirrors tst-py).
  */
 public final class RtspServerConfig {
     private final String bindAddr;

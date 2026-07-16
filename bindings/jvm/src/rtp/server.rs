@@ -220,16 +220,16 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
             }
         };
 
-        // Fail fast: TLS paths on a non-rtsps bind would be SILENTLY
-        // ignored by tst-rtp (TLS is keyed off the URL scheme) — a
-        // plaintext server with certs configured. Java's build() enforces
-        // this too; this is the defensive twin for config-type bypass.
+        // Fail fast: TLS paths on a non-rtsps bind. tst-rtp's start() now
+        // refuses this too (RtspServerError::Tls), and Java's build()
+        // enforces it earlier still with a clearer error; this JNI check
+        // is the defensive twin for a caller that bypasses the config type.
         if tls_paths.is_some() && !bind_is_rtsps {
             throw_rtsp(
                 env,
                 "TLS",
                 "tlsCert/tlsKey require an explicit rtsps:// bind address \
-                 (a plaintext rtsp:// bind silently ignores TLS paths)",
+                 (a plaintext rtsp:// bind is refused)",
             );
             return 0;
         }

@@ -856,6 +856,9 @@ mod tests {
             local_addr: std::sync::Mutex::new(Some("127.0.0.1:8554".parse().unwrap())),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: AtomicU64::new(1_000_000),
+            #[cfg(feature = "tls")]
+            tls_config: std::sync::Mutex::new(None),
+            startup_tx: std::sync::Mutex::new(None),
         })
     }
 
@@ -932,6 +935,9 @@ mod tests {
             local_addr: std::sync::Mutex::new(Some("127.0.0.1:8554".parse().unwrap())),
             sessions: std::sync::Mutex::new(Vec::new()),
             notice_cseq: AtomicU64::new(1_000_000),
+            #[cfg(feature = "tls")]
+            tls_config: std::sync::Mutex::new(None),
+            startup_tx: std::sync::Mutex::new(None),
         });
         let req = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live");
         let mut session = ServerSessionState::new();

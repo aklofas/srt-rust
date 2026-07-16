@@ -643,12 +643,12 @@ impl PyRtspServer {
                  rebuild with the tst-py `tls` feature",
             ));
         }
-        // Fail loudly on unreadable cert/key paths BEFORE starting: the
-        // Rust listener task only loads the files after `start()` has
-        // returned, so a bad path would otherwise produce a server that
-        // looks started but never completes a handshake. Actually open
-        // the file (not just stat it) so permission errors and
-        // directories are caught here too.
+        // Belt-and-suspenders path validation. tst-rtp's start() now
+        // loads + validates the cert/key SYNCHRONOUSLY and fails typed
+        // (the old listener-loads-after-start() wart is fixed), so this
+        // guard is no longer load-bearing — it's kept for the friendlier
+        // Python-side error messages (names the exact path, catches
+        // directories/permissions distinctly).
         #[cfg(feature = "tls")]
         for path in [cfg.tls_cert.as_ref(), cfg.tls_key.as_ref()]
             .into_iter()
@@ -686,8 +686,9 @@ impl PyRtspServer {
                             cfg.graceful_shutdown_drain_ms,
                         ));
                     // Wire the cert + key paths through before build().
-                    // The listener task reads the files after start()
-                    // returns — hence the up-front readability guard above.
+                    // start() loads these synchronously and fails typed
+                    // on bad paths (the guard above just gives nicer
+                    // Python-side messages).
                     #[cfg(feature = "tls")]
                     if let (Some(cert), Some(key)) = (cfg.tls_cert.as_ref(), cfg.tls_key.as_ref()) {
                         builder.tls_cert(

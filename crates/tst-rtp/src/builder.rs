@@ -517,8 +517,10 @@ impl RtspServerBuilder {
     }
 
     /// Configure TLS cert chain + private key paths (PEM format) for an
-    /// `rtsps://` bind. The cert + key are read at `build()` time; missing
-    /// or malformed files surface as [`RtspServerError::Tls`].
+    /// `rtsps://` bind. The cert + key are loaded and validated at
+    /// [`RtspServer::start`](crate::rtsp::server::RtspServer::start) time;
+    /// missing or malformed files surface as [`RtspServerError::Tls`]
+    /// from `start()` (never a silently-dead listener).
     #[cfg(feature = "tls")]
     pub fn tls_cert(&mut self, cert_chain_pem: PathBuf, key_pem: PathBuf) -> &mut Self {
         self.tls_cert_path = Some(cert_chain_pem);

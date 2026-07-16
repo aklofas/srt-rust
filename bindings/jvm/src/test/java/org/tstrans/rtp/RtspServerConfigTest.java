@@ -62,11 +62,31 @@ class RtspServerConfigTest {
     }
 
     @Test
-    void acceptsBothTlsPems() {
+    void acceptsBothTlsPaths() {
         RtspServerConfig c = RtspServerConfig.builder()
             .tlsCert("cert.pem").tlsKey("key.pem").build();
         assertTrue(c.tlsCert().isPresent());
         assertTrue(c.tlsKey().isPresent());
+    }
+
+    @Test
+    void tlsCertWithoutKeyIsRejected() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder()
+                .bindAddr("rtsps://127.0.0.1:0")
+                .tlsCert("/tmp/cert.pem")
+                .build());
+        assertTrue(ex.getMessage().contains("both or neither"));
+    }
+
+    @Test
+    void tlsPathsRoundTripThroughAccessors() {
+        var cfg = RtspServerConfig.builder()
+            .bindAddr("rtsps://127.0.0.1:0")
+            .tlsCert("/tmp/cert.pem").tlsKey("/tmp/key.pem")
+            .build();
+        assertEquals("/tmp/cert.pem", cfg.tlsCert().orElseThrow());
+        assertEquals("/tmp/key.pem", cfg.tlsKey().orElseThrow());
     }
 
     @Test

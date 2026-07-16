@@ -174,12 +174,21 @@ class RtspClientTest {
     }
 
     @org.junit.jupiter.api.Timeout(15)
-    @Test void connectRtspsUrlThrowsTls() {
-        // tst-rtp built WITHOUT the tls feature: rtsps:// short-circuits to
-        // RtspError::Tls in connect_with_roots BEFORE any network I/O.
+    @Test void connectRtspsUrlWithClosedPortThrowsIo() {
+        // Pre-TLS-wiring (before the tls feature was linked into tst-jni's
+        // tst-rtp dependency), rtsps:// short-circuited to RtspError::Tls
+        // before any network I/O. Now that the client actually dials TCP
+        // first and only starts the rustls handshake once connected (see
+        // RtspTlsTest for the live rtsps:// path), a closed port fails the
+        // same way rtsp:// does -- instant ECONNREFUSED, same as
+        // connectRefusedThrowsRtspError below.
         var cfg = RtspClientConfig.of("rtsps://127.0.0.1:8322/live");
         var ex = assertThrows(org.tstrans.RtspException.class, () -> RtspClient.connect(cfg));
-        assertEquals(org.tstrans.RtspException.Kind.TLS, ex.kind());
+        assertTrue(java.util.EnumSet.of(
+            org.tstrans.RtspException.Kind.IO,
+            org.tstrans.RtspException.Kind.PROTOCOL,
+            org.tstrans.RtspException.Kind.TIMEOUT).contains(ex.kind()),
+            "unexpected kind: " + ex.kind());
     }
 
     @org.junit.jupiter.api.Timeout(15)

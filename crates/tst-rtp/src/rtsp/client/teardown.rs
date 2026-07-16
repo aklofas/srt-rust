@@ -40,7 +40,13 @@ impl RtspClient {
             None => return Ok(()), // nothing to tear down
         };
         let uri = self.url.render_no_credentials();
-        let preauth = self.preemptive_authorization(RtspMethod::Teardown, &uri)?;
+        // Best-effort: a failure to build the header (e.g. an OS RNG
+        // failure in the cnonce path) degrades to an unauthenticated
+        // TEARDOWN rather than aborting — the wire attempt and the
+        // session_id clearing below must always happen.
+        let preauth = self
+            .preemptive_authorization(RtspMethod::Teardown, &uri)
+            .unwrap_or(None);
         let mut req = self
             .base_request(RtspMethod::Teardown, uri)
             .header("session", sid);

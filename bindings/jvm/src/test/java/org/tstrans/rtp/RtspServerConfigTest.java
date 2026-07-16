@@ -15,8 +15,8 @@ class RtspServerConfigTest {
         assertEquals(60, c.sessionTimeoutSecs());
         assertEquals(256, c.fanoutCapacity());
         assertEquals(2000, c.gracefulShutdownDrainMs());
-        assertTrue(c.tlsCertPem().isEmpty());
-        assertTrue(c.tlsKeyPem().isEmpty());
+        assertTrue(c.tlsCert().isEmpty());
+        assertTrue(c.tlsKey().isEmpty());
     }
 
     @Test
@@ -52,21 +52,21 @@ class RtspServerConfigTest {
     @Test
     void rejectsTlsCertWithoutKey() {
         assertThrows(IllegalArgumentException.class,
-            () -> RtspServerConfig.builder().tlsCertPem(new byte[]{1}).build());
+            () -> RtspServerConfig.builder().tlsCert("cert.pem").build());
     }
 
     @Test
     void rejectsTlsKeyWithoutCert() {
         assertThrows(IllegalArgumentException.class,
-            () -> RtspServerConfig.builder().tlsKeyPem(new byte[]{1}).build());
+            () -> RtspServerConfig.builder().tlsKey("key.pem").build());
     }
 
     @Test
     void acceptsBothTlsPems() {
         RtspServerConfig c = RtspServerConfig.builder()
-            .tlsCertPem(new byte[]{1}).tlsKeyPem(new byte[]{2}).build();
-        assertTrue(c.tlsCertPem().isPresent());
-        assertTrue(c.tlsKeyPem().isPresent());
+            .tlsCert("cert.pem").tlsKey("key.pem").build();
+        assertTrue(c.tlsCert().isPresent());
+        assertTrue(c.tlsKey().isPresent());
     }
 
     @Test

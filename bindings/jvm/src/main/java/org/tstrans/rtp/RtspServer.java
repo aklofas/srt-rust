@@ -37,8 +37,8 @@ public final class RtspServer extends NativeHandle {
      * Build, bind, and start a server from {@code config}.
      *
      * @throws RtspException {@code SERVER} on bind/start failure, {@code PROTOCOL}
-     *     on bind-URL parse failure, {@code TLS} if a TLS PEM field is set (TLS is
-     *     forward-compat — not wired in this build)
+     *     on bind-URL parse failure, {@code TLS} if {@code config.tlsCert()}/{@code
+     *     tlsKey()} name a bad PEM path (an {@code rtsps://} bind now works)
      * @throws IllegalArgumentException if {@code config.auth()} is set without a realm
      */
     public static RtspServer start(RtspServerConfig config) throws RtspException {
@@ -63,7 +63,7 @@ public final class RtspServer extends NativeHandle {
             config.maxSessions(), config.sessionTimeoutSecs(),
             config.fanoutCapacity(), config.gracefulShutdownDrainMs(),
             authScheme, realm, user, password,
-            config.tlsCertPem().isPresent(), config.tlsKeyPem().isPresent());
+            config.tlsCert().orElse(null), config.tlsKey().orElse(null));
         if (h == 0) {
             throw new RtspException(RtspException.Kind.SERVER,
                 "nStart returned 0 without throwing");
@@ -177,7 +177,7 @@ public final class RtspServer extends NativeHandle {
 
     private static native long nStart(String bindAddr, long maxSessions, long sessionTimeoutSecs,
         long fanoutCapacity, long gracefulShutdownDrainMs, int authScheme, String authRealm,
-        String authUser, String authPassword, boolean hasTlsCert, boolean hasTlsKey)
+        String authUser, String authPassword, String tlsCert, String tlsKey)
         throws RtspException;
     private static native ServerStats nStats(long handle);
     private static native String nLocalAddr(long handle);

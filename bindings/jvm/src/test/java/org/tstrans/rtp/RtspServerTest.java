@@ -47,7 +47,7 @@ class RtspServerTest {
     void tlsFieldsRaiseTlsAtStart() {
         RtspServerConfig cfg = RtspServerConfig.builder()
             .bindAddr("127.0.0.1:0")
-            .tlsCertPem(new byte[]{1}).tlsKeyPem(new byte[]{2})
+            .tlsCert("/nonexistent/cert.pem").tlsKey("/nonexistent/key.pem")
             .build();
         RtspException ex = assertThrows(RtspException.class, () -> RtspServer.start(cfg));
         assertEquals(RtspException.Kind.TLS, ex.kind());

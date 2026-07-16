@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use jni::JNIEnv;
-use jni::objects::{JClass, JString};
+use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jint, jlong};
 
 use secrecy::SecretString;
@@ -25,6 +25,56 @@ use crate::mpegts::build_demux_config_from_args;
 
 use super::demux_receiver::demux_receiver_handle_from_transport;
 use super::errors::{rtsp_error_to_jvm, throw_rtsp};
+
+/// Parse `RtspClientConfig.tlsRootCertsPem` (a PEM bundle) into a
+/// `rustls::RootCertStore` and hand it to the builder — `rtsps://`
+/// verification against a private CA. Port of tst-py's `apply_tls_roots`
+/// (bindings/python/src/rtp/client.rs) with identical error semantics:
+/// invalid PEM / rejected anchor / zero certs all throw kind TLS. A null
+/// Java array is a no-op (platform native trust roots). Returns None with
+/// a pending exception on failure.
+fn apply_tls_roots(
+    env: &mut JNIEnv,
+    builder: RtspClientBuilder,
+    pem: &JByteArray<'_>,
+) -> Option<RtspClientBuilder> {
+    if pem.is_null() {
+        return Some(builder);
+    }
+    let bytes = match env.convert_byte_array(pem) {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            return None;
+        }
+    };
+    let mut roots = rustls::RootCertStore::empty();
+    let mut reader = std::io::BufReader::new(&bytes[..]);
+    let mut added = 0usize;
+    for cert in rustls_pemfile::certs(&mut reader) {
+        let cert = match cert {
+            Ok(c) => c,
+            Err(e) => {
+                throw_rtsp(env, "TLS", &format!("tlsRootCertsPem: invalid PEM: {e}"));
+                return None;
+            }
+        };
+        if let Err(e) = roots.add(cert) {
+            throw_rtsp(
+                env,
+                "TLS",
+                &format!("tlsRootCertsPem: certificate rejected as trust anchor: {e}"),
+            );
+            return None;
+        }
+        added += 1;
+    }
+    if added == 0 {
+        throw_rtsp(env, "TLS", "tlsRootCertsPem contains no certificates");
+        return None;
+    }
+    Some(builder.tls_root_certs(roots))
+}
 
 /// Boxed behind `org.tstrans.rtp.RtspCancelHandle.handle`. Wraps tst-rtp's
 /// self-contained `RtspCancelHandle` (owns its own `Arc<AtomicBool>` flag).
@@ -117,9 +167,9 @@ struct JniRtspSession {
     h264_depay_config: Arc<Mutex<Option<H264DepayConfig>>>,
 }
 
-/// `RtspClient.nConnect(url, authUser, authPassword, keepalive)` — run
-/// OPTIONS/DESCRIBE/SETUP/PLAY, return a `Box<JniRtspSession>` handle, or 0 with a
-/// pending `RtspException` on failure. Ports `PyRtspClient::connect`.
+/// `RtspClient.nConnect(url, authUser, authPassword, keepalive, tlsRootCertsPem)`
+/// — run OPTIONS/DESCRIBE/SETUP/PLAY, return a `Box<JniRtspSession>` handle, or 0
+/// with a pending `RtspException` on failure. Ports `PyRtspClient::connect`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
     mut env: JNIEnv<'_>,
@@ -128,6 +178,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
     auth_user: JString<'_>,
     auth_password: JString<'_>,
     keepalive: jboolean,
+    tls_root_certs_pem: JByteArray<'_>,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let url_str: String = match env.get_string(&url) {
@@ -178,7 +229,13 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
             builder = builder.no_auto_keepalive(true);
         }
 
-        // 4. Drive the control-plane to PLAY (network I/O). Ports tst-py's
+        // 4. Custom-CA trust roots, if supplied. Must land before any connect I/O.
+        let builder = match apply_tls_roots(env, builder, &tls_root_certs_pem) {
+            Some(b) => b,
+            None => return 0, // exception pending
+        };
+
+        // 5. Drive the control-plane to PLAY (network I/O). Ports tst-py's
         //    allow_threads closure — JNI has no GIL to release.
         let result: Result<(RustRtspClient, RustRtspSession), RtspError> = (|| {
             let mut client = builder.connect()?;
@@ -206,9 +263,9 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnect(
     })
 }
 
-/// `RtspClient.nConnectH264(url, authUser, authPassword, keepalive)` — run
-/// OPTIONS/DESCRIBE/SETUP for H.264 media/PLAY; return a `JniRtspSession` handle
-/// with the session slot holding an `H264DepayConfig`. Ports
+/// `RtspClient.nConnectH264(url, authUser, authPassword, keepalive, tlsRootCertsPem)`
+/// — run OPTIONS/DESCRIBE/SETUP for H.264 media/PLAY; return a `JniRtspSession`
+/// handle with the session slot holding an `H264DepayConfig`. Ports
 /// `PyRtspClient::connect_h264`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnectH264(
@@ -218,6 +275,7 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnectH264(
     auth_user: JString<'_>,
     auth_password: JString<'_>,
     keepalive: jboolean,
+    tls_root_certs_pem: JByteArray<'_>,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let url_str: String = match env.get_string(&url) {
@@ -261,6 +319,12 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspClient_nConnectH264(
         if keepalive == 0 {
             builder = builder.no_auto_keepalive(true);
         }
+
+        // Custom-CA trust roots, if supplied. Must land before any connect I/O.
+        let builder = match apply_tls_roots(env, builder, &tls_root_certs_pem) {
+            Some(b) => b,
+            None => return 0, // exception pending
+        };
 
         // Drive OPTIONS / DESCRIBE / SETUP (H.264 path) / PLAY.
         let result: Result<(RustRtspClient, RustRtspSession, H264DepayConfig), RtspError> =

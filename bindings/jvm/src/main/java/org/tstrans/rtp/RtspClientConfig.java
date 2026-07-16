@@ -8,10 +8,11 @@ import java.util.Optional;
  * {@code tstrans.rtp.RtspClientConfig} (a frozen dataclass). Build via
  * {@link #of(String)} (all defaults) or {@link #builder(String)}.
  *
- * <p>{@code transportPref}, {@code rtcp}, {@code tlsRootCertsPem} and
- * {@code rtspVersion} are carried for surface parity but pass-through-only at
- * connect: the underlying tst-rtp builder derives transport/version from the URL
- * and ignores the PEM (TLS is forward-compat — see {@link RtspClient}).
+ * <p>{@code transportPref} and {@code rtspVersion} are carried for surface parity
+ * but pass-through-only at connect: the underlying tst-rtp builder derives
+ * transport/version from the URL. {@code tlsRootCertsPem}, however, IS read at
+ * connect — a PEM bundle of custom trust anchors for {@code rtsps://} servers with
+ * a private CA; see {@link RtspClient}.
  */
 public final class RtspClientConfig {
     private final String url;

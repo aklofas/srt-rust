@@ -182,7 +182,7 @@ class RtspClientTest {
         // RtspTlsTest for the live rtsps:// path), a closed port fails the
         // same way rtsp:// does -- instant ECONNREFUSED, same as
         // connectRefusedThrowsRtspError below.
-        var cfg = RtspClientConfig.of("rtsps://127.0.0.1:8322/live");
+        var cfg = RtspClientConfig.of("rtsps://127.0.0.1:9/live");
         var ex = assertThrows(org.tstrans.RtspException.class, () -> RtspClient.connect(cfg));
         assertTrue(java.util.EnumSet.of(
             org.tstrans.RtspException.Kind.IO,

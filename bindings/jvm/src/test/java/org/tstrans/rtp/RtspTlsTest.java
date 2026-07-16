@@ -78,6 +78,23 @@ class RtspTlsTest {
     }
 
     @Test
+    void corruptPemBodyThrowsTlsBeforeAnyIo() {
+        // A BEGIN marker with a garbage body exercises the invalid-PEM
+        // branch of the roots parser (vs. the zero-certs branch above,
+        // which rustls-pemfile reaches by silently skipping marker-less
+        // text). No server involved — fails before any I/O.
+        byte[] corrupt = ("-----BEGIN CERTIFICATE-----\n"
+            + "!!!! this is not base64 !!!!\n"
+            + "-----END CERTIFICATE-----\n").getBytes();
+        var cfg = RtspClientConfig.builder("rtsps://127.0.0.1:1/never")
+            .tlsRootCertsPem(corrupt)
+            .build();
+        RtspException ex = assertThrows(RtspException.class, () -> RtspClient.connect(cfg));
+        assertEquals(RtspException.Kind.TLS, ex.kind());
+        assertTrue(ex.getMessage().contains("invalid PEM"));
+    }
+
+    @Test
     @Timeout(TIMEOUT_SEC + 10)
     void rtspsLoopbackDeliversVideo() throws Exception {
         assumeTrue(isLinux(), "live RTSP tests gated to Linux");

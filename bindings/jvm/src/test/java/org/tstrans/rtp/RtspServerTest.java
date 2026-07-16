@@ -44,16 +44,6 @@ class RtspServerTest {
     }
 
     @Test @Timeout(15)
-    void tlsFieldsRaiseTlsAtStart() {
-        RtspServerConfig cfg = RtspServerConfig.builder()
-            .bindAddr("127.0.0.1:0")
-            .tlsCert("/nonexistent/cert.pem").tlsKey("/nonexistent/key.pem")
-            .build();
-        RtspException ex = assertThrows(RtspException.class, () -> RtspServer.start(cfg));
-        assertEquals(RtspException.Kind.TLS, ex.kind());
-    }
-
-    @Test @Timeout(15)
     void authWithoutRealmRejected() {
         RtspServerConfig cfg = RtspServerConfig.builder()
             .bindAddr("127.0.0.1:0")

@@ -128,21 +128,24 @@ impl RtspClient {
         uri: &str,
         www_auth: &str,
     ) -> Result<String, RtspError> {
-        let username = self.url.username.clone().ok_or(RtspError::AuthFailed)?;
-        let password = self.url.password.clone().ok_or(RtspError::AuthFailed)?;
-        // Next nonce-count for qop=auth (ignored by the no-qop form). Reusing
-        // one cached nonce across requests requires a strictly-increasing nc
-        // so a qop=auth server does not reject later requests as replays.
-        let nc = self
-            .auth_nc
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            .wrapping_add(1);
-        crate::rtsp::auth::build_authorization(method, uri, www_auth, &username, &password, nc)
+        let username = self.url.username.as_deref().ok_or(RtspError::AuthFailed)?;
+        let password = self.url.password.as_ref().ok_or(RtspError::AuthFailed)?;
+        // Next nonce-count for qop=auth (ignored by the no-qop form),
+        // allocated under the shared auth lock so no other thread (the
+        // keepalive) can be issued the same `nc` for the same nonce —
+        // a qop=auth server rejects a repeated `nc` as a replay
+        // (RFC 7616 §3.4).
+        let nc = {
+            let mut auth = self.auth.lock().expect("auth state mutex poisoned");
+            auth.nc += 1;
+            auth.nc
+        };
+        crate::rtsp::auth::build_authorization(method, uri, www_auth, username, password, nc)
     }
 
     /// Pre-emptive `Authorization:` header for `method` at `uri`, computed
     /// from the challenge cached at the first 401 (see
-    /// [`RtspClient::auth_challenge`]). Returns `Ok(None)` when no challenge
+    /// [`RtspClient::auth`]). Returns `Ok(None)` when no challenge
     /// has been seen yet or the URL carries no credentials — so
     /// unauthenticated servers are unaffected.
     pub(crate) fn preemptive_authorization(
@@ -150,27 +153,43 @@ impl RtspClient {
         method: RtspMethod,
         uri: &str,
     ) -> Result<Option<String>, RtspError> {
-        if self.url.username.is_none() || self.url.password.is_none() {
-            return Ok(None);
-        }
-        match &self.auth_challenge {
-            Some(www) => Ok(Some(self.authorization_from_challenge(method, uri, www)?)),
-            None => Ok(None),
-        }
+        let username = match self.url.username.as_deref() {
+            Some(u) => u,
+            None => return Ok(None),
+        };
+        let password = match self.url.password.as_ref() {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+        // Snapshot the challenge and allocate its nonce-count under ONE
+        // lock acquisition, so the pair can never mix a stale challenge
+        // with a post-rotation count (see `AuthState`).
+        let (www, nc) = {
+            let mut auth = self.auth.lock().expect("auth state mutex poisoned");
+            match auth.challenge.clone() {
+                Some(www) => {
+                    auth.nc += 1;
+                    (www, auth.nc)
+                }
+                None => return Ok(None),
+            }
+        };
+        Ok(Some(crate::rtsp::auth::build_authorization(
+            method, uri, &www, username, password, nc,
+        )?))
     }
 
     /// Cache the `WWW-Authenticate` challenge from a 401 for pre-emptive use
     /// on later requests. A *changed* challenge (new nonce) resets the
-    /// `qop=auth` nonce-count so it restarts at 1, and the value is mirrored
-    /// to the keepalive thread's shared cell when present.
+    /// `qop=auth` nonce-count so it restarts at 1. Challenge and count are
+    /// updated under the same lock the keepalive thread reads them with, so
+    /// the rotation is atomic (see `AuthState`).
     pub(crate) fn cache_auth_challenge(&mut self, www_auth: String) {
-        if self.auth_challenge.as_deref() != Some(www_auth.as_str()) {
-            self.auth_nc.store(0, std::sync::atomic::Ordering::Relaxed);
+        let mut auth = self.auth.lock().expect("auth state mutex poisoned");
+        if auth.challenge.as_deref() != Some(www_auth.as_str()) {
+            auth.nc = 0;
         }
-        if let Some(shared) = &self.auth_challenge_shared {
-            *shared.lock().expect("auth challenge mutex poisoned") = Some(www_auth.clone());
-        }
-        self.auth_challenge = Some(www_auth);
+        auth.challenge = Some(www_auth);
     }
 
     /// Send `method` at `uri` with `extra_headers`, attaching cached
@@ -611,7 +630,7 @@ mod tests {
         let mut client =
             RtspClient::connect(&format!("rtsp://user:pass@127.0.0.1:{port}/cam")).unwrap();
         // The challenge as gortsplib/MediaMTX send it (no algorithm, no qop).
-        client.auth_challenge = Some(r#"Digest realm="tstrans", nonce="abc123""#.to_string());
+        client.cache_auth_challenge(r#"Digest realm="tstrans", nonce="abc123""#.to_string());
 
         let control_uri = format!("rtsp://127.0.0.1:{port}/cam/trackID=0");
         let hdr = client
@@ -650,7 +669,7 @@ mod tests {
         // Challenge cached but the URL has no credentials → None.
         let (p2, h2) = accept_and_hold();
         let mut client2 = RtspClient::connect(&format!("rtsp://127.0.0.1:{p2}/cam")).unwrap();
-        client2.auth_challenge = Some(r#"Digest realm="R", nonce="n""#.to_string());
+        client2.cache_auth_challenge(r#"Digest realm="R", nonce="n""#.to_string());
         assert!(
             client2
                 .preemptive_authorization(RtspMethod::Play, "rtsp://x/cam")
@@ -670,8 +689,8 @@ mod tests {
         let mut client =
             RtspClient::connect(&format!("rtsp://user:pass@127.0.0.1:{port}/cam")).unwrap();
 
-        client.cache_auth_challenge(r#"Digest realm="R", nonce="n1", qop="auth""#.to_string());
-        let www1 = client.auth_challenge.clone().unwrap();
+        let www1 = r#"Digest realm="R", nonce="n1", qop="auth""#.to_string();
+        client.cache_auth_challenge(www1.clone());
         let a1 = client
             .authorization_from_challenge(RtspMethod::Describe, "rtsp://x/cam", &www1)
             .unwrap();
@@ -689,8 +708,8 @@ mod tests {
         assert!(a3.contains("nc=00000003"), "{a3}");
 
         // A different challenge (new nonce) restarts nc at 1.
-        client.cache_auth_challenge(r#"Digest realm="R", nonce="n2", qop="auth""#.to_string());
-        let www2 = client.auth_challenge.clone().unwrap();
+        let www2 = r#"Digest realm="R", nonce="n2", qop="auth""#.to_string();
+        client.cache_auth_challenge(www2.clone());
         let a4 = client
             .authorization_from_challenge(RtspMethod::Setup, "rtsp://x/cam", &www2)
             .unwrap();

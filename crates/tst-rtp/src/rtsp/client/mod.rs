@@ -143,21 +143,30 @@ pub struct RtspClient {
     /// [`InterleavedPumpState::ctrl_rx`] (matching by CSeq) — reading the
     /// stream directly would race against the pump.
     pub(crate) pump_state: Option<InterleavedPumpState>,
-    /// Cached `WWW-Authenticate` challenge from the first 401 (usually at
-    /// DESCRIBE). Once learned, SETUP / PLAY / PAUSE / TEARDOWN attach an
-    /// `Authorization` header pre-emptively — servers such as
+    /// Cached auth state (challenge + `qop=auth` nonce-count), shared
+    /// with the keepalive thread. Once a challenge is learned (first
+    /// 401, usually at DESCRIBE), SETUP / PLAY / PAUSE / TEARDOWN
+    /// attach an `Authorization` header pre-emptively — servers such as
     /// gortsplib / MediaMTX require auth on every method and reject an
     /// unauthenticated SETUP even after an authenticated DESCRIBE.
-    pub(crate) auth_challenge: Option<String>,
-    /// Monotonic nonce-count for Digest `qop=auth`, shared with the keepalive
-    /// thread so requests reusing one cached nonce never repeat an `nc`
-    /// (RFC 7616 §3.4). Reset to 0 whenever a *different* challenge is cached
-    /// (a new nonce restarts the count at 1).
-    pub(crate) auth_nc: Arc<AtomicU32>,
-    /// Shared copy of [`Self::auth_challenge`] for the keepalive thread, so
-    /// its OPTIONS pings authenticate on servers that challenge them. `None`
-    /// until [`Self::spawn_keepalive_if_needed`] runs.
-    pub(crate) auth_challenge_shared: Option<Arc<Mutex<Option<String>>>>,
+    pub(crate) auth: Arc<Mutex<AuthState>>,
+}
+
+/// `WWW-Authenticate` challenge cache + `qop=auth` nonce-count pair.
+///
+/// The two live under ONE mutex — never split them: an `nc` allocation
+/// must pair atomically with the challenge (nonce) it is sent with, or
+/// a challenge rotation racing the keepalive thread could repeat an
+/// `nc` for a reused nonce, which a `qop=auth` server rejects as a
+/// replay (RFC 7616 §3.4).
+#[derive(Debug, Default)]
+pub(crate) struct AuthState {
+    /// Cached challenge from the most recent 401.
+    pub(crate) challenge: Option<String>,
+    /// Monotonic nonce-count for the CURRENT challenge; reset to 0
+    /// when a *different* challenge is cached (a new nonce restarts
+    /// the count at 1).
+    pub(crate) nc: u32,
 }
 
 /// State the main thread keeps about the interleaved producer thread.
@@ -354,9 +363,7 @@ impl RtspClient {
             user_agent: params.user_agent,
             keepalive_thread: None,
             pump_state: None,
-            auth_challenge: None,
-            auth_nc: Arc::new(AtomicU32::new(0)),
-            auth_challenge_shared: None,
+            auth: Arc::new(Mutex::new(AuthState::default())),
         })
     }
 
@@ -414,12 +421,11 @@ impl RtspClient {
         let session_id = Arc::new(Mutex::new(self.session_id.clone()));
         self.session_dead = Some(session_dead.clone());
         self.session_id_shared = Some(session_id.clone());
-        // Shared challenge cell + credential snapshot so the keepalive OPTIONS
-        // pings authenticate on servers that challenge them. The main thread
-        // updates the cell via `cache_auth_challenge` as the challenge is
-        // learned (at DESCRIBE, after this spawn).
-        let auth_challenge = Arc::new(Mutex::new(self.auth_challenge.clone()));
-        self.auth_challenge_shared = Some(auth_challenge.clone());
+        // The keepalive thread shares the auth state directly (single
+        // source of truth) plus a credential snapshot, so its OPTIONS
+        // pings authenticate on servers that challenge them. The main
+        // thread populates the state via `cache_auth_challenge` as the
+        // challenge is learned (at DESCRIBE, after this spawn).
         let handle = keepalive::spawn(
             write_half,
             cancel,
@@ -429,10 +435,9 @@ impl RtspClient {
             self.url.rtsp_version,
             session_id,
             self.user_agent.clone(),
-            auth_challenge,
+            self.auth.clone(),
             self.url.username.clone(),
             self.url.password.clone(),
-            self.auth_nc.clone(),
         )
         .map_err(|e| RtspError::Io(e.kind()))?;
         self.keepalive_thread = Some(handle);

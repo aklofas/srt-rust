@@ -11,14 +11,14 @@
 //!   `RtspClient::is_session_alive`.
 
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use secrecy::SecretString;
 
-use crate::rtsp::client::Stream;
+use crate::rtsp::client::{AuthState, Stream};
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::url::RtspVersion;
 
@@ -58,10 +58,9 @@ pub(crate) fn spawn(
     version: RtspVersion,
     session_id: Arc<Mutex<Option<String>>>,
     user_agent: String,
-    auth_challenge: Arc<Mutex<Option<String>>>,
+    auth: Arc<Mutex<AuthState>>,
     username: Option<String>,
     password: Option<SecretString>,
-    auth_nc: Arc<AtomicU32>,
 ) -> std::io::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("rtsp-keepalive".to_string())
@@ -96,24 +95,33 @@ pub(crate) fn spawn(
                 // Attach cached credentials pre-emptively so servers that
                 // require auth on OPTIONS accept the ping and refresh the
                 // session. No-op until the challenge is learned (at DESCRIBE).
-                if let (Some(www), Some(user), Some(pass)) = (
-                    auth_challenge
-                        .lock()
-                        .expect("auth challenge mutex poisoned")
-                        .clone(),
-                    username.as_ref(),
-                    password.as_ref(),
-                ) {
-                    let nc = auth_nc.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
-                    if let Ok(authz) = crate::rtsp::auth::build_authorization(
-                        RtspMethod::Options,
-                        &url,
-                        &www,
-                        user,
-                        pass,
-                        nc,
-                    ) {
-                        req = req.header("authorization", authz);
+                if let (Some(user), Some(pass)) = (username.as_ref(), password.as_ref()) {
+                    // Snapshot the challenge and allocate its nonce-count
+                    // under ONE lock acquisition, so this ping can never
+                    // pair a stale challenge with a post-rotation count
+                    // (or repeat an `nc` for a reused nonce — RFC 7616
+                    // §3.4 replay protection). See `AuthState`.
+                    let snapshot = {
+                        let mut g = auth.lock().expect("auth state mutex poisoned");
+                        match g.challenge.clone() {
+                            Some(www) => {
+                                g.nc += 1;
+                                Some((www, g.nc))
+                            }
+                            None => None,
+                        }
+                    };
+                    if let Some((www, nc)) = snapshot {
+                        if let Ok(authz) = crate::rtsp::auth::build_authorization(
+                            RtspMethod::Options,
+                            &url,
+                            &www,
+                            user,
+                            pass,
+                            nc,
+                        ) {
+                            req = req.header("authorization", authz);
+                        }
                     }
                 }
                 // Validate against header injection before writing. The

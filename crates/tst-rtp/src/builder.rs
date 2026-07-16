@@ -314,7 +314,7 @@ impl RtspClientBuilder {
         }
 
         // Bake builder-supplied credentials into the URL so the
-        // auth flow (`options_describe::handle_auth_challenge_and_retry`)
+        // auth flow (`options_describe::send_authenticated`)
         // picks them up from `client.url.username/password`. The URL
         // already carries credentials when the caller passed
         // `rtsp://user:pass@host/...`; explicit builder `.auth()` calls

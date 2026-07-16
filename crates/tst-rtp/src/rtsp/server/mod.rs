@@ -495,7 +495,7 @@ impl RtspServer {
         // itself. The loaded config rides ServerState for the listener.
         let is_tls = matches!(self.state.builder.bind_url.scheme(), RtspScheme::Rtsps);
         // TLS material on a non-rtsps bind: refuse to start. The old
-        // behavior silently ignored tls_cert()/tls_key() and came up
+        // behavior silently ignored the configured TLS cert/key paths and came up
         // PLAINTEXT — the caller believed TLS was armed. Python feeds this
         // same builder, so erroring here closes both surfaces at once; the
         // JVM fails fast earlier at build(), and the C ABI — which cannot
@@ -513,7 +513,7 @@ impl RtspServer {
             // TLS-load failure path below).
             self.state.started.store(false, Ordering::Release);
             return Err(RtspServerError::Tls(
-                "tls_cert()/tls_key() are configured but the bind URL scheme is \
+                "TLS cert/key paths are configured but the bind URL scheme is \
                  plaintext rtsp:// — bind an rtsps:// URL or drop the TLS config \
                  (refusing to start an accidentally-unencrypted server)"
                     .into(),

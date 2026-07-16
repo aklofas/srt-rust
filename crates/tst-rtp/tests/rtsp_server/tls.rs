@@ -11,7 +11,7 @@
 #![cfg(feature = "tls")]
 
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
-use tst_rtp::RtspServerBuilder;
+use tst_rtp::{RtspServerBuilder, RtspServerError};
 
 use crate::fixtures::tls_certs::SelfSignedCert;
 
@@ -140,4 +140,41 @@ fn tls_handshake_failure_does_not_leak_session_slot() {
     );
 
     server.stop().ok();
+}
+
+/// A nonexistent cert path must fail `start()` with `Tls` — not return
+/// Ok over a dead listener. This is the cert-load-after-start wart: the
+/// listener used to load the TLS config only after publishing
+/// `local_addr` (the signal `start()` waited on).
+#[test]
+fn start_surfaces_missing_cert_path() {
+    let mut b = RtspServerBuilder::new("rtsps://127.0.0.1:0").expect("URL parse");
+    b.tls_cert(
+        "/nonexistent/tstrans-test/cert.pem".into(),
+        "/nonexistent/tstrans-test/key.pem".into(),
+    );
+    let server = b.build().expect("server build");
+    let err = server
+        .start()
+        .expect_err("start() must fail on a missing cert path");
+    assert!(matches!(err, RtspServerError::Tls(_)), "got {err:?}");
+}
+
+/// Files that exist but hold garbage (not PEM) must also fail `start()`
+/// with `Tls` — exercises the parse half of the synchronous load.
+#[test]
+fn start_surfaces_garbage_pem() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cert = dir.path().join("cert.pem");
+    let key = dir.path().join("key.pem");
+    std::fs::write(&cert, b"this is not a pem").expect("write cert");
+    std::fs::write(&key, b"this is not a pem").expect("write key");
+
+    let mut b = RtspServerBuilder::new("rtsps://127.0.0.1:0").expect("URL parse");
+    b.tls_cert(cert, key);
+    let server = b.build().expect("server build");
+    let err = server
+        .start()
+        .expect_err("start() must fail on garbage PEM content");
+    assert!(matches!(err, RtspServerError::Tls(_)), "got {err:?}");
 }

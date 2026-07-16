@@ -33,12 +33,11 @@ impl RtspClient {
             })?
             .clone();
         let uri = self.url.render_no_credentials();
-        let req = self
-            .base_request(RtspMethod::Play, uri)
-            .header("session", sid)
-            .header("range", "npt=0.000-");
-        let bytes = req.encode_checked()?;
-        let resp = self.send_and_read(&bytes)?;
+        let resp = self.send_authenticated(
+            RtspMethod::Play,
+            &uri,
+            &[("session", sid), ("range", "npt=0.000-".to_string())],
+        )?;
         self.expect_ok(&resp)?;
         Ok(parse_rtp_info(
             resp.headers
@@ -66,11 +65,7 @@ impl RtspClient {
             })?
             .clone();
         let uri = self.url.render_no_credentials();
-        let req = self
-            .base_request(RtspMethod::Pause, uri)
-            .header("session", sid);
-        let bytes = req.encode_checked()?;
-        let resp = self.send_and_read(&bytes)?;
+        let resp = self.send_authenticated(RtspMethod::Pause, &uri, &[("session", sid)])?;
         self.expect_ok(&resp)
     }
 }

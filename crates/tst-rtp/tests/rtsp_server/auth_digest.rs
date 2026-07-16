@@ -88,3 +88,25 @@ fn digest_md5_wrong_password_returns_auth_failed() {
     assert!(matches!(e, RtspError::AuthFailed), "got: {e:?}");
     server.stop().ok();
 }
+
+/// Regression guard for the SETUP/PLAY auth gap: the server auth-gates
+/// EVERY method per request (like gortsplib/MediaMTX), so a full
+/// DESCRIBE → SETUP → PLAY → TEARDOWN session only succeeds if the client
+/// attaches credentials to every request — not just DESCRIBE. The
+/// pre-fix client authenticated only DESCRIBE and failed at SETUP with
+/// a 401.
+#[test]
+fn digest_md5_full_session_authenticates_every_method() {
+    let server = server_with_digest_md5();
+    let port = server.local_addr().expect("local_addr after start").port();
+    let url = format!("rtsp://admin:secret@127.0.0.1:{port}/live?transport=tcp");
+    let mut client = RtspClient::connect(&url).expect("connect");
+    let sdp = client.describe().expect("DESCRIBE with creds");
+    let session = client
+        .setup_mp2t_auto(&sdp)
+        .expect("SETUP must carry pre-emptive credentials (server challenges every method)");
+    let _recv = session.into_recv_transport();
+    client.play().expect("PLAY must carry credentials");
+    client.teardown().expect("TEARDOWN must carry credentials");
+    server.stop().ok();
+}

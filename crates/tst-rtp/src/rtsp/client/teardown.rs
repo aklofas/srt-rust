@@ -40,9 +40,13 @@ impl RtspClient {
             None => return Ok(()), // nothing to tear down
         };
         let uri = self.url.render_no_credentials();
-        let req = self
+        let preauth = self.preemptive_authorization(RtspMethod::Teardown, &uri)?;
+        let mut req = self
             .base_request(RtspMethod::Teardown, uri)
             .header("session", sid);
+        if let Some(a) = &preauth {
+            req = req.header("authorization", a.as_str());
+        }
         let bytes = req.encode_checked()?;
         // Use the deadline-aware send if a pump is active; the non-pump
         // path's `send_and_read` already bounds via cancel-poll. With a

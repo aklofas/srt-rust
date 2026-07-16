@@ -9,7 +9,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- RTSP client: credentials are now attached to **every** RTSP method, not just
+  DESCRIBE. Servers that auth-gate each request individually (gortsplib /
+  MediaMTX, and this crate's own `RtspServer`) rejected the unauthenticated
+  SETUP that followed an authenticated DESCRIBE, so credentialed `rtsp://` /
+  `rtsps://` sessions against them could never reach PLAY. The client now
+  caches the `WWW-Authenticate` challenge from the first 401 and attaches
+  `Authorization` pre-emptively on DESCRIBE / SETUP / PLAY / PAUSE / TEARDOWN
+  (with one reactive retry on a fresh challenge), hashes the Digest HA2
+  against the exact request-URI of each method (SETUP signs its control URI,
+  matching gortsplib/MediaMTX validation), keeps a strictly increasing
+  `qop=auth` nonce-count while reusing a cached nonce (RFC 7616 §3.4), and
+  authenticates the keepalive thread's OPTIONS pings. Unauthenticated servers
+  are unaffected — pre-emptive auth stays inert until a challenge is seen.
 
 ---
 

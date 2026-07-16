@@ -6,6 +6,9 @@
 
 use secrecy::{ExposeSecret, SecretString};
 
+use crate::error::RtspError;
+use crate::rtsp::message::RtspMethod;
+
 /// An auth challenge parsed from a 401 `WWW-Authenticate` header.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -277,6 +280,85 @@ pub fn build_digest_response(ctx: &DigestContext<'_>) -> String {
         out.push_str(&format!(r#", opaque="{}""#, opaque));
     }
     out
+}
+
+/// ASCII method token used in the Digest HA2 (`method:uri`).
+pub(crate) fn method_token(method: RtspMethod) -> &'static str {
+    match method {
+        RtspMethod::Options => "OPTIONS",
+        RtspMethod::Describe => "DESCRIBE",
+        RtspMethod::Setup => "SETUP",
+        RtspMethod::Play => "PLAY",
+        RtspMethod::Pause => "PAUSE",
+        RtspMethod::Teardown => "TEARDOWN",
+        RtspMethod::GetParameter => "GET_PARAMETER",
+    }
+}
+
+/// Build an `Authorization:` header value for `method` at `uri` from a raw
+/// `WWW-Authenticate` challenge string and credentials. Prefers Digest over
+/// Basic when both are offered.
+///
+/// `uri` MUST be the exact request-URI of the target method — gortsplib /
+/// MediaMTX hash the Digest HA2 against the request URI, so SETUP must pass
+/// its control URI (`…/trackID=0`), not the base URL.
+///
+/// `nc` is the nonce-count for the `qop=auth` form (RFC 7616 §3.4); it is
+/// ignored by the RFC 2617 no-qop variant. Callers reusing one cached nonce
+/// across requests MUST pass a strictly increasing `nc` so a `qop=auth`
+/// server does not reject later requests as replays.
+///
+/// # Errors
+///
+/// - [`RtspError::AuthUnsupported`] if no recognized scheme is present.
+/// - [`RtspError::Io`] if the OS RNG fails while generating the cnonce.
+pub(crate) fn build_authorization(
+    method: RtspMethod,
+    uri: &str,
+    www_auth: &str,
+    username: &str,
+    password: &SecretString,
+    nc: u32,
+) -> Result<String, RtspError> {
+    let challenges = parse_challenges(www_auth);
+    // Prefer Digest over Basic when both are offered.
+    let challenge = challenges
+        .iter()
+        .find(|c| matches!(c, AuthChallenge::Digest(_)))
+        .or_else(|| {
+            challenges
+                .iter()
+                .find(|c| matches!(c, AuthChallenge::Basic { .. }))
+        })
+        .ok_or_else(|| RtspError::AuthUnsupported {
+            scheme: "(no recognized scheme in WWW-Authenticate)".into(),
+        })?;
+
+    Ok(match challenge {
+        AuthChallenge::Basic { .. } => build_basic_response(username, password),
+        AuthChallenge::Digest(d) => {
+            // Random cnonce — used only by the qop=auth path; ignored by the
+            // RFC 2617 no-qop variant gortsplib/MediaMTX send.
+            let mut cnonce_bytes = [0u8; 16];
+            getrandom::getrandom(&mut cnonce_bytes)
+                .map_err(|_| RtspError::Io(std::io::ErrorKind::Other))?;
+            let mut cnonce = String::with_capacity(32);
+            for b in &cnonce_bytes {
+                use std::fmt::Write as _;
+                let _ = write!(cnonce, "{b:02x}");
+            }
+            let ctx = DigestContext {
+                username,
+                password,
+                method: method_token(method),
+                uri,
+                nc,
+                cnonce: &cnonce,
+                challenge: d,
+            };
+            build_digest_response(&ctx)
+        }
+    })
 }
 
 #[cfg(test)]

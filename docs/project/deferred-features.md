@@ -1821,6 +1821,34 @@ the trigger that would unblock it.
 - **Trigger to revisit:** The next time this flake blocks a merge — or
   before adding any new QEMU runtime leg to CI.
 
+## CI: windows-msvc tst-rtp network-timing flake class (make the tests deterministic)
+
+- **Status:** Known flake class, remedy = rerun. Windows-msvc tst-rtp
+  RTSP/network timing tests intermittently fail under CI runner load:
+  first
+  `rtsp_server/concurrent.rs::unauth_connection_burst_never_exceeds_max_sessions`
+  (fires a connection burst, sleeps a fixed 20 ms, then asserts from a
+  single snapshot that the max-sessions cap held — the accept-loop
+  timing drifts under load and the snapshot assertion trips), later
+  `rtsp::client::tests::connect_to_loopback_listener_succeeds` (a
+  loopback connect overrunning the per-test timeout), generalized
+  2026-06-22 to any sibling tst-rtp network test on windows-msvc. The
+  production code they exercise (atomic slot reserve in the accept
+  loop) is correct — the tests' timing assumptions are what flake.
+  When windows-msvc reds ONLY on such a test and the in-flight diff
+  doesn't touch `tst-rtp`, classify as this class and
+  `gh run rerun --failed`.
+- **Why deferred:** Rerun-to-green has stayed cheap relative to the
+  fix, which is test-hygiene work with a few candidate shapes: replace
+  the fixed-sleep snapshot with a bounded-retry poll of the cap
+  invariant (assert it eventually-and-stably holds, not at one
+  instant); raise or host-scale the per-test timeout for the windows
+  network group; or serialize the tst-rtp network group on windows
+  (precedent: RIST runtime is gated on windows entirely).
+- **Trigger to revisit:** the next time this class blocks a merge
+  twice in one arc, or the next time the rtsp_server concurrency
+  tests are touched anyway — fold the determinism fix in then.
+
 ## HLS: keyframe-driven-intent signal (segment-0 mid-GOP window)
 
 - **Status:** Deferred to a post-v0.3.0 release (maintainer decision
@@ -1847,3 +1875,109 @@ the trigger that would unblock it.
   proving no segment starts mid-GOP for an initial GOP > `segment_duration`,
   and decide the telemetry story (count it in `forced_cuts` or a dedicated
   counter).
+
+## RTSP keepalive: no 401 reaction / session-dead detection on rejected pings
+
+- **Status:** Since the uniform client auth work, the keepalive thread
+  signs its OPTIONS pings pre-emptively with the cached challenge
+  (snapshot + nonce-count allocated under one lock — see
+  `rtsp/client/keepalive.rs`). But the thread is fire-and-forget: it
+  never reads responses (the main thread's `read_response` loop / the
+  interleaved pump own all reads, and silently discard keepalive
+  responses by their `CSeq >= 1_000_000` band). A server that rejects a
+  ping with 401 therefore goes unnoticed — `session_dead` (polled via
+  `RtspClient::is_session_alive`) trips only on write failure or a
+  header-injection encode failure. Detection is delayed-but-eventual:
+  if the server tears the session down, the next ping's write (or the
+  next real request) fails and flips the flag.
+- **Why deferred:** Reacting to a 401 would mean the keepalive reading
+  its own responses, which fights the pump-owns-reads architecture
+  (single-reader contract on the control stream). Challenge rotation
+  mid-session is already handled where reads live: the main thread's
+  one-shot reactive 401 retry re-learns the challenge on the next real
+  request, and subsequent pings sign with the refreshed state. The
+  unhandled residue — a server that hard-rejects a stale-nonce OPTIONS
+  instead of re-challenging, between real requests — has no known
+  occurrence (gortsplib / MediaMTX / our own `RtspServer` all
+  re-challenge).
+- **Trigger to revisit:** a field report of credentialed sessions dying
+  between requests despite authenticated keepalives, or any rework that
+  gives background threads a sanctioned response channel (e.g.
+  TCP-aware RTCP ingest in the interleaved pump) — piggyback on that
+  routing rather than adding a second reader. Ship together with the
+  challenged-OPTIONS integration coverage below.
+
+## RTSP keepalive-auth integration coverage (challenged-OPTIONS loopback)
+
+- **Status:** The keepalive's auth mechanism is unit-covered
+  (`build_authorization` for OPTIONS + the one-lock challenge/nc
+  snapshot), and
+  `rtsp_server/auth_digest.rs::digest_md5_full_session_authenticates_every_method`
+  drives a full session against the per-request digest `RtspServer` —
+  but only for main-thread methods. No integration test observes an
+  actual keepalive ping being challenged and accepted; the ping itself
+  is never exercised under auth.
+- **Why deferred:** A meaningful test needs a short keepalive cadence
+  (server advertising a small `Session: timeout=` so the ping fires
+  within test budget) plus a way to observe that the ping carried a
+  valid `Authorization` header — i.e. either a bespoke mock server that
+  challenges OPTIONS or new observability on `RtspServer`. That's a
+  heavier lift than the unit coverage it would duplicate, and
+  wall-clock-cadence tests are a known flake class on loaded CI
+  runners.
+- **Trigger to revisit:** the first regression touching keepalive auth,
+  or the 401-reaction work above (the same fixture serves both — build
+  it once, there).
+
+## Python `transmux`: payload substitution beyond KLV (`write_video` / `write_audio` / …)
+
+- **Status:** `Transmuxer.write(ev)` copies any event to the output
+  verbatim and `write_klv(ev, new_bytes)` substitutes a KLV payload;
+  no substitution variant exists for the other channel kinds (video /
+  audio / subtitle / data pass through unmodified or get dropped via
+  `drop=`).
+- **Why deferred:** KLV patching (`klv.patch_uas_datalink`-style
+  anonymization) is the driving use case; no consumer has asked to
+  swap a non-KLV payload mid-transmux. The canonical shape is settled,
+  though: mirror `write_klv` — `write_<kind>(ev, new_bytes)` validates
+  the event subclass, reuses the event's timing and flags, and routes
+  through the same PID→handle dispatch as `write()`. Per-channel
+  nuances to decide at build time: video substitution takes wire bytes
+  (the `push_video_wire_to` path — byte-faithful, and the caller owns
+  carriage-correct framing for AV1 binding-mode) with `dts=None`
+  preserved as PTS-only and `ev.key_frame` reused unless overridden
+  (a swapped payload can change keyframe-ness — probably a kwarg);
+  audio / subtitle / data are plain PTS-preserving swaps through their
+  existing `push_*_to` routes.
+- **Trigger to revisit:** the first consumer request to modify a
+  non-KLV payload in flight.
+
+## Python `transmux` v1 limits: single-program scope, `metadata_service_id` passthrough, audio DTS
+
+- **Status:** Three documented-but-previously-unledgered limits
+  (docstrings + `docs/languages/python.md` carry them; this entry adds
+  the ledger record). (1) **Single-program sources only** — a second
+  program raises (guards in `io.py`). (2) **`metadata_service_id` is
+  not threaded through**: the Rust demux event DOES recover it
+  (`MetadataKind::KlvSyncAuCell { metadata_service_id, .. }`), but the
+  Python `DemuxEvent.Metadata` flattens the kind to a tag enum and
+  drops the AU-cell header fields, so `_push_klv` re-muxes with the
+  muxer default (`0`) even though `push_klv_to` already accepts a
+  `metadata_service_id=` kwarg. (3) **No audio DTS on the push API**
+  — `push_audio` / `push_audio_to` take `(frames, pts)` core-wide, so
+  dts≠pts audio cannot round-trip; benign for MP2/AAC/AC-3 where DTS
+  always equals PTS.
+- **Why deferred:** (1) multi-program needs a remap-policy design
+  (program/PID allocation on the way out) with no consumer to shape
+  it. (2) is a small, known fix — expose `metadata_service_id` on the
+  Python `Metadata` event and pass it in `_push_klv` — but it is a
+  binding-surface addition (`.pyi` + stubtest + sibling-binding parity
+  question) for a field that is `0x00` in practice (ST 1402.2 App. B).
+  (3) would touch the mux push API across Rust + all bindings (the
+  video-DTS precedent: targeted-only `*_with_dts` variants) for a
+  case no supported audio codec produces.
+- **Trigger to revisit:** (1) the first multi-program transmux
+  request; (2) the first stream observed with a non-zero
+  `metadata_service_id`, or the next binding-surface wave that touches
+  `DemuxEvent.Metadata` anyway; (3) an audio codec with dts≠pts
+  joining the mux surface.

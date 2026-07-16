@@ -536,8 +536,10 @@ impl RtspServerBuilder {
     /// # Errors
     ///
     /// - [`RtspServerError::Io`] on Runtime construction failure (rare)
-    /// - [`RtspServerError::Tls`] on cert/key file load failure (when
-    ///   `tls_cert` was called)
+    ///
+    /// TLS cert/key paths are NOT validated here — they are loaded at
+    /// [`RtspServer::start`](crate::rtsp::server::RtspServer::start), which
+    /// returns [`RtspServerError::Tls`] on any load/parse failure.
     pub fn build(self) -> Result<crate::rtsp::server::RtspServer, RtspServerError> {
         crate::rtsp::server::RtspServer::from_builder(self)
     }

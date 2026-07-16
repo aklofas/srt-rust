@@ -55,7 +55,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bind conflict returns `BindAddrInUse` from `start()` itself. Previously the
   listener task died after `start()` had already returned `Ok`, leaving a
   server that looked started but never accepted (log-only). TLS cert/key are
-  now loaded synchronously inside `start()`.
+  now loaded synchronously inside `start()`. A listener that fails to report
+  startup within 5 s returns `Io(TimedOut)` — `start()` never returns
+  `Ok(())` over an unbound listener (the old spin-wait's timeout fallback).
 
 ---
 

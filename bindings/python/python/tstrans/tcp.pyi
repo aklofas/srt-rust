@@ -369,7 +369,8 @@ class ListenerBuilder:
         paths*, read at ``build()`` (missing or malformed files raise
         ``TcpError(kind=TLS)``). A source build without the ``tls``
         feature raises ``TcpError(kind=TLS_DISABLED)`` at ``build()``.
-        Paths must not contain ``&`` or ``#``.
+        A path containing ``&``, ``#``, or ``?`` raises
+        ``TcpError(kind=INVALID_CONFIG)`` at ``build()``.
         """
         ...
 

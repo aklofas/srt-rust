@@ -277,6 +277,23 @@ def test_server_rtsps_bind_with_certs_starts():
         assert server.local_addr() is not None
 
 
+def test_server_tls_directory_path_raises_tls_error():
+    """A directory (stat-able but not a regular file) must be rejected at
+    start() — the guard opens the file, it doesn't just stat it."""
+    import pathlib
+
+    d = str(pathlib.Path(__file__).parent / "fixtures" / "tls")
+    cfg = RtspServerConfig(
+        bind_addr="rtsps://127.0.0.1:0",
+        tls_cert=d,
+        tls_key=d,
+        graceful_shutdown_drain_ms=50,
+    )
+    with pytest.raises(RtspError) as exc_info:
+        RtspServer.start(cfg)
+    assert exc_info.value.kind == RtspErrorKind.TLS
+
+
 def test_server_tls_missing_cert_file_raises_tls_error():
     """Nonexistent cert/key paths surface as RtspError(TLS) at start()
     (the builder reads the files at build time)."""

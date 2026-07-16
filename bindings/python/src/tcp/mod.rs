@@ -651,8 +651,9 @@ impl PyTcpListenerBuilder {
     /// PEM certificate-chain / private-key *file paths*, read at `build()`
     /// (missing or malformed files raise `TcpError(kind=TLS)`). A source
     /// build without the `tls` feature raises `TcpError(kind=TLS_DISABLED)`
-    /// at `build()`. Paths ride the internal listener URL, so they must not
-    /// contain `&` or `#`.
+    /// at `build()`. Paths ride the internal listener URL, so a path
+    /// containing `&`, `#`, or `?` raises `TcpError(kind=INVALID_CONFIG)`
+    /// at `build()`.
     fn tls<'py>(mut slf: PyRefMut<'py, Self>, cert: &str, key: &str) -> PyRefMut<'py, Self> {
         slf.tls_cert_key = Some((cert.to_string(), key.to_string()));
         slf
@@ -675,6 +676,23 @@ impl PyTcpListenerBuilder {
         let sndbuf = self.sndbuf;
         let pkt_size = self.pkt_size;
         let tls_cert_key = self.tls_cert_key.clone();
+        // The cert/key paths are interpolated into the internal listener
+        // URL below — a `&`, `#`, or `?` would be parsed as URL structure
+        // and silently change which files are read. Fail fast instead.
+        if let Some((cert, key)) = &tls_cert_key {
+            for (label, path) in [("cert", cert), ("key", key)] {
+                if path.contains(['&', '#', '?']) {
+                    return Err(make_tcp_error(
+                        py,
+                        "INVALID_CONFIG",
+                        &format!(
+                            "tls {label} path contains a URL-structural character \
+                             ('&', '#', or '?') and cannot be used: {path}"
+                        ),
+                    ));
+                }
+            }
+        }
 
         let listener = py.allow_threads(|| -> Result<TcpListener, TcpError> {
             // Build a listener URL: tcp://addr:port?listen=1, or the tcps://

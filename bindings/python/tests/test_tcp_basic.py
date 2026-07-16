@@ -380,8 +380,9 @@ def test_tcp_tls_loopback_round_trip() -> None:
     t.start()
     barrier.wait()
 
-    # The fixture cert has an IP:127.0.0.1 SAN and CA:TRUE, so it verifies
-    # as its own trust anchor against the dialed IP literal.
+    # The fixture cert has an IP:127.0.0.1 SAN; it's a self-signed non-CA
+    # cert (CA:FALSE), which rustls accepts as a trust anchor while
+    # rejecting CA certs presented as end-entity.
     caller = tcp.Transport.builder().url(f"tcps://127.0.0.1:{port}?ca={cert}").build()
     caller.send(_PAYLOAD)
     caller.close()
@@ -389,6 +390,14 @@ def test_tcp_tls_loopback_round_trip() -> None:
     listener.close()
 
     assert received == [_PAYLOAD]
+
+
+def test_tcp_tls_path_with_url_char_raises_invalid_config() -> None:
+    """A cert/key path containing a URL-structural character would corrupt
+    the internal listener URL — build() fails fast with INVALID_CONFIG."""
+    with pytest.raises(TcpError) as excinfo:
+        tcp.Listener.builder().bind("127.0.0.1:0").tls("/tmp/a&b.pem", "/tmp/k.pem").build()
+    assert excinfo.value.kind == TcpErrorKind.INVALID_CONFIG
 
 
 def test_tcp_tls_caller_rejects_untrusted_cert() -> None:

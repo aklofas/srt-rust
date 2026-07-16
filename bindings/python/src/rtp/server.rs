@@ -645,19 +645,31 @@ impl PyRtspServer {
         }
         // Fail loudly on unreadable cert/key paths BEFORE starting: the
         // Rust listener task only loads the files after `start()` has
-        // returned, so a typo'd path would otherwise produce a server
-        // that looks started but never completes a handshake.
+        // returned, so a bad path would otherwise produce a server that
+        // looks started but never completes a handshake. Actually open
+        // the file (not just stat it) so permission errors and
+        // directories are caught here too.
         #[cfg(feature = "tls")]
         for path in [cfg.tls_cert.as_ref(), cfg.tls_key.as_ref()]
             .into_iter()
             .flatten()
         {
-            if let Err(e) = std::fs::metadata(path) {
-                return Err(make_rtsp_error(
-                    py,
-                    "TLS",
-                    &format!("cannot read TLS file '{path}': {e}"),
-                ));
+            match std::fs::File::open(path).and_then(|f| f.metadata()) {
+                Ok(m) if m.is_file() => {}
+                Ok(_) => {
+                    return Err(make_rtsp_error(
+                        py,
+                        "TLS",
+                        &format!("TLS path '{path}' is not a regular file"),
+                    ));
+                }
+                Err(e) => {
+                    return Err(make_rtsp_error(
+                        py,
+                        "TLS",
+                        &format!("cannot read TLS file '{path}': {e}"),
+                    ));
+                }
             }
         }
         // Construction is fast but does real work (tokio Runtime build +

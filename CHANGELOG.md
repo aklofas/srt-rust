@@ -9,6 +9,32 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Python wheels are fully featured: TLS + RIST encryption compiled in
+
+- The Python binding gains a default-on `tls` cargo feature (shipped in the
+  published wheels) that lights up every rustls-backed transport variant:
+  - **`rtsps://` client** — verifies against platform native trust roots, or
+    a private CA / self-signed camera cert via
+    `RtspClientConfig.tls_root_certs_pem` (previously accepted but unread).
+  - **`rtsps://` server** — `RtspServerConfig` takes `tls_cert` / `tls_key`
+    PEM *file paths* (breaking, pre-1.0: replaces the never-functional
+    `tls_cert_pem` / `tls_key_pem` bytes fields), matching the path-based
+    convention of the HLS and TCP surfaces; unreadable paths raise
+    `RtspError(TLS)` at `start()`.
+  - **`tcps://` caller + listener** — callers verify via native roots or the
+    `?ca=<pem path>` URL param; listeners serve TLS through the new
+    `ListenerBuilder.tls(cert, key)` setter. (`tcps://` used to raise
+    `TcpError(TLS_DISABLED)` unconditionally.)
+  - **HTTPS HLS serving** — `HlsPublisherBuilder.enable_tls(cert, key)` now
+    works in wheels instead of raising `HlsError(TLS_DISABLED)`.
+- **RIST PSK encryption works in wheels**: tst-py's `rist` feature now builds
+  tst-rist with its `mbedtls` feature — every `EncryptionKey` used to raise
+  `RistError(ENCRYPTION_DISABLED)` in published wheels.
+- Python end-to-end TLS test coverage: `tcps://` loopback round-trip +
+  untrusted-cert fail-closed, `rtsps://` server↔client session over a custom
+  trust anchor, HTTPS playlist fetch, and a hardened RIST encryption probe
+  (`ENCRYPTION_DISABLED` is now a test failure, not a skip).
+
 ### Fixed
 
 - RTSP client: credentials are now attached to **every** RTSP method, not just

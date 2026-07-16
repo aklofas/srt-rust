@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
 use secrecy::SecretString;
 
 use tst_rtp::builder::RtspServerBuilder;
@@ -632,6 +631,35 @@ impl PyRtspServer {
     #[staticmethod]
     pub fn start(py: Python<'_>, config: &Bound<'_, PyAny>) -> PyResult<Self> {
         let cfg = ServerConfigExtract::from_pyobj(config)?;
+        // TLS guard for feature-less builds: raise a clear error up front
+        // rather than letting the builder fail on an `rtsps://` bind (or
+        // silently ignoring the cert paths).
+        #[cfg(not(feature = "tls"))]
+        if cfg.tls_cert.is_some() || cfg.tls_key.is_some() {
+            return Err(make_rtsp_error(
+                py,
+                "TLS",
+                "TLS (rtsps://) is not enabled in this build of tstrans; \
+                 rebuild with the tst-py `tls` feature",
+            ));
+        }
+        // Fail loudly on unreadable cert/key paths BEFORE starting: the
+        // Rust listener task only loads the files after `start()` has
+        // returned, so a typo'd path would otherwise produce a server
+        // that looks started but never completes a handshake.
+        #[cfg(feature = "tls")]
+        for path in [cfg.tls_cert.as_ref(), cfg.tls_key.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if let Err(e) = std::fs::metadata(path) {
+                return Err(make_rtsp_error(
+                    py,
+                    "TLS",
+                    &format!("cannot read TLS file '{path}': {e}"),
+                ));
+            }
+        }
         // Construction is fast but does real work (tokio Runtime build +
         // socket bind); release the GIL so other Python threads can run.
         let server = py
@@ -645,6 +673,16 @@ impl PyRtspServer {
                         .graceful_shutdown_drain(Duration::from_millis(
                             cfg.graceful_shutdown_drain_ms,
                         ));
+                    // Wire the cert + key paths through before build().
+                    // The listener task reads the files after start()
+                    // returns — hence the up-front readability guard above.
+                    #[cfg(feature = "tls")]
+                    if let (Some(cert), Some(key)) = (cfg.tls_cert.as_ref(), cfg.tls_key.as_ref()) {
+                        builder.tls_cert(
+                            std::path::PathBuf::from(cert),
+                            std::path::PathBuf::from(key),
+                        );
+                    }
                     if let Some(auth) = cfg.auth.as_ref() {
                         match auth.scheme {
                             AuthScheme::Basic => {
@@ -676,20 +714,6 @@ impl PyRtspServer {
                 },
             )
             .map_err(|e| server_error_to_pyerr(py, e))?;
-
-        // TLS guard: if caller passed cert/key bytes, we currently can't
-        // honour them — tst-py's tst-rtp dep is built without the `tls`
-        // feature. Raise a clear error rather than silently accepting +
-        // ignoring. The dataclass shape is forward-compatible (cert/key
-        // fields exist) so user code doesn't need to change when TLS lands.
-        if cfg.tls_cert_pem.is_some() || cfg.tls_key_pem.is_some() {
-            return Err(make_rtsp_error(
-                py,
-                "TLS",
-                "TLS (rtsps://) is not enabled in this build of tstrans; \
-                 rebuild with the tst-rtp `tls` feature wired through tst-py",
-            ));
-        }
 
         Ok(Self {
             inner: Arc::new(server),
@@ -859,8 +883,8 @@ struct ServerConfigExtract {
     fanout_capacity: usize,
     graceful_shutdown_drain_ms: u64,
     auth: Option<AuthExtract>,
-    tls_cert_pem: Option<Vec<u8>>,
-    tls_key_pem: Option<Vec<u8>>,
+    tls_cert: Option<String>,
+    tls_key: Option<String>,
 }
 
 impl ServerConfigExtract {
@@ -891,8 +915,8 @@ impl ServerConfigExtract {
             Some(extract_auth(&auth_obj)?)
         };
 
-        let tls_cert_pem = extract_optional_bytes(obj, "tls_cert_pem")?;
-        let tls_key_pem = extract_optional_bytes(obj, "tls_key_pem")?;
+        let tls_cert = extract_optional_string(obj, "tls_cert")?;
+        let tls_key = extract_optional_string(obj, "tls_key")?;
 
         Ok(Self {
             bind_url,
@@ -901,23 +925,18 @@ impl ServerConfigExtract {
             fanout_capacity,
             graceful_shutdown_drain_ms,
             auth,
-            tls_cert_pem,
-            tls_key_pem,
+            tls_cert,
+            tls_key,
         })
     }
 }
 
-fn extract_optional_bytes(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Option<Vec<u8>>> {
+fn extract_optional_string(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Option<String>> {
     let v = obj.getattr(attr)?;
     if v.is_none() {
         return Ok(None);
     }
-    if let Ok(b) = v.downcast::<PyBytes>() {
-        return Ok(Some(b.as_bytes().to_vec()));
-    }
-    // Accept bytearray / memoryview via the generic bytes-like protocol.
-    let vec: Vec<u8> = v.extract()?;
-    Ok(Some(vec))
+    Ok(Some(v.extract()?))
 }
 
 fn extract_auth(obj: &Bound<'_, PyAny>) -> PyResult<AuthExtract> {

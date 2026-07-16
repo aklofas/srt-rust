@@ -142,14 +142,15 @@ and must not be confused:
   is compile-time link-time crypto built into the SRT/RIST stack; it has
   nothing to do with TLS certificates or the TCP transport layer.
 
-- **`tls`** (`tst-tcp` / `tst-rtp` feature) — wires in rustls 0.23 to provide
-  TLS 1.2/1.3 on top of the raw TCP transport layer (`tcps://` and `rtsps://`
-  URL schemes). This is a *transport-layer* security feature — it authenticates
+- **`tls`** (`tst-tcp` / `tst-rtp` / `tst-hls` feature) — wires in rustls 0.23
+  to provide TLS 1.2/1.3 on top of the raw TCP transport layer (`tcps://`,
+  `rtsps://`, and HTTPS HLS serving). This is a *transport-layer* security feature — it authenticates
   the TCP connection and encrypts the TCP byte stream. It is independent of any
   SRT or RIST encryption. In `tst-tcp` the `tls` feature is **default-on**
   because TCP transport security is the crate's core value; in `tst-rtp` the
   `tls` feature is **default-off** because RTSP commonly runs plaintext
-  (`rtsps://` is an explicit opt-in). The two feature names are deliberately
+  (`rtsps://` is an explicit opt-in). The Python wheels enable all of them via
+  tst-py's default-on `tls` feature. The two feature names are deliberately
   distinct; no alias links them.
 
 ### Tunables (`SocketConfig` / `ListenerConfig`)
@@ -642,7 +643,7 @@ covers.
 | `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.19** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 + macOS arm64 + Windows MSVC all gating). |
-| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.2.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
+| `tst-py` | ✅ Full | PyO3 bindings, published to PyPI as **`tstrans`** (0.3.0). File I/O (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; live UDP / TCP / RTP (incl. RTSP) / SRT / HLS / RIST transports + Pairer; TLS variants ship in the wheels (`tcps://` caller + listener, `rtsps://` client + server, HTTPS HLS) as does RIST PSK encryption; optional `[pandas]` extra for DataFrame + NumPy adapters. (RIST excluded from the Windows wheel.) |
 | `tst-jni` | ✅ Full | JVM JAR for JDK 17+ consumers, distributed as `org.tstrans:tstrans-jvm` on Maven Central. Mirrors the Python surface package-for-package (`org.tstrans.{io,codec,klv,mpegts,rtp,srt,pipeline}`); RTP (incl. RTSP client + server) + SRT transports. |
 | `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 

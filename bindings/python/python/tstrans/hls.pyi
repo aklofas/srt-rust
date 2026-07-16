@@ -335,8 +335,9 @@ class HlsPublisherBuilder:
     def enable_tls(self, cert: str, key: str) -> HlsPublisherBuilder:
         """Enable HTTPS via PEM cert + key file paths.
 
-        Requires the ``tls`` cargo feature; without it ``build()`` raises
-        ``HlsError(kind=TLS_DISABLED)``.
+        Compiled in by default (tst-py ``tls`` feature; wheels ship it).
+        A source build without ``tls`` raises
+        ``HlsError(kind=TLS_DISABLED)`` at ``build()``.
         """
         ...
 

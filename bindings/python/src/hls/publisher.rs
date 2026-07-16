@@ -375,9 +375,9 @@ impl PyHlsPublisherBuilder {
         Ok(slf)
     }
 
-    /// Enable HTTPS by supplying PEM cert + key file paths. Requires the
-    /// `tls` cargo feature on tst-tcp; without it `build()` raises
-    /// `HlsError(TLS_DISABLED)`.
+    /// Enable HTTPS by supplying PEM cert + key file paths. Compiled in
+    /// by default (tst-py `tls` feature; wheels ship it); a source build
+    /// without `tls` raises `HlsError(TLS_DISABLED)` at `build()`.
     fn enable_tls<'py>(
         mut slf: PyRefMut<'py, Self>,
         cert: &str,

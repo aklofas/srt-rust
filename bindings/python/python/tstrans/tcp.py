@@ -23,7 +23,9 @@ ListenerBuilder
 SocketStats
     Frozen stats snapshot returned by ``Transport.stats()``.
 TlsConfig
-    Forward-compat TLS configuration dataclass for ``tcps://`` URLs.
+    Forward-compat TLS configuration dataclass. Working ``tcps://`` knobs:
+    ``?ca=`` URL param for callers, ``ListenerBuilder.tls(cert, key)`` for
+    listeners.
 ClientCert
     PEM-encoded client certificate + key for mutual TLS.
 TcpError

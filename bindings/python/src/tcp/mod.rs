@@ -11,11 +11,13 @@
 //!   enforce mutual exclusion (Rust doesn't either).
 //! - `Listener` wraps `tst_tcp::TcpListener`; `accept_blocking()` returns
 //!   a `Transport`.
-//! - TLS (`tcps://`) requires the `tls` cargo feature on tst-tcp. The tst-py
-//!   `tcp` feature builds tst-tcp WITHOUT its `tls` sub-feature, so any
-//!   `tcps://` URL triggers `TcpError(kind=TLS_DISABLED)` at build() time.
-//!   `TlsConfig` and `ClientCert` are exposed as pure-Python dataclasses for
-//!   forward-compatibility; the builder accepts them but cannot honour them.
+//! - TLS (`tcps://`) is compiled in when the tst-py `tls` feature is on
+//!   (default; published wheels ship it). Callers verify against native
+//!   trust roots or a custom CA via the `?ca=<pem path>` URL param;
+//!   listeners serve TLS via `ListenerBuilder.tls(cert, key)`. A source
+//!   build without `tls` raises `TcpError(kind=TLS_DISABLED)` at build()
+//!   time. `TlsConfig` and `ClientCert` remain forward-compat dataclasses
+//!   — mTLS client certs have no tst-tcp backend yet.
 //!
 //! GIL boundaries:
 //! - `send`, `recv`, `build()` (both builders), `accept_blocking` ->
@@ -387,8 +389,9 @@ pub(crate) struct PyTcpTransportBuilder {
 #[pymethods]
 impl PyTcpTransportBuilder {
     /// Set the destination URL. Required. Must be `tcp://host:port` or
-    /// `tcps://host:port` (TLS -- returns `TcpError(kind=TLS_DISABLED)` at
-    /// build time unless tst-tcp was compiled with `--features tls`).
+    /// `tcps://host:port` (TLS; verify against a custom CA with
+    /// `?ca=<pem path>`. Raises `TcpError(kind=TLS_DISABLED)` at build
+    /// time only in source builds without the `tls` feature).
     fn url<'py>(mut slf: PyRefMut<'py, Self>, s: &str) -> PyRefMut<'py, Self> {
         slf.url = Some(s.to_string());
         slf
@@ -437,8 +440,9 @@ impl PyTcpTransportBuilder {
     /// Raises `TcpError(kind=URL)` for a malformed URL.
     /// Raises `TcpError(kind=CONNECT_TIMEOUT)` or `TcpError(kind=IO)` on
     /// connection failures.
-    /// Raises `TcpError(kind=TLS_DISABLED)` if `tcps://` was used but tst-tcp
-    /// was not built with the `tls` feature.
+    /// Raises `TcpError(kind=TLS)` on TLS handshake / certificate errors,
+    /// or `TcpError(kind=TLS_DISABLED)` if `tcps://` was used in a source
+    /// build without the `tls` feature.
     fn build(&self, py: Python<'_>) -> PyResult<PyTcpTransport> {
         let url_str = self
             .url
@@ -607,6 +611,7 @@ pub(crate) struct PyTcpListenerBuilder {
     rcvbuf: Option<usize>,
     sndbuf: Option<usize>,
     pkt_size: Option<usize>,
+    tls_cert_key: Option<(String, String)>,
 }
 
 #[pymethods]
@@ -642,6 +647,17 @@ impl PyTcpListenerBuilder {
         slf
     }
 
+    /// Serve TLS (`tcps://`) on accepted connections. `cert` and `key` are
+    /// PEM certificate-chain / private-key *file paths*, read at `build()`
+    /// (missing or malformed files raise `TcpError(kind=TLS)`). A source
+    /// build without the `tls` feature raises `TcpError(kind=TLS_DISABLED)`
+    /// at `build()`. Paths ride the internal listener URL, so they must not
+    /// contain `&` or `#`.
+    fn tls<'py>(mut slf: PyRefMut<'py, Self>, cert: &str, key: &str) -> PyRefMut<'py, Self> {
+        slf.tls_cert_key = Some((cert.to_string(), key.to_string()));
+        slf
+    }
+
     /// Bind the listener socket.
     ///
     /// Raises `ValueError` if `bind(...)` was not called.
@@ -658,10 +674,17 @@ impl PyTcpListenerBuilder {
         let rcvbuf = self.rcvbuf;
         let sndbuf = self.sndbuf;
         let pkt_size = self.pkt_size;
+        let tls_cert_key = self.tls_cert_key.clone();
 
         let listener = py.allow_threads(|| -> Result<TcpListener, TcpError> {
-            // Build a listener URL: tcp://addr:port?listen=1
-            let listen_url = format!("tcp://{}?listen=1", addr_str);
+            // Build a listener URL: tcp://addr:port?listen=1, or the tcps://
+            // variant carrying the cert + key paths when tls(...) was set.
+            let listen_url = match &tls_cert_key {
+                Some((cert, key)) => {
+                    format!("tcps://{addr_str}?listen=1&cert={cert}&key={key}")
+                }
+                None => format!("tcp://{}?listen=1", addr_str),
+            };
             let mut b =
                 tst_tcp::TcpListenerBuilder::from_url(&listen_url).map_err(TcpError::Url)?;
             if let Some(v) = nodelay {
@@ -699,11 +722,12 @@ impl PyTcpListenerBuilder {
 
 /// TLS configuration dataclass for `tcps://` transports.
 ///
-/// **Note:** The `tcp` cargo feature builds tst-tcp WITHOUT its `tls`
-/// sub-feature. Passing a `TlsConfig` to a builder is accepted but any
-/// `tcps://` URL will still raise `TcpError(kind=TLS_DISABLED)` at
-/// `build()` time. These classes exist for forward compatibility and for
-/// code written against a full-TLS wheel.
+/// **Note:** these dataclasses are forward-compat surface only — the
+/// builder accepts them but does not read them. The working knobs are:
+/// callers verify against a custom CA with the `?ca=<pem path>` URL
+/// param (native trust roots otherwise); listeners serve TLS via
+/// `ListenerBuilder.tls(cert, key)`. mTLS client certificates
+/// (`ClientCert`) have no tst-tcp backend yet.
 #[pyclass(name = "TlsConfig", module = "tstrans.tcp", frozen)]
 #[derive(Clone)]
 pub(crate) struct PyTlsConfig {

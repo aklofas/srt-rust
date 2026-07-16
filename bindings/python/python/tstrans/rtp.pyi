@@ -237,7 +237,9 @@ class RtspClientConfig:
 
     `auth` is one of `BasicAuth`, `DigestAuth`, or `None`.
     `transport_pref` controls UDP/TCP selection at SETUP.
-    `tls_root_certs_pem` is a PEM bundle for `rtsps://` connections.
+    `tls_root_certs_pem` is a PEM bundle of trust anchors for
+    `rtsps://` connections (private-CA / self-signed camera certs);
+    platform native trust roots are used when it is `None`.
     """
 
     def __init__(
@@ -494,9 +496,9 @@ class RtspServerConfig:
     `auth` accepts the same `BasicAuth` / `DigestAuth` PyClass instances
     that T21 introduced for the client side.
 
-    `tls_cert_pem` / `tls_key_pem` are forward-compat fields; setting
-    either today raises `RtspError(TLS)` at `start()` because the
-    tst-rtp `tls` feature isn't wired through tst-py yet.
+    `tls_cert` / `tls_key` are PEM certificate-chain / private-key *file
+    paths* for an `rtsps://` bind (set together). Missing/unreadable
+    paths raise `RtspError(TLS)` at `start()`.
     """
 
     bind_addr: str = ...
@@ -505,8 +507,8 @@ class RtspServerConfig:
     session_timeout_secs: int = ...
     fanout_capacity: int = ...
     graceful_shutdown_drain_ms: int = ...
-    tls_cert_pem: Optional[bytes] = ...
-    tls_key_pem: Optional[bytes] = ...
+    tls_cert: Optional[str] = ...
+    tls_key: Optional[str] = ...
 
     def __post_init__(self) -> None: ...
 

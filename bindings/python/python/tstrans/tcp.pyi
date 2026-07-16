@@ -86,9 +86,9 @@ class SocketStats:
 class ClientCert:
     """Client certificate for mutual TLS authentication.
 
-    **Note:** TLS is currently disabled in the ``tcp`` wheel feature
-    (tst-tcp built without ``--features tls``). This class exists for
-    forward compatibility.
+    **Note:** forward-compat only — mTLS client certificates have no
+    tst-tcp backend yet. Server verification uses the ``?ca=`` URL param;
+    listener certs go through ``ListenerBuilder.tls(cert, key)``.
     """
 
     cert_pem: bytes
@@ -103,10 +103,10 @@ class ClientCert:
 class TlsConfig:
     """TLS configuration for ``tcps://`` transports.
 
-    **Note:** TLS is currently disabled in the ``tcp`` wheel feature
-    (tst-tcp built without ``--features tls``). Any ``tcps://`` URL
-    raises ``TcpError(kind=TLS_DISABLED)`` at ``build()`` time. This
-    class exists for forward compatibility.
+    **Note:** forward-compat only — the builder accepts but does not
+    read this dataclass. The working knobs: callers verify against a
+    custom CA with the ``?ca=<pem path>`` URL param (native trust roots
+    otherwise); listeners serve TLS via ``ListenerBuilder.tls(cert, key)``.
     """
 
     ca_pem: bytes
@@ -218,9 +218,10 @@ class TransportBuilder:
     def url(self, s: str) -> TransportBuilder:
         """Set the destination URL. Required.
 
-        Must be ``tcp://host:port`` or ``tcps://host:port`` (TLS).
+        Must be ``tcp://host:port`` or ``tcps://host:port`` (TLS;
+        custom CA via ``?ca=<pem path>``, native trust roots otherwise).
         ``tcps://`` raises ``TcpError(kind=TLS_DISABLED)`` at build time
-        unless tst-tcp was compiled with ``--features tls``.
+        only in source builds without the ``tls`` feature.
         """
         ...
 
@@ -359,6 +360,17 @@ class ListenerBuilder:
 
     def pkt_size(self, v: int) -> ListenerBuilder:
         """Maximum payload chunk size for accepted connections (default 64 KiB)."""
+        ...
+
+    def tls(self, cert: str, key: str) -> ListenerBuilder:
+        """Serve TLS (``tcps://``) on accepted connections.
+
+        ``cert`` / ``key`` are PEM certificate-chain / private-key *file
+        paths*, read at ``build()`` (missing or malformed files raise
+        ``TcpError(kind=TLS)``). A source build without the ``tls``
+        feature raises ``TcpError(kind=TLS_DISABLED)`` at ``build()``.
+        Paths must not contain ``&`` or ``#``.
+        """
         ...
 
     def build(self) -> Listener:

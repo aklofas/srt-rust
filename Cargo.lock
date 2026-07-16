@@ -2059,6 +2059,8 @@ version = "0.3.0"
 dependencies = [
  "pyo3",
  "pyo3-build-config",
+ "rustls",
+ "rustls-pemfile",
  "secrecy",
  "tst-core",
  "tst-hls",

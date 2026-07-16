@@ -456,6 +456,36 @@ def test_finish_serving_serves_vod(tmp_path: object) -> None:
         assert "#EXT-X-ENDLIST" in body, body
 
 
+def test_hls_https_serving_with_tls(tmp_path: object) -> None:
+    """HTTPS (hlss) end-to-end: enable_tls(cert, key) serves the playlist
+    over TLS; a stdlib ssl context trusting the fixture cert fetches and
+    fully verifies it (the fixture has an IP:127.0.0.1 SAN). Regression:
+    enable_tls used to raise HlsError(TLS_DISABLED) because the wheels
+    were built without the tls feature."""
+    import pathlib
+    import ssl
+
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    cert, key = str(d / "cert.pem"), str(d / "key.pem")
+    pub = (
+        HlsPublisher.builder()
+        .bind("127.0.0.1:0")
+        .output_dir(str(tmp_path))
+        .mode(HlsMode.VOD)
+        .enable_tls(cert, key)
+        .build()
+    )
+    pub.push_ts(b"\x47" + b"\x00" * 187)
+    pub.cut_segment()
+    with pub.finish_serving() as handle:
+        port = handle.local_port()
+        ctx = ssl.create_default_context(cafile=cert)
+        url = f"https://127.0.0.1:{port}/playlist.m3u8"
+        with urllib.request.urlopen(url, context=ctx) as resp:  # noqa: S310
+            body = resp.read().decode()
+        assert "#EXT-X-ENDLIST" in body, body
+
+
 def test_forced_cuts_stat_default_zero(tmp_path: object) -> None:
     """A fresh publisher reports forced_cuts == 0."""
     pub = (

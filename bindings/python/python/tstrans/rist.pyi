@@ -156,8 +156,8 @@ class TransportBuilder:
             RistError(kind=INVALID_CONFIG): URL has ``@`` prefix (use RecvTransportBuilder).
             RistError(kind=CONTEXT_CREATE_FAILED): librist context init failed.
             RistError(kind=PEER_CREATE_FAILED): librist peer creation failed.
-            RistError(kind=ENCRYPTION_DISABLED): encryption requested but
-                ``mbedtls`` feature is disabled.
+            RistError(kind=ENCRYPTION_DISABLED): encryption requested in a
+                source build without the ``mbedtls`` feature (wheels ship it).
         """
         ...
 

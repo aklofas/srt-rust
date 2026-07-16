@@ -2,11 +2,13 @@
 
 Covers:
 - T6/T7: the 4 caller/listener x send/recv combo loopback round-trips
-- T8: TLS dataclass round-trip (forward-compat; tcps:// raises TLS_DISABLED)
+- T8: TLS dataclass round-trip (forward-compat) + tcps:// loopback e2e
 - T9: error-kind propagation, TcpErrorKind count sentinel, test-helper wiring
 """
 
 import threading
+
+import pathlib
 
 import pytest
 
@@ -347,11 +349,74 @@ def test_tcp_tls_config_with_client_cert() -> None:
     assert cfg.client_cert.cert_pem == b"CERT"
 
 
-def test_tcp_tcps_url_raises_tls_disabled() -> None:
-    """tcps:// URL raises TcpError(kind=TLS_DISABLED) since tls feature is off."""
+def _tls_fixture_paths() -> tuple[str, str]:
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    return str(d / "cert.pem"), str(d / "key.pem")
+
+
+def test_tcp_tls_loopback_round_trip() -> None:
+    """tcps:// end-to-end: a TLS listener (fixture cert + key via
+    ListenerBuilder.tls) and a caller verifying against the same cert via
+    the ?ca= URL param round-trip bytes over the encrypted channel.
+    Regression: tcps:// used to raise TcpError(TLS_DISABLED) because the
+    wheels were built without the tls feature."""
+    cert, key = _tls_fixture_paths()
+    listener = tcp.Listener.builder().bind("127.0.0.1:0").tls(cert, key).build()
+    port = listener.local_port()
+    assert port > 0
+
+    received: list[bytes] = []
+    barrier = threading.Barrier(2)
+
+    def server_thread() -> None:
+        barrier.wait()  # sync: listener is ready
+        peer = listener.accept_blocking()
+        buf = bytearray(4096)
+        n = peer.recv(buf)
+        received.append(bytes(buf[:n]))
+        peer.close()
+
+    t = threading.Thread(target=server_thread, daemon=True)
+    t.start()
+    barrier.wait()
+
+    # The fixture cert has an IP:127.0.0.1 SAN and CA:TRUE, so it verifies
+    # as its own trust anchor against the dialed IP literal.
+    caller = tcp.Transport.builder().url(f"tcps://127.0.0.1:{port}?ca={cert}").build()
+    caller.send(_PAYLOAD)
+    caller.close()
+    t.join(timeout=10.0)
+    listener.close()
+
+    assert received == [_PAYLOAD]
+
+
+def test_tcp_tls_caller_rejects_untrusted_cert() -> None:
+    """Without ?ca=, the self-signed listener cert fails native-root
+    verification: the caller raises TcpError (TLS handshake / IO — never a
+    silent success), proving certificate verification is actually on."""
+    cert, key = _tls_fixture_paths()
+    listener = tcp.Listener.builder().bind("127.0.0.1:0").tls(cert, key).build()
+    port = listener.local_port()
+
+    def server_thread() -> None:
+        # The accept fails or the connection drops mid-handshake; both fine.
+        try:
+            peer = listener.accept_blocking()
+            peer.close()
+        except TcpError:
+            pass
+
+    t = threading.Thread(target=server_thread, daemon=True)
+    t.start()
+
     with pytest.raises(TcpError) as excinfo:
-        tcp.Transport.builder().url("tcps://127.0.0.1:9999").build()
-    assert excinfo.value.kind == TcpErrorKind.TLS_DISABLED
+        caller = tcp.Transport.builder().url(f"tcps://127.0.0.1:{port}").build()
+        # Some TLS stacks only surface the handshake failure at first I/O.
+        caller.send(_PAYLOAD)
+    assert excinfo.value.kind != TcpErrorKind.TLS_DISABLED
+    listener.close()
+    t.join(timeout=10.0)
 
 
 # ---------------------------------------------------------------------------

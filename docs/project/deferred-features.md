@@ -1349,25 +1349,19 @@ the trigger that would unblock it.
 
 ## RTSP server/client deferred test surface (`#[ignore]`d)
 
-- **Status:** Four `tst-rtp` RTSP tests are `#[ignore]`d pending a
-  feature, a fixture, or a harness — not platform-gated, just not yet
-  runnable in CI:
-  1. `rtsp_server/tls.rs` — client-side custom root-store wiring not
-     implemented (`RtspClientBuilder::tls_root_certs` is stored but
-     unused), so the end-to-end `rtsps://` handshake can't be asserted.
-  2. `rtsp_client/tls_keepalive.rs` — needs an `rtsps://` cert fixture
-     (rcgen dev-dep not present); activate with `RTSP_TLS_FIXTURE=1`.
-  3. `rtsp_server/lagging_peer.rs` — deterministic slow-consumer
-     reproduction needs a throttled test harness (the underlying
-     drop-counter behavior is unit-tested in `fanout.rs`).
-  4. `rtsp_client/interleaved_e2e.rs`
-     (`tcp_interleaved_end_to_end_round_trips_ts_bytes`) — re-ignored
-     post-merge (hangs in the post-PLAY drop sequence in the merged
-     state); the interleaved wire-up is covered by
-     `rtsp_server_loopback_interleaved` + `rtsp_server_notice_5402`.
-- **Why deferred:** each is a self-contained follow-up (TLS root-store
-  plumbing, a cert fixture, a throttle harness, an interleaved-drop
-  shutdown fix) carved out of the tst-rtp Phase 2/3 waves.
+- **Status:** One `tst-rtp` RTSP test remains `#[ignore]`d:
+  `rtsp_client/interleaved_e2e.rs`
+  (`tcp_interleaved_end_to_end_round_trips_ts_bytes`) — re-ignored
+  post-merge (hangs in the post-PLAY drop sequence in the merged
+  state); the interleaved wire-up is covered by
+  `rtsp_server_loopback_interleaved` + `rtsp_server_notice_5402`.
+  Formerly-listed items now DONE: the client-side custom root-store
+  wiring (`RtspClientBuilder::tls_root_certs`) is implemented and
+  asserted end-to-end by `rtsp_server/tls.rs` (rcgen-generated certs,
+  no env-var gate) plus the Python `rtsps://` integration test; the
+  `rtsp_server/lagging_peer.rs` harness runs un-ignored.
+- **Why deferred:** the interleaved-drop shutdown fix is a
+  self-contained follow-up carved out of the tst-rtp Phase 2/3 waves.
 - **Trigger to revisit:** the next-session "fully-green test suite"
   pass folds these in alongside the Windows un-gating.
 

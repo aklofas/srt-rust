@@ -644,8 +644,10 @@ with RtspClient.connect(cfg) as session:
 - **Passwords stay Rust-side.** `BasicAuth` / `DigestAuth` hold the
   password in Rust memory (never re-exposed); only `user`, `realm`, and
   `algorithm` are readable. `repr()` redacts the secret.
-- **TLS is forward-compat only.** `rtsps://` surfaces `RtspError(TLS)`;
-  `tls_root_certs_pem` is accepted for parity but is not read by `connect`.
+- **TLS (`rtsps://`) is compiled in** (wheels ship the `tls` feature).
+  Server certificates verify against platform native trust roots by
+  default; pass `tls_root_certs_pem=<PEM bytes>` to trust a private CA /
+  self-signed camera cert instead.
 - **Cancellation.** Obtain a `RtspCancelHandle` from
   `session.cancel_handle()` *before* a blocking control call, then flip
   `cancel()` from another thread to break it out.
@@ -681,10 +683,11 @@ with RtspServer.start(cfg) as server:
 
 `RtspServerConfig` is a frozen dataclass (`bind_addr`, `auth`,
 `max_sessions`, `session_timeout_secs`, `fanout_capacity`,
-`graceful_shutdown_drain_ms`, `tls_cert_pem`, `tls_key_pem`). Its TLS
-fields are forward-compat: setting `tls_cert_pem` / `tls_key_pem` raises
-`RtspError(TLS)` at `start()` (and they must be set together or
-`__post_init__` raises `ValueError`). For a credentialed server pass
+`graceful_shutdown_drain_ms`, `tls_cert`, `tls_key`). For an `rtsps://`
+server, bind `bind_addr="rtsps://host:port"` and set `tls_cert` /
+`tls_key` to PEM certificate-chain / private-key file paths (set
+together, or `__post_init__` raises `ValueError`; unreadable paths raise
+`RtspError(TLS)` at `start()`). For a credentialed server pass
 `auth=BasicAuth("user", "pass", "realm")` — the realm is required
 server-side. `server.cancel_handle()` returns an `RtspServerCancelHandle`
 for an immediate hard teardown that bypasses the drain window.
@@ -821,9 +824,11 @@ with Listener.builder().bind("0.0.0.0:5001").build() as listener:
         n = conn.recv(buf := bytearray(64 * 1024))
 ```
 
-`tcps://` URLs raise `TcpError(TLS_DISABLED)` at `build()` — TLS is not
-compiled into the published wheels. `Listener.builder().bind("host:0")`
-plus `local_port()` gives you an ephemeral port.
+`tcps://` is compiled into the published wheels: callers verify against
+native trust roots, or a custom CA with `tcps://host:port?ca=<pem path>`;
+listeners serve TLS via `Listener.builder().bind("host:0").tls(cert,
+key)` (PEM file paths). `Listener.builder().bind("host:0")` plus
+`local_port()` gives you an ephemeral port.
 
 ### RIST (`tstrans.rist`)
 
@@ -1336,8 +1341,8 @@ output directly when absolute byte offsets matter.
   on every platform.)
 - **RTSP passwords never round-trip to Python.** `BasicAuth` /
   `DigestAuth` hold the password in Rust memory; only `user` / `realm`
-  (and `DigestAuth.algorithm`) are readable. `RtspServerConfig` TLS fields
-  are forward-compat — setting them raises `RtspError(TLS)` at `start()`.
+  (and `DigestAuth.algorithm`) are readable. `RtspServerConfig.tls_cert` /
+  `tls_key` (PEM file paths, set together) light up an `rtsps://` bind.
 - **Subtitle Mux API is dataclass-driven.** Rust uses struct-variant
   enums for subtitle codec config; Python wraps each variant as a
   separate dataclass (`DvbSubtitlingConfig`, `DvbTeletextConfig`,

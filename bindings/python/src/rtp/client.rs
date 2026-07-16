@@ -246,11 +246,10 @@ impl PyDigestAuth {
 /// fields validated at construction.
 ///
 /// `auth` is one of `BasicAuth`, `DigestAuth`, or `None`. `transport_pref`
-/// controls UDP/TCP selection at SETUP. `tls_root_certs_pem` is a PEM
-/// bundle for `rtsps://` connections — carried through to the
-/// underlying tst-rtp builder if the build has TLS support; ignored
-/// otherwise (the URL itself will produce `RtspError(TLS, ...)` on
-/// connect if TLS isn't available).
+/// controls UDP/TCP selection at SETUP. `rtsps://` connections verify the
+/// server certificate against platform native trust roots by default;
+/// pass `tls_root_certs_pem` (a PEM bundle) to verify against a private
+/// CA / self-signed camera cert instead.
 #[pyclass(name = "RtspClientConfig", module = "tstrans.rtp", frozen)]
 #[derive(Debug)]
 pub struct PyRtspClientConfig {
@@ -541,21 +540,17 @@ impl PyRtspClient {
         //    version; `?transport=udp|tcp` for pref). The fields
         //    survive a config round-trip; tighter pass-through wiring
         //    can land in a follow-up.
-        //
-        // 5. `tls_root_certs_pem` is also passed-through-only at
-        //    Wave A: tst-rtp's `RtspClientBuilder::tls_root_certs`
-        //    takes a `rustls::RootCertStore`, which would require
-        //    tst-py to pull rustls + rustls-pemfile transitively (a
-        //    behavior change that should land alongside the rest of
-        //    Wave A's TLS surface, not this single PR). The field
-        //    survives the round-trip; the underlying connect uses
-        //    platform native trust roots if the URL is `rtsps://`.
         let _ = (
             config.rtsp_version.to_rust(),
             config.transport_pref,
             config.rtcp,
-            config.tls_root_certs_pem.as_ref(),
         );
+
+        // 5. Custom trust roots for `rtsps://` (private-CA cameras):
+        //    parse the PEM bundle into a RootCertStore and hand it to
+        //    the builder; without it the handshake verifies against
+        //    platform native trust roots.
+        builder = apply_tls_roots(py, builder, config)?;
 
         // 6. Drive the RTSP state machine to PLAY. Wrap in
         //    py.allow_threads for the full network exchange.
@@ -630,8 +625,9 @@ impl PyRtspClient {
             config.rtsp_version.to_rust(),
             config.transport_pref,
             config.rtcp,
-            config.tls_root_certs_pem.as_ref(),
         );
+
+        builder = apply_tls_roots(py, builder, config)?;
 
         let result = py.allow_threads(
             || -> Result<(RustRtspClient, RustRtspSession, H264DepayConfig), RustRtspError> {
@@ -654,6 +650,64 @@ impl PyRtspClient {
             h264_depay_config: Arc::new(Mutex::new(Some(depay_config))),
         })
     }
+}
+
+/// Parse `RtspClientConfig.tls_root_certs_pem` into a `rustls::RootCertStore`
+/// and hand it to the builder (`rtsps://` verification against a private CA).
+/// No-op when the config carries no PEM bundle — the handshake then uses
+/// platform native trust roots.
+#[cfg(feature = "tls")]
+fn apply_tls_roots(
+    py: Python<'_>,
+    builder: RtspClientBuilder,
+    config: &PyRtspClientConfig,
+) -> PyResult<RtspClientBuilder> {
+    let Some(pem) = config.tls_root_certs_pem.as_ref() else {
+        return Ok(builder);
+    };
+    let mut roots = rustls::RootCertStore::empty();
+    let mut reader = std::io::BufReader::new(&pem[..]);
+    let mut added = 0usize;
+    for cert in rustls_pemfile::certs(&mut reader) {
+        let cert = cert.map_err(|e| {
+            make_rtsp_error(py, "TLS", &format!("tls_root_certs_pem: invalid PEM: {e}"))
+        })?;
+        roots.add(cert).map_err(|e| {
+            make_rtsp_error(
+                py,
+                "TLS",
+                &format!("tls_root_certs_pem: certificate rejected as trust anchor: {e}"),
+            )
+        })?;
+        added += 1;
+    }
+    if added == 0 {
+        return Err(make_rtsp_error(
+            py,
+            "TLS",
+            "tls_root_certs_pem contains no certificates",
+        ));
+    }
+    Ok(builder.tls_root_certs(roots))
+}
+
+/// Feature-less twin: reject an explicitly-set PEM bundle instead of
+/// silently ignoring it (plaintext-only source build).
+#[cfg(not(feature = "tls"))]
+fn apply_tls_roots(
+    py: Python<'_>,
+    builder: RtspClientBuilder,
+    config: &PyRtspClientConfig,
+) -> PyResult<RtspClientBuilder> {
+    if config.tls_root_certs_pem.is_some() {
+        return Err(make_rtsp_error(
+            py,
+            "TLS",
+            "tls_root_certs_pem requires the tst-py `tls` feature (on by \
+             default; this is a custom build without it)",
+        ));
+    }
+    Ok(builder)
 }
 
 // ---------------------------------------------------------------------------

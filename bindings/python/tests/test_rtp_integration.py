@@ -292,3 +292,85 @@ def test_full_pipeline_rtsp_server_to_rtsp_client() -> None:
         )
 
     assert saw_video.is_set()
+
+
+# --------------------------------------------------------------------------- #
+# 3. rtsps:// — TLS end-to-end with a custom trust anchor                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_rtsps_client_connect_with_custom_ca() -> None:
+    """TLS end-to-end over rtsps://: the server binds with the fixture
+    cert + key (`RtspServerConfig.tls_cert` / `tls_key`), the client
+    trusts that same self-signed cert via
+    `RtspClientConfig.tls_root_certs_pem`, and the full
+    OPTIONS/DESCRIBE/SETUP/PLAY handshake runs over the encrypted
+    control connection (rtsps forces TCP-interleaved data).
+
+    Regressions pinned: rtsps:// used to be unreachable from Python
+    (tst-rtp built without its tls feature), and tls_root_certs_pem used
+    to be an accepted-but-unread field.
+    """
+    import pathlib
+
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    cert, key = str(d / "cert.pem"), str(d / "key.pem")
+
+    server_cfg = RtspServerConfig(
+        bind_addr="rtsps://127.0.0.1:0",
+        tls_cert=cert,
+        tls_key=key,
+        graceful_shutdown_drain_ms=50,
+    )
+    program = _build_test_program()
+
+    with RtspServer.start(server_cfg) as server:
+        local = server.local_addr()
+        assert local is not None
+        host, _, port_str = local.rpartition(":")
+        port = int(port_str)
+
+        server.add_unicast_mount("/live", program)
+
+        client_cfg = RtspClientConfig(
+            url=f"rtsps://{host}:{port}/live",
+            tls_root_certs_pem=pathlib.Path(cert).read_bytes(),
+            keepalive=False,
+        )
+        with RtspClient.connect(client_cfg) as session:
+            assert not session.is_torn_down()
+        # __exit__ tears down over the same TLS connection.
+
+
+def test_rtsps_client_untrusted_cert_fails_closed() -> None:
+    """Without a custom trust anchor the self-signed server cert fails
+    native-root verification — the client raises RtspError and never
+    reaches the RTSP layer. Proves certificate verification is on."""
+    import pathlib
+
+    import pytest
+
+    from tstrans.exceptions import RtspError
+
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    cert, key = str(d / "cert.pem"), str(d / "key.pem")
+
+    server_cfg = RtspServerConfig(
+        bind_addr="rtsps://127.0.0.1:0",
+        tls_cert=cert,
+        tls_key=key,
+        graceful_shutdown_drain_ms=50,
+    )
+    with RtspServer.start(server_cfg) as server:
+        local = server.local_addr()
+        assert local is not None
+        host, _, port_str = local.rpartition(":")
+        port = int(port_str)
+        server.add_unicast_mount("/live", _build_test_program())
+
+        cfg = RtspClientConfig(url=f"rtsps://{host}:{port}/live", keepalive=False)
+        with pytest.raises(RtspError) as exc_info:
+            RtspClient.connect(cfg)
+        # The feature-off build had a distinct static message; a live
+        # verification failure must be anything but that.
+        assert "requires the 'tls' cargo feature" not in str(exc_info.value)

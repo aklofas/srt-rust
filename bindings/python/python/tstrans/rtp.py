@@ -107,15 +107,16 @@ class RtspServerConfig:
     graceful_shutdown_drain_ms: int = 2000
     """Drain window (ms) after `stop()` to let in-flight RTP finish."""
 
-    tls_cert_pem: Optional[bytes] = None
-    """PEM-encoded server certificate chain (for `rtsps://` binds).
-    Currently raises `RtspError(TLS)` at `start()` time because the
-    tst-rtp `tls` feature is not wired through tst-py yet. Field is
-    reserved for forward compat."""
+    tls_cert: Optional[str] = None
+    """Path to a PEM server certificate chain file (for `rtsps://`
+    binds). Set together with `tls_key`. Missing/unreadable paths
+    raise `RtspError(TLS)` at `start()`. Path-based to match
+    `hls.HlsPublisher`'s `enable_tls(cert, key)` and the tcps://
+    listener convention."""
 
-    tls_key_pem: Optional[bytes] = None
-    """PEM-encoded server private key (for `rtsps://` binds). Same
-    reservation as `tls_cert_pem`."""
+    tls_key: Optional[str] = None
+    """Path to a PEM server private key file (for `rtsps://` binds).
+    Set together with `tls_cert`."""
 
     def __post_init__(self) -> None:
         if self.max_sessions <= 0:
@@ -137,11 +138,11 @@ class RtspServerConfig:
                 f"RtspServerConfig.graceful_shutdown_drain_ms must be >= 0; "
                 f"got {self.graceful_shutdown_drain_ms}"
             )
-        cert_set = self.tls_cert_pem is not None
-        key_set = self.tls_key_pem is not None
+        cert_set = self.tls_cert is not None
+        key_set = self.tls_key is not None
         if cert_set != key_set:
             raise ValueError(
-                "RtspServerConfig.tls_cert_pem and tls_key_pem must be set together "
+                "RtspServerConfig.tls_cert and tls_key must be set together "
                 "(both or neither)"
             )
 

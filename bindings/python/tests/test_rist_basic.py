@@ -12,7 +12,8 @@ battery covers:
 5. RistErrorKind count matches exceptions.py.
 6. Stats field presence on an open handle.
 7. Error-mapping wiring via _raise_rist_error_for_test.
-8. Lenient encryption probe (pass if success OR ENCRYPTION_DISABLED).
+8. Encryption probe (mbedtls ships in the default build — a PSK'd
+   builder must open cleanly; ENCRYPTION_DISABLED is a regression).
 
 Full sender→receiver loopback is exercised only when librist can bind,
 which is confirmed by the recv open test. An explicit loopback test is
@@ -258,12 +259,14 @@ def test_recv_transport_builder_rejects_non_bind_url():
 
 
 # ---------------------------------------------------------------------------
-# T16/T17: AES-256 encryption probe (lenient — pass if success or ENCRYPTION_DISABLED)
+# T16/T17: AES-256 encryption probe (mbedtls ships in the default build)
 # ---------------------------------------------------------------------------
 
 
 def test_encryption_key_aes256_probe():
-    """AES-256 key accepted by builder; either opens cleanly or raises ENCRYPTION_DISABLED."""
+    """A PSK'd receive builder opens cleanly — tst-rist is built with its
+    mbedtls feature (regression: the wheels used to raise
+    ENCRYPTION_DISABLED for every EncryptionKey)."""
     key = rist.EncryptionKey.aes256(b"my-test-pre-shared-aes-256-secret")
     for port in range(34200, 34220, 2):
         try:
@@ -273,12 +276,14 @@ def test_encryption_key_aes256_probe():
                 .encryption(key)
                 .build()
             )
-            # Success — encryption enabled (mbedtls feature on).
             rx.close()
             return
         except RistError as e:
             if e.kind == RistErrorKind.ENCRYPTION_DISABLED:
-                pytest.skip("mbedtls feature disabled — encryption not available")
+                pytest.fail(
+                    "RIST encryption must be compiled in (tst-rist mbedtls "
+                    "feature) — got ENCRYPTION_DISABLED"
+                )
             if e.kind in (RistErrorKind.CONTEXT_CREATE_FAILED, RistErrorKind.PEER_CREATE_FAILED):
                 continue  # port busy; try next
             raise

@@ -51,8 +51,8 @@ def test_rtsp_server_config_defaults():
     assert cfg.session_timeout_secs == 60
     assert cfg.fanout_capacity == 256
     assert cfg.graceful_shutdown_drain_ms == 2000
-    assert cfg.tls_cert_pem is None
-    assert cfg.tls_key_pem is None
+    assert cfg.tls_cert is None
+    assert cfg.tls_key is None
 
 
 def test_rtsp_server_config_rejects_zero_max_sessions():
@@ -81,21 +81,19 @@ def test_rtsp_server_config_rejects_negative_drain_ms():
 
 
 def test_rtsp_server_config_rejects_tls_cert_without_key():
-    with pytest.raises(ValueError, match="tls_cert_pem and tls_key_pem"):
-        RtspServerConfig(tls_cert_pem=b"---CERT---", tls_key_pem=None)
+    with pytest.raises(ValueError, match="tls_cert and tls_key"):
+        RtspServerConfig(tls_cert="/tmp/cert.pem", tls_key=None)
 
 
 def test_rtsp_server_config_rejects_tls_key_without_cert():
-    with pytest.raises(ValueError, match="tls_cert_pem and tls_key_pem"):
-        RtspServerConfig(tls_cert_pem=None, tls_key_pem=b"---KEY---")
+    with pytest.raises(ValueError, match="tls_cert and tls_key"):
+        RtspServerConfig(tls_cert=None, tls_key="/tmp/key.pem")
 
 
-def test_rtsp_server_config_accepts_both_tls_pem_set():
-    # Validation passes; start() will reject because TLS feature is off
-    # — that's tested separately below.
-    cfg = RtspServerConfig(tls_cert_pem=b"---CERT---", tls_key_pem=b"---KEY---")
-    assert cfg.tls_cert_pem == b"---CERT---"
-    assert cfg.tls_key_pem == b"---KEY---"
+def test_rtsp_server_config_accepts_both_tls_paths_set():
+    cfg = RtspServerConfig(tls_cert="/tmp/cert.pem", tls_key="/tmp/key.pem")
+    assert cfg.tls_cert == "/tmp/cert.pem"
+    assert cfg.tls_key == "/tmp/key.pem"
 
 
 def test_rtsp_server_config_accepts_basic_auth():
@@ -257,13 +255,36 @@ def test_server_cancel_handle_round_trip():
         assert h2.is_cancelled()
 
 
-def test_server_tls_pem_rejected_when_feature_off():
-    # tst-py's tst-rtp dep is built without the `tls` feature → start()
-    # must reject any TLS PEM bytes with `RtspError(TLS)`.
+def _tls_fixture_paths():
+    import pathlib
+
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    return str(d / "cert.pem"), str(d / "key.pem")
+
+
+def test_server_rtsps_bind_with_certs_starts():
+    """An rtsps:// bind with valid cert + key paths starts and binds —
+    the TLS feature is compiled in (regression: this used to raise
+    RtspError(TLS) unconditionally)."""
+    cert, key = _tls_fixture_paths()
     cfg = RtspServerConfig(
-        bind_addr="127.0.0.1:0",
-        tls_cert_pem=b"---BEGIN CERT---",
-        tls_key_pem=b"---BEGIN KEY---",
+        bind_addr="rtsps://127.0.0.1:0",
+        tls_cert=cert,
+        tls_key=key,
+        graceful_shutdown_drain_ms=50,
+    )
+    with RtspServer.start(cfg) as server:
+        assert server.local_addr() is not None
+
+
+def test_server_tls_missing_cert_file_raises_tls_error():
+    """Nonexistent cert/key paths surface as RtspError(TLS) at start()
+    (the builder reads the files at build time)."""
+    cfg = RtspServerConfig(
+        bind_addr="rtsps://127.0.0.1:0",
+        tls_cert="/nonexistent/cert.pem",
+        tls_key="/nonexistent/key.pem",
+        graceful_shutdown_drain_ms=50,
     )
     with pytest.raises(RtspError) as exc_info:
         RtspServer.start(cfg)

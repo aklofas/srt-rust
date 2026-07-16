@@ -22,7 +22,7 @@ doctest    = false
 # transports. A `--no-default-features` source build (or explicit feature
 # selection without `hls`) is the only way to omit it. See
 # docs/project/deferred-features.md.
-default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline", "hls"]
+default = ["rtp", "srt", "udp", "tcp", "rist", "pipeline", "hls", "tls"]
 # `rtp` pulls tst-rtp + tst-pipeline (the latter for the
 # `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>`
 # convenience wrappers added by Wave B Task 23) + secrecy (for
@@ -36,13 +36,25 @@ srt     = ["dep:tst-srt", "dep:tst-pipeline", "dep:secrecy"]
 # Plan A5b — udp / tcp / hls / rist transports (all default-on, matching
 # rtp/srt; PyPI wheels ship everything). `hls` pulls tst-hls (with its
 # `serve` feature for the built-in HTTP server) + tst-pipeline (MuxPublisher
-# shell). `rist` pulls secrecy for AES PSK wrapping.
+# shell). `rist` pulls secrecy for AES PSK wrapping AND tst-rist's `mbedtls`
+# so `EncryptionKey` PSKs actually encrypt (without it every encrypted
+# config raises RistError(ENCRYPTION_DISABLED) at build time).
 udp     = ["dep:tst-udp"]
 tcp     = ["dep:tst-tcp"]
 hls     = ["dep:tst-hls", "tst-hls?/serve", "dep:tst-pipeline"]
-rist    = ["dep:tst-rist", "dep:secrecy"]
+rist    = ["dep:tst-rist", "tst-rist/mbedtls", "dep:secrecy"]
 # pipeline pulls tst-pipeline for the ext::pairing PairingDemuxer composite.
 pipeline = ["dep:tst-pipeline"]
+# `tls` (default-on, ships in wheels) lights up the rustls-backed encrypted
+# variants of whichever transports are also enabled (weak deps — it never
+# pulls a transport in by itself): `rtsps://` client + server (tst-rtp),
+# `tcps://` caller + listener (tst-tcp), and `hlss://` HTTPS serving
+# (tst-hls). The direct rustls + rustls-pemfile deps parse
+# `RtspClientConfig.tls_root_certs_pem` into the RootCertStore that
+# `RtspClientBuilder::tls_root_certs` takes (private-CA `rtsps://`
+# cameras). Omit the feature (`--no-default-features --features tcp,...`)
+# for a plaintext-only build.
+tls = ["tst-rtp?/tls", "tst-tcp?/tls", "tst-hls?/tls", "dep:rustls", "dep:rustls-pemfile"]
 
 [dependencies]
 tst-core     = { path = "../../crates/tst-core" }
@@ -59,6 +71,20 @@ pyo3         = { version = "0.22", features = ["extension-module", "abi3-py310"]
 # before handing them to the Rust builder. Optional + gated on
 # `feature = "rtp"` so non-rtp builds don't pull it.
 secrecy      = { workspace = true, optional = true }
+
+# `tls` feature path — parse `RtspClientConfig.tls_root_certs_pem` into the
+# `rustls::RootCertStore` that `RtspClientBuilder::tls_root_certs` takes.
+# Version + provider MUST match tst-rtp/tst-tcp/tst-hls (`0.23`, `ring`) so
+# the RootCertStore type unifies across the crate boundary.
+[dependencies.rustls]
+version          = "0.23"
+optional         = true
+default-features = false
+features         = ["std", "ring"]
+
+[dependencies.rustls-pemfile]
+version  = "2"
+optional = true
 
 [build-dependencies]
 # On macOS, PyO3's `extension-module` feature requires the *consuming* crate

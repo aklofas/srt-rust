@@ -9,8 +9,10 @@ import java.util.Optional;
  *
  * <p>{@code tlsCert}/{@code tlsKey} are PEM file paths read by the native server at
  * {@link RtspServer#start}; bad paths throw {@link org.tstrans.RtspException} of kind
- * {@code TLS} from {@code start()}. They must be set together (both or neither), and
- * the bind address must carry an explicit {@code rtsps://} scheme (mirrors tst-py).
+ * {@code TLS} from {@code start()}. {@link Builder#build} ENFORCES that they are set
+ * together (both or neither) and that the bind address carries an explicit
+ * {@code rtsps://} scheme — a plaintext bind would otherwise silently ignore the TLS
+ * paths, since tst-rtp keys TLS off the URL scheme (mirrors tst-py).
  */
 public final class RtspServerConfig {
     private final String bindAddr;
@@ -120,6 +122,11 @@ public final class RtspServerConfig {
             if ((tlsCert == null) != (tlsKey == null)) {
                 throw new IllegalArgumentException(
                     "tlsCert and tlsKey must be set together (both or neither)");
+            }
+            if (tlsCert != null && !bindAddr.startsWith("rtsps://")) {
+                throw new IllegalArgumentException(
+                    "tlsCert/tlsKey require an explicit rtsps:// bind address"
+                        + " (got \"" + bindAddr + "\")");
             }
             return new RtspServerConfig(this);
         }

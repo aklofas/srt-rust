@@ -1991,12 +1991,17 @@ the trigger that would unblock it.
   scheme (crates/tst-rtp/src/rtsp/server/mod.rs, the `is_tls` check).
   A caller who sets cert/key but binds a scheme-less or `rtsp://`
   address gets a PLAINTEXT server with the certs silently ignored —
-  no error, no warning. All FOUR surfaces share the behavior
-  byte-for-byte — Rust, the C ABI
-  (`tst_rtsp_server_builder_tls_cert_pem` feeds the same builder),
-  Python (validates path readability but never the scheme), and JVM
-  (documents the `rtsps://` requirement in Javadoc). Surfaced by the
-  2026-07-16 JVM-TLS-parity final review.
+  no error, no warning. Surfaced by the 2026-07-16 JVM-TLS-parity
+  final review. **Update (same-session Copilot round):** the JVM
+  binding now fails fast — `RtspServerConfig.Builder.build()` throws
+  `IllegalArgumentException` and the JNI `nStart` native carries a
+  defensive twin check (config-type bypass guard) that throws before
+  the builder ever runs. The silent behavior remains as-is on Rust,
+  the C ABI (`tst_rtsp_server_builder_tls_cert_pem` feeds the same
+  builder), and Python (validates path readability but never the
+  scheme). The Rust-side `start()` fix below stays the right
+  cross-surface close — it would let JVM drop both of these guards
+  again once it lands.
 - **Why deferred:** The right fix is Rust-side and cross-surface:
   `start()` returning `RtspServerError::Tls` when TLS paths are
   configured on a non-rtsps bind — one change fixes Rust, C, Python,

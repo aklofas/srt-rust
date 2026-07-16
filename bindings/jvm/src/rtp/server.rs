@@ -137,12 +137,22 @@ fn jstring_or_empty(env: &mut JNIEnv, s: &JString) -> String {
     env.get_string(s).map(Into::into).unwrap_or_default()
 }
 
-/// Read a nullable JString → Option<String> (TLS path fields).
-fn jstring_opt(env: &mut JNIEnv, s: &JString) -> Option<String> {
+/// Read a nullable JString → Ok(None) for null, Ok(Some) for a read
+/// string. A get_string FAILURE (invalid reference — distinct from
+/// null) throws RuntimeException and returns Err so the native aborts
+/// instead of treating the value as unset (which for the TLS paths
+/// would silently start a plaintext server).
+fn jstring_opt(env: &mut JNIEnv, s: &JString) -> Result<Option<String>, ()> {
     if s.is_null() {
-        return None;
+        return Ok(None);
     }
-    env.get_string(s).ok().map(Into::into)
+    match env.get_string(s) {
+        Ok(v) => Ok(Some(v.into())),
+        Err(e) => {
+            let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+            Err(())
+        }
+    }
 }
 
 /// `RtspServer.nStart(...)` — build the RtspServerBuilder from config primitives,
@@ -174,7 +184,8 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
             }
         };
         // Mirror ServerConfigExtract: prepend rtsp:// if no scheme present.
-        let bind_url = if bind.starts_with("rtsp://") || bind.starts_with("rtsps://") {
+        let bind_is_rtsps = bind.starts_with("rtsps://");
+        let bind_url = if bind.starts_with("rtsp://") || bind_is_rtsps {
             bind
         } else {
             format!("rtsp://{bind}")
@@ -190,7 +201,15 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
             None
         };
 
-        let tls_paths = match (jstring_opt(env, &tls_cert), jstring_opt(env, &tls_key)) {
+        let cert = match jstring_opt(env, &tls_cert) {
+            Ok(v) => v,
+            Err(()) => return 0,
+        };
+        let key = match jstring_opt(env, &tls_key) {
+            Ok(v) => v,
+            Err(()) => return 0,
+        };
+        let tls_paths = match (cert, key) {
             (Some(c), Some(k)) => Some((c, k)),
             (None, None) => None,
             // Java build() enforces both-or-neither; reaching here means a
@@ -200,6 +219,20 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
                 return 0;
             }
         };
+
+        // Fail fast: TLS paths on a non-rtsps bind would be SILENTLY
+        // ignored by tst-rtp (TLS is keyed off the URL scheme) — a
+        // plaintext server with certs configured. Java's build() enforces
+        // this too; this is the defensive twin for config-type bypass.
+        if tls_paths.is_some() && !bind_is_rtsps {
+            throw_rtsp(
+                env,
+                "TLS",
+                "tlsCert/tlsKey require an explicit rtsps:// bind address \
+                 (a plaintext rtsp:// bind silently ignores TLS paths)",
+            );
+            return 0;
+        }
 
         let built: Result<RustRtspServer, RtspServerError> = (|| {
             let mut builder = RtspServerBuilder::new(&bind_url)?;

@@ -1294,9 +1294,11 @@ try (RtspSession session = RtspClient.connect(cfg);
 - **Cancellation.** Obtain a `RtspCancelHandle` from `session.cancelHandle()` BEFORE
   a blocking control call; flip `cancel()` from another thread to break it out.
   `close()` is a best-effort teardown, not a cross-thread interruptor.
-- **TLS is forward-compat only.** This binding does not link rustls; an `rtsps://`
-  URL surfaces `RtspException` of kind `TLS` (the scheme drives this). `tlsRootCertsPem`
-  is accepted for parity but is **not read** by `connect` (pass-through-only).
+- **TLS (`rtsps://`) is supported.** The binding links rustls; an `rtsps://`
+  URL negotiates TLS on connect. `tlsRootCertsPem` supplies a PEM bundle of
+  custom trust anchors (private-CA cameras) — without it the handshake
+  verifies against platform native roots. Invalid PEM, a rejected anchor, or
+  an empty bundle throw `RtspException` of kind `TLS` before any network I/O.
 - **Pass-through config fields.** `transportPref` and `rtspVersion` are informational
   here — the underlying connect derives transport (from a `?transport=udp|tcp` query)
   and version (from the URL scheme) from the URL, not from these fields. Likewise
@@ -1367,10 +1369,13 @@ try (RtspServer server = RtspServer.start(cfg);
   `new DigestAuth("user", "pass", DigestAlgorithm.SHA256, "realm")` to
   `RtspServerConfig.builder().auth(...)`. The realm is required for server-side
   auth; omitting it throws `IllegalArgumentException` at `start()`.
-- **TLS is forward-compat only.** This binding does not link rustls; setting
-  `tlsCertPem`/`tlsKeyPem` on the config raises `RtspException` of kind `TLS` at
-  `start()`. Both fields must be set together (both or neither) or `build()` will
-  throw `IllegalArgumentException`.
+- **TLS (`rtsps://`) is supported.** Bind with an explicit `rtsps://` address
+  and set `tlsCert`/`tlsKey` on the config — PEM certificate-chain and
+  private-key **file paths** (both or neither; `build()` enforces). The
+  native server loads and validates them synchronously inside `start()`:
+  a missing or malformed file throws `RtspException` of kind `TLS` from
+  `RtspServer.start(config)` — never a server that looks started but can't
+  complete a handshake.
 
 ## H.264-over-RTP ingest (RFC 6184) (`org.tstrans.rtp`)
 

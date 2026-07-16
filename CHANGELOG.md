@@ -42,8 +42,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   time) and `rtsps://` server. **Breaking:** `RtspServerConfig.tlsCertPem`/
   `tlsKeyPem` (never-functional `byte[]` fields) are replaced by
   path-based `tlsCert`/`tlsKey` (PEM file paths, both-or-neither), the
-  same swap the Python binding made in 0.3.x. Bad cert/key paths throw
-  kind `TLS` from `RtspServer.start`.
+  same swap the Python binding makes in this release (PR #111). Bad cert/key
+  paths throw kind `TLS` from `RtspServer.start`.
 
 ### Fixed
 

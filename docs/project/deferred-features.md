@@ -1981,3 +1981,28 @@ the trigger that would unblock it.
   `metadata_service_id`, or the next binding-surface wave that touches
   `DemuxEvent.Metadata` anyway; (3) an audio codec with dts≠pts
   joining the mux surface.
+
+## RTSP server: TLS cert/key on a plaintext bind are silently ignored
+
+- **Status:** `RtspServerBuilder::tls_cert` paths (and the Python
+  `tls_cert`/`tls_key` and JVM `tlsCert`/`tlsKey` config fields that
+  feed them) only take effect when the bind URL carries an explicit
+  `rtsps://` scheme — `RtspServer::start()` gates the TLS load on the
+  scheme (crates/tst-rtp/src/rtsp/server/mod.rs, the `is_tls` check).
+  A caller who sets cert/key but binds a scheme-less or `rtsp://`
+  address gets a PLAINTEXT server with the certs silently ignored —
+  no error, no warning. All three bindings share the behavior
+  byte-for-byte (the Python binding validates path readability but
+  never the scheme; the JVM binding documents the `rtsps://`
+  requirement in Javadoc). Surfaced by the 2026-07-16
+  JVM-TLS-parity final review.
+- **Why deferred:** The right fix is Rust-side and cross-binding:
+  `start()` returning `RtspServerError::Tls` when TLS paths are
+  configured on a non-rtsps bind — one change fixes Rust, Python, and
+  JVM at once. It is a behavioral tightening (a misconfigured-but-
+  running server becomes a startup error), so it deserves its own
+  small pass rather than riding a binding-parity PR; Python parity
+  docs/tests would need the same sweep.
+- **Trigger to revisit:** the first integrator/field report of an
+  accidentally-plaintext server, or the next tst-rtp server-startup
+  touch (fold it in with a regression test per binding).

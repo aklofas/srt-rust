@@ -246,12 +246,14 @@ pub struct TstRtspServerBuilder {
     pub(crate) fanout_capacity: u32,
     /// Graceful-shutdown drain window in milliseconds. Default: 100.
     pub(crate) graceful_shutdown_drain_ms: u32,
-    /// Raw PEM bytes for the TLS certificate chain (`rtsps://` binds).
-    /// Written to a temp path at `start` time and passed to
-    /// `RtspServerBuilder::tls_cert`. `None` → no TLS cert configured.
+    /// Raw PEM bytes for the TLS certificate chain. Stored for a future
+    /// tst-c `tls` feature; TLS is NOT available in this build, so
+    /// `build_server` refuses to start when this is `Some` (the server
+    /// would otherwise come up PLAINTEXT with the certs ignored).
     pub(crate) tls_cert_pem: Option<Vec<u8>>,
-    /// Raw PEM bytes for the TLS private key (`rtsps://` binds).
-    /// Paired with `tls_cert_pem`; both must be `Some` for TLS to activate.
+    /// Raw PEM bytes for the TLS private key. Same contract as
+    /// [`Self::tls_cert_pem`]: stored but unusable in this build;
+    /// presence makes `build_server` refuse.
     pub(crate) tls_key_pem: Option<Vec<u8>>,
 }
 
@@ -305,11 +307,10 @@ impl TstRtspServerBuilder {
     /// Called by T8's `tst_rtsp_server_builder_start` after consuming the
     /// builder via `from_raw`.
     ///
-    /// TLS cert + key PEM bytes (if both present) are written to two temp
-    /// files and the paths handed to `RtspServerBuilder::tls_cert`. The
-    /// tempfile handles are dropped at end of this call — that's safe
-    /// because `tls_cert` reads + parses the PEM during `build()`, which
-    /// completes before this method returns.
+    /// TLS cert + key PEM bytes: tst-c is built without tst-rtp's `tls`
+    /// feature, so stored bytes can never take effect — if either is
+    /// present this returns `RtspServerError::Tls` instead of building a
+    /// server that would silently start PLAINTEXT (see the guard below).
     pub(crate) fn build_server(
         self: Box<Self>,
     ) -> Result<tst_rtp::RtspServer, tst_rtp::RtspServerError> {

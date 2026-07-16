@@ -2,7 +2,7 @@
 //! lifecycle integration tests. No RTP/RTCP flow exercised here;
 //! T23-T26 cover the actual streaming paths.
 
-use tst_rtp::{RtspServer, RtspServerError};
+use tst_rtp::{RtspServer, RtspServerBuilder, RtspServerError};
 
 #[test]
 fn bind_succeeds_on_loopback_port_zero() {
@@ -80,4 +80,26 @@ fn drop_started_server_completes_within_runtime_budget() {
     server.start().unwrap();
     // Drop's hard-cancel + shutdown_timeout(5s) must complete cleanly.
     drop(server);
+}
+
+/// A bind failure (port already taken) must surface from `start()` as a
+/// typed error. Pre-fix, `start()` spin-waited 1 s for `local_addr`,
+/// then returned `Ok(())` — the caller held a "started" server whose
+/// listener task had already died (log-only silent death).
+#[test]
+fn start_surfaces_bind_addr_in_use() {
+    // Occupy a kernel-picked port with a plain std listener, then try to
+    // start an RtspServer on the same port.
+    let blocker = std::net::TcpListener::bind("127.0.0.1:0").expect("blocker bind");
+    let port = blocker.local_addr().expect("blocker addr").port();
+
+    let b = RtspServerBuilder::new(&format!("rtsp://127.0.0.1:{port}")).expect("URL parse");
+    let server = b.build().expect("server build");
+    let err = server
+        .start()
+        .expect_err("start() must fail when the port is already bound");
+    assert!(
+        matches!(err, RtspServerError::BindAddrInUse),
+        "expected BindAddrInUse, got {err:?}"
+    );
 }

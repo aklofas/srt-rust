@@ -50,23 +50,25 @@ impl RtspClient {
     }
 
     /// Send an OPTIONS request; parse the `Public:` header into the
-    /// list of methods the server supports.
+    /// list of methods the server supports. Authenticates via the shared
+    /// `send_authenticated` path (pre-emptive + one reactive 401 retry) —
+    /// RFC 7826 servers may challenge any method, OPTIONS included.
     ///
     /// # Errors
     ///
     /// - [`RtspError::Io`] on socket-level failure.
     /// - [`RtspError::BadResponse`] on malformed response bytes.
-    /// - [`RtspError::Protocol`] if the server returns non-200.
+    /// - [`RtspError::AuthFailed`] if the server rejects the credentials.
+    /// - [`RtspError::Protocol`] on any other non-200 status.
     /// - [`RtspError::LocalCancel`] if the cancel handle was triggered
     ///   mid-read.
     pub fn options(&mut self) -> Result<OptionsResponse, RtspError> {
         let uri = self.url.render_no_credentials();
-        let mut req = self.base_request(RtspMethod::Options, uri);
+        let mut extra: Vec<(&str, String)> = Vec::new();
         if let Some(sid) = &self.session_id {
-            req = req.header("session", sid.clone());
+            extra.push(("session", sid.clone()));
         }
-        let bytes = req.encode_checked()?;
-        let resp = self.send_and_read(&bytes)?;
+        let resp = self.send_authenticated(RtspMethod::Options, &uri, &extra)?;
         self.last_server_version = resp.version;
         self.expect_ok(&resp)?;
         let public_methods = resp
@@ -478,6 +480,54 @@ mod tests {
             }
         });
         (port, h)
+    }
+
+    /// Two-exchange mock: reply `first` to the first request, then read
+    /// again and reply `second`. Returns the raw bytes of the SECOND
+    /// request so the test can assert on its headers.
+    fn mock_server_2(
+        first: &'static [u8],
+        second: &'static [u8],
+    ) -> (u16, std::thread::JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let h = std::thread::spawn(move || {
+            let mut captured = Vec::new();
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut req = [0u8; 4096];
+                let _ = sock.read(&mut req);
+                let _ = sock.write_all(first);
+                let n = sock.read(&mut req).unwrap_or(0);
+                captured.extend_from_slice(&req[..n]);
+                let _ = sock.write_all(second);
+            }
+            captured
+        });
+        (port, h)
+    }
+
+    #[test]
+    fn options_authenticates_on_challenge() {
+        // RFC 7826 servers may challenge ANY method, OPTIONS included
+        // (gortsplib/MediaMTX do). options() must retry with credentials
+        // via the shared send_authenticated path instead of surfacing a
+        // raw Protocol{401}. Regression: options() used to bypass auth.
+        let (port, h) = mock_server_2(
+            b"RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic realm=\"cam\"\r\n\r\n",
+            b"RTSP/1.0 200 OK\r\nCSeq: 2\r\nPublic: OPTIONS, DESCRIBE, SETUP, PLAY\r\n\r\n",
+        );
+        let mut client =
+            RtspClient::connect(&format!("rtsp://user:pw@127.0.0.1:{port}/test")).unwrap();
+        let opts = client
+            .options()
+            .expect("OPTIONS must authenticate after a 401 challenge");
+        assert!(opts.public_methods.contains(&"DESCRIBE".to_string()));
+        let retry = h.join().unwrap();
+        let retry_txt = String::from_utf8_lossy(&retry).to_ascii_lowercase();
+        assert!(
+            retry_txt.contains("authorization: basic"),
+            "retry must carry credentials, got:\n{retry_txt}"
+        );
     }
 
     #[test]

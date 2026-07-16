@@ -2032,6 +2032,8 @@ name = "tst-jni"
 version = "0.3.0"
 dependencies = [
  "jni",
+ "rustls",
+ "rustls-pemfile",
  "secrecy",
  "tst-core",
  "tst-pipeline",

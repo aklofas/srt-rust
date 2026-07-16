@@ -39,10 +39,21 @@ tst-pipeline = { path = "../../crates/tst-pipeline" }
 tst-srt      = { path = "../../crates/tst-srt" }
 
 # tst-rtp (pure Rust: RTP-over-UDP + RTSP) backs the org.tstrans.rtp surface.
-# default-features = false keeps the `tls` feature off (matches tst-py's rtp
-# feature, which does not enable rtsps://). No submodules/vendored libs.
-tst-rtp = { path = "../../crates/tst-rtp", default-features = false }
+# `tls` is ON: rtsps:// client (custom-CA roots via RtspClientConfig) and
+# rtsps:// server (cert/key paths) ship in the JAR — parity with tst-py's
+# post-#111 wheels. The direct rustls + rustls-pemfile deps below parse
+# RtspClientConfig.tlsRootCertsPem into the rustls::RootCertStore that
+# RtspClientBuilder::tls_root_certs takes (same shape as tst-py).
+tst-rtp = { path = "../../crates/tst-rtp", default-features = false, features = ["tls"] }
 
 # secrecy wraps RTSP auth passwords at the RtspClientBuilder::auth boundary
 # (mirrors tst-py's rtp feature: dep:secrecy). Workspace-pinned (0.10).
 secrecy = { workspace = true }
+
+[dependencies.rustls]
+version          = "0.23"
+default-features = false
+features         = ["std", "ring"]
+
+[dependencies.rustls-pemfile]
+version = "2"

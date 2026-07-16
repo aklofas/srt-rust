@@ -50,6 +50,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `qop=auth` nonce-count while reusing a cached nonce (RFC 7616 §3.4), and
   authenticates the keepalive thread's OPTIONS pings. Unauthenticated servers
   are unaffected — pre-emptive auth stays inert until a challenge is seen.
+- `tst-rtp`: `RtspServer::start()` now surfaces listener startup failures as
+  typed errors — a bad TLS cert/key path returns `RtspServerError::Tls` and a
+  bind conflict returns `BindAddrInUse` from `start()` itself. Previously the
+  listener task died after `start()` had already returned `Ok`, leaving a
+  server that looked started but never accepted (log-only). TLS cert/key are
+  now loaded synchronously inside `start()`.
 
 ---
 

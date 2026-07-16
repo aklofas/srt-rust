@@ -64,9 +64,20 @@ class RtspServerConfigTest {
     @Test
     void acceptsBothTlsPaths() {
         RtspServerConfig c = RtspServerConfig.builder()
+            .bindAddr("rtsps://127.0.0.1:0")
             .tlsCert("cert.pem").tlsKey("key.pem").build();
         assertTrue(c.tlsCert().isPresent());
         assertTrue(c.tlsKey().isPresent());
+    }
+
+    @Test
+    void rejectsTlsPathsOnPlaintextBind() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> RtspServerConfig.builder()
+                .bindAddr("127.0.0.1:0")
+                .tlsCert("/tmp/cert.pem").tlsKey("/tmp/key.pem")
+                .build());
+        assertTrue(ex.getMessage().contains("rtsps://"));
     }
 
     @Test

@@ -8696,20 +8696,18 @@ struct TstRtspServer *tst_rtsp_server_builder_start(struct TstRtspServerBuilder 
  * `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` form.
  *
  * Both buffers are copied immediately; the caller's pointers need not
- * outlive this call.  Task 8's `_start` writes the bytes to temporary
- * paths and passes them to `RtspServerBuilder::tls_cert`.
+ * outlive this call.
  *
- * This setter is required when the bind URL uses `rtsps://`; when
- * `rtsp://` is used, calling this setter is harmless (the bytes are
- * stored but ignored at start time).
+ * TLS is not available in this build of tst-c (there is no `tls` cargo
+ * feature yet). The PEM bytes are stored on the builder, and
+ * `tst_rtsp_server_builder_start` FAILS (NULL + `TST_E_RTSP_SERVER`
+ * last-error) when they are set — the alternative would be a server that
+ * silently starts PLAINTEXT with the supplied certs ignored. The setter and
+ * its stored bytes exist so a future `tls` feature can activate them without
+ * an ABI change.
  *
  * No-op (with last-error set) if `builder`, `cert`, or `key` is NULL,
  * or if any length is zero.
- *
- * Note: this setter stores the raw PEM bytes regardless of whether the
- * `tls` cargo feature is active.  If TLS support was not compiled in and
- * `tst_rtsp_server_builder_start` is called with an `rtsps://` URL, the
- * start call itself will fail with `TST_E_RTSP_SERVER`.
  *
  * # Safety
  *

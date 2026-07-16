@@ -347,12 +347,21 @@ impl TstRtspServerBuilder {
             self.graceful_shutdown_drain_ms as u64,
         ));
 
-        // TLS path: tst-c does not yet have a `tls` cargo feature, so the
-        // tst-rtp `tls` feature is off here. T7's `_tls_cert_pem` setter
-        // stores the bytes for forward-compatibility; they're consumed +
-        // discarded until a future tst-c `tls` feature lights up
-        // `RtspServerBuilder::tls_cert` (which is gated on tst-rtp `tls`).
-        let _ = (self.tls_cert_pem, self.tls_key_pem);
+        // TLS bytes: tst-c has no `tls` cargo feature, so tst-rtp's
+        // `RtspServerBuilder::tls_cert` is compiled out of this graph and
+        // stored PEM bytes can never take effect. Refuse to start rather
+        // than come up PLAINTEXT while the caller believes TLS is armed.
+        // (The setter still stores the bytes so a future tst-c `tls`
+        // feature can light this up without an ABI change.)
+        if self.tls_cert_pem.is_some() || self.tls_key_pem.is_some() {
+            return Err(tst_rtp::RtspServerError::Tls(
+                "tst_rtsp_server_builder_tls_cert_pem was called, but TLS is \
+                 not compiled into this tst-c build — the server would start \
+                 PLAINTEXT with the supplied certs ignored; drop the \
+                 tls_cert_pem call (or use a TLS-capable binding)"
+                    .into(),
+            ));
+        }
 
         b.build()
     }

@@ -154,4 +154,38 @@ mod tests {
             let _ = Box::from_raw(handle);
         }
     }
+
+    /// TLS PEM bytes on a builder must fail `_start` rather than silently
+    /// starting a PLAINTEXT server: tst-c is built without tst-rtp's `tls`
+    /// feature, so the stored bytes can never take effect. The PEM content
+    /// is never parsed (the guard fires before any TLS machinery), so
+    /// dummy bytes suffice.
+    #[test]
+    fn tls_cert_pem_on_plaintext_bind_fails_start() {
+        let b = TstRtspServerBuilder::from_url("rtsp://127.0.0.1:0").expect("test url parses");
+        let raw = TstRtspServerBuilder::into_raw(Box::new(b));
+        let cert = b"-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n";
+        let key = b"-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----\n";
+        unsafe {
+            crate::rtsp::server::builder::tst_rtsp_server_builder_tls_cert_pem(
+                raw,
+                cert.as_ptr(),
+                cert.len(),
+                key.as_ptr(),
+                key.len(),
+            );
+        }
+
+        let handle = unsafe { tst_rtsp_server_builder_start(raw) };
+        assert!(
+            handle.is_null(),
+            "start must refuse TLS bytes it cannot honor"
+        );
+        let code = unsafe { crate::error::tst_get_last_error() };
+        assert_eq!(code, TstError::RtspServer as i32);
+        let msg = unsafe { std::ffi::CStr::from_ptr(crate::error::tst_get_last_error_str()) }
+            .to_str()
+            .unwrap();
+        assert!(msg.contains("TLS"), "message must name the cause: {msg}");
+    }
 }

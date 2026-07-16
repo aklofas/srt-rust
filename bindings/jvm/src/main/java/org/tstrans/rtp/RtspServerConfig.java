@@ -7,9 +7,10 @@ import java.util.Optional;
  * {@code tstrans.rtp.RtspServerConfig} (a frozen dataclass). Build via
  * {@link #of(String)} (defaults + bind addr) or {@link #builder()}.
  *
- * <p>{@code tlsCertPem}/{@code tlsKeyPem} are forward-compat: setting either raises
- * {@link org.tstrans.RtspException} of kind {@code TLS} at {@link RtspServer#start}
- * (no rustls in this build). They must be set together (both or neither).
+ * <p>{@code tlsCert}/{@code tlsKey} are PEM file paths read by the native server at
+ * {@link RtspServer#start}; bad paths throw {@link org.tstrans.RtspException} of kind
+ * {@code TLS} from {@code start()}. They must be set together (both or neither), and
+ * the bind address must carry an explicit {@code rtsps://} scheme (mirrors tst-py).
  */
 public final class RtspServerConfig {
     private final String bindAddr;
@@ -18,8 +19,8 @@ public final class RtspServerConfig {
     private final long sessionTimeoutSecs;
     private final int fanoutCapacity;
     private final long gracefulShutdownDrainMs;
-    private final byte[] tlsCertPem;      // nullable; defensively copied
-    private final byte[] tlsKeyPem;       // nullable; defensively copied
+    private final String tlsCert;   // nullable; PEM cert-chain FILE PATH
+    private final String tlsKey;    // nullable; PEM private-key FILE PATH
 
     private RtspServerConfig(Builder b) {
         this.bindAddr = b.bindAddr;
@@ -28,8 +29,8 @@ public final class RtspServerConfig {
         this.sessionTimeoutSecs = b.sessionTimeoutSecs;
         this.fanoutCapacity = b.fanoutCapacity;
         this.gracefulShutdownDrainMs = b.gracefulShutdownDrainMs;
-        this.tlsCertPem = b.tlsCertPem == null ? null : b.tlsCertPem.clone();
-        this.tlsKeyPem = b.tlsKeyPem == null ? null : b.tlsKeyPem.clone();
+        this.tlsCert = b.tlsCert;
+        this.tlsKey = b.tlsKey;
     }
 
     /** Config with the default field set, bound to {@code bindAddr}. */
@@ -49,15 +50,11 @@ public final class RtspServerConfig {
     public int fanoutCapacity() { return fanoutCapacity; }
     public long gracefulShutdownDrainMs() { return gracefulShutdownDrainMs; }
 
-    /** @return a defensive copy of the cert PEM, if set. */
-    public Optional<byte[]> tlsCertPem() {
-        return Optional.ofNullable(tlsCertPem).map(byte[]::clone);
-    }
+    /** PEM certificate-chain file path for an {@code rtsps://} bind, if set. */
+    public Optional<String> tlsCert() { return Optional.ofNullable(tlsCert); }
 
-    /** @return a defensive copy of the key PEM, if set. */
-    public Optional<byte[]> tlsKeyPem() {
-        return Optional.ofNullable(tlsKeyPem).map(byte[]::clone);
-    }
+    /** PEM private-key file path for an {@code rtsps://} bind, if set. */
+    public Optional<String> tlsKey() { return Optional.ofNullable(tlsKey); }
 
     @Override public String toString() {
         return "RtspServerConfig(bindAddr=" + bindAddr
@@ -66,8 +63,8 @@ public final class RtspServerConfig {
             + ", sessionTimeoutSecs=" + sessionTimeoutSecs
             + ", fanoutCapacity=" + fanoutCapacity
             + ", gracefulShutdownDrainMs=" + gracefulShutdownDrainMs
-            + ", tlsCertPem=" + (tlsCertPem != null ? "<bytes>" : "None")
-            + ", tlsKeyPem=" + (tlsKeyPem != null ? "<bytes>" : "None") + ")";
+            + ", tlsCert=" + (tlsCert != null ? tlsCert : "None")
+            + ", tlsKey=" + (tlsKey != null ? tlsKey : "None") + ")";
     }
 
     /** Builder for {@link RtspServerConfig}. Defaults match tst-py. */
@@ -78,8 +75,8 @@ public final class RtspServerConfig {
         private long sessionTimeoutSecs = 60;
         private int fanoutCapacity = 256;
         private long gracefulShutdownDrainMs = 2000;
-        private byte[] tlsCertPem;
-        private byte[] tlsKeyPem;
+        private String tlsCert;
+        private String tlsKey;
 
         private Builder() {}
 
@@ -102,12 +99,11 @@ public final class RtspServerConfig {
         public Builder fanoutCapacity(int v) { this.fanoutCapacity = v; return this; }
         public Builder gracefulShutdownDrainMs(long v) { this.gracefulShutdownDrainMs = v; return this; }
 
-        public Builder tlsCertPem(byte[] pem) {
-            this.tlsCertPem = pem == null ? null : pem.clone(); return this;
-        }
-        public Builder tlsKeyPem(byte[] pem) {
-            this.tlsKeyPem = pem == null ? null : pem.clone(); return this;
-        }
+        /** PEM certificate-chain file path ({@code rtsps://} binds). Set with {@link #tlsKey}. */
+        public Builder tlsCert(String pemPath) { this.tlsCert = pemPath; return this; }
+
+        /** PEM private-key file path ({@code rtsps://} binds). Set with {@link #tlsCert}. */
+        public Builder tlsKey(String pemPath) { this.tlsKey = pemPath; return this; }
 
         public RtspServerConfig build() {
             if (maxSessions <= 0)
@@ -121,11 +117,10 @@ public final class RtspServerConfig {
             if (gracefulShutdownDrainMs < 0)
                 throw new IllegalArgumentException(
                     "gracefulShutdownDrainMs must be >= 0; got " + gracefulShutdownDrainMs);
-            boolean certSet = tlsCertPem != null;
-            boolean keySet = tlsKeyPem != null;
-            if (certSet != keySet)
+            if ((tlsCert == null) != (tlsKey == null)) {
                 throw new IllegalArgumentException(
-                    "tlsCertPem and tlsKeyPem must be set together (both or neither)");
+                    "tlsCert and tlsKey must be set together (both or neither)");
+            }
             return new RtspServerConfig(this);
         }
     }

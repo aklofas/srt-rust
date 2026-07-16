@@ -137,9 +137,16 @@ fn jstring_or_empty(env: &mut JNIEnv, s: &JString) -> String {
     env.get_string(s).map(Into::into).unwrap_or_default()
 }
 
+/// Read a nullable JString → Option<String> (TLS path fields).
+fn jstring_opt(env: &mut JNIEnv, s: &JString) -> Option<String> {
+    if s.is_null() {
+        return None;
+    }
+    env.get_string(s).ok().map(Into::into)
+}
+
 /// `RtspServer.nStart(...)` — build the RtspServerBuilder from config primitives,
-/// build()+start(), then (mirroring tst-py) raise RtspException(TLS) if either TLS
-/// PEM was set. Returns a `Box<RtspServer>` handle, or 0 with a pending exception.
+/// build()+start(). Returns a `Box<RtspServer>` handle, or 0 with a pending exception.
 /// `authScheme`: -1 none / 0 basic / 1 digest-md5 / 2 digest-sha256.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
@@ -155,8 +162,8 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
     auth_realm: JString<'local>,
     auth_user: JString<'local>,
     auth_password: JString<'local>,
-    has_tls_cert: jboolean,
-    has_tls_key: jboolean,
+    tls_cert: JString<'local>,
+    tls_key: JString<'local>,
 ) -> jlong {
     crate::panic::jni_catch(&mut env, 0, |env| {
         let bind: String = match env.get_string(&bind_addr) {
@@ -183,6 +190,17 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
             None
         };
 
+        let tls_paths = match (jstring_opt(env, &tls_cert), jstring_opt(env, &tls_key)) {
+            (Some(c), Some(k)) => Some((c, k)),
+            (None, None) => None,
+            // Java build() enforces both-or-neither; reaching here means a
+            // caller bypassed the config type. Refuse rather than guess.
+            _ => {
+                throw_rtsp(env, "TLS", "tlsCert and tlsKey must be set together");
+                return 0;
+            }
+        };
+
         let built: Result<RustRtspServer, RtspServerError> = (|| {
             let mut builder = RtspServerBuilder::new(&bind_url)?;
             builder
@@ -206,6 +224,12 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
                     }
                 }
             }
+            if let Some((cert, key)) = tls_paths.as_ref() {
+                builder.tls_cert(
+                    std::path::PathBuf::from(cert),
+                    std::path::PathBuf::from(key),
+                );
+            }
             let server = builder.build()?;
             server.start()?;
             Ok(server)
@@ -218,18 +242,6 @@ pub extern "system" fn Java_org_tstrans_rtp_RtspServer_nStart<'local>(
                 return 0;
             }
         };
-
-        // TLS guard (mirror tst-py order: build+start, THEN refuse). Dropping `server`
-        // here fires its Drop (hard-cancel + runtime shutdown).
-        if has_tls_cert != 0 || has_tls_key != 0 {
-            throw_rtsp(
-                env,
-                "TLS",
-                "TLS (rtsps://) is not enabled in this build of tstrans; \
-                 rebuild with the tst-rtp `tls` feature wired through tst-jni",
-            );
-            return 0;
-        }
 
         // The cancel hook drives a HARD cancel via the server's own independent
         // `RtspServerCancelHandle` (own Arc<AtomicBool>), wiring `close` to wake any

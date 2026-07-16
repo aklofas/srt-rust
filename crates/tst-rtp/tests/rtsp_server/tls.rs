@@ -198,7 +198,10 @@ fn start_rejects_tls_paths_on_plaintext_bind() {
         "expected Tls, got {err:?}"
     );
     let msg = err.to_string();
-    assert!(msg.contains("rtsps"), "error must point at the scheme fix: {msg}");
+    assert!(
+        msg.contains("rtsps"),
+        "error must point at the scheme fix: {msg}"
+    );
 
     // `started` must have been un-latched: a second start() reports the
     // same misconfig, not AlreadyStarted (which would mean a wedged object).

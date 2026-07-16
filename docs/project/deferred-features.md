@@ -1981,34 +1981,3 @@ the trigger that would unblock it.
   `metadata_service_id`, or the next binding-surface wave that touches
   `DemuxEvent.Metadata` anyway; (3) an audio codec with dts≠pts
   joining the mux surface.
-
-## RTSP server: TLS cert/key on a plaintext bind are silently ignored
-
-- **Status:** `RtspServerBuilder::tls_cert` paths (and the Python
-  `tls_cert`/`tls_key` and JVM `tlsCert`/`tlsKey` config fields that
-  feed them) only take effect when the bind URL carries an explicit
-  `rtsps://` scheme — `RtspServer::start()` gates the TLS load on the
-  scheme (crates/tst-rtp/src/rtsp/server/mod.rs, the `is_tls` check).
-  A caller who sets cert/key but binds a scheme-less or `rtsp://`
-  address gets a PLAINTEXT server with the certs silently ignored —
-  no error, no warning. Surfaced by the 2026-07-16 JVM-TLS-parity
-  final review. **Update (same-session Copilot round):** the JVM
-  binding now fails fast — `RtspServerConfig.Builder.build()` throws
-  `IllegalArgumentException` and the JNI `nStart` native carries a
-  defensive twin check (config-type bypass guard) that throws before
-  the builder ever runs. The silent behavior remains as-is on Rust,
-  the C ABI (`tst_rtsp_server_builder_tls_cert_pem` feeds the same
-  builder), and Python (validates path readability but never the
-  scheme). The Rust-side `start()` fix below stays the right
-  cross-surface close — it would let JVM drop both of these guards
-  again once it lands.
-- **Why deferred:** The right fix is Rust-side and cross-surface:
-  `start()` returning `RtspServerError::Tls` when TLS paths are
-  configured on a non-rtsps bind — one change fixes Rust, C, Python,
-  and JVM at once. It is a behavioral tightening (a misconfigured-but-
-  running server becomes a startup error), so it deserves its own
-  small pass rather than riding a binding-parity PR; Python parity
-  docs/tests would need the same sweep.
-- **Trigger to revisit:** the first integrator/field report of an
-  accidentally-plaintext server, or the next tst-rtp server-startup
-  touch (fold it in with a regression test per binding).

@@ -9,6 +9,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — RTSP server refuses TLS config on a plaintext bind
+
+- `RtspServer::start()` now fails with `RtspServerError::Tls` when
+  `tls_cert()` / `tls_key()` are configured but the bind URL scheme is
+  plaintext `rtsp://` (previously the TLS material was silently ignored and
+  the server came up unencrypted). Python inherits the guard through
+  `RtspServerConfig.tls_cert` / `tls_key`; the JVM keeps its earlier
+  fail-fast at `RtspServerConfig.Builder.build()` on top of it.
+- The C ABI's `tst_rtsp_server_builder_tls_cert_pem` no longer
+  accepts-and-discards PEM material: `tst_rtsp_server_builder_start` now
+  fails (`TST_E_RTSP_SERVER`) when TLS bytes were supplied, because tst-c is
+  built without TLS support and the bytes could never take effect. No new
+  symbols or error codes — the C ABI minor stays 19.
+
+### Fixed — RTSP client authenticates OPTIONS
+
+- `RtspClient::options()` now routes through the shared authenticated send
+  path (pre-emptive signing + one reactive 401 retry) like every other
+  method. Servers that challenge OPTIONS used to surface a raw
+  `Protocol { code: 401 }` error from credentialed clients.
+
 ### Added — Python wheels are fully featured: TLS + RIST encryption compiled in
 
 - The Python binding gains a default-on `tls` cargo feature (shipped in the

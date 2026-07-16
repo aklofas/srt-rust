@@ -4,12 +4,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-use secrecy::ExposeSecret;
-
 use crate::error::RtspError;
-use crate::rtsp::auth::{
-    AuthChallenge, DigestContext, build_basic_response, build_digest_response, parse_challenges,
-};
 use crate::rtsp::client::RtspClient;
 use crate::rtsp::message::{RtspFraming, RtspMethod, RtspRequest, RtspResponse};
 use crate::sdp::Sdp;
@@ -85,28 +80,26 @@ impl RtspClient {
         })
     }
 
-    /// Send a DESCRIBE request and parse the SDP body.
+    /// Send a DESCRIBE request and parse the SDP body. Authenticates via the
+    /// shared `send_authenticated` path (pre-emptive + one reactive
+    /// 401 retry).
     ///
     /// # Errors
     ///
     /// - [`RtspError::Io`] on socket-level failure.
     /// - [`RtspError::BadResponse`] on malformed response bytes.
-    /// - [`RtspError::AuthFailed`] on a 401 response (the full
-    ///   challenge-retry path lands in a later task; for now we
-    ///   surface a clean error).
+    /// - [`RtspError::AuthFailed`] if the server rejects the credentials.
     /// - [`RtspError::Protocol`] on any other non-200 status.
     /// - [`RtspError::BadSdp`] if the response body isn't parseable SDP.
     /// - [`RtspError::LocalCancel`] if the cancel handle was triggered
     ///   mid-read.
     pub fn describe(&mut self) -> Result<Sdp, RtspError> {
-        // First attempt: no Authorization header.
-        let resp = self.send_request_with_optional_auth(RtspMethod::Describe, None)?;
-        let resp = if resp.status == 401 {
-            // Server demanded auth — extract challenge, build credentials, retry.
-            self.handle_auth_challenge_and_retry(RtspMethod::Describe, &resp)?
-        } else {
-            resp
-        };
+        let uri = self.url.render_no_credentials();
+        let mut extra: Vec<(&str, String)> = vec![("accept", "application/sdp".to_string())];
+        if let Some(sid) = &self.session_id {
+            extra.push(("session", sid.clone()));
+        }
+        let resp = self.send_authenticated(RtspMethod::Describe, &uri, &extra)?;
         self.last_server_version = resp.version;
         if resp.status != 200 {
             return Err(RtspError::Protocol {
@@ -117,99 +110,118 @@ impl RtspClient {
         Sdp::parse(&resp.body)
     }
 
-    /// Send a request without (or with) a pre-built Authorization
-    /// header. Used as the first attempt + the retry leg of the
-    /// challenge-response flow.
-    pub(crate) fn send_request_with_optional_auth(
-        &mut self,
+    /// Build an `Authorization:` header for `method` at `uri` from a raw
+    /// `WWW-Authenticate` challenge, using the URL credentials and the next
+    /// `qop=auth` nonce-count. Thin wrapper over
+    /// [`crate::rtsp::auth::build_authorization`]. The `uri` MUST be the exact
+    /// request-URI of the target method — gortsplib/MediaMTX hash the Digest
+    /// HA2 against the request URI, so SETUP must pass its control URI
+    /// (`…/trackID=0`), not the base URL.
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspError::AuthFailed`] if the URL carries no credentials.
+    /// - [`RtspError::AuthUnsupported`] if no recognized scheme is present.
+    pub(crate) fn authorization_from_challenge(
+        &self,
         method: RtspMethod,
-        authorization: Option<String>,
-    ) -> Result<RtspResponse, RtspError> {
-        let uri = self.url.render_no_credentials();
-        let mut req = self
-            .base_request(method, uri)
-            .header("accept", "application/sdp");
-        if let Some(sid) = &self.session_id {
-            req = req.header("session", sid.clone());
-        }
-        if let Some(auth) = authorization {
-            req = req.header("authorization", auth);
-        }
-        let bytes = req.encode_checked()?;
-        self.send_and_read(&bytes)
-    }
-
-    /// Parse WWW-Authenticate from a 401 response, build Authorization
-    /// from URL credentials, retry. Returns the retry response.
-    pub(crate) fn handle_auth_challenge_and_retry(
-        &mut self,
-        method: RtspMethod,
-        first_resp: &RtspResponse,
-    ) -> Result<RtspResponse, RtspError> {
+        uri: &str,
+        www_auth: &str,
+    ) -> Result<String, RtspError> {
         let username = self.url.username.clone().ok_or(RtspError::AuthFailed)?;
         let password = self.url.password.clone().ok_or(RtspError::AuthFailed)?;
-        let www_auth =
-            first_resp
-                .headers
-                .get("www-authenticate")
-                .ok_or(RtspError::BadResponse {
-                    detail: "401 without WWW-Authenticate header",
-                })?;
-        let challenges = parse_challenges(www_auth);
-        // Prefer Digest over Basic when both are offered.
-        let challenge = challenges
-            .iter()
-            .find(|c| matches!(c, AuthChallenge::Digest(_)))
-            .or_else(|| {
-                challenges
-                    .iter()
-                    .find(|c| matches!(c, AuthChallenge::Basic { .. }))
-            })
-            .ok_or_else(|| RtspError::AuthUnsupported {
-                scheme: "(no recognized scheme in WWW-Authenticate)".into(),
-            })?;
+        // Next nonce-count for qop=auth (ignored by the no-qop form). Reusing
+        // one cached nonce across requests requires a strictly-increasing nc
+        // so a qop=auth server does not reject later requests as replays.
+        let nc = self
+            .auth_nc
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1);
+        crate::rtsp::auth::build_authorization(method, uri, www_auth, &username, &password, nc)
+    }
 
-        let method_str = match method {
-            RtspMethod::Options => "OPTIONS",
-            RtspMethod::Describe => "DESCRIBE",
-            RtspMethod::Setup => "SETUP",
-            RtspMethod::Play => "PLAY",
-            RtspMethod::Pause => "PAUSE",
-            RtspMethod::Teardown => "TEARDOWN",
-            RtspMethod::GetParameter => "GET_PARAMETER",
-        };
-        let uri = self.url.render_no_credentials();
-        let authorization = match challenge {
-            AuthChallenge::Basic { .. } => build_basic_response(&username, &password),
-            AuthChallenge::Digest(d) => {
-                // Generate a random cnonce.
-                let mut cnonce_bytes = [0u8; 16];
-                getrandom::getrandom(&mut cnonce_bytes)
-                    .map_err(|_| RtspError::Io(std::io::ErrorKind::Other))?;
-                let mut cnonce = String::with_capacity(32);
-                for b in &cnonce_bytes {
-                    use std::fmt::Write as _;
-                    let _ = write!(cnonce, "{:02x}", b);
-                }
-                let _ = password.expose_secret(); // touch to ensure non-zero
-                let ctx = DigestContext {
-                    username: &username,
-                    password: &password,
-                    method: method_str,
-                    uri: &uri,
-                    nc: 1,
-                    cnonce: &cnonce,
-                    challenge: d,
-                };
-                build_digest_response(&ctx)
-            }
-        };
+    /// Pre-emptive `Authorization:` header for `method` at `uri`, computed
+    /// from the challenge cached at the first 401 (see
+    /// [`RtspClient::auth_challenge`]). Returns `Ok(None)` when no challenge
+    /// has been seen yet or the URL carries no credentials — so
+    /// unauthenticated servers are unaffected.
+    pub(crate) fn preemptive_authorization(
+        &self,
+        method: RtspMethod,
+        uri: &str,
+    ) -> Result<Option<String>, RtspError> {
+        if self.url.username.is_none() || self.url.password.is_none() {
+            return Ok(None);
+        }
+        match &self.auth_challenge {
+            Some(www) => Ok(Some(self.authorization_from_challenge(method, uri, www)?)),
+            None => Ok(None),
+        }
+    }
 
-        let retry = self.send_request_with_optional_auth(method, Some(authorization))?;
-        if retry.status == 401 {
+    /// Cache the `WWW-Authenticate` challenge from a 401 for pre-emptive use
+    /// on later requests. A *changed* challenge (new nonce) resets the
+    /// `qop=auth` nonce-count so it restarts at 1, and the value is mirrored
+    /// to the keepalive thread's shared cell when present.
+    pub(crate) fn cache_auth_challenge(&mut self, www_auth: String) {
+        if self.auth_challenge.as_deref() != Some(www_auth.as_str()) {
+            self.auth_nc.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(shared) = &self.auth_challenge_shared {
+            *shared.lock().expect("auth challenge mutex poisoned") = Some(www_auth.clone());
+        }
+        self.auth_challenge = Some(www_auth);
+    }
+
+    /// Send `method` at `uri` with `extra_headers`, attaching cached
+    /// credentials pre-emptively and retrying once on a fresh 401 challenge.
+    /// Each attempt is a fresh request (new CSeq). Unauthenticated servers are
+    /// unaffected — pre-emptive auth is a no-op until a challenge is seen.
+    ///
+    /// This is the single auth-aware send path shared by DESCRIBE / SETUP /
+    /// PLAY / PAUSE, so every method authenticates uniformly (gortsplib /
+    /// MediaMTX challenge them all, not just DESCRIBE).
+    pub(crate) fn send_authenticated(
+        &mut self,
+        method: RtspMethod,
+        uri: &str,
+        extra_headers: &[(&str, String)],
+    ) -> Result<RtspResponse, RtspError> {
+        // Attempt 1 — pre-emptive (no-op until a challenge is cached).
+        let preauth = self.preemptive_authorization(method, uri)?;
+        let mut req = self.base_request(method, uri.to_string());
+        for (k, v) in extra_headers {
+            req = req.header(k, v.as_str());
+        }
+        if let Some(a) = &preauth {
+            req = req.header("authorization", a.as_str());
+        }
+        let resp = self.send_and_read(&req.encode_checked()?)?;
+        if resp.status != 401 {
+            return Ok(resp);
+        }
+        // Attempt 2 — reactive: cache the fresh challenge, retry once with a
+        // new CSeq. Covers servers that challenge this method without having
+        // challenged DESCRIBE, and stale-nonce rotation.
+        let www = resp
+            .headers
+            .get("www-authenticate")
+            .ok_or(RtspError::BadResponse {
+                detail: "401 without WWW-Authenticate header",
+            })?
+            .clone();
+        self.cache_auth_challenge(www.clone());
+        let authorization = self.authorization_from_challenge(method, uri, &www)?;
+        let mut retry = self.base_request(method, uri.to_string());
+        for (k, v) in extra_headers {
+            retry = retry.header(k, v.as_str());
+        }
+        retry = retry.header("authorization", authorization);
+        let retry_resp = self.send_and_read(&retry.encode_checked()?)?;
+        if retry_resp.status == 401 {
             return Err(RtspError::AuthFailed);
         }
-        Ok(retry)
+        Ok(retry_resp)
     }
 
     /// Write a serialized RTSP request, then read one complete response.
@@ -557,6 +569,144 @@ mod tests {
         assert!(
             matches!(err, RtspError::BadResponse { .. }),
             "over-1-MiB declared body must be rejected as BadResponse, got {err:?}"
+        );
+        h.join().unwrap();
+    }
+
+    // --- Auth applied to every method (SETUP/PLAY/… not just DESCRIBE) ---
+
+    fn md5_hex(s: &str) -> String {
+        use md5::{Digest, Md5};
+        let mut h = Md5::new();
+        h.update(s.as_bytes());
+        h.finalize().iter().fold(String::new(), |mut out, b| {
+            use std::fmt::Write as _;
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+    }
+
+    /// Accept one TCP connection and hold it briefly (enough for `connect`
+    /// to complete). No RTSP bytes are exchanged — these tests drive the
+    /// pure auth-header builder, not the network.
+    fn accept_and_hold() -> (u16, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let h = std::thread::spawn(move || {
+            if let Ok((sock, _)) = listener.accept() {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                drop(sock);
+            }
+        });
+        (port, h)
+    }
+
+    /// Regression guard for the SETUP-auth gap: once the DESCRIBE challenge
+    /// is cached, `preemptive_authorization` must produce a correct MD5
+    /// (RFC 2617 no-qop) Digest header whose HA2 hashes the **SETUP control
+    /// URI** (`…/trackID=0`) — the exact shape gortsplib/MediaMTX validate.
+    #[test]
+    fn preemptive_authorization_builds_setup_digest_for_control_uri() {
+        let (port, h) = accept_and_hold();
+        let mut client =
+            RtspClient::connect(&format!("rtsp://user:pass@127.0.0.1:{port}/cam")).unwrap();
+        // The challenge as gortsplib/MediaMTX send it (no algorithm, no qop).
+        client.auth_challenge = Some(r#"Digest realm="tstrans", nonce="abc123""#.to_string());
+
+        let control_uri = format!("rtsp://127.0.0.1:{port}/cam/trackID=0");
+        let hdr = client
+            .preemptive_authorization(RtspMethod::Setup, &control_uri)
+            .unwrap()
+            .expect("cached challenge + URL creds → Some");
+
+        let ha1 = md5_hex("user:tstrans:pass");
+        let ha2 = md5_hex(&format!("SETUP:{control_uri}"));
+        let expected = md5_hex(&format!("{ha1}:abc123:{ha2}"));
+        assert!(
+            hdr.contains(&format!("response=\"{expected}\"")),
+            "SETUP digest must be MD5(HA1:nonce:HA2) over the control URI; got {hdr}"
+        );
+        assert!(hdr.contains(&format!("uri=\"{control_uri}\"")));
+        assert!(hdr.contains(r#"username="user""#));
+        h.join().unwrap();
+    }
+
+    /// Pre-emptive auth stays inert for unauthenticated servers: no header
+    /// until a challenge has been seen, and none when the URL carries no
+    /// credentials.
+    #[test]
+    fn preemptive_authorization_inert_without_challenge_or_creds() {
+        // Creds present, but no challenge cached yet → None.
+        let (p1, h1) = accept_and_hold();
+        let client = RtspClient::connect(&format!("rtsp://user:pass@127.0.0.1:{p1}/cam")).unwrap();
+        assert!(
+            client
+                .preemptive_authorization(RtspMethod::Play, "rtsp://x/cam")
+                .unwrap()
+                .is_none()
+        );
+        h1.join().unwrap();
+
+        // Challenge cached but the URL has no credentials → None.
+        let (p2, h2) = accept_and_hold();
+        let mut client2 = RtspClient::connect(&format!("rtsp://127.0.0.1:{p2}/cam")).unwrap();
+        client2.auth_challenge = Some(r#"Digest realm="R", nonce="n""#.to_string());
+        assert!(
+            client2
+                .preemptive_authorization(RtspMethod::Play, "rtsp://x/cam")
+                .unwrap()
+                .is_none()
+        );
+        h2.join().unwrap();
+    }
+
+    /// Finding-2 regression: reusing one cached nonce across requests must
+    /// emit a strictly increasing `nc` for `qop=auth`, and caching a *new*
+    /// challenge (new nonce) restarts the count at 1 while re-caching the same
+    /// challenge keeps counting.
+    #[test]
+    fn qop_auth_nonce_count_increments_and_resets_on_new_challenge() {
+        let (port, h) = accept_and_hold();
+        let mut client =
+            RtspClient::connect(&format!("rtsp://user:pass@127.0.0.1:{port}/cam")).unwrap();
+
+        client.cache_auth_challenge(r#"Digest realm="R", nonce="n1", qop="auth""#.to_string());
+        let www1 = client.auth_challenge.clone().unwrap();
+        let a1 = client
+            .authorization_from_challenge(RtspMethod::Describe, "rtsp://x/cam", &www1)
+            .unwrap();
+        let a2 = client
+            .authorization_from_challenge(RtspMethod::Setup, "rtsp://x/cam/trackID=0", &www1)
+            .unwrap();
+        let a3 = client
+            .authorization_from_challenge(RtspMethod::Play, "rtsp://x/cam", &www1)
+            .unwrap();
+        assert!(
+            a1.contains("qop=auth") && a1.contains("nc=00000001"),
+            "{a1}"
+        );
+        assert!(a2.contains("nc=00000002"), "{a2}");
+        assert!(a3.contains("nc=00000003"), "{a3}");
+
+        // A different challenge (new nonce) restarts nc at 1.
+        client.cache_auth_challenge(r#"Digest realm="R", nonce="n2", qop="auth""#.to_string());
+        let www2 = client.auth_challenge.clone().unwrap();
+        let a4 = client
+            .authorization_from_challenge(RtspMethod::Setup, "rtsp://x/cam", &www2)
+            .unwrap();
+        assert!(
+            a4.contains("nc=00000001"),
+            "new nonce restarts nc; got {a4}"
+        );
+
+        // Re-caching the SAME challenge does NOT reset the count.
+        client.cache_auth_challenge(r#"Digest realm="R", nonce="n2", qop="auth""#.to_string());
+        let a5 = client
+            .authorization_from_challenge(RtspMethod::Play, "rtsp://x/cam", &www2)
+            .unwrap();
+        assert!(
+            a5.contains("nc=00000002"),
+            "same nonce keeps counting; got {a5}"
         );
         h.join().unwrap();
     }

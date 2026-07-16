@@ -118,11 +118,11 @@ impl RtspClient {
         };
         let local_port = local_udp.as_ref().map(|(_, _, p)| *p).unwrap_or(0);
         let transport_hdr = build_transport_request(pref, local_port)?;
-        let req = self
-            .base_request(RtspMethod::Setup, uri.to_string())
-            .header("transport", transport_hdr);
-        let bytes = req.encode_checked()?;
-        let resp = self.send_and_read(&bytes)?;
+        // SETUP authenticates via the shared path (pre-emptive + reactive),
+        // hashing the digest against the control URI. gortsplib/MediaMTX
+        // require auth on SETUP even after an authenticated DESCRIBE.
+        let resp =
+            self.send_authenticated(RtspMethod::Setup, uri, &[("transport", transport_hdr)])?;
         self.expect_ok(&resp)?;
         // Server-rewritten Transport: tells us what was actually negotiated.
         let server_transport = resp

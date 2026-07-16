@@ -35,6 +35,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trust anchor, HTTPS playlist fetch, and a hardened RIST encryption probe
   (`ENCRYPTION_DISABLED` is now a test failure, not a skip).
 
+### Added — JVM gains TLS parity in `tstrans-jvm`
+
+- JVM: TLS ships in `tstrans-jvm` — `rtsps://` client (custom-CA trust
+  anchors via `RtspClientConfig.tlsRootCertsPem`, functional for the first
+  time) and `rtsps://` server. **Breaking:** `RtspServerConfig.tlsCertPem`/
+  `tlsKeyPem` (never-functional `byte[]` fields) are replaced by
+  path-based `tlsCert`/`tlsKey` (PEM file paths, both-or-neither), the
+  same swap the Python binding made in 0.3.x. Bad cert/key paths throw
+  kind `TLS` from `RtspServer.start`.
+
 ### Fixed
 
 - RTSP client: credentials are now attached to **every** RTSP method, not just

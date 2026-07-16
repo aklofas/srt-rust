@@ -178,3 +178,33 @@ fn start_surfaces_garbage_pem() {
         .expect_err("start() must fail on garbage PEM content");
     assert!(matches!(err, RtspServerError::Tls(_)), "got {err:?}");
 }
+
+/// TLS paths configured on a plaintext `rtsp://` bind must fail `start()`
+/// with `Tls` — silently ignoring the certs (the pre-fix behavior) left an
+/// accidentally-PLAINTEXT server running. The cert files here are VALID and
+/// readable: the scheme, not the paths, must be the failure cause.
+#[test]
+fn start_rejects_tls_paths_on_plaintext_bind() {
+    let certs = SelfSignedCert::generate();
+    let mut b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+    b.tls_cert(certs.cert_path.clone(), certs.key_path.clone());
+    let server = b.build().unwrap();
+
+    let err = server
+        .start()
+        .expect_err("plaintext bind with TLS paths must fail start()");
+    assert!(
+        matches!(err, tst_rtp::RtspServerError::Tls(_)),
+        "expected Tls, got {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("rtsps"), "error must point at the scheme fix: {msg}");
+
+    // `started` must have been un-latched: a second start() reports the
+    // same misconfig, not AlreadyStarted (which would mean a wedged object).
+    let again = server.start().expect_err("still misconfigured");
+    assert!(
+        matches!(again, tst_rtp::RtspServerError::Tls(_)),
+        "started was not un-latched, got {again:?}"
+    );
+}

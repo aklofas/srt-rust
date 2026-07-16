@@ -374,3 +374,24 @@ def test_rtsps_client_untrusted_cert_fails_closed() -> None:
         # The feature-off build had a distinct static message; a live
         # verification failure must be anything but that.
         assert "requires the 'tls' cargo feature" not in str(exc_info.value)
+
+
+def test_rtsp_server_start_rejects_tls_paths_on_plaintext_bind() -> None:
+    """TLS cert/key configured on a plaintext rtsp:// bind must fail
+    start() instead of silently coming up unencrypted with the certs
+    ignored (the pre-fix behavior). The fixture files are VALID and
+    readable — the scheme, not the paths, is the failure cause (Python's
+    own guard checks readability, never the scheme; the refusal comes
+    from the Rust layer)."""
+    import pathlib
+
+    from tstrans.exceptions import RtspError
+
+    d = pathlib.Path(__file__).parent / "fixtures" / "tls"
+    server_cfg = RtspServerConfig(
+        bind_addr="rtsp://127.0.0.1:0",
+        tls_cert=str(d / "cert.pem"),
+        tls_key=str(d / "key.pem"),
+    )
+    with pytest.raises(RtspError, match="rtsps"):
+        RtspServer.start(server_cfg)

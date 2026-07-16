@@ -12,7 +12,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed — RTSP server refuses TLS config on a plaintext bind
 
 - `RtspServer::start()` now fails with `RtspServerError::Tls` when
-  `tls_cert()` / `tls_key()` are configured but the bind URL scheme is
+  TLS cert/key paths are configured (`tls_cert()` in Rust; `tls_cert` / `tls_key` in Python)
+  but the bind URL scheme is
   plaintext `rtsp://` (previously the TLS material was silently ignored and
   the server came up unencrypted). Python inherits the guard through
   `RtspServerConfig.tls_cert` / `tls_key`; the JVM keeps its earlier

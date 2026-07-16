@@ -199,7 +199,7 @@ impl RtspClient {
     /// Each attempt is a fresh request (new CSeq). Unauthenticated servers are
     /// unaffected — pre-emptive auth is a no-op until a challenge is seen.
     ///
-    /// This is the single auth-aware send path shared by DESCRIBE / SETUP /
+    /// This is the single auth-aware send path shared by OPTIONS / DESCRIBE / SETUP /
     /// PLAY / PAUSE, so every method authenticates uniformly (gortsplib /
     /// MediaMTX challenge them all, not just DESCRIBE).
     pub(crate) fn send_authenticated(

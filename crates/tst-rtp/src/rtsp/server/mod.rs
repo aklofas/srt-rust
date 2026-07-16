@@ -478,7 +478,9 @@ impl RtspServer {
     /// - [`RtspServerError::AlreadyStarted`] if called twice.
     /// - [`RtspServerError::Shutdown`] if called after `stop()`.
     /// - [`RtspServerError::Tls`] on a missing/malformed cert or key path
-    ///   for an `rtsps://` bind, or if the `tls` feature isn't enabled.
+    ///   for an `rtsps://` bind, if the `tls` feature isn't enabled, or if
+    ///   TLS paths are configured on a plaintext `rtsp://` bind (refusing
+    ///   to start an accidentally-unencrypted server).
     /// - [`RtspServerError::BindAddrInUse`] / [`RtspServerError::Io`] on
     ///   listener bind failure.
     pub fn start(&self) -> Result<(), RtspServerError> {
@@ -492,6 +494,29 @@ impl RtspServer {
         // listener task exists: a bad cert/key path must fail start()
         // itself. The loaded config rides ServerState for the listener.
         let is_tls = matches!(self.state.builder.bind_url.scheme(), RtspScheme::Rtsps);
+        // TLS material on a non-rtsps bind: refuse to start. The old
+        // behavior silently ignored tls_cert()/tls_key() and came up
+        // PLAINTEXT — the caller believed TLS was armed. Cross-surface
+        // guard: the C ABI and Python feed this same builder, so erroring
+        // here closes all of them at once (the JVM additionally fails
+        // fast at build()). The fields only exist under the `tls`
+        // feature, so no cfg(not(tls)) twin is needed.
+        #[cfg(feature = "tls")]
+        if !is_tls
+            && (self.state.builder.tls_cert_path.is_some()
+                || self.state.builder.tls_key_path.is_some())
+        {
+            // Nothing was spawned — un-latch `started` so the caller
+            // isn't left holding a wedged object (same contract as the
+            // TLS-load failure path below).
+            self.state.started.store(false, Ordering::Release);
+            return Err(RtspServerError::Tls(
+                "tls_cert()/tls_key() are configured but the bind URL scheme is \
+                 plaintext rtsp:// — bind an rtsps:// URL or drop the TLS config \
+                 (refusing to start an accidentally-unencrypted server)"
+                    .into(),
+            ));
+        }
         #[cfg(feature = "tls")]
         if is_tls {
             let loaded = (|| {

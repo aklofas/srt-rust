@@ -521,6 +521,10 @@ impl RtspServerBuilder {
     /// [`RtspServer::start`](crate::rtsp::server::RtspServer::start) time;
     /// missing or malformed files surface as [`RtspServerError::Tls`]
     /// from `start()` (never a silently-dead listener).
+    ///
+    /// A plaintext `rtsp://` bind with TLS paths configured is likewise
+    /// refused by `start()`: configured-but-ignored TLS material would
+    /// silently serve unencrypted.
     #[cfg(feature = "tls")]
     pub fn tls_cert(&mut self, cert_chain_pem: PathBuf, key_pem: PathBuf) -> &mut Self {
         self.tls_cert_path = Some(cert_chain_pem);

@@ -39,15 +39,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Mirrored in full through the Python and JVM bindings (51 fields ×
   both bindings), including the 3 coded enums.
 
-### Fixed — Python/JVM `unknown` no longer double-lists newly-typed tags
+### Fixed — Python/JVM `unknown` predicate was stale against the newly-typed tags
 
 - The Python and JVM bindings' internal `is_st0601_typed_tag` predicate
-  (keeps a decoded record's `unknown` list from duplicating tags that
-  already have a typed field) was stale: Python was missing tags 3 and
-  4 (Mission ID, Platform Tail Number), and JVM was additionally missing
-  tag 94 (MIIS Core Identifier). A decoded record carrying any of those
-  tags listed them in both the typed field *and* `unknown`. Fixed as
-  part of widening the predicate for the 51 newly-typed tags above.
+  gates the *encode* direction only: it drops a caller-supplied
+  `unknown` entry before it reaches tst-core's encoder whenever the
+  predicate considers the entry's tag typed (typed field wins). The
+  predicate was stale relative to the 51 newly-typed tags above: Python
+  was missing tags 3 and 4 (Mission ID, Platform Tail Number), and JVM
+  was additionally missing tag 94 (MIIS Core Identifier). A
+  caller-supplied `unknown` entry for one of those tags was *not*
+  dropped by the filter, so it reached tst-core's encoder and was
+  rejected with `KlvEncodeError::ReservedTagInUnknown` instead of being
+  silently discarded per the documented "typed wins" collision policy.
+  Fixed as part of widening the predicate for the 51 newly-typed tags
+  above.
+- **Behavior change:** the old predicate's over-broad `5..=91` span
+  also covered tags 66 and 81, which remain untyped. A caller-supplied
+  `unknown` entry at tag 66 or 81 was therefore silently dropped by the
+  old filter before ever reaching the encoder. The corrected, exact
+  predicate no longer covers 66/81, so `unknown` entries at those tags
+  now encode onto the wire like any other forward-compat tag, instead
+  of silently vanishing.
 
 ### Changed — nested local-set tags decode into named fields, not `unknown`
 

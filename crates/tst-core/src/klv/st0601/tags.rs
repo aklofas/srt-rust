@@ -490,7 +490,7 @@ pub(crate) const TAGS: &[TagSpec] = &[
     },
     TagSpec {
         id: 45,
-        name: "Target Error CE90",
+        name: "Target Error Estimate - CE90",
         encoding: Encoding::U16Range,
         range: Some(LinearRange {
             signed: false,
@@ -501,7 +501,7 @@ pub(crate) const TAGS: &[TagSpec] = &[
     },
     TagSpec {
         id: 46,
-        name: "Target Error LE90",
+        name: "Target Error Estimate - LE90",
         encoding: Encoding::U16Range,
         range: Some(LinearRange {
             signed: false,
@@ -731,7 +731,7 @@ pub(crate) const TAGS: &[TagSpec] = &[
     },
     TagSpec {
         id: 72,
-        name: "Event Start Time - UTC",
+        name: "Event Start Time",
         encoding: Encoding::U64,
         range: None,
     },

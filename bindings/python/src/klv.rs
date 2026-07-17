@@ -278,7 +278,7 @@ fn is_st0102_typed_tag(tag: u32) -> bool {
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
 /// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
-/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 3, 4, 66, 81, 96,
+/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 66, 81, 96,
 /// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
 /// legitimately appear in `unknown`. WP-A (Tables A1-A4) extended the
 /// range past 91 — keep this in sync with `tags::TAGS` when new tags are

@@ -55,13 +55,16 @@ const BUILDER_SIG_LIST: &str = "(Ljava/util/List;)Lorg/tstrans/klv/UasDatalinkLs
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
 /// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
-/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 3, 4, 66, 81, 96,
+/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 66, 81, 96,
 /// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
 /// legitimately appear in `unknown`. Corrected from the stale
-/// `1 | 2 | 65 | 5..=91` (which predates WP-A and silently rejected newly-typed
-/// tags outside that range instead of dropping them per the documented
-/// "typed wins" collision policy) — mirrors tst-py's `is_st0601_typed_tag`
-/// fix. Keep this in sync with `tags::TAGS` when new tags are typed.
+/// `1 | 2 | 65 | 5..=91` (which predates WP-A) — keep this in sync with
+/// `tags::TAGS` when new tags are typed, or a caller-supplied `unknown`
+/// entry for a newly-typed tag will slip past this filter and get
+/// rejected downstream by the real Rust encoder's own (stricter,
+/// canonical) check instead of being silently dropped here per the
+/// documented "typed wins" collision policy — mirrors tst-py's
+/// `is_st0601_typed_tag` fix.
 fn is_st0601_typed_tag(tag: u32) -> bool {
     matches!(tag, 1..=65 | 67..=80 | 82..=95 | 97..=101 | 106..=108 | 129 | 135)
 }

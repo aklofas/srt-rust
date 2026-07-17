@@ -32,7 +32,7 @@ network = { max-threads = 1 }
 # Windows CI runners are the slowest and most load-variable platform for the
 # loopback/network tests (known flake class: RTSP burst census + loopback
 # connects overrunning the per-test kill under runner load — see the
-# deferred-features CI-flake history). Double the network group's budget
+# git history of docs/project/deferred-features.md). Double the network group's budget
 # there. Sets ONLY slow-timeout: test-group still resolves from the generic
 # network override below — KEEP THIS FILTER IN SYNC WITH IT.
 platform = 'cfg(windows)'

@@ -34,6 +34,8 @@ need qemu-system-arm   qemu-system-arm
 # GitHub ::warning:: annotation) so flake frequency stays visible in CI; a
 # deterministic regression fails both attempts and stays hard-red. Builds run
 # OUTSIDE the retry — a build failure is never a flake.
+# If retry proves insufficient, next escalations: QEMU -icount deterministic
+# virtual time, or a budget scaled from a host-speed probe.
 # ---------------------------------------------------------------------------
 
 # Run firmware.elf once under QEMU with a wall-clock budget. Sets out/rc/t0/t1

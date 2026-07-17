@@ -148,7 +148,7 @@ fn unauth_connection_burst_never_exceeds_max_sessions() {
             let mut buf = [0u8; 64];
             match s.read(&mut buf) {
                 Ok(0) => refused += 1, // clean EOF — server dropped it.
-                Ok(_) => {}            // response bytes — accepted; leave the pool.
+                Ok(_) => {}            // response bytes — accepted; drop it from the census pool.
                 Err(e)
                     if matches!(
                         e.kind(),

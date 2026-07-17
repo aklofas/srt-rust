@@ -522,4 +522,313 @@ class St0601Test {
         assertThrows(KlvEncodeException.class,
                 () -> Klv.encodeUasDatalink(rec, OutOfRangePolicy.ERROR));
     }
+
+    // -----------------------------------------------------------------------
+    // WP-A: new field round-trip tests (mirrors tst-py's WP-A test suite;
+    // same fixture values as test_klv_encode_st0601.py's _F64_FIELDS /
+    // _RAW_FIELDS / enum cases).
+    // -----------------------------------------------------------------------
+
+    private static final String BARE_UL_HEX = "060e2b34020b01010e01030101000000";
+
+    private static java.nio.ByteBuffer bareUl() {
+        return java.nio.ByteBuffer.wrap(HexFormat.of().parseHex(BARE_UL_HEX));
+    }
+
+    private static byte[] bufToArray(java.nio.ByteBuffer buf) {
+        byte[] out = new byte[buf.remaining()];
+        buf.duplicate().get(out);
+        return out;
+    }
+
+    @Test
+    void wpaNewFieldsDefaultToNull() {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder().universalLabel(bareUl()).build();
+        assertNull(rec.targetLocationLatDeg());
+        assertNull(rec.targetErrorCe90M());
+        assertNull(rec.windDirectionDeg());
+        assertNull(rec.relativeHumidityPct());
+        assertNull(rec.platformVerticalSpeed());
+        assertNull(rec.platformSideslipFullDeg());
+        assertNull(rec.alternatePlatformLatDeg());
+        assertNull(rec.sensorNorthVelocity());
+        assertNull(rec.outsideAirTempC());
+        assertNull(rec.weaponLoad());
+        assertNull(rec.eventStartTimeUs());
+        assertNull(rec.alternatePlatformName());
+        assertNull(rec.communicationsMethod());
+        assertNull(rec.rvt());
+        assertNull(rec.sarMiLocalSet());
+        assertNull(rec.amendLocalSet());
+        assertNull(rec.icingDetectedCode());
+        assertNull(rec.icingDetected());
+        assertNull(rec.sensorFovNameCode());
+        assertNull(rec.sensorFovName());
+        assertNull(rec.operationalModeCode());
+        assertNull(rec.operationalMode());
+    }
+
+    /**
+     * Table A1: every ranged f64 field survives encode -&gt; decode within its
+     * fixed-point quantization step. Values and tolerances are pinned from
+     * tst-py's {@code _F64_FIELDS} (same underlying Rust encoder/decoder).
+     */
+    @Test
+    void wpaTableA1RangedFieldsRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .windDirectionDeg(235.924010)
+                .windSpeed(69.8039216)
+                .staticPressureMbar(3725.18502)
+                .densityAltitudeM(14818.6770)
+                .targetLocationLatDeg(-79.163850051892850)
+                .targetLocationLonDeg(166.40081296041646)
+                .targetLocationElevM(18389.0471)
+                .targetTrackGateWidthPx(6.0)
+                .targetTrackGateHeightPx(30.0)
+                .targetErrorCe90M(425.215152)
+                .targetErrorLe90M(608.9231)
+                .differentialPressureMbar(1191.95850)
+                .platformVerticalSpeed(-61.8878750)
+                .platformSideslipDeg(-5.08255257)
+                .airfieldBarometricPressureMbar(2088.96010)
+                .airfieldElevationM(8306.80552)
+                .relativeHumidityPct(50.5882353)
+                .platformGroundSpeed(140.0)
+                .groundRangeM(3506979.0316063400)
+                .platformFuelRemainingKg(6420.53864)
+                .platformMagneticHeadingDeg(311.868162)
+                .alternatePlatformLatDeg(-86.041207348947040)
+                .alternatePlatformLonDeg(0.15552755452484243)
+                .alternatePlatformAltM(9.44533455)
+                .alternatePlatformHeadingDeg(32.6024262)
+                .alternatePlatformEllipsoidHeightM(9.44533455)
+                .sensorNorthVelocity(25.4977569)
+                .sensorEastVelocity(12.1)
+                .platformAngleOfAttackFullDeg(-8.6701769841230370)
+                .platformSideslipFullDeg(-47.683)
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertEquals(235.924010, decoded.windDirectionDeg(), 0.01);
+        assertEquals(69.8039216, decoded.windSpeed(), 0.6);
+        assertEquals(3725.18502, decoded.staticPressureMbar(), 0.12);
+        assertEquals(14818.6770, decoded.densityAltitudeM(), 0.46);
+        assertEquals(-79.163850051892850, decoded.targetLocationLatDeg(), 1e-6);
+        assertEquals(166.40081296041646, decoded.targetLocationLonDeg(), 1e-6);
+        assertEquals(18389.0471, decoded.targetLocationElevM(), 0.46);
+        assertEquals(6.0, decoded.targetTrackGateWidthPx(), 3.0);
+        assertEquals(30.0, decoded.targetTrackGateHeightPx(), 3.0);
+        assertEquals(425.215152, decoded.targetErrorCe90M(), 0.1);
+        assertEquals(608.9231, decoded.targetErrorLe90M(), 0.1);
+        assertEquals(1191.95850, decoded.differentialPressureMbar(), 0.12);
+        assertEquals(-61.8878750, decoded.platformVerticalSpeed(), 0.01);
+        assertEquals(-5.08255257, decoded.platformSideslipDeg(), 0.001);
+        assertEquals(2088.96010, decoded.airfieldBarometricPressureMbar(), 0.12);
+        assertEquals(8306.80552, decoded.airfieldElevationM(), 0.46);
+        assertEquals(50.5882353, decoded.relativeHumidityPct(), 0.6);
+        assertEquals(140.0, decoded.platformGroundSpeed(), 1.5);
+        assertEquals(3506979.0316063400, decoded.groundRangeM(), 0.01);
+        assertEquals(6420.53864, decoded.platformFuelRemainingKg(), 0.23);
+        assertEquals(311.868162, decoded.platformMagneticHeadingDeg(), 0.01);
+        assertEquals(-86.041207348947040, decoded.alternatePlatformLatDeg(), 1e-6);
+        assertEquals(0.15552755452484243, decoded.alternatePlatformLonDeg(), 1e-6);
+        assertEquals(9.44533455, decoded.alternatePlatformAltM(), 0.46);
+        assertEquals(32.6024262, decoded.alternatePlatformHeadingDeg(), 0.01);
+        assertEquals(9.44533455, decoded.alternatePlatformEllipsoidHeightM(), 0.46);
+        assertEquals(25.4977569, decoded.sensorNorthVelocity(), 0.02);
+        assertEquals(12.1, decoded.sensorEastVelocity(), 0.02);
+        assertEquals(-8.6701769841230370, decoded.platformAngleOfAttackFullDeg(), 1e-6);
+        assertEquals(-47.683, decoded.platformSideslipFullDeg(), 1e-6);
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /**
+     * Table A2: raw int/string fields are not fixed-point quantized — they
+     * round-trip byte-exact. Values pinned from tst-py's {@code _RAW_FIELDS}.
+     */
+    @Test
+    void wpaTableA2RawFieldsRoundTripExact() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .outsideAirTempC(84)
+                .weaponLoad(45016)
+                .weaponFired(186)
+                .laserPrfCode(1743)
+                .alternatePlatformName("APACHE")
+                .eventStartTimeUs(798039894000000L)
+                .streamDesignator("BLUE")
+                .operationalBase("BASE01")
+                .broadcastSource("HOME")
+                .targetId("A123")
+                .communicationsMethod("Frequency Modulation")
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertEquals(84, decoded.outsideAirTempC());
+        assertEquals(45016, decoded.weaponLoad());
+        assertEquals(186, decoded.weaponFired());
+        assertEquals(1743, decoded.laserPrfCode());
+        assertEquals("APACHE", decoded.alternatePlatformName());
+        assertEquals(798039894000000L, decoded.eventStartTimeUs());
+        assertEquals("BLUE", decoded.streamDesignator());
+        assertEquals("BASE01", decoded.operationalBase());
+        assertEquals("HOME", decoded.broadcastSource());
+        assertEquals("A123", decoded.targetId());
+        assertEquals("Frequency Modulation", decoded.communicationsMethod());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Table A4: named nested-set raw byte fields round-trip byte-exact. */
+    @Test
+    void wpaTableA4BytesFieldsRoundTripExact() throws KlvDecodeException, KlvEncodeException {
+        byte[] rvtBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 1};
+        byte[] sarMiBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 2};
+        byte[] rangeImageBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 3};
+        byte[] geoRegBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 4};
+        byte[] compositeBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 5};
+        byte[] segmentBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 6};
+        byte[] amendBytes = {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF, 7};
+
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .rvt(java.nio.ByteBuffer.wrap(rvtBytes))
+                .sarMiLocalSet(java.nio.ByteBuffer.wrap(sarMiBytes))
+                .rangeImageLocalSet(java.nio.ByteBuffer.wrap(rangeImageBytes))
+                .geoRegistrationLocalSet(java.nio.ByteBuffer.wrap(geoRegBytes))
+                .compositeImagingLocalSet(java.nio.ByteBuffer.wrap(compositeBytes))
+                .segmentLocalSet(java.nio.ByteBuffer.wrap(segmentBytes))
+                .amendLocalSet(java.nio.ByteBuffer.wrap(amendBytes))
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertArrayEquals(rvtBytes, bufToArray(decoded.rvt()));
+        assertArrayEquals(sarMiBytes, bufToArray(decoded.sarMiLocalSet()));
+        assertArrayEquals(rangeImageBytes, bufToArray(decoded.rangeImageLocalSet()));
+        assertArrayEquals(geoRegBytes, bufToArray(decoded.geoRegistrationLocalSet()));
+        assertArrayEquals(compositeBytes, bufToArray(decoded.compositeImagingLocalSet()));
+        assertArrayEquals(segmentBytes, bufToArray(decoded.segmentLocalSet()));
+        assertArrayEquals(amendBytes, bufToArray(decoded.amendLocalSet()));
+    }
+
+    /**
+     * Regression test for the new {@code checked_i8} JNI helper: an
+     * {@code outsideAirTempC} value outside the i8 range (-128..=127) must
+     * throw, not silently truncate.
+     */
+    @Test
+    void outsideAirTempCOutOfRangeThrowsIllegalArgument() {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .outsideAirTempC(200) // out of i8 range
+                .build();
+        assertThrows(IllegalArgumentException.class, () -> Klv.encodeUasDatalink(rec));
+    }
+
+    // -----------------------------------------------------------------------
+    // WP-A Table A3: coded enums — known codepoint + wire-unknown round-trip.
+    // Enum access goes through the raw-code accessor + <Enum>.fromCode, per
+    // the SecurityClassification precedent.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void icingDetectedKnownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .icingDetectedCode(IcingDetected.ICING_DETECTED.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(2, decoded.icingDetectedCode());
+        assertEquals(IcingDetected.ICING_DETECTED, IcingDetected.fromCode(decoded.icingDetectedCode()));
+        assertEquals(IcingDetected.ICING_DETECTED, decoded.icingDetected());
+    }
+
+    @Test
+    void icingDetectedUnknownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        // A wire-unknown codepoint (not 0/1/2) surfaces as a raw int, not a
+        // named enum constant — mirrors the SecurityClassification asymmetry.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .icingDetectedCode(200)
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(200, decoded.icingDetectedCode());
+        assertNull(IcingDetected.fromCode(decoded.icingDetectedCode()), "200 is not a named IcingDetected code");
+        assertNull(decoded.icingDetected(), "wire-unknown code must surface as null via the typed accessor");
+    }
+
+    @Test
+    void sensorFovNameKnownRoundTripIncludingContinuousZoom() throws KlvDecodeException, KlvEncodeException {
+        // ContinuousZoom (8) is the spec-discrepancy Table-4 codepoint beyond
+        // the item's own [0, 7] definition-table cap.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorFovNameCode(SensorFovName.CONTINUOUS_ZOOM.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(8, decoded.sensorFovNameCode());
+        assertEquals(SensorFovName.CONTINUOUS_ZOOM, SensorFovName.fromCode(decoded.sensorFovNameCode()));
+        assertEquals(SensorFovName.CONTINUOUS_ZOOM, decoded.sensorFovName());
+    }
+
+    @Test
+    void sensorFovNameUnknownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorFovNameCode(250)
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(250, decoded.sensorFovNameCode());
+        assertNull(SensorFovName.fromCode(decoded.sensorFovNameCode()));
+        assertNull(decoded.sensorFovName());
+    }
+
+    @Test
+    void operationalModeOtherModeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        // Spec code 0 ("Other" in Table 5) must round-trip as the named
+        // OTHER_MODE constant, NOT as a raw-only value — it's a known
+        // codepoint, distinct from a wire-unknown code.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .operationalModeCode(OperationalMode.OTHER_MODE.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(0, decoded.operationalModeCode());
+        assertEquals(OperationalMode.OTHER_MODE, decoded.operationalMode());
+    }
+
+    @Test
+    void operationalModeKnownRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .operationalModeCode(OperationalMode.TRAINING.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(OperationalMode.TRAINING, decoded.operationalMode());
+    }
+
+    @Test
+    void operationalModeUnknownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .operationalModeCode(99)
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(99, decoded.operationalModeCode());
+        assertNull(OperationalMode.fromCode(decoded.operationalModeCode()));
+        assertNull(decoded.operationalMode());
+    }
 }

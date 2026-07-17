@@ -15,27 +15,29 @@
 //! `nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]` — same read path,
 //! calls `encode_strict_compliance` instead.
 //!
-//! ### JNI local-ref capacity (CRITICAL for 80-field set)
+//! ### JNI local-ref capacity (CRITICAL for 107-field set)
 //!
-//! `build_uas_datalink` calls `env.ensure_local_capacity(128)` at the top.
-//! With ~50 String fields + ~30 Double/Long/ByteBuffer fields + builder + lists +
-//! JNI scratch, 128 slots safely covers the worst-case fully-populated record.
+//! `build_uas_datalink` calls `env.ensure_local_capacity(192)` at the top.
+//! With 12 String fields + ~90 Double/Long/Integer/ByteBuffer fields (WP-A's 51
+//! new fields pushed the total from 56 to 107) + builder + lists + JNI scratch,
+//! 192 slots safely covers the worst-case fully-populated record.
 //! Skipping this call WILL crash the JVM for records with many populated fields.
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jint, jobject};
 use tst_core::klv::st0601::{
-    EncodeConfig, OutOfRangePolicy, UasDatalinkLs, decode as decode_lenient, decode_strict,
-    decode_strict_compliance, encode_strict_compliance, encode_to_vec_with,
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName, UasDatalinkLs,
+    decode as decode_lenient, decode_strict, decode_strict_compliance, encode_strict_compliance,
+    encode_to_vec_with,
 };
 use tst_core::klv::universal_label::UniversalLabel;
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_long_list, build_unknown_list, checked_u8, read_byte_buffer,
-    read_nullable_byte_buffer, read_nullable_double, read_nullable_int, read_nullable_long,
-    read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
+    build_field_errors, build_long_list, build_unknown_list, checked_u8, checked_u16,
+    read_byte_buffer, read_nullable_byte_buffer, read_nullable_double, read_nullable_int,
+    read_nullable_long, read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
 
 // -----------------------------------------------------------------------
@@ -50,10 +52,128 @@ const BUILDER_SIG_STR: &str = "(Ljava/lang/String;)Lorg/tstrans/klv/UasDatalinkL
 const BUILDER_SIG_BUF: &str = "(Ljava/nio/ByteBuffer;)Lorg/tstrans/klv/UasDatalinkLs$Builder;";
 const BUILDER_SIG_LIST: &str = "(Ljava/util/List;)Lorg/tstrans/klv/UasDatalinkLs$Builder;";
 
-/// ST 0601 typed tags: 1, 2, 65, 5..=91.
-/// Mirrors tst-py's `is_st0601_typed_tag`.
+/// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
+/// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
+/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 3, 4, 66, 81, 96,
+/// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
+/// legitimately appear in `unknown`. Corrected from the stale
+/// `1 | 2 | 65 | 5..=91` (which predates WP-A and silently rejected newly-typed
+/// tags outside that range instead of dropping them per the documented
+/// "typed wins" collision policy) — mirrors tst-py's `is_st0601_typed_tag`
+/// fix. Keep this in sync with `tags::TAGS` when new tags are typed.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(tag, 1 | 2 | 65 | 5..=91)
+    matches!(tag, 1..=65 | 67..=80 | 82..=95 | 97..=101 | 106..=108 | 129 | 135)
+}
+
+// ---------------------------------------------------------------------------
+// ST 0601 — Tags 34/63/77 coded enums (WP-A Table A3)
+// ---------------------------------------------------------------------------
+//
+// `IcingDetected::to_wire`/`from_wire` (and the SensorFovName /
+// OperationalMode equivalents) are `pub(crate)`-scoped to tst-core, so the
+// tiny wire-code tables are duplicated locally here — same rationale as the
+// `is_st0601_typed_tag` predicate above (narrow inventories kept local rather
+// than threading internal Rust APIs out of tst-core). Mirrors tst-py's
+// `convert_icing_detected`/`icing_detected_from_wire` (and the SensorFovName /
+// OperationalMode equivalents), adapted to the JNI raw-codepoint-`Integer`
+// crossing (no Python-enum-instance step).
+
+/// Extract the ST 0601.19 §8.34 wire codepoint from an `IcingDetected`.
+fn icing_detected_to_code(v: IcingDetected) -> u8 {
+    match v {
+        IcingDetected::DetectorOff => 0,
+        IcingDetected::NoIcingDetected => 1,
+        IcingDetected::IcingDetected => 2,
+        IcingDetected::Other(b) => b,
+        // `#[non_exhaustive]` in tst-core forces this wildcard even though
+        // every current variant is matched above; unreachable in practice.
+        _ => unreachable!("tst-core added an IcingDetected variant not yet mirrored in tst-jni"),
+    }
+}
+
+/// Inverse of [`icing_detected_to_code`].
+fn icing_detected_from_code(b: u8) -> IcingDetected {
+    match b {
+        0 => IcingDetected::DetectorOff,
+        1 => IcingDetected::NoIcingDetected,
+        2 => IcingDetected::IcingDetected,
+        other => IcingDetected::Other(other),
+    }
+}
+
+/// Extract the ST 0601.19 §8.63 wire codepoint from a `SensorFovName`.
+fn sensor_fov_name_to_code(v: SensorFovName) -> u8 {
+    match v {
+        SensorFovName::Ultranarrow => 0,
+        SensorFovName::Narrow => 1,
+        SensorFovName::Medium => 2,
+        SensorFovName::Wide => 3,
+        SensorFovName::Ultrawide => 4,
+        SensorFovName::NarrowMedium => 5,
+        SensorFovName::TwoXUltranarrow => 6,
+        SensorFovName::FourXUltranarrow => 7,
+        SensorFovName::ContinuousZoom => 8,
+        SensorFovName::Other(b) => b,
+        _ => unreachable!("tst-core added a SensorFovName variant not yet mirrored in tst-jni"),
+    }
+}
+
+/// Inverse of [`sensor_fov_name_to_code`].
+fn sensor_fov_name_from_code(b: u8) -> SensorFovName {
+    match b {
+        0 => SensorFovName::Ultranarrow,
+        1 => SensorFovName::Narrow,
+        2 => SensorFovName::Medium,
+        3 => SensorFovName::Wide,
+        4 => SensorFovName::Ultrawide,
+        5 => SensorFovName::NarrowMedium,
+        6 => SensorFovName::TwoXUltranarrow,
+        7 => SensorFovName::FourXUltranarrow,
+        8 => SensorFovName::ContinuousZoom,
+        other => SensorFovName::Other(other),
+    }
+}
+
+/// Extract the ST 0601.19 §8.77 wire codepoint from an `OperationalMode`.
+fn operational_mode_to_code(v: OperationalMode) -> u8 {
+    match v {
+        OperationalMode::OtherMode => 0,
+        OperationalMode::Operational => 1,
+        OperationalMode::Training => 2,
+        OperationalMode::Exercise => 3,
+        OperationalMode::Maintenance => 4,
+        OperationalMode::Test => 5,
+        OperationalMode::Other(b) => b,
+        _ => unreachable!("tst-core added an OperationalMode variant not yet mirrored in tst-jni"),
+    }
+}
+
+/// Inverse of [`operational_mode_to_code`].
+fn operational_mode_from_code(b: u8) -> OperationalMode {
+    match b {
+        0 => OperationalMode::OtherMode,
+        1 => OperationalMode::Operational,
+        2 => OperationalMode::Training,
+        3 => OperationalMode::Exercise,
+        4 => OperationalMode::Maintenance,
+        5 => OperationalMode::Test,
+        other => OperationalMode::Other(other),
+    }
+}
+
+/// Range-check a Java `int` value against the i8 range, then narrow. Throws
+/// `IllegalArgumentException` and returns `Err(JavaException)` on overflow —
+/// local to this module (mirrors `jutil::checked_u8`'s idiom) since ST 0601 has
+/// exactly one i8-typed field (Tag 39, `outside_air_temp_c`).
+fn checked_i8(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<i8> {
+    if !(-128..=127).contains(&value) {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be -128..=127, got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as i8)
 }
 
 // -----------------------------------------------------------------------
@@ -231,14 +351,15 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalinkStrictComplian
 ///
 /// ### Local-ref capacity (MANDATORY)
 ///
-/// Calls `env.ensure_local_capacity(128)` at the top. With ~80 fields (50+ Strings,
-/// 30 boxed scalars, 2 ByteBuffers, builder + lists), the default ~16-slot JNI local
-/// table is completely inadequate. 128 slots is the minimum safe value for a fully
-/// populated ST 0601 record.
+/// Calls `env.ensure_local_capacity(192)` at the top. With 107 fields (12
+/// Strings, ~69 Doubles, ~10 ByteBuffers, ~9 Integers, 2 Longs, builder +
+/// lists), the default ~16-slot JNI local table is completely inadequate. 192
+/// slots is the minimum safe value for a fully populated ST 0601 record
+/// (bumped from 128 when WP-A added 51 fields).
 fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::Result<jobject> {
     // CRITICAL: must be called before any new_string / new_object below.
-    // 128 slots covers ~80 fields + builder + lists + JNI scratch.
-    env.ensure_local_capacity(128)?;
+    // 192 slots covers 107 fields + builder + lists + JNI scratch.
+    env.ensure_local_capacity(192)?;
 
     let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
 
@@ -603,6 +724,436 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         )?;
     }
 
+    // --- WP-A Table A1: ranged f64 fields (tags 35-93 subset) → double ---
+    if let Some(v) = r.target_location_lat_deg {
+        env.call_method(
+            &b,
+            "targetLocationLatDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_location_lon_deg {
+        env.call_method(
+            &b,
+            "targetLocationLonDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_location_elev_m {
+        env.call_method(
+            &b,
+            "targetLocationElevM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_track_gate_width_px {
+        env.call_method(
+            &b,
+            "targetTrackGateWidthPx",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_track_gate_height_px {
+        env.call_method(
+            &b,
+            "targetTrackGateHeightPx",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_error_ce90_m {
+        env.call_method(
+            &b,
+            "targetErrorCe90M",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.target_error_le90_m {
+        env.call_method(
+            &b,
+            "targetErrorLe90M",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.wind_direction_deg {
+        env.call_method(
+            &b,
+            "windDirectionDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.wind_speed {
+        env.call_method(&b, "windSpeed", BUILDER_SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = r.static_pressure_mbar {
+        env.call_method(
+            &b,
+            "staticPressureMbar",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.density_altitude_m {
+        env.call_method(
+            &b,
+            "densityAltitudeM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.differential_pressure_mbar {
+        env.call_method(
+            &b,
+            "differentialPressureMbar",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.airfield_barometric_pressure_mbar {
+        env.call_method(
+            &b,
+            "airfieldBarometricPressureMbar",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.airfield_elevation_m {
+        env.call_method(
+            &b,
+            "airfieldElevationM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.relative_humidity_pct {
+        env.call_method(
+            &b,
+            "relativeHumidityPct",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_vertical_speed {
+        env.call_method(
+            &b,
+            "platformVerticalSpeed",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_sideslip_deg {
+        env.call_method(
+            &b,
+            "platformSideslipDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_ground_speed {
+        env.call_method(
+            &b,
+            "platformGroundSpeed",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.ground_range_m {
+        env.call_method(&b, "groundRangeM", BUILDER_SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = r.platform_fuel_remaining_kg {
+        env.call_method(
+            &b,
+            "platformFuelRemainingKg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_magnetic_heading_deg {
+        env.call_method(
+            &b,
+            "platformMagneticHeadingDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_angle_of_attack_full_deg {
+        env.call_method(
+            &b,
+            "platformAngleOfAttackFullDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_sideslip_full_deg {
+        env.call_method(
+            &b,
+            "platformSideslipFullDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_lat_deg {
+        env.call_method(
+            &b,
+            "alternatePlatformLatDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_lon_deg {
+        env.call_method(
+            &b,
+            "alternatePlatformLonDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_alt_m {
+        env.call_method(
+            &b,
+            "alternatePlatformAltM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_heading_deg {
+        env.call_method(
+            &b,
+            "alternatePlatformHeadingDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_ellipsoid_height_m {
+        env.call_method(
+            &b,
+            "alternatePlatformEllipsoidHeightM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.sensor_north_velocity {
+        env.call_method(
+            &b,
+            "sensorNorthVelocity",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.sensor_east_velocity {
+        env.call_method(
+            &b,
+            "sensorEastVelocity",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+
+    // --- WP-A Table A4: named nested-set raw byte fields → heap ByteBuffer ---
+    // Tag 73 — rvt
+    if let Some(ref bs) = r.rvt {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(&b, "rvt", BUILDER_SIG_BUF, &[JValue::Object(&buf)])?;
+    }
+    // Tag 95 — sarMiLocalSet
+    if let Some(ref bs) = r.sar_mi_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "sarMiLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+    // Tag 97 — rangeImageLocalSet
+    if let Some(ref bs) = r.range_image_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "rangeImageLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+    // Tag 98 — geoRegistrationLocalSet
+    if let Some(ref bs) = r.geo_registration_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "geoRegistrationLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+    // Tag 99 — compositeImagingLocalSet
+    if let Some(ref bs) = r.composite_imaging_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "compositeImagingLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+    // Tag 100 — segmentLocalSet
+    if let Some(ref bs) = r.segment_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "segmentLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+    // Tag 101 — amendLocalSet
+    if let Some(ref bs) = r.amend_local_set {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "amendLocalSet",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+
+    // --- WP-A Table A2: raw/simple scalar + string fields ---
+    // Tag 39 — outsideAirTempC (Option<i8> → Integer; safe widening, no narrowing here)
+    if let Some(v) = r.outside_air_temp_c {
+        env.call_method(
+            &b,
+            "outsideAirTempC",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 60 — weaponLoad (Option<u16> → Integer)
+    if let Some(v) = r.weapon_load {
+        env.call_method(
+            &b,
+            "weaponLoad",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 61 — weaponFired (Option<u8> → Integer)
+    if let Some(v) = r.weapon_fired {
+        env.call_method(
+            &b,
+            "weaponFired",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 62 — laserPrfCode (Option<u16> → Integer)
+    if let Some(v) = r.laser_prf_code {
+        env.call_method(
+            &b,
+            "laserPrfCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 70 — alternatePlatformName (Option<String>)
+    if let Some(ref v) = r.alternate_platform_name {
+        let j = env.new_string(v)?;
+        env.call_method(
+            &b,
+            "alternatePlatformName",
+            BUILDER_SIG_STR,
+            &[JValue::Object(&j)],
+        )?;
+    }
+    // Tag 72 — eventStartTimeUs (Option<u64> → Long; mirrors timestampUs's `as i64` cast)
+    if let Some(v) = r.event_start_time_us {
+        env.call_method(
+            &b,
+            "eventStartTimeUs",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(v as i64)],
+        )?;
+    }
+    // Tag 106 — streamDesignator (Option<String>)
+    if let Some(ref v) = r.stream_designator {
+        let j = env.new_string(v)?;
+        env.call_method(
+            &b,
+            "streamDesignator",
+            BUILDER_SIG_STR,
+            &[JValue::Object(&j)],
+        )?;
+    }
+    // Tag 107 — operationalBase (Option<String>)
+    if let Some(ref v) = r.operational_base {
+        let j = env.new_string(v)?;
+        env.call_method(
+            &b,
+            "operationalBase",
+            BUILDER_SIG_STR,
+            &[JValue::Object(&j)],
+        )?;
+    }
+    // Tag 108 — broadcastSource (Option<String>)
+    if let Some(ref v) = r.broadcast_source {
+        let j = env.new_string(v)?;
+        env.call_method(
+            &b,
+            "broadcastSource",
+            BUILDER_SIG_STR,
+            &[JValue::Object(&j)],
+        )?;
+    }
+    // Tag 129 — targetId (Option<String>)
+    if let Some(ref v) = r.target_id {
+        let j = env.new_string(v)?;
+        env.call_method(&b, "targetId", BUILDER_SIG_STR, &[JValue::Object(&j)])?;
+    }
+    // Tag 135 — communicationsMethod (Option<String>)
+    if let Some(ref v) = r.communications_method {
+        let j = env.new_string(v)?;
+        env.call_method(
+            &b,
+            "communicationsMethod",
+            BUILDER_SIG_STR,
+            &[JValue::Object(&j)],
+        )?;
+    }
+
+    // --- WP-A Table A3: coded enums (tags 34/63/77) → raw-codepoint Integer ---
+    // Tag 34 — icingDetectedCode
+    if let Some(v) = r.icing_detected {
+        env.call_method(
+            &b,
+            "icingDetectedCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(icing_detected_to_code(v)))],
+        )?;
+    }
+    // Tag 63 — sensorFovNameCode
+    if let Some(v) = r.sensor_fov_name {
+        env.call_method(
+            &b,
+            "sensorFovNameCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(sensor_fov_name_to_code(v)))],
+        )?;
+    }
+    // Tag 77 — operationalModeCode
+    if let Some(v) = r.operational_mode {
+        env.call_method(
+            &b,
+            "operationalModeCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(operational_mode_to_code(v)))],
+        )?;
+    }
+
     // --- fieldErrors — always set (even if empty) ---
     let fe_list = build_field_errors(env, &r.field_errors)?;
     env.call_method(
@@ -837,6 +1388,150 @@ fn read_uas_datalink(
             let arr: jni::objects::JByteArray<'_> = arr_val.into();
             r.miis_core_id = Some(env.convert_byte_array(&arr)?);
         }
+    }
+
+    // --- WP-A Table A1: ranged f64 fields (tags 35-93 subset) ---
+    if let Some(v) = read_nullable_double(env, rec, "targetLocationLatDeg")? {
+        r.target_location_lat_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetLocationLonDeg")? {
+        r.target_location_lon_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetLocationElevM")? {
+        r.target_location_elev_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetTrackGateWidthPx")? {
+        r.target_track_gate_width_px = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetTrackGateHeightPx")? {
+        r.target_track_gate_height_px = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetErrorCe90M")? {
+        r.target_error_ce90_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "targetErrorLe90M")? {
+        r.target_error_le90_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "windDirectionDeg")? {
+        r.wind_direction_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "windSpeed")? {
+        r.wind_speed = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "staticPressureMbar")? {
+        r.static_pressure_mbar = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "densityAltitudeM")? {
+        r.density_altitude_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "differentialPressureMbar")? {
+        r.differential_pressure_mbar = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "airfieldBarometricPressureMbar")? {
+        r.airfield_barometric_pressure_mbar = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "airfieldElevationM")? {
+        r.airfield_elevation_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "relativeHumidityPct")? {
+        r.relative_humidity_pct = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformVerticalSpeed")? {
+        r.platform_vertical_speed = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformSideslipDeg")? {
+        r.platform_sideslip_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformGroundSpeed")? {
+        r.platform_ground_speed = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "groundRangeM")? {
+        r.ground_range_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformFuelRemainingKg")? {
+        r.platform_fuel_remaining_kg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformMagneticHeadingDeg")? {
+        r.platform_magnetic_heading_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformAngleOfAttackFullDeg")? {
+        r.platform_angle_of_attack_full_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformSideslipFullDeg")? {
+        r.platform_sideslip_full_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformLatDeg")? {
+        r.alternate_platform_lat_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformLonDeg")? {
+        r.alternate_platform_lon_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformAltM")? {
+        r.alternate_platform_alt_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformHeadingDeg")? {
+        r.alternate_platform_heading_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformEllipsoidHeightM")? {
+        r.alternate_platform_ellipsoid_height_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorNorthVelocity")? {
+        r.sensor_north_velocity = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorEastVelocity")? {
+        r.sensor_east_velocity = Some(v);
+    }
+
+    // --- WP-A Table A4: named nested-set raw byte fields ---
+    r.rvt = read_nullable_byte_buffer(env, rec, "rvt")?;
+    r.sar_mi_local_set = read_nullable_byte_buffer(env, rec, "sarMiLocalSet")?;
+    r.range_image_local_set = read_nullable_byte_buffer(env, rec, "rangeImageLocalSet")?;
+    r.geo_registration_local_set = read_nullable_byte_buffer(env, rec, "geoRegistrationLocalSet")?;
+    r.composite_imaging_local_set =
+        read_nullable_byte_buffer(env, rec, "compositeImagingLocalSet")?;
+    r.segment_local_set = read_nullable_byte_buffer(env, rec, "segmentLocalSet")?;
+    r.amend_local_set = read_nullable_byte_buffer(env, rec, "amendLocalSet")?;
+
+    // --- WP-A Table A2: raw/simple scalar + string fields ---
+    // Tag 39 — outsideAirTempC: nullable Integer → Option<i8>
+    if let Some(v) = read_nullable_int(env, rec, "outsideAirTempC")? {
+        r.outside_air_temp_c = Some(checked_i8(env, i64::from(v), "outsideAirTempC")?);
+    }
+    // Tag 60 — weaponLoad: nullable Integer → Option<u16>
+    if let Some(v) = read_nullable_int(env, rec, "weaponLoad")? {
+        r.weapon_load = Some(checked_u16(env, i64::from(v), "weaponLoad")?);
+    }
+    // Tag 61 — weaponFired: nullable Integer → Option<u8>
+    if let Some(v) = read_nullable_int(env, rec, "weaponFired")? {
+        r.weapon_fired = Some(checked_u8(env, i64::from(v), "weaponFired")?);
+    }
+    // Tag 62 — laserPrfCode: nullable Integer → Option<u16>
+    if let Some(v) = read_nullable_int(env, rec, "laserPrfCode")? {
+        r.laser_prf_code = Some(checked_u16(env, i64::from(v), "laserPrfCode")?);
+    }
+    r.alternate_platform_name = read_nullable_string(env, rec, "alternatePlatformName")?;
+    // Tag 72 — eventStartTimeUs: nullable Long → Option<u64> (mirrors timestampUs's `as u64` cast)
+    if let Some(v) = read_nullable_long(env, rec, "eventStartTimeUs")? {
+        r.event_start_time_us = Some(v as u64);
+    }
+    r.stream_designator = read_nullable_string(env, rec, "streamDesignator")?;
+    r.operational_base = read_nullable_string(env, rec, "operationalBase")?;
+    r.broadcast_source = read_nullable_string(env, rec, "broadcastSource")?;
+    r.target_id = read_nullable_string(env, rec, "targetId")?;
+    r.communications_method = read_nullable_string(env, rec, "communicationsMethod")?;
+
+    // --- WP-A Table A3: coded enums (tags 34/63/77) — nullable Integer raw code ---
+    if let Some(v) = read_nullable_int(env, rec, "icingDetectedCode")? {
+        let c = checked_u8(env, i64::from(v), "icingDetectedCode")?;
+        r.icing_detected = Some(icing_detected_from_code(c));
+    }
+    if let Some(v) = read_nullable_int(env, rec, "sensorFovNameCode")? {
+        let c = checked_u8(env, i64::from(v), "sensorFovNameCode")?;
+        r.sensor_fov_name = Some(sensor_fov_name_from_code(c));
+    }
+    if let Some(v) = read_nullable_int(env, rec, "operationalModeCode")? {
+        let c = checked_u8(env, i64::from(v), "operationalModeCode")?;
+        r.operational_mode = Some(operational_mode_from_code(c));
     }
 
     // --- unknown: List<KlvUnknownField> with is_st0601_typed_tag collision-drop ---

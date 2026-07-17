@@ -22,22 +22,56 @@
 //! 13 + 17 + 19 covered; declared version preserved for caller
 //! introspection).
 //!
-//! **Tags parsed (typed-modeled):** Tags 1 (checksum), 2 (timestamp),
-//! tags 5–9 (platform attitude + heading + yaw), tags 10–19 (sensor
-//! position + orientation + image source), tag 20 (range + rate),
-//! tags 21–25 (target location + height + TTrue + track + velocity),
-//! tags 26–33 (corner offsets + image coordinate), tags 40–47
-//! (frame-center + alt + offset + range + slant), tag 48 (security
-//! LS bytes — typed via [`crate::klv::st0102`]), tags 50–59 + 65–67
-//! (extended platform / sensor / altitude fields), tag 74 (VMTI LS
-//! bytes — typed via [`crate::klv::st0903`]), tags 75–91 (ellipsoid
-//! heights + full corners + extended attitude), and tag 94 (MIIS Core
-//! Identifier bytes — typed decode via [`crate::klv::st1204`]).
+//! **103 of 143 spec items typed-modeled** (up from 52 pre-WP-A — see
+//! `CHANGELOG.md` `[Unreleased]` for the work-package history). Grouped
+//! by [`UasDatalinkLs`] field section:
 //!
-//! **Tags preserved as `unknown` (`OwnedRawField`):** any tag not
-//! in the typed-modeled set above — full payload bytes preserved per
-//! ST 0107.5 §6 future-proof skip rule. Consumers reading
-//! `record.unknown` can apply downstream-specific typed parsers.
+//! - **Identity / time:** tags 1–4, 10–12, 59, 65 (checksum, UTF-8
+//!   identity strings, version, timestamp).
+//! - **Platform state:** tags 5–9, 50, 90–91 (heading/pitch/roll/
+//!   airspeed, angle of attack, full-range pitch/roll twins of 6/7).
+//! - **Sensor pose & position:** tags 13–20, 75 (lat/lon/altitude,
+//!   ellipsoid height, FOV, relative azimuth/elevation/roll).
+//! - **Ranging & frame center:** tags 21–25, 78.
+//! - **Image corners:** tags 26–33 (offsets from frame center), 82–89
+//!   (full lat/lon).
+//! - **Target location & tracking:** tags 40–46 (location, track-gate
+//!   width/height, CE90/LE90 error estimates).
+//! - **Weather / atmospheric:** tags 35–38, 49, 53–55.
+//! - **Extended platform state:** tags 51–52, 56–58, 64, 92–93
+//!   (vertical speed, sideslip, ground speed/range, fuel remaining,
+//!   magnetic heading, full-range AoA/sideslip twins of 50/52).
+//! - **Alternate platform:** tags 67–69, 71, 76.
+//! - **Sensor velocity:** tags 79–80.
+//! - **Coded enums:** tag 34 ([`IcingDetected`]), tag 63
+//!   ([`SensorFovName`]), tag 77 ([`OperationalMode`]) — each keeps an
+//!   `Other(code)` fallback that round-trips unrecognized wire
+//!   codepoints byte-exact.
+//! - **Raw scalar & string items:** tags 39, 60–62, 70, 72, 106–108,
+//!   129, 135 (I8/U16/U64 raw values + 6 UTF-8 strings; 129 and 135
+//!   are the first typed tags whose own tag number is 2-byte BER-OID
+//!   encoded).
+//! - **Misc:** tag 47 (generic flag bitfield).
+//!
+//! **Sibling-decoded nested local sets** — the tag's payload bytes are
+//! further parsed by a dedicated typed module, not just stored: tag 48
+//! (Security LS, via [`crate::klv::st0102`]), tag 74 (VMTI LS, via
+//! [`crate::klv::st0903`]), tag 94 (MIIS Core Identifier, via
+//! [`crate::klv::st1204`]).
+//!
+//! **Named nested-set byte fields** — a dedicated, named struct field
+//! (not folded into `unknown`), but the interior bytes are pass-through
+//! and not yet decoded: tag 73 (`rvt`, MISB ST 0806 RVT LS), tag 95
+//! (`sar_mi_local_set`, ST 1206), tag 97 (`range_image_local_set`, ST
+//! 1002), tag 98 (`geo_registration_local_set`, ST 1601), tag 99
+//! (`composite_imaging_local_set`, ST 1602), tags 100–101
+//! (`segment_local_set` / `amend_local_set`, ST 1607).
+//!
+//! **Tags preserved as `unknown` (`OwnedRawField`):** any tag not in
+//! the groups above (40 of the 143 spec items remain untyped) — full
+//! payload bytes preserved per ST 0107.5 §6 future-proof skip rule.
+//! Consumers reading `record.unknown` can apply downstream-specific
+//! typed parsers.
 //!
 //! **Decode modes:**
 //! - [`decode`] — verifies running-sum checksum; accepts any UL.
@@ -48,8 +82,11 @@
 //! - [`decode_strict_compliance`] — adds full ST 0107.5 conformance
 //!   checks (BER canonicality, no duplicate tags, etc.).
 //!
-//! **Deferred per `docs/project/deferred-features.md`:** none — ST 0601
-//! typed model is the most-complete of the 4 typed sets.
+//! **Deferred:** interior typing of the seven named-but-opaque nested
+//! local sets above (tags 73, 95, 97–101). Tag 73 (RVT / ST 0806) has a
+//! tracked entry in `docs/project/deferred-features.md`; the other six
+//! do not yet. Otherwise none — ST 0601 typed model is the
+//! most-complete of the 4 typed sets.
 
 pub(crate) mod decode;
 pub(crate) mod encode;

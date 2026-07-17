@@ -8,7 +8,7 @@ import java.util.Optional;
 /**
  * MISB ST 0601 UAS Datalink Local Set typed view.
  *
- * <p>Mirror of the 80-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
+ * <p>Mirror of the 107-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
  * flat struct. Composite views (sensor position, attitude, FOV, corners) are
  * accessor methods that return {@link Optional#empty()} when any of the
  * underlying primitive fields is absent.
@@ -162,6 +162,82 @@ public record UasDatalinkLs(
          */
         byte[] miisCoreId,
 
+        // ---------------------------------------------------------------
+        // WP-A Table A1 — ranged f64 fields (tags 35-93 subset, 30 fields)
+        // ---------------------------------------------------------------
+        Double targetLocationLatDeg,
+        Double targetLocationLonDeg,
+        Double targetLocationElevM,
+        Double targetTrackGateWidthPx,
+        Double targetTrackGateHeightPx,
+        Double targetErrorCe90M,
+        Double targetErrorLe90M,
+        Double windDirectionDeg,
+        Double windSpeed,
+        Double staticPressureMbar,
+        Double densityAltitudeM,
+        Double differentialPressureMbar,
+        Double airfieldBarometricPressureMbar,
+        Double airfieldElevationM,
+        Double relativeHumidityPct,
+        Double platformVerticalSpeed,
+        Double platformSideslipDeg,
+        Double platformGroundSpeed,
+        Double groundRangeM,
+        Double platformFuelRemainingKg,
+        Double platformMagneticHeadingDeg,
+        Double platformAngleOfAttackFullDeg,
+        Double platformSideslipFullDeg,
+        Double alternatePlatformLatDeg,
+        Double alternatePlatformLonDeg,
+        Double alternatePlatformAltM,
+        Double alternatePlatformHeadingDeg,
+        Double alternatePlatformEllipsoidHeightM,
+        Double sensorNorthVelocity,
+        Double sensorEastVelocity,
+
+        // ---------------------------------------------------------------
+        // WP-A Table A4 — named nested-set raw byte fields (tags 73/95/97-101)
+        // ---------------------------------------------------------------
+        ByteBuffer rvt,
+        ByteBuffer sarMiLocalSet,
+        ByteBuffer rangeImageLocalSet,
+        ByteBuffer geoRegistrationLocalSet,
+        ByteBuffer compositeImagingLocalSet,
+        ByteBuffer segmentLocalSet,
+        ByteBuffer amendLocalSet,
+
+        // ---------------------------------------------------------------
+        // WP-A Table A2 — raw/simple scalar + string fields (11 fields)
+        // ---------------------------------------------------------------
+        Integer outsideAirTempC,
+        /**
+         * Tag 60 — Weapon Load, bit-packed nibbles (high&rarr;low): store
+         * station, store substation, weapon type, weapon variant. Kept as a
+         * raw opaque codepoint, not a sub-struct — callers needing individual
+         * nibbles shift and mask this value themselves.
+         */
+        Integer weaponLoad,
+        Integer weaponFired,
+        Integer laserPrfCode,
+        String alternatePlatformName,
+        Long eventStartTimeUs,
+        String streamDesignator,
+        String operationalBase,
+        String broadcastSource,
+        String targetId,
+        String communicationsMethod,
+
+        // ---------------------------------------------------------------
+        // WP-A Table A3 — coded enums (tags 34/63/77), raw-codepoint boxed
+        // Integer record components (authoritative representation); use the
+        // typed accessors below ({@link #icingDetected()} etc.) for the
+        // enum view — null for both "absent" and "wire-unknown".
+        // ---------------------------------------------------------------
+        Integer icingDetectedCode,
+        Integer sensorFovNameCode,
+        Integer operationalModeCode,
+
         // Pass-through
         List<KlvUnknownField> unknown,
         List<KlvFieldError> fieldErrors,
@@ -304,6 +380,28 @@ public record UasDatalinkLs(
     }
 
     // -----------------------------------------------------------------------
+    // WP-A Table A3 typed enum accessors — the raw *Code record components
+    // above are authoritative; these are convenience views. Return null for
+    // BOTH "absent" (code is null) and "wire-unknown" (code doesn't match a
+    // named constant) — inspect the raw *Code() accessor to tell them apart.
+    // -----------------------------------------------------------------------
+
+    /** Tag 34 Icing Detected as a typed enum, or {@code null} (absent / wire-unknown). */
+    public IcingDetected icingDetected() {
+        return icingDetectedCode == null ? null : IcingDetected.fromCode(icingDetectedCode);
+    }
+
+    /** Tag 63 Sensor Field of View Name as a typed enum, or {@code null} (absent / wire-unknown). */
+    public SensorFovName sensorFovName() {
+        return sensorFovNameCode == null ? null : SensorFovName.fromCode(sensorFovNameCode);
+    }
+
+    /** Tag 77 Operational Mode as a typed enum, or {@code null} (absent / wire-unknown). */
+    public OperationalMode operationalMode() {
+        return operationalModeCode == null ? null : OperationalMode.fromCode(operationalModeCode);
+    }
+
+    // -----------------------------------------------------------------------
     // Builder
     // -----------------------------------------------------------------------
 
@@ -362,6 +460,66 @@ public record UasDatalinkLs(
         private ByteBuffer securityLocalSet;
         private ByteBuffer vmti;
         private byte[] miisCoreId;
+
+        // WP-A Table A1 — ranged f64 fields
+        private Double targetLocationLatDeg;
+        private Double targetLocationLonDeg;
+        private Double targetLocationElevM;
+        private Double targetTrackGateWidthPx;
+        private Double targetTrackGateHeightPx;
+        private Double targetErrorCe90M;
+        private Double targetErrorLe90M;
+        private Double windDirectionDeg;
+        private Double windSpeed;
+        private Double staticPressureMbar;
+        private Double densityAltitudeM;
+        private Double differentialPressureMbar;
+        private Double airfieldBarometricPressureMbar;
+        private Double airfieldElevationM;
+        private Double relativeHumidityPct;
+        private Double platformVerticalSpeed;
+        private Double platformSideslipDeg;
+        private Double platformGroundSpeed;
+        private Double groundRangeM;
+        private Double platformFuelRemainingKg;
+        private Double platformMagneticHeadingDeg;
+        private Double platformAngleOfAttackFullDeg;
+        private Double platformSideslipFullDeg;
+        private Double alternatePlatformLatDeg;
+        private Double alternatePlatformLonDeg;
+        private Double alternatePlatformAltM;
+        private Double alternatePlatformHeadingDeg;
+        private Double alternatePlatformEllipsoidHeightM;
+        private Double sensorNorthVelocity;
+        private Double sensorEastVelocity;
+
+        // WP-A Table A4 — named nested-set raw byte fields
+        private ByteBuffer rvt;
+        private ByteBuffer sarMiLocalSet;
+        private ByteBuffer rangeImageLocalSet;
+        private ByteBuffer geoRegistrationLocalSet;
+        private ByteBuffer compositeImagingLocalSet;
+        private ByteBuffer segmentLocalSet;
+        private ByteBuffer amendLocalSet;
+
+        // WP-A Table A2 — raw/simple scalar + string fields
+        private Integer outsideAirTempC;
+        private Integer weaponLoad;
+        private Integer weaponFired;
+        private Integer laserPrfCode;
+        private String alternatePlatformName;
+        private Long eventStartTimeUs;
+        private String streamDesignator;
+        private String operationalBase;
+        private String broadcastSource;
+        private String targetId;
+        private String communicationsMethod;
+
+        // WP-A Table A3 — coded enums (raw codepoint)
+        private Integer icingDetectedCode;
+        private Integer sensorFovNameCode;
+        private Integer operationalModeCode;
+
         private List<KlvUnknownField> unknown = Collections.emptyList();
         private List<KlvFieldError> fieldErrors = Collections.emptyList();
         private List<Long> sentinelTags = Collections.emptyList();
@@ -421,6 +579,67 @@ public record UasDatalinkLs(
         public Builder securityLocalSet(ByteBuffer v) { this.securityLocalSet = v; return this; }
         public Builder vmti(ByteBuffer v) { this.vmti = v; return this; }
         public Builder miisCoreId(byte[] v) { this.miisCoreId = v; return this; }
+
+        // WP-A Table A1 — ranged f64 fields
+        public Builder targetLocationLatDeg(double v) { this.targetLocationLatDeg = v; return this; }
+        public Builder targetLocationLonDeg(double v) { this.targetLocationLonDeg = v; return this; }
+        public Builder targetLocationElevM(double v) { this.targetLocationElevM = v; return this; }
+        public Builder targetTrackGateWidthPx(double v) { this.targetTrackGateWidthPx = v; return this; }
+        public Builder targetTrackGateHeightPx(double v) { this.targetTrackGateHeightPx = v; return this; }
+        public Builder targetErrorCe90M(double v) { this.targetErrorCe90M = v; return this; }
+        public Builder targetErrorLe90M(double v) { this.targetErrorLe90M = v; return this; }
+        public Builder windDirectionDeg(double v) { this.windDirectionDeg = v; return this; }
+        public Builder windSpeed(double v) { this.windSpeed = v; return this; }
+        public Builder staticPressureMbar(double v) { this.staticPressureMbar = v; return this; }
+        public Builder densityAltitudeM(double v) { this.densityAltitudeM = v; return this; }
+        public Builder differentialPressureMbar(double v) { this.differentialPressureMbar = v; return this; }
+        public Builder airfieldBarometricPressureMbar(double v) { this.airfieldBarometricPressureMbar = v; return this; }
+        public Builder airfieldElevationM(double v) { this.airfieldElevationM = v; return this; }
+        public Builder relativeHumidityPct(double v) { this.relativeHumidityPct = v; return this; }
+        public Builder platformVerticalSpeed(double v) { this.platformVerticalSpeed = v; return this; }
+        public Builder platformSideslipDeg(double v) { this.platformSideslipDeg = v; return this; }
+        public Builder platformGroundSpeed(double v) { this.platformGroundSpeed = v; return this; }
+        public Builder groundRangeM(double v) { this.groundRangeM = v; return this; }
+        public Builder platformFuelRemainingKg(double v) { this.platformFuelRemainingKg = v; return this; }
+        public Builder platformMagneticHeadingDeg(double v) { this.platformMagneticHeadingDeg = v; return this; }
+        public Builder platformAngleOfAttackFullDeg(double v) { this.platformAngleOfAttackFullDeg = v; return this; }
+        public Builder platformSideslipFullDeg(double v) { this.platformSideslipFullDeg = v; return this; }
+        public Builder alternatePlatformLatDeg(double v) { this.alternatePlatformLatDeg = v; return this; }
+        public Builder alternatePlatformLonDeg(double v) { this.alternatePlatformLonDeg = v; return this; }
+        public Builder alternatePlatformAltM(double v) { this.alternatePlatformAltM = v; return this; }
+        public Builder alternatePlatformHeadingDeg(double v) { this.alternatePlatformHeadingDeg = v; return this; }
+        public Builder alternatePlatformEllipsoidHeightM(double v) { this.alternatePlatformEllipsoidHeightM = v; return this; }
+        public Builder sensorNorthVelocity(double v) { this.sensorNorthVelocity = v; return this; }
+        public Builder sensorEastVelocity(double v) { this.sensorEastVelocity = v; return this; }
+
+        // WP-A Table A4 — named nested-set raw byte fields
+        public Builder rvt(ByteBuffer v) { this.rvt = v; return this; }
+        public Builder sarMiLocalSet(ByteBuffer v) { this.sarMiLocalSet = v; return this; }
+        public Builder rangeImageLocalSet(ByteBuffer v) { this.rangeImageLocalSet = v; return this; }
+        public Builder geoRegistrationLocalSet(ByteBuffer v) { this.geoRegistrationLocalSet = v; return this; }
+        public Builder compositeImagingLocalSet(ByteBuffer v) { this.compositeImagingLocalSet = v; return this; }
+        public Builder segmentLocalSet(ByteBuffer v) { this.segmentLocalSet = v; return this; }
+        public Builder amendLocalSet(ByteBuffer v) { this.amendLocalSet = v; return this; }
+
+        // WP-A Table A2 — raw/simple scalar + string fields
+        public Builder outsideAirTempC(int v) { this.outsideAirTempC = v; return this; }
+        public Builder weaponLoad(int v) { this.weaponLoad = v; return this; }
+        public Builder weaponFired(int v) { this.weaponFired = v; return this; }
+        public Builder laserPrfCode(int v) { this.laserPrfCode = v; return this; }
+        public Builder alternatePlatformName(String v) { this.alternatePlatformName = v; return this; }
+        public Builder eventStartTimeUs(long v) { this.eventStartTimeUs = v; return this; }
+        public Builder streamDesignator(String v) { this.streamDesignator = v; return this; }
+        public Builder operationalBase(String v) { this.operationalBase = v; return this; }
+        public Builder broadcastSource(String v) { this.broadcastSource = v; return this; }
+        public Builder targetId(String v) { this.targetId = v; return this; }
+        public Builder communicationsMethod(String v) { this.communicationsMethod = v; return this; }
+
+        // WP-A Table A3 — coded enums (raw codepoint; the record component is
+        // authoritative, see UasDatalinkLs.icingDetected() etc. for the typed view)
+        public Builder icingDetectedCode(int v) { this.icingDetectedCode = v; return this; }
+        public Builder sensorFovNameCode(int v) { this.sensorFovNameCode = v; return this; }
+        public Builder operationalModeCode(int v) { this.operationalModeCode = v; return this; }
+
         public Builder unknown(List<KlvUnknownField> v) { this.unknown = v; return this; }
         public Builder fieldErrors(List<KlvFieldError> v) { this.fieldErrors = v; return this; }
         public Builder sentinelTags(List<Long> v) { this.sentinelTags = v; return this; }
@@ -453,6 +672,28 @@ public record UasDatalinkLs(
                     genericFlagData,
                     securityLocalSet, vmti,
                     miisCoreId,
+                    targetLocationLatDeg, targetLocationLonDeg, targetLocationElevM,
+                    targetTrackGateWidthPx, targetTrackGateHeightPx,
+                    targetErrorCe90M, targetErrorLe90M,
+                    windDirectionDeg, windSpeed,
+                    staticPressureMbar, densityAltitudeM,
+                    differentialPressureMbar,
+                    airfieldBarometricPressureMbar, airfieldElevationM,
+                    relativeHumidityPct,
+                    platformVerticalSpeed, platformSideslipDeg,
+                    platformGroundSpeed, groundRangeM, platformFuelRemainingKg,
+                    platformMagneticHeadingDeg,
+                    platformAngleOfAttackFullDeg, platformSideslipFullDeg,
+                    alternatePlatformLatDeg, alternatePlatformLonDeg, alternatePlatformAltM,
+                    alternatePlatformHeadingDeg, alternatePlatformEllipsoidHeightM,
+                    sensorNorthVelocity, sensorEastVelocity,
+                    rvt, sarMiLocalSet, rangeImageLocalSet, geoRegistrationLocalSet,
+                    compositeImagingLocalSet, segmentLocalSet, amendLocalSet,
+                    outsideAirTempC, weaponLoad, weaponFired, laserPrfCode,
+                    alternatePlatformName, eventStartTimeUs,
+                    streamDesignator, operationalBase, broadcastSource,
+                    targetId, communicationsMethod,
+                    icingDetectedCode, sensorFovNameCode, operationalModeCode,
                     unknown, fieldErrors,
                     sentinelTags
             );

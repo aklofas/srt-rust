@@ -55,12 +55,15 @@ jobs:
         # SRT_FORCE_VENDORED=1.
         if: startsWith(matrix.name, 'linux-')
         run: |
-          sudo apt-get update
+          # -o Acquire::Retries=5: ride out transient mirror outages (the
+          # ports.ubuntu.com linux-aarch64 class, 2026-07-16) instead of
+          # failing the job on the first fetch error.
+          sudo apt-get -o Acquire::Retries=5 update
           # ripgrep (`rg`) backs the two scrub-guard steps below; the GHA
           # ubuntu image no longer ships it preinstalled, so install it
           # explicitly (a missing `rg` made the denylist guard fail closed
           # and silently no-op'd the pre-rename guard).
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build ripgrep
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build ripgrep
 
       - name: Install build prerequisites (macOS)
         # librist's vendored build is meson-driven and needs `meson` + `ninja`
@@ -706,7 +709,7 @@ jobs:
       # there is no standalone g++-arm-none-eabi apt package. libstdc++-arm-none-eabi-newlib
       # adds the bare-metal C++ standard library needed by the S0 exceptions gate.
       - name: Install QEMU + ARM C cross-toolchain
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+        run: sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y qemu-system-arm gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
       # Runtime gate: run the tst-core muxer on a Cortex-M4 under QEMU and
       # assert it byte-matches the committed video-roundtrip golden. The script
@@ -810,8 +813,8 @@ jobs:
 
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build
 
       - name: Install nightly + cargo-fuzz
         run: |
@@ -918,8 +921,8 @@ jobs:
 
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build
 
       - uses: actions/setup-python@v6
         with:
@@ -998,8 +1001,8 @@ jobs:
 
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build
 
       - uses: actions/setup-python@v6
         with:
@@ -1092,8 +1095,8 @@ jobs:
 
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y build-essential cmake pkg-config meson ninja-build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

@@ -119,6 +119,7 @@ fn range_hint(tag: u8) -> Option<&'static str> {
             "for out-of-range corner offsets use the absolute corner fields \
              corner_lat_p1_deg..corner_lon_p4_deg (Tags 82-89)",
         ),
+        50 => Some("for extended range use platform_angle_of_attack_full_deg (Tag 92, +/-90 deg)"),
         52 => Some("for extended range use platform_sideslip_full_deg (Tag 93, +/-180 deg)"),
         _ => None,
     }
@@ -497,6 +498,33 @@ mod tests {
         assert!(
             encode_fixed_range(&r, 6, f64::NAN, &mut buf, OutOfRangePolicy::Indicator).is_err()
         );
+    }
+
+    #[test]
+    fn out_of_range_hint_names_full_range_twin_for_tag_50() {
+        // Tag 50 (Platform Angle of Attack, ±20°, 2-byte signed): 25.0 is out
+        // of range and should name its full-range twin (Tag 92, ±90°) in the
+        // hint. Default Error policy (not Indicator) so the range check
+        // actually rejects instead of emitting the sentinel.
+        let r = LinearRange {
+            signed: true,
+            byte_length: 2,
+            min: -20.0,
+            max: 20.0,
+        };
+        let mut buf = [0u8; 2];
+        let err = encode_fixed_range(&r, 50, 25.0, &mut buf, OutOfRangePolicy::Error).unwrap_err();
+        match err {
+            KlvEncodeError::OutOfRange { hint, .. } => {
+                assert_eq!(
+                    hint,
+                    Some(
+                        "for extended range use platform_angle_of_attack_full_deg (Tag 92, +/-90 deg)"
+                    )
+                );
+            }
+            other => panic!("expected OutOfRange, got {other:?}"),
+        }
     }
 
     #[test]

@@ -2412,3 +2412,55 @@ fn wpa_nested_set_bytes_move_from_unknown_to_named_fields() {
         );
     }
 }
+
+// ============================================================================
+// WP-A: sentinel population + Indicator eligibility for the newly-typed
+// signed tags (Table A5)
+// ============================================================================
+
+/// Regression pin: the table-driven sentinel mechanism (already proven by
+/// `every_modelled_signed_tag_has_a_sentinel_meaning` and the Indicator-mode
+/// tests above) covers the ten signed tags WP-A newly typed as
+/// `UasDatalinkLs` fields — 40, 41, 51, 52, 67, 68, 79, 80, 92, 93. Also
+/// pins that `OutOfRangePolicy::Indicator` is now reachable for every
+/// OutOfRange-meaning tag (51 here) since all 11 are encodable fields, while
+/// a Reserved-meaning tag (67) still errors under the same policy.
+#[allow(clippy::field_reassign_with_default)]
+#[test]
+fn wpa_new_signed_tags_populate_sentinels_and_indicator() {
+    // Decode: INT_MIN on newly-typed signed tags -> sentinel_tags, field None.
+    for &(tag, len) in &[
+        (40u8, 4usize),
+        (41, 4),
+        (51, 2),
+        (52, 2),
+        (67, 4),
+        (68, 4),
+        (79, 2),
+        (80, 2),
+        (92, 4),
+        (93, 4),
+    ] {
+        let int_min = if len == 2 {
+            vec![0x80, 0x00]
+        } else {
+            vec![0x80, 0, 0, 0]
+        };
+        let ls = decode_with_single_tlv(tag, &int_min);
+        assert!(ls.sentinel_tags.contains(&(tag as u32)), "tag {tag}");
+        assert!(crate::klv::st0601::st0601_sentinel_meaning(tag as u32).is_some());
+    }
+    // Encode: Indicator policy now reachable for 51/52/79/80/92/93 (OutOfRange meaning).
+    let mut rec = UasDatalinkLs::default();
+    rec.platform_vertical_speed = Some(500.0); // out of ±180
+    let cfg = EncodeConfig {
+        out_of_range_policy: OutOfRangePolicy::Indicator,
+        ..Default::default()
+    };
+    let bytes = crate::klv::st0601::encode_to_vec_with(&rec, &cfg).unwrap();
+    assert_eq!(tlv_value(&bytes, 51), Some(vec![0x80, 0x00]));
+    // Reserved-meaning tags still error under Indicator:
+    let mut rec = UasDatalinkLs::default();
+    rec.alternate_platform_lat_deg = Some(95.0);
+    assert!(crate::klv::st0601::encode_to_vec_with(&rec, &cfg).is_err());
+}

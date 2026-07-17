@@ -119,17 +119,20 @@ def _populated_uas() -> UasDatalinkLs:
 
 # ST 0601 typed tags occupy 1-65, 67-80, 82-101, 106-108, 129, 135 (WP-A
 # extended this past the original 5..=91 + {1, 2, 65, 94}; see
-# `is_st0601_typed_tag` in bindings/python/src/klv.rs). Tag 120 sits in
-# the 109-127 gap, which is unclaimed by any *shipped or brief-earmarked*
-# work package (unlike 96 [WP-B] or 102 [WP-C SDCC-FLP]) — `_tlv` below
-# also caps at single-byte BER-OID tags (< 0x80), so this must stay < 128.
-_UNKNOWN_TAG_ST0601 = 120
+# `is_st0601_typed_tag` in bindings/python/src/klv.rs). Item 66 is the
+# deprecated placeholder — permanently untyped by design (ST 0601.19
+# §8.66: "This item has been Deprecated") — so unlike a tag picked from a
+# not-yet-assigned gap it can never collide with a future typing pass.
+# Matches the Rust-side test suite, which uses Tag 66 as its unknown
+# stand-in for the same reason. (`_tlv` below caps at single-byte BER-OID
+# tags < 0x80; 66 satisfies that too.)
+_UNKNOWN_TAG_ST0601 = 66
 _UNKNOWN_PAYLOAD_ST0601 = b"\xde\xad\xbe\xef"
 
 
 def _hand_built_st0601_wire_with_unknown() -> bytes:
     """Build an ST 0601 wire record with Tag 2 (PTS) + Tag 65 (Version) +
-    one unknown TLV at tag 120, with a valid running-sum checksum so
+    one unknown TLV at tag 66, with a valid running-sum checksum so
     lenient decode accepts it.
 
     Matches the audit's recommended test path: "decode a fixture with a

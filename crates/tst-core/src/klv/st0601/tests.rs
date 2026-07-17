@@ -2103,9 +2103,11 @@ fn wpa_ranged_spec_vectors() {
         let got = (entry.get)(&ls).expect("field populated");
         let spec = crate::klv::st0601::tags::lookup(tag).unwrap();
         let r = spec.range.unwrap();
+        // Signed mappings span -(2^(n-1)-1)..(2^(n-1)-1) = 2^n - 2 steps
+        // (INT_MIN is the reserved sentinel); unsigned span 2^n - 1 steps.
         let lsb = (r.max - r.min)
             / if r.signed {
-                (1i64 << (8 * r.byte_length - 1)) as f64 - 1.0
+                ((1u64 << (8 * r.byte_length)) - 2) as f64
             } else {
                 ((1u64 << (8 * r.byte_length)) - 1) as f64
             };

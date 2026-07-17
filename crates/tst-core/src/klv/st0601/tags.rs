@@ -736,6 +736,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 73,
+        name: "RVT Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
         id: 74,
         name: "VMTI Local Set",
         encoding: Encoding::RawBytes,
@@ -938,6 +944,42 @@ pub(crate) const TAGS: &[TagSpec] = &[
     TagSpec {
         id: 94,
         name: "MIIS Core Identifier",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 95,
+        name: "SAR Motion Imagery Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 97,
+        name: "Range Image Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 98,
+        name: "Geo-Registration Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 99,
+        name: "Composite Imaging Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 100,
+        name: "Segment Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 101,
+        name: "Amend Local Set",
         encoding: Encoding::RawBytes,
         range: None,
     },

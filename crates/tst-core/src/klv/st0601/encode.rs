@@ -287,9 +287,16 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .as_ref()
                 .map(|s| str_wire_len(s)),
             72 => record.event_start_time_us.map(|_| 8),
+            73 => record.rvt.as_ref().map(|v| v.len()),
             74 => record.vmti.as_ref().map(|v| v.len()),
             77 => record.operational_mode.map(|_| 1),
             94 => record.miis_core_id.as_ref().map(|v| v.len()),
+            95 => record.sar_mi_local_set.as_ref().map(|v| v.len()),
+            97 => record.range_image_local_set.as_ref().map(|v| v.len()),
+            98 => record.geo_registration_local_set.as_ref().map(|v| v.len()),
+            99 => record.composite_imaging_local_set.as_ref().map(|v| v.len()),
+            100 => record.segment_local_set.as_ref().map(|v| v.len()),
+            101 => record.amend_local_set.as_ref().map(|v| v.len()),
             106 => record.stream_designator.as_ref().map(|s| str_wire_len(s)),
             107 => record.operational_base.as_ref().map(|s| str_wire_len(s)),
             108 => record.broadcast_source.as_ref().map(|s| str_wire_len(s)),
@@ -372,9 +379,16 @@ pub(super) fn encode_tag_value(
             .map(|s| check_string(70, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
         72 => record.event_start_time_us.map(|t| t.to_be_bytes().to_vec()),
+        73 => record.rvt.clone(),
         74 => record.vmti.clone(),
         77 => record.operational_mode.map(|v| vec![v.to_wire()]),
         94 => record.miis_core_id.clone(),
+        95 => record.sar_mi_local_set.clone(),
+        97 => record.range_image_local_set.clone(),
+        98 => record.geo_registration_local_set.clone(),
+        99 => record.composite_imaging_local_set.clone(),
+        100 => record.segment_local_set.clone(),
+        101 => record.amend_local_set.clone(),
         106 => record
             .stream_designator
             .as_ref()

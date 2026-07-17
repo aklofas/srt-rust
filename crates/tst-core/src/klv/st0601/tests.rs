@@ -415,15 +415,21 @@ fn decode_strict_rejects_funky_ul() {
 
 #[test]
 fn decode_passes_through_unknown_tags() {
+    // Tag 200 is outside the ST 0601 1-143 item range (see
+    // `encode_accepts_genuinely_unknown_tag`), so it stays unknown
+    // regardless of how many more spec items this crate types over time
+    // — unlike a spec-range placeholder tag, which risks colliding with
+    // a later WP-A task (Tag 99 did exactly this when Task A4 typed it
+    // as `composite_imaging_local_set`).
     let mut r = UasDatalinkLs::default();
     r.unknown.push(OwnedRawField {
-        tag: 99,
+        tag: 200,
         value: vec![0xDE, 0xAD],
     });
     let bytes = encode_to_vec(&r).unwrap();
     let parsed = decode(&bytes).unwrap();
     assert_eq!(parsed.unknown.len(), 1);
-    assert_eq!(parsed.unknown[0].tag, 99);
+    assert_eq!(parsed.unknown[0].tag, 200);
     assert_eq!(parsed.unknown[0].value, vec![0xDE, 0xAD]);
 }
 
@@ -698,9 +704,16 @@ fn every_typed_tag_round_trips() {
             65 => record.uas_ls_version = Some(0x13),
             70 => record.alternate_platform_name = Some("APACHE".to_string()),
             72 => record.event_start_time_us = Some(798_039_894_000_000),
+            73 => record.rvt = Some(vec![0xAA, 0xBB]),
             74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
             77 => record.operational_mode = Some(OperationalMode::Operational),
             94 => record.miis_core_id = Some(vec![0x01, 0x70, 0xCA, 0xFE]),
+            95 => record.sar_mi_local_set = Some(vec![0x01, 0x02, 0x03]),
+            97 => record.range_image_local_set = Some(vec![0x04, 0x05, 0x06]),
+            98 => record.geo_registration_local_set = Some(vec![0x07, 0x08, 0x09]),
+            99 => record.composite_imaging_local_set = Some(vec![0x0A, 0x0B, 0x0C]),
+            100 => record.segment_local_set = Some(vec![0x0D, 0x0E, 0x0F]),
+            101 => record.amend_local_set = Some(vec![0x10, 0x11, 0x12]),
             106 => record.stream_designator = Some("BLUE".to_string()),
             107 => record.operational_base = Some("BASE01".to_string()),
             108 => record.broadcast_source = Some("HOME".to_string()),
@@ -748,9 +761,16 @@ fn every_typed_tag_round_trips() {
             65 => back.uas_ls_version.is_some(),
             70 => back.alternate_platform_name.is_some(),
             72 => back.event_start_time_us.is_some(),
+            73 => back.rvt.is_some(),
             74 => back.vmti.is_some(),
             77 => back.operational_mode.is_some(),
             94 => back.miis_core_id.is_some(),
+            95 => back.sar_mi_local_set.is_some(),
+            97 => back.range_image_local_set.is_some(),
+            98 => back.geo_registration_local_set.is_some(),
+            99 => back.composite_imaging_local_set.is_some(),
+            100 => back.segment_local_set.is_some(),
+            101 => back.amend_local_set.is_some(),
             106 => back.stream_designator.is_some(),
             107 => back.operational_base.is_some(),
             108 => back.broadcast_source.is_some(),
@@ -2335,4 +2355,60 @@ fn wpa_coded_enum_spec_vectors() {
     assert_eq!(ls.operational_mode, Some(OperationalMode::OtherMode));
     let encoded = encode_with_field(|r| r.operational_mode = Some(OperationalMode::OtherMode));
     assert_eq!(tlv_value(&encoded, 77), Some(vec![0x00]));
+}
+
+// ============================================================================
+// WP-A: named nested-set raw fields — new tags 73/95/97-101 (Table A4)
+// ============================================================================
+
+/// Tags 73/95/97-101 (nested-set bytes for RVT/SAR-MI/Range-Image/
+/// Geo-Registration/Composite-Imaging/Segment/Amend) used to fall through
+/// to `unknown` (no TagSpec entry). Table A4 gives each its own
+/// `Option<Vec<u8>>` field. Table-driven over `(tag, field-accessor)`
+/// pairs per the brief: proves the move off `unknown`, byte-exact
+/// round-trip, and that the now-typed tag is rejected from `unknown` on
+/// encode (same `ReservedTagInUnknown` contract as every other typed tag).
+#[test]
+#[allow(clippy::type_complexity)]
+fn wpa_nested_set_bytes_move_from_unknown_to_named_fields() {
+    let cases: &[(u8, fn(&UasDatalinkLs) -> Option<&[u8]>)] = &[
+        (73, |r| r.rvt.as_deref()),
+        (95, |r| r.sar_mi_local_set.as_deref()),
+        (97, |r| r.range_image_local_set.as_deref()),
+        (98, |r| r.geo_registration_local_set.as_deref()),
+        (99, |r| r.composite_imaging_local_set.as_deref()),
+        (100, |r| r.segment_local_set.as_deref()),
+        (101, |r| r.amend_local_set.as_deref()),
+    ];
+    let payload = [0xDE, 0xAD, 0xBE, 0xEF];
+    for &(tag, get) in cases {
+        let ls = decode_with_single_tlv(tag, &payload);
+        assert_eq!(
+            get(&ls),
+            Some(&payload[..]),
+            "tag {tag}: bytes did not land on the named field"
+        );
+        assert!(
+            ls.unknown.is_empty(),
+            "tag {tag} must no longer land in unknown"
+        );
+        // Round-trip byte fidelity:
+        let bytes = crate::klv::st0601::encode_to_vec(&ls).unwrap();
+        assert_eq!(
+            tlv_value(&bytes, tag),
+            Some(payload.to_vec()),
+            "tag {tag}: round trip lost byte fidelity"
+        );
+        // Now-typed tags are rejected from `unknown` on encode:
+        let mut rec = UasDatalinkLs::default();
+        rec.unknown.push(OwnedRawField {
+            tag: tag as u32,
+            value: vec![1],
+        });
+        let err = crate::klv::st0601::encode_to_vec(&rec).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::ReservedTagInUnknown { tag: t } if t == tag as u32),
+            "tag {tag}: expected ReservedTagInUnknown, got {err:?}"
+        );
+    }
 }

@@ -152,12 +152,24 @@ fn unauth_connection_burst_never_exceeds_max_sessions() {
                 Err(e)
                     if matches!(
                         e.kind(),
-                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                     ) =>
                 {
-                    refused += 1; // RST — server dropped it.
+                    still_pending.push(s); // parked or not-yet-signaled — retry next round.
                 }
-                Err(_) => still_pending.push(s), // WouldBlock/TimedOut — parked or late; retry.
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::ConnectionAborted
+                    ) =>
+                {
+                    refused += 1; // RST/abort — server dropped it (aborts are the
+                    // common Windows surface of a refused socket).
+                }
+                Err(_) => {} // anything else (e.g. EINTR): drop from the pool, count neither —
+                             // never recycle an error that can't become readable.
             }
         }
         pending = still_pending;

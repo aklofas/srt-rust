@@ -5,7 +5,9 @@ use super::encode::{
     encode, encode_strict_compliance, encode_to_vec, encode_to_vec_with, encode_with, encoded_len,
     encoded_len_with,
 };
-use super::model::{EncodeConfig, OutOfRangePolicy, UasDatalinkLs};
+use super::model::{
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName, UasDatalinkLs,
+};
 use super::patch::patch;
 use super::tags::TAGS;
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
@@ -684,6 +686,7 @@ fn every_typed_tag_round_trips() {
             10 => record.platform_designation = Some("D".to_string()),
             11 => record.image_source_sensor = Some("S".to_string()),
             12 => record.image_coordinate_system = Some("WGS84".to_string()),
+            34 => record.icing_detected = Some(IcingDetected::IcingDetected),
             39 => record.outside_air_temp_c = Some(-16),
             47 => record.generic_flag_data = Some(0xAB),
             48 => record.security_local_set = Some(vec![0x01, 0x02]),
@@ -691,10 +694,12 @@ fn every_typed_tag_round_trips() {
             60 => record.weapon_load = Some(45016),
             61 => record.weapon_fired = Some(186),
             62 => record.laser_prf_code = Some(1743),
+            63 => record.sensor_fov_name = Some(SensorFovName::ContinuousZoom),
             65 => record.uas_ls_version = Some(0x13),
             70 => record.alternate_platform_name = Some("APACHE".to_string()),
             72 => record.event_start_time_us = Some(798_039_894_000_000),
             74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+            77 => record.operational_mode = Some(OperationalMode::Operational),
             94 => record.miis_core_id = Some(vec![0x01, 0x70, 0xCA, 0xFE]),
             106 => record.stream_designator = Some("BLUE".to_string()),
             107 => record.operational_base = Some("BASE01".to_string()),
@@ -731,6 +736,7 @@ fn every_typed_tag_round_trips() {
             10 => back.platform_designation.is_some(),
             11 => back.image_source_sensor.is_some(),
             12 => back.image_coordinate_system.is_some(),
+            34 => back.icing_detected.is_some(),
             39 => back.outside_air_temp_c.is_some(),
             47 => back.generic_flag_data.is_some(),
             48 => back.security_local_set.is_some(),
@@ -738,10 +744,12 @@ fn every_typed_tag_round_trips() {
             60 => back.weapon_load.is_some(),
             61 => back.weapon_fired.is_some(),
             62 => back.laser_prf_code.is_some(),
+            63 => back.sensor_fov_name.is_some(),
             65 => back.uas_ls_version.is_some(),
             70 => back.alternate_platform_name.is_some(),
             72 => back.event_start_time_us.is_some(),
             74 => back.vmti.is_some(),
+            77 => back.operational_mode.is_some(),
             94 => back.miis_core_id.is_some(),
             106 => back.stream_designator.is_some(),
             107 => back.operational_base.is_some(),
@@ -1095,28 +1103,29 @@ fn decode_strict_compliance_allows_duplicate_unknown_tag() {
     // ST 0601.13-24 mandates once-per-packet only for DEFINED items.
     // An unknown tag (outside the typed table) may repeat without
     // violating the local-set contract — the strict walker must
-    // ignore duplicates of unknown tags. Tag 63 (0x3F) is a genuine
-    // spec-undefined gap (isolated between the now fully-typed 60-62
-    // and 64-65 clusters — WP-A Task A2 typed 60-62 but Table A2 has
-    // no Item 63, unlike the 65→74 gap the original version of this
-    // test used, which WP-A Task A2 filled with Tag 70), so it
-    // qualifies as "unknown" for this test. Its BER-OID encoding
-    // is the single byte 0x3F (high bit clear) — strict-canonical.
+    // ignore duplicates of unknown tags. Tag 66 (0x42) is Item 66,
+    // "Deprecated" per ST 0601.19 §8.66 ("This item has been
+    // deprecated."): a permanent placeholder that is never typed by
+    // design, so it's a stable "genuinely unknown" stand-in for this
+    // test — unlike the two prior stand-ins, which each got typed by
+    // a later WP-A task and forced this test to move (70 → 63 by
+    // Task A2, 63 → 66 here by Task A3). Its BER-OID encoding is the
+    // single byte 0x42 (high bit clear) — strict-canonical.
     let mut body = Vec::new();
     body.extend_from_slice(&[0x02, 0x08]); // Tag 2
     body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
     body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65
-    // Tag 63 twice with arbitrary 1-byte payloads.
-    body.extend_from_slice(&[0x3F, 0x01, 0xAA]);
-    body.extend_from_slice(&[0x3F, 0x01, 0xBB]);
+    // Tag 66 twice with arbitrary 1-byte payloads.
+    body.extend_from_slice(&[0x42, 0x01, 0xAA]);
+    body.extend_from_slice(&[0x42, 0x01, 0xBB]);
     body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1
     let buf = wrap_st0601_with_inline_checksum(&body);
 
     let record =
         decode_strict_compliance(&buf).expect("strict-compliance allows duplicate unknown tags");
     // Both copies land in record.unknown via the typed dispatcher.
-    let unknown_63 = record.unknown.iter().filter(|f| f.tag == 63).count();
-    assert_eq!(unknown_63, 2, "both unknown Tag 63 copies preserved");
+    let unknown_66 = record.unknown.iter().filter(|f| f.tag == 66).count();
+    assert_eq!(unknown_66, 2, "both unknown Tag 66 copies preserved");
 }
 
 #[test]
@@ -2256,4 +2265,74 @@ fn strict_encode_sanitizes_all_string_fields() {
             "{field}: strict encode must strip the ST 0107 control char"
         );
     }
+}
+
+// ============================================================================
+// WP-A: coded enums — new tags 34/63/77 (Table A3)
+// ============================================================================
+
+#[allow(clippy::field_reassign_with_default)]
+#[test]
+fn wpa_coded_enums_round_trip_and_other() {
+    let ls = decode_with_single_tlv(34, &[0x02]);
+    assert_eq!(ls.icing_detected, Some(IcingDetected::IcingDetected));
+    let ls = decode_with_single_tlv(63, &[0x08]);
+    assert_eq!(ls.sensor_fov_name, Some(SensorFovName::ContinuousZoom));
+    let ls = decode_with_single_tlv(77, &[0x01]);
+    assert_eq!(ls.operational_mode, Some(OperationalMode::Operational));
+    // Reserved/unknown codes survive byte-exact via Other(code):
+    let ls = decode_with_single_tlv(77, &[0x2A]);
+    assert_eq!(ls.operational_mode, Some(OperationalMode::Other(0x2A)));
+    let mut rec = UasDatalinkLs::default();
+    rec.operational_mode = Some(OperationalMode::Other(0x2A));
+    let bytes = crate::klv::st0601::encode_to_vec(&rec).unwrap();
+    assert_eq!(tlv_value(&bytes, 77), Some(vec![0x2A]));
+}
+
+/// ST 0601.19 §8 worked examples for the WP-A Task A3 coded enums — spec
+/// bytes in both directions (decode from example bytes AND `tlv_value`
+/// encode asserts), matching the rigor of `wpa_raw_spec_vectors`: these
+/// are identity codepoint encodings, so no LSB tolerance is needed. Also
+/// covers the `Other(code)` byte-exact round trip for the two enums the
+/// RED test above doesn't exercise (it only shows `Other` on tag 77).
+#[test]
+fn wpa_coded_enum_spec_vectors() {
+    // Tag 34 — Icing Detected (§8.34): worked example "Icing Detected" → 0x02.
+    let ls = decode_with_single_tlv(34, &[0x02]);
+    assert_eq!(ls.icing_detected, Some(IcingDetected::IcingDetected));
+    let encoded = encode_with_field(|r| r.icing_detected = Some(IcingDetected::IcingDetected));
+    assert_eq!(tlv_value(&encoded, 34), Some(vec![0x02]));
+    // Wire-unknown codepoint round-trips byte-exact via Other(code).
+    let ls = decode_with_single_tlv(34, &[0xFE]);
+    assert_eq!(ls.icing_detected, Some(IcingDetected::Other(0xFE)));
+    let encoded = encode_with_field(|r| r.icing_detected = Some(IcingDetected::Other(0xFE)));
+    assert_eq!(tlv_value(&encoded, 34), Some(vec![0xFE]));
+
+    // Tag 63 — Sensor Field of View Name (§8.63): worked example → 0x02 (Medium).
+    let ls = decode_with_single_tlv(63, &[0x02]);
+    assert_eq!(ls.sensor_fov_name, Some(SensorFovName::Medium));
+    let encoded = encode_with_field(|r| r.sensor_fov_name = Some(SensorFovName::Medium));
+    assert_eq!(tlv_value(&encoded, 63), Some(vec![0x02]));
+    // Table 4's 8th codepoint — the def-table-vs-Table-4 discrepancy (§8.63.1).
+    let ls = decode_with_single_tlv(63, &[0x08]);
+    assert_eq!(ls.sensor_fov_name, Some(SensorFovName::ContinuousZoom));
+    let encoded = encode_with_field(|r| r.sensor_fov_name = Some(SensorFovName::ContinuousZoom));
+    assert_eq!(tlv_value(&encoded, 63), Some(vec![0x08]));
+    // Wire-unknown codepoint round-trips byte-exact via Other(code).
+    let ls = decode_with_single_tlv(63, &[0xFE]);
+    assert_eq!(ls.sensor_fov_name, Some(SensorFovName::Other(0xFE)));
+    let encoded = encode_with_field(|r| r.sensor_fov_name = Some(SensorFovName::Other(0xFE)));
+    assert_eq!(tlv_value(&encoded, 63), Some(vec![0xFE]));
+
+    // Tag 77 — Operational Mode (§8.77.1 Table 5): worked example "1 (Operational)" → 0x01.
+    let ls = decode_with_single_tlv(77, &[0x01]);
+    assert_eq!(ls.operational_mode, Some(OperationalMode::Operational));
+    let encoded = encode_with_field(|r| r.operational_mode = Some(OperationalMode::Operational));
+    assert_eq!(tlv_value(&encoded, 77), Some(vec![0x01]));
+    // Spec code 0 is named "Other" in Table 5 — modeled as `OtherMode` to
+    // avoid clashing with the catch-all `Other(code)` fallback arm.
+    let ls = decode_with_single_tlv(77, &[0x00]);
+    assert_eq!(ls.operational_mode, Some(OperationalMode::OtherMode));
+    let encoded = encode_with_field(|r| r.operational_mode = Some(OperationalMode::OtherMode));
+    assert_eq!(tlv_value(&encoded, 77), Some(vec![0x00]));
 }

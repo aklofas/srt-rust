@@ -269,6 +269,7 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .image_coordinate_system
                 .as_ref()
                 .map(|s| str_wire_len(s)),
+            34 => record.icing_detected.map(|_| 1),
             39 => record.outside_air_temp_c.map(|_| 1),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
@@ -276,6 +277,7 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
             60 => record.weapon_load.map(|_| 2),
             61 => record.weapon_fired.map(|_| 1),
             62 => record.laser_prf_code.map(|_| 2),
+            63 => record.sensor_fov_name.map(|_| 1),
             65 => record
                 .uas_ls_version
                 .map(|_| 1)
@@ -286,6 +288,7 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .map(|s| str_wire_len(s)),
             72 => record.event_start_time_us.map(|_| 8),
             74 => record.vmti.as_ref().map(|v| v.len()),
+            77 => record.operational_mode.map(|_| 1),
             94 => record.miis_core_id.as_ref().map(|v| v.len()),
             106 => record.stream_designator.as_ref().map(|s| str_wire_len(s)),
             107 => record.operational_base.as_ref().map(|s| str_wire_len(s)),
@@ -345,6 +348,7 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(12, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
+        34 => record.icing_detected.map(|v| vec![v.to_wire()]),
         39 => record.outside_air_temp_c.map(|v| vec![v as u8]),
         47 => record.generic_flag_data.map(|b| vec![b]),
         48 => record.security_local_set.clone(),
@@ -356,6 +360,7 @@ pub(super) fn encode_tag_value(
         60 => record.weapon_load.map(|v| v.to_be_bytes().to_vec()),
         61 => record.weapon_fired.map(|b| vec![b]),
         62 => record.laser_prf_code.map(|v| v.to_be_bytes().to_vec()),
+        63 => record.sensor_fov_name.map(|v| vec![v.to_wire()]),
         65 => match (record.uas_ls_version, version_fallback) {
             (Some(v), _) => Some(vec![v]),
             (None, Some(fallback)) => Some(vec![fallback]),
@@ -368,6 +373,7 @@ pub(super) fn encode_tag_value(
             .transpose()?,
         72 => record.event_start_time_us.map(|t| t.to_be_bytes().to_vec()),
         74 => record.vmti.clone(),
+        77 => record.operational_mode.map(|v| vec![v.to_wire()]),
         94 => record.miis_core_id.clone(),
         106 => record
             .stream_designator

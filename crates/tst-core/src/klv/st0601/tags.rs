@@ -378,6 +378,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         }),
     },
     TagSpec {
+        id: 34,
+        name: "Icing Detected",
+        encoding: Encoding::U8,
+        range: None,
+    },
+    TagSpec {
         id: 35,
         name: "Wind Direction",
         encoding: Encoding::U16Range,
@@ -651,6 +657,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 63,
+        name: "Sensor Field of View Name",
+        encoding: Encoding::U8,
+        range: None,
+    },
+    TagSpec {
         id: 64,
         name: "Platform Magnetic Heading",
         encoding: Encoding::U16Range,
@@ -750,6 +762,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
             min: -900.0,
             max: 19000.0,
         }),
+    },
+    TagSpec {
+        id: 77,
+        name: "Operational Mode",
+        encoding: Encoding::U8,
+        range: None,
     },
     TagSpec {
         id: 78,

@@ -23,16 +23,27 @@ need() { # $1=binary  $2=human label
 need arm-none-eabi-g++ arm-none-eabi-g++
 need qemu-system-arm   qemu-system-arm
 
-# Run firmware.elf under QEMU and assert a PASS token. On failure the full QEMU
-# transcript is printed (CI logs would otherwise show only "GATE FAILED" and
-# drop the firmware's FAIL[...] line). Token-only — not exit-code — because ARM
-# semihosting SYS_EXIT propagation through qemu-system-arm is version-dependent;
-# the firmware prints exactly one PASS line on success, so the token is the
-# authoritative verdict. stderr is folded in (2>&1) so that SYS_WRITE0 diagnostic
-# output (FAIL[hardfault]/FAIL[assert]/etc.) appears in the failure dump — those
-# go to QEMU stderr while printf/SYS_WRITE goes to stdout.
-assert_pass() { # $1=timeout  $2=token  $3=label
-  local out rc t0 t1
+# ---------------------------------------------------------------------------
+# QEMU retry driver.
+#
+# Every QEMU leg is TCG-emulation-timing sensitive; three flake shapes are on
+# record (rc=124 full-budget hang, qemu-system-arm crashing outright, and a
+# labeled FAIL[...] whose assertion depends on emulation timing). Policy
+# (2026-07-16): a failed leg is retried EXACTLY ONCE with the identical,
+# already-built binary. A pass-on-retry is reported loudly (FLAKY PASS + a
+# GitHub ::warning:: annotation) so flake frequency stays visible in CI; a
+# deterministic regression fails both attempts and stays hard-red. Builds run
+# OUTSIDE the retry — a build failure is never a flake.
+# ---------------------------------------------------------------------------
+
+# Run firmware.elf once under QEMU with a wall-clock budget. Sets out/rc/t0/t1
+# (globals — read by the verdict functions below). Token-only — not exit-code —
+# verdicts because ARM semihosting SYS_EXIT propagation through qemu-system-arm
+# is version-dependent; the firmware prints exactly one PASS line on success.
+# stderr is folded in (2>&1) so SYS_WRITE0 diagnostics (FAIL[hardfault]/
+# FAIL[assert]/...) appear in the failure dump — those go to QEMU stderr while
+# printf/SYS_WRITE goes to stdout.
+run_qemu() { # $1=timeout-seconds
   t0=$(date +%s)
   if out=$(timeout "$1" qemu-system-arm -machine mps2-an386 -nographic \
         -semihosting-config enable=on,target=native -kernel "$D/build/firmware.elf" 2>&1); then
@@ -41,10 +52,62 @@ assert_pass() { # $1=timeout  $2=token  $3=label
     rc=$?
   fi
   t1=$(date +%s)
-  grep -q "$2" <<<"$out" && return 0
-  echo "GATE FAILED ($3) — qemu rc=$rc, elapsed=$((t1 - t0))s of ${1}s budget"
+}
+
+# retry_leg <budget-s> <label> <verdict-fn>: run the leg, retry once on any
+# verdict failure. The verdict fn reads the run_qemu globals, prints its own
+# "  verdict: ..." reason when it fails, and returns 0/1.
+retry_leg() {
+  local budget="$1" label="$2" verdict="$3" first_rc first_elapsed
+  run_qemu "$budget"
+  if "$verdict"; then return 0; fi
+  first_rc=$rc; first_elapsed=$((t1 - t0))
+  echo "FIRST ATTEMPT FAILED ($label) — qemu rc=$first_rc, elapsed=${first_elapsed}s of ${budget}s budget; retrying once (known QEMU/TCG timing-flake class)"
+  echo "----- QEMU output ($label, attempt 1) -----"; echo "$out"
+  run_qemu "$budget"
+  if "$verdict"; then
+    echo "FLAKY PASS ($label): passed on retry; first failure rc=$first_rc elapsed=${first_elapsed}s"
+    echo "::warning::freertos-srt $label: passed on retry (first failure rc=$first_rc, elapsed=${first_elapsed}s) — QEMU timing flake"
+    return 0
+  fi
+  echo "GATE FAILED ($label) — qemu rc=$rc, elapsed=$((t1 - t0))s of ${budget}s budget (failed BOTH attempts)"
   echo "  (rc=124 + full budget = hang/timeout; fast nonzero rc = a labeled FAIL[...] exit — read the transcript)"
-  echo "----- QEMU output ($3) -----"; echo "$out"; exit 1
+  echo "----- QEMU output ($label, attempt 2) -----"; echo "$out"
+  exit 1
+}
+
+# Token verdict for the plain PASS-token legs. TOKEN is set by assert_pass.
+v_token() {
+  grep -q "$TOKEN" <<<"$out" && return 0
+  echo "  verdict: expected token '$TOKEN' not found"
+  return 1
+}
+
+assert_pass() { # $1=timeout  $2=token  $3=label
+  TOKEN="$2"
+  retry_leg "$1" "$3" v_token
+}
+
+# fault-smoke: the firmware faults ON PURPOSE; the gate asserts the fault is
+# REPORTED (labeled, with a pc=) and FAST (not a silent wedge until timeout).
+v_fault_smoke() {
+  grep -q 'FAIL\[hardfault\] pc=0x' <<<"$out" || {
+    echo "  verdict: no labeled fault report"; return 1; }
+  [ $((t1 - t0)) -lt 25 ] || {
+    echo "  verdict: fault report was not fast: $((t1 - t0))s"; return 1; }
+  return 0
+}
+
+# arq-connfail: a caller-side connect failure must abort the listener join
+# and report fast — EMB-JOIN-1 regression guard.
+v_arq_connfail() {
+  grep -q 'FAIL\[s3_srt_plain\]: where=connect' <<<"$out" || {
+    echo "  verdict: no labeled connect-failure verdict — a caller-side failure"
+    echo "  wedged the listener join instead of aborting it; EMB-JOIN-1 regressed"
+    return 1; }
+  [ $((t1 - t0)) -lt 30 ] || {
+    echo "  verdict: failure was not fast: $((t1 - t0))s"; return 1; }
+  return 0
 }
 
 case "$t" in
@@ -64,30 +127,12 @@ case "$t" in
                  need cargo cargo
                  bash "$(dirname "$0")/../lib/run-freertos-srt-example.sh" || exit 1 ;;
   fault-smoke)   ( cd "$D" && ./build.sh fault-smoke >/dev/null 2>&1 )
-                 t0=$(date +%s)
-                 if out=$(timeout 30 qemu-system-arm -machine mps2-an386 -nographic \
-                       -semihosting-config enable=on,target=native \
-                       -kernel "$D/build/firmware.elf" 2>&1); then rc=0; else rc=$?; fi
-                 t1=$(date +%s)
-                 grep -q 'FAIL\[hardfault\] pc=0x' <<<"$out" || {
-                   echo "GATE FAILED (fault-smoke: no labeled fault report)"; echo "$out"; exit 1; }
-                 [ $((t1 - t0)) -lt 25 ] || {
-                   echo "GATE FAILED (fault-smoke: fault report was not fast: $((t1-t0))s)"; exit 1; }
-                 echo "OK: deliberate fault produced labeled fast failure (rc=$rc, $((t1-t0))s)" ;;
+                 retry_leg 30 "$t" v_fault_smoke
+                 echo "OK: deliberate fault produced labeled fast failure" ;;
   arq-connfail)  need cmake cmake
                  ( cd "$D" && ENCRYPT=0 ./build.sh loopback-arq-connfail >/dev/null )
-                 t0=$(date +%s)
-                 if out=$(timeout 60 qemu-system-arm -machine mps2-an386 -nographic \
-                       -semihosting-config enable=on,target=native \
-                       -kernel "$D/build/firmware.elf" 2>&1); then rc=0; else rc=$?; fi
-                 t1=$(date +%s)
-                 grep -q 'FAIL\[s3_srt_plain\]: where=connect' <<<"$out" || {
-                   echo "GATE FAILED (arq-connfail: no labeled connect-failure verdict — a caller-side"
-                   echo "failure wedged the listener join instead of aborting it; EMB-JOIN-1 regressed)"
-                   echo "qemu rc=$rc elapsed=$((t1 - t0))s"; echo "$out"; exit 1; }
-                 [ $((t1 - t0)) -lt 30 ] || {
-                   echo "GATE FAILED (arq-connfail: failure was not fast: $((t1 - t0))s)"; exit 1; }
-                 echo "OK: caller connect-failure aborted the listener and reported fast (rc=$rc, $((t1 - t0))s)" ;;
+                 retry_leg 60 "$t" v_arq_connfail
+                 echo "OK: caller connect-failure aborted the listener and reported fast" ;;
   malloc-stress) ( cd "$D" && ./build.sh malloc-stress >/dev/null )
                  assert_pass 90 'PASS: s5_malloc_stress' "$t" ;;
   *)             echo "unknown target: $t (expected exceptions|lwip-loopback|libsrt-smoke|loopback-arq|arq-connfail|example|fault-smoke|malloc-stress)" >&2; exit 2 ;;

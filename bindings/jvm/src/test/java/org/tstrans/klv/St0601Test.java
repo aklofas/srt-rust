@@ -831,4 +831,196 @@ class St0601Test {
         assertNull(OperationalMode.fromCode(decoded.operationalModeCode()));
         assertNull(decoded.operationalMode());
     }
+
+    // -----------------------------------------------------------------------
+    // WP-A: spec-vector pins — hand-authored wire bytes, NOT the encoder's
+    // own output. Closed-loop round-trips alone can't catch a symmetric
+    // transcription error in the JNI layer's locally-duplicated enum
+    // wire-code tables (a code swapped identically in both directions
+    // round-trips cleanly while emitting the wrong byte on the wire), so
+    // each field kind gets at least one decode-from-hand-built-bytes test
+    // and one encoded-output-contains-exact-TLV test. Tag/value bytes are
+    // pinned from MISB ST 0601.19 via the WP-A plan tables.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Assemble a full ST 0601 LS wire buffer from hand-authored TLV hex:
+     * {@code UL + short-form BER length + TLVs + trailing Tag 1 checksum}.
+     * The checksum is the ST 0601 §6.3 16-bit running sum (even-indexed
+     * bytes weighted into the high byte) over every byte from the first UL
+     * byte through the checksum item's length byte — the lenient decoder
+     * verifies it, so it must be computed, not faked. The helper itself is
+     * pinned against the known-good captured fixture by
+     * {@link #lsBuilderHelperReproducesMinimalFixture()}.
+     */
+    private static byte[] buildLs(String tlvHex) {
+        byte[] ul = HexFormat.of().parseHex(BARE_UL_HEX);
+        byte[] tlvs = HexFormat.of().parseHex(tlvHex);
+        int bodyLen = tlvs.length + 4; // + checksum TLV: tag 0x01, len 0x02, 2 value bytes
+        if (bodyLen >= 0x80) {
+            throw new IllegalArgumentException("test helper only supports short-form BER lengths");
+        }
+        byte[] out = new byte[16 + 1 + bodyLen];
+        System.arraycopy(ul, 0, out, 0, 16);
+        out[16] = (byte) bodyLen;
+        System.arraycopy(tlvs, 0, out, 17, tlvs.length);
+        int csumTag = 17 + tlvs.length;
+        out[csumTag] = 0x01;     // Tag 1 (checksum)
+        out[csumTag + 1] = 0x02; // length 2
+        int bcc = 0;
+        for (int i = 0; i < csumTag + 2; i++) { // through the checksum length byte
+            bcc += (out[i] & 0xFF) << (8 * ((i + 1) % 2));
+        }
+        bcc &= 0xFFFF;
+        out[csumTag + 2] = (byte) (bcc >>> 8);
+        out[csumTag + 3] = (byte) bcc;
+        return out;
+    }
+
+    /** True when {@code haystack} contains {@code needle} as a contiguous byte run. */
+    private static boolean containsBytes(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= haystack.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) continue outer;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static void assertWireContains(byte[] wire, String tlvHex, String what) {
+        assertTrue(containsBytes(wire, HexFormat.of().parseHex(tlvHex)),
+                "encoded output must contain the exact " + what + " TLV bytes " + tlvHex
+                        + "; got " + HexFormat.of().formatHex(wire));
+    }
+
+    /**
+     * Pins {@link #buildLs} itself (BER framing + §6.3 checksum) against the
+     * committed, decoder-accepted MINIMAL_FIXTURE: rebuilding that fixture's
+     * two TLVs must reproduce it byte-for-byte, checksum {@code 0xAA0A}
+     * included.
+     */
+    @Test
+    void lsBuilderHelperReproducesMinimalFixture() {
+        byte[] rebuilt = buildLs("020800060a24181e4000" + "410113");
+        assertArrayEquals(MINIMAL_FIXTURE, rebuilt,
+                "buildLs must reproduce the captured minimal fixture exactly");
+    }
+
+    /** Tag 34 (0x22): spec code 2 = Icing Detected. Decode direction: hand-authored bytes. */
+    @Test
+    void icingDetectedSpecVectorDecode() throws KlvDecodeException {
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("220102"));
+        assertEquals(2, decoded.icingDetectedCode());
+        assertEquals(IcingDetected.ICING_DETECTED, decoded.icingDetected());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Tag 34 (0x22): the encoded output must carry the exact {@code 22 01 02} TLV. */
+    @Test
+    void icingDetectedSpecVectorEncode() throws KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .icingDetectedCode(IcingDetected.ICING_DETECTED.code())
+                .build());
+        assertWireContains(wire, "220102", "Tag 34 IcingDetected");
+    }
+
+    /**
+     * Tag 63 (0x3F): spec code 2 = Medium, and the §8.63.1 Table 4
+     * spec-discrepancy codepoint 8 = Continuous Zoom. Decode direction.
+     */
+    @Test
+    void sensorFovNameSpecVectorDecode() throws KlvDecodeException {
+        UasDatalinkLs medium = Klv.decodeUasDatalink(buildLs("3f0102"));
+        assertEquals(2, medium.sensorFovNameCode());
+        assertEquals(SensorFovName.MEDIUM, medium.sensorFovName());
+        assertTrue(medium.fieldErrors().isEmpty());
+
+        UasDatalinkLs zoom = Klv.decodeUasDatalink(buildLs("3f0108"));
+        assertEquals(8, zoom.sensorFovNameCode());
+        assertEquals(SensorFovName.CONTINUOUS_ZOOM, zoom.sensorFovName());
+        assertTrue(zoom.fieldErrors().isEmpty());
+    }
+
+    /** Tag 63 (0x3F): encoded output carries the exact TLVs for codes 2 and 8. */
+    @Test
+    void sensorFovNameSpecVectorEncode() throws KlvEncodeException {
+        byte[] medium = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorFovNameCode(SensorFovName.MEDIUM.code())
+                .build());
+        assertWireContains(medium, "3f0102", "Tag 63 SensorFovName=Medium");
+
+        byte[] zoom = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorFovNameCode(SensorFovName.CONTINUOUS_ZOOM.code())
+                .build());
+        assertWireContains(zoom, "3f0108", "Tag 63 SensorFovName=ContinuousZoom");
+    }
+
+    /** Tag 77 (0x4D): spec code 1 = Operational. Decode direction: hand-authored bytes. */
+    @Test
+    void operationalModeSpecVectorDecode() throws KlvDecodeException {
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("4d0101"));
+        assertEquals(1, decoded.operationalModeCode());
+        assertEquals(OperationalMode.OPERATIONAL, decoded.operationalMode());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Tag 77 (0x4D): the encoded output must carry the exact {@code 4d 01 01} TLV. */
+    @Test
+    void operationalModeSpecVectorEncode() throws KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .operationalModeCode(OperationalMode.OPERATIONAL.code())
+                .build());
+        assertWireContains(wire, "4d0101", "Tag 77 OperationalMode");
+    }
+
+    /**
+     * Table A1 representative — Tag 35 (0x23) Wind Direction: 235.924010 deg
+     * maps to value bytes {@code A7 C4} per the ST 0601.19 uint16 [0, 360]
+     * linear mapping. Both directions: encode must emit the exact TLV;
+     * hand-authored bytes must decode back within the fixed-point step.
+     */
+    @Test
+    void windDirectionSpecVector() throws KlvDecodeException, KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .windDirectionDeg(235.924010)
+                .build());
+        assertWireContains(wire, "2302a7c4", "Tag 35 Wind Direction");
+
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("2302a7c4"));
+        assertNotNull(decoded.windDirectionDeg());
+        assertEquals(235.924010, decoded.windDirectionDeg(), 0.006);
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /**
+     * Table A2 representatives — Tag 39 (0x27) Outside Air Temp: 84 →
+     * {@code 54} (raw i8); Tag 60 (0x3C) Weapon Load: 45016 → {@code AF D8}
+     * (raw u16). Both directions.
+     */
+    @Test
+    void tableA2SpecVectors() throws KlvDecodeException, KlvEncodeException {
+        byte[] tempWire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .outsideAirTempC(84)
+                .build());
+        assertWireContains(tempWire, "270154", "Tag 39 Outside Air Temp");
+
+        byte[] weaponWire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .weaponLoad(45016)
+                .build());
+        assertWireContains(weaponWire, "3c02afd8", "Tag 60 Weapon Load");
+
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("270154" + "3c02afd8"));
+        assertEquals(84, decoded.outsideAirTempC());
+        assertEquals(45016, decoded.weaponLoad());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
 }

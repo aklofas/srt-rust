@@ -117,16 +117,19 @@ def _populated_uas() -> UasDatalinkLs:
 # ST 0601 UasDatalinkLs — round-trip unknown TLV preservation
 # ---------------------------------------------------------------------------
 
-# ST 0601 typed tags occupy 5..=91 plus the reserved structural tags
-# {1, 2, 65}. Tag 100 is unused by ST 0601.24 and serves as a safe
-# forward-compat "unknown" stand-in.
-_UNKNOWN_TAG_ST0601 = 100
+# ST 0601 typed tags occupy 1-65, 67-80, 82-101, 106-108, 129, 135 (WP-A
+# extended this past the original 5..=91 + {1, 2, 65, 94}; see
+# `is_st0601_typed_tag` in bindings/python/src/klv.rs). Tag 120 sits in
+# the 109-127 gap, which is unclaimed by any *shipped or brief-earmarked*
+# work package (unlike 96 [WP-B] or 102 [WP-C SDCC-FLP]) — `_tlv` below
+# also caps at single-byte BER-OID tags (< 0x80), so this must stay < 128.
+_UNKNOWN_TAG_ST0601 = 120
 _UNKNOWN_PAYLOAD_ST0601 = b"\xde\xad\xbe\xef"
 
 
 def _hand_built_st0601_wire_with_unknown() -> bytes:
     """Build an ST 0601 wire record with Tag 2 (PTS) + Tag 65 (Version) +
-    one unknown TLV at tag 100, with a valid running-sum checksum so
+    one unknown TLV at tag 120, with a valid running-sum checksum so
     lenient decode accepts it.
 
     Matches the audit's recommended test path: "decode a fixture with a

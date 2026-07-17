@@ -4,7 +4,7 @@
 //! BER long form: `0x80 | n` followed by `n` big-endian length bytes (n in 1..=8).
 //! BER-OID: base-128 integer, big-endian, MSB set on every non-final byte.
 
-use crate::error::{KlvDecodeError, KlvEncodeError};
+use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 
 /// Which length encoding a generic pack uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +242,55 @@ pub fn write_ber_oid_u64(value: u64, out: &mut [u8]) -> Result<usize, KlvEncodeE
 /// (the u64 algorithm is identical for inputs ≤ u32::MAX).
 pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
     write_ber_oid_u64(value as u64, out)
+}
+
+/// MISB variable-length unsigned int (length-prefixed truncatable form used
+/// by ST 0601 items 110/111/123-126/131/133): plain big-endian bytes, the
+/// TLV length IS the byte count. NOT BER-OID.
+#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
+pub(crate) fn read_var_uint(bytes: &[u8], max_len: usize, tag: u32) -> Result<u64, KlvFieldError> {
+    if bytes.is_empty() || bytes.len() > max_len {
+        return Err(KlvFieldError::InvalidLength {
+            tag,
+            expected: max_len,
+            got: bytes.len(),
+        });
+    }
+    Ok(bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64))
+}
+
+/// Signed twin (items 136/137): two's complement, sign-extended from the MSB.
+#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
+pub(crate) fn read_var_int(bytes: &[u8], max_len: usize, tag: u32) -> Result<i64, KlvFieldError> {
+    let raw = read_var_uint(bytes, max_len, tag)?;
+    let shift = 64 - 8 * bytes.len() as u32;
+    Ok(((raw << shift) as i64) >> shift)
+}
+
+/// Shortest-form big-endian emit (>= 1 byte).
+#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
+pub(crate) fn write_var_uint_min(v: u64) -> alloc::vec::Vec<u8> {
+    let n = (8 - (v.leading_zeros() / 8) as usize).max(1);
+    v.to_be_bytes()[8 - n..].to_vec()
+}
+
+/// Minimal two's-complement emit preserving the sign bit (>= 1 byte).
+#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
+pub(crate) fn write_var_int_min(v: i64) -> alloc::vec::Vec<u8> {
+    let bytes = v.to_be_bytes();
+    let mut n = 8;
+    // Drop redundant leading 0x00 (positive) / 0xFF (negative) while the
+    // next byte's MSB still encodes the sign.
+    while n > 1 {
+        let lead = bytes[8 - n];
+        let next_msb = bytes[8 - n + 1] & 0x80;
+        if (lead == 0x00 && next_msb == 0) || (lead == 0xFF && next_msb != 0) {
+            n -= 1;
+        } else {
+            break;
+        }
+    }
+    bytes[8 - n..].to_vec()
 }
 
 #[cfg(test)]
@@ -525,5 +574,32 @@ mod tests {
         assert_eq!(n, 10, "u64::MAX needs 10 BER-OID bytes (ceil(64/7))");
         let (parsed, _) = read_ber_oid_u64(&buf[..n]).unwrap();
         assert_eq!(parsed, u64::MAX);
+    }
+
+    // ---------- MISB variable-length truncatable ints ----------
+
+    #[test]
+    fn var_uint_reads_and_shortest_writes() {
+        assert_eq!(read_var_uint(&[0x4D, 0xAF], 4, 110).unwrap(), 19887); // Tag 110 spec example
+        assert_eq!(read_var_uint(&[0x00], 4, 110).unwrap(), 0);
+        assert!(read_var_uint(&[], 4, 110).is_err()); // zero-length = malformed
+        assert!(read_var_uint(&[0; 5], 4, 110).is_err()); // over max_len
+        assert_eq!(write_var_uint_min(19887), vec![0x4D, 0xAF]);
+        assert_eq!(write_var_uint_min(0), vec![0x00]); // never empty
+        assert_eq!(write_var_uint_min(0x0100), vec![0x01, 0x00]);
+    }
+
+    #[test]
+    fn var_int_sign_handling() {
+        assert_eq!(read_var_int(&[0x1E], 4, 136).unwrap(), 30); // Tag 136 spec example
+        assert_eq!(read_var_int(&[0xE2], 4, 136).unwrap(), -30); // sign-extended
+        assert_eq!(
+            read_var_int(&[0x01, 0x2B, 0x8D, 0xC6, 0x35], 8, 137).unwrap(),
+            5_025_678_901
+        ); // Tag 137
+        assert_eq!(write_var_int_min(30), vec![0x1E]);
+        assert_eq!(write_var_int_min(-30), vec![0xE2]);
+        assert_eq!(write_var_int_min(128), vec![0x00, 0x80]); // needs a sign byte
+        assert_eq!(write_var_int_min(-129), vec![0xFF, 0x7F]);
     }
 }

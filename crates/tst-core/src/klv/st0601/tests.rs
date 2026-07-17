@@ -684,12 +684,23 @@ fn every_typed_tag_round_trips() {
             10 => record.platform_designation = Some("D".to_string()),
             11 => record.image_source_sensor = Some("S".to_string()),
             12 => record.image_coordinate_system = Some("WGS84".to_string()),
+            39 => record.outside_air_temp_c = Some(-16),
             47 => record.generic_flag_data = Some(0xAB),
             48 => record.security_local_set = Some(vec![0x01, 0x02]),
             59 => record.platform_call_sign = Some("CS".to_string()),
+            60 => record.weapon_load = Some(45016),
+            61 => record.weapon_fired = Some(186),
+            62 => record.laser_prf_code = Some(1743),
             65 => record.uas_ls_version = Some(0x13),
+            70 => record.alternate_platform_name = Some("APACHE".to_string()),
+            72 => record.event_start_time_us = Some(798_039_894_000_000),
             74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
             94 => record.miis_core_id = Some(vec![0x01, 0x70, 0xCA, 0xFE]),
+            106 => record.stream_designator = Some("BLUE".to_string()),
+            107 => record.operational_base = Some("BASE01".to_string()),
+            108 => record.broadcast_source = Some("HOME".to_string()),
+            129 => record.target_id = Some("A123".to_string()),
+            135 => record.communications_method = Some("Frequency Modulation".to_string()),
             _ => {
                 // Ranged numeric: pick a value at the midpoint of the spec range.
                 let r = spec.range.expect("ranged tag has range");
@@ -720,12 +731,23 @@ fn every_typed_tag_round_trips() {
             10 => back.platform_designation.is_some(),
             11 => back.image_source_sensor.is_some(),
             12 => back.image_coordinate_system.is_some(),
+            39 => back.outside_air_temp_c.is_some(),
             47 => back.generic_flag_data.is_some(),
             48 => back.security_local_set.is_some(),
             59 => back.platform_call_sign.is_some(),
+            60 => back.weapon_load.is_some(),
+            61 => back.weapon_fired.is_some(),
+            62 => back.laser_prf_code.is_some(),
             65 => back.uas_ls_version.is_some(),
+            70 => back.alternate_platform_name.is_some(),
+            72 => back.event_start_time_us.is_some(),
             74 => back.vmti.is_some(),
             94 => back.miis_core_id.is_some(),
+            106 => back.stream_designator.is_some(),
+            107 => back.operational_base.is_some(),
+            108 => back.broadcast_source.is_some(),
+            129 => back.target_id.is_some(),
+            135 => back.communications_method.is_some(),
             2 => back.timestamp_us.is_some(),
             _ => {
                 // For ranged numeric, presence == any of our ranged fields is set.
@@ -1072,25 +1094,28 @@ fn decode_strict_compliance_allows_duplicate_unknown_tag() {
     // ST 0601.13-24 mandates once-per-packet only for DEFINED items.
     // An unknown tag (outside the typed table) may repeat without
     // violating the local-set contract — the strict walker must
-    // ignore duplicates of unknown tags. Tag 70 (0x46) sits in a
-    // gap of the typed table (the table jumps 65→74), so it
+    // ignore duplicates of unknown tags. Tag 63 (0x3F) is a genuine
+    // spec-undefined gap (isolated between the now fully-typed 60-62
+    // and 64-65 clusters — WP-A Task A2 typed 60-62 but Table A2 has
+    // no Item 63, unlike the 65→74 gap the original version of this
+    // test used, which WP-A Task A2 filled with Tag 70), so it
     // qualifies as "unknown" for this test. Its BER-OID encoding
-    // is the single byte 0x46 (high bit clear) — strict-canonical.
+    // is the single byte 0x3F (high bit clear) — strict-canonical.
     let mut body = Vec::new();
     body.extend_from_slice(&[0x02, 0x08]); // Tag 2
     body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
     body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65
-    // Tag 70 twice with arbitrary 1-byte payloads.
-    body.extend_from_slice(&[0x46, 0x01, 0xAA]);
-    body.extend_from_slice(&[0x46, 0x01, 0xBB]);
+    // Tag 63 twice with arbitrary 1-byte payloads.
+    body.extend_from_slice(&[0x3F, 0x01, 0xAA]);
+    body.extend_from_slice(&[0x3F, 0x01, 0xBB]);
     body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1
     let buf = wrap_st0601_with_inline_checksum(&body);
 
     let record =
         decode_strict_compliance(&buf).expect("strict-compliance allows duplicate unknown tags");
     // Both copies land in record.unknown via the typed dispatcher.
-    let unknown_70 = record.unknown.iter().filter(|f| f.tag == 70).count();
-    assert_eq!(unknown_70, 2, "both unknown Tag 70 copies preserved");
+    let unknown_63 = record.unknown.iter().filter(|f| f.tag == 63).count();
+    assert_eq!(unknown_63, 2, "both unknown Tag 63 copies preserved");
 }
 
 #[test]
@@ -2054,4 +2079,57 @@ fn wpa_ranged_spec_vectors() {
             "tag {tag}: wire bytes != spec example"
         );
     }
+}
+
+// ============================================================================
+// WP-A: raw/simple fields — new I8/U16 encodings (Table A2 spec vectors)
+// ============================================================================
+
+/// ST 0601.19 §8 worked examples for the WP-A raw/simple fields — spec
+/// bytes, not round-trip (closed-loop tests can't catch a wrong wire
+/// formula). No LSB tolerance: unlike the IMAPB-quantized ranged fields
+/// in [`wpa_ranged_spec_vectors`], these are identity encodings (raw
+/// int/string bytes), so decoded values must match the spec examples
+/// exactly.
+#[allow(clippy::field_reassign_with_default)]
+#[test]
+fn wpa_raw_spec_vectors() {
+    // Decode + encode against ST 0601.19 §8 examples (Appendix Table A2).
+    let ls = decode_with_single_tlv(39, &[0x54]);
+    assert_eq!(ls.outside_air_temp_c, Some(84));
+    let ls = decode_with_single_tlv(60, &[0xAF, 0xD8]);
+    assert_eq!(ls.weapon_load, Some(45016));
+    let ls = decode_with_single_tlv(70, b"APACHE");
+    assert_eq!(ls.alternate_platform_name.as_deref(), Some("APACHE"));
+    let ls = decode_with_single_tlv(72, &798039894000000u64.to_be_bytes());
+    assert_eq!(ls.event_start_time_us, Some(798039894000000));
+    // Tag 129 crosses the BER-OID 2-byte-tag boundary — round-trip proves
+    // emit_ber_oid_tlv + Iter handle tags >= 128 through the typed path.
+    let mut rec = UasDatalinkLs::default();
+    rec.target_id = Some("A123".into());
+    let ls = crate::klv::st0601::decode(&crate::klv::st0601::encode_to_vec(&rec).unwrap()).unwrap();
+    assert_eq!(ls.target_id.as_deref(), Some("A123"));
+    // negative OAT: two's complement
+    let ls = decode_with_single_tlv(39, &[0xF0]);
+    assert_eq!(ls.outside_air_temp_c, Some(-16));
+    // ... remaining Table A2 rows (61, 62, 106, 107, 108, 135) same shape ...
+    let ls = decode_with_single_tlv(61, &[0xBA]);
+    assert_eq!(ls.weapon_fired, Some(186));
+    let ls = decode_with_single_tlv(62, &[0x06, 0xCF]);
+    assert_eq!(ls.laser_prf_code, Some(1743));
+    let ls = decode_with_single_tlv(106, b"BLUE");
+    assert_eq!(ls.stream_designator.as_deref(), Some("BLUE"));
+    let ls = decode_with_single_tlv(107, b"BASE01");
+    assert_eq!(ls.operational_base.as_deref(), Some("BASE01"));
+    let ls = decode_with_single_tlv(108, b"HOME");
+    assert_eq!(ls.broadcast_source.as_deref(), Some("HOME"));
+    // Tag 135 also crosses the BER-OID 2-byte-tag boundary (0x81 0x07) —
+    // same round-trip treatment as Tag 129.
+    let mut rec = UasDatalinkLs::default();
+    rec.communications_method = Some("Frequency Modulation".into());
+    let ls = crate::klv::st0601::decode(&crate::klv::st0601::encode_to_vec(&rec).unwrap()).unwrap();
+    assert_eq!(
+        ls.communications_method.as_deref(),
+        Some("Frequency Modulation")
+    );
 }

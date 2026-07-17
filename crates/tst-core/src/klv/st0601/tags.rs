@@ -7,6 +7,10 @@
 pub(crate) enum Encoding {
     /// Raw 1-byte value (e.g. version byte, generic flag data).
     U8,
+    /// Raw 1-byte two's-complement value (e.g. outside air temperature).
+    I8,
+    /// Raw 2-byte big-endian value (bit-packed or code fields, e.g. weapon load).
+    U16,
     /// Raw 2-byte big-endian value with a linear range mapping.
     U16Range,
     I16Range,
@@ -418,6 +422,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         }),
     },
     TagSpec {
+        id: 39,
+        name: "Outside Air Temperature",
+        encoding: Encoding::I8,
+        range: None,
+    },
+    TagSpec {
         id: 40,
         name: "Target Location Latitude",
         encoding: Encoding::I32Range,
@@ -623,6 +633,24 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 60,
+        name: "Weapon Load",
+        encoding: Encoding::U16,
+        range: None,
+    },
+    TagSpec {
+        id: 61,
+        name: "Weapon Fired",
+        encoding: Encoding::U8,
+        range: None,
+    },
+    TagSpec {
+        id: 62,
+        name: "Laser PRF Code",
+        encoding: Encoding::U16,
+        range: None,
+    },
+    TagSpec {
         id: 64,
         name: "Platform Magnetic Heading",
         encoding: Encoding::U16Range,
@@ -673,6 +701,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         }),
     },
     TagSpec {
+        id: 70,
+        name: "Alternate Platform Name",
+        encoding: Encoding::Utf8 { max_bytes: 127 },
+        range: None,
+    },
+    TagSpec {
         id: 71,
         name: "Alternate Platform Heading",
         encoding: Encoding::U16Range,
@@ -682,6 +716,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
             min: 0.0,
             max: 360.0,
         }),
+    },
+    TagSpec {
+        id: 72,
+        name: "Event Start Time - UTC",
+        encoding: Encoding::U64,
+        range: None,
     },
     TagSpec {
         id: 74,
@@ -881,6 +921,36 @@ pub(crate) const TAGS: &[TagSpec] = &[
         id: 94,
         name: "MIIS Core Identifier",
         encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 106,
+        name: "Stream Designator",
+        encoding: Encoding::Utf8 { max_bytes: 127 },
+        range: None,
+    },
+    TagSpec {
+        id: 107,
+        name: "Operational Base",
+        encoding: Encoding::Utf8 { max_bytes: 127 },
+        range: None,
+    },
+    TagSpec {
+        id: 108,
+        name: "Broadcast Source",
+        encoding: Encoding::Utf8 { max_bytes: 127 },
+        range: None,
+    },
+    TagSpec {
+        id: 129,
+        name: "Target ID",
+        encoding: Encoding::Utf8 { max_bytes: 32 },
+        range: None,
+    },
+    TagSpec {
+        id: 135,
+        name: "Communications Method",
+        encoding: Encoding::Utf8 { max_bytes: 127 },
         range: None,
     },
 ];

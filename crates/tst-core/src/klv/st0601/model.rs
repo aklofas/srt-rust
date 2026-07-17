@@ -281,6 +281,10 @@ pub struct UasDatalinkLs {
     pub sensor_east_velocity: Option<f64>,
 
     // Misc
+    /// Item 47: Generic Flag Data — bitfield per ST 0601.19 Table 3:
+    /// bit 0 laser range on, bit 1 auto-track on, bit 2 IR polarity
+    /// (set = black hot), bit 3 icing detected, bit 4 slant range
+    /// measured (vs. calculated), bit 5 image invalid, bits 6-7 reserved.
     pub generic_flag_data: Option<u8>,
     pub security_local_set: Option<Vec<u8>>,
     /// Tag 74 — VMTI Local Set (MISB ST 0903). Pass-through bytes;
@@ -289,6 +293,23 @@ pub struct UasDatalinkLs {
     /// Sibling-layer pattern matches `security_local_set` (Tag 48 →
     /// `klv::st0102`).
     pub vmti: Option<Vec<u8>>,
+
+    // Raw scalar & string items (tags 39, 60-62, 70, 72, 106-108, 129, 135)
+    pub outside_air_temp_c: Option<i8>,
+    /// Item 60: Weapon Load — bit-packed nibbles (high→low): store
+    /// station, store substation, weapon type, weapon variant. Kept as a
+    /// raw opaque `u16`, not a sub-struct — callers needing individual
+    /// nibbles shift and mask this value themselves.
+    pub weapon_load: Option<u16>,
+    pub weapon_fired: Option<u8>,
+    pub laser_prf_code: Option<u16>,
+    pub alternate_platform_name: Option<String>,
+    pub event_start_time_us: Option<u64>,
+    pub stream_designator: Option<String>,
+    pub operational_base: Option<String>,
+    pub broadcast_source: Option<String>,
+    pub target_id: Option<String>,
+    pub communications_method: Option<String>,
 
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
@@ -400,6 +421,17 @@ impl Default for UasDatalinkLs {
             generic_flag_data: None,
             security_local_set: None,
             vmti: None,
+            outside_air_temp_c: None,
+            weapon_load: None,
+            weapon_fired: None,
+            laser_prf_code: None,
+            alternate_platform_name: None,
+            event_start_time_us: None,
+            stream_designator: None,
+            operational_base: None,
+            broadcast_source: None,
+            target_id: None,
+            communications_method: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),

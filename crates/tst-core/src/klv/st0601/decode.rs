@@ -380,7 +380,37 @@ fn apply_typed_tag(
             let v = f.value[0];
             match tag {
                 47 => record.generic_flag_data = Some(v),
+                61 => record.weapon_fired = Some(v),
                 65 => record.uas_ls_version = Some(v),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::I8 => {
+            if f.value.len() != 1 {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: 1,
+                    got: f.value.len(),
+                });
+            }
+            let v = f.value[0] as i8;
+            match tag {
+                39 => record.outside_air_temp_c = Some(v),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::U16 => {
+            if f.value.len() != 2 {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: 2,
+                    got: f.value.len(),
+                });
+            }
+            let v = u16::from_be_bytes([f.value[0], f.value[1]]);
+            match tag {
+                60 => record.weapon_load = Some(v),
+                62 => record.laser_prf_code = Some(v),
                 _ => unreachable!(),
             }
         }
@@ -397,6 +427,7 @@ fn apply_typed_tag(
             let v = u64::from_be_bytes(a);
             match tag {
                 2 => record.timestamp_us = Some(v),
+                72 => record.event_start_time_us = Some(v),
                 _ => unreachable!(),
             }
         }
@@ -427,6 +458,12 @@ fn apply_typed_tag(
                 11 => record.image_source_sensor = Some(s),
                 12 => record.image_coordinate_system = Some(s),
                 59 => record.platform_call_sign = Some(s),
+                70 => record.alternate_platform_name = Some(s),
+                106 => record.stream_designator = Some(s),
+                107 => record.operational_base = Some(s),
+                108 => record.broadcast_source = Some(s),
+                129 => record.target_id = Some(s),
+                135 => record.communications_method = Some(s),
                 _ => unreachable!(),
             }
         }

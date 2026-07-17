@@ -9,6 +9,65 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — ST 0601 fixed-encoding items fully typed (51 new fields, 103 of 143 total)
+
+- 51 previously-passthrough MISB ST 0601 tags are now typed
+  `UasDatalinkLs` fields — 103 of 143 spec items modeled, up from 52:
+  - 30 fixed-linear-mapped scalars closing the tags 35–93 gap: target
+    location + track-gate width/height + CE90/LE90 error estimates,
+    weather/atmospheric (wind, pressure, density altitude, humidity),
+    alternate-platform position/heading/height, sensor north/east
+    velocity, and the full-range twins of platform angle-of-attack and
+    sideslip (tags 92/93).
+  - 11 raw scalar/string items: I8/U16/U64 raw encodings (outside air
+    temperature, weapon load/fired, laser PRF code, event start time)
+    plus 6 UTF-8 strings, including the first two typed tags whose own
+    tag number is 2-byte BER-OID encoded (129 Target ID, 135
+    Communications Method).
+  - 3 coded enums: `IcingDetected` (tag 34), `SensorFovName` (tag 63),
+    `OperationalMode` (tag 77) — each keeps an `Other(code)` fallback
+    that round-trips unrecognized wire codepoints byte-exact.
+  - 7 named nested-local-set byte fields, given their own struct field
+    instead of riding in `unknown` (see the *Changed* entry below).
+  - Closes the `OutOfRangePolicy::Indicator` known gap noted in the
+    v0.3.0 field-feedback arc (PR #92): all 11 sentinel-eligible tags
+    (6, 7, 50, 51, 52, 79, 80, 90–93) are now encodable typed fields,
+    not just 5 of them.
+  - A new pinning test wave covers every new field's encode/decode spec
+    bytes, including the `Indicator` sentinel path for the newly-typed
+    full-range tags.
+- Mirrored in full through the Python and JVM bindings (51 fields ×
+  both bindings), including the 3 coded enums.
+
+### Fixed — Python/JVM `unknown` no longer double-lists newly-typed tags
+
+- The Python and JVM bindings' internal `is_st0601_typed_tag` predicate
+  (keeps a decoded record's `unknown` list from duplicating tags that
+  already have a typed field) was stale: Python was missing tags 3 and
+  4 (Mission ID, Platform Tail Number), and JVM was additionally missing
+  tag 94 (MIIS Core Identifier). A decoded record carrying any of those
+  tags listed them in both the typed field *and* `unknown`. Fixed as
+  part of widening the predicate for the 51 newly-typed tags above.
+
+### Changed — nested local-set tags decode into named fields, not `unknown`
+
+- Tags 73, 95, 97, 98, 99, 100, 101 (RVT / SAR Motion Imagery / Range
+  Image / Geo-Registration / Composite Imaging / Segment / Amend local
+  sets) now decode into their own named `Option<Vec<u8>>` field (`rvt`,
+  `sar_mi_local_set`, `range_image_local_set`,
+  `geo_registration_local_set`, `composite_imaging_local_set`,
+  `segment_local_set`, `amend_local_set`) instead of the generic
+  `unknown` bucket. The bytes are unchanged and wire output is
+  byte-identical — interior typing of each nested set's contents is
+  still future work; this only changes where a caller finds the bytes
+  on the decoded struct.
+
+### Added — `st0601_sentinel_meaning` lookup in Python
+
+- `tstrans.klv.st0601_sentinel_meaning(tag)` exposes the Rust
+  `klv::st0601::st0601_sentinel_meaning` lookup (Out of Range / Reserved
+  / Not Available per tag) to Python callers.
+
 ### Changed — RTSP server refuses TLS config on a plaintext bind
 
 - `RtspServer::start()` now fails with `RtspServerError::Tls` when

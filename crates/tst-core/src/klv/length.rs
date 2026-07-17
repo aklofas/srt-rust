@@ -247,12 +247,17 @@ pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError
 /// MISB variable-length unsigned int (length-prefixed truncatable form used
 /// by ST 0601 items 110/111/123-126/131/133): plain big-endian bytes, the
 /// TLV length IS the byte count. NOT BER-OID.
+///
+/// Hard substrate cap: at most 8 value bytes (the `u64` accumulator width) —
+/// longer inputs are rejected as `InvalidLength` regardless of how permissive
+/// the caller's `max_len` is (a `max_len > 8` must not re-enable silent
+/// leading-byte truncation).
 #[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
 pub(crate) fn read_var_uint(bytes: &[u8], max_len: usize, tag: u32) -> Result<u64, KlvFieldError> {
-    if bytes.is_empty() || bytes.len() > max_len {
+    if bytes.is_empty() || bytes.len() > max_len || bytes.len() > 8 {
         return Err(KlvFieldError::InvalidLength {
             tag,
-            expected: max_len,
+            expected: max_len.min(8), // report the effective ceiling
             got: bytes.len(),
         });
     }
@@ -260,6 +265,10 @@ pub(crate) fn read_var_uint(bytes: &[u8], max_len: usize, tag: u32) -> Result<u6
 }
 
 /// Signed twin (items 136/137): two's complement, sign-extended from the MSB.
+///
+/// Inherits the 8-byte substrate cap (the `i64` width) via [`read_var_uint`]
+/// delegation — inputs over 8 bytes are rejected regardless of `max_len`,
+/// which also keeps the sign-extension shift below in `0..=56`.
 #[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
 pub(crate) fn read_var_int(bytes: &[u8], max_len: usize, tag: u32) -> Result<i64, KlvFieldError> {
     let raw = read_var_uint(bytes, max_len, tag)?;
@@ -601,5 +610,39 @@ mod tests {
         assert_eq!(write_var_int_min(-30), vec![0xE2]);
         assert_eq!(write_var_int_min(128), vec![0x00, 0x80]); // needs a sign byte
         assert_eq!(write_var_int_min(-129), vec![0xFF, 0x7F]);
+    }
+
+    #[test]
+    fn var_read_len_equal_to_max_accepted() {
+        // len == max_len is inside the contract (only > rejects).
+        assert_eq!(read_var_uint(&[0xAA, 0xBB], 2, 110).unwrap(), 0xAABB);
+        assert_eq!(read_var_int(&[0xFF, 0x7F], 2, 136).unwrap(), -129);
+    }
+
+    #[test]
+    fn var_read_rejects_over_8_bytes_even_if_max_len_allows() {
+        // Substrate cap: u64/i64 hold at most 8 bytes. A permissive caller
+        // max_len must not re-enable silent truncation (uint accumulate
+        // shifts leading bytes out of the u64) or a shift-overflow panic
+        // (int computes 64 - 8*len).
+        assert!(read_var_uint(&[0x01; 9], 9, 110).is_err());
+        assert!(read_var_int(&[0x01; 9], 9, 137).is_err());
+    }
+
+    #[test]
+    fn var_write_full_width_and_sign_boundaries() {
+        assert_eq!(write_var_uint_min(u64::MAX), vec![0xFF; 8]);
+        assert_eq!(write_var_int_min(0), vec![0x00]);
+        assert_eq!(write_var_int_min(-1), vec![0xFF]);
+        assert_eq!(write_var_int_min(127), vec![0x7F]);
+        assert_eq!(write_var_int_min(-128), vec![0x80]);
+        assert_eq!(
+            write_var_int_min(i64::MIN),
+            vec![0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        );
+        assert_eq!(
+            write_var_int_min(i64::MAX),
+            vec![0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
+        );
     }
 }

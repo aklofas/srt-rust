@@ -193,10 +193,10 @@ pub struct UasDatalinkLs {
     /// Item 44: Target Track Gate Height — encode range [0, 510] px (uint8).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub target_track_gate_height_px: Option<f64>,
-    /// Item 45: Target Error CE90 — encode range [0, 4095] m (uint16).
+    /// Item 45: Target Error Estimate - CE90 — encode range [0, 4095] m (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub target_error_ce90_m: Option<f64>,
-    /// Item 46: Target Error LE90 — encode range [0, 4095] m (uint16).
+    /// Item 46: Target Error Estimate - LE90 — encode range [0, 4095] m (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub target_error_le90_m: Option<f64>,
 

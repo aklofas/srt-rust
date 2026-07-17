@@ -441,6 +441,7 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::net::TcpListener;
+    use std::time::Duration;
 
     /// Spawn a one-shot mock RTSP server that serves a single response.
     fn mock_server(canned_response: &'static [u8]) -> (u16, std::thread::JoinHandle<()>) {
@@ -482,6 +483,25 @@ mod tests {
         (port, h)
     }
 
+    /// Read from `sock` until a full RTSP request head (terminated by
+    /// `\r\n\r\n`) has arrived, or EOF/timeout. TCP may split a request
+    /// across reads — a single read() races the client's write and can
+    /// capture only a prefix (or, for the second request, the tail of a
+    /// split first request).
+    fn read_request_head(sock: &mut std::net::TcpStream) -> Vec<u8> {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        sock.set_read_timeout(Some(Duration::from_secs(2))).ok();
+        while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+            match sock.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(_) => break,
+            }
+        }
+        buf
+    }
+
     /// Two-exchange mock: reply `first` to the first request, then read
     /// again and reply `second`. Returns the raw bytes of the SECOND
     /// request so the test can assert on its headers.
@@ -494,11 +514,9 @@ mod tests {
         let h = std::thread::spawn(move || {
             let mut captured = Vec::new();
             if let Ok((mut sock, _)) = listener.accept() {
-                let mut req = [0u8; 4096];
-                let _ = sock.read(&mut req);
+                let _ = read_request_head(&mut sock);
                 let _ = sock.write_all(first);
-                let n = sock.read(&mut req).unwrap_or(0);
-                captured.extend_from_slice(&req[..n]);
+                captured = read_request_head(&mut sock);
                 let _ = sock.write_all(second);
             }
             captured

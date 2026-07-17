@@ -472,8 +472,15 @@ fn apply_typed_tag(
         }
         Encoding::RawBytes => match tag {
             48 => record.security_local_set = Some(f.value.to_vec()),
+            73 => record.rvt = Some(f.value.to_vec()),
             74 => record.vmti = Some(f.value.to_vec()),
             94 => record.miis_core_id = Some(f.value.to_vec()),
+            95 => record.sar_mi_local_set = Some(f.value.to_vec()),
+            97 => record.range_image_local_set = Some(f.value.to_vec()),
+            98 => record.geo_registration_local_set = Some(f.value.to_vec()),
+            99 => record.composite_imaging_local_set = Some(f.value.to_vec()),
+            100 => record.segment_local_set = Some(f.value.to_vec()),
+            101 => record.amend_local_set = Some(f.value.to_vec()),
             _ => unreachable!(),
         },
         Encoding::U8Range

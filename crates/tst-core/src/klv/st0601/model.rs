@@ -287,12 +287,34 @@ pub struct UasDatalinkLs {
     /// measured (vs. calculated), bit 5 image invalid, bits 6-7 reserved.
     pub generic_flag_data: Option<u8>,
     pub security_local_set: Option<Vec<u8>>,
+    /// Item 73: MISB ST 0806 Remote Video Terminal LS bytes.
+    /// Pass-through bytes; interior typing deferred (the sibling
+    /// `klv::st0806` module lands in a later work package).
+    pub rvt: Option<Vec<u8>>,
     /// Tag 74 — VMTI Local Set (MISB ST 0903). Pass-through bytes;
     /// consumers needing typed access call `klv::st0903::decode` on
     /// `vmti.as_deref()?`. See `klv::st0903` for the typed layer.
     /// Sibling-layer pattern matches `security_local_set` (Tag 48 →
     /// `klv::st0102`).
     pub vmti: Option<Vec<u8>>,
+    /// Item 95: MISB ST 1206 SAR Motion Imagery Local Set bytes.
+    /// Pass-through bytes; interior typing deferred.
+    pub sar_mi_local_set: Option<Vec<u8>>,
+    /// Item 97: MISB ST 1002 Range Image Local Set bytes. Pass-through
+    /// bytes; interior typing deferred.
+    pub range_image_local_set: Option<Vec<u8>>,
+    /// Item 98: MISB ST 1601 Geo-Registration Local Set bytes.
+    /// Pass-through bytes; interior typing deferred.
+    pub geo_registration_local_set: Option<Vec<u8>>,
+    /// Item 99: MISB ST 1602 Composite Imaging Local Set bytes.
+    /// Pass-through bytes; interior typing deferred.
+    pub composite_imaging_local_set: Option<Vec<u8>>,
+    /// Item 100: MISB ST 1607 Segment Local Set bytes. Pass-through
+    /// bytes; interior typing deferred.
+    pub segment_local_set: Option<Vec<u8>>,
+    /// Item 101: MISB ST 1607 Amend Local Set bytes. Pass-through
+    /// bytes; interior typing deferred.
+    pub amend_local_set: Option<Vec<u8>>,
 
     // Raw scalar & string items (tags 39, 60-62, 70, 72, 106-108, 129, 135)
     pub outside_air_temp_c: Option<i8>,
@@ -429,7 +451,14 @@ impl Default for UasDatalinkLs {
             sensor_east_velocity: None,
             generic_flag_data: None,
             security_local_set: None,
+            rvt: None,
             vmti: None,
+            sar_mi_local_set: None,
+            range_image_local_set: None,
+            geo_registration_local_set: None,
+            composite_imaging_local_set: None,
+            segment_local_set: None,
+            amend_local_set: None,
             outside_air_temp_c: None,
             weapon_load: None,
             weapon_fired: None,

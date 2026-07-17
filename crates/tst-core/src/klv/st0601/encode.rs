@@ -525,6 +525,11 @@ fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError>
 /// Sanitize all string fields of a record per ST 0107.5 §6.3.3 before
 /// strict-compliance encode. Runs BEFORE the empty-string mapping (a field
 /// that sanitizes to `""` encodes as `[0x00]`).
+///
+/// NOTE: this list must cover EVERY typed `Encoding::Utf8` field — add a
+/// `strip_opt_str` line whenever a new ST 0601 string tag is typed (a
+/// review caught six missing entries when tags 70/106-108/129/135 were
+/// typed). Pinned by the `strict_encode_sanitizes_all_string_fields` test.
 pub(crate) fn sanitize_strings_st0601(r: &mut super::model::UasDatalinkLs) {
     strip_opt_str(&mut r.mission_id);
     strip_opt_str(&mut r.platform_tail_number);
@@ -532,6 +537,12 @@ pub(crate) fn sanitize_strings_st0601(r: &mut super::model::UasDatalinkLs) {
     strip_opt_str(&mut r.image_source_sensor);
     strip_opt_str(&mut r.image_coordinate_system);
     strip_opt_str(&mut r.platform_call_sign);
+    strip_opt_str(&mut r.alternate_platform_name);
+    strip_opt_str(&mut r.stream_designator);
+    strip_opt_str(&mut r.operational_base);
+    strip_opt_str(&mut r.broadcast_source);
+    strip_opt_str(&mut r.target_id);
+    strip_opt_str(&mut r.communications_method);
 }
 
 fn strip_opt_str(s: &mut Option<alloc::string::String>) {

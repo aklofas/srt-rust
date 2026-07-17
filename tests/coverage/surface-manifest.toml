@@ -2668,6 +2668,42 @@ item = "tst_core::klv::st0601::EncodeConfig::fmt"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::klv::st0601::IcingDetected::clone"
+reason = "derive impl for the WP-A tag 34 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::IcingDetected::eq"
+reason = "derive impl for the WP-A tag 34 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::IcingDetected::fmt"
+reason = "derive impl for the WP-A tag 34 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OperationalMode::clone"
+reason = "derive impl for the WP-A tag 77 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OperationalMode::eq"
+reason = "derive impl for the WP-A tag 77 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::OperationalMode::fmt"
+reason = "derive impl for the WP-A tag 77 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorFovName::clone"
+reason = "derive impl for the WP-A tag 63 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorFovName::eq"
+reason = "derive impl for the WP-A tag 63 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorFovName::fmt"
+reason = "derive impl for the WP-A tag 63 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
 item = "tst_core::klv::st0601::OutOfRangePolicy::clone"
 reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); exercised by st0601::mapping indicator_* unit tests + st0601::tests indicator round-trips"
 

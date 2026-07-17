@@ -132,32 +132,45 @@ fn unauth_connection_burst_never_exceeds_max_sessions() {
     // read times out with no bytes). With CAP accepted, the rest are refused.
     // (The load-bearing assertion is the cap above; this corroborates that the
     // overflow connections were actively dropped rather than silently parked.)
+    //
+    // Census by bounded RE-POLL, not a single sweep: under CI load (windows
+    // especially) an RST can land after one 200 ms read window, and a single
+    // pass misclassifies it as parked. Unclassified sockets are re-read until
+    // the refused threshold is met or the deadline expires; a met threshold
+    // exits immediately, so the common case is FASTER than the old full sweep.
+    let threshold = BURST - CAP - 4;
     let mut refused = 0usize;
-    for s in held.iter_mut() {
-        let mut buf = [0u8; 64];
-        match s.read(&mut buf) {
-            Ok(0) => refused += 1, // clean EOF — server dropped it.
-            Ok(_) => {}            // got a response / partial echo — accepted.
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
-                ) =>
-            {
-                refused += 1; // RST — server dropped it.
+    let census_deadline = Instant::now() + Duration::from_secs(5);
+    let mut pending = held; // classified sockets drop out of the pool
+    while refused < threshold && Instant::now() < census_deadline && !pending.is_empty() {
+        let mut still_pending = Vec::with_capacity(pending.len());
+        for mut s in pending {
+            let mut buf = [0u8; 64];
+            match s.read(&mut buf) {
+                Ok(0) => refused += 1, // clean EOF — server dropped it.
+                Ok(_) => {}            // response bytes — accepted; leave the pool.
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+                    ) =>
+                {
+                    refused += 1; // RST — server dropped it.
+                }
+                Err(_) => still_pending.push(s), // WouldBlock/TimedOut — parked or late; retry.
             }
-            Err(_) => {} // WouldBlock/TimedOut — parked/accepted, not refused.
         }
+        pending = still_pending;
     }
     assert!(
-        refused >= BURST - CAP - 4,
+        refused >= threshold,
         "expected most of the {BURST} burst connections to be refused (at most {CAP} accepted), only {refused} were"
     );
 
     // Drop every held connection — accepted sessions close, refused ones are
     // already gone. The counter must drain back to 0 (no leaked slots on the
     // accept-reserve / refuse / normal-close paths).
-    drop(held);
+    drop(pending);
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut final_count = usize::MAX;
     while Instant::now() < deadline {

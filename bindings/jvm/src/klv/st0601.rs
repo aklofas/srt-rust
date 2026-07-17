@@ -25,11 +25,12 @@
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
-use jni::sys::{jint, jobject};
+use jni::sys::{jint, jlong, jobject, jstring};
 use tst_core::klv::st0601::{
-    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName, UasDatalinkLs,
-    decode as decode_lenient, decode_strict, decode_strict_compliance, encode_strict_compliance,
-    encode_to_vec_with,
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName,
+    St0601SentinelMeaning, UasDatalinkLs, decode as decode_lenient, decode_strict,
+    decode_strict_compliance, encode_strict_compliance, encode_to_vec_with,
+    st0601_sentinel_meaning,
 };
 use tst_core::klv::universal_label::UniversalLabel;
 
@@ -340,6 +341,47 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nEncodeUasDatalinkStrictComplian
             }
         },
     )
+}
+
+// -----------------------------------------------------------------------
+// Sentinel-meaning lookup
+// -----------------------------------------------------------------------
+
+/// `org.tstrans.klv.Klv.nSt0601SentinelMeaning(long tag) -> String | null`
+///
+/// Delegates to [`st0601_sentinel_meaning`] (the ST 0601.19 §7.5 special-value
+/// assignments), mapping the [`St0601SentinelMeaning`] variants to the same
+/// strings tst-py returns: `OutOfRange` → `"out_of_range"`, `Reserved` →
+/// `"reserved"`, `NotAvailable` → `"not_available"`, no assignment → null.
+/// Total over its input: a tag outside the u32 range simply has no assigned
+/// meaning (null) — the only failure path is JNI string allocation.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_nSt0601SentinelMeaning<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    tag: jlong,
+) -> jstring {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let meaning = u32::try_from(tag).ok().and_then(st0601_sentinel_meaning);
+        let name = match meaning {
+            Some(St0601SentinelMeaning::OutOfRange) => "out_of_range",
+            Some(St0601SentinelMeaning::Reserved) => "reserved",
+            Some(St0601SentinelMeaning::NotAvailable) => "not_available",
+            // `#[non_exhaustive]` in tst-core: no current variant reaches the
+            // wildcard; a future variant surfaces as null until mirrored here.
+            Some(_) | None => return std::ptr::null_mut(),
+        };
+        match env.new_string(name) {
+            Ok(s) => s.into_raw(),
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("nSt0601SentinelMeaning: new_string failed: {e}"),
+                );
+                std::ptr::null_mut()
+            }
+        }
+    })
 }
 
 // -----------------------------------------------------------------------

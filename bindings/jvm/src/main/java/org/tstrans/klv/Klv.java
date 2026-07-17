@@ -419,6 +419,28 @@ public final class Klv {
         return nEncodeUasDatalinkStrictCompliance(record);
     }
 
+    /**
+     * Look up the spec-defined meaning of the INT_MIN sentinel wire value for
+     * {@code tag}, per the ST 0601.19 §7.5 special-value assignments.
+     *
+     * <p>Returns {@code "out_of_range"}, {@code "reserved"},
+     * {@code "not_available"}, or {@code null} when the spec assigns no
+     * INT_MIN special value for that tag (which does NOT mean the tag is
+     * unsigned or that INT_MIN is a valid wire value for it). Tags outside
+     * the KLV u32 tag range also return {@code null}.
+     *
+     * <p>See {@link UasDatalinkLs#sentinelTags()} for where decoded sentinels
+     * surface, and {@link OutOfRangePolicy#INDICATOR} for the encode-side
+     * counterpart (emitting the sentinel for the Out-of-Range-eligible tags).
+     * Mirrors tst-py's {@code st0601_sentinel_meaning(tag)}.
+     *
+     * @param tag the ST 0601 local-set tag number
+     * @return the sentinel meaning string, or {@code null} if none is assigned
+     */
+    public static String st0601SentinelMeaning(long tag) {
+        return nSt0601SentinelMeaning(tag);
+    }
+
     private static native UasDatalinkLs nDecodeUasDatalink(byte[] buf, boolean strict, boolean compliance)
             throws org.tstrans.KlvDecodeException;
 
@@ -427,6 +449,8 @@ public final class Klv {
 
     private static native byte[] nEncodeUasDatalinkStrictCompliance(UasDatalinkLs record)
             throws org.tstrans.KlvEncodeException;
+
+    private static native String nSt0601SentinelMeaning(long tag);
 
     // -----------------------------------------------------------------------
     // ST 1204 — MIIS Core Identifier

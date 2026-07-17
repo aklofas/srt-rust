@@ -453,11 +453,11 @@ fn apply_typed_tag(
     Ok(())
 }
 
-/// Per-tag accessor for the 39 uniform `Option<f64>` ranged fields.
+/// Per-tag accessor for the 69 uniform `Option<f64>` ranged fields.
 ///
 /// Drives `assign_ranged` (decode) and the ranged arms of
 /// `encode_tag_value` / `each_typed_field` (encode) from one place,
-/// eliminating three parallel 39-arm dispatch tables. `fn` pointers are
+/// eliminating three parallel 69-arm dispatch tables. `fn` pointers are
 /// `const`-safe and work in `no_std` context; field names remain greppable.
 pub(super) struct RangedEntry {
     pub(super) id: u8,
@@ -465,7 +465,7 @@ pub(super) struct RangedEntry {
     pub(super) set: fn(&mut UasDatalinkLs, f64),
 }
 
-/// All 39 ST 0601 ranged `Option<f64>` fields in tag-ascending order.
+/// All 69 ST 0601 ranged `Option<f64>` fields in tag-ascending order.
 /// The encode path derives value_len from `tags::TAGS[id].range.byte_length`;
 /// the decode path calls `set`; the encode path calls `get`.
 pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
@@ -600,9 +600,134 @@ pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
         set: |r, v| r.corner_lon_offset_p4_deg = Some(v),
     },
     RangedEntry {
+        id: 35,
+        get: |r| r.wind_direction_deg,
+        set: |r, v| r.wind_direction_deg = Some(v),
+    },
+    RangedEntry {
+        id: 36,
+        get: |r| r.wind_speed,
+        set: |r, v| r.wind_speed = Some(v),
+    },
+    RangedEntry {
+        id: 37,
+        get: |r| r.static_pressure_mbar,
+        set: |r, v| r.static_pressure_mbar = Some(v),
+    },
+    RangedEntry {
+        id: 38,
+        get: |r| r.density_altitude_m,
+        set: |r, v| r.density_altitude_m = Some(v),
+    },
+    RangedEntry {
+        id: 40,
+        get: |r| r.target_location_lat_deg,
+        set: |r, v| r.target_location_lat_deg = Some(v),
+    },
+    RangedEntry {
+        id: 41,
+        get: |r| r.target_location_lon_deg,
+        set: |r, v| r.target_location_lon_deg = Some(v),
+    },
+    RangedEntry {
+        id: 42,
+        get: |r| r.target_location_elev_m,
+        set: |r, v| r.target_location_elev_m = Some(v),
+    },
+    RangedEntry {
+        id: 43,
+        get: |r| r.target_track_gate_width_px,
+        set: |r, v| r.target_track_gate_width_px = Some(v),
+    },
+    RangedEntry {
+        id: 44,
+        get: |r| r.target_track_gate_height_px,
+        set: |r, v| r.target_track_gate_height_px = Some(v),
+    },
+    RangedEntry {
+        id: 45,
+        get: |r| r.target_error_ce90_m,
+        set: |r, v| r.target_error_ce90_m = Some(v),
+    },
+    RangedEntry {
+        id: 46,
+        get: |r| r.target_error_le90_m,
+        set: |r, v| r.target_error_le90_m = Some(v),
+    },
+    RangedEntry {
+        id: 49,
+        get: |r| r.differential_pressure_mbar,
+        set: |r, v| r.differential_pressure_mbar = Some(v),
+    },
+    RangedEntry {
         id: 50,
         get: |r| r.platform_angle_of_attack_deg,
         set: |r, v| r.platform_angle_of_attack_deg = Some(v),
+    },
+    RangedEntry {
+        id: 51,
+        get: |r| r.platform_vertical_speed,
+        set: |r, v| r.platform_vertical_speed = Some(v),
+    },
+    RangedEntry {
+        id: 52,
+        get: |r| r.platform_sideslip_deg,
+        set: |r, v| r.platform_sideslip_deg = Some(v),
+    },
+    RangedEntry {
+        id: 53,
+        get: |r| r.airfield_barometric_pressure_mbar,
+        set: |r, v| r.airfield_barometric_pressure_mbar = Some(v),
+    },
+    RangedEntry {
+        id: 54,
+        get: |r| r.airfield_elevation_m,
+        set: |r, v| r.airfield_elevation_m = Some(v),
+    },
+    RangedEntry {
+        id: 55,
+        get: |r| r.relative_humidity_pct,
+        set: |r, v| r.relative_humidity_pct = Some(v),
+    },
+    RangedEntry {
+        id: 56,
+        get: |r| r.platform_ground_speed,
+        set: |r, v| r.platform_ground_speed = Some(v),
+    },
+    RangedEntry {
+        id: 57,
+        get: |r| r.ground_range_m,
+        set: |r, v| r.ground_range_m = Some(v),
+    },
+    RangedEntry {
+        id: 58,
+        get: |r| r.platform_fuel_remaining_kg,
+        set: |r, v| r.platform_fuel_remaining_kg = Some(v),
+    },
+    RangedEntry {
+        id: 64,
+        get: |r| r.platform_magnetic_heading_deg,
+        set: |r, v| r.platform_magnetic_heading_deg = Some(v),
+    },
+    RangedEntry {
+        id: 67,
+        get: |r| r.alternate_platform_lat_deg,
+        set: |r, v| r.alternate_platform_lat_deg = Some(v),
+    },
+    RangedEntry {
+        id: 68,
+        get: |r| r.alternate_platform_lon_deg,
+        set: |r, v| r.alternate_platform_lon_deg = Some(v),
+    },
+    RangedEntry {
+        id: 69,
+        get: |r| r.alternate_platform_alt_m,
+        set: |r, v| r.alternate_platform_alt_m = Some(v),
+    },
+    RangedEntry {
+        id: 71,
+        get: |r| r.alternate_platform_heading_deg,
+        set: |r, v| r.alternate_platform_heading_deg = Some(v),
     },
     RangedEntry {
         id: 75,
@@ -610,9 +735,24 @@ pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
         set: |r, v| r.sensor_ellipsoid_height_m = Some(v),
     },
     RangedEntry {
+        id: 76,
+        get: |r| r.alternate_platform_ellipsoid_height_m,
+        set: |r, v| r.alternate_platform_ellipsoid_height_m = Some(v),
+    },
+    RangedEntry {
         id: 78,
         get: |r| r.frame_center_ellipsoid_height_m,
         set: |r, v| r.frame_center_ellipsoid_height_m = Some(v),
+    },
+    RangedEntry {
+        id: 79,
+        get: |r| r.sensor_north_velocity,
+        set: |r, v| r.sensor_north_velocity = Some(v),
+    },
+    RangedEntry {
+        id: 80,
+        get: |r| r.sensor_east_velocity,
+        set: |r, v| r.sensor_east_velocity = Some(v),
     },
     RangedEntry {
         id: 82,
@@ -664,6 +804,16 @@ pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
         get: |r| r.platform_roll_full_deg,
         set: |r, v| r.platform_roll_full_deg = Some(v),
     },
+    RangedEntry {
+        id: 92,
+        get: |r| r.platform_angle_of_attack_full_deg,
+        set: |r, v| r.platform_angle_of_attack_full_deg = Some(v),
+    },
+    RangedEntry {
+        id: 93,
+        get: |r| r.platform_sideslip_full_deg,
+        set: |r, v| r.platform_sideslip_full_deg = Some(v),
+    },
 ];
 
 /// Look up a ranged-field entry by tag. `RANGED_FIELDS` is tag-ascending
@@ -677,7 +827,7 @@ pub(super) fn ranged_entry(tag: u8) -> Option<&'static RangedEntry> {
 }
 
 /// Write a decoded ranged-float value to the matching field in `record`.
-/// Replaces a 39-arm match — the table is the single source of the tag→field mapping.
+/// Replaces a 69-arm match — the table is the single source of the tag→field mapping.
 pub(super) fn assign_ranged(record: &mut UasDatalinkLs, tag: u32, v: f64) {
     if let Some(entry) = u8::try_from(tag).ok().and_then(ranged_entry) {
         (entry.set)(record, v);

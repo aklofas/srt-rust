@@ -1972,3 +1972,86 @@ fn normal_signed_field_does_not_populate_sentinel_tags() {
     );
     assert!(record.field_errors.is_empty());
 }
+
+// ============================================================================
+// WP-A: 30 remaining fixed-linear ranged fields (Table A1 spec vectors)
+// ============================================================================
+
+/// Build a single-TLV ST 0601 record with `tag`/`value` and decode it via
+/// [`decode`]. All WP-A ranged-field tags fit in a single-byte BER-OID tag
+/// (< 128); every value is short-form BER length (≤ 4 bytes).
+fn decode_with_single_tlv(tag: u8, value: &[u8]) -> UasDatalinkLs {
+    let mut tlv = vec![tag, value.len() as u8];
+    tlv.extend_from_slice(value);
+    decode(&wrap_st0601(&tlv)).expect("single-tlv fixture must decode")
+}
+
+/// Extract the VALUE bytes of `tag` from an encoded ST 0601 buffer, or
+/// `None` if the tag is absent. Thin wrapper over [`find_tag`] returning
+/// owned bytes instead of an `(offset, length)` pair.
+fn tlv_value(encoded: &[u8], tag: u8) -> Option<Vec<u8>> {
+    let (off, len) = find_tag(encoded, tag)?;
+    Some(encoded[off..off + len].to_vec())
+}
+
+/// ST 0601.19 §8 worked examples for the WP-A ranged fields — spec bytes,
+/// not round-trip (closed-loop tests can't catch a wrong wire formula).
+#[test]
+fn wpa_ranged_spec_vectors() {
+    // (tag, example value, value bytes) — from ST 0601.19 §8 example rows.
+    let vectors: &[(u8, f64, &[u8])] = &[
+        (35, 235.924010, &[0xA7, 0xC4]),
+        (36, 69.8039216, &[0xB2]),
+        (37, 3725.18502, &[0xBE, 0xBA]),
+        (38, 14818.6770, &[0xCA, 0x35]),
+        (40, -79.163_850_051_892_85, &[0x8F, 0x69, 0x52, 0x62]),
+        (41, 166.40081296041646, &[0x76, 0x54, 0x57, 0xF2]),
+        (42, 18389.0471, &[0xF8, 0x23]),
+        (43, 6.0, &[0x03]),
+        (44, 30.0, &[0x0F]),
+        (45, 425.215152, &[0x1A, 0x95]),
+        (46, 608.9231, &[0x26, 0x11]),
+        (49, 1191.95850, &[0x3D, 0x07]),
+        (51, -61.8878750, &[0xD3, 0xFE]),
+        (52, -5.08255257, &[0xDF, 0x79]),
+        (53, 2088.96010, &[0x6A, 0xF4]),
+        (54, 8306.80552, &[0x76, 0x70]),
+        (55, 50.5882353, &[0x81]),
+        (56, 140.0, &[0x8C]),
+        (57, 3_506_979.031_606_34, &[0xB3, 0x8E, 0xAC, 0xF1]),
+        (58, 6420.53864, &[0xA4, 0x5D]),
+        (64, 311.868162, &[0xDD, 0xC5]),
+        (67, -86.041_207_348_947_04, &[0x85, 0xA1, 0x5A, 0x39]),
+        (68, 0.15552755452484243, &[0x00, 0x1C, 0x50, 0x1C]),
+        (69, 9.44533455, &[0x0B, 0xB3]),
+        (71, 32.6024262, &[0x17, 0x2F]),
+        (76, 9.44533455, &[0x0B, 0xB3]),
+        (79, 25.4977569, &[0x09, 0xFB]),
+        (80, 12.1, &[0x04, 0xBC]),
+        (92, -8.670_176_984_123_037, &[0xF3, 0xAB, 0x48, 0xEF]),
+        (93, -47.683, &[0xDE, 0x17, 0x93, 0x23]),
+    ];
+    for &(tag, value, bytes) in vectors {
+        // Decode direction: build a raw LS carrying just this TLV.
+        let ls = decode_with_single_tlv(tag, bytes);
+        let entry = crate::klv::st0601::decode::ranged_entry(tag).expect("ranged entry");
+        let got = (entry.get)(&ls).expect("field populated");
+        let spec = crate::klv::st0601::tags::lookup(tag).unwrap();
+        let r = spec.range.unwrap();
+        let lsb = (r.max - r.min)
+            / if r.signed {
+                (1i64 << (8 * r.byte_length - 1)) as f64 - 1.0
+            } else {
+                ((1u64 << (8 * r.byte_length)) - 1) as f64
+            };
+        assert!((got - value).abs() <= lsb, "tag {tag}: {got} vs {value}");
+        // Encode direction: exact spec bytes.
+        let mut rec = UasDatalinkLs::default();
+        (entry.set)(&mut rec, value);
+        let encoded = crate::klv::st0601::encode_to_vec(&rec).unwrap();
+        assert!(
+            tlv_value(&encoded, tag) == Some(bytes.to_vec()),
+            "tag {tag}: wire bytes != spec example"
+        );
+    }
+}

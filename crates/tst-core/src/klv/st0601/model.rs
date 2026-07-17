@@ -177,6 +177,109 @@ pub struct UasDatalinkLs {
     /// Full-range twin of [`Self::corner_lon_offset_p4_deg`] (Item 33, ±0.075°).
     pub corner_lon_p4_deg: Option<f64>,
 
+    // Target location & tracking (tags 40-46)
+    /// Item 40: Target Location Latitude — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_location_lat_deg: Option<f64>,
+    /// Item 41: Target Location Longitude — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_location_lon_deg: Option<f64>,
+    /// Item 42: Target Location Elevation — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_location_elev_m: Option<f64>,
+    /// Item 43: Target Track Gate Width — encode range [0, 510] px (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_track_gate_width_px: Option<f64>,
+    /// Item 44: Target Track Gate Height — encode range [0, 510] px (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_track_gate_height_px: Option<f64>,
+    /// Item 45: Target Error CE90 — encode range [0, 4095] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_error_ce90_m: Option<f64>,
+    /// Item 46: Target Error LE90 — encode range [0, 4095] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub target_error_le90_m: Option<f64>,
+
+    // Weather / atmospheric (tags 35-38, 49, 53-55)
+    /// Item 35: Wind Direction — encode range [0, 360] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub wind_direction_deg: Option<f64>,
+    /// Item 36: Wind Speed — encode range [0, 100] m/s (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub wind_speed: Option<f64>,
+    /// Item 37: Static Pressure — encode range [0, 5000] mbar (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub static_pressure_mbar: Option<f64>,
+    /// Item 38: Density Altitude — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub density_altitude_m: Option<f64>,
+    /// Item 49: Differential Pressure — encode range [0, 5000] mbar (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub differential_pressure_mbar: Option<f64>,
+    /// Item 53: Airfield Barometric Pressure — encode range [0, 5000] mbar (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub airfield_barometric_pressure_mbar: Option<f64>,
+    /// Item 54: Airfield Elevation — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub airfield_elevation_m: Option<f64>,
+    /// Item 55: Relative Humidity — encode range [0, 100] % (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub relative_humidity_pct: Option<f64>,
+
+    // Extended platform state (tags 51, 52, 56-58, 64, 92, 93)
+    /// Item 51: Platform Vertical Speed — encode range [-180, 180] m/s (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_vertical_speed: Option<f64>,
+    /// Item 52: Platform Sideslip Angle — encode range [-20, 20] deg (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`]; for
+    /// the full ±180° range use [`Self::platform_sideslip_full_deg`] (Item 93).
+    pub platform_sideslip_deg: Option<f64>,
+    /// Item 56: Platform Ground Speed — encode range [0, 255] m/s (uint8).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_ground_speed: Option<f64>,
+    /// Item 57: Ground Range — encode range [0, 5000000] m (uint32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub ground_range_m: Option<f64>,
+    /// Item 58: Platform Fuel Remaining — encode range [0, 10000] kg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_fuel_remaining_kg: Option<f64>,
+    /// Item 64: Platform Magnetic Heading — encode range [0, 360] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_magnetic_heading_deg: Option<f64>,
+    /// Item 92: Platform Angle of Attack (Full) — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_angle_of_attack_full_deg: Option<f64>,
+    /// Item 93: Platform Sideslip Angle (Full) — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Full-range twin of [`Self::platform_sideslip_deg`] (Item 52, ±20°).
+    pub platform_sideslip_full_deg: Option<f64>,
+
+    // Alternate platform (tags 67-69, 71, 76)
+    /// Item 67: Alternate Platform Latitude — encode range [-90, 90] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub alternate_platform_lat_deg: Option<f64>,
+    /// Item 68: Alternate Platform Longitude — encode range [-180, 180] deg (int32).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub alternate_platform_lon_deg: Option<f64>,
+    /// Item 69: Alternate Platform Altitude — encode range [-900, 19000] m (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub alternate_platform_alt_m: Option<f64>,
+    /// Item 71: Alternate Platform Heading — encode range [0, 360] deg (uint16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub alternate_platform_heading_deg: Option<f64>,
+    /// Item 76: Alternate Platform Ellipsoid Height (WGS84) — encode range
+    /// [-900, 19000] m (uint16). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub alternate_platform_ellipsoid_height_m: Option<f64>,
+
+    // Sensor velocity (tags 79-80)
+    /// Item 79: Sensor North Velocity — encode range [-327, 327] m/s (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub sensor_north_velocity: Option<f64>,
+    /// Item 80: Sensor East Velocity — encode range [-327, 327] m/s (int16).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub sensor_east_velocity: Option<f64>,
+
     // Misc
     pub generic_flag_data: Option<u8>,
     pub security_local_set: Option<Vec<u8>>,
@@ -264,6 +367,36 @@ impl Default for UasDatalinkLs {
             corner_lon_p3_deg: None,
             corner_lat_p4_deg: None,
             corner_lon_p4_deg: None,
+            target_location_lat_deg: None,
+            target_location_lon_deg: None,
+            target_location_elev_m: None,
+            target_track_gate_width_px: None,
+            target_track_gate_height_px: None,
+            target_error_ce90_m: None,
+            target_error_le90_m: None,
+            wind_direction_deg: None,
+            wind_speed: None,
+            static_pressure_mbar: None,
+            density_altitude_m: None,
+            differential_pressure_mbar: None,
+            airfield_barometric_pressure_mbar: None,
+            airfield_elevation_m: None,
+            relative_humidity_pct: None,
+            platform_vertical_speed: None,
+            platform_sideslip_deg: None,
+            platform_ground_speed: None,
+            ground_range_m: None,
+            platform_fuel_remaining_kg: None,
+            platform_magnetic_heading_deg: None,
+            platform_angle_of_attack_full_deg: None,
+            platform_sideslip_full_deg: None,
+            alternate_platform_lat_deg: None,
+            alternate_platform_lon_deg: None,
+            alternate_platform_alt_m: None,
+            alternate_platform_heading_deg: None,
+            alternate_platform_ellipsoid_height_m: None,
+            sensor_north_velocity: None,
+            sensor_east_velocity: None,
             generic_flag_data: None,
             security_local_set: None,
             vmti: None,
@@ -284,13 +417,12 @@ pub enum OutOfRangePolicy {
     Error,
     /// Emit the tag's spec-defined "Out of Range" special value instead of
     /// erroring — ST 0601.19 §7.5 / requirement ST 0601.13-27 (`0x8000` /
-    /// `0x80000000` for 2-/4-byte signed mappings). Applies ONLY to the
-    /// tags whose INT_MIN sentinel means Out of Range (Tags 6, 7, 50, 51,
-    /// 52, 79, 80, 90–93 — see
-    /// [`st0601_sentinel_meaning`][crate::klv::st0601::st0601_sentinel_meaning]).
-    /// Of those, Tags 6, 7, 50, 90, 91 are the ones currently modeled as
-    /// encodable [`UasDatalinkLs`] fields; every other tag, and any
-    /// non-finite input, still returns
+    /// `0x80000000` for 2-/4-byte signed mappings). Applies to the tags
+    /// whose INT_MIN sentinel means Out of Range (Tags 6, 7, 50, 51, 52,
+    /// 79, 80, 90–93 — see
+    /// [`st0601_sentinel_meaning`][crate::klv::st0601::st0601_sentinel_meaning]),
+    /// all of which are modeled as encodable [`UasDatalinkLs`] fields. Any
+    /// non-finite input still returns
     /// [`crate::error::KlvEncodeError::OutOfRange`].
     Indicator,
 }

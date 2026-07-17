@@ -119,6 +119,7 @@ fn range_hint(tag: u8) -> Option<&'static str> {
             "for out-of-range corner offsets use the absolute corner fields \
              corner_lat_p1_deg..corner_lon_p4_deg (Tags 82-89)",
         ),
+        52 => Some("for extended range use platform_sideslip_full_deg (Tag 93, +/-180 deg)"),
         _ => None,
     }
 }

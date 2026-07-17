@@ -14,7 +14,10 @@ from tstrans.klv import (
     Corners,
     FieldOfView,
     GeoPoint,
+    IcingDetected,
     Klv0601,
+    OperationalMode,
+    SensorFovName,
     UasDatalinkLs,
     decode_uas_datalink,
 )
@@ -172,3 +175,69 @@ def test_security_local_set_bytes_preserved():
 def test_vmti_bytes_preserved():
     rec = decode_uas_datalink(FX_FULL.read_bytes())
     assert rec.vmti is None or isinstance(rec.vmti, bytes)
+
+
+# ---------------------------------------------------------------------------
+# WP-A: new fields default to None + coded enum member sanity
+# ---------------------------------------------------------------------------
+
+
+def test_wpa_new_fields_default_to_none():
+    """A bare UasDatalinkLs() leaves every WP-A field unset, same as the
+    pre-existing fields (the synthetic fixtures predate WP-A and don't
+    populate tags 34-135, so fixture-decode assertions for these fields
+    would be vacuous — this checks the dataclass surface directly)."""
+    rec = UasDatalinkLs()
+    for name in (
+        "target_location_lat_deg",
+        "target_error_ce90_m",
+        "wind_direction_deg",
+        "relative_humidity_pct",
+        "platform_vertical_speed",
+        "platform_sideslip_full_deg",
+        "alternate_platform_lat_deg",
+        "sensor_north_velocity",
+        "outside_air_temp_c",
+        "weapon_load",
+        "event_start_time_us",
+        "alternate_platform_name",
+        "communications_method",
+        "rvt",
+        "sar_mi_local_set",
+        "amend_local_set",
+        "icing_detected",
+        "sensor_fov_name",
+        "operational_mode",
+    ):
+        assert getattr(rec, name) is None, f"{name} should default to None"
+
+
+def test_icing_detected_enum_members():
+    assert IcingDetected.DETECTOR_OFF.value == 0
+    assert IcingDetected.NO_ICING_DETECTED.value == 1
+    assert IcingDetected.ICING_DETECTED.value == 2
+
+
+def test_sensor_fov_name_enum_members():
+    assert SensorFovName.ULTRANARROW.value == 0
+    assert SensorFovName.NARROW.value == 1
+    assert SensorFovName.MEDIUM.value == 2
+    assert SensorFovName.WIDE.value == 3
+    assert SensorFovName.ULTRAWIDE.value == 4
+    assert SensorFovName.NARROW_MEDIUM.value == 5
+    assert SensorFovName.TWO_X_ULTRANARROW.value == 6
+    assert SensorFovName.FOUR_X_ULTRANARROW.value == 7
+    # Spec discrepancy (§8.63.1 Table 4): a 9th codepoint beyond the
+    # item's own [0, 7] definition-table cap.
+    assert SensorFovName.CONTINUOUS_ZOOM.value == 8
+
+
+def test_operational_mode_enum_members():
+    # Spec code 0 is named "Other" in Table 5; this binding names it
+    # OTHER_MODE to avoid colliding with the wire-unknown int catch-all.
+    assert OperationalMode.OTHER_MODE.value == 0
+    assert OperationalMode.OPERATIONAL.value == 1
+    assert OperationalMode.TRAINING.value == 2
+    assert OperationalMode.EXERCISE.value == 3
+    assert OperationalMode.MAINTENANCE.value == 4
+    assert OperationalMode.TEST.value == 5

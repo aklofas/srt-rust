@@ -31,12 +31,15 @@ use tst_core::klv::st0102::{
     encode_strict_compliance as encode_st0102_strict_compliance, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
-    EncodeConfig as St0601EncodeConfig, MismmsViolation as RustMismmsViolation,
-    OutOfRangePolicy as RustOutOfRangePolicy, UasDatalinkLs, decode as decode_st0601_lenient,
+    EncodeConfig as St0601EncodeConfig, IcingDetected as RustIcingDetected,
+    MismmsViolation as RustMismmsViolation, OperationalMode as RustOperationalMode,
+    OutOfRangePolicy as RustOutOfRangePolicy, SensorFovName as RustSensorFovName,
+    St0601SentinelMeaning, UasDatalinkLs, decode as decode_st0601_lenient,
     decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
     encode_strict_compliance as encode_st0601_strict_compliance,
     encode_to_vec_with as encode_st0601_with, patch as patch_st0601,
+    st0601_sentinel_meaning as rust_st0601_sentinel_meaning,
     validate_mismms as rust_validate_mismms,
 };
 use tst_core::klv::st0605::{
@@ -273,12 +276,18 @@ fn is_st0102_typed_tag(tag: u32) -> bool {
     matches!(tag, 1..=14 | 22 | 23 | 24)
 }
 
-/// ST 0601 LS typed + reserved tags. Reserved structural tags: 1 (Checksum),
-/// 2 (PrecisionTimeStamp), 65 (LS Version). Typed range: 5..=91 (the
-/// encoder's `tags::TAGS` inventory) + 94 (MIIS Core Identifier). Tags 3, 4,
-/// 92..=93, 95..=255 are forward-compat and may legitimately appear in `unknown`.
+/// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
+/// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
+/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 3, 4, 66, 81, 96,
+/// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
+/// legitimately appear in `unknown`. WP-A (Tables A1-A4) extended the
+/// range past 91 — keep this in sync with `tags::TAGS` when new tags are
+/// typed, or a caller-supplied `unknown` entry for a newly-typed tag will
+/// slip past this filter and get rejected downstream by the real Rust
+/// encoder's own (stricter, canonical) check instead of being silently
+/// dropped here per the documented "typed wins" collision policy.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(tag, 1 | 2 | 65 | 94 | 5..=91)
+    matches!(tag, 1..=65 | 67..=80 | 82..=95 | 97..=101 | 106..=108 | 129 | 135)
 }
 
 /// ST 0903.6 VMTI LS typed tags: 1 (Checksum), 2..=13, 101..=103.
@@ -965,11 +974,132 @@ fn encode_vmti_standalone_strict_compliance_py(
 }
 
 // ---------------------------------------------------------------------------
+// ST 0601 — Tags 34/63/77 coded enums (WP-A Table A3)
+// ---------------------------------------------------------------------------
+//
+// `IcingDetected::to_wire`/`from_wire` (and the SensorFovName /
+// OperationalMode equivalents) are `pub(crate)`-scoped to tst-core, so the
+// tiny wire-code tables are duplicated locally here — same rationale as the
+// `is_st0601_typed_tag`-family predicates above (narrow inventories kept
+// local rather than threading internal Rust APIs out of tst-core).
+
+/// Translate a Rust `IcingDetected` to the matching Python
+/// `tstrans.klv.IcingDetected` enum instance for known codepoints, or a
+/// raw `int` for `Other(code)` (wire-unknown, round-trips byte-exact) —
+/// mirrors the ST 0102 `SecurityClassification::Unknown(b)` asymmetry.
+fn convert_icing_detected(py: Python<'_>, v: RustIcingDetected) -> PyResult<PyObject> {
+    let code = match v {
+        RustIcingDetected::DetectorOff => 0u8,
+        RustIcingDetected::NoIcingDetected => 1,
+        RustIcingDetected::IcingDetected => 2,
+        RustIcingDetected::Other(b) => return Ok(b.into_py(py)),
+        // #[non_exhaustive] in tst-core: a wildcard is required even though
+        // every current variant is covered above.
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown IcingDetected variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "IcingDetected"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_icing_detected`.
+fn icing_detected_from_wire(b: u8) -> RustIcingDetected {
+    match b {
+        0 => RustIcingDetected::DetectorOff,
+        1 => RustIcingDetected::NoIcingDetected,
+        2 => RustIcingDetected::IcingDetected,
+        other => RustIcingDetected::Other(other),
+    }
+}
+
+/// Translate a Rust `SensorFovName` to the matching Python
+/// `tstrans.klv.SensorFovName` enum instance for known codepoints, or a
+/// raw `int` for `Other(code)`.
+fn convert_sensor_fov_name(py: Python<'_>, v: RustSensorFovName) -> PyResult<PyObject> {
+    let code = match v {
+        RustSensorFovName::Ultranarrow => 0u8,
+        RustSensorFovName::Narrow => 1,
+        RustSensorFovName::Medium => 2,
+        RustSensorFovName::Wide => 3,
+        RustSensorFovName::Ultrawide => 4,
+        RustSensorFovName::NarrowMedium => 5,
+        RustSensorFovName::TwoXUltranarrow => 6,
+        RustSensorFovName::FourXUltranarrow => 7,
+        RustSensorFovName::ContinuousZoom => 8,
+        RustSensorFovName::Other(b) => return Ok(b.into_py(py)),
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown SensorFovName variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "SensorFovName"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_sensor_fov_name`.
+fn sensor_fov_name_from_wire(b: u8) -> RustSensorFovName {
+    match b {
+        0 => RustSensorFovName::Ultranarrow,
+        1 => RustSensorFovName::Narrow,
+        2 => RustSensorFovName::Medium,
+        3 => RustSensorFovName::Wide,
+        4 => RustSensorFovName::Ultrawide,
+        5 => RustSensorFovName::NarrowMedium,
+        6 => RustSensorFovName::TwoXUltranarrow,
+        7 => RustSensorFovName::FourXUltranarrow,
+        8 => RustSensorFovName::ContinuousZoom,
+        other => RustSensorFovName::Other(other),
+    }
+}
+
+/// Translate a Rust `OperationalMode` to the matching Python
+/// `tstrans.klv.OperationalMode` enum instance for known codepoints, or a
+/// raw `int` for `Other(code)`.
+fn convert_operational_mode(py: Python<'_>, v: RustOperationalMode) -> PyResult<PyObject> {
+    let code = match v {
+        RustOperationalMode::OtherMode => 0u8,
+        RustOperationalMode::Operational => 1,
+        RustOperationalMode::Training => 2,
+        RustOperationalMode::Exercise => 3,
+        RustOperationalMode::Maintenance => 4,
+        RustOperationalMode::Test => 5,
+        RustOperationalMode::Other(b) => return Ok(b.into_py(py)),
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown OperationalMode variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "OperationalMode"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_operational_mode`.
+fn operational_mode_from_wire(b: u8) -> RustOperationalMode {
+    match b {
+        0 => RustOperationalMode::OtherMode,
+        1 => RustOperationalMode::Operational,
+        2 => RustOperationalMode::Training,
+        3 => RustOperationalMode::Exercise,
+        4 => RustOperationalMode::Maintenance,
+        5 => RustOperationalMode::Test,
+        other => RustOperationalMode::Other(other),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ST 0601 — UAS Datalink LS
 // ---------------------------------------------------------------------------
 
 /// Translate a Rust `UasDatalinkLs` to a Python `tstrans.klv.UasDatalinkLs`
-/// dataclass instance. Mechanical 80-field projection.
+/// dataclass instance. Mechanical 107-field projection.
 #[allow(clippy::cognitive_complexity)]
 fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;
@@ -1066,6 +1196,91 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
     ob!("security_local_set", r.security_local_set);
     ob!("vmti", r.vmti);
     ob!("miis_core_id", r.miis_core_id);
+
+    // WP-A Table A1 — ranged f64 fields (tags 40-46, 35-38/49/53-55,
+    // 51/52/56-58/64/92/93, 67-69/71/76, 79-80).
+    op!("target_location_lat_deg", r.target_location_lat_deg);
+    op!("target_location_lon_deg", r.target_location_lon_deg);
+    op!("target_location_elev_m", r.target_location_elev_m);
+    op!("target_track_gate_width_px", r.target_track_gate_width_px);
+    op!("target_track_gate_height_px", r.target_track_gate_height_px);
+    op!("target_error_ce90_m", r.target_error_ce90_m);
+    op!("target_error_le90_m", r.target_error_le90_m);
+    op!("wind_direction_deg", r.wind_direction_deg);
+    op!("wind_speed", r.wind_speed);
+    op!("static_pressure_mbar", r.static_pressure_mbar);
+    op!("density_altitude_m", r.density_altitude_m);
+    op!("differential_pressure_mbar", r.differential_pressure_mbar);
+    op!(
+        "airfield_barometric_pressure_mbar",
+        r.airfield_barometric_pressure_mbar
+    );
+    op!("airfield_elevation_m", r.airfield_elevation_m);
+    op!("relative_humidity_pct", r.relative_humidity_pct);
+    op!("platform_vertical_speed", r.platform_vertical_speed);
+    op!("platform_sideslip_deg", r.platform_sideslip_deg);
+    op!("platform_ground_speed", r.platform_ground_speed);
+    op!("ground_range_m", r.ground_range_m);
+    op!("platform_fuel_remaining_kg", r.platform_fuel_remaining_kg);
+    op!(
+        "platform_magnetic_heading_deg",
+        r.platform_magnetic_heading_deg
+    );
+    op!(
+        "platform_angle_of_attack_full_deg",
+        r.platform_angle_of_attack_full_deg
+    );
+    op!("platform_sideslip_full_deg", r.platform_sideslip_full_deg);
+    op!("alternate_platform_lat_deg", r.alternate_platform_lat_deg);
+    op!("alternate_platform_lon_deg", r.alternate_platform_lon_deg);
+    op!("alternate_platform_alt_m", r.alternate_platform_alt_m);
+    op!(
+        "alternate_platform_heading_deg",
+        r.alternate_platform_heading_deg
+    );
+    op!(
+        "alternate_platform_ellipsoid_height_m",
+        r.alternate_platform_ellipsoid_height_m
+    );
+    op!("sensor_north_velocity", r.sensor_north_velocity);
+    op!("sensor_east_velocity", r.sensor_east_velocity);
+
+    // WP-A Table A4 — named nested-set raw fields (tags 73, 95, 97-101).
+    ob!("rvt", r.rvt);
+    ob!("sar_mi_local_set", r.sar_mi_local_set);
+    ob!("range_image_local_set", r.range_image_local_set);
+    ob!("geo_registration_local_set", r.geo_registration_local_set);
+    ob!("composite_imaging_local_set", r.composite_imaging_local_set);
+    ob!("segment_local_set", r.segment_local_set);
+    ob!("amend_local_set", r.amend_local_set);
+
+    // WP-A Table A2 — raw/simple scalar + string fields (tags 39, 60-62,
+    // 70, 72, 106-108, 129, 135).
+    op!("outside_air_temp_c", r.outside_air_temp_c);
+    op!("weapon_load", r.weapon_load);
+    op!("weapon_fired", r.weapon_fired);
+    op!("laser_prf_code", r.laser_prf_code);
+    os!("alternate_platform_name", r.alternate_platform_name);
+    op!("event_start_time_us", r.event_start_time_us);
+    os!("stream_designator", r.stream_designator);
+    os!("operational_base", r.operational_base);
+    os!("broadcast_source", r.broadcast_source);
+    os!("target_id", r.target_id);
+    os!("communications_method", r.communications_method);
+
+    // WP-A Table A3 — coded enums (tags 34, 63, 77). Known codepoints
+    // become a Python enum instance; wire-unknown `Other(code)` becomes a
+    // raw int (mirrors the ST 0102 `SecurityClassification::Unknown(b)`
+    // asymmetry).
+    if let Some(v) = r.icing_detected {
+        kwargs.set_item("icing_detected", convert_icing_detected(py, v)?)?;
+    }
+    if let Some(v) = r.sensor_fov_name {
+        kwargs.set_item("sensor_fov_name", convert_sensor_fov_name(py, v)?)?;
+    }
+    if let Some(v) = r.operational_mode {
+        kwargs.set_item("operational_mode", convert_operational_mode(py, v)?)?;
+    }
 
     kwargs.set_item("unknown", convert_unknown(py, &r.unknown)?)?;
     kwargs.set_item("field_errors", convert_field_errors(py, &r.field_errors)?)?;
@@ -1241,6 +1456,75 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     ob!(vmti);
     ob!(miis_core_id);
 
+    // WP-A Table A1 — ranged f64 fields.
+    op!(target_location_lat_deg, f64);
+    op!(target_location_lon_deg, f64);
+    op!(target_location_elev_m, f64);
+    op!(target_track_gate_width_px, f64);
+    op!(target_track_gate_height_px, f64);
+    op!(target_error_ce90_m, f64);
+    op!(target_error_le90_m, f64);
+    op!(wind_direction_deg, f64);
+    op!(wind_speed, f64);
+    op!(static_pressure_mbar, f64);
+    op!(density_altitude_m, f64);
+    op!(differential_pressure_mbar, f64);
+    op!(airfield_barometric_pressure_mbar, f64);
+    op!(airfield_elevation_m, f64);
+    op!(relative_humidity_pct, f64);
+    op!(platform_vertical_speed, f64);
+    op!(platform_sideslip_deg, f64);
+    op!(platform_ground_speed, f64);
+    op!(ground_range_m, f64);
+    op!(platform_fuel_remaining_kg, f64);
+    op!(platform_magnetic_heading_deg, f64);
+    op!(platform_angle_of_attack_full_deg, f64);
+    op!(platform_sideslip_full_deg, f64);
+    op!(alternate_platform_lat_deg, f64);
+    op!(alternate_platform_lon_deg, f64);
+    op!(alternate_platform_alt_m, f64);
+    op!(alternate_platform_heading_deg, f64);
+    op!(alternate_platform_ellipsoid_height_m, f64);
+    op!(sensor_north_velocity, f64);
+    op!(sensor_east_velocity, f64);
+
+    // WP-A Table A4 — named nested-set raw fields.
+    ob!(rvt);
+    ob!(sar_mi_local_set);
+    ob!(range_image_local_set);
+    ob!(geo_registration_local_set);
+    ob!(composite_imaging_local_set);
+    ob!(segment_local_set);
+    ob!(amend_local_set);
+
+    // WP-A Table A2 — raw/simple scalar + string fields.
+    op!(outside_air_temp_c, i8);
+    op!(weapon_load, u16);
+    op!(weapon_fired, u8);
+    op!(laser_prf_code, u16);
+    os!(alternate_platform_name);
+    op!(event_start_time_us, u64);
+    os!(stream_designator);
+    os!(operational_base);
+    os!(broadcast_source);
+    os!(target_id);
+    os!(communications_method);
+
+    // WP-A Table A3 — coded enums. `enum_field_to_u8` accepts either a
+    // Python enum instance or a raw int (wire-unknown pass-through).
+    let icing_obj = p.getattr(intern!(p.py(), "icing_detected"))?;
+    if !icing_obj.is_none() {
+        r.icing_detected = Some(icing_detected_from_wire(enum_field_to_u8(&icing_obj)?));
+    }
+    let fov_obj = p.getattr(intern!(p.py(), "sensor_fov_name"))?;
+    if !fov_obj.is_none() {
+        r.sensor_fov_name = Some(sensor_fov_name_from_wire(enum_field_to_u8(&fov_obj)?));
+    }
+    let opmode_obj = p.getattr(intern!(p.py(), "operational_mode"))?;
+    if !opmode_obj.is_none() {
+        r.operational_mode = Some(operational_mode_from_wire(enum_field_to_u8(&opmode_obj)?));
+    }
+
     r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
 
     // sentinel_tags: tuple[int, ...] → Vec<u32>. Extracting u32 directly
@@ -1352,6 +1636,25 @@ fn patch_uas_datalink_py(
             "unhandled KlvPatchError variant: {other}"
         ))),
     }
+}
+
+/// Look up the ST 0601.19 spec-defined meaning of the INT_MIN sentinel
+/// wire value for `tag`. Returns `"out_of_range"`, `"reserved"`,
+/// `"not_available"`, or `None` if the spec assigns no INT_MIN special
+/// value for that tag (this does NOT mean the tag is unsigned or that
+/// INT_MIN is a valid wire value for that tag). See
+/// `UasDatalinkLs.sentinel_tags` for where this lookup applies.
+#[pyfunction]
+#[pyo3(name = "st0601_sentinel_meaning")]
+fn st0601_sentinel_meaning_py(tag: u32) -> Option<&'static str> {
+    let meaning = rust_st0601_sentinel_meaning(tag)?;
+    Some(match meaning {
+        St0601SentinelMeaning::OutOfRange => "out_of_range",
+        St0601SentinelMeaning::Reserved => "reserved",
+        St0601SentinelMeaning::NotAvailable => "not_available",
+        // #[non_exhaustive] in tst-core; no current variant reaches here.
+        _ => return None,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1608,6 +1911,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     m.add_function(wrap_pyfunction!(patch_uas_datalink_py, m)?)?;
+    m.add_function(wrap_pyfunction!(st0601_sentinel_meaning_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_security_strict_compliance_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_precision_timestamp_py, m)?)?;

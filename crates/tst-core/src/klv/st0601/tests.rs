@@ -769,16 +769,16 @@ fn every_typed_tag_round_trips() {
     }
 }
 
-/// Walk the body of an encoded ST 0601 record and locate a single-byte
-/// BER-OID tag. Returns `(value_offset, value_len)` relative to the
-/// whole `encoded` buffer, or `None` if the tag is not present.
+/// Walk the body of an encoded ST 0601 record and locate a tag's TLV.
+/// Returns `(value_offset, value_len)` relative to the whole `encoded`
+/// buffer, or `None` if the tag is not present.
 ///
-/// Only handles tags whose BER-OID encoding fits in one byte (id < 128)
-/// — sufficient for Tags 50 and 59. The body starts after the 16-byte
-/// UL plus its BER outer length; we parse the outer length to find
-/// the body start, then walk tag-length-value triplets.
+/// Tags are parsed with the real BER-OID reader, so multi-byte wire
+/// tags (id ≥ 128, e.g. Tags 129/135 — 2 bytes on the wire) are found
+/// too. The body starts after the 16-byte UL plus its BER outer length;
+/// we parse the outer length to find the body start, then walk
+/// tag-length-value triplets.
 fn find_tag(encoded: &[u8], tag: u8) -> Option<(usize, usize)> {
-    assert!(tag < 128, "find_tag only handles single-byte BER-OID tags");
     // Skip UL (16 bytes), read outer BER length; `rest` points at the
     // body. The body ends 4 bytes before EOF (Tag 1 + len byte + 2-byte
     // checksum value). Walk tag-length-value triplets inside.
@@ -789,8 +789,9 @@ fn find_tag(encoded: &[u8], tag: u8) -> Option<(usize, usize)> {
     let body_end = encoded.len() - 4;
     let mut i = body_start;
     while i < body_end {
-        let cur_tag = encoded[i];
-        i += 1;
+        let (cur_tag, after_tag) =
+            crate::klv::length::read_ber_oid(&encoded[i..]).expect("BER-OID tag");
+        i = encoded.len() - after_tag.len();
         // Parse BER length: short form (< 128) or long form.
         let len_byte = encoded[i];
         i += 1;
@@ -805,7 +806,7 @@ fn find_tag(encoded: &[u8], tag: u8) -> Option<(usize, usize)> {
             i += nbytes;
             v
         };
-        if cur_tag == tag {
+        if cur_tag == u32::from(tag) {
             return Some((i, value_len));
         }
         i += value_len;
@@ -2019,6 +2020,16 @@ fn tlv_value(encoded: &[u8], tag: u8) -> Option<Vec<u8>> {
     Some(encoded[off..off + len].to_vec())
 }
 
+/// Encode a default record with a single field set by `set`; returns the
+/// full encoded bytes (the record also carries the auto Tag 65 + trailing
+/// checksum, which [`tlv_value`] walks past). Encode-direction companion
+/// to [`decode_with_single_tlv`] for the WP-A spec-byte pins.
+fn encode_with_field(set: impl FnOnce(&mut UasDatalinkLs)) -> Vec<u8> {
+    let mut rec = UasDatalinkLs::default();
+    set(&mut rec);
+    encode_to_vec(&rec).expect("single-field record must encode")
+}
+
 /// ST 0601.19 §8 worked examples for the WP-A ranged fields — spec bytes,
 /// not round-trip (closed-loop tests can't catch a wrong wire formula).
 #[test]
@@ -2086,50 +2097,163 @@ fn wpa_ranged_spec_vectors() {
 // ============================================================================
 
 /// ST 0601.19 §8 worked examples for the WP-A raw/simple fields — spec
-/// bytes, not round-trip (closed-loop tests can't catch a wrong wire
-/// formula). No LSB tolerance: unlike the IMAPB-quantized ranged fields
-/// in [`wpa_ranged_spec_vectors`], these are identity encodings (raw
-/// int/string bytes), so decoded values must match the spec examples
-/// exactly.
-#[allow(clippy::field_reassign_with_default)]
+/// bytes in BOTH directions, not round-trip (closed-loop tests can't
+/// catch a wrong wire formula). No LSB tolerance: unlike the
+/// IMAPB-quantized ranged fields in [`wpa_ranged_spec_vectors`], these
+/// are identity encodings (raw int/string bytes), so decoded values and
+/// encoded VALUE bytes must match the spec examples exactly.
 #[test]
 fn wpa_raw_spec_vectors() {
     // Decode + encode against ST 0601.19 §8 examples (Appendix Table A2).
+    // Tag 39 — Outside Air Temperature (I8): 84 → 0x54.
     let ls = decode_with_single_tlv(39, &[0x54]);
     assert_eq!(ls.outside_air_temp_c, Some(84));
-    let ls = decode_with_single_tlv(60, &[0xAF, 0xD8]);
-    assert_eq!(ls.weapon_load, Some(45016));
-    let ls = decode_with_single_tlv(70, b"APACHE");
-    assert_eq!(ls.alternate_platform_name.as_deref(), Some("APACHE"));
-    let ls = decode_with_single_tlv(72, &798039894000000u64.to_be_bytes());
-    assert_eq!(ls.event_start_time_us, Some(798039894000000));
-    // Tag 129 crosses the BER-OID 2-byte-tag boundary — round-trip proves
-    // emit_ber_oid_tlv + Iter handle tags >= 128 through the typed path.
-    let mut rec = UasDatalinkLs::default();
-    rec.target_id = Some("A123".into());
-    let ls = crate::klv::st0601::decode(&crate::klv::st0601::encode_to_vec(&rec).unwrap()).unwrap();
-    assert_eq!(ls.target_id.as_deref(), Some("A123"));
-    // negative OAT: two's complement
+    let encoded = encode_with_field(|r| r.outside_air_temp_c = Some(84));
+    assert_eq!(tlv_value(&encoded, 39), Some(vec![0x54]));
+    // Negative OAT: two's complement, both directions (-16 → 0xF0).
     let ls = decode_with_single_tlv(39, &[0xF0]);
     assert_eq!(ls.outside_air_temp_c, Some(-16));
-    // ... remaining Table A2 rows (61, 62, 106, 107, 108, 135) same shape ...
+    let encoded = encode_with_field(|r| r.outside_air_temp_c = Some(-16));
+    assert_eq!(tlv_value(&encoded, 39), Some(vec![0xF0]));
+    // Tag 60 — Weapon Load (U16): 45016 → 0xAF 0xD8.
+    let ls = decode_with_single_tlv(60, &[0xAF, 0xD8]);
+    assert_eq!(ls.weapon_load, Some(45016));
+    let encoded = encode_with_field(|r| r.weapon_load = Some(45016));
+    assert_eq!(tlv_value(&encoded, 60), Some(vec![0xAF, 0xD8]));
+    // Tag 61 — Weapon Fired (U8): 186 → 0xBA.
     let ls = decode_with_single_tlv(61, &[0xBA]);
     assert_eq!(ls.weapon_fired, Some(186));
+    let encoded = encode_with_field(|r| r.weapon_fired = Some(186));
+    assert_eq!(tlv_value(&encoded, 61), Some(vec![0xBA]));
+    // Tag 62 — Laser PRF Code (U16): 1743 → 0x06 0xCF.
     let ls = decode_with_single_tlv(62, &[0x06, 0xCF]);
     assert_eq!(ls.laser_prf_code, Some(1743));
+    let encoded = encode_with_field(|r| r.laser_prf_code = Some(1743));
+    assert_eq!(tlv_value(&encoded, 62), Some(vec![0x06, 0xCF]));
+    // Tag 70 — Alternate Platform Name (Utf8): "APACHE".
+    let ls = decode_with_single_tlv(70, b"APACHE");
+    assert_eq!(ls.alternate_platform_name.as_deref(), Some("APACHE"));
+    let encoded = encode_with_field(|r| r.alternate_platform_name = Some("APACHE".into()));
+    assert_eq!(tlv_value(&encoded, 70), Some(b"APACHE".to_vec()));
+    // Tag 72 — Event Start Time (U64): 798039894000000
+    // → 0x00 0x02 0xD5 0xD0 0x24 0x66 0x01 0x80.
+    let ls = decode_with_single_tlv(72, &798039894000000u64.to_be_bytes());
+    assert_eq!(ls.event_start_time_us, Some(798039894000000));
+    let encoded = encode_with_field(|r| r.event_start_time_us = Some(798039894000000));
+    assert_eq!(
+        tlv_value(&encoded, 72),
+        Some(vec![0x00, 0x02, 0xD5, 0xD0, 0x24, 0x66, 0x01, 0x80])
+    );
+    // Tag 106 — Stream Designator (Utf8): "BLUE".
     let ls = decode_with_single_tlv(106, b"BLUE");
     assert_eq!(ls.stream_designator.as_deref(), Some("BLUE"));
+    let encoded = encode_with_field(|r| r.stream_designator = Some("BLUE".into()));
+    assert_eq!(tlv_value(&encoded, 106), Some(b"BLUE".to_vec()));
+    // Tag 107 — Operational Base (Utf8): "BASE01".
     let ls = decode_with_single_tlv(107, b"BASE01");
     assert_eq!(ls.operational_base.as_deref(), Some("BASE01"));
+    let encoded = encode_with_field(|r| r.operational_base = Some("BASE01".into()));
+    assert_eq!(tlv_value(&encoded, 107), Some(b"BASE01".to_vec()));
+    // Tag 108 — Broadcast Source (Utf8): "HOME".
     let ls = decode_with_single_tlv(108, b"HOME");
     assert_eq!(ls.broadcast_source.as_deref(), Some("HOME"));
-    // Tag 135 also crosses the BER-OID 2-byte-tag boundary (0x81 0x07) —
-    // same round-trip treatment as Tag 129.
-    let mut rec = UasDatalinkLs::default();
-    rec.communications_method = Some("Frequency Modulation".into());
-    let ls = crate::klv::st0601::decode(&crate::klv::st0601::encode_to_vec(&rec).unwrap()).unwrap();
+    let encoded = encode_with_field(|r| r.broadcast_source = Some("HOME".into()));
+    assert_eq!(tlv_value(&encoded, 108), Some(b"HOME".to_vec()));
+    // Tag 129 — Target ID: crosses the BER-OID 2-byte-tag boundary; wire
+    // tag bytes are 0x81 0x01 ((1<<7)|1 = 129). Decode from hand-built
+    // spec bytes (decode_with_single_tlv only writes 1-byte tags):
+    let mut tlv = vec![0x81, 0x01, 0x04];
+    tlv.extend_from_slice(b"A123");
+    let ls = decode(&wrap_st0601(&tlv)).expect("2-byte-tag TLV must decode");
+    assert_eq!(ls.target_id.as_deref(), Some("A123"));
+    // Encode: exact VALUE bytes, plus the raw TLV subsequence pinning the
+    // 2-byte BER-OID tag emission through emit_ber_oid_tlv.
+    let encoded = encode_with_field(|r| r.target_id = Some("A123".into()));
+    assert_eq!(tlv_value(&encoded, 129), Some(b"A123".to_vec()));
+    let expect_tlv: &[u8] = &[0x81, 0x01, 0x04, 0x41, 0x31, 0x32, 0x33];
+    assert!(
+        encoded.windows(expect_tlv.len()).any(|w| w == expect_tlv),
+        "encoded record must carry Tag 129 as the 2-byte BER-OID 0x81 0x01"
+    );
+    // Tag 135 — Communications Method: also a 2-byte wire tag (0x81 0x07);
+    // spec example is the 20-byte string "Frequency Modulation" (0x14).
+    let mut tlv = vec![0x81, 0x07, 0x14];
+    tlv.extend_from_slice(b"Frequency Modulation");
+    let ls = decode(&wrap_st0601(&tlv)).expect("2-byte-tag TLV must decode");
     assert_eq!(
         ls.communications_method.as_deref(),
         Some("Frequency Modulation")
     );
+    let encoded =
+        encode_with_field(|r| r.communications_method = Some("Frequency Modulation".into()));
+    assert_eq!(
+        tlv_value(&encoded, 135),
+        Some(b"Frequency Modulation".to_vec())
+    );
+    let mut expect_tlv = vec![0x81, 0x07, 0x14];
+    expect_tlv.extend_from_slice(b"Frequency Modulation");
+    assert!(
+        encoded
+            .windows(expect_tlv.len())
+            .any(|w| w == expect_tlv.as_slice()),
+        "encoded record must carry Tag 135 as the 2-byte BER-OID 0x81 0x07"
+    );
+}
+
+/// `encode_strict_compliance` must sanitize EVERY typed string field per
+/// ST 0107.5 §6.3.3 — including the six added by WP-A Task A2. Regression:
+/// the A2 commit extended the typed Utf8 set but missed
+/// `sanitize_strings_st0601`, so strict encode emitted raw control bytes
+/// for the new fields. U+0000 is a banned control char (ST 0107.3-13),
+/// removed at any position, so "A\u{0}B" must come back as "AB".
+#[test]
+fn strict_encode_sanitizes_all_string_fields() {
+    let dirty = || Some("A\u{0}B".to_string());
+    let rec = UasDatalinkLs {
+        timestamp_us: Some(1_700_000_000_000_000), // strict-mandatory Tag 2
+        mission_id: dirty(),
+        platform_tail_number: dirty(),
+        platform_designation: dirty(),
+        image_source_sensor: dirty(),
+        image_coordinate_system: dirty(),
+        platform_call_sign: dirty(),
+        alternate_platform_name: dirty(),
+        stream_designator: dirty(),
+        operational_base: dirty(),
+        broadcast_source: dirty(),
+        target_id: dirty(),
+        communications_method: dirty(),
+        ..UasDatalinkLs::default()
+    };
+    let bytes = encode_strict_compliance(&rec).expect("strict encode");
+    let back = decode(&bytes).expect("decode");
+    for (field, got) in [
+        ("mission_id", back.mission_id.as_deref()),
+        ("platform_tail_number", back.platform_tail_number.as_deref()),
+        ("platform_designation", back.platform_designation.as_deref()),
+        ("image_source_sensor", back.image_source_sensor.as_deref()),
+        (
+            "image_coordinate_system",
+            back.image_coordinate_system.as_deref(),
+        ),
+        ("platform_call_sign", back.platform_call_sign.as_deref()),
+        (
+            "alternate_platform_name",
+            back.alternate_platform_name.as_deref(),
+        ),
+        ("stream_designator", back.stream_designator.as_deref()),
+        ("operational_base", back.operational_base.as_deref()),
+        ("broadcast_source", back.broadcast_source.as_deref()),
+        ("target_id", back.target_id.as_deref()),
+        (
+            "communications_method",
+            back.communications_method.as_deref(),
+        ),
+    ] {
+        assert_eq!(
+            got,
+            Some("AB"),
+            "{field}: strict encode must strip the ST 0107 control char"
+        );
+    }
 }

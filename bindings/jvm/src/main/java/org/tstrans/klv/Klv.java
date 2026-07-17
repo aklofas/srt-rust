@@ -382,9 +382,9 @@ public final class Klv {
      *
      * <p>When {@code policy} is {@link OutOfRangePolicy#INDICATOR}, out-of-range
      * values on tags whose ST 0601 INT_MIN sentinel means "Out of Range"
-     * (Tags 6, 7, 50, 51, 52, 79, 80, 90–93; of these, Tags 6, 7, 50, 90, and 91
-     * are currently encodable typed fields) are replaced by the spec-defined special
-     * value rather than throwing. All other tags and non-finite inputs still throw.
+     * (Tags 6, 7, 50, 51, 52, 79, 80, 90–93 — all of which are encodable
+     * typed fields) are replaced by the spec-defined special value rather
+     * than throwing. All other tags and non-finite inputs still throw.
      *
      * @param record the UAS Datalink LS to encode
      * @param policy how to handle out-of-range field values

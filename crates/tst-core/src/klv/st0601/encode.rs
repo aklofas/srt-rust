@@ -269,16 +269,33 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .image_coordinate_system
                 .as_ref()
                 .map(|s| str_wire_len(s)),
+            39 => record.outside_air_temp_c.map(|_| 1),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
             59 => record.platform_call_sign.as_ref().map(|s| str_wire_len(s)),
+            60 => record.weapon_load.map(|_| 2),
+            61 => record.weapon_fired.map(|_| 1),
+            62 => record.laser_prf_code.map(|_| 2),
             65 => record
                 .uas_ls_version
                 .map(|_| 1)
                 .or(if auto_version { Some(1) } else { None }),
+            70 => record
+                .alternate_platform_name
+                .as_ref()
+                .map(|s| str_wire_len(s)),
+            72 => record.event_start_time_us.map(|_| 8),
             74 => record.vmti.as_ref().map(|v| v.len()),
             94 => record.miis_core_id.as_ref().map(|v| v.len()),
-            // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so
+            106 => record.stream_designator.as_ref().map(|s| str_wire_len(s)),
+            107 => record.operational_base.as_ref().map(|s| str_wire_len(s)),
+            108 => record.broadcast_source.as_ref().map(|s| str_wire_len(s)),
+            129 => record.target_id.as_ref().map(|s| str_wire_len(s)),
+            135 => record
+                .communications_method
+                .as_ref()
+                .map(|s| str_wire_len(s)),
+            // All 69 ranged Option<f64> fields — driven from RANGED_FIELDS so
             // that `byte_length` comes from the single `tags::TAGS` source.
             _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
                 .and_then(|e| (e.get)(record).map(|_| spec.range.as_ref().unwrap().byte_length)),
@@ -328,6 +345,7 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(12, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
+        39 => record.outside_air_temp_c.map(|v| vec![v as u8]),
         47 => record.generic_flag_data.map(|b| vec![b]),
         48 => record.security_local_set.clone(),
         59 => record
@@ -335,14 +353,48 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(59, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
+        60 => record.weapon_load.map(|v| v.to_be_bytes().to_vec()),
+        61 => record.weapon_fired.map(|b| vec![b]),
+        62 => record.laser_prf_code.map(|v| v.to_be_bytes().to_vec()),
         65 => match (record.uas_ls_version, version_fallback) {
             (Some(v), _) => Some(vec![v]),
             (None, Some(fallback)) => Some(vec![fallback]),
             (None, None) => None,
         },
+        70 => record
+            .alternate_platform_name
+            .as_ref()
+            .map(|s| check_string(70, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        72 => record.event_start_time_us.map(|t| t.to_be_bytes().to_vec()),
         74 => record.vmti.clone(),
         94 => record.miis_core_id.clone(),
-        // All 39 ranged Option<f64> fields — driven from RANGED_FIELDS so the
+        106 => record
+            .stream_designator
+            .as_ref()
+            .map(|s| check_string(106, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        107 => record
+            .operational_base
+            .as_ref()
+            .map(|s| check_string(107, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        108 => record
+            .broadcast_source
+            .as_ref()
+            .map(|s| check_string(108, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        129 => record
+            .target_id
+            .as_ref()
+            .map(|s| check_string(129, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        135 => record
+            .communications_method
+            .as_ref()
+            .map(|s| check_string(135, s, &spec.encoding).map(|_| str_to_bytes(s)))
+            .transpose()?,
+        // All 69 ranged Option<f64> fields — driven from RANGED_FIELDS so the
         // tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
             if let Some(entry) = super::decode::ranged_entry(spec.id) {

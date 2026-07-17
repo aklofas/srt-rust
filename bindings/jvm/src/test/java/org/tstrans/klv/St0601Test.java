@@ -1023,4 +1023,18 @@ class St0601Test {
         assertEquals(45016, decoded.weaponLoad());
         assertTrue(decoded.fieldErrors().isEmpty());
     }
+
+    // -----------------------------------------------------------------------
+    // WP-A rider: ST 0601.19 §7.5 INT_MIN sentinel-meaning lookup
+    // (parity with tst-py's st0601_sentinel_meaning — same four pins).
+    // -----------------------------------------------------------------------
+
+    @Test
+    void sentinelMeaningLookup() {
+        assertEquals("out_of_range", Klv.st0601SentinelMeaning(6L));
+        assertEquals("reserved", Klv.st0601SentinelMeaning(13L));
+        assertEquals("not_available", Klv.st0601SentinelMeaning(26L));
+        assertNull(Klv.st0601SentinelMeaning(5L),
+                "tag 5 has no spec-assigned INT_MIN special value");
+    }
 }

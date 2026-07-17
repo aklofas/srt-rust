@@ -62,11 +62,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still future work; this only changes where a caller finds the bytes
   on the decoded struct.
 
-### Added — `st0601_sentinel_meaning` lookup in Python
+### Added — `st0601_sentinel_meaning` lookup in Python and JVM
 
-- `tstrans.klv.st0601_sentinel_meaning(tag)` exposes the Rust
+- `tstrans.klv.st0601_sentinel_meaning(tag)` (Python) and
+  `org.tstrans.klv.Klv.st0601SentinelMeaning(tag)` (JVM) expose the Rust
   `klv::st0601::st0601_sentinel_meaning` lookup (Out of Range / Reserved
-  / Not Available per tag) to Python callers.
+  / Not Available per tag) to binding callers.
 
 ### Changed — RTSP server refuses TLS config on a plaintext bind
 

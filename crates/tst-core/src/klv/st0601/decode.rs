@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::mapping::decode_fixed_range;
-use super::model::UasDatalinkLs;
+use super::model::{IcingDetected, OperationalMode, SensorFovName, UasDatalinkLs};
 use super::tags::{Encoding, lookup};
 
 /// Decode a UAS Datalink Local Set per MISB ST 0601.
@@ -379,9 +379,12 @@ fn apply_typed_tag(
             }
             let v = f.value[0];
             match tag {
+                34 => record.icing_detected = Some(IcingDetected::from_wire(v)),
                 47 => record.generic_flag_data = Some(v),
                 61 => record.weapon_fired = Some(v),
+                63 => record.sensor_fov_name = Some(SensorFovName::from_wire(v)),
                 65 => record.uas_ls_version = Some(v),
+                77 => record.operational_mode = Some(OperationalMode::from_wire(v)),
                 _ => unreachable!(),
             }
         }

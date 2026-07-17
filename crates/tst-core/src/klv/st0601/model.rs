@@ -311,6 +311,15 @@ pub struct UasDatalinkLs {
     pub target_id: Option<String>,
     pub communications_method: Option<String>,
 
+    // Coded enums (tags 34, 63, 77)
+    /// Item 34: Icing Detected — icing-detector state. See [`IcingDetected`].
+    pub icing_detected: Option<IcingDetected>,
+    /// Item 63: Sensor Field of View Name — named FOV preset. See [`SensorFovName`].
+    pub sensor_fov_name: Option<SensorFovName>,
+    /// Item 77: Operational Mode — operating mode of the portrayed event.
+    /// See [`OperationalMode`].
+    pub operational_mode: Option<OperationalMode>,
+
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
     pub field_errors: Vec<KlvFieldError>,
@@ -432,9 +441,180 @@ impl Default for UasDatalinkLs {
             broadcast_source: None,
             target_id: None,
             communications_method: None,
+            icing_detected: None,
+            sensor_fov_name: None,
+            operational_mode: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),
+        }
+    }
+}
+
+// ============================================================================
+// Coded value enums (tags 34, 63, 77)
+// ============================================================================
+
+/// Item 34: Icing Detected (ST 0601.19 §8.34) — flag for icing detected at
+/// the aircraft location, sensed by a vibrating-probe ice detector.
+///
+/// | Code | Meaning |
+/// |---:|---|
+/// | 0 | `DetectorOff` |
+/// | 1 | `NoIcingDetected` |
+/// | 2 | `IcingDetected` |
+/// | other | `Other(code)` — wire-unknown, round-trips byte-exact |
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IcingDetected {
+    DetectorOff,
+    NoIcingDetected,
+    IcingDetected,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u8),
+}
+
+impl IcingDetected {
+    pub(crate) fn from_wire(b: u8) -> Self {
+        match b {
+            0 => Self::DetectorOff,
+            1 => Self::NoIcingDetected,
+            2 => Self::IcingDetected,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u8 {
+        match self {
+            Self::DetectorOff => 0,
+            Self::NoIcingDetected => 1,
+            Self::IcingDetected => 2,
+            Self::Other(b) => b,
+        }
+    }
+}
+
+/// Item 63: Sensor Field of View Name (ST 0601.19 §8.63) — indicates the
+/// Motion Imagery sensor's current lens type / FOV preset.
+///
+/// | Code | Meaning |
+/// |---:|---|
+/// | 0 | `Ultranarrow` |
+/// | 1 | `Narrow` |
+/// | 2 | `Medium` |
+/// | 3 | `Wide` |
+/// | 4 | `Ultrawide` |
+/// | 5 | `NarrowMedium` |
+/// | 6 | `TwoXUltranarrow` |
+/// | 7 | `FourXUltranarrow` |
+/// | 8 | `ContinuousZoom` |
+/// | other | `Other(code)` — wire-unknown, round-trips byte-exact |
+///
+/// **Spec discrepancy:** the item's own definition table (§8.63) caps the
+/// KLV range at `[0, 7]`, but the Details subsection's worked table — ST
+/// 0601.19 §8.63.1 Table 4 — lists a 9th codepoint, `8` = "Continuous
+/// Zoom". Modeled per Table 4 since it is the more complete of the two
+/// spec tables and real-world encoders emit it.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorFovName {
+    Ultranarrow,
+    Narrow,
+    Medium,
+    Wide,
+    Ultrawide,
+    NarrowMedium,
+    TwoXUltranarrow,
+    FourXUltranarrow,
+    ContinuousZoom,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u8),
+}
+
+impl SensorFovName {
+    pub(crate) fn from_wire(b: u8) -> Self {
+        match b {
+            0 => Self::Ultranarrow,
+            1 => Self::Narrow,
+            2 => Self::Medium,
+            3 => Self::Wide,
+            4 => Self::Ultrawide,
+            5 => Self::NarrowMedium,
+            6 => Self::TwoXUltranarrow,
+            7 => Self::FourXUltranarrow,
+            8 => Self::ContinuousZoom,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u8 {
+        match self {
+            Self::Ultranarrow => 0,
+            Self::Narrow => 1,
+            Self::Medium => 2,
+            Self::Wide => 3,
+            Self::Ultrawide => 4,
+            Self::NarrowMedium => 5,
+            Self::TwoXUltranarrow => 6,
+            Self::FourXUltranarrow => 7,
+            Self::ContinuousZoom => 8,
+            Self::Other(b) => b,
+        }
+    }
+}
+
+/// Item 77: Operational Mode (ST 0601.19 §8.77) — indicates the mode of
+/// operations of the event portrayed in the Motion Imagery, per the
+/// §8.77.1 Table 5 enumeration.
+///
+/// | Code | Meaning |
+/// |---:|---|
+/// | 0 | `OtherMode` |
+/// | 1 | `Operational` |
+/// | 2 | `Training` |
+/// | 3 | `Exercise` |
+/// | 4 | `Maintenance` |
+/// | 5 | `Test` |
+/// | other | `Other(code)` — wire-unknown, round-trips byte-exact |
+///
+/// Spec code `0` is named "Other" in Table 5; this crate names it
+/// `OtherMode` to avoid colliding with the catch-all `Other(code)`
+/// fallback arm above.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationalMode {
+    OtherMode,
+    Operational,
+    Training,
+    Exercise,
+    Maintenance,
+    Test,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u8),
+}
+
+impl OperationalMode {
+    pub(crate) fn from_wire(b: u8) -> Self {
+        match b {
+            0 => Self::OtherMode,
+            1 => Self::Operational,
+            2 => Self::Training,
+            3 => Self::Exercise,
+            4 => Self::Maintenance,
+            5 => Self::Test,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u8 {
+        match self {
+            Self::OtherMode => 0,
+            Self::Operational => 1,
+            Self::Training => 2,
+            Self::Exercise => 3,
+            Self::Maintenance => 4,
+            Self::Test => 5,
+            Self::Other(b) => b,
         }
     }
 }

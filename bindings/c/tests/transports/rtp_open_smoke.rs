@@ -60,8 +60,10 @@ fn pick_port() -> u16 {
 /// so under concurrent test execution (cargo-nextest) the companion bind
 /// occasionally collides and the open returns null. Each retry requests a
 /// fresh ephemeral port, which clears the collision within a few attempts.
-/// (Proper fix tracked in ROADMAP P7: serialize these port-binding RTP tests
-/// in a nextest group.)
+/// (These tests are additionally serialized through the nextest `network`
+/// test-group — `binary(transports)` in `.config/nextest.toml` — so
+/// intra-suite collisions can't happen; the retry mops up residual
+/// collisions with unrelated processes on the runner.)
 fn open_rtp_with_retry<T>(mut open: impl FnMut() -> *mut T) -> *mut T {
     let mut h = open();
     for _ in 0..20 {

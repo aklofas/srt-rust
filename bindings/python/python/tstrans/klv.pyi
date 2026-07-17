@@ -487,10 +487,10 @@ class OutOfRangePolicy:
     - ``ERROR`` (default): raise ``KlvEncodeError(OUT_OF_RANGE)``.
     - ``INDICATOR``: emit the tag's spec-defined Out-of-Range special value
       (INT_MIN sentinel, ``0x8000`` or ``0x80000000``) instead of raising.
-      Applies only to tags where ST 0601 defines the indicator; of the
-      currently encodable fields: platform pitch/roll/angle-of-attack
-      (Tags 6, 7, 50) and full-range pitch/roll (Tags 90, 91). All other
-      fields, and any non-finite value, still raise under ``INDICATOR``.
+      Applies only to tags where ST 0601 defines the indicator — Tags 6, 7,
+      50, 51, 52, 79, 80, 90-93, all of which are encodable ``UasDatalinkLs``
+      fields. All other fields, and any non-finite value, still raise under
+      ``INDICATOR``.
     """
 
     ERROR: OutOfRangePolicy

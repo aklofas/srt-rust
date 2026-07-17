@@ -1548,11 +1548,12 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
 /// - ``INDICATOR``: emit the tag's spec-defined Out-of-Range special value
 ///   instead of raising. This applies only to the tags whose INT_MIN sentinel
 ///   (``0x8000`` for 2-byte, ``0x80000000`` for 4-byte signed mappings) means
-///   "Out of Range" per ST 0601.19 §7.5 / requirement ST 0601.13-27.  Of the
-///   currently encodable ``UasDatalinkLs`` fields, these are: platform pitch /
-///   roll / angle-of-attack (Tags 6, 7, 50) and full-range pitch / roll (Tags
-///   90, 91). All other fields, and any non-finite value, still raise even
-///   under ``INDICATOR``.
+///   "Out of Range" per ST 0601.19 §7.5 / requirement ST 0601.13-27: Tags 6,
+///   7, 50, 51, 52, 79, 80, 90-93 — all of which are encodable
+///   ``UasDatalinkLs`` fields (platform pitch / roll / angle-of-attack /
+///   vertical speed / sideslip, sensor north / east velocity, and the
+///   full-range pitch / roll / angle-of-attack / sideslip twins). All other
+///   fields, and any non-finite value, still raise even under ``INDICATOR``.
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[pyclass(name = "OutOfRangePolicy", module = "tstrans.klv", eq, eq_int, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq)]

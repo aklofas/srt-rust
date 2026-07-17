@@ -14,6 +14,10 @@ Decode surface:
 - `IdType` — ST 1204.3 sensor/platform UUID source type enum
 - `CoreId` — ST 1204.3 MIIS Core Identifier
 - `MismmsViolation` — ST 0902.8 Minimum Metadata Set violation
+- `IcingDetected`, `SensorFovName`, `OperationalMode` — ST 0601 §8.34/
+  §8.63/§8.77 coded-value enums
+- `st0601_sentinel_meaning` — ST 0601.19 INT_MIN sentinel meaning lookup
+  (Out of Range / Reserved / N/A) for a given tag
 - `KlvFieldError`, `KlvFieldErrorKind` — non-fatal per-field errors
 - `decode_uas_datalink`, `decode_security`, `decode_precision_timestamp`,
   `decode_vmti`, `decode_core_id` — per-set entry points
@@ -488,6 +492,60 @@ class Corners:
 
 
 # ---------------------------------------------------------------------------
+# ST 0601.19 coded enums (Items 34, 63, 77)
+# ---------------------------------------------------------------------------
+
+
+class IcingDetected(enum.Enum):
+    """ST 0601.19 §8.34 Item 34 — icing-detector state (vibrating-probe
+    ice detector at the aircraft location).
+
+    Rust adds an `Other(u8)` catch-all for forward-compat; on the Python
+    side, unknown codepoints surface as the raw `int` on
+    `UasDatalinkLs.icing_detected` rather than an enum instance (same
+    asymmetric pattern as `SecurityClassification`)."""
+
+    DETECTOR_OFF = 0
+    NO_ICING_DETECTED = 1
+    ICING_DETECTED = 2
+
+
+class SensorFovName(enum.Enum):
+    """ST 0601.19 §8.63 Item 63 — named Motion Imagery sensor FOV preset.
+
+    Spec discrepancy: the item's own definition table caps the KLV range
+    at `[0, 7]`, but the §8.63.1 Table 4 worked example lists a 9th
+    codepoint, `8` = Continuous Zoom. Modeled per Table 4 since real-world
+    encoders emit it (see the Rust `SensorFovName` rustdoc for detail)."""
+
+    ULTRANARROW = 0
+    NARROW = 1
+    MEDIUM = 2
+    WIDE = 3
+    ULTRAWIDE = 4
+    NARROW_MEDIUM = 5
+    TWO_X_ULTRANARROW = 6
+    FOUR_X_ULTRANARROW = 7
+    CONTINUOUS_ZOOM = 8
+
+
+class OperationalMode(enum.Enum):
+    """ST 0601.19 §8.77 Item 77 — operating mode of the event portrayed
+    in the Motion Imagery, per the §8.77.1 Table 5 enumeration.
+
+    Spec code `0` is named "Other" in Table 5; this binding names it
+    `OTHER_MODE` to avoid colliding with the raw-int catch-all used for
+    wire-unknown codepoints (mirrors the Rust `OtherMode` variant name)."""
+
+    OTHER_MODE = 0
+    OPERATIONAL = 1
+    TRAINING = 2
+    EXERCISE = 3
+    MAINTENANCE = 4
+    TEST = 5
+
+
+# ---------------------------------------------------------------------------
 # ST 0601 UAS Datalink Local Set
 # ---------------------------------------------------------------------------
 
@@ -496,7 +554,7 @@ class Corners:
 class UasDatalinkLs:
     """MISB ST 0601 UAS Datalink Local Set typed view.
 
-    Mirror of the 80-field Rust `tst_core::klv::st0601::UasDatalinkLs`
+    Mirror of the 107-field Rust `tst_core::klv::st0601::UasDatalinkLs`
     flat struct. Composite views (sensor position, attitude, FOV,
     corners) are accessor methods that return `None` when any of the
     underlying primitive fields is absent.
@@ -582,11 +640,69 @@ class UasDatalinkLs:
     corner_lon_p3_deg: float | None = None
     corner_lat_p4_deg: float | None = None
     corner_lon_p4_deg: float | None = None
+    # Target location & tracking (tags 40-46)
+    target_location_lat_deg: float | None = None
+    target_location_lon_deg: float | None = None
+    target_location_elev_m: float | None = None
+    target_track_gate_width_px: float | None = None
+    target_track_gate_height_px: float | None = None
+    target_error_ce90_m: float | None = None
+    target_error_le90_m: float | None = None
+    # Weather / atmospheric (tags 35-38, 49, 53-55)
+    wind_direction_deg: float | None = None
+    wind_speed: float | None = None
+    static_pressure_mbar: float | None = None
+    density_altitude_m: float | None = None
+    differential_pressure_mbar: float | None = None
+    airfield_barometric_pressure_mbar: float | None = None
+    airfield_elevation_m: float | None = None
+    relative_humidity_pct: float | None = None
+    # Extended platform state (tags 51, 52, 56-58, 64, 92, 93)
+    platform_vertical_speed: float | None = None
+    platform_sideslip_deg: float | None = None
+    platform_ground_speed: float | None = None
+    ground_range_m: float | None = None
+    platform_fuel_remaining_kg: float | None = None
+    platform_magnetic_heading_deg: float | None = None
+    platform_angle_of_attack_full_deg: float | None = None
+    platform_sideslip_full_deg: float | None = None
+    # Alternate platform (tags 67-69, 71, 76)
+    alternate_platform_lat_deg: float | None = None
+    alternate_platform_lon_deg: float | None = None
+    alternate_platform_alt_m: float | None = None
+    alternate_platform_heading_deg: float | None = None
+    alternate_platform_ellipsoid_height_m: float | None = None
+    # Sensor velocity (tags 79-80)
+    sensor_north_velocity: float | None = None
+    sensor_east_velocity: float | None = None
     # Misc
     generic_flag_data: int | None = None
     security_local_set: bytes | None = None  # Tag 48 → ST 0102
+    rvt: bytes | None = None  # Tag 73 → ST 0806 (module lands in a later work package)
     vmti: bytes | None = None  # Tag 74 → ST 0903
     miis_core_id: bytes | None = None  # Tag 94 → ST 1204
+    sar_mi_local_set: bytes | None = None  # Tag 95 → ST 1206 (interior typing deferred)
+    range_image_local_set: bytes | None = None  # Tag 97 → ST 1002 (deferred)
+    geo_registration_local_set: bytes | None = None  # Tag 98 → ST 1601 (deferred)
+    composite_imaging_local_set: bytes | None = None  # Tag 99 → ST 1602 (deferred)
+    segment_local_set: bytes | None = None  # Tag 100 → ST 1607 (deferred)
+    amend_local_set: bytes | None = None  # Tag 101 → ST 1607 (deferred)
+    # Raw scalar & string items (tags 39, 60-62, 70, 72, 106-108, 129, 135)
+    outside_air_temp_c: int | None = None
+    weapon_load: int | None = None  # bit-packed nibbles: station/substation/type/variant
+    weapon_fired: int | None = None
+    laser_prf_code: int | None = None
+    alternate_platform_name: str | None = None
+    event_start_time_us: int | None = None
+    stream_designator: str | None = None
+    operational_base: str | None = None
+    broadcast_source: str | None = None
+    target_id: str | None = None
+    communications_method: str | None = None
+    # Coded enums (tags 34, 63, 77)
+    icing_detected: IcingDetected | int | None = None
+    sensor_fov_name: SensorFovName | int | None = None
+    operational_mode: OperationalMode | int | None = None
     # Pass-through
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
@@ -714,6 +830,7 @@ OutOfRangePolicy = _native_mod.OutOfRangePolicy
 decode_uas_datalink = _native_mod.decode_uas_datalink
 encode_uas_datalink = _native_mod.encode_uas_datalink
 encode_uas_datalink_strict_compliance = _native_mod.encode_uas_datalink_strict_compliance
+st0601_sentinel_meaning = _native_mod.st0601_sentinel_meaning
 
 
 # ---------------------------------------------------------------------------
@@ -984,12 +1101,16 @@ __all__: list[str] = [
     "FieldOfView",
     "Corners",
     "OutOfRangePolicy",
+    "IcingDetected",
+    "SensorFovName",
+    "OperationalMode",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",
     "encode_uas_datalink",
     "encode_uas_datalink_strict_compliance",
     "patch_uas_datalink",
+    "st0601_sentinel_meaning",
     "parse_klv_universal",
     "IdType",
     "CoreId",

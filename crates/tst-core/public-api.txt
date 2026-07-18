@@ -2003,6 +2003,62 @@ impl core::marker::Unpin for tst_core::klv::st0601::OutOfRangePolicy
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::OutOfRangePolicy
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::OutOfRangePolicy
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::OutOfRangePolicy
+#[non_exhaustive] pub enum tst_core::klv::st0601::PlatformStatus
+pub tst_core::klv::st0601::PlatformStatus::Active
+pub tst_core::klv::st0601::PlatformStatus::AutomatedOrbit
+pub tst_core::klv::st0601::PlatformStatus::Egress
+pub tst_core::klv::st0601::PlatformStatus::Ingress
+pub tst_core::klv::st0601::PlatformStatus::LandedParked
+pub tst_core::klv::st0601::PlatformStatus::LandedTaxiing
+pub tst_core::klv::st0601::PlatformStatus::Landing
+pub tst_core::klv::st0601::PlatformStatus::ManualOperation
+pub tst_core::klv::st0601::PlatformStatus::Other(u8)
+pub tst_core::klv::st0601::PlatformStatus::PreFlight
+pub tst_core::klv::st0601::PlatformStatus::PreFlightTaxiing
+pub tst_core::klv::st0601::PlatformStatus::RunUp
+pub tst_core::klv::st0601::PlatformStatus::TakeOff
+pub tst_core::klv::st0601::PlatformStatus::Transitioning
+impl core::clone::Clone for tst_core::klv::st0601::PlatformStatus
+pub fn tst_core::klv::st0601::PlatformStatus::clone(&self) -> tst_core::klv::st0601::PlatformStatus
+impl core::cmp::Eq for tst_core::klv::st0601::PlatformStatus
+impl core::cmp::PartialEq for tst_core::klv::st0601::PlatformStatus
+pub fn tst_core::klv::st0601::PlatformStatus::eq(&self, &tst_core::klv::st0601::PlatformStatus) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::PlatformStatus
+pub fn tst_core::klv::st0601::PlatformStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::PlatformStatus
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::PlatformStatus
+impl core::marker::Freeze for tst_core::klv::st0601::PlatformStatus
+impl core::marker::Send for tst_core::klv::st0601::PlatformStatus
+impl core::marker::Sync for tst_core::klv::st0601::PlatformStatus
+impl core::marker::Unpin for tst_core::klv::st0601::PlatformStatus
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::PlatformStatus
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::PlatformStatus
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::PlatformStatus
+#[non_exhaustive] pub enum tst_core::klv::st0601::SensorControlMode
+pub tst_core::klv::st0601::SensorControlMode::AutoHoldingPosition
+pub tst_core::klv::st0601::SensorControlMode::AutoTracking
+pub tst_core::klv::st0601::SensorControlMode::Calibrating
+pub tst_core::klv::st0601::SensorControlMode::HomePosition
+pub tst_core::klv::st0601::SensorControlMode::ManualControl
+pub tst_core::klv::st0601::SensorControlMode::Off
+pub tst_core::klv::st0601::SensorControlMode::Other(u8)
+pub tst_core::klv::st0601::SensorControlMode::Uncontrolled
+impl core::clone::Clone for tst_core::klv::st0601::SensorControlMode
+pub fn tst_core::klv::st0601::SensorControlMode::clone(&self) -> tst_core::klv::st0601::SensorControlMode
+impl core::cmp::Eq for tst_core::klv::st0601::SensorControlMode
+impl core::cmp::PartialEq for tst_core::klv::st0601::SensorControlMode
+pub fn tst_core::klv::st0601::SensorControlMode::eq(&self, &tst_core::klv::st0601::SensorControlMode) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::SensorControlMode
+pub fn tst_core::klv::st0601::SensorControlMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::SensorControlMode
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::SensorControlMode
+impl core::marker::Freeze for tst_core::klv::st0601::SensorControlMode
+impl core::marker::Send for tst_core::klv::st0601::SensorControlMode
+impl core::marker::Sync for tst_core::klv::st0601::SensorControlMode
+impl core::marker::Unpin for tst_core::klv::st0601::SensorControlMode
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::SensorControlMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::SensorControlMode
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::SensorControlMode
 #[non_exhaustive] pub enum tst_core::klv::st0601::SensorFovName
 pub tst_core::klv::st0601::SensorFovName::ContinuousZoom
 pub tst_core::klv::st0601::SensorFovName::FourXUltranarrow
@@ -2150,14 +2206,17 @@ impl core::marker::UnsafeUnpin for tst_core::klv::st0601::GeoPoint
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::GeoPoint
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::GeoPoint
 pub struct tst_core::klv::st0601::UasDatalinkLs
+pub tst_core::klv::st0601::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_heading_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_lat_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_lon_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_name: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::altitude_agl_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::amend_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::broadcast_source: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::communications_method: core::option::Option<alloc::string::String>
@@ -2178,7 +2237,9 @@ pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p1_deg: core::option::Optio
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p2_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p3_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p4_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::correction_offset_us: core::option::Option<i64>
 pub tst_core::klv::st0601::UasDatalinkLs::declared_version: u8
+pub tst_core::klv::st0601::UasDatalinkLs::density_altitude_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::density_altitude_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::differential_pressure_mbar: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::event_start_time_us: core::option::Option<u64>
@@ -2193,15 +2254,21 @@ pub tst_core::klv::st0601::UasDatalinkLs::ground_range_m: core::option::Option<f
 pub tst_core::klv::st0601::UasDatalinkLs::icing_detected: core::option::Option<tst_core::klv::st0601::IcingDetected>
 pub tst_core::klv::st0601::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::imapb_specials: alloc::vec::Vec<(u32, tst_core::klv::imapb::ImapbSpecial)>
 pub tst_core::klv::st0601::UasDatalinkLs::laser_prf_code: core::option::Option<u16>
+pub tst_core::klv::st0601::UasDatalinkLs::leap_seconds: core::option::Option<i32>
+pub tst_core::klv::st0601::UasDatalinkLs::mi_storage_capacity_gb: core::option::Option<u32>
+pub tst_core::klv::st0601::UasDatalinkLs::mi_storage_percent_full: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::miis_core_id: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::mission_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::navsats_in_view: core::option::Option<u8>
 pub tst_core::klv::st0601::UasDatalinkLs::operational_base: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::operational_mode: core::option::Option<tst_core::klv::st0601::OperationalMode>
 pub tst_core::klv::st0601::UasDatalinkLs::outside_air_temp_c: core::option::Option<i8>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_angle_of_attack_full_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::platform_course_angle_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_designation: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_fuel_remaining_kg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_ground_speed: core::option::Option<f64>
@@ -2214,17 +2281,26 @@ pub tst_core::klv::st0601::UasDatalinkLs::platform_roll_deg: core::option::Optio
 pub tst_core::klv::st0601::UasDatalinkLs::platform_roll_full_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_sideslip_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_sideslip_full_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::platform_status: core::option::Option<tst_core::klv::st0601::PlatformStatus>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_tail_number: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_true_airspeed: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_vertical_speed: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::positioning_method_source: core::option::Option<u8>
+pub tst_core::klv::st0601::UasDatalinkLs::propulsion_unit_speed_rpm: core::option::Option<u32>
+pub tst_core::klv::st0601::UasDatalinkLs::radar_altimeter_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::range_image_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::klv::st0601::UasDatalinkLs::range_to_recovery_km: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::relative_humidity_pct: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::rvt: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::sar_mi_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::security_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::segment_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_alt_m: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_azimuth_rate_dps: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_control_mode: core::option::Option<tst_core::klv::st0601::SensorControlMode>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_east_velocity: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_elevation_rate_dps: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_fov_name: core::option::Option<tst_core::klv::st0601::SensorFovName>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_hfov_deg: core::option::Option<f64>
@@ -2234,11 +2310,13 @@ pub tst_core::klv::st0601::UasDatalinkLs::sensor_north_velocity: core::option::O
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_az_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_el_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_rel_roll_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_roll_rate_dps: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_vfov_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sentinel_tags: alloc::vec::Vec<u32>
 pub tst_core::klv::st0601::UasDatalinkLs::slant_range_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::static_pressure_mbar: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::stream_designator: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::take_off_time_us: core::option::Option<u64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_error_ce90_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_error_le90_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_id: core::option::Option<alloc::string::String>
@@ -2247,8 +2325,11 @@ pub tst_core::klv::st0601::UasDatalinkLs::target_location_lat_deg: core::option:
 pub tst_core::klv::st0601::UasDatalinkLs::target_location_lon_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_track_gate_height_px: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_track_gate_width_px: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::target_width_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::target_width_m: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::time_airborne_s: core::option::Option<u32>
 pub tst_core::klv::st0601::UasDatalinkLs::timestamp_us: core::option::Option<u64>
+pub tst_core::klv::st0601::UasDatalinkLs::transmission_frequency_mhz: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::uas_ls_version: core::option::Option<u8>
 pub tst_core::klv::st0601::UasDatalinkLs::universal_label: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::klv::st0601::UasDatalinkLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
@@ -2257,7 +2338,9 @@ pub tst_core::klv::st0601::UasDatalinkLs::weapon_fired: core::option::Option<u8>
 pub tst_core::klv::st0601::UasDatalinkLs::weapon_load: core::option::Option<u16>
 pub tst_core::klv::st0601::UasDatalinkLs::wind_direction_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::wind_speed: core::option::Option<f64>
+pub tst_core::klv::st0601::UasDatalinkLs::zoom_percentage: core::option::Option<f64>
 impl tst_core::UasDatalinkLs
+pub fn tst_core::UasDatalinkLs::active_payload_ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + '_
 pub fn tst_core::UasDatalinkLs::corners(&self) -> core::option::Option<tst_core::klv::st0601::Corners>
 pub fn tst_core::UasDatalinkLs::frame_center(&self) -> core::option::Option<tst_core::klv::st0601::GeoPoint>
 pub fn tst_core::UasDatalinkLs::platform_attitude(&self) -> core::option::Option<tst_core::klv::st0601::Attitude>
@@ -2611,6 +2694,37 @@ impl core::marker::Unpin for tst_core::klv::ClassifyingCountryCodingMethod
 impl core::marker::UnsafeUnpin for tst_core::klv::ClassifyingCountryCodingMethod
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::ClassifyingCountryCodingMethod
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::ClassifyingCountryCodingMethod
+#[non_exhaustive] pub enum tst_core::klv::ImapbSpecial
+pub tst_core::klv::ImapbSpecial::AboveMax
+pub tst_core::klv::ImapbSpecial::BelowMin
+pub tst_core::klv::ImapbSpecial::NegativeInfinity
+pub tst_core::klv::ImapbSpecial::NegativeQuietNaN
+pub tst_core::klv::ImapbSpecial::NegativeQuietNaN::nan_id: u64
+pub tst_core::klv::ImapbSpecial::NegativeSignalingNaN
+pub tst_core::klv::ImapbSpecial::NegativeSignalingNaN::signal: u64
+pub tst_core::klv::ImapbSpecial::PositiveInfinity
+pub tst_core::klv::ImapbSpecial::PositiveQuietNaN
+pub tst_core::klv::ImapbSpecial::PositiveQuietNaN::nan_id: u64
+pub tst_core::klv::ImapbSpecial::PositiveSignalingNaN
+pub tst_core::klv::ImapbSpecial::PositiveSignalingNaN::signal: u64
+pub tst_core::klv::ImapbSpecial::UserDefined
+pub tst_core::klv::ImapbSpecial::UserDefined::signal: u64
+impl core::clone::Clone for tst_core::klv::imapb::ImapbSpecial
+pub fn tst_core::klv::imapb::ImapbSpecial::clone(&self) -> tst_core::klv::imapb::ImapbSpecial
+impl core::cmp::Eq for tst_core::klv::imapb::ImapbSpecial
+impl core::cmp::PartialEq for tst_core::klv::imapb::ImapbSpecial
+pub fn tst_core::klv::imapb::ImapbSpecial::eq(&self, &tst_core::klv::imapb::ImapbSpecial) -> bool
+impl core::fmt::Debug for tst_core::klv::imapb::ImapbSpecial
+pub fn tst_core::klv::imapb::ImapbSpecial::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::StructuralPartialEq for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::Freeze for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::Send for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::Sync for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::Unpin for tst_core::klv::imapb::ImapbSpecial
+impl core::marker::UnsafeUnpin for tst_core::klv::imapb::ImapbSpecial
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::imapb::ImapbSpecial
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::imapb::ImapbSpecial
 pub enum tst_core::klv::ObjectCountryCodingMethod
 pub tst_core::klv::ObjectCountryCodingMethod::Fips104FourLetter
 pub tst_core::klv::ObjectCountryCodingMethod::Fips104TwoLetter
@@ -6532,14 +6646,17 @@ impl core::marker::UnsafeUnpin for tst_core::cancel::SrtCancelHandle
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::SrtCancelHandle
 impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub struct tst_core::UasDatalinkLs
+pub tst_core::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::alternate_platform_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_heading_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_lat_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_lon_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_name: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::altitude_agl_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::amend_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::broadcast_source: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::communications_method: core::option::Option<alloc::string::String>
@@ -6560,7 +6677,9 @@ pub tst_core::UasDatalinkLs::corner_lon_p1_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lon_p2_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lon_p3_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lon_p4_deg: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::correction_offset_us: core::option::Option<i64>
 pub tst_core::UasDatalinkLs::declared_version: u8
+pub tst_core::UasDatalinkLs::density_altitude_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::density_altitude_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::differential_pressure_mbar: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::event_start_time_us: core::option::Option<u64>
@@ -6575,15 +6694,21 @@ pub tst_core::UasDatalinkLs::ground_range_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::icing_detected: core::option::Option<tst_core::klv::st0601::IcingDetected>
 pub tst_core::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::imapb_specials: alloc::vec::Vec<(u32, tst_core::klv::imapb::ImapbSpecial)>
 pub tst_core::UasDatalinkLs::laser_prf_code: core::option::Option<u16>
+pub tst_core::UasDatalinkLs::leap_seconds: core::option::Option<i32>
+pub tst_core::UasDatalinkLs::mi_storage_capacity_gb: core::option::Option<u32>
+pub tst_core::UasDatalinkLs::mi_storage_percent_full: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::miis_core_id: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::mission_id: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::navsats_in_view: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::operational_base: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::operational_mode: core::option::Option<tst_core::klv::st0601::OperationalMode>
 pub tst_core::UasDatalinkLs::outside_air_temp_c: core::option::Option<i8>
 pub tst_core::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_angle_of_attack_full_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::platform_course_angle_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_designation: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::platform_fuel_remaining_kg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_ground_speed: core::option::Option<f64>
@@ -6596,17 +6721,26 @@ pub tst_core::UasDatalinkLs::platform_roll_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_roll_full_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_sideslip_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_sideslip_full_deg: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::platform_status: core::option::Option<tst_core::klv::st0601::PlatformStatus>
 pub tst_core::UasDatalinkLs::platform_tail_number: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::platform_true_airspeed: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_vertical_speed: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::positioning_method_source: core::option::Option<u8>
+pub tst_core::UasDatalinkLs::propulsion_unit_speed_rpm: core::option::Option<u32>
+pub tst_core::UasDatalinkLs::radar_altimeter_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::range_image_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::UasDatalinkLs::range_to_recovery_km: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::relative_humidity_pct: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::rvt: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::sar_mi_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::security_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::segment_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::sensor_alt_m: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sensor_azimuth_rate_dps: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sensor_control_mode: core::option::Option<tst_core::klv::st0601::SensorControlMode>
 pub tst_core::UasDatalinkLs::sensor_east_velocity: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sensor_elevation_rate_dps: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sensor_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_fov_name: core::option::Option<tst_core::klv::st0601::SensorFovName>
 pub tst_core::UasDatalinkLs::sensor_hfov_deg: core::option::Option<f64>
@@ -6616,11 +6750,13 @@ pub tst_core::UasDatalinkLs::sensor_north_velocity: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_rel_az_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_rel_el_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_rel_roll_deg: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::sensor_roll_rate_dps: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_vfov_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sentinel_tags: alloc::vec::Vec<u32>
 pub tst_core::UasDatalinkLs::slant_range_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::static_pressure_mbar: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::stream_designator: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::take_off_time_us: core::option::Option<u64>
 pub tst_core::UasDatalinkLs::target_error_ce90_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_error_le90_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_id: core::option::Option<alloc::string::String>
@@ -6629,8 +6765,11 @@ pub tst_core::UasDatalinkLs::target_location_lat_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_location_lon_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_track_gate_height_px: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_track_gate_width_px: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::target_width_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::target_width_m: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::time_airborne_s: core::option::Option<u32>
 pub tst_core::UasDatalinkLs::timestamp_us: core::option::Option<u64>
+pub tst_core::UasDatalinkLs::transmission_frequency_mhz: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::uas_ls_version: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::universal_label: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::UasDatalinkLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
@@ -6639,7 +6778,9 @@ pub tst_core::UasDatalinkLs::weapon_fired: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::weapon_load: core::option::Option<u16>
 pub tst_core::UasDatalinkLs::wind_direction_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::wind_speed: core::option::Option<f64>
+pub tst_core::UasDatalinkLs::zoom_percentage: core::option::Option<f64>
 impl tst_core::UasDatalinkLs
+pub fn tst_core::UasDatalinkLs::active_payload_ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + '_
 pub fn tst_core::UasDatalinkLs::corners(&self) -> core::option::Option<tst_core::klv::st0601::Corners>
 pub fn tst_core::UasDatalinkLs::frame_center(&self) -> core::option::Option<tst_core::klv::st0601::GeoPoint>
 pub fn tst_core::UasDatalinkLs::platform_attitude(&self) -> core::option::Option<tst_core::klv::st0601::Attitude>

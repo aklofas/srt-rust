@@ -280,10 +280,21 @@ class St1204Test {
     @Test
     void validateMismmsZeroLengthItem() {
         UasDatalinkLs base = fullMismmsRecord();
-        // Inject tag 96 (zero-length) and omit tag 22 from a full record.
-        // This should produce: kind=="zero_length" with tag==96 AND kind=="missing" with tag==22.
+        // WP-B TYPES tag 96 (targetWidthExtendedM): a zero-length wire value
+        // for a now-typed tag can no longer be injected through the JVM
+        // binding's `unknown` list — the JNI translator's
+        // `is_st0601_typed_tag` collision-drop silently eats a tag-96
+        // `unknown` entry before it ever reaches the Rust validator (typed
+        // field wins per the documented collision policy; same fix as the
+        // Python binding's analogous WP-B carry-forward). The zero-length
+        // scenario itself is still exercised directly at the Rust-core
+        // level (bypassing any binding predicate) by
+        // `zero_length_unknown_tag_96_and_missing_group` in
+        // crates/tst-core/src/klv/st0601/mismms.rs. Omit tag 22 from a full
+        // record; the attempted zero-length tag-96 injection below is
+        // dropped, so only the "missing tag 22" violation should surface.
         List<KlvUnknownField> unk = java.util.Arrays.asList(
-                new KlvUnknownField(96L, ByteBuffer.wrap(new byte[0]))  // Tag 96, zero-length
+                new KlvUnknownField(96L, ByteBuffer.wrap(new byte[0]))  // Tag 96, zero-length (dropped)
         );
         UasDatalinkLs withZeroLength = new UasDatalinkLs.Builder()
                 .universalLabel(base.universalLabel())
@@ -305,7 +316,8 @@ class St1204Test {
                 .sensorRelElDeg(base.sensorRelElDeg())
                 .sensorRelRollDeg(base.sensorRelRollDeg())
                 .slantRangeM(base.slantRangeM())
-                // Omit targetWidthM (Tag 22); inject zero-length tag 96 via unknown
+                // Omit targetWidthM (Tag 22); the attempted zero-length tag-96
+                // unknown injection above is dropped before it reaches Rust.
                 .frameCenterLatDeg(base.frameCenterLatDeg())
                 .frameCenterLonDeg(base.frameCenterLonDeg())
                 .frameCenterElevM(base.frameCenterElevM())
@@ -318,8 +330,11 @@ class St1204Test {
                 .anyMatch(v -> "zero_length".equals(v.kind()) && v.tag() == 96);
         boolean hasMissing22 = violations.stream()
                 .anyMatch(v -> "missing".equals(v.kind()) && v.tag() == 22);
-        assertTrue(hasZeroLength,
-                "tag 96 with zero-length should yield a 'zero_length' violation; got: " + violations);
+        assertFalse(hasZeroLength,
+                "WP-B: tag 96 is now typed, so the unknown-list zero-length injection is silently "
+                        + "dropped by the typed-wins collision policy before reaching the Rust "
+                        + "validator — no zero_length violation should surface via this binding; got: "
+                        + violations);
         assertTrue(hasMissing22,
                 "missing tag 22 should yield a 'missing' violation; got: " + violations);
     }
@@ -331,12 +346,15 @@ class St1204Test {
     @Test
     void validateMismmsAlternationConflict75And104() {
         // Build a record with both Tag 75 (sensorEllipsoidHeightM) and Tag 104
-        // (as unknown) present simultaneously — should trigger AlternationConflict.
+        // (sensorEllipsoidHeightExtendedM) present simultaneously — should
+        // trigger AlternationConflict. WP-B types tag 104, so it can no
+        // longer be injected via `unknown` (the typed-wins collision-drop
+        // would eat it, same as the neighboring zero-length test above) —
+        // set the typed field directly instead, mirroring the Rust
+        // `alternation_conflict_75_and_104` / `wpb_mismms_typed_96_104`
+        // tests (crates/tst-core/src/klv/st0601/mismms.rs) and the
+        // analogous fix in the Python binding.
         UasDatalinkLs base = fullMismmsRecord();
-        // Add Tag 104 via unknown list (non-empty value satisfies presence).
-        List<KlvUnknownField> unk = java.util.Arrays.asList(
-                new KlvUnknownField(104L, ByteBuffer.wrap(new byte[]{0x01, 0x02}))
-        );
         UasDatalinkLs withConflict = new UasDatalinkLs.Builder()
                 .universalLabel(base.universalLabel())
                 .declaredVersion(base.declaredVersion())
@@ -351,7 +369,8 @@ class St1204Test {
                 .sensorLatDeg(base.sensorLatDeg())
                 .sensorLonDeg(base.sensorLonDeg())
                 .sensorEllipsoidHeightM(1500.0)  // Tag 75 typed — present
-                // Omit sensorAltM (Tag 15) so the 15|75|104 req is met by 75 only.
+                .sensorEllipsoidHeightExtendedM(1500.0)  // Tag 104 typed — present
+                // Omit sensorAltM (Tag 15) so the 15|75|104 req is met by 75/104 only.
                 .sensorHfovDeg(base.sensorHfovDeg())
                 .sensorVfovDeg(base.sensorVfovDeg())
                 .sensorRelAzDeg(base.sensorRelAzDeg())
@@ -364,7 +383,6 @@ class St1204Test {
                 .frameCenterElevM(base.frameCenterElevM())
                 .securityLocalSet(base.securityLocalSet())
                 .miisCoreId(base.miisCoreId())
-                .unknown(unk)
                 .build();
         List<MismmsViolation> violations = Klv.validateMismms(withConflict);
         boolean hasConflict = violations.stream().anyMatch(v ->

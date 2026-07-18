@@ -1037,4 +1037,372 @@ class St0601Test {
         assertNull(Klv.st0601SentinelMeaning(5L),
                 "tag 5 has no spec-assigned INT_MIN special value");
     }
+
+    // -----------------------------------------------------------------------
+    // WP-B: new field round-trip tests (mirrors tst-py's WP-B test suite;
+    // same fixture values as test_klv_encode_st0601.py's _IMAPB_F64_FIELDS /
+    // _VARINT_FIELDS / imapb_specials cases).
+    // -----------------------------------------------------------------------
+
+    @Test
+    void wpbNewFieldsDefaultToNull() {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder().universalLabel(bareUl()).build();
+        assertNull(rec.targetWidthExtendedM());
+        assertNull(rec.densityAltitudeExtendedM());
+        assertNull(rec.sensorEllipsoidHeightExtendedM());
+        assertNull(rec.alternatePlatformEllipsoidHeightExtendedM());
+        assertNull(rec.rangeToRecoveryKm());
+        assertNull(rec.platformCourseAngleDeg());
+        assertNull(rec.altitudeAglM());
+        assertNull(rec.radarAltimeterM());
+        assertNull(rec.sensorAzimuthRateDps());
+        assertNull(rec.sensorElevationRateDps());
+        assertNull(rec.sensorRollRateDps());
+        assertNull(rec.miStoragePercentFull());
+        assertNull(rec.transmissionFrequencyMhz());
+        assertNull(rec.zoomPercentage());
+        assertNull(rec.timeAirborneS());
+        assertNull(rec.propulsionUnitSpeedRpm());
+        assertNull(rec.navsatsInView());
+        assertNull(rec.positioningMethodSource());
+        assertNull(rec.platformStatusCode());
+        assertNull(rec.platformStatus());
+        assertNull(rec.sensorControlModeCode());
+        assertNull(rec.sensorControlMode());
+        assertNull(rec.takeOffTimeUs());
+        assertNull(rec.miStorageCapacityGb());
+        assertNull(rec.leapSeconds());
+        assertNull(rec.correctionOffsetUs());
+        assertNull(rec.activePayloads());
+        assertTrue(rec.imapbSpecials().isEmpty());
+    }
+
+    /**
+     * Table B1: every IMAPB f64 field survives encode -&gt; decode within its
+     * fixed-point quantization step. Values and tolerances are pinned from
+     * tst-py's {@code _IMAPB_F64_FIELDS} (same underlying Rust encoder/decoder).
+     */
+    @Test
+    void wpbTableB1ImapbFieldsRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .targetWidthExtendedM(13898.5463)
+                .densityAltitudeExtendedM(23456.24)
+                .sensorEllipsoidHeightExtendedM(23456.24)
+                .alternatePlatformEllipsoidHeightExtendedM(23456.24)
+                .rangeToRecoveryKm(1.625)
+                .platformCourseAngleDeg(125.0)
+                .altitudeAglM(2150.0)
+                .radarAltimeterM(2154.50)
+                .sensorAzimuthRateDps(1.0)
+                .sensorElevationRateDps(0.004176)
+                .sensorRollRateDps(-50.0)
+                .miStoragePercentFull(72.0)
+                .transmissionFrequencyMhz(2400.0)
+                .zoomPercentage(55.0)
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertEquals(13898.5463, decoded.targetWidthExtendedM(), 0.5);
+        assertEquals(23456.24, decoded.densityAltitudeExtendedM(), 0.015625);
+        assertEquals(23456.24, decoded.sensorEllipsoidHeightExtendedM(), 0.015625);
+        assertEquals(23456.24, decoded.alternatePlatformEllipsoidHeightExtendedM(), 0.015625);
+        assertEquals(1.625, decoded.rangeToRecoveryKm(), 0.0078125);
+        assertEquals(125.0, decoded.platformCourseAngleDeg(), 0.03125);
+        assertEquals(2150.0, decoded.altitudeAglM(), 0.015625);
+        assertEquals(2154.50, decoded.radarAltimeterM(), 0.015625);
+        assertEquals(1.0, decoded.sensorAzimuthRateDps(), 0.125);
+        assertEquals(0.004176, decoded.sensorElevationRateDps(), 0.00048828125);
+        assertEquals(-50.0, decoded.sensorRollRateDps(), 0.125);
+        assertEquals(72.0, decoded.miStoragePercentFull(), 0.0078125);
+        assertEquals(2400.0, decoded.transmissionFrequencyMhz(), 0.03125);
+        assertEquals(55.0, decoded.zoomPercentage(), 0.0078125);
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /**
+     * Table B2: var-length int fields are not fixed-point quantized — they
+     * round-trip byte-exact. Values pinned from tst-py's {@code _VARINT_FIELDS}.
+     */
+    @Test
+    void wpbTableB2VarIntFieldsRoundTripExact() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .timeAirborneS(19887L)
+                .propulsionUnitSpeedRpm(3000L)
+                .navsatsInView(7)
+                .positioningMethodSource(3)
+                .takeOffTimeUs(1_529_588_637_122_999L)
+                .miStorageCapacityGb(10000L)
+                .leapSeconds(30)
+                .correctionOffsetUs(5025678901L)
+                .build();
+
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+
+        assertEquals(19887L, decoded.timeAirborneS());
+        assertEquals(3000L, decoded.propulsionUnitSpeedRpm());
+        assertEquals(7, decoded.navsatsInView());
+        assertEquals(3, decoded.positioningMethodSource());
+        assertEquals(1_529_588_637_122_999L, decoded.takeOffTimeUs());
+        assertEquals(10000L, decoded.miStorageCapacityGb());
+        assertEquals(30, decoded.leapSeconds());
+        assertEquals(5025678901L, decoded.correctionOffsetUs());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    @Test
+    void wpbActivePayloadsBytesRoundTripExact() throws KlvDecodeException, KlvEncodeException {
+        byte[] payloadBytes = {0x0B};
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .activePayloads(java.nio.ByteBuffer.wrap(payloadBytes))
+                .build();
+        byte[] wire = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(wire);
+        assertArrayEquals(payloadBytes, bufToArray(decoded.activePayloads()));
+    }
+
+    // -----------------------------------------------------------------------
+    // WP-B Table B2: coded enums — known codepoint + wire-unknown round-trip.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void platformStatusKnownRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .platformStatusCode(PlatformStatus.EGRESS.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(9, decoded.platformStatusCode());
+        assertEquals(PlatformStatus.EGRESS, decoded.platformStatus());
+    }
+
+    @Test
+    void platformStatusUnknownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .platformStatusCode(222)
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(222, decoded.platformStatusCode());
+        assertNull(PlatformStatus.fromCode(decoded.platformStatusCode()));
+        assertNull(decoded.platformStatus());
+    }
+
+    @Test
+    void sensorControlModeKnownRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorControlModeCode(SensorControlMode.AUTO_TRACKING.code())
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(SensorControlMode.AUTO_TRACKING, decoded.sensorControlMode());
+    }
+
+    @Test
+    void sensorControlModeUnknownCodeRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorControlModeCode(201)
+                .build();
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+
+        assertEquals(201, decoded.sensorControlModeCode());
+        assertNull(decoded.sensorControlMode());
+    }
+
+    // -----------------------------------------------------------------------
+    // WP-B: imapb_specials side-channel — both directions.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void imapbSpecialsPayloadLessCodeRoundTrips() throws KlvDecodeException, KlvEncodeException {
+        // tag 113 (altitudeAglM) carrying the BelowMin special: the typed
+        // field stays null and the special re-appears in imapbSpecials.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .imapbSpecials(java.util.List.of(new ImapbSpecialEntry(113, "below_min", 0L)))
+                .build();
+        UasDatalinkLs back = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+        assertNull(back.altitudeAglM());
+        assertTrue(back.imapbSpecials().contains(new ImapbSpecialEntry(113, "below_min", 0L)));
+    }
+
+    @Test
+    void imapbSpecialsPayloadCarryingCodeRoundTripsLosslessly() throws KlvDecodeException, KlvEncodeException {
+        // tag 96 (targetWidthExtendedM) carrying a positive quiet NaN with a
+        // non-zero payload — the payload must survive exactly.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .imapbSpecials(java.util.List.of(new ImapbSpecialEntry(96, "pos_quiet_nan", 5L)))
+                .build();
+        UasDatalinkLs back = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+        assertNull(back.targetWidthExtendedM());
+        assertTrue(back.imapbSpecials().contains(new ImapbSpecialEntry(96, "pos_quiet_nan", 5L)));
+    }
+
+    @Test
+    void imapbSpecialsValueWinsOverSpecialEntry() throws KlvDecodeException, KlvEncodeException {
+        // Mirrors sentinelTags: if the typed field is also set, the value
+        // wins and the special entry is not re-emitted.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .altitudeAglM(1234.0)
+                .imapbSpecials(java.util.List.of(new ImapbSpecialEntry(113, "above_max", 0L)))
+                .build();
+        UasDatalinkLs back = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+        assertNotNull(back.altitudeAglM());
+        assertEquals(1234.0, back.altitudeAglM(), 0.02);
+        assertTrue(back.imapbSpecials().stream().noneMatch(e -> e.tag() == 113));
+    }
+
+    @Test
+    void imapbSpecialsAllNineCodesRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        // One IMAPB tag per code (a wire record can carry at most one TLV
+        // per tag, so distinct tags avoid duplicate-tag ambiguity while
+        // still exercising every code string in both crossing directions).
+        java.util.List<ImapbSpecialEntry> entries = java.util.List.of(
+                new ImapbSpecialEntry(96, "below_min", 0L),
+                new ImapbSpecialEntry(103, "above_max", 0L),
+                new ImapbSpecialEntry(104, "pos_infinity", 0L),
+                new ImapbSpecialEntry(105, "neg_infinity", 0L),
+                new ImapbSpecialEntry(109, "pos_quiet_nan", 5L),
+                new ImapbSpecialEntry(112, "neg_quiet_nan", 5L),
+                new ImapbSpecialEntry(113, "pos_signaling_nan", 5L),
+                new ImapbSpecialEntry(114, "neg_signaling_nan", 5L),
+                new ImapbSpecialEntry(117, "user_defined", 3L)
+        );
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .imapbSpecials(entries)
+                .build();
+        UasDatalinkLs back = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+        for (ImapbSpecialEntry e : entries) {
+            assertTrue(back.imapbSpecials().contains(e), "missing " + e + " in " + back.imapbSpecials());
+        }
+    }
+
+    @Test
+    void imapbSpecialsInvalidCodeThrowsIllegalArgument() {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .imapbSpecials(java.util.List.of(new ImapbSpecialEntry(113, "not_a_code", 0L)))
+                .build();
+        assertThrows(IllegalArgumentException.class, () -> Klv.encodeUasDatalink(rec));
+    }
+
+    @Test
+    void imapbSpecialsPayloadTooLargeForDefaultLenThrows() {
+        // Tag 112 (platformCourseAngleDeg) default_len=2 -> payload bits =
+        // 8*2-5 = 11, max valid payload 2047; 99999 doesn't fit.
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .imapbSpecials(java.util.List.of(new ImapbSpecialEntry(112, "pos_quiet_nan", 99999L)))
+                .build();
+        assertThrows(KlvEncodeException.class, () -> Klv.encodeUasDatalink(rec));
+    }
+
+    // -----------------------------------------------------------------------
+    // WP-B: OutOfRangePolicy.INDICATOR for an IMAPB field (tag 113).
+    // -----------------------------------------------------------------------
+
+    /**
+     * Tag 113 (altitudeAglM, range [-900, 40000]): 50_000.0 is above max.
+     * Default policy still throws; INDICATOR emits the AboveMax special
+     * (wire bytes {@code E1 00 00} at default_len=3) instead.
+     */
+    @Test
+    void encodeImapbOutOfRangeIndicatorPolicy() throws KlvDecodeException, KlvEncodeException {
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .altitudeAglM(50_000.0)
+                .build();
+        assertThrows(KlvEncodeException.class, () -> Klv.encodeUasDatalink(rec));
+
+        byte[] raw = Klv.encodeUasDatalink(rec, OutOfRangePolicy.INDICATOR);
+        assertWireContains(raw, "7103e10000", "Tag 113 AboveMax IMAPB indicator");
+        UasDatalinkLs back = Klv.decodeUasDatalink(raw);
+        assertNull(back.altitudeAglM(), "IMAPB special field must be null after decode");
+    }
+
+    // -----------------------------------------------------------------------
+    // WP-B: spec-vector pins — hand-authored wire bytes, same rationale as
+    // the WP-A spec-vector block above (a symmetric transcription error in
+    // the locally-duplicated PlatformStatus/SensorControlMode wire-code
+    // tables would round-trip cleanly while emitting the wrong byte).
+    // -----------------------------------------------------------------------
+
+    /** Table B1 representative — Tag 96 (0x60) Target Width Extended. */
+    @Test
+    void targetWidthExtendedMSpecVector() throws KlvDecodeException, KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .targetWidthExtendedM(13898.5463)
+                .build());
+        assertWireContains(wire, "600300d92a", "Tag 96 Target Width Extended");
+
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("600300d92a"));
+        assertNotNull(decoded.targetWidthExtendedM());
+        assertEquals(13898.5463, decoded.targetWidthExtendedM(), 0.5);
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Table B2 representative — Tag 110 (0x6E) Time Airborne. */
+    @Test
+    void timeAirborneSSpecVector() throws KlvDecodeException, KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .timeAirborneS(19887L)
+                .build());
+        assertWireContains(wire, "6e024daf", "Tag 110 Time Airborne");
+
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("6e024daf"));
+        assertEquals(19887L, decoded.timeAirborneS());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Tag 125 (0x7D): spec code 9 = Egress. Decode direction: hand-authored bytes. */
+    @Test
+    void platformStatusSpecVectorDecode() throws KlvDecodeException {
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("7d0109"));
+        assertEquals(9, decoded.platformStatusCode());
+        assertEquals(PlatformStatus.EGRESS, decoded.platformStatus());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Tag 125 (0x7D): the encoded output must carry the exact {@code 7d 01 09} TLV. */
+    @Test
+    void platformStatusSpecVectorEncode() throws KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .platformStatusCode(PlatformStatus.EGRESS.code())
+                .build());
+        assertWireContains(wire, "7d0109", "Tag 125 PlatformStatus=Egress");
+    }
+
+    /** Tag 126 (0x7E): spec code 5 = AutoHoldingPosition. Decode direction. */
+    @Test
+    void sensorControlModeSpecVectorDecode() throws KlvDecodeException {
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(buildLs("7e0105"));
+        assertEquals(5, decoded.sensorControlModeCode());
+        assertEquals(SensorControlMode.AUTO_HOLDING_POSITION, decoded.sensorControlMode());
+        assertTrue(decoded.fieldErrors().isEmpty());
+    }
+
+    /** Tag 126 (0x7E): the encoded output must carry the exact {@code 7e 01 05} TLV. */
+    @Test
+    void sensorControlModeSpecVectorEncode() throws KlvEncodeException {
+        byte[] wire = Klv.encodeUasDatalink(new UasDatalinkLs.Builder()
+                .universalLabel(bareUl())
+                .sensorControlModeCode(SensorControlMode.AUTO_HOLDING_POSITION.code())
+                .build());
+        assertWireContains(wire, "7e0105", "Tag 126 SensorControlMode=AutoHoldingPosition");
+    }
 }

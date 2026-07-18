@@ -15,28 +15,30 @@
 //! `nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]` — same read path,
 //! calls `encode_strict_compliance` instead.
 //!
-//! ### JNI local-ref capacity (CRITICAL for 107-field set)
+//! ### JNI local-ref capacity (CRITICAL for 133-field set)
 //!
-//! `build_uas_datalink` calls `env.ensure_local_capacity(192)` at the top.
-//! With 12 String fields + ~90 Double/Long/Integer/ByteBuffer fields (WP-A's 51
-//! new fields pushed the total from 56 to 107) + builder + lists + JNI scratch,
-//! 192 slots safely covers the worst-case fully-populated record.
+//! `build_uas_datalink` calls `env.ensure_local_capacity(224)` at the top.
+//! With 12 String fields + ~110 Double/Long/Integer/ByteBuffer fields (WP-A's
+//! 51 new fields pushed the total from 56 to 107; WP-B's 25 new fields + the
+//! `imapbSpecials` list pushed it to 133) + builder + lists + JNI scratch,
+//! 224 slots safely covers the worst-case fully-populated record.
 //! Skipping this call WILL crash the JVM for records with many populated fields.
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jint, jlong, jobject, jstring};
+use tst_core::klv::ImapbSpecial;
 use tst_core::klv::st0601::{
-    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName,
-    St0601SentinelMeaning, UasDatalinkLs, decode as decode_lenient, decode_strict,
-    decode_strict_compliance, encode_strict_compliance, encode_to_vec_with,
-    st0601_sentinel_meaning,
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
+    SensorControlMode, SensorFovName, St0601SentinelMeaning, UasDatalinkLs,
+    decode as decode_lenient, decode_strict, decode_strict_compliance, encode_strict_compliance,
+    encode_to_vec_with, st0601_sentinel_meaning,
 };
 use tst_core::klv::universal_label::UniversalLabel;
 
 use crate::error::{map_klv_decode_error, map_klv_encode_error};
 use crate::jutil::{
-    build_field_errors, build_long_list, build_unknown_list, checked_u8, checked_u16,
+    build_field_errors, build_long_list, build_unknown_list, checked_u8, checked_u16, checked_u32,
     read_byte_buffer, read_nullable_byte_buffer, read_nullable_double, read_nullable_int,
     read_nullable_long, read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
 };
@@ -54,19 +56,23 @@ const BUILDER_SIG_BUF: &str = "(Ljava/nio/ByteBuffer;)Lorg/tstrans/klv/UasDatali
 const BUILDER_SIG_LIST: &str = "(Ljava/util/List;)Lorg/tstrans/klv/UasDatalinkLs$Builder;";
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
-/// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
-/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 66, 81, 96,
-/// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
-/// legitimately appear in `unknown`. Corrected from the stale
-/// `1 | 2 | 65 | 5..=91` (which predates WP-A) — keep this in sync with
-/// `tags::TAGS` when new tags are typed, or a caller-supplied `unknown`
-/// entry for a newly-typed tag will slip past this filter and get
-/// rejected downstream by the real Rust encoder's own (stricter,
-/// canonical) check instead of being silently dropped here per the
-/// documented "typed wins" collision policy — mirrors tst-py's
-/// `is_st0601_typed_tag` fix.
+/// `crates/tst-core/src/klv/st0601/tags.rs` (128 entries as of WP-B: 1-65,
+/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-137, 139). Tag 66
+/// (deprecated-forever) and tag 102 (SDCC-FLP, multi-instance — lands in a
+/// later WP), plus 115-116, 121-122, 127-128, 130, 138, 140..=255, are
+/// forward-compat/deferred and may legitimately appear in `unknown`.
+/// Extended from the WP-A 103-tag set (add: 96, 103-105, 109-114, 117-120,
+/// 123-126, 131-137, 139) — keep this in sync with `tags::TAGS` when new
+/// tags are typed, or a caller-supplied `unknown` entry for a newly-typed
+/// tag will slip past this filter and get rejected downstream by the real
+/// Rust encoder's own (stricter, canonical) check instead of being
+/// silently dropped here per the documented "typed wins" collision policy
+/// — mirrors tst-py's `is_st0601_typed_tag` fix.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(tag, 1..=65 | 67..=80 | 82..=95 | 97..=101 | 106..=108 | 129 | 135)
+    matches!(
+        tag,
+        1..=65 | 67..=80 | 82..=101 | 103..=114 | 117..=120 | 123..=126 | 129 | 131..=137 | 139
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +171,155 @@ fn operational_mode_from_code(b: u8) -> OperationalMode {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ST 0601 — Tags 125/126 coded enums (WP-B Table B2)
+// ---------------------------------------------------------------------------
+
+/// Extract the ST 0601.19 §8.125 wire codepoint from a `PlatformStatus`.
+fn platform_status_to_code(v: PlatformStatus) -> u8 {
+    match v {
+        PlatformStatus::Active => 0,
+        PlatformStatus::PreFlight => 1,
+        PlatformStatus::PreFlightTaxiing => 2,
+        PlatformStatus::RunUp => 3,
+        PlatformStatus::TakeOff => 4,
+        PlatformStatus::Ingress => 5,
+        PlatformStatus::ManualOperation => 6,
+        PlatformStatus::AutomatedOrbit => 7,
+        PlatformStatus::Transitioning => 8,
+        PlatformStatus::Egress => 9,
+        PlatformStatus::Landing => 10,
+        PlatformStatus::LandedTaxiing => 11,
+        PlatformStatus::LandedParked => 12,
+        PlatformStatus::Other(b) => b,
+        // `#[non_exhaustive]` in tst-core forces this wildcard even though
+        // every current variant is matched above; unreachable in practice.
+        _ => unreachable!("tst-core added a PlatformStatus variant not yet mirrored in tst-jni"),
+    }
+}
+
+/// Inverse of [`platform_status_to_code`].
+fn platform_status_from_code(b: u8) -> PlatformStatus {
+    match b {
+        0 => PlatformStatus::Active,
+        1 => PlatformStatus::PreFlight,
+        2 => PlatformStatus::PreFlightTaxiing,
+        3 => PlatformStatus::RunUp,
+        4 => PlatformStatus::TakeOff,
+        5 => PlatformStatus::Ingress,
+        6 => PlatformStatus::ManualOperation,
+        7 => PlatformStatus::AutomatedOrbit,
+        8 => PlatformStatus::Transitioning,
+        9 => PlatformStatus::Egress,
+        10 => PlatformStatus::Landing,
+        11 => PlatformStatus::LandedTaxiing,
+        12 => PlatformStatus::LandedParked,
+        other => PlatformStatus::Other(other),
+    }
+}
+
+/// Extract the ST 0601.19 §8.126 wire codepoint from a `SensorControlMode`.
+fn sensor_control_mode_to_code(v: SensorControlMode) -> u8 {
+    match v {
+        SensorControlMode::Off => 0,
+        SensorControlMode::HomePosition => 1,
+        SensorControlMode::Uncontrolled => 2,
+        SensorControlMode::ManualControl => 3,
+        SensorControlMode::Calibrating => 4,
+        SensorControlMode::AutoHoldingPosition => 5,
+        SensorControlMode::AutoTracking => 6,
+        SensorControlMode::Other(b) => b,
+        _ => {
+            unreachable!("tst-core added a SensorControlMode variant not yet mirrored in tst-jni")
+        }
+    }
+}
+
+/// Inverse of [`sensor_control_mode_to_code`].
+fn sensor_control_mode_from_code(b: u8) -> SensorControlMode {
+    match b {
+        0 => SensorControlMode::Off,
+        1 => SensorControlMode::HomePosition,
+        2 => SensorControlMode::Uncontrolled,
+        3 => SensorControlMode::ManualControl,
+        4 => SensorControlMode::Calibrating,
+        5 => SensorControlMode::AutoHoldingPosition,
+        6 => SensorControlMode::AutoTracking,
+        other => SensorControlMode::Other(other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ST 1201.5 — imapb_specials side channel (WP-B)
+// ---------------------------------------------------------------------------
+//
+// Crossing shape (DECIDED, shared with the Python binding): a
+// `List<ImapbSpecialEntry>` of `(tag: int, code: String, payload: long)`
+// entries. `code` names the `ImapbSpecial` family; `payload` is the
+// NaN-id/signal value (0 for the payload-less codes). Mirrors tst-py's
+// `imapb_special_to_code`/`imapb_special_from_code`.
+
+/// Translate a Rust `ImapbSpecial` to its `(code, payload)` wire-string
+/// pair. Throws `IllegalArgumentException` (rather than silently
+/// mislabeling) on a future non-exhaustive variant — same stance as
+/// `platform_status_to_code`/`sensor_control_mode_to_code` above.
+fn imapb_special_to_code(
+    env: &mut JNIEnv,
+    s: ImapbSpecial,
+) -> jni::errors::Result<(&'static str, u64)> {
+    Ok(match s {
+        ImapbSpecial::BelowMin => ("below_min", 0),
+        ImapbSpecial::AboveMax => ("above_max", 0),
+        ImapbSpecial::PositiveInfinity => ("pos_infinity", 0),
+        ImapbSpecial::NegativeInfinity => ("neg_infinity", 0),
+        ImapbSpecial::PositiveQuietNaN { nan_id } => ("pos_quiet_nan", nan_id),
+        ImapbSpecial::NegativeQuietNaN { nan_id } => ("neg_quiet_nan", nan_id),
+        ImapbSpecial::PositiveSignalingNaN { signal } => ("pos_signaling_nan", signal),
+        ImapbSpecial::NegativeSignalingNaN { signal } => ("neg_signaling_nan", signal),
+        ImapbSpecial::UserDefined { signal } => ("user_defined", signal),
+        // `#[non_exhaustive]` in tst-core: no current variant reaches here.
+        _ => {
+            let _ = env.throw_new(
+                "java/lang/IllegalArgumentException",
+                "unknown ImapbSpecial variant crossing the binding",
+            );
+            return Err(jni::errors::Error::JavaException);
+        }
+    })
+}
+
+/// Inverse of [`imapb_special_to_code`]. Throws `IllegalArgumentException`
+/// for a code string outside the 9-member set (audit #6 "validate-don't-drop"
+/// stance — same as the Python `imapb_special_from_code`).
+fn imapb_special_from_code(
+    env: &mut JNIEnv,
+    code: &str,
+    payload: u64,
+) -> jni::errors::Result<ImapbSpecial> {
+    Ok(match code {
+        "below_min" => ImapbSpecial::BelowMin,
+        "above_max" => ImapbSpecial::AboveMax,
+        "pos_infinity" => ImapbSpecial::PositiveInfinity,
+        "neg_infinity" => ImapbSpecial::NegativeInfinity,
+        "pos_quiet_nan" => ImapbSpecial::PositiveQuietNaN { nan_id: payload },
+        "neg_quiet_nan" => ImapbSpecial::NegativeQuietNaN { nan_id: payload },
+        "pos_signaling_nan" => ImapbSpecial::PositiveSignalingNaN { signal: payload },
+        "neg_signaling_nan" => ImapbSpecial::NegativeSignalingNaN { signal: payload },
+        "user_defined" => ImapbSpecial::UserDefined { signal: payload },
+        other => {
+            let _ = env.throw_new(
+                "java/lang/IllegalArgumentException",
+                format!(
+                    "unknown imapbSpecials code {other:?}; expected one of below_min, above_max, \
+                     pos_infinity, neg_infinity, pos_quiet_nan, neg_quiet_nan, pos_signaling_nan, \
+                     neg_signaling_nan, user_defined"
+                ),
+            );
+            return Err(jni::errors::Error::JavaException);
+        }
+    })
+}
+
 /// Range-check a Java `int` value against the i8 range, then narrow. Throws
 /// `IllegalArgumentException` and returns `Err(JavaException)` on overflow —
 /// local to this module (mirrors `jutil::checked_u8`'s idiom) since ST 0601 has
@@ -240,7 +395,10 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nDecodeUasDatalink<'local>(
 /// [`OutOfRangePolicy`] mapped from the `policy` int:
 /// - `0` → [`OutOfRangePolicy::Error`] (throws on any out-of-range value)
 /// - `1` → [`OutOfRangePolicy::Indicator`] (emits the spec's Out-of-Range
-///   special for eligible tags: 6, 7, 50, 51, 52, 79, 80, 90–93)
+///   special for eligible linear-range tags: 6, 7, 50, 51, 52, 79, 80,
+///   90–93; separately, WP-B's 14 IMAPB tags — 96, 103-105, 109,
+///   112-114, 117-120, 132, 134 — get their own ST 1201.5 BelowMin/AboveMax
+///   special instead of the INT_MIN sentinel)
 ///
 /// Any other ordinal throws `java.lang.IllegalArgumentException` — this
 /// signals enum drift between the Java and Rust layers.
@@ -396,15 +554,17 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nSt0601SentinelMeaning<'local>(
 ///
 /// ### Local-ref capacity (MANDATORY)
 ///
-/// Calls `env.ensure_local_capacity(192)` at the top. With 107 fields (12
-/// Strings, ~69 Doubles, ~10 ByteBuffers, ~9 Integers, 2 Longs, builder +
-/// lists), the default ~16-slot JNI local table is completely inadequate. 192
-/// slots is the minimum safe value for a fully populated ST 0601 record
-/// (bumped from 128 when WP-A added 51 fields).
+/// Calls `env.ensure_local_capacity(224)` at the top. With 133 fields (12
+/// Strings, ~83 Doubles, ~11 ByteBuffers, ~14 Integers, ~7 Longs, an
+/// `imapbSpecials` list, builder + lists), the default ~16-slot JNI local
+/// table is completely inadequate. 224 slots is the minimum safe value for
+/// a fully populated ST 0601 record (bumped from 192 when WP-B added 25
+/// fields + the `imapbSpecials` list; 192 was bumped from 128 when WP-A
+/// added 51 fields).
 fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::Result<jobject> {
     // CRITICAL: must be called before any new_string / new_object below.
-    // 192 slots covers 107 fields + builder + lists + JNI scratch.
-    env.ensure_local_capacity(192)?;
+    // 224 slots covers 133 fields + builder + lists + JNI scratch.
+    env.ensure_local_capacity(224)?;
 
     let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
 
@@ -1001,6 +1161,202 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         )?;
     }
 
+    // --- WP-B Table B1: IMAPB f64 fields (tags 96, 103-105, 109, 112-114, 117-120, 132, 134) → double ---
+    if let Some(v) = r.target_width_extended_m {
+        env.call_method(
+            &b,
+            "targetWidthExtendedM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.density_altitude_extended_m {
+        env.call_method(
+            &b,
+            "densityAltitudeExtendedM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.sensor_ellipsoid_height_extended_m {
+        env.call_method(
+            &b,
+            "sensorEllipsoidHeightExtendedM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.alternate_platform_ellipsoid_height_extended_m {
+        env.call_method(
+            &b,
+            "alternatePlatformEllipsoidHeightExtendedM",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.range_to_recovery_km {
+        env.call_method(
+            &b,
+            "rangeToRecoveryKm",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.platform_course_angle_deg {
+        env.call_method(
+            &b,
+            "platformCourseAngleDeg",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.altitude_agl_m {
+        env.call_method(&b, "altitudeAglM", BUILDER_SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = r.radar_altimeter_m {
+        env.call_method(&b, "radarAltimeterM", BUILDER_SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = r.sensor_azimuth_rate_dps {
+        env.call_method(
+            &b,
+            "sensorAzimuthRateDps",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.sensor_elevation_rate_dps {
+        env.call_method(
+            &b,
+            "sensorElevationRateDps",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.sensor_roll_rate_dps {
+        env.call_method(
+            &b,
+            "sensorRollRateDps",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.mi_storage_percent_full {
+        env.call_method(
+            &b,
+            "miStoragePercentFull",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.transmission_frequency_mhz {
+        env.call_method(
+            &b,
+            "transmissionFrequencyMhz",
+            BUILDER_SIG_DBL,
+            &[JValue::Double(v)],
+        )?;
+    }
+    if let Some(v) = r.zoom_percentage {
+        env.call_method(&b, "zoomPercentage", BUILDER_SIG_DBL, &[JValue::Double(v)])?;
+    }
+
+    // --- WP-B Table B2: var-length int/enum fields (tags 110-139) ---
+    // Tag 110 — timeAirborneS (u32 → long)
+    if let Some(v) = r.time_airborne_s {
+        env.call_method(
+            &b,
+            "timeAirborneS",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(i64::from(v))],
+        )?;
+    }
+    // Tag 111 — propulsionUnitSpeedRpm (u32 → long)
+    if let Some(v) = r.propulsion_unit_speed_rpm {
+        env.call_method(
+            &b,
+            "propulsionUnitSpeedRpm",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(i64::from(v))],
+        )?;
+    }
+    // Tag 123 — navsatsInView (u8 → int)
+    if let Some(v) = r.navsats_in_view {
+        env.call_method(
+            &b,
+            "navsatsInView",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 124 — positioningMethodSource (u8 bitfield → int)
+    if let Some(v) = r.positioning_method_source {
+        env.call_method(
+            &b,
+            "positioningMethodSource",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(v))],
+        )?;
+    }
+    // Tag 125 — platformStatusCode (raw codepoint → int)
+    if let Some(v) = r.platform_status {
+        env.call_method(
+            &b,
+            "platformStatusCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(platform_status_to_code(v)))],
+        )?;
+    }
+    // Tag 126 — sensorControlModeCode (raw codepoint → int)
+    if let Some(v) = r.sensor_control_mode {
+        env.call_method(
+            &b,
+            "sensorControlModeCode",
+            BUILDER_SIG_INT,
+            &[JValue::Int(i32::from(sensor_control_mode_to_code(v)))],
+        )?;
+    }
+    // Tag 131 — takeOffTimeUs (u64 → long; mirrors timestampUs's `as i64` cast)
+    if let Some(v) = r.take_off_time_us {
+        env.call_method(
+            &b,
+            "takeOffTimeUs",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(v as i64)],
+        )?;
+    }
+    // Tag 133 — miStorageCapacityGb (u32 → long)
+    if let Some(v) = r.mi_storage_capacity_gb {
+        env.call_method(
+            &b,
+            "miStorageCapacityGb",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(i64::from(v))],
+        )?;
+    }
+    // Tag 136 — leapSeconds (i32 → int)
+    if let Some(v) = r.leap_seconds {
+        env.call_method(&b, "leapSeconds", BUILDER_SIG_INT, &[JValue::Int(v)])?;
+    }
+    // Tag 137 — correctionOffsetUs (i64 → long)
+    if let Some(v) = r.correction_offset_us {
+        env.call_method(
+            &b,
+            "correctionOffsetUs",
+            BUILDER_SIG_LONG,
+            &[JValue::Long(v)],
+        )?;
+    }
+    // Tag 139 — activePayloads (Vec<u8> → heap ByteBuffer)
+    if let Some(ref bs) = r.active_payloads {
+        let buf = wrap_heap_byte_buffer(env, bs).map_err(|()| jni::errors::Error::JavaException)?;
+        env.call_method(
+            &b,
+            "activePayloads",
+            BUILDER_SIG_BUF,
+            &[JValue::Object(&buf)],
+        )?;
+    }
+
     // --- WP-A Table A4: named nested-set raw byte fields → heap ByteBuffer ---
     // Tag 73 — rvt
     if let Some(ref bs) = r.rvt {
@@ -1215,6 +1571,38 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         "sentinelTags",
         BUILDER_SIG_LIST,
         &[JValue::Object(&sentinel_list)],
+    )?;
+
+    // --- imapbSpecials: Vec<(u32, ImapbSpecial)> → List<ImapbSpecialEntry>, always set ---
+    let specials_list = env.new_object("java/util/ArrayList", "()V", &[])?;
+    for &(tag, special) in &r.imapb_specials {
+        let (code, payload) = imapb_special_to_code(env, special)?;
+        // 8 slots: covers the code String + entry object refs + JNI scratch per entry.
+        env.with_local_frame(8, |env| -> jni::errors::Result<()> {
+            let code_str = env.new_string(code)?;
+            let entry = env.new_object(
+                "org/tstrans/klv/ImapbSpecialEntry",
+                "(ILjava/lang/String;J)V",
+                &[
+                    JValue::Int(tag as i32),
+                    JValue::Object(&code_str),
+                    JValue::Long(payload as i64),
+                ],
+            )?;
+            env.call_method(
+                &specials_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&entry)],
+            )?;
+            Ok(())
+        })?;
+    }
+    env.call_method(
+        &b,
+        "imapbSpecials",
+        BUILDER_SIG_LIST,
+        &[JValue::Object(&specials_list)],
     )?;
 
     // --- unknown — always set (even if empty) ---
@@ -1527,6 +1915,97 @@ fn read_uas_datalink(
         r.sensor_east_velocity = Some(v);
     }
 
+    // --- WP-B Table B1: IMAPB f64 fields ---
+    if let Some(v) = read_nullable_double(env, rec, "targetWidthExtendedM")? {
+        r.target_width_extended_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "densityAltitudeExtendedM")? {
+        r.density_altitude_extended_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorEllipsoidHeightExtendedM")? {
+        r.sensor_ellipsoid_height_extended_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "alternatePlatformEllipsoidHeightExtendedM")? {
+        r.alternate_platform_ellipsoid_height_extended_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "rangeToRecoveryKm")? {
+        r.range_to_recovery_km = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "platformCourseAngleDeg")? {
+        r.platform_course_angle_deg = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "altitudeAglM")? {
+        r.altitude_agl_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "radarAltimeterM")? {
+        r.radar_altimeter_m = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorAzimuthRateDps")? {
+        r.sensor_azimuth_rate_dps = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorElevationRateDps")? {
+        r.sensor_elevation_rate_dps = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "sensorRollRateDps")? {
+        r.sensor_roll_rate_dps = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "miStoragePercentFull")? {
+        r.mi_storage_percent_full = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "transmissionFrequencyMhz")? {
+        r.transmission_frequency_mhz = Some(v);
+    }
+    if let Some(v) = read_nullable_double(env, rec, "zoomPercentage")? {
+        r.zoom_percentage = Some(v);
+    }
+
+    // --- WP-B Table B2: var-length int/enum fields ---
+    // Tag 110 — timeAirborneS: nullable Long → Option<u32>
+    if let Some(v) = read_nullable_long(env, rec, "timeAirborneS")? {
+        r.time_airborne_s = Some(checked_u32(env, v, "timeAirborneS")?);
+    }
+    // Tag 111 — propulsionUnitSpeedRpm: nullable Long → Option<u32>
+    if let Some(v) = read_nullable_long(env, rec, "propulsionUnitSpeedRpm")? {
+        r.propulsion_unit_speed_rpm = Some(checked_u32(env, v, "propulsionUnitSpeedRpm")?);
+    }
+    // Tag 123 — navsatsInView: nullable Integer → Option<u8>
+    if let Some(v) = read_nullable_int(env, rec, "navsatsInView")? {
+        r.navsats_in_view = Some(checked_u8(env, i64::from(v), "navsatsInView")?);
+    }
+    // Tag 124 — positioningMethodSource: nullable Integer → Option<u8>
+    if let Some(v) = read_nullable_int(env, rec, "positioningMethodSource")? {
+        r.positioning_method_source =
+            Some(checked_u8(env, i64::from(v), "positioningMethodSource")?);
+    }
+    // Tag 125 — platformStatusCode: nullable Integer raw code → Option<PlatformStatus>
+    if let Some(v) = read_nullable_int(env, rec, "platformStatusCode")? {
+        let c = checked_u8(env, i64::from(v), "platformStatusCode")?;
+        r.platform_status = Some(platform_status_from_code(c));
+    }
+    // Tag 126 — sensorControlModeCode: nullable Integer raw code → Option<SensorControlMode>
+    if let Some(v) = read_nullable_int(env, rec, "sensorControlModeCode")? {
+        let c = checked_u8(env, i64::from(v), "sensorControlModeCode")?;
+        r.sensor_control_mode = Some(sensor_control_mode_from_code(c));
+    }
+    // Tag 131 — takeOffTimeUs: nullable Long → Option<u64> (mirrors timestampUs's `as u64` cast)
+    if let Some(v) = read_nullable_long(env, rec, "takeOffTimeUs")? {
+        r.take_off_time_us = Some(v as u64);
+    }
+    // Tag 133 — miStorageCapacityGb: nullable Long → Option<u32>
+    if let Some(v) = read_nullable_long(env, rec, "miStorageCapacityGb")? {
+        r.mi_storage_capacity_gb = Some(checked_u32(env, v, "miStorageCapacityGb")?);
+    }
+    // Tag 136 — leapSeconds: nullable Integer → Option<i32> (Java int == Rust i32, no narrowing)
+    if let Some(v) = read_nullable_int(env, rec, "leapSeconds")? {
+        r.leap_seconds = Some(v);
+    }
+    // Tag 137 — correctionOffsetUs: nullable Long → Option<i64> (Java long == Rust i64, no narrowing)
+    if let Some(v) = read_nullable_long(env, rec, "correctionOffsetUs")? {
+        r.correction_offset_us = Some(v);
+    }
+    // Tag 139 — activePayloads: nullable ByteBuffer → Option<Vec<u8>>
+    r.active_payloads = read_nullable_byte_buffer(env, rec, "activePayloads")?;
+
     // --- WP-A Table A4: named nested-set raw byte fields ---
     r.rvt = read_nullable_byte_buffer(env, rec, "rvt")?;
     r.sar_mi_local_set = read_nullable_byte_buffer(env, rec, "sarMiLocalSet")?;
@@ -1608,6 +2087,38 @@ fn read_uas_datalink(
                     return Err(jni::errors::Error::JavaException);
                 }
             }
+        }
+    }
+
+    // --- imapbSpecials: List<ImapbSpecialEntry> → Vec<(u32, ImapbSpecial)> ---
+    {
+        let is_obj = env
+            .call_method(rec, "imapbSpecials", "()Ljava/util/List;", &[])?
+            .l()?;
+        let size = env.call_method(&is_obj, "size", "()I", &[])?.i()?;
+        for i in 0..size {
+            let item = env
+                .call_method(&is_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                .l()?;
+            let tag_i = env.call_method(&item, "tag", "()I", &[])?.i()?;
+            let tag = match u32::try_from(tag_i) {
+                Ok(t) => t,
+                Err(_) => {
+                    let _ = env.throw_new(
+                        "java/lang/IllegalArgumentException",
+                        format!("imapbSpecials entry tag out of u32 range: {tag_i}"),
+                    );
+                    return Err(jni::errors::Error::JavaException);
+                }
+            };
+            let code_obj = env
+                .call_method(&item, "code", "()Ljava/lang/String;", &[])?
+                .l()?;
+            let j_str: &jni::objects::JString = (&code_obj).into();
+            let code: String = env.get_string(j_str).map(Into::into)?;
+            let payload_j = env.call_method(&item, "payload", "()J", &[])?.j()?;
+            let special = imapb_special_from_code(env, &code, payload_j as u64)?;
+            r.imapb_specials.push((tag, special));
         }
     }
 

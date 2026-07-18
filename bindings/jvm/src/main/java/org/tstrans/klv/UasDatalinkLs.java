@@ -8,7 +8,7 @@ import java.util.Optional;
 /**
  * MISB ST 0601 UAS Datalink Local Set typed view.
  *
- * <p>Mirror of the 107-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
+ * <p>Mirror of the 133-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
  * flat struct. Composite views (sensor position, attitude, FOV, corners) are
  * accessor methods that return {@link Optional#empty()} when any of the
  * underlying primitive fields is absent.
@@ -197,6 +197,57 @@ public record UasDatalinkLs(
         Double sensorEastVelocity,
 
         // ---------------------------------------------------------------
+        // WP-B Table B1 — IMAPB (ST 1201.5) f64 fields, extended-range
+        // twins of the narrower WP-A Table A1 items (tags 96, 103-105,
+        // 109, 112-114, 117-120, 132, 134). Decode accepts any wire length
+        // 1..=max_len; encode emits the tag's default_len.
+        // ---------------------------------------------------------------
+        Double targetWidthExtendedM,
+        Double densityAltitudeExtendedM,
+        Double sensorEllipsoidHeightExtendedM,
+        Double alternatePlatformEllipsoidHeightExtendedM,
+        Double rangeToRecoveryKm,
+        Double platformCourseAngleDeg,
+        Double altitudeAglM,
+        Double radarAltimeterM,
+        Double sensorAzimuthRateDps,
+        Double sensorElevationRateDps,
+        Double sensorRollRateDps,
+        Double miStoragePercentFull,
+        Double transmissionFrequencyMhz,
+        Double zoomPercentage,
+
+        // ---------------------------------------------------------------
+        // WP-B Table B2 — MISB variable-length truncatable int/enum fields
+        // (tags 110-139). u32 fields cross as {@code Long} (Java has no
+        // unsigned int); u8/enum fields cross as {@code Integer}.
+        // ---------------------------------------------------------------
+        Long timeAirborneS,
+        Long propulsionUnitSpeedRpm,
+        Integer navsatsInView,
+        /**
+         * Tag 124 — Positioning Method Source, bitfield (bit 0 INS, bit 1
+         * GPS, bit 2 Galileo, bit 3 QZSS, bit 4 NAVIC, bit 5 GLONASS,
+         * bit 6 BeiDou-1, bit 7 BeiDou-2). Kept as a raw opaque codepoint,
+         * not a sub-struct — callers needing individual bits shift and
+         * mask this value themselves.
+         */
+        Integer positioningMethodSource,
+        Integer platformStatusCode,
+        Integer sensorControlModeCode,
+        Long takeOffTimeUs,
+        Long miStorageCapacityGb,
+        Integer leapSeconds,
+        Long correctionOffsetUs,
+        /**
+         * Tag 139 — Active Payloads, bitmask of active Payload IDs
+         * (LSB-first within each byte; multi-byte extends upward). Use
+         * {@link Klv} or hand-unpack the bits; no typed accessor iterator
+         * on this binding (mirrors tst-py, which also left it unmirrored).
+         */
+        ByteBuffer activePayloads,
+
+        // ---------------------------------------------------------------
         // WP-A Table A4 — named nested-set raw byte fields (tags 73/95/97-101)
         // ---------------------------------------------------------------
         ByteBuffer rvt,
@@ -249,7 +300,19 @@ public record UasDatalinkLs(
          * is recorded here. Consult the special-value assignments table in
          * ST 0601.19 to look up the spec-defined meaning for each tag number.
          */
-        List<Long> sentinelTags
+        List<Long> sentinelTags,
+
+        /**
+         * Tags whose ST 1201.5 IMAPB wire value decoded to a spec-defined
+         * special (§7.2.3 — infinities, NaN families, or the MISB
+         * BelowMin/AboveMax/user-defined overflow signals) rather than a
+         * normal-range float. The corresponding typed {@code Double} field
+         * is {@code null} and the tag+special pair is recorded here
+         * instead. Mirrors {@link #sentinelTags}: encoding a record
+         * re-emits each entry's special bytes when its typed field is
+         * still {@code null}; a non-null typed field always wins.
+         */
+        List<ImapbSpecialEntry> imapbSpecials
 ) implements KlvSet {
 
     /**
@@ -265,6 +328,7 @@ public record UasDatalinkLs(
         unknown = unknown == null ? Collections.emptyList() : Collections.unmodifiableList(unknown);
         fieldErrors = fieldErrors == null ? Collections.emptyList() : Collections.unmodifiableList(fieldErrors);
         sentinelTags = sentinelTags == null ? Collections.emptyList() : Collections.unmodifiableList(sentinelTags);
+        imapbSpecials = imapbSpecials == null ? Collections.emptyList() : Collections.unmodifiableList(imapbSpecials);
     }
 
     // -----------------------------------------------------------------------
@@ -402,6 +466,21 @@ public record UasDatalinkLs(
     }
 
     // -----------------------------------------------------------------------
+    // WP-B Table B2 typed enum accessors — same raw-code-is-authoritative
+    // convention as the WP-A Table A3 accessors above.
+    // -----------------------------------------------------------------------
+
+    /** Tag 125 Platform Status as a typed enum, or {@code null} (absent / wire-unknown). */
+    public PlatformStatus platformStatus() {
+        return platformStatusCode == null ? null : PlatformStatus.fromCode(platformStatusCode);
+    }
+
+    /** Tag 126 Sensor Control Mode as a typed enum, or {@code null} (absent / wire-unknown). */
+    public SensorControlMode sensorControlMode() {
+        return sensorControlModeCode == null ? null : SensorControlMode.fromCode(sensorControlModeCode);
+    }
+
+    // -----------------------------------------------------------------------
     // Builder
     // -----------------------------------------------------------------------
 
@@ -493,6 +572,35 @@ public record UasDatalinkLs(
         private Double sensorNorthVelocity;
         private Double sensorEastVelocity;
 
+        // WP-B Table B1 — IMAPB f64 fields
+        private Double targetWidthExtendedM;
+        private Double densityAltitudeExtendedM;
+        private Double sensorEllipsoidHeightExtendedM;
+        private Double alternatePlatformEllipsoidHeightExtendedM;
+        private Double rangeToRecoveryKm;
+        private Double platformCourseAngleDeg;
+        private Double altitudeAglM;
+        private Double radarAltimeterM;
+        private Double sensorAzimuthRateDps;
+        private Double sensorElevationRateDps;
+        private Double sensorRollRateDps;
+        private Double miStoragePercentFull;
+        private Double transmissionFrequencyMhz;
+        private Double zoomPercentage;
+
+        // WP-B Table B2 — var-length int/enum fields
+        private Long timeAirborneS;
+        private Long propulsionUnitSpeedRpm;
+        private Integer navsatsInView;
+        private Integer positioningMethodSource;
+        private Integer platformStatusCode;
+        private Integer sensorControlModeCode;
+        private Long takeOffTimeUs;
+        private Long miStorageCapacityGb;
+        private Integer leapSeconds;
+        private Long correctionOffsetUs;
+        private ByteBuffer activePayloads;
+
         // WP-A Table A4 — named nested-set raw byte fields
         private ByteBuffer rvt;
         private ByteBuffer sarMiLocalSet;
@@ -523,6 +631,7 @@ public record UasDatalinkLs(
         private List<KlvUnknownField> unknown = Collections.emptyList();
         private List<KlvFieldError> fieldErrors = Collections.emptyList();
         private List<Long> sentinelTags = Collections.emptyList();
+        private List<ImapbSpecialEntry> imapbSpecials = Collections.emptyList();
 
         public Builder() {}
 
@@ -612,6 +721,35 @@ public record UasDatalinkLs(
         public Builder sensorNorthVelocity(double v) { this.sensorNorthVelocity = v; return this; }
         public Builder sensorEastVelocity(double v) { this.sensorEastVelocity = v; return this; }
 
+        // WP-B Table B1 — IMAPB f64 fields
+        public Builder targetWidthExtendedM(double v) { this.targetWidthExtendedM = v; return this; }
+        public Builder densityAltitudeExtendedM(double v) { this.densityAltitudeExtendedM = v; return this; }
+        public Builder sensorEllipsoidHeightExtendedM(double v) { this.sensorEllipsoidHeightExtendedM = v; return this; }
+        public Builder alternatePlatformEllipsoidHeightExtendedM(double v) { this.alternatePlatformEllipsoidHeightExtendedM = v; return this; }
+        public Builder rangeToRecoveryKm(double v) { this.rangeToRecoveryKm = v; return this; }
+        public Builder platformCourseAngleDeg(double v) { this.platformCourseAngleDeg = v; return this; }
+        public Builder altitudeAglM(double v) { this.altitudeAglM = v; return this; }
+        public Builder radarAltimeterM(double v) { this.radarAltimeterM = v; return this; }
+        public Builder sensorAzimuthRateDps(double v) { this.sensorAzimuthRateDps = v; return this; }
+        public Builder sensorElevationRateDps(double v) { this.sensorElevationRateDps = v; return this; }
+        public Builder sensorRollRateDps(double v) { this.sensorRollRateDps = v; return this; }
+        public Builder miStoragePercentFull(double v) { this.miStoragePercentFull = v; return this; }
+        public Builder transmissionFrequencyMhz(double v) { this.transmissionFrequencyMhz = v; return this; }
+        public Builder zoomPercentage(double v) { this.zoomPercentage = v; return this; }
+
+        // WP-B Table B2 — var-length int/enum fields
+        public Builder timeAirborneS(long v) { this.timeAirborneS = v; return this; }
+        public Builder propulsionUnitSpeedRpm(long v) { this.propulsionUnitSpeedRpm = v; return this; }
+        public Builder navsatsInView(int v) { this.navsatsInView = v; return this; }
+        public Builder positioningMethodSource(int v) { this.positioningMethodSource = v; return this; }
+        public Builder platformStatusCode(int v) { this.platformStatusCode = v; return this; }
+        public Builder sensorControlModeCode(int v) { this.sensorControlModeCode = v; return this; }
+        public Builder takeOffTimeUs(long v) { this.takeOffTimeUs = v; return this; }
+        public Builder miStorageCapacityGb(long v) { this.miStorageCapacityGb = v; return this; }
+        public Builder leapSeconds(int v) { this.leapSeconds = v; return this; }
+        public Builder correctionOffsetUs(long v) { this.correctionOffsetUs = v; return this; }
+        public Builder activePayloads(ByteBuffer v) { this.activePayloads = v; return this; }
+
         // WP-A Table A4 — named nested-set raw byte fields
         public Builder rvt(ByteBuffer v) { this.rvt = v; return this; }
         public Builder sarMiLocalSet(ByteBuffer v) { this.sarMiLocalSet = v; return this; }
@@ -643,6 +781,7 @@ public record UasDatalinkLs(
         public Builder unknown(List<KlvUnknownField> v) { this.unknown = v; return this; }
         public Builder fieldErrors(List<KlvFieldError> v) { this.fieldErrors = v; return this; }
         public Builder sentinelTags(List<Long> v) { this.sentinelTags = v; return this; }
+        public Builder imapbSpecials(List<ImapbSpecialEntry> v) { this.imapbSpecials = v; return this; }
 
         /** Build an immutable {@link UasDatalinkLs}. */
         public UasDatalinkLs build() {
@@ -687,6 +826,18 @@ public record UasDatalinkLs(
                     alternatePlatformLatDeg, alternatePlatformLonDeg, alternatePlatformAltM,
                     alternatePlatformHeadingDeg, alternatePlatformEllipsoidHeightM,
                     sensorNorthVelocity, sensorEastVelocity,
+                    targetWidthExtendedM, densityAltitudeExtendedM,
+                    sensorEllipsoidHeightExtendedM,
+                    alternatePlatformEllipsoidHeightExtendedM,
+                    rangeToRecoveryKm, platformCourseAngleDeg,
+                    altitudeAglM, radarAltimeterM,
+                    sensorAzimuthRateDps, sensorElevationRateDps, sensorRollRateDps,
+                    miStoragePercentFull, transmissionFrequencyMhz, zoomPercentage,
+                    timeAirborneS, propulsionUnitSpeedRpm,
+                    navsatsInView, positioningMethodSource,
+                    platformStatusCode, sensorControlModeCode,
+                    takeOffTimeUs, miStorageCapacityGb,
+                    leapSeconds, correctionOffsetUs, activePayloads,
                     rvt, sarMiLocalSet, rangeImageLocalSet, geoRegistrationLocalSet,
                     compositeImagingLocalSet, segmentLocalSet, amendLocalSet,
                     outsideAirTempC, weaponLoad, weaponFired, laserPrfCode,
@@ -695,7 +846,7 @@ public record UasDatalinkLs(
                     targetId, communicationsMethod,
                     icingDetectedCode, sensorFovNameCode, operationalModeCode,
                     unknown, fieldErrors,
-                    sentinelTags
+                    sentinelTags, imapbSpecials
             );
         }
     }

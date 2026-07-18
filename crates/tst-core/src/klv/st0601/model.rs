@@ -441,6 +441,11 @@ pub struct UasDatalinkLs {
     /// Item 137: Correction Offset — signed correction applied to a
     /// platform time source (e.g. GPS-disciplined clock drift). MISB
     /// var-length int, wire length 1..=8 bytes (microseconds).
+    ///
+    /// **Spec typo:** ST 0601.19 §8.137 prints this item's decode type as
+    /// "KLVuint" (unsigned), but its own worked example only decodes
+    /// correctly as SIGNED (MISB var-length int) — this implementation
+    /// follows the worked example, not the printed type name.
     pub correction_offset_us: Option<i64>,
     /// Item 139: Active Payloads — bitmask of which Payload IDs (Item
     /// 138, Payload List — not yet typed-modeled) are currently active.

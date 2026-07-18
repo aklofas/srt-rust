@@ -550,6 +550,14 @@ fn apply_typed_tag(
         }
         Encoding::VarUint { max_len } => {
             let raw = read_var_uint(f.value, max_len, tag)?;
+            // The Err arm below is unreachable by construction for every
+            // tag in this match: `max_len` is always set (in tags.rs) to
+            // the target type's byte width (4 for the u32 tags, 1 for the
+            // u8 tags), and `read_var_uint` already rejected any wire
+            // value longer than `max_len` — so `raw` is guaranteed to fit.
+            // Kept as a defensive `try_from` rather than an `as` cast in
+            // case a future tag pairs a narrower Rust type with a wider
+            // `max_len`.
             let narrow_u32 = |v: u64| {
                 u32::try_from(v).map_err(|_| KlvFieldError::InvalidLength {
                     tag,

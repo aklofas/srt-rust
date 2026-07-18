@@ -744,7 +744,8 @@ fn every_typed_tag_round_trips() {
                     (Some(r), _) => (r.min, r.max),
                     (None, Encoding::Imapb { min, max, .. }) => (min, max),
                     (None, _) => panic!(
-                        "tag {} ({}) is neither LinearRange nor Imapb — \
+                        "tag {} ({}) is neither LinearRange nor Imapb (and isn't one of the \
+                         explicit VarUint/VarInt/RawBytes arms above either) — \
                          every_typed_tag_round_trips needs a new arm",
                         spec.id, spec.name
                     ),

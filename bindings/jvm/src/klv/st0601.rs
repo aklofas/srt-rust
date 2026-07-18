@@ -57,9 +57,10 @@ const BUILDER_SIG_LIST: &str = "(Ljava/util/List;)Lorg/tstrans/klv/UasDatalinkLs
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
 /// `crates/tst-core/src/klv/st0601/tags.rs` (128 entries as of WP-B: 1-65,
-/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-134, 136-137, 139). Tags 66,
-/// 81 (deprecated-forever), and tag 102 (SDCC-FLP, multi-instance — lands in a
-/// later WP), plus 115-116, 121-122, 127-128, 130, 135, 138, 140..=255, are
+/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-137, 139). Tag 66
+/// (deprecated-forever), tag 81 (Image Horizon Pixel Pack, a DLP — lands with
+/// the WP-C packs), and tag 102 (SDCC-FLP, multi-instance — lands in a later
+/// WP), plus 115-116, 121-122, 127-128, 130, 138, 140..=255, are
 /// forward-compat/deferred and may legitimately appear in `unknown`.
 /// Extended from the WP-A 103-tag set (add: 96, 103-105, 109-114, 117-120,
 /// 123-126, 131-134, 136-137, 139) — keep this in sync with `tags::TAGS` when new

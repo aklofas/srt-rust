@@ -1254,6 +1254,10 @@ item = "tst_core::UasDatalinkLs::platform_attitude"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
 [[exempt]]
+item = "tst_core::UasDatalinkLs::active_payload_ids"
+reason = "WP-B convenience iterator over the tag 139 active_payloads bitmask; exercised by st0601::tests::wpb_active_payload_ids_multi_byte_extends_upward"
+
+[[exempt]]
 item = "tst_core::UasDatalinkLs::sensor_attitude"
 reason = "bulk bootstrap 2026-06-03; graduate to [[surface]] as coverage is asserted"
 
@@ -2702,6 +2706,30 @@ reason = "derive impl for the WP-A tag 63 coded enum; wire-code pins + round-tri
 [[exempt]]
 item = "tst_core::klv::st0601::SensorFovName::fmt"
 reason = "derive impl for the WP-A tag 63 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PlatformStatus::clone"
+reason = "derive impl for the WP-B tag 125 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PlatformStatus::eq"
+reason = "derive impl for the WP-B tag 125 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PlatformStatus::fmt"
+reason = "derive impl for the WP-B tag 125 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorControlMode::clone"
+reason = "derive impl for the WP-B tag 126 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorControlMode::eq"
+reason = "derive impl for the WP-B tag 126 coded enum; wire-code pins + round-trips in st0601::tests"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SensorControlMode::fmt"
+reason = "derive impl for the WP-B tag 126 coded enum; wire-code pins + round-trips in st0601::tests"
 
 [[exempt]]
 item = "tst_core::klv::st0601::OutOfRangePolicy::clone"

@@ -63,10 +63,7 @@ public record SdccFlp(long matrixSize, double[] stdDevs, double[] correlations, 
         }
         int lo = Math.min(i, j);
         int hi = Math.max(i, j);
-        int offset = 0;
-        for (int k = 0; k < lo; k++) {
-            offset += (int) n - 1 - k;
-        }
+        int offset = lo * (2 * (int) n - lo - 1) / 2;
         return correlations[offset + (hi - lo - 1)];
     }
 }

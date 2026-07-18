@@ -185,6 +185,29 @@ pub fn decode_sdcc_flp(bytes: &[u8]) -> Result<SdccFlp, KlvFieldError> {
     // Element 5: Correlation Coefficient values (§6.3.2.3). Per Table 3,
     // Clen==0 means no correlation values at all, regardless of CS — this
     // overrides the "CS==0 => all slots present" default below.
+    //
+    // Sparse-mode preflight (Copilot review): `check_matrix_size_fits`
+    // already bounds `m` to at most `remaining*8` at Parse-Control time,
+    // so the `present`/`correlations` allocations below can never
+    // themselves abort the process — but per this project's precedent
+    // (the H.264 `max_au_bytes` arc), invalid input should never pay even
+    // a bounded allocation before failing. A truncated payload can still
+    // declare, via the Bit Vector, more present slots than the buffer has
+    // correlation bytes for. Count the *meaningful* popcount (bits past
+    // slot `m-1` are wire padding, not slots) without allocating, and
+    // reject before the m-sized vecs below if the buffer can't possibly
+    // hold `popcount * clen` correlation bytes. (Full mode needs no
+    // analogous check: `check_matrix_size_fits` already bounds `m` itself
+    // against `clen` before `m` is even computed at line ~164, i.e.
+    // before any allocation — verified, not just assumed.)
+    if cs && clen > 0 {
+        let popcount = (0..m)
+            .filter(|&k| (bitvec[k / 8] >> (7 - (k % 8))) & 1 != 0)
+            .count() as u64;
+        if popcount.saturating_mul(clen as u64) > rest.len() as u64 {
+            return Err(KlvFieldError::TruncatedField { tag: 0 });
+        }
+    }
     let present = if clen == 0 {
         alloc::vec![false; m]
     } else if cs {
@@ -372,10 +395,7 @@ fn check_matrix_size_fits(
 /// `n × n` symmetric matrix (ST 1010.3 §6.3.4 slot ordering: row by row,
 /// left to right within a row).
 fn triangle_slot(i: usize, j: usize, n: usize) -> usize {
-    let mut offset = 0;
-    for k in 0..i {
-        offset += n - 1 - k;
-    }
+    let offset = i * (2 * n - i - 1) / 2;
     offset + (j - i - 1)
 }
 
@@ -693,6 +713,21 @@ mod tests {
         let bytes = hex("02 94 00 E0000000");
         let m = decode_sdcc_flp(&bytes).unwrap();
         assert_eq!(m.correlations, alloc::vec![0.0]);
+    }
+
+    #[test]
+    fn sdcc_sparse_correlation_bytes_truncated_preflights_before_alloc() {
+        // N=3, sparse (cs=1), Clen=4 IEEE, Slen=0. PC = 0xA4 0x00. Bit
+        // vector 0xC0 (1100_0000) declares slots 0 and 1 present (popcount
+        // 2 of the 3 meaningful bits), but the buffer ends right after the
+        // bit vector — zero correlation bytes follow, though 2*4=8 are
+        // required. The sparse-mode preflight added above must reject this
+        // BEFORE allocating the m-sized `present`/`correlations` vecs; by
+        // construction, reaching the early `Err` return means those
+        // `alloc::vec!` calls are never reached (no separate runtime probe
+        // needed for the no-allocation property).
+        let bytes = hex("03 A4 00 C0");
+        assert!(decode_sdcc_flp(&bytes).is_err());
     }
 
     #[test]

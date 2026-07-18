@@ -117,9 +117,10 @@ def _populated_uas() -> UasDatalinkLs:
 # ST 0601 UasDatalinkLs — round-trip unknown TLV preservation
 # ---------------------------------------------------------------------------
 
-# ST 0601 typed tags occupy 1-65, 67-80, 82-95, 97-101, 106-108, 129, 135 (WP-A
-# extended this past the original 5..=91 + {1, 2, 65, 94}; see
-# `is_st0601_typed_tag` in bindings/python/src/klv.rs). Item 66 is the
+# ST 0601 typed tags occupy 1-65, 67-80, 82-101, 103-114, 117-120, 123-126,
+# 129, 131-137, 139 (WP-A extended this past the original 5..=91 + {1, 2,
+# 65, 94}; WP-B extended it further past 101; see `is_st0601_typed_tag` in
+# bindings/python/src/klv.rs). Item 66 is the
 # deprecated placeholder — permanently untyped by design (ST 0601.19
 # §8.66: "This item has been Deprecated") — so unlike a tag picked from a
 # not-yet-assigned gap it can never collide with a future typing pass.

@@ -1207,9 +1207,11 @@ fn sensor_control_mode_from_wire(b: u8) -> RustSensorControlMode {
 // payload-less BelowMin/AboveMax/Infinity codes).
 
 /// Translate a Rust `ImapbSpecial` to its `(code, payload)` wire-string
-/// pair for the `imapb_specials` crossing.
-fn imapb_special_to_code(s: RustImapbSpecial) -> (&'static str, u64) {
-    match s {
+/// pair for the `imapb_specials` crossing. Errors (rather than silently
+/// mislabeling) on a future non-exhaustive variant — same stance as
+/// `convert_platform_status`/`convert_sensor_control_mode` above.
+fn imapb_special_to_code(s: RustImapbSpecial) -> PyResult<(&'static str, u64)> {
+    Ok(match s {
         RustImapbSpecial::BelowMin => ("below_min", 0),
         RustImapbSpecial::AboveMax => ("above_max", 0),
         RustImapbSpecial::PositiveInfinity => ("pos_infinity", 0),
@@ -1220,8 +1222,12 @@ fn imapb_special_to_code(s: RustImapbSpecial) -> (&'static str, u64) {
         RustImapbSpecial::NegativeSignalingNaN { signal } => ("neg_signaling_nan", signal),
         RustImapbSpecial::UserDefined { signal } => ("user_defined", signal),
         // #[non_exhaustive] in tst-core: no current variant reaches here.
-        _ => ("user_defined", 0),
-    }
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown ImapbSpecial variant crossing the binding",
+            ));
+        }
+    })
 }
 
 /// Inverse of `imapb_special_to_code`. Raises `ValueError` for a code
@@ -1487,15 +1493,17 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
         .imapb_specials
         .iter()
         .map(|&(tag, special)| {
-            let (code, payload) = imapb_special_to_code(special);
-            pyo3::types::PyTuple::new_bound(
-                py,
-                &[tag.into_py(py), code.into_py(py), payload.into_py(py)],
+            let (code, payload) = imapb_special_to_code(special)?;
+            PyResult::Ok(
+                pyo3::types::PyTuple::new_bound(
+                    py,
+                    &[tag.into_py(py), code.into_py(py), payload.into_py(py)],
+                )
+                .unbind()
+                .into(),
             )
-            .unbind()
-            .into()
         })
-        .collect();
+        .collect::<PyResult<Vec<_>>>()?;
     kwargs.set_item(
         "imapb_specials",
         pyo3::types::PyTuple::new_bound(py, specials_items),

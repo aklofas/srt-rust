@@ -19,6 +19,49 @@ from tstrans.klv import (
 )
 
 
+def _local_set_ber_oid_tag(buf: bytes, i: int) -> tuple[int, int]:
+    """Read a BER-OID (base-128, high-bit-continuation) local-set tag
+    starting at index i. Returns (tag, bytes_consumed)."""
+    tag = 0
+    j = i
+    while True:
+        b = buf[j]
+        tag = (tag << 7) | (b & 0x7F)
+        j += 1
+        if not (b & 0x80):
+            break
+    return tag, j - i
+
+
+def _find_tag_value_bytes(encoded: bytes, tag: int) -> bytes | None:
+    """Walk an encoded ST 0601 wire record (16-byte UL + outer BER length +
+    body) and return the raw VALUE bytes for `tag`'s TLV, or None if
+    absent. Local test helper — not a general KLV parser."""
+    offset = 16
+    first = encoded[offset]
+    if first < 0x80:
+        offset += 1
+    else:
+        nbytes = first & 0x7F
+        offset += 1 + nbytes
+    while offset < len(encoded):
+        t, consumed = _local_set_ber_oid_tag(encoded, offset)
+        offset += consumed
+        length_byte = encoded[offset]
+        if length_byte < 0x80:
+            length = length_byte
+            offset += 1
+        else:
+            nbytes = length_byte & 0x7F
+            length = int.from_bytes(encoded[offset + 1 : offset + 1 + nbytes], "big")
+            offset += 1 + nbytes
+        value = encoded[offset : offset + length]
+        if t == tag:
+            return value
+        offset += length
+    return None
+
+
 def _populated_record() -> UasDatalinkLs:
     """A record with one of every field-type family populated, so the
     inverse translator exercises Optional<String>, Optional<scalar>, and
@@ -583,6 +626,27 @@ def test_imapb_specials_all_nine_codes_round_trip():
         assert entry in back.imapb_specials, f"missing {entry} in {back.imapb_specials}"
 
 
+def test_imapb_specials_invalid_code_raises_value_error():
+    """An unrecognized code string must raise ValueError from the inverse
+    translator (`imapb_special_from_code`), not silently drop the entry or
+    reach the Rust encoder with garbage."""
+    rec = UasDatalinkLs(imapb_specials=((113, "not_a_code", 0),))
+    with pytest.raises(ValueError):
+        encode_uas_datalink(rec)
+
+
+def test_imapb_specials_payload_too_large_for_tag_default_len_raises():
+    """A payload that doesn't fit the tag's `8*default_len - 5` available
+    bits is rejected by the Rust `encode_imapb_special` (KlvEncodeError,
+    OutOfRange) — this is real Rust-side validation, not something the
+    Python inverse translator invents. Tag 112 (platform_course_angle_deg)
+    has default_len=2, so payload bits = 8*2-5 = 11 -> max valid payload
+    2047; 99999 doesn't fit."""
+    rec = UasDatalinkLs(imapb_specials=((112, "pos_quiet_nan", 99999),))
+    with pytest.raises(KlvEncodeError):
+        encode_uas_datalink(rec)
+
+
 # ---------------------------------------------------------------------------
 # WP-B: OutOfRangePolicy.INDICATOR for IMAPB fields (tag 113)
 # ---------------------------------------------------------------------------
@@ -597,6 +661,10 @@ def test_encode_imapb_out_of_range_indicator_policy():
         encode_uas_datalink(rec)
     raw = encode_uas_datalink(rec, out_of_range_policy=OutOfRangePolicy.INDICATOR)
     assert isinstance(raw, bytes)
+    # Literal wire-byte check (brief-mandated): the AboveMax special at
+    # default_len=3 is byte-0 0xE1 with the remaining bytes zero-filled
+    # (ST 1201.5 §7.2.3 Table 3).
+    assert _find_tag_value_bytes(raw, 113) == b"\xe1\x00\x00"
     back = decode_uas_datalink(raw)
     assert back.altitude_agl_m is None, "IMAPB special field must be None after decode"
     assert (113, "above_max", 0) in back.imapb_specials

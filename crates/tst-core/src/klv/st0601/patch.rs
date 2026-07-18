@@ -77,6 +77,11 @@ fn emit_tlv(tag: u32, value: &[u8], body: &mut Vec<u8>) -> Result<(), KlvEncodeE
 ///   [`KlvEncodeError::ReservedTagInUnknown`].
 /// - Tag 65 is NOT auto-injected (unlike `encode_with`); deleting a
 ///   tag is not supported.
+/// - **Exception:** Tag 115 (Control Command) is MULTI-INSTANCE
+///   (`UasDatalinkLs::control_commands: Vec<..>`) and is not patchable —
+///   `encode_tag_value` cannot represent a multi-value field as a single
+///   TLV, so `edits.control_commands` is ignored and any existing Tag
+///   115 occurrences are copied verbatim.
 ///
 /// # Errors
 /// [`KlvPatchError::Decode`] when the input cannot be walked

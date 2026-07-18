@@ -22,9 +22,9 @@
 //! 13 + 17 + 19 covered; declared version preserved for caller
 //! introspection).
 //!
-//! **103 of 143 spec items typed-modeled** (up from 52 pre-WP-A — see
-//! `CHANGELOG.md` `[Unreleased]` for the work-package history). Grouped
-//! by [`UasDatalinkLs`] field section:
+//! **128 of 143 spec items typed-modeled** (up from 52 pre-WP-A, 103
+//! after WP-A — see `CHANGELOG.md` `[Unreleased]` for the work-package
+//! history). Grouped by [`UasDatalinkLs`] field section:
 //!
 //! - **Identity / time:** tags 1–4, 10–12, 59, 65 (checksum, UTF-8
 //!   identity strings, version, timestamp).
@@ -51,6 +51,20 @@
 //!   129, 135 (I8/U16/U64 raw values + 6 UTF-8 strings; 129 and 135
 //!   are the first typed tags whose own tag number is 2-byte BER-OID
 //!   encoded).
+//! - **Extended-range items (ST 1201.5 IMAPB, WP-B):** tags 96,
+//!   103–105, 109, 112–114, 117–120, 132, 134 (14 fields; each is the
+//!   wider-range twin of an existing fixed-width scalar — see the
+//!   field docs for the ST 0601.19 restricted-vs-extended precedence
+//!   rule). Out-of-range values under [`OutOfRangePolicy::Indicator`]
+//!   and any producer-supplied special value (`+/-Infinity`, NaN
+//!   families) round-trip through [`UasDatalinkLs::imapb_specials`],
+//!   the IMAPB counterpart of [`UasDatalinkLs::sentinel_tags`].
+//! - **Var-length int/enum items (WP-B):** tags 110–111, 123–126, 131,
+//!   133, 136–137, 139 (11 fields: navigation/propulsion/positioning
+//!   counters, two new coded enums [`PlatformStatus`] (tag 125) and
+//!   [`SensorControlMode`] (tag 126), take-off time, on-board MI
+//!   storage capacity, leap-seconds, GPS/UTC correction offset, and
+//!   the `active_payloads` bitmask).
 //! - **Misc:** tag 47 (generic flag bitfield).
 //!
 //! **Sibling-decoded nested local sets** — the tag's payload bytes are
@@ -68,7 +82,7 @@
 //! (`segment_local_set` / `amend_local_set`, ST 1607).
 //!
 //! **Tags preserved as `unknown` (`OwnedRawField`):** any tag not in
-//! the groups above (40 of the 143 spec items remain untyped) — full
+//! the groups above (15 of the 143 spec items remain untyped) — full
 //! payload bytes preserved per ST 0107.5 §6 future-proof skip rule.
 //! Consumers reading `record.unknown` can apply downstream-specific
 //! typed parsers.

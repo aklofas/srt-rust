@@ -82,6 +82,57 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `klv::st0601::st0601_sentinel_meaning` lookup (Out of Range / Reserved
   / Not Available per tag) to binding callers.
 
+### Added — ST 0601 extended-encoding scalars typed (25 new fields, 128 of 143 total)
+
+- 25 more previously-passthrough MISB ST 0601 tags are now typed
+  `UasDatalinkLs` fields — 128 of 143 spec items modeled, up from 103:
+  - 14 ST 1201.5 IMAPB (variable-length float) items, the "extended
+    range" twins the WP-A fixed-linear items left unmodeled: target
+    width, density altitude, sensor and alternate-platform ellipsoid
+    height, range to recovery, platform course angle, altitude AGL,
+    radar altimeter, sensor azimuth/elevation/roll rate, MI storage
+    percent full, transmission frequency, and zoom percentage (tags 96,
+    103–105, 109, 112–114, 117–120, 132, 134).
+  - 10 MISB variable-length truncatable-int items (tags 110–111,
+    123–126, 131, 133, 136–137): navsats in view, positioning method
+    source, two new coded enums (`PlatformStatus` and
+    `SensorControlMode`, tags 125 and 126), time airborne, propulsion
+    unit speed, take-off time, on-board MI storage capacity, leap
+    seconds, and the GPS/UTC correction offset — plus tag 139
+    (`active_payloads`, a raw multi-byte payload-active bitmask).
+  - A new `imapb_specials: Vec<(u32, ImapbSpecial)>` field (re-exported
+    as `klv::ImapbSpecial`) carries out-of-band special values
+    (`+/-Infinity`, NaN families, `BelowMin`/`AboveMax`) for the 14 new
+    IMAPB items, mirroring the existing `sentinel_tags` mechanism: on
+    encode, a populated typed field always wins over a same-tag
+    `imapb_specials` entry, which is only re-emitted when the typed
+    field is `None`.
+  - `OutOfRangePolicy::Indicator` now also covers the 14 new IMAPB
+    items: an out-of-range typed value under `Indicator` encodes as the
+    ST 1201.5 `BelowMin`/`AboveMax` special instead of erroring.
+  - A new pinning test wave covers every new field's encode/decode spec
+    bytes from the ST 1201.5 / ST 0601.19 worked examples, including
+    the `imapb_specials` special-value path and the `Indicator` path.
+- Mirrored in full through the Python and JVM bindings (25 fields ×
+  both bindings, plus both new enums). `imapb_specials` crosses as a
+  `(tag, code, payload)` triple in both bindings (Python: a
+  `tuple[int, str, int]` alongside `sentinel_tags`; JVM: the new
+  `ImapbSpecialEntry` record), using 9 named code strings for the
+  special-value families.
+
+### Added — ST 0601 restricted-vs-extended item precedence documented
+
+- Four pairs of tags carry the same real-world quantity at two
+  precisions: Item 22 / Item 96 (target width), Item 38 / Item 103
+  (density altitude), Item 75 / Item 104 (sensor ellipsoid height), and
+  Item 76 / Item 105 (alternate-platform ellipsoid height). Per ST
+  0601.19 requirements 0601.9-20/-21, a decoder that understands the
+  extended (IMAPB) item should prefer it over its restricted twin when
+  both are present on the wire. `UasDatalinkLs` decodes both fields
+  independently (it does not drop either), so this is now documented
+  on each field's rustdoc and in the KLV guide (`docs/guides/klv.md`)
+  as caller guidance, not enforced by the decoder.
+
 ### Changed — RTSP server refuses TLS config on a plaintext bind
 
 - `RtspServer::start()` now fails with `RtspServerError::Tls` when

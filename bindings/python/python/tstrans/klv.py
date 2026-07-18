@@ -846,7 +846,7 @@ class SdccFlpField:
 class UasDatalinkLs:
     """MISB ST 0601 UAS Datalink Local Set typed view.
 
-    Mirror of the 133-field Rust `tst_core::klv::st0601::UasDatalinkLs`
+    Mirror of the 147-field Rust `tst_core::klv::st0601::UasDatalinkLs`
     flat struct. Composite views (sensor position, attitude, FOV,
     corners) are accessor methods that return `None` when any of the
     underlying primitive fields is absent.

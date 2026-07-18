@@ -285,7 +285,7 @@ plain `[UL][len][body]`:
 
 | Spec | Status | Notes |
 | --- | --- | --- |
-| **MISB ST 0601.19** — UAS Datalink Local Set | ⚙️ Partial | 49 of 143 items typed (see table below); remainder ride through `unknown` (ST 0107.5 future-proof skip). |
+| **MISB ST 0601.19** — UAS Datalink Local Set | ✅ Full | 142 of 143 items typed or structured (see table below); Item 66 (deprecated) stays `unknown`-passthrough by design (ST 0107.5 future-proof skip). |
 | ST 0601.19 §6.4 UAS LS UL | ✅ Full | `UniversalLabel::ST_0601_LS`; family check honours version-byte evolution. |
 | ST 0601.8-09 (Tag 2 first) | ⚙️ Partial | Wire format accepts any order; `decode_strict_compliance` enforces. |
 | ST 0601.8-11 (Tag 1 last) | ⚙️ Partial | Wire format accepts any order; `decode_strict_compliance` enforces. |
@@ -294,46 +294,34 @@ plain `[UL][len][body]`:
 | Linear-range int↔float mapping (§7.5) | ✅ Full | INT_MIN special values produce `Ok(None)`; tag recorded in `sentinel_tags`, not `field_errors`. |
 | Big-endian byte / bit ordering (§6.5.1) | ✅ Full | Throughout. |
 
-### Typed ST 0601 items (49 of 143)
+### Typed ST 0601 items (142 of 143)
 
-| ID | Name | Status |
+Grouped by field section — see `tst_core::klv::st0601` module docs for the
+full per-tag breakdown (source of truth; this table tracks it at a
+coarser grain to avoid drifting per-tag detail out of sync).
+
+| ID(s) | Group | Status |
 | --- | --- | --- |
-| 1 | Checksum | ✅ Full (verified, auto-emitted) |
-| 2 | Precision Time Stamp | ✅ Full |
-| 3 | Mission ID | ✅ Full |
-| 4 | Platform Tail Number | ✅ Full |
-| 5 | Platform Heading Angle | ✅ Full |
-| 6 | Platform Pitch Angle | ✅ Full |
-| 7 | Platform Roll Angle | ✅ Full |
-| 8 | Platform True Airspeed | ✅ Full |
-| 9 | Platform Indicated Airspeed | ✅ Full |
-| 10 | Platform Designation | ✅ Full |
-| 11 | Image Source Sensor | ✅ Full |
-| 12 | Image Coordinate System | ✅ Full |
-| 13 | Sensor Latitude | ✅ Full |
-| 14 | Sensor Longitude | ✅ Full |
-| 15 | Sensor True Altitude | ✅ Full |
-| 16 | Sensor Horizontal FOV | ✅ Full |
-| 17 | Sensor Vertical FOV | ✅ Full |
-| 18 | Sensor Relative Azimuth | ✅ Full |
-| 19 | Sensor Relative Elevation | ✅ Full |
-| 20 | Sensor Relative Roll | ✅ Full |
-| 21 | Slant Range | ✅ Full |
-| 22 | Target Width | ✅ Full |
-| 23 | Frame Center Latitude | ✅ Full |
-| 24 | Frame Center Longitude | ✅ Full |
-| 25 | Frame Center Elevation | ✅ Full |
-| 26–33 | Offset Corner Lat/Lon Points 1–4 | ✅ Full |
-| 47 | Generic Flag Data | ✅ Full |
-| 48 | Security Local Set | ✅ Bytes pass-through; typed via `klv::st0102::decode` (sibling-layer parser) |
-| 50 | Platform Call Sign | ✅ Full |
-| 65 | UAS LS Version Number | ✅ Full (auto-emitted on encode if unset) |
-| 75 | Sensor Ellipsoid Height | ✅ Full |
-| 78 | Frame Center Height Above Ellipsoid | ✅ Full |
-| 82–89 | Corner Lat/Lon Points 1–4 (Full) | ✅ Full |
-| 90 | Platform Pitch Angle (Full) | ✅ Full |
-| 91 | Platform Roll Angle (Full) | ✅ Full |
-| 0–143 not listed above | other Items | 🔁 Pass-through via `unknown` (forwards-/backwards-compatible per ST 0107.5) |
+| 1–4, 10–12, 59, 65 | Identity / time (checksum, UTF-8 identity strings, version, timestamp) | ✅ Full |
+| 5–9, 50, 90–91 | Platform state (heading/pitch/roll/airspeed, angle of attack, full-range pitch/roll twins) | ✅ Full |
+| 13–20, 75 | Sensor pose & position (lat/lon/altitude, ellipsoid height, FOV, relative azimuth/elevation/roll) | ✅ Full |
+| 21–25, 78 | Ranging & frame center | ✅ Full |
+| 26–33, 82–89 | Image corners (offset from frame center, and full lat/lon) | ✅ Full |
+| 40–46 | Target location & tracking (location, track-gate width/height, CE90/LE90) | ✅ Full |
+| 35–38, 49, 53–55 | Weather / atmospheric | ✅ Full |
+| 51–52, 56–58, 64, 92–93 | Extended platform state (vertical speed, sideslip, ground speed/range, fuel, magnetic heading, full-range AoA/sideslip twins) | ✅ Full |
+| 67–69, 71, 76 | Alternate platform | ✅ Full |
+| 79–80 | Sensor velocity | ✅ Full |
+| 34, 63, 77 | Coded enums (`IcingDetected`, `SensorFovName`, `OperationalMode`) | ✅ Full — `Other(code)` fallback round-trips unrecognized wire codepoints |
+| 39, 60–62, 70, 72, 106–108, 129, 135 | Raw scalar & string items | ✅ Full |
+| 96, 103–105, 109, 112–114, 117–120, 132, 134 | Extended-range items (ST 1201.5 IMAPB) | ✅ Full — out-of-range values under `OutOfRangePolicy::Indicator` and producer specials round-trip via `imapb_specials` |
+| 110–111, 123–126, 131, 133, 136–137, 139 | Var-length int/enum items (incl. `PlatformStatus`, `SensorControlMode`) | ✅ Full |
+| 47 | Generic flag bitfield | ✅ Full |
+| 81, 102, 115–116, 121–122, 127–128, 130, 138, 140–143 | Pack & list items (Appendix Table C1 — `ImageHorizonPixels`, `SdccFlpField`, `ControlCommand`, id lists, `CountryCodes`, `WavelengthRecord`, `AirbaseLocations`, `PayloadList`, `WeaponsStore`, `Waypoint`, `ViewDomain`, `MetadataSubstreamId`) | ✅ Full |
+| 48, 74, 94 | Sibling-decoded nested local sets | ✅ Bytes pass-through; typed via `klv::st0102`/`klv::st0903`/`klv::st1204` |
+| 73, 95, 97–101 | Named nested-set byte fields (RVT / SAR MI / Range Image / Geo-Registration / Composite Imaging / Segment / Amend) | 🔁 Pass-through — dedicated struct field, interior bytes not yet decoded |
+| 66 | (deprecated placeholder) | 🔁 Pass-through via `unknown` (permanently, by design) |
+| any other tag | forward-compat | 🔁 Pass-through via `unknown` (ST 0107.5 future-proof skip) |
 
 Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 `Corners`. They surface `None` if any constituent typed field is missing.
@@ -606,7 +594,7 @@ covers.
 | **SMPTE ST 336** | Data Encoding Protocol Using Key-Length-Value | ✅ KLV substrate in `klv::pack` / `klv::length` / `klv::universal_label` |
 | **MISB ST 0102.12** | Security Metadata Universal & Local Sets | ✅ LS form — typed decode + encode (`klv::st0102`); Universal Set form deferred |
 | **MISB ST 0107.5** | KLV Metadata in Motion Imagery | ✅ Future-proof skip rule, UL family helpers |
-| **MISB ST 0601.19** | UAS Datalink Local Set | ⚙️ 49 of 143 items typed (see table above) |
+| **MISB ST 0601.19** | UAS Datalink Local Set | ✅ 142 of 143 items typed or structured (see table above) |
 | **MISB ST 0603.5** | Time Stamping Motion Imagery | ✅ For ST 0605 Time Status byte |
 | **MISB ST 0604.6** | Time Stamping & Transport in MISB Motion Imagery | ⚙️ Opt-in — `Muxer::push_video_misp_to` / `MuxSender::send_video_misp_to` splice the MISP SEI (H.264 + H.265); `codec::misp_time::extract` recovers it. Commercial Time Stamp (UTC wall-clock SEI) and H.262/AV1/H.266 variants deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0605.10** | Encoding & Inserting Time Codes / Stamps | ✅ Precision Time Stamp Pack |
@@ -615,6 +603,7 @@ covers.
 | **MISB ST 0807.27** | KLV Metadata Registry | ⚙️ Used as canonical source for UL constants |
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ⚙️ Opt-in validator — `klv::st0601::validate_mismms` returns a `Vec<MismmsViolation>` per record; stream-level cadence tracker deferred. See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
+| **MISB ST 1010.3** | Standard Deviation and Correlation Coefficient, Floating-Point (SDCC-FLP) | ✅ `klv::st1010::{decode_sdcc_flp, encode_sdcc_flp_mode2}` — Mode 1 (foreign/defensive parse) and Mode 2 (encode) + sparse bit-vector; general-purpose, also used by ST 0601 Tag 102 (`sdcc_flps`) |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ✅ §7.1.2 / §7.2 + §7.1.3 / §7.2.3 special values (`ImapbSpecial`, encode + decode); IMAPA form deferred |
 | **MISB ST 1204.3** | Motion Imagery Identification System (MIIS) Core Identifier | ✅ `klv::st1204::{decode, encode_to_vec}` + ST 0601 Tag 94 (`miis_core_id`). Rust, Python, and JVM (the C ABI carries raw KLV but exposes no typed KLV APIs). See [`stanag-4609.md`](/docs/reference/stanag-4609.md). |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |

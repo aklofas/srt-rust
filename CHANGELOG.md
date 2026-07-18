@@ -63,11 +63,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `weaponArmed` accessors), `Waypoint`, `ViewDomainPair`/`ViewDomain`, and
   `SdccFlpField` — all wired through `Klv.decodeUasDatalink`/
   `Klv.encodeUasDatalink`. Unlike `VTargetPack`'s many-optional-field
-  Builder, these small (&le;8 field) types use a plain canonical
-  constructor, matching the `CoreId`/`GeoPoint` precedent; list fields
-  (`controlCommands`, `wavelengthsList`, `weaponsStores`, `waypointList`,
-  `sdccFlps`, and `payloadList`'s nested `records`) still follow the
-  `VTargetPack` `with_local_frame`-per-item idiom on the JNI side.
+  Builder, most of these small (&le;8 field) types use a plain canonical
+  constructor, matching the `CoreId`/`GeoPoint` precedent; `ImageHorizonPixels`
+  and `WeaponsStore` are the two exceptions, each also gaining a `Builder`
+  (named setters over 4 consecutive same-typed positional fields — a
+  transposition hazard the review round called out for both: image-horizon
+  percentages/lat-lon pairs and weapon station/hardpoint/carriage/store
+  BER-OID ids). List fields (`controlCommands`, `wavelengthsList`,
+  `weaponsStores`, `waypointList`, `sdccFlps`, and `payloadList`'s nested
+  `records`) still follow the `VTargetPack` `with_local_frame`-per-item
+  idiom on the JNI side.
 - New standalone `org.tstrans.klv.SdccFlp` record plus
   `Klv.decodeSdccFlp`/`Klv.encodeSdccFlpMode2` entry points mirroring the
   general-purpose `klv::st1010` module; `SdccFlp.correlation(i, j)` is a
@@ -78,10 +83,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `unknown` entry at any WP-C tag is now silently dropped (typed wins)
   rather than surviving into the encoded record.
 - `read_uas_datalink` (the JNI encode-direction field reader) now calls
-  `env.ensure_local_capacity(256)` — it had NO such call before this WP
+  `env.ensure_local_capacity(320)` — it had NO such call before this WP
   (pre-existing debt: every `read_nullable_*` accessor mints a local ref
   that lives until the function returns). `build_uas_datalink`'s own
-  capacity bumped 224 &rarr; 256 for the same 14 new fields.
+  capacity bumped 224 &rarr; 320 for the same 14 new fields (a first-cut
+  256 left effectively zero margin — bumped again after review to leave
+  real headroom, verified empirically by
+  `St0601PacksTest.fullyPopulatedWpcFieldsRoundTrip`).
+
+### Fixed — JVM `precedingTags`/`controlCommandVerification`/`activeWavelengths` local-ref leak
+
+- `read_sdcc_flp_field`'s `precedingTags` loop (and the same-shaped
+  `controlCommandVerification`/`activeWavelengths` loops) called the list
+  accessor once per iteration with no per-item local frame, while itself
+  running inside the fixed 16-slot `with_local_frame` that wraps each
+  `sdccFlps` list item — a caller-supplied list longer than that frame's
+  spare capacity exhausted the JNI local-ref table and **aborted the JVM
+  outright** (not a catchable exception). Fixed by routing all three call
+  sites through a new shared `jutil::read_long_list` helper (mirrors the
+  existing `build_long_list`), which applies its own per-item frame. Two
+  new 64-entry regression tests
+  (`sdccFlpFieldLongPrecedingTagsRoundTripsWithoutAborting`,
+  `controlCommandVerificationLongListRoundTripsWithoutAborting`) exercise
+  past the old ~13-entry abort threshold.
 
 ### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
 

@@ -22,11 +22,12 @@
 //! 13 + 17 + 19 covered; declared version preserved for caller
 //! introspection).
 //!
-//! **142 of 143 spec items typed-modeled** (up from 52 pre-WP-A, 103
-//! after WP-A, 128 after WP-B, 134 after WP-C Task C2's simple packs,
-//! 141 after WP-C Task C3's VLP packs, 142 after WP-C Task C4's Tag 102
+//! **All 142 active ST 0601.19 items are typed or structured** (Item 66
+//! deprecated: unknown-passthrough) — up from 52 pre-WP-A, 103 after
+//! WP-A, 128 after WP-B, 134 after WP-C Task C2's simple packs, 141
+//! after WP-C Task C3's VLP packs, 142 after WP-C Task C4's Tag 102
 //! SDCC-FLP capture — see `CHANGELOG.md` `[Unreleased]` for the
-//! work-package history). Grouped by [`UasDatalinkLs`] field section:
+//! work-package history. Grouped by [`UasDatalinkLs`] field section:
 //!
 //! - **Identity / time:** tags 1–4, 10–12, 59, 65 (checksum, UTF-8
 //!   identity strings, version, timestamp).

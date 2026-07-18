@@ -838,11 +838,13 @@ class St0601PacksTest {
 
     @Test
     void fullyPopulatedWpcFieldsRoundTrip() throws KlvDecodeException, KlvEncodeException {
-        // Every optional WP-C field set simultaneously, with multi-item
-        // lists on every Vec-shaped field — exercises build_uas_datalink's
-        // and read_uas_datalink's ensure_local_capacity(320) empirically
-        // (a shortfall aborts the JVM outright, not a catchable exception),
-        // rather than resting on the module doc's hand-derived tally alone.
+        // WP-C's own worst case: every optional WP-C field set simultaneously,
+        // with multi-item lists on every Vec-shaped field (not a claim that
+        // the record's other 133 pre-existing fields are populated too) —
+        // exercises build_uas_datalink's and read_uas_datalink's
+        // ensure_local_capacity(320) empirically (a shortfall aborts the JVM
+        // outright, not a catchable exception), rather than resting on the
+        // module doc's hand-derived tally alone.
         ImageHorizonPixels horizon = new ImageHorizonPixels.Builder()
                 .x0Pct(1).y0Pct(2).x1Pct(3).y1Pct(4)
                 .startLatDeg(10.0).startLonDeg(-20.0).endLatDeg(30.0).endLonDeg(-40.0)

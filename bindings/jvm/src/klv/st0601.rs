@@ -31,7 +31,7 @@
 //!
 //! | Field | Outer-frame refs (build ≈ read) |
 //! |---|---|
-//! | `imageHorizon` | 5 (4 boxed `Double` + 1 record) |
+//! | `imageHorizon` | 5 worst-case on read (1 outer + 4 boxed `Double` getters); only 2 on build — the `Builder`'s primitive-`double` setters box nothing |
 //! | `controlCommands` (list) | 1 (outer `ArrayList`; items reclaimed) |
 //! | `controlCommandVerification` | 1 (outer `ArrayList` via `build_long_list`/`read_long_list`; items reclaimed) |
 //! | `activeWavelengths` | 1 (same shape as `controlCommandVerification`) |
@@ -61,9 +61,10 @@
 //! cheaply hand-countable field-by-field, which is exactly why 320 leaves
 //! real margin rather than a computed-to-the-slot number, and why
 //! `St0601PacksTest.fullyPopulatedWpcFieldsRoundTrip` exercises this
-//! empirically (every optional WP-C field set, multi-item lists on every
-//! `Vec` field, plus a separate long-list stress case) rather than resting
-//! on this arithmetic
+//! empirically (WP-C's own worst case: every optional WP-C field set,
+//! multi-item lists on every `Vec` field, plus a separate long-list
+//! stress case — not a claim that the record's other 133 pre-existing
+//! fields are populated too) rather than resting on this arithmetic
 //! alone. Skipping the capacity call entirely WILL crash the JVM for
 //! records with many populated fields.
 //!

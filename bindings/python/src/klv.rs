@@ -32,11 +32,19 @@ use tst_core::klv::st0102::{
     encode_strict_compliance as encode_st0102_strict_compliance, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
-    EncodeConfig as St0601EncodeConfig, IcingDetected as RustIcingDetected,
+    AirbaseLocations as RustAirbaseLocations, ControlCommand as RustControlCommand,
+    CountryCodes as RustCountryCodes, EncodeConfig as St0601EncodeConfig,
+    IcingDetected as RustIcingDetected, ImageHorizonPixels as RustImageHorizonPixels,
+    Location as RustLocation, MetadataSubstreamId as RustMetadataSubstreamId,
     MismmsViolation as RustMismmsViolation, OperationalMode as RustOperationalMode,
-    OutOfRangePolicy as RustOutOfRangePolicy, PlatformStatus as RustPlatformStatus,
+    OutOfRangePolicy as RustOutOfRangePolicy, PayloadList as RustPayloadList,
+    PayloadRecord as RustPayloadRecord, PayloadType as RustPayloadType,
+    PlatformStatus as RustPlatformStatus, SdccFlpField as RustSdccFlpField,
     SensorControlMode as RustSensorControlMode, SensorFovName as RustSensorFovName,
-    St0601SentinelMeaning, UasDatalinkLs, decode as decode_st0601_lenient,
+    SensorFrameRate as RustSensorFrameRate, St0601SentinelMeaning, UasDatalinkLs,
+    ViewDomain as RustViewDomain, ViewDomainPair as RustViewDomainPair,
+    WavelengthRecord as RustWavelengthRecord, Waypoint as RustWaypoint,
+    WeaponsStore as RustWeaponsStore, decode as decode_st0601_lenient,
     decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
     encode_strict_compliance as encode_st0601_strict_compliance,
@@ -54,6 +62,10 @@ use tst_core::klv::st0903::{
     encode_standalone_strict_compliance as encode_st0903_standalone_strict_compliance,
     encode_strict_compliance as encode_st0903_strict_compliance, encode_to_vec as encode_st0903,
     encode_to_vec_standalone as encode_st0903_standalone,
+};
+use tst_core::klv::st1010::{
+    SdccFlp as RustSdccFlp, decode_sdcc_flp as decode_st1010_sdcc_flp,
+    encode_sdcc_flp_mode2 as encode_st1010_sdcc_flp_mode2,
 };
 use tst_core::klv::st1204::{
     CoreId as RustCoreId, IdType as RustIdType, St1204Error, decode as decode_st1204,
@@ -93,6 +105,26 @@ pub(crate) fn klv_decode_error_to_pyerr(py: Python<'_>, e: KlvDecodeError) -> Py
         | KlvDecodeError::St0903InvalidVTargetPack { .. }
         | KlvDecodeError::FieldError(_) => "MALFORMED_BYTES",
         _ => "INTERNAL",
+    };
+    make_klv_error(py, kind, &msg)
+}
+
+// ---------------------------------------------------------------------------
+// Standalone KlvFieldError → KlvError mapping
+// ---------------------------------------------------------------------------
+
+/// Map a standalone Rust `KlvFieldError` — e.g. from `decode_sdcc_flp`,
+/// which returns one directly rather than embedding it in a
+/// `KlvDecodeError` — to a Python `KlvError` instance. Mirrors
+/// `klv_decode_error_to_pyerr`'s `FieldError(_) => "MALFORMED_BYTES"`
+/// bucket: this function's caller sees exactly one field-level failure
+/// with no surrounding local-set context, so every variant folds to
+/// that same bucket except the substrate-framing one.
+fn klv_field_error_to_pyerr(py: Python<'_>, e: RustKlvFieldError) -> PyErr {
+    let msg = format!("{e}");
+    let kind = match &e {
+        RustKlvFieldError::TruncatedField { .. } => "TRUNCATED_SET",
+        _ => "MALFORMED_BYTES",
     };
     make_klv_error(py, kind, &msg)
 }
@@ -279,22 +311,23 @@ fn is_st0102_typed_tag(tag: u32) -> bool {
 }
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
-/// `crates/tst-core/src/klv/st0601/tags.rs` (128 entries as of WP-B: 1-65,
-/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-137, 139). Tags 66,
-/// 81, 102, 115, 116, 121, 122, 127, 128, 130, 138, 140..=255 are
-/// forward-compat and may legitimately appear in `unknown` (66 and 200 are
-/// the durable unknown-tag test stand-ins used across this suite — never
-/// add them here). WP-B (Tables B1-B2) extended the range past 101 — keep
-/// this in sync with `tags::TAGS` when new tags are typed, or a
-/// caller-supplied `unknown` entry for a newly-typed tag will slip past
-/// this filter and get rejected downstream by the real Rust encoder's own
-/// (stricter, canonical) check instead of being silently dropped here per
-/// the documented "typed wins" collision policy.
+/// `crates/tst-core/src/klv/st0601/tags.rs` (142 entries as of WP-C:
+/// 1-65, 67-143). Tag 66 is the deprecated placeholder (permanently
+/// untyped by design — ST 0601.19 §8.66: "This item has been
+/// Deprecated") and 144..=255 are forward-compat; both may legitimately
+/// appear in `unknown` (66 and 200 are the durable unknown-tag test
+/// stand-ins used across this suite — never add them here). WP-C
+/// (Table C1) finished the sweep from 66's neighbors through 143,
+/// including Tag 102 (MULTI-INSTANCE SDCC-FLP, now typed via
+/// `sdcc_flps`) and Tag 115 (MULTI-INSTANCE Control Command, now typed
+/// via `control_commands`) — keep this in sync with `tags::TAGS` when
+/// new tags are typed, or a caller-supplied `unknown` entry for a
+/// newly-typed tag will slip past this filter and get rejected
+/// downstream by the real Rust encoder's own (stricter, canonical)
+/// check instead of being silently dropped here per the documented
+/// "typed wins" collision policy.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(
-        tag,
-        1..=65 | 67..=80 | 82..=101 | 103..=114 | 117..=120 | 123..=126 | 129 | 131..=137 | 139
-    )
+    matches!(tag, 1..=65 | 67..=143)
 }
 
 /// ST 0903.6 VMTI LS typed tags: 1 (Checksum), 2..=13, 101..=103.
@@ -453,6 +486,17 @@ fn enum_field_to_u8(p: &Bound<'_, PyAny>) -> PyResult<u8> {
         value_attr.extract()
     } else {
         // raw int — extract directly
+        p.extract()
+    }
+}
+
+/// Sibling of [`enum_field_to_u8`] for a coded enum whose wire codepoint
+/// is a BER-OID (unbounded, not a narrow bitfield) rather than a single
+/// byte — only `PayloadType` (Item 138) needs this width so far.
+fn enum_field_to_u64(p: &Bound<'_, PyAny>) -> PyResult<u64> {
+    if let Ok(value_attr) = p.getattr("value") {
+        value_attr.extract()
+    } else {
         p.extract()
     }
 }
@@ -1255,6 +1299,518 @@ fn imapb_special_from_code(code: &str, payload: u64) -> PyResult<RustImapbSpecia
 }
 
 // ---------------------------------------------------------------------------
+// ST 0601 — WP-C pack & list items (Table C1), carried inside
+// UasDatalinkLs. Follows the VTargetPack nested-struct pattern: a
+// dataclass in klv.py + a `convert_*`/`py_to_*` pair here.
+// ---------------------------------------------------------------------------
+
+/// Item 81: Image Horizon Pixels.
+fn convert_image_horizon(py: Python<'_>, h: &RustImageHorizonPixels) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "ImageHorizonPixels"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("x0_pct", h.x0_pct)?;
+    kwargs.set_item("y0_pct", h.y0_pct)?;
+    kwargs.set_item("x1_pct", h.x1_pct)?;
+    kwargs.set_item("y1_pct", h.y1_pct)?;
+    if let Some(v) = h.start_lat_deg {
+        kwargs.set_item("start_lat_deg", v)?;
+    }
+    if let Some(v) = h.start_lon_deg {
+        kwargs.set_item("start_lon_deg", v)?;
+    }
+    if let Some(v) = h.end_lat_deg {
+        kwargs.set_item("end_lat_deg", v)?;
+    }
+    if let Some(v) = h.end_lon_deg {
+        kwargs.set_item("end_lon_deg", v)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_image_horizon(p: &Bound<'_, PyAny>) -> PyResult<RustImageHorizonPixels> {
+    let py = p.py();
+    Ok(RustImageHorizonPixels {
+        x0_pct: p.getattr(intern!(py, "x0_pct"))?.extract()?,
+        y0_pct: p.getattr(intern!(py, "y0_pct"))?.extract()?,
+        x1_pct: p.getattr(intern!(py, "x1_pct"))?.extract()?,
+        y1_pct: p.getattr(intern!(py, "y1_pct"))?.extract()?,
+        start_lat_deg: p.getattr(intern!(py, "start_lat_deg"))?.extract()?,
+        start_lon_deg: p.getattr(intern!(py, "start_lon_deg"))?.extract()?,
+        end_lat_deg: p.getattr(intern!(py, "end_lat_deg"))?.extract()?,
+        end_lon_deg: p.getattr(intern!(py, "end_lon_deg"))?.extract()?,
+    })
+}
+
+/// Item 115: Control Command — MULTI-INSTANCE (`UasDatalinkLs.control_commands`).
+fn convert_control_command(py: Python<'_>, c: &RustControlCommand) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "ControlCommand"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("id", c.id)?;
+    kwargs.set_item("command", c.command.as_str())?;
+    if let Some(t) = c.time_us {
+        kwargs.set_item("time_us", t)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_control_command(p: &Bound<'_, PyAny>) -> PyResult<RustControlCommand> {
+    let py = p.py();
+    Ok(RustControlCommand {
+        id: p.getattr(intern!(py, "id"))?.extract()?,
+        command: p.getattr(intern!(py, "command"))?.extract()?,
+        time_us: p.getattr(intern!(py, "time_us"))?.extract()?,
+    })
+}
+
+/// Item 127: Sensor Frame Rate Pack.
+fn convert_sensor_frame_rate(py: Python<'_>, fr: &RustSensorFrameRate) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "SensorFrameRate"))?;
+    Ok(cls.call1((fr.numerator, fr.denominator))?.unbind())
+}
+
+fn py_to_sensor_frame_rate(p: &Bound<'_, PyAny>) -> PyResult<RustSensorFrameRate> {
+    let py = p.py();
+    Ok(RustSensorFrameRate {
+        numerator: p.getattr(intern!(py, "numerator"))?.extract()?,
+        denominator: p.getattr(intern!(py, "denominator"))?.extract()?,
+    })
+}
+
+/// Item 143: Metadata Substream Id.
+fn convert_metadata_substream_id(
+    py: Python<'_>,
+    ms: &RustMetadataSubstreamId,
+) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "MetadataSubstreamId"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("local_id", ms.local_id)?;
+    if let Some(uuid) = ms.uuid {
+        kwargs.set_item("uuid", pyo3::types::PyBytes::new_bound(py, &uuid))?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_metadata_substream_id(p: &Bound<'_, PyAny>) -> PyResult<RustMetadataSubstreamId> {
+    let py = p.py();
+    let local_id = p.getattr(intern!(py, "local_id"))?.extract()?;
+    let uuid_obj = p.getattr(intern!(py, "uuid"))?;
+    let uuid = if uuid_obj.is_none() {
+        None
+    } else {
+        let bytes: Vec<u8> = uuid_obj.extract()?;
+        if bytes.len() != 16 {
+            return Err(PyValueError::new_err(format!(
+                "MetadataSubstreamId.uuid must be 16 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        let mut u = [0u8; 16];
+        u.copy_from_slice(&bytes);
+        Some(u)
+    };
+    Ok(RustMetadataSubstreamId { local_id, uuid })
+}
+
+/// Item 122: Country Codes.
+fn convert_country_codes(py: Python<'_>, cc: &RustCountryCodes) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "CountryCodes"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("coding_method", cc.coding_method)?;
+    if let Some(s) = cc.overflight.as_deref() {
+        kwargs.set_item("overflight", s)?;
+    }
+    if let Some(s) = cc.operator.as_deref() {
+        kwargs.set_item("operator", s)?;
+    }
+    if let Some(s) = cc.manufacture.as_deref() {
+        kwargs.set_item("manufacture", s)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_country_codes(p: &Bound<'_, PyAny>) -> PyResult<RustCountryCodes> {
+    let py = p.py();
+    Ok(RustCountryCodes {
+        coding_method: p.getattr(intern!(py, "coding_method"))?.extract()?,
+        overflight: p.getattr(intern!(py, "overflight"))?.extract()?,
+        operator: p.getattr(intern!(py, "operator"))?.extract()?,
+        manufacture: p.getattr(intern!(py, "manufacture"))?.extract()?,
+    })
+}
+
+/// One record of Item 128, Wavelengths List.
+fn convert_wavelength_record(py: Python<'_>, w: &RustWavelengthRecord) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "WavelengthRecord"))?;
+    Ok(cls
+        .call1((w.id, w.min_nm, w.max_nm, w.name.as_str()))?
+        .unbind())
+}
+
+fn py_to_wavelength_record(p: &Bound<'_, PyAny>) -> PyResult<RustWavelengthRecord> {
+    let py = p.py();
+    Ok(RustWavelengthRecord {
+        id: p.getattr(intern!(py, "id"))?.extract()?,
+        min_nm: p.getattr(intern!(py, "min_nm"))?.extract()?,
+        max_nm: p.getattr(intern!(py, "max_nm"))?.extract()?,
+        name: p.getattr(intern!(py, "name"))?.extract()?,
+    })
+}
+
+/// Shared by Item 130 (Airbase Locations) and Item 141 (Waypoint List).
+fn convert_location(py: Python<'_>, loc: &RustLocation) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "Location"))?;
+    let kwargs = PyDict::new_bound(py);
+    if let Some(v) = loc.lat_deg {
+        kwargs.set_item("lat_deg", v)?;
+    }
+    if let Some(v) = loc.lon_deg {
+        kwargs.set_item("lon_deg", v)?;
+    }
+    if let Some(v) = loc.hae_m {
+        kwargs.set_item("hae_m", v)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_location(p: &Bound<'_, PyAny>) -> PyResult<RustLocation> {
+    let py = p.py();
+    Ok(RustLocation {
+        lat_deg: p.getattr(intern!(py, "lat_deg"))?.extract()?,
+        lon_deg: p.getattr(intern!(py, "lon_deg"))?.extract()?,
+        hae_m: p.getattr(intern!(py, "hae_m"))?.extract()?,
+    })
+}
+
+/// Item 130: Airbase Locations.
+fn convert_airbase_locations(py: Python<'_>, al: &RustAirbaseLocations) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "AirbaseLocations"))?;
+    let kwargs = PyDict::new_bound(py);
+    if let Some(loc) = al.take_off {
+        kwargs.set_item("take_off", convert_location(py, &loc)?)?;
+    }
+    if let Some(loc) = al.recovery {
+        kwargs.set_item("recovery", convert_location(py, &loc)?)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_airbase_locations(p: &Bound<'_, PyAny>) -> PyResult<RustAirbaseLocations> {
+    let py = p.py();
+    let take_off_obj = p.getattr(intern!(py, "take_off"))?;
+    let take_off = if take_off_obj.is_none() {
+        None
+    } else {
+        Some(py_to_location(&take_off_obj)?)
+    };
+    let recovery_obj = p.getattr(intern!(py, "recovery"))?;
+    let recovery = if recovery_obj.is_none() {
+        None
+    } else {
+        Some(py_to_location(&recovery_obj)?)
+    };
+    Ok(RustAirbaseLocations { take_off, recovery })
+}
+
+// `PayloadType::to_wire`/`from_wire` are `pub(crate)`-scoped to tst-core
+// (same rationale as the WP-A coded-enum comment above
+// `convert_icing_detected`) — the tiny wire-code table is duplicated
+// locally here.
+
+/// Item 138 §Table 17 Payload Type — codepoint enum. Wire-unknown codes
+/// surface as a raw `int` (`Other(code)`), same asymmetric pattern as
+/// `IcingDetected`.
+fn convert_payload_type(py: Python<'_>, v: RustPayloadType) -> PyResult<PyObject> {
+    let code = match v {
+        RustPayloadType::ElectroOptical => 0u64,
+        RustPayloadType::Lidar => 1,
+        RustPayloadType::Radar => 2,
+        RustPayloadType::Sigint => 3,
+        RustPayloadType::Sar => 4,
+        RustPayloadType::Other(c) => return Ok(c.into_py(py)),
+        // #[non_exhaustive] in tst-core: a wildcard is required even
+        // though every current variant is covered above.
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown PayloadType variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "PayloadType"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_payload_type`.
+fn payload_type_from_wire(code: u64) -> RustPayloadType {
+    match code {
+        0 => RustPayloadType::ElectroOptical,
+        1 => RustPayloadType::Lidar,
+        2 => RustPayloadType::Radar,
+        3 => RustPayloadType::Sigint,
+        4 => RustPayloadType::Sar,
+        other => RustPayloadType::Other(other),
+    }
+}
+
+/// One record of Item 138, Payload List.
+fn convert_payload_record(py: Python<'_>, r: &RustPayloadRecord) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "PayloadRecord"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("id", r.id)?;
+    kwargs.set_item("payload_type", convert_payload_type(py, r.payload_type)?)?;
+    kwargs.set_item("name", r.name.as_str())?;
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_payload_record(p: &Bound<'_, PyAny>) -> PyResult<RustPayloadRecord> {
+    let py = p.py();
+    let id = p.getattr(intern!(py, "id"))?.extract()?;
+    let payload_type_obj = p.getattr(intern!(py, "payload_type"))?;
+    let payload_type = payload_type_from_wire(enum_field_to_u64(&payload_type_obj)?);
+    let name = p.getattr(intern!(py, "name"))?.extract()?;
+    Ok(RustPayloadRecord {
+        id,
+        payload_type,
+        name,
+    })
+}
+
+/// Item 138: Payload List.
+fn convert_payload_list(py: Python<'_>, pl: &RustPayloadList) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "PayloadList"))?;
+    let records: Vec<PyObject> = pl
+        .records
+        .iter()
+        .map(|r| convert_payload_record(py, r))
+        .collect::<PyResult<Vec<_>>>()?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("count", pl.count)?;
+    kwargs.set_item("records", pyo3::types::PyTuple::new_bound(py, records))?;
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_payload_list(p: &Bound<'_, PyAny>) -> PyResult<RustPayloadList> {
+    let py = p.py();
+    let count = p.getattr(intern!(py, "count"))?.extract()?;
+    let mut records = Vec::new();
+    for r in p.getattr(intern!(py, "records"))?.iter()? {
+        records.push(py_to_payload_record(&r?)?);
+    }
+    Ok(RustPayloadList { count, records })
+}
+
+/// One record of Item 140, Weapons Stores. `general_status`/`fuze_enabled`/
+/// `laser_enabled`/`target_enabled`/`weapon_armed` are `@property`
+/// accessors on the Python side (see `WeaponsStore` in klv.py) computed
+/// from `status_raw` — only the raw field crosses the binding.
+fn convert_weapons_store(py: Python<'_>, ws: &RustWeaponsStore) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "WeaponsStore"))?;
+    Ok(cls
+        .call1((
+            ws.station_id,
+            ws.hardpoint_id,
+            ws.carriage_id,
+            ws.store_id,
+            ws.status_raw,
+            ws.weapon_type.as_str(),
+        ))?
+        .unbind())
+}
+
+fn py_to_weapons_store(p: &Bound<'_, PyAny>) -> PyResult<RustWeaponsStore> {
+    let py = p.py();
+    Ok(RustWeaponsStore {
+        station_id: p.getattr(intern!(py, "station_id"))?.extract()?,
+        hardpoint_id: p.getattr(intern!(py, "hardpoint_id"))?.extract()?,
+        carriage_id: p.getattr(intern!(py, "carriage_id"))?.extract()?,
+        store_id: p.getattr(intern!(py, "store_id"))?.extract()?,
+        status_raw: p.getattr(intern!(py, "status_raw"))?.extract()?,
+        weapon_type: p.getattr(intern!(py, "weapon_type"))?.extract()?,
+    })
+}
+
+/// One record of Item 141, Waypoint List.
+fn convert_waypoint(py: Python<'_>, wp: &RustWaypoint) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "Waypoint"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("id", wp.id)?;
+    kwargs.set_item("prosecution_order", wp.prosecution_order)?;
+    if let Some(v) = wp.info {
+        kwargs.set_item("info", v)?;
+    }
+    if let Some(loc) = wp.location {
+        kwargs.set_item("location", convert_location(py, &loc)?)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_waypoint(p: &Bound<'_, PyAny>) -> PyResult<RustWaypoint> {
+    let py = p.py();
+    let id = p.getattr(intern!(py, "id"))?.extract()?;
+    let prosecution_order = p.getattr(intern!(py, "prosecution_order"))?.extract()?;
+    let info = p.getattr(intern!(py, "info"))?.extract()?;
+    let location_obj = p.getattr(intern!(py, "location"))?;
+    let location = if location_obj.is_none() {
+        None
+    } else {
+        Some(py_to_location(&location_obj)?)
+    };
+    Ok(RustWaypoint {
+        id,
+        prosecution_order,
+        info,
+        location,
+    })
+}
+
+/// One `(start, range)` pair of Item 142, View Domain.
+fn convert_view_domain_pair(py: Python<'_>, p: &RustViewDomainPair) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "ViewDomainPair"))?;
+    Ok(cls.call1((p.start_deg, p.range_deg))?.unbind())
+}
+
+fn py_to_view_domain_pair(p: &Bound<'_, PyAny>) -> PyResult<RustViewDomainPair> {
+    let py = p.py();
+    Ok(RustViewDomainPair {
+        start_deg: p.getattr(intern!(py, "start_deg"))?.extract()?,
+        range_deg: p.getattr(intern!(py, "range_deg"))?.extract()?,
+    })
+}
+
+/// Item 142: View Domain.
+fn convert_view_domain(py: Python<'_>, vd: &RustViewDomain) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "ViewDomain"))?;
+    let kwargs = PyDict::new_bound(py);
+    if let Some(p) = vd.azimuth {
+        kwargs.set_item("azimuth", convert_view_domain_pair(py, &p)?)?;
+    }
+    if let Some(p) = vd.elevation {
+        kwargs.set_item("elevation", convert_view_domain_pair(py, &p)?)?;
+    }
+    if let Some(p) = vd.roll {
+        kwargs.set_item("roll", convert_view_domain_pair(py, &p)?)?;
+    }
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_view_domain(p: &Bound<'_, PyAny>) -> PyResult<RustViewDomain> {
+    let py = p.py();
+    macro_rules! opt_pair {
+        ($field:ident) => {{
+            let obj = p.getattr(intern!(py, stringify!($field)))?;
+            if obj.is_none() {
+                None
+            } else {
+                Some(py_to_view_domain_pair(&obj)?)
+            }
+        }};
+    }
+    Ok(RustViewDomain {
+        azimuth: opt_pair!(azimuth),
+        elevation: opt_pair!(elevation),
+        roll: opt_pair!(roll),
+    })
+}
+
+/// One captured ST 0601 Item 102 (SDCC-FLP) occurrence — MULTI-INSTANCE
+/// (`UasDatalinkLs.sdcc_flps`). `bytes` is the raw pack; decode it with
+/// the free function `decode_sdcc_flp`.
+fn convert_sdcc_flp_field(py: Python<'_>, f: &RustSdccFlpField) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "SdccFlpField"))?;
+    let preceding =
+        pyo3::types::PyTuple::new_bound(py, f.preceding_tags.iter().map(|&t| t.into_py(py)));
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("preceding_tags", preceding)?;
+    kwargs.set_item("bytes", pyo3::types::PyBytes::new_bound(py, &f.bytes))?;
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+fn py_to_sdcc_flp_field(p: &Bound<'_, PyAny>) -> PyResult<RustSdccFlpField> {
+    let py = p.py();
+    Ok(RustSdccFlpField {
+        preceding_tags: p.getattr(intern!(py, "preceding_tags"))?.extract()?,
+        bytes: p.getattr(intern!(py, "bytes"))?.extract()?,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// ST 1010.3 SDCC-FLP — general-purpose (not ST 0601-specific); entry
+// points further down. `SdccFlp` has no `py_to_*` inverse: the only
+// encoder, `encode_sdcc_flp_mode2`, takes plain std-dev/correlation
+// lists rather than a full struct (see the C1 outcome notes).
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `SdccFlp` to a Python `tstrans.klv.SdccFlp` dataclass.
+fn convert_sdcc_flp(py: Python<'_>, m: &RustSdccFlp) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "SdccFlp"))?;
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("matrix_size", m.matrix_size)?;
+    kwargs.set_item(
+        "std_devs",
+        pyo3::types::PyTuple::new_bound(py, m.std_devs.iter().map(|&v| v.into_py(py))),
+    )?;
+    kwargs.set_item(
+        "correlations",
+        pyo3::types::PyTuple::new_bound(py, m.correlations.iter().map(|&v| v.into_py(py))),
+    )?;
+    kwargs.set_item(
+        "correlation_present",
+        pyo3::types::PyTuple::new_bound(py, m.correlation_present.iter().map(|&v| v.into_py(py))),
+    )?;
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Decode a MISB ST 1010.3 SDCC-FLP pack (Mode 1 and Mode 2). `buf` is
+/// the pack bytes starting at Element 1 (Matrix Size) — no outer TLV
+/// framing and no leading Universal Label. General-purpose: not
+/// ST 0601-specific (see `SdccFlp`'s docstring for the ST 0601 Tag 102
+/// "Refined Source List" carriage, which is a separate concern captured
+/// in `UasDatalinkLs.sdcc_flps` / `SdccFlpField`).
+#[pyfunction]
+#[pyo3(name = "decode_sdcc_flp")]
+fn decode_sdcc_flp_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObject> {
+    match decode_st1010_sdcc_flp(buf) {
+        Ok(m) => convert_sdcc_flp(py, &m),
+        Err(e) => Err(klv_field_error_to_pyerr(py, e)),
+    }
+}
+
+/// Encode a Mode-2 SDCC-FLP: standard deviations as IEEE binary32,
+/// correlations as ST 1201 IMAPB(-1, 1, `clen`). Sparse mode + Bit
+/// Vector are chosen automatically when zero-correlations make it pay.
+/// `len(correlations)` must equal `len(std_devs) * (len(std_devs) - 1) / 2`
+/// (the upper-triangle slot count), in row-major (i<j) order. Returns
+/// `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_sdcc_flp_mode2")]
+fn encode_sdcc_flp_mode2_py(
+    py: Python<'_>,
+    std_devs: Vec<f64>,
+    correlations: Vec<f64>,
+    clen: usize,
+) -> PyResult<PyObject> {
+    let bytes = encode_st1010_sdcc_flp_mode2(&std_devs, &correlations, clen)
+        .map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
 // ST 0601 — UAS Datalink LS
 // ---------------------------------------------------------------------------
 
@@ -1481,6 +2037,84 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
     if let Some(v) = r.operational_mode {
         kwargs.set_item("operational_mode", convert_operational_mode(py, v)?)?;
     }
+
+    // WP-C Table C1 — pack & list items (tags 81/102/115/116/121/122/
+    // 127/128/130/138/140/141/142/143).
+    if let Some(h) = r.image_horizon {
+        kwargs.set_item("image_horizon", convert_image_horizon(py, &h)?)?;
+    }
+    let control_commands: Vec<PyObject> = r
+        .control_commands
+        .iter()
+        .map(|c| convert_control_command(py, c))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item(
+        "control_commands",
+        pyo3::types::PyTuple::new_bound(py, control_commands),
+    )?;
+    if let Some(ids) = &r.control_command_verification {
+        kwargs.set_item(
+            "control_command_verification",
+            pyo3::types::PyTuple::new_bound(py, ids.iter().map(|&v| v.into_py(py))),
+        )?;
+    }
+    if let Some(ids) = &r.active_wavelengths {
+        kwargs.set_item(
+            "active_wavelengths",
+            pyo3::types::PyTuple::new_bound(py, ids.iter().map(|&v| v.into_py(py))),
+        )?;
+    }
+    if let Some(fr) = r.sensor_frame_rate {
+        kwargs.set_item("sensor_frame_rate", convert_sensor_frame_rate(py, &fr)?)?;
+    }
+    if let Some(ms) = r.metadata_substream_id {
+        kwargs.set_item(
+            "metadata_substream_id",
+            convert_metadata_substream_id(py, &ms)?,
+        )?;
+    }
+    if let Some(cc) = &r.country_codes {
+        kwargs.set_item("country_codes", convert_country_codes(py, cc)?)?;
+    }
+    if let Some(list) = &r.wavelengths_list {
+        let items: Vec<PyObject> = list
+            .iter()
+            .map(|w| convert_wavelength_record(py, w))
+            .collect::<PyResult<Vec<_>>>()?;
+        kwargs.set_item(
+            "wavelengths_list",
+            pyo3::types::PyTuple::new_bound(py, items),
+        )?;
+    }
+    if let Some(al) = r.airbase_locations {
+        kwargs.set_item("airbase_locations", convert_airbase_locations(py, &al)?)?;
+    }
+    if let Some(pl) = &r.payload_list {
+        kwargs.set_item("payload_list", convert_payload_list(py, pl)?)?;
+    }
+    if let Some(list) = &r.weapons_stores {
+        let items: Vec<PyObject> = list
+            .iter()
+            .map(|w| convert_weapons_store(py, w))
+            .collect::<PyResult<Vec<_>>>()?;
+        kwargs.set_item("weapons_stores", pyo3::types::PyTuple::new_bound(py, items))?;
+    }
+    if let Some(list) = &r.waypoint_list {
+        let items: Vec<PyObject> = list
+            .iter()
+            .map(|w| convert_waypoint(py, w))
+            .collect::<PyResult<Vec<_>>>()?;
+        kwargs.set_item("waypoint_list", pyo3::types::PyTuple::new_bound(py, items))?;
+    }
+    if let Some(vd) = r.view_domain {
+        kwargs.set_item("view_domain", convert_view_domain(py, &vd)?)?;
+    }
+    let sdcc_flps: Vec<PyObject> = r
+        .sdcc_flps
+        .iter()
+        .map(|f| convert_sdcc_flp_field(py, f))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item("sdcc_flps", pyo3::types::PyTuple::new_bound(py, sdcc_flps))?;
 
     kwargs.set_item("unknown", convert_unknown(py, &r.unknown)?)?;
     kwargs.set_item("field_errors", convert_field_errors(py, &r.field_errors)?)?;
@@ -1783,6 +2417,78 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     let opmode_obj = p.getattr(intern!(p.py(), "operational_mode"))?;
     if !opmode_obj.is_none() {
         r.operational_mode = Some(operational_mode_from_wire(enum_field_to_u8(&opmode_obj)?));
+    }
+
+    // WP-C Table C1 — pack & list items.
+    macro_rules! ou64vec {
+        ($field:ident) => {
+            if let Some(v) = p
+                .getattr(intern!(p.py(), stringify!($field)))?
+                .extract::<Option<Vec<u64>>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    let image_horizon_obj = p.getattr(intern!(p.py(), "image_horizon"))?;
+    if !image_horizon_obj.is_none() {
+        r.image_horizon = Some(py_to_image_horizon(&image_horizon_obj)?);
+    }
+    for c in p.getattr(intern!(p.py(), "control_commands"))?.iter()? {
+        r.control_commands.push(py_to_control_command(&c?)?);
+    }
+    ou64vec!(control_command_verification);
+    ou64vec!(active_wavelengths);
+    let sensor_frame_rate_obj = p.getattr(intern!(p.py(), "sensor_frame_rate"))?;
+    if !sensor_frame_rate_obj.is_none() {
+        r.sensor_frame_rate = Some(py_to_sensor_frame_rate(&sensor_frame_rate_obj)?);
+    }
+    let metadata_substream_id_obj = p.getattr(intern!(p.py(), "metadata_substream_id"))?;
+    if !metadata_substream_id_obj.is_none() {
+        r.metadata_substream_id = Some(py_to_metadata_substream_id(&metadata_substream_id_obj)?);
+    }
+    let country_codes_obj = p.getattr(intern!(p.py(), "country_codes"))?;
+    if !country_codes_obj.is_none() {
+        r.country_codes = Some(py_to_country_codes(&country_codes_obj)?);
+    }
+    let wavelengths_list_obj = p.getattr(intern!(p.py(), "wavelengths_list"))?;
+    if !wavelengths_list_obj.is_none() {
+        let mut list = Vec::new();
+        for w in wavelengths_list_obj.iter()? {
+            list.push(py_to_wavelength_record(&w?)?);
+        }
+        r.wavelengths_list = Some(list);
+    }
+    let airbase_locations_obj = p.getattr(intern!(p.py(), "airbase_locations"))?;
+    if !airbase_locations_obj.is_none() {
+        r.airbase_locations = Some(py_to_airbase_locations(&airbase_locations_obj)?);
+    }
+    let payload_list_obj = p.getattr(intern!(p.py(), "payload_list"))?;
+    if !payload_list_obj.is_none() {
+        r.payload_list = Some(py_to_payload_list(&payload_list_obj)?);
+    }
+    let weapons_stores_obj = p.getattr(intern!(p.py(), "weapons_stores"))?;
+    if !weapons_stores_obj.is_none() {
+        let mut list = Vec::new();
+        for w in weapons_stores_obj.iter()? {
+            list.push(py_to_weapons_store(&w?)?);
+        }
+        r.weapons_stores = Some(list);
+    }
+    let waypoint_list_obj = p.getattr(intern!(p.py(), "waypoint_list"))?;
+    if !waypoint_list_obj.is_none() {
+        let mut list = Vec::new();
+        for w in waypoint_list_obj.iter()? {
+            list.push(py_to_waypoint(&w?)?);
+        }
+        r.waypoint_list = Some(list);
+    }
+    let view_domain_obj = p.getattr(intern!(p.py(), "view_domain"))?;
+    if !view_domain_obj.is_none() {
+        r.view_domain = Some(py_to_view_domain(&view_domain_obj)?);
+    }
+    for f in p.getattr(intern!(p.py(), "sdcc_flps"))?.iter()? {
+        r.sdcc_flps.push(py_to_sdcc_flp_field(&f?)?);
     }
 
     r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
@@ -2195,5 +2901,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_core_id_py, m)?)?;
     m.add_function(wrap_pyfunction!(core_id_text_py, m)?)?;
     m.add_function(wrap_pyfunction!(validate_mismms_py, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_sdcc_flp_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_sdcc_flp_mode2_py, m)?)?;
     Ok(())
 }

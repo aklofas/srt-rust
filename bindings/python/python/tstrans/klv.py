@@ -1279,9 +1279,7 @@ class SdccFlp:
                 )
             return self.std_devs[i]
         lo, hi = (i, j) if i < j else (j, i)
-        offset = 0
-        for k in range(lo):
-            offset += n - 1 - k
+        offset = lo * (2 * n - lo - 1) // 2
         return self.correlations[offset + (hi - lo - 1)]
 
 

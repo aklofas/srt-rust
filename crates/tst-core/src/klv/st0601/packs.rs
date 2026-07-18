@@ -58,12 +58,16 @@ fn truncated(tag: u32) -> impl FnOnce(KlvDecodeError) -> KlvFieldError {
 /// at `INT_MIN` (`0x80000000`) on any of the four trailing fields is the
 /// item's spec-defined "error" indicator (§8.81): that field decodes to
 /// `None` just like a truncated-away field, but the byte position IS
-/// consumed (parsing continues to the next field). Unlike the top-level
-/// LS `sentinel_tags` mechanism, this in-pack sentinel is not tracked
-/// anywhere — the two cases (truncated vs. sentinel) are indistinguishable
-/// once decoded, and re-encoding a record whose trailing field is `None`
-/// always truncates the pack there (a `Some` field after the first `None`,
-/// in wire order, is silently dropped on encode).
+/// consumed (parsing continues to the next field).
+///
+/// **Encode semantics:** a `None` field that lies BEFORE the last `Some`
+/// field (in wire order) is re-encoded as the `INT_MIN` sentinel — the
+/// spec's own error indicator, which decode maps straight back to `None`
+/// — so a later `Some` field is never silently dropped just because an
+/// earlier optional field is absent. Only a `None` AFTER the last `Some`
+/// (or all four `None`) truncates the pack there, matching decode's own
+/// truncation semantics: there is no wire difference between "never
+/// sent" and "sentinel would be redundant here" once the pack has ended.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ImageHorizonPixels {
     pub x0_pct: u8,
@@ -137,15 +141,22 @@ pub(crate) fn parse_image_horizon(bytes: &[u8]) -> Result<ImageHorizonPixels, Kl
     Ok(h)
 }
 
+/// Index of the last `Some` among the four optional trailing fields, or
+/// `None` if all four are absent. Every optional field up to and
+/// including this index gets a wire slot (sentinel-filled where the
+/// field itself is `None`); shared by [`image_horizon_len`] and
+/// [`emit_image_horizon`] so their stopping point can't drift apart.
+fn image_horizon_last_some(h: &ImageHorizonPixels) -> Option<usize> {
+    image_horizon_optional_values(h)
+        .iter()
+        .rposition(|v| v.is_some())
+}
+
 pub(crate) fn image_horizon_len(h: &ImageHorizonPixels) -> usize {
-    let mut n = 4;
-    for v in image_horizon_optional_values(h) {
-        if v.is_none() {
-            break;
-        }
-        n += 4;
+    match image_horizon_last_some(h) {
+        Some(last) => 4 + 4 * (last + 1),
+        None => 4,
     }
-    n
 }
 
 pub(crate) fn emit_image_horizon(
@@ -156,13 +167,27 @@ pub(crate) fn emit_image_horizon(
     out.push(h.y0_pct);
     out.push(h.x1_pct);
     out.push(h.y1_pct);
-    for (value, range) in image_horizon_optional_values(h)
+    let Some(last) = image_horizon_last_some(h) else {
+        return Ok(()); // no optional fields at all
+    };
+    for (i, (value, range)) in image_horizon_optional_values(h)
         .into_iter()
         .zip(IMAGE_HORIZON_OPTIONAL_RANGES)
+        .enumerate()
     {
-        let Some(v) = value else { break };
+        if i > last {
+            break; // trailing None(s) after the last Some — clean truncation
+        }
         let mut buf = [0u8; 4];
-        encode_fixed_range(&range, 81, v, &mut buf, OutOfRangePolicy::Error)?;
+        match value {
+            Some(v) => encode_fixed_range(&range, 81, v, &mut buf, OutOfRangePolicy::Error)?,
+            // Interior None (before the last Some): fill with the
+            // spec's own INT_MIN "error" indicator (§8.81) rather than
+            // dropping this slot — decode maps it straight back to
+            // `None`, so the round trip is lossless for the Some
+            // fields that follow.
+            None => buf = i32::MIN.to_be_bytes(),
+        }
         out.extend_from_slice(&buf);
     }
     Ok(())
@@ -432,6 +457,68 @@ mod tests {
         assert_eq!(back.x0_pct, 10);
         assert!((back.start_lat_deg.unwrap() - 10.0).abs() < 1e-3);
         assert!((back.end_lon_deg.unwrap() - (-40.0)).abs() < 1e-3);
+    }
+
+    /// A spec-legal wire can carry the INT_MIN "error" indicator
+    /// (§8.81) for an EARLIER optional field while carrying valid data
+    /// for a LATER one — decode must not lose the later fields, and
+    /// re-encode must reproduce the exact same wire bytes (sentinel
+    /// fill, not truncation).
+    #[test]
+    fn image_horizon_sentinel_then_valid_data_round_trips_byte_identical() {
+        let mut wire = vec![10u8, 20, 30, 40];
+        wire.extend_from_slice(&i32::MIN.to_be_bytes()); // start_lat: sentinel
+        let mut buf = [0u8; 4];
+        encode_fixed_range(&LON_RANGE, 81, -20.0, &mut buf, OutOfRangePolicy::Error).unwrap();
+        wire.extend_from_slice(&buf); // start_lon: valid
+        encode_fixed_range(&LAT_RANGE, 81, 30.0, &mut buf, OutOfRangePolicy::Error).unwrap();
+        wire.extend_from_slice(&buf); // end_lat: valid
+        encode_fixed_range(&LON_RANGE, 81, -40.0, &mut buf, OutOfRangePolicy::Error).unwrap();
+        wire.extend_from_slice(&buf); // end_lon: valid
+
+        let h = parse_image_horizon(&wire).unwrap();
+        assert_eq!((h.x0_pct, h.y0_pct, h.x1_pct, h.y1_pct), (10, 20, 30, 40));
+        assert_eq!(h.start_lat_deg, None, "INT_MIN sentinel decodes to None");
+        assert!((h.start_lon_deg.unwrap() - (-20.0)).abs() < 1e-6);
+        assert!((h.end_lat_deg.unwrap() - 30.0).abs() < 1e-6);
+        assert!((h.end_lon_deg.unwrap() - (-40.0)).abs() < 1e-6);
+
+        let mut re_encoded = Vec::new();
+        emit_image_horizon(&h, &mut re_encoded).unwrap();
+        assert_eq!(
+            re_encoded, wire,
+            "sentinel-then-data pack must re-encode byte-identical, not truncated"
+        );
+    }
+
+    /// In-memory record with interior `None` gaps (not derived from a
+    /// decode) must still round-trip its `Some` fields intact through
+    /// encode -> decode.
+    #[test]
+    fn image_horizon_interior_none_round_trips_via_encode_decode() {
+        let h = ImageHorizonPixels {
+            x0_pct: 1,
+            y0_pct: 2,
+            x1_pct: 3,
+            y1_pct: 4,
+            start_lat_deg: None,
+            start_lon_deg: Some(45.0),
+            end_lat_deg: None,
+            end_lon_deg: Some(-90.0),
+        };
+        let mut buf = Vec::new();
+        emit_image_horizon(&h, &mut buf).unwrap();
+        assert_eq!(buf.len(), image_horizon_len(&h));
+        assert_eq!(
+            buf.len(),
+            20,
+            "all 4 optional slots present up to the last Some"
+        );
+        let back = parse_image_horizon(&buf).unwrap();
+        assert_eq!(back.start_lat_deg, None);
+        assert!((back.start_lon_deg.unwrap() - 45.0).abs() < 1e-6);
+        assert_eq!(back.end_lat_deg, None);
+        assert!((back.end_lon_deg.unwrap() - (-90.0)).abs() < 1e-6);
     }
 
     #[test]

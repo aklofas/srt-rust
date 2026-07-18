@@ -38,7 +38,7 @@ the published ST 0601 mandatory-field rules.
 ## Two layers
 
 ```
-typed:    klv::st0601 (UAS Datalink LS, 49 typed items)
+typed:    klv::st0601 (UAS Datalink LS, 142 of 143 items typed or structured)
           klv::st0605 (Precision Time Stamp Pack)
 
 substrate: klv::pack            (Iter, RawField, OwnedRawField)

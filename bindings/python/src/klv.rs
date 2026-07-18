@@ -1815,7 +1815,7 @@ fn encode_sdcc_flp_mode2_py(
 // ---------------------------------------------------------------------------
 
 /// Translate a Rust `UasDatalinkLs` to a Python `tstrans.klv.UasDatalinkLs`
-/// dataclass instance. Mechanical 133-field projection.
+/// dataclass instance. Mechanical 147-field projection.
 #[allow(clippy::cognitive_complexity)]
 fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;

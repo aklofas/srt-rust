@@ -669,73 +669,91 @@ const LOCATION_PARAMS: [ImapbParams; 3] = [
     },
 ];
 
-fn location_optional_values(loc: &Location) -> [Option<f64>; 3] {
-    [loc.lat_deg, loc.lon_deg, loc.hae_m]
+/// Wire byte length that would be occupied by `loc`'s BOTH-OR-NEITHER
+/// `lat`/`lon` pair plus, if present, the trailing `hae` — one of `0`
+/// (fully absent), `8` (pair only), or `11` (pair + HAE). ST 0601.19
+/// Table 16 marks Latitude and Longitude Mandatory and HAE Optional:
+/// only HAE truncates independently, the pair does not. Shared by
+/// [`location_len`] and [`emit_location`] so their stopping point can't
+/// drift apart, and by [`parse_location`]'s valid-length check.
+fn location_wire_len(loc: &Location) -> usize {
+    if loc.hae_m.is_some() {
+        11
+    } else if loc.lat_deg.is_some() || loc.lon_deg.is_some() {
+        8
+    } else {
+        0
+    }
 }
 
-fn location_setters() -> [fn(&mut Location, Option<f64>); 3] {
-    [
-        |l, v| l.lat_deg = v,
-        |l, v| l.lon_deg = v,
-        |l, v| l.hae_m = v,
-    ]
+/// Whether `n` is one of the three valid [`Location`] wire lengths —
+/// `0`, `8`, or `11` (see [`location_wire_len`]). Callers combining a
+/// `Location` with a preceding self-delimiting field (e.g. [`Waypoint`]'s
+/// `info`) can check this BEFORE attempting to consume that field: no
+/// two members of `{0, 8, 11}` differ by exactly 1 byte, so a 1-byte
+/// `info` value can never be mistaken for part of a `Location`.
+fn is_valid_location_len(n: usize) -> bool {
+    matches!(n, 0 | 8 | 11)
 }
 
-fn location_last_some(loc: &Location) -> Option<usize> {
-    location_optional_values(loc)
-        .iter()
-        .rposition(|v| v.is_some())
+fn emit_location_field(
+    value: Option<f64>,
+    params: &ImapbParams,
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 4];
+    match value {
+        Some(v) => encode_imapb(params, v, &mut buf[..params.length])?,
+        // Interior-absent filler — see the struct rustdoc. Only `lat`/
+        // `lon` can hit this arm (the pair is transmitted as a unit
+        // once either is `Some`); `hae` is only ever passed `Some` here.
+        None => encode_imapb_special(
+            ImapbSpecial::UserDefined { signal: 0 },
+            params.length,
+            &mut buf[..params.length],
+        )?,
+    }
+    out.extend_from_slice(&buf[..params.length]);
+    Ok(())
 }
 
 pub(crate) fn parse_location(bytes: &[u8], tag: u32) -> Result<Location, KlvFieldError> {
-    let mut loc = Location::default();
-    let setters = location_setters();
-    let mut offset = 0usize;
-    for (params, setter) in LOCATION_PARAMS.into_iter().zip(setters) {
-        if offset + params.length > bytes.len() {
-            break; // clean truncation — no more optional fields on the wire
-        }
-        let v = decode_imapb_optional(&params, &bytes[offset..offset + params.length])?;
-        setter(&mut loc, v);
-        offset += params.length;
-    }
-    if offset != bytes.len() {
+    if !is_valid_location_len(bytes.len()) {
         return Err(KlvFieldError::InvalidLength {
             tag,
-            expected: offset,
+            expected: 11,
             got: bytes.len(),
         });
     }
-    Ok(loc)
+    if bytes.is_empty() {
+        return Ok(Location::default());
+    }
+    let lat_deg = decode_imapb_optional(&LOCATION_PARAMS[0], &bytes[0..4])?;
+    let lon_deg = decode_imapb_optional(&LOCATION_PARAMS[1], &bytes[4..8])?;
+    let hae_m = if bytes.len() == 11 {
+        decode_imapb_optional(&LOCATION_PARAMS[2], &bytes[8..11])?
+    } else {
+        None
+    };
+    Ok(Location {
+        lat_deg,
+        lon_deg,
+        hae_m,
+    })
 }
 
 pub(crate) fn location_len(loc: &Location) -> usize {
-    match location_last_some(loc) {
-        Some(last) => LOCATION_PARAMS[..=last].iter().map(|p| p.length).sum(),
-        None => 0,
-    }
+    location_wire_len(loc)
 }
 
 pub(crate) fn emit_location(loc: &Location, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
-    let Some(last) = location_last_some(loc) else {
+    if location_wire_len(loc) == 0 {
         return Ok(());
-    };
-    let values = location_optional_values(loc);
-    for (i, (value, params)) in values.into_iter().zip(LOCATION_PARAMS).enumerate() {
-        if i > last {
-            break;
-        }
-        let mut buf = [0u8; 4];
-        match value {
-            Some(v) => encode_imapb(&params, v, &mut buf[..params.length])?,
-            // Interior-absent filler — see the struct rustdoc.
-            None => encode_imapb_special(
-                ImapbSpecial::UserDefined { signal: 0 },
-                params.length,
-                &mut buf[..params.length],
-            )?,
-        }
-        out.extend_from_slice(&buf[..params.length]);
+    }
+    emit_location_field(loc.lat_deg, &LOCATION_PARAMS[0], out)?;
+    emit_location_field(loc.lon_deg, &LOCATION_PARAMS[1], out)?;
+    if let Some(hae) = loc.hae_m {
+        emit_location_field(Some(hae), &LOCATION_PARAMS[2], out)?;
     }
     Ok(())
 }
@@ -1193,24 +1211,21 @@ pub(crate) fn emit_weapons_stores(
 /// external marker), and this decoder distinguishes "info present" from
 /// "info absent, straight to location" by checking whether the
 /// remaining byte count already matches a valid [`Location`] length
-/// (`0 | 4 | 8 | 11`, per [`Location`]'s truncation rule) BEFORE
-/// attempting to consume an `info` BER-OID. This is unambiguous only
-/// because no two members of `{0, 4, 8, 11}` differ by exactly the 1
-/// byte a conformant `info` value occupies (values 0-3 per §8.141's
-/// 2-bit Mode/Source field) — a future revision that widened `info`
-/// enough to need e.g. 4 BER-OID bytes could collide with a location-
-/// only remainder and misparse; not a concern for the field as
-/// currently defined.
+/// (`0`, `8`, or `11`, per [`Location`]'s truncation rule — the pair of
+/// Latitude/Longitude is mandatory both-or-neither, only HAE truncates
+/// independently) BEFORE attempting to consume an `info` BER-OID. This
+/// is unambiguous only because no two members of `{0, 8, 11}` differ by
+/// exactly the 1 byte a conformant `info` value occupies (values 0-3
+/// per §8.141's 2-bit Mode/Source field) — a future revision that
+/// widened `info` enough to need e.g. 8 BER-OID bytes could collide
+/// with a location-only remainder and misparse; not a concern for the
+/// field as currently defined.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Waypoint {
     pub id: u64,
     pub prosecution_order: i16,
     pub info: Option<u64>,
     pub location: Option<Location>,
-}
-
-fn is_valid_location_len(n: usize) -> bool {
-    matches!(n, 0 | 4 | 8 | 11)
 }
 
 fn parse_waypoint(bytes: &[u8]) -> Result<Waypoint, KlvFieldError> {
@@ -1228,7 +1243,7 @@ fn parse_waypoint(bytes: &[u8]) -> Result<Waypoint, KlvFieldError> {
     };
     if !is_valid_location_len(rest.len()) {
         // Malformed: after accounting for `info`, what's left doesn't
-        // match any valid Location length (0/4/8/11).
+        // match any valid Location length (0/8/11).
         return Err(KlvFieldError::InvalidLength {
             tag: 141,
             expected: 11,

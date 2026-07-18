@@ -3261,6 +3261,82 @@ fn wpc_airbase_locations_recovery_omitted_defaults_to_take_off() {
     assert_eq!(tlv_value(&re_encoded, 130), Some(v));
 }
 
+/// ST 0601.19 Table 16 marks Latitude and Longitude Mandatory but HAE
+/// Optional — a legitimate wire `Location` may be the 8-byte lat+lon
+/// pair with HAE truncated away entirely (distinct from a 4-byte
+/// lat-only pack, which Table 16 does not permit — see the next test).
+#[test]
+fn wpc_location_pair_only_no_hae_round_trips() {
+    let v = hex("08 406BC209 19BDA554"); // take-off = lat+lon only, no HAE
+    let al = decode_with_single_tlv_ber_oid(130, &v)
+        .airbase_locations
+        .unwrap();
+    let take_off = al.take_off.unwrap();
+    assert!(take_off.lat_deg.is_some());
+    assert!(take_off.lon_deg.is_some());
+    assert_eq!(take_off.hae_m, None);
+
+    let re_encoded = encode_with_field(|r| r.airbase_locations = Some(al));
+    assert_eq!(tlv_value(&re_encoded, 130), Some(v));
+}
+
+/// Latitude and Longitude are a mandatory BOTH-OR-NEITHER pair per
+/// ST 0601.19 Table 16 — a `Location` slot declaring length 4 (as if
+/// Latitude alone were truncatable) is malformed, not a valid
+/// lat-only truncation. Must land in `field_errors`, not silently
+/// decode a partial `Location`.
+#[test]
+fn wpc_location_four_byte_length_rejected() {
+    let v = hex("04 406BC209"); // take-off slot declares length 4 (lat-only) — invalid
+    let ls = decode_with_single_tlv_ber_oid(130, &v);
+    assert_eq!(
+        ls.airbase_locations, None,
+        "malformed Location must not populate the typed field"
+    );
+    assert_eq!(ls.field_errors.len(), 1);
+    assert!(
+        matches!(
+            ls.field_errors[0],
+            crate::error::KlvFieldError::InvalidLength {
+                tag: 130,
+                expected: 11,
+                got: 4,
+            }
+        ),
+        "got {:?}",
+        ls.field_errors[0]
+    );
+}
+
+/// A `Location` whose HAE is present but Latitude or Longitude is
+/// individually absent (a state ST 0601.19 §8.130 never itself
+/// produces, since the spec only ever truncates HAE, never leaves
+/// lat/lon absent while HAE is present) still round-trips: the
+/// mandatory pair is transmitted as an 11-byte unit, with the
+/// interior-absent field filled by the ST 1201.5 special-value filler
+/// and decoded straight back to `None`.
+#[test]
+fn wpc_location_interior_absent_lat_or_lon_round_trips_via_filler() {
+    let al = super::packs::AirbaseLocations {
+        take_off: Some(super::packs::Location {
+            lat_deg: Some(38.8),
+            lon_deg: None,
+            hae_m: Some(100.0),
+        }),
+        recovery: None,
+    };
+    let encoded = encode_with_field(|r| r.airbase_locations = Some(al));
+    let back = decode(&encoded).unwrap().airbase_locations.unwrap();
+    let take_off = back.take_off.unwrap();
+    assert!((take_off.lat_deg.unwrap() - 38.8).abs() < 1e-3);
+    assert_eq!(
+        take_off.lon_deg, None,
+        "interior-absent lon must round-trip via the IMAPB filler, not silently \
+         become some other value"
+    );
+    assert!((take_off.hae_m.unwrap() - 100.0).abs() < 0.1);
+}
+
 /// ST 0601.19 §8.138 worked example — the 63-byte 3-record vector
 /// transcribed from the cached spec PDF (`reference/ST0601.19.pdf`
 /// §8.138 "Example KLV Item (All Hex)"): Payload Count 3, records

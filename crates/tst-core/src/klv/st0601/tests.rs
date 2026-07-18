@@ -162,7 +162,7 @@ fn encode_out_of_range_rejects() {
     };
     let mut buf = vec![0u8; 256];
     let err = encode(&r, &mut buf).unwrap_err();
-    matches!(err, KlvEncodeError::OutOfRange { tag: 13, .. });
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 13, .. }));
 }
 
 #[test]
@@ -193,6 +193,36 @@ fn out_of_range_corner_offset_names_the_absolute_corners() {
         "got: {}",
         err
     );
+}
+
+#[test]
+fn out_of_range_restricted_tags_name_their_imapb_twins() {
+    // The three remaining WP-B restricted/extended twin pairs (38→103,
+    // 75→104, 76→105) must hint at their IMAPB twins, same as 22→96.
+    let cases: &[(fn(&mut UasDatalinkLs), &str)] = &[
+        (
+            |r| r.density_altitude_m = Some(50_000.0),
+            "density_altitude_extended_m",
+        ),
+        (
+            |r| r.sensor_ellipsoid_height_m = Some(50_000.0),
+            "sensor_ellipsoid_height_extended_m",
+        ),
+        (
+            |r| r.alternate_platform_ellipsoid_height_m = Some(50_000.0),
+            "alternate_platform_ellipsoid_height_extended_m",
+        ),
+    ];
+    for (set, twin) in cases {
+        let mut rec = UasDatalinkLs::default();
+        set(&mut rec);
+        let err = encode_to_vec(&rec).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains(twin),
+            "expected hint naming {twin}; got: {msg}"
+        );
+    }
 }
 
 #[test]

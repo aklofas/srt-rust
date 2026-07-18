@@ -2547,6 +2547,30 @@ pub fn tst_core::klv::st0903::encode_to_vec(&tst_core::klv::VmtiLs) -> core::res
 pub fn tst_core::klv::st0903::encode_to_vec_standalone(&tst_core::klv::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encoded_len(&tst_core::klv::VmtiLs) -> usize
 pub fn tst_core::klv::st0903::encoded_len_standalone(&tst_core::klv::VmtiLs) -> usize
+pub mod tst_core::klv::st1010
+pub struct tst_core::klv::st1010::SdccFlp
+pub tst_core::klv::st1010::SdccFlp::correlation_present: alloc::vec::Vec<bool>
+pub tst_core::klv::st1010::SdccFlp::correlations: alloc::vec::Vec<f64>
+pub tst_core::klv::st1010::SdccFlp::matrix_size: u64
+pub tst_core::klv::st1010::SdccFlp::std_devs: alloc::vec::Vec<f64>
+impl tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::correlation(&self, usize, usize) -> f64
+impl core::clone::Clone for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::clone(&self) -> tst_core::klv::st1010::SdccFlp
+impl core::cmp::PartialEq for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::eq(&self, &tst_core::klv::st1010::SdccFlp) -> bool
+impl core::fmt::Debug for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st1010::SdccFlp
+impl core::marker::Freeze for tst_core::klv::st1010::SdccFlp
+impl core::marker::Send for tst_core::klv::st1010::SdccFlp
+impl core::marker::Sync for tst_core::klv::st1010::SdccFlp
+impl core::marker::Unpin for tst_core::klv::st1010::SdccFlp
+impl core::marker::UnsafeUnpin for tst_core::klv::st1010::SdccFlp
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1010::SdccFlp
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::decode_sdcc_flp(&[u8]) -> core::result::Result<tst_core::klv::st1010::SdccFlp, tst_core::error::KlvFieldError>
+pub fn tst_core::klv::st1010::encode_sdcc_flp_mode2(&[f64], &[f64], usize) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::st1204
 #[non_exhaustive] pub enum tst_core::klv::st1204::IdType
 pub tst_core::klv::st1204::IdType::Managed
@@ -2892,6 +2916,27 @@ impl<'a> core::marker::Unpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::pack::RawField<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::klv::pack::RawField<'a>
+pub struct tst_core::klv::SdccFlp
+pub tst_core::klv::SdccFlp::correlation_present: alloc::vec::Vec<bool>
+pub tst_core::klv::SdccFlp::correlations: alloc::vec::Vec<f64>
+pub tst_core::klv::SdccFlp::matrix_size: u64
+pub tst_core::klv::SdccFlp::std_devs: alloc::vec::Vec<f64>
+impl tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::correlation(&self, usize, usize) -> f64
+impl core::clone::Clone for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::clone(&self) -> tst_core::klv::st1010::SdccFlp
+impl core::cmp::PartialEq for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::eq(&self, &tst_core::klv::st1010::SdccFlp) -> bool
+impl core::fmt::Debug for tst_core::klv::st1010::SdccFlp
+pub fn tst_core::klv::st1010::SdccFlp::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st1010::SdccFlp
+impl core::marker::Freeze for tst_core::klv::st1010::SdccFlp
+impl core::marker::Send for tst_core::klv::st1010::SdccFlp
+impl core::marker::Sync for tst_core::klv::st1010::SdccFlp
+impl core::marker::Unpin for tst_core::klv::st1010::SdccFlp
+impl core::marker::UnsafeUnpin for tst_core::klv::st1010::SdccFlp
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st1010::SdccFlp
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st1010::SdccFlp
 pub struct tst_core::klv::SecurityLs
 pub tst_core::klv::SecurityLs::caveats: core::option::Option<alloc::string::String>
 pub tst_core::klv::SecurityLs::classification_comments: core::option::Option<alloc::string::String>
@@ -3065,6 +3110,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::VmtiLs
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::VmtiLs
 pub const tst_core::klv::SECURITY_LS_UL: [u8; 16]
 pub const tst_core::klv::VMTI_LS_UL: [u8; 16]
+pub fn tst_core::klv::decode_sdcc_flp(&[u8]) -> core::result::Result<tst_core::klv::st1010::SdccFlp, tst_core::error::KlvFieldError>
+pub fn tst_core::klv::encode_sdcc_flp_mode2(&[f64], &[f64], usize) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub mod tst_core::mpegts
 pub mod tst_core::mpegts::au_cell
 #[non_exhaustive] pub enum tst_core::mpegts::au_cell::AuCellError

@@ -269,17 +269,21 @@ def test_metadata_substream_id_uuid_wrong_length_rejected():
 
 def test_strict_compliance_allows_repeated_115_and_102():
     # Multiples Allowed = Yes items must not trip the once-per-packet
-    # DuplicateTag check under strict compliance.
+    # DuplicateTag check under strict compliance — exercises BOTH carve-out
+    # tags (115 and 102), not just 115, despite the test's original name.
     pack = _hex("03 84 04 3F800000 40000000 40800000 3F000000 00000000 BF000000")
     body = (
         _tlv(2, (1_700_000_000_000_000).to_bytes(8, "big"))
         + _tlv(115, _hex("05 11 466C7920746F20576179706F696E742031"))
         + _tlv(115, _hex("07 03 41 42 43"))
+        + _tlv(102, pack)
+        + _tlv(102, pack)
         + _tlv(65, bytes([19]))
     )
     buf = _wrap_st0601_with_checksum(body)
     rec = decode_uas_datalink(buf, compliance=True)
     assert len(rec.control_commands) == 2
+    assert len(rec.sdcc_flps) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -589,6 +593,43 @@ def test_decode_sdcc_flp_mode2_full_3x3_ieee_golden():
     assert m.std_devs == (1.0, 2.0, 4.0)
     assert m.correlations == (0.5, 0.0, -0.5)
     assert m.correlation_present == (True, True, True)
+    assert m.correlation(2, 0) == 0.0  # symmetry accessor
+
+
+def test_sdcc_flp_correlation_diagonal_returns_std_dev():
+    v = _hex("03 84 04 3F800000 40000000 40800000 3F000000 00000000 BF000000")
+    m = decode_sdcc_flp(v)
+    assert m.correlation(0, 0) == 1.0
+    assert m.correlation(1, 1) == 2.0
+    assert m.correlation(2, 2) == 4.0
+
+
+def test_sdcc_flp_correlation_slen_zero_offdiagonal_still_works():
+    # Mode 2, N=3, Slen=0 (no std-dev data at all — spec-legal), Clen=4
+    # IEEE correlations.
+    v = _hex("03 84 00 3F000000 00000000 BF000000")
+    m = decode_sdcc_flp(v)
+    assert m.std_devs == ()
+    # `correlations` is always full-triangle-sized regardless of Slen, so
+    # off-diagonal access must succeed even with no std devs.
+    assert m.correlation(0, 1) == 0.5
+    assert m.correlation(2, 0) == 0.0
+
+
+def test_sdcc_flp_correlation_slen_zero_diagonal_raises_index_error():
+    v = _hex("03 84 00 3F000000 00000000 BF000000")
+    m = decode_sdcc_flp(v)
+    # i==0 is well within matrix_size=3 — this must be the documented
+    # "no std-dev data" error, not a plain out-of-bounds one.
+    with pytest.raises(IndexError, match="no standard-deviation value"):
+        m.correlation(0, 0)
+
+
+def test_sdcc_flp_correlation_out_of_bounds_raises_index_error():
+    v = _hex("03 84 04 3F800000 40000000 40800000 3F000000 00000000 BF000000")
+    m = decode_sdcc_flp(v)
+    with pytest.raises(IndexError, match="index out of bounds"):
+        m.correlation(3, 0)
 
 
 def test_decode_sdcc_flp_sparse_bit_vector_golden():

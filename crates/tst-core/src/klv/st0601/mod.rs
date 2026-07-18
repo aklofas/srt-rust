@@ -22,9 +22,10 @@
 //! 13 + 17 + 19 covered; declared version preserved for caller
 //! introspection).
 //!
-//! **128 of 143 spec items typed-modeled** (up from 52 pre-WP-A, 103
-//! after WP-A — see `CHANGELOG.md` `[Unreleased]` for the work-package
-//! history). Grouped by [`UasDatalinkLs`] field section:
+//! **141 of 143 spec items typed-modeled** (up from 52 pre-WP-A, 103
+//! after WP-A, 128 after WP-B, 134 after WP-C Task C2's simple packs —
+//! see `CHANGELOG.md` `[Unreleased]` for the work-package history).
+//! Grouped by [`UasDatalinkLs`] field section:
 //!
 //! - **Identity / time:** tags 1–4, 10–12, 59, 65 (checksum, UTF-8
 //!   identity strings, version, timestamp).
@@ -67,6 +68,14 @@
 //!   storage capacity, leap-seconds, GPS/UTC correction offset, and
 //!   the `active_payloads` bitmask).
 //! - **Misc:** tag 47 (generic flag bitfield).
+//! - **Pack & list items (WP-C Appendix Table C1):** tags 81
+//!   ([`ImageHorizonPixels`]), 115 ([`ControlCommand`],
+//!   MULTI-INSTANCE), 116, 121 (BER-OID id lists), 122
+//!   ([`CountryCodes`]), 127 ([`SensorFrameRate`]), 128
+//!   ([`WavelengthRecord`] list), 130 ([`AirbaseLocations`], sharing
+//!   [`Location`] with 141), 138 ([`PayloadList`]), 140
+//!   ([`WeaponsStore`] list), 141 ([`Waypoint`] list), 142
+//!   ([`ViewDomain`]), 143 ([`MetadataSubstreamId`]).
 //!
 //! **Sibling-decoded nested local sets** — the tag's payload bytes are
 //! further parsed by a dedicated typed module, not just stored: tag 48
@@ -83,10 +92,14 @@
 //! (`segment_local_set` / `amend_local_set`, ST 1607).
 //!
 //! **Tags preserved as `unknown` (`OwnedRawField`):** any tag not in
-//! the groups above (15 of the 143 spec items remain untyped) — full
-//! payload bytes preserved per ST 0107.5 §6 future-proof skip rule.
-//! Consumers reading `record.unknown` can apply downstream-specific
-//! typed parsers.
+//! the groups above — only 2 of the 143 spec items remain untyped:
+//! tag 66 (deprecated placeholder, permanently unknown-passthrough by
+//! design) and tag 102 (SDCC-FLP; multi-instance positional capture
+//! into the model is a separate pending WP-C task — parse/encode
+//! already exist at [`crate::klv::st1010`], just not yet wired to a
+//! `UasDatalinkLs` field). Full payload bytes preserved per ST 0107.5
+//! §6 future-proof skip rule. Consumers reading `record.unknown` can
+//! apply downstream-specific typed parsers.
 //!
 //! **Decode modes:**
 //! - [`decode`] — verifies running-sum checksum; accepts any UL.
@@ -126,5 +139,9 @@ pub use model::{
     Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, IcingDetected, OperationalMode,
     OutOfRangePolicy, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
 };
-pub use packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
+pub use packs::{
+    AirbaseLocations, ControlCommand, CountryCodes, ImageHorizonPixels, Location,
+    MetadataSubstreamId, PayloadList, PayloadRecord, PayloadType, SensorFrameRate, ViewDomain,
+    ViewDomainPair, WavelengthRecord, Waypoint, WeaponsStore,
+};
 pub use patch::patch;

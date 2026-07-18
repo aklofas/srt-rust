@@ -9,6 +9,66 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
+
+- 7 previously-passthrough MISB ST 0601 tags encoded as "Variable-Length
+  Pack" (VLP) structures — each precedes every sub-value or sub-record
+  with its own BER length — are now typed `UasDatalinkLs` fields, up
+  from 134:
+  - Tag 122 `country_codes` (`CountryCodes`): coding method + up to
+    three length-value UTF-8 country codes, with per-§8.122.1
+    truncation (a trailing length-value pair drops entirely) versus the
+    length-0 "unknown" marker (which still writes the length byte).
+  - Tag 128 `wavelengths_list` (`Vec<WavelengthRecord>`): sensor
+    wavelength band records (BER-OID id + two IMAPB(0,1e9,4) bounds +
+    UTF-8 name).
+  - Tag 130 `airbase_locations` (`AirbaseLocations`, sharing the new
+    `Location` DLP with Tag 141): take-off + recovery WGS84 sites; a
+    wire-absent recovery pair decodes to "same as take-off" per
+    §8.130.1, distinguishable from an explicit length-0 "unknown"
+    recovery.
+  - Tag 138 `payload_list` (`PayloadList`): Payload Count (BER-OID) plus
+    a VLP of Payload Records (id, `PayloadType` enum, UTF-8 name).
+  - Tag 140 `weapons_stores` (`Vec<WeaponsStore>`): weapon physical
+    address + packed 14-bit status (general status + Table 22
+    engagement-bit accessors `fuze_enabled`/`laser_enabled`/
+    `target_enabled`/`weapon_armed`) + weapon type string.
+  - Tag 141 `waypoint_list` (`Vec<Waypoint>`): waypoint id, signed
+    16-bit prosecution order (current/planned/cancelled/historical),
+    optional Mode/Source info bitfield, optional `Location`.
+  - Tag 142 `view_domain` (`ViewDomain`): up to three azimuth/
+    elevation/roll `(start, range)` IMAPB pairs, each independently
+    truncatable or explicitly marked "unknown" (pair-length 0).
+  - All seven pinned against MISB ST 0601.19 §8 worked examples
+    transcribed from the cached spec PDF (including the §8.138 63-byte
+    Payload List example); Tag 140's whole-item spec vector has a known
+    1-byte length discrepancy, so its test pins the three per-record
+    vectors and reconstructs the outer VLP directly.
+  - Only 2 of 143 spec items remain untyped: Tag 66 (deprecated,
+    permanently unknown-passthrough by design) and Tag 102 (SDCC-FLP;
+    parse/encode already exist at `klv::st1010`, multi-instance
+    positional capture into the model is a separate pending task).
+
+### Added — ST 0601 pack/list substrate + 6 simple DLP items typed (128 of 143 total)
+
+- New pack/list dispatch (`Encoding::Pack` in `tags.rs`, per-tag
+  parse/emit functions in the new `klv::st0601::packs` module) for
+  MISB ST 0601 items whose wire value is a small positional structure
+  or flat list rather than one scalar. Six simple Defined-Length Pack
+  (DLP) items are now typed `UasDatalinkLs` fields: Tag 81
+  `image_horizon` (`ImageHorizonPixels`), Tag 115 `control_commands`
+  (`Vec<ControlCommand>`, MULTI-INSTANCE per ST 0601.19 Table 1), Tag
+  116 `control_command_verification` and Tag 121 `active_wavelengths`
+  (BER-OID id lists), Tag 127 `sensor_frame_rate`
+  (`SensorFrameRate`), Tag 143 `metadata_substream_id`
+  (`MetadataSubstreamId`).
+- `strict_body_walk`'s once-per-packet duplicate-tag check now exempts
+  tags 115 and 102 — the spec's only two "Multiples Allowed" items.
+- New `klv::st1010` module: MISB ST 1010 SDCC-FLP parser/encoder (Mode
+  1 + Mode 2, sparse bit-vector support) — a general-purpose construct
+  usable beyond ST 0601, used by Tag 102's still-pending multi-instance
+  capture.
+
 ### Added — ST 0601 fixed-encoding items fully typed (51 new fields, 103 of 143 total)
 
 - 51 previously-passthrough MISB ST 0601 tags are now typed

@@ -2804,6 +2804,218 @@ item = "tst_core::klv::st0601::MetadataSubstreamId::fmt"
 reason = "derive impl for the WP-C tag 143 pack struct; exercised the same way"
 
 [[exempt]]
+item = "tst_core::klv::st0601::CountryCodes"
+reason = "WP-C Task C3 tag 122 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_country_codes_vector and wpc_country_codes_truncation_cases"
+
+[[exempt]]
+item = "tst_core::klv::st0601::CountryCodes::clone"
+reason = "derive impl for the WP-C tag 122 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::CountryCodes::eq"
+reason = "derive impl for the WP-C tag 122 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::CountryCodes::default"
+reason = "derive impl for the WP-C tag 122 pack struct; used by packs::parse_country_codes's ..CountryCodes::default() base"
+
+[[exempt]]
+item = "tst_core::klv::st0601::CountryCodes::fmt"
+reason = "derive impl for the WP-C tag 122 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WavelengthRecord"
+reason = "WP-C Task C3 tag 128 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_wavelengths_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WavelengthRecord::clone"
+reason = "derive impl for the WP-C tag 128 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WavelengthRecord::eq"
+reason = "derive impl for the WP-C tag 128 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WavelengthRecord::fmt"
+reason = "derive impl for the WP-C tag 128 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Location"
+reason = "WP-C Task C3 shared DLP substrate for tags 130/141; wire byte-vectors + round-trips in st0601::tests::wpc_airbase_locations_vector and wpc_waypoint_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Location::clone"
+reason = "derive impl for the WP-C Location struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Location::eq"
+reason = "derive impl for the WP-C Location struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Location::default"
+reason = "derive impl for the WP-C Location struct; used by packs::parse_location's ..Location::default() base"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Location::fmt"
+reason = "derive impl for the WP-C Location struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::AirbaseLocations"
+reason = "WP-C Task C3 tag 130 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_airbase_locations_vector and wpc_airbase_locations_recovery_omitted_defaults_to_take_off"
+
+[[exempt]]
+item = "tst_core::klv::st0601::AirbaseLocations::clone"
+reason = "derive impl for the WP-C tag 130 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::AirbaseLocations::eq"
+reason = "derive impl for the WP-C tag 130 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::AirbaseLocations::default"
+reason = "derive impl for the WP-C tag 130 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::AirbaseLocations::fmt"
+reason = "derive impl for the WP-C tag 130 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadType::clone"
+reason = "derive impl for the WP-C tag 138 Payload Type enum; wire-code pins + round-trips in st0601::tests::wpc_payload_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadType::eq"
+reason = "derive impl for the WP-C tag 138 Payload Type enum; wire-code pins + round-trips in st0601::tests::wpc_payload_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadType::fmt"
+reason = "derive impl for the WP-C tag 138 Payload Type enum; wire-code pins + round-trips in st0601::tests::wpc_payload_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadRecord"
+reason = "WP-C Task C3 tag 138 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_payload_list_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadRecord::clone"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadRecord::eq"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadRecord::fmt"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadList"
+reason = "WP-C Task C3 tag 138 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_payload_list_vector (the §8.138 63-byte spec worked example)"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadList::clone"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadList::eq"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::PayloadList::fmt"
+reason = "derive impl for the WP-C tag 138 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore"
+reason = "WP-C Task C3 tag 140 pack item; per-record wire byte-vectors + round-trips in st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::fuze_enabled"
+reason = "WP-C Task C3 Table 22 engagement-bit accessor; exercised by st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::general_status"
+reason = "WP-C Task C3 Table 21 general-status accessor; exercised by st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::laser_enabled"
+reason = "WP-C Task C3 Table 22 engagement-bit accessor; exercised by st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::target_enabled"
+reason = "WP-C Task C3 Table 22 engagement-bit accessor; exercised by st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::weapon_armed"
+reason = "WP-C Task C3 Table 22 engagement-bit accessor; exercised by st0601::tests::wpc_weapons_stores_vector"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::clone"
+reason = "derive impl for the WP-C tag 140 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::eq"
+reason = "derive impl for the WP-C tag 140 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::WeaponsStore::fmt"
+reason = "derive impl for the WP-C tag 140 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Waypoint"
+reason = "WP-C Task C3 tag 141 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_waypoint_list_vector (the §8.141 spec worked example)"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Waypoint::clone"
+reason = "derive impl for the WP-C tag 141 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Waypoint::eq"
+reason = "derive impl for the WP-C tag 141 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::Waypoint::fmt"
+reason = "derive impl for the WP-C tag 141 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomain"
+reason = "WP-C Task C3 tag 142 pack item; wire byte-vectors + truncation/unknown-marker round-trips in st0601::tests::wpc_view_domain_truncated_roll and wpc_view_domain_leading_unknown_pair"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomain::clone"
+reason = "derive impl for the WP-C tag 142 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomain::eq"
+reason = "derive impl for the WP-C tag 142 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomain::default"
+reason = "derive impl for the WP-C tag 142 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomain::fmt"
+reason = "derive impl for the WP-C tag 142 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomainPair"
+reason = "WP-C Task C3 tag 142 (start, range) pair item; exercised the same way as ViewDomain"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomainPair::clone"
+reason = "derive impl for the WP-C tag 142 pair struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomainPair::eq"
+reason = "derive impl for the WP-C tag 142 pair struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomainPair::default"
+reason = "derive impl for the WP-C tag 142 pair struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::ViewDomainPair::fmt"
+reason = "derive impl for the WP-C tag 142 pair struct; exercised the same way"
+
+[[exempt]]
 item = "tst_core::klv::st0601::OutOfRangePolicy::clone"
 reason = "added 2026-07-10 (WP-2 OutOfRangePolicy); exercised by st0601::mapping indicator_* unit tests + st0601::tests indicator round-trips"
 

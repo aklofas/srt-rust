@@ -2003,6 +2003,29 @@ impl core::marker::Unpin for tst_core::klv::st0601::OutOfRangePolicy
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::OutOfRangePolicy
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::OutOfRangePolicy
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::OutOfRangePolicy
+#[non_exhaustive] pub enum tst_core::klv::st0601::PayloadType
+pub tst_core::klv::st0601::PayloadType::ElectroOptical
+pub tst_core::klv::st0601::PayloadType::Lidar
+pub tst_core::klv::st0601::PayloadType::Other(u64)
+pub tst_core::klv::st0601::PayloadType::Radar
+pub tst_core::klv::st0601::PayloadType::Sar
+pub tst_core::klv::st0601::PayloadType::Sigint
+impl core::clone::Clone for tst_core::klv::st0601::PayloadType
+pub fn tst_core::klv::st0601::PayloadType::clone(&self) -> tst_core::klv::st0601::PayloadType
+impl core::cmp::Eq for tst_core::klv::st0601::PayloadType
+impl core::cmp::PartialEq for tst_core::klv::st0601::PayloadType
+pub fn tst_core::klv::st0601::PayloadType::eq(&self, &tst_core::klv::st0601::PayloadType) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::PayloadType
+pub fn tst_core::klv::st0601::PayloadType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::PayloadType
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::PayloadType
+impl core::marker::Freeze for tst_core::klv::st0601::PayloadType
+impl core::marker::Send for tst_core::klv::st0601::PayloadType
+impl core::marker::Sync for tst_core::klv::st0601::PayloadType
+impl core::marker::Unpin for tst_core::klv::st0601::PayloadType
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::PayloadType
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::PayloadType
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::PayloadType
 #[non_exhaustive] pub enum tst_core::klv::st0601::PlatformStatus
 pub tst_core::klv::st0601::PlatformStatus::Active
 pub tst_core::klv::st0601::PlatformStatus::AutomatedOrbit
@@ -2108,6 +2131,26 @@ impl core::marker::Unpin for tst_core::klv::st0601::St0601SentinelMeaning
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::St0601SentinelMeaning
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::St0601SentinelMeaning
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::St0601SentinelMeaning
+pub struct tst_core::klv::st0601::AirbaseLocations
+pub tst_core::klv::st0601::AirbaseLocations::recovery: core::option::Option<tst_core::klv::st0601::Location>
+pub tst_core::klv::st0601::AirbaseLocations::take_off: core::option::Option<tst_core::klv::st0601::Location>
+impl core::clone::Clone for tst_core::klv::st0601::AirbaseLocations
+pub fn tst_core::klv::st0601::AirbaseLocations::clone(&self) -> tst_core::klv::st0601::AirbaseLocations
+impl core::cmp::PartialEq for tst_core::klv::st0601::AirbaseLocations
+pub fn tst_core::klv::st0601::AirbaseLocations::eq(&self, &tst_core::klv::st0601::AirbaseLocations) -> bool
+impl core::default::Default for tst_core::klv::st0601::AirbaseLocations
+pub fn tst_core::klv::st0601::AirbaseLocations::default() -> tst_core::klv::st0601::AirbaseLocations
+impl core::fmt::Debug for tst_core::klv::st0601::AirbaseLocations
+pub fn tst_core::klv::st0601::AirbaseLocations::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::Freeze for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::Send for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::Sync for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::Unpin for tst_core::klv::st0601::AirbaseLocations
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::AirbaseLocations
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::AirbaseLocations
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::AirbaseLocations
 pub struct tst_core::klv::st0601::Attitude
 pub tst_core::klv::st0601::Attitude::heading_deg: f64
 pub tst_core::klv::st0601::Attitude::pitch_deg: f64
@@ -2165,6 +2208,27 @@ impl core::marker::Unpin for tst_core::klv::st0601::Corners
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Corners
+pub struct tst_core::klv::st0601::CountryCodes
+pub tst_core::klv::st0601::CountryCodes::coding_method: u64
+pub tst_core::klv::st0601::CountryCodes::manufacture: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::CountryCodes::operator: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::CountryCodes::overflight: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tst_core::klv::st0601::CountryCodes
+pub fn tst_core::klv::st0601::CountryCodes::clone(&self) -> tst_core::klv::st0601::CountryCodes
+impl core::cmp::PartialEq for tst_core::klv::st0601::CountryCodes
+pub fn tst_core::klv::st0601::CountryCodes::eq(&self, &tst_core::klv::st0601::CountryCodes) -> bool
+impl core::default::Default for tst_core::klv::st0601::CountryCodes
+pub fn tst_core::klv::st0601::CountryCodes::default() -> tst_core::klv::st0601::CountryCodes
+impl core::fmt::Debug for tst_core::klv::st0601::CountryCodes
+pub fn tst_core::klv::st0601::CountryCodes::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::CountryCodes
+impl core::marker::Freeze for tst_core::klv::st0601::CountryCodes
+impl core::marker::Send for tst_core::klv::st0601::CountryCodes
+impl core::marker::Sync for tst_core::klv::st0601::CountryCodes
+impl core::marker::Unpin for tst_core::klv::st0601::CountryCodes
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::CountryCodes
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::CountryCodes
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::CountryCodes
 #[non_exhaustive] pub struct tst_core::klv::st0601::EncodeConfig
 pub tst_core::klv::st0601::EncodeConfig::out_of_range_policy: tst_core::klv::st0601::OutOfRangePolicy
 pub tst_core::klv::st0601::EncodeConfig::universal_label: tst_core::klv::universal_label::UniversalLabel
@@ -2249,6 +2313,27 @@ impl core::marker::Unpin for tst_core::klv::st0601::ImageHorizonPixels
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::ImageHorizonPixels
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::ImageHorizonPixels
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::ImageHorizonPixels
+pub struct tst_core::klv::st0601::Location
+pub tst_core::klv::st0601::Location::hae_m: core::option::Option<f64>
+pub tst_core::klv::st0601::Location::lat_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::Location::lon_deg: core::option::Option<f64>
+impl core::clone::Clone for tst_core::klv::st0601::Location
+pub fn tst_core::klv::st0601::Location::clone(&self) -> tst_core::klv::st0601::Location
+impl core::cmp::PartialEq for tst_core::klv::st0601::Location
+pub fn tst_core::klv::st0601::Location::eq(&self, &tst_core::klv::st0601::Location) -> bool
+impl core::default::Default for tst_core::klv::st0601::Location
+pub fn tst_core::klv::st0601::Location::default() -> tst_core::klv::st0601::Location
+impl core::fmt::Debug for tst_core::klv::st0601::Location
+pub fn tst_core::klv::st0601::Location::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::Location
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::Location
+impl core::marker::Freeze for tst_core::klv::st0601::Location
+impl core::marker::Send for tst_core::klv::st0601::Location
+impl core::marker::Sync for tst_core::klv::st0601::Location
+impl core::marker::Unpin for tst_core::klv::st0601::Location
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Location
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Location
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Location
 pub struct tst_core::klv::st0601::MetadataSubstreamId
 pub tst_core::klv::st0601::MetadataSubstreamId::local_id: u64
 pub tst_core::klv::st0601::MetadataSubstreamId::uuid: core::option::Option<[u8; 16]>
@@ -2268,6 +2353,41 @@ impl core::marker::Unpin for tst_core::klv::st0601::MetadataSubstreamId
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::MetadataSubstreamId
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::MetadataSubstreamId
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::MetadataSubstreamId
+pub struct tst_core::klv::st0601::PayloadList
+pub tst_core::klv::st0601::PayloadList::count: u64
+pub tst_core::klv::st0601::PayloadList::records: alloc::vec::Vec<tst_core::klv::st0601::PayloadRecord>
+impl core::clone::Clone for tst_core::klv::st0601::PayloadList
+pub fn tst_core::klv::st0601::PayloadList::clone(&self) -> tst_core::klv::st0601::PayloadList
+impl core::cmp::PartialEq for tst_core::klv::st0601::PayloadList
+pub fn tst_core::klv::st0601::PayloadList::eq(&self, &tst_core::klv::st0601::PayloadList) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::PayloadList
+pub fn tst_core::klv::st0601::PayloadList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::PayloadList
+impl core::marker::Freeze for tst_core::klv::st0601::PayloadList
+impl core::marker::Send for tst_core::klv::st0601::PayloadList
+impl core::marker::Sync for tst_core::klv::st0601::PayloadList
+impl core::marker::Unpin for tst_core::klv::st0601::PayloadList
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::PayloadList
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::PayloadList
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::PayloadList
+pub struct tst_core::klv::st0601::PayloadRecord
+pub tst_core::klv::st0601::PayloadRecord::id: u64
+pub tst_core::klv::st0601::PayloadRecord::name: alloc::string::String
+pub tst_core::klv::st0601::PayloadRecord::payload_type: tst_core::klv::st0601::PayloadType
+impl core::clone::Clone for tst_core::klv::st0601::PayloadRecord
+pub fn tst_core::klv::st0601::PayloadRecord::clone(&self) -> tst_core::klv::st0601::PayloadRecord
+impl core::cmp::PartialEq for tst_core::klv::st0601::PayloadRecord
+pub fn tst_core::klv::st0601::PayloadRecord::eq(&self, &tst_core::klv::st0601::PayloadRecord) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::PayloadRecord
+pub fn tst_core::klv::st0601::PayloadRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::PayloadRecord
+impl core::marker::Freeze for tst_core::klv::st0601::PayloadRecord
+impl core::marker::Send for tst_core::klv::st0601::PayloadRecord
+impl core::marker::Sync for tst_core::klv::st0601::PayloadRecord
+impl core::marker::Unpin for tst_core::klv::st0601::PayloadRecord
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::PayloadRecord
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::PayloadRecord
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::PayloadRecord
 pub struct tst_core::klv::st0601::SensorFrameRate
 pub tst_core::klv::st0601::SensorFrameRate::denominator: u64
 pub tst_core::klv::st0601::SensorFrameRate::numerator: u64
@@ -2291,6 +2411,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::SensorFrame
 pub struct tst_core::klv::st0601::UasDatalinkLs
 pub tst_core::klv::st0601::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::active_wavelengths: core::option::Option<alloc::vec::Vec<u64>>
+pub tst_core::klv::st0601::UasDatalinkLs::airbase_locations: core::option::Option<tst_core::klv::st0601::AirbaseLocations>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
@@ -2324,6 +2445,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p2_deg: core::option::Optio
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p3_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lon_p4_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::correction_offset_us: core::option::Option<i64>
+pub tst_core::klv::st0601::UasDatalinkLs::country_codes: core::option::Option<tst_core::klv::st0601::CountryCodes>
 pub tst_core::klv::st0601::UasDatalinkLs::declared_version: u8
 pub tst_core::klv::st0601::UasDatalinkLs::density_altitude_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::density_altitude_m: core::option::Option<f64>
@@ -2353,6 +2475,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::navsats_in_view: core::option::Option<
 pub tst_core::klv::st0601::UasDatalinkLs::operational_base: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::operational_mode: core::option::Option<tst_core::klv::st0601::OperationalMode>
 pub tst_core::klv::st0601::UasDatalinkLs::outside_air_temp_c: core::option::Option<i8>
+pub tst_core::klv::st0601::UasDatalinkLs::payload_list: core::option::Option<tst_core::klv::st0601::PayloadList>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_angle_of_attack_full_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
@@ -2422,9 +2545,13 @@ pub tst_core::klv::st0601::UasDatalinkLs::transmission_frequency_mhz: core::opti
 pub tst_core::klv::st0601::UasDatalinkLs::uas_ls_version: core::option::Option<u8>
 pub tst_core::klv::st0601::UasDatalinkLs::universal_label: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::klv::st0601::UasDatalinkLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+pub tst_core::klv::st0601::UasDatalinkLs::view_domain: core::option::Option<tst_core::klv::st0601::ViewDomain>
 pub tst_core::klv::st0601::UasDatalinkLs::vmti: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::klv::st0601::UasDatalinkLs::wavelengths_list: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::WavelengthRecord>>
+pub tst_core::klv::st0601::UasDatalinkLs::waypoint_list: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::Waypoint>>
 pub tst_core::klv::st0601::UasDatalinkLs::weapon_fired: core::option::Option<u8>
 pub tst_core::klv::st0601::UasDatalinkLs::weapon_load: core::option::Option<u16>
+pub tst_core::klv::st0601::UasDatalinkLs::weapons_stores: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::WeaponsStore>>
 pub tst_core::klv::st0601::UasDatalinkLs::wind_direction_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::wind_speed: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::zoom_percentage: core::option::Option<f64>
@@ -2452,6 +2579,112 @@ impl core::marker::Unpin for tst_core::UasDatalinkLs
 impl core::marker::UnsafeUnpin for tst_core::UasDatalinkLs
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::UasDatalinkLs
 impl core::panic::unwind_safe::UnwindSafe for tst_core::UasDatalinkLs
+pub struct tst_core::klv::st0601::ViewDomain
+pub tst_core::klv::st0601::ViewDomain::azimuth: core::option::Option<tst_core::klv::st0601::ViewDomainPair>
+pub tst_core::klv::st0601::ViewDomain::elevation: core::option::Option<tst_core::klv::st0601::ViewDomainPair>
+pub tst_core::klv::st0601::ViewDomain::roll: core::option::Option<tst_core::klv::st0601::ViewDomainPair>
+impl core::clone::Clone for tst_core::klv::st0601::ViewDomain
+pub fn tst_core::klv::st0601::ViewDomain::clone(&self) -> tst_core::klv::st0601::ViewDomain
+impl core::cmp::PartialEq for tst_core::klv::st0601::ViewDomain
+pub fn tst_core::klv::st0601::ViewDomain::eq(&self, &tst_core::klv::st0601::ViewDomain) -> bool
+impl core::default::Default for tst_core::klv::st0601::ViewDomain
+pub fn tst_core::klv::st0601::ViewDomain::default() -> tst_core::klv::st0601::ViewDomain
+impl core::fmt::Debug for tst_core::klv::st0601::ViewDomain
+pub fn tst_core::klv::st0601::ViewDomain::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::ViewDomain
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::ViewDomain
+impl core::marker::Freeze for tst_core::klv::st0601::ViewDomain
+impl core::marker::Send for tst_core::klv::st0601::ViewDomain
+impl core::marker::Sync for tst_core::klv::st0601::ViewDomain
+impl core::marker::Unpin for tst_core::klv::st0601::ViewDomain
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::ViewDomain
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::ViewDomain
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::ViewDomain
+pub struct tst_core::klv::st0601::ViewDomainPair
+pub tst_core::klv::st0601::ViewDomainPair::range_deg: f64
+pub tst_core::klv::st0601::ViewDomainPair::start_deg: f64
+impl core::clone::Clone for tst_core::klv::st0601::ViewDomainPair
+pub fn tst_core::klv::st0601::ViewDomainPair::clone(&self) -> tst_core::klv::st0601::ViewDomainPair
+impl core::cmp::PartialEq for tst_core::klv::st0601::ViewDomainPair
+pub fn tst_core::klv::st0601::ViewDomainPair::eq(&self, &tst_core::klv::st0601::ViewDomainPair) -> bool
+impl core::default::Default for tst_core::klv::st0601::ViewDomainPair
+pub fn tst_core::klv::st0601::ViewDomainPair::default() -> tst_core::klv::st0601::ViewDomainPair
+impl core::fmt::Debug for tst_core::klv::st0601::ViewDomainPair
+pub fn tst_core::klv::st0601::ViewDomainPair::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::Freeze for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::Send for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::Sync for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::Unpin for tst_core::klv::st0601::ViewDomainPair
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::ViewDomainPair
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::ViewDomainPair
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::ViewDomainPair
+pub struct tst_core::klv::st0601::WavelengthRecord
+pub tst_core::klv::st0601::WavelengthRecord::id: u64
+pub tst_core::klv::st0601::WavelengthRecord::max_nm: f64
+pub tst_core::klv::st0601::WavelengthRecord::min_nm: f64
+pub tst_core::klv::st0601::WavelengthRecord::name: alloc::string::String
+impl core::clone::Clone for tst_core::klv::st0601::WavelengthRecord
+pub fn tst_core::klv::st0601::WavelengthRecord::clone(&self) -> tst_core::klv::st0601::WavelengthRecord
+impl core::cmp::PartialEq for tst_core::klv::st0601::WavelengthRecord
+pub fn tst_core::klv::st0601::WavelengthRecord::eq(&self, &tst_core::klv::st0601::WavelengthRecord) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::WavelengthRecord
+pub fn tst_core::klv::st0601::WavelengthRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::WavelengthRecord
+impl core::marker::Freeze for tst_core::klv::st0601::WavelengthRecord
+impl core::marker::Send for tst_core::klv::st0601::WavelengthRecord
+impl core::marker::Sync for tst_core::klv::st0601::WavelengthRecord
+impl core::marker::Unpin for tst_core::klv::st0601::WavelengthRecord
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::WavelengthRecord
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::WavelengthRecord
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::WavelengthRecord
+pub struct tst_core::klv::st0601::Waypoint
+pub tst_core::klv::st0601::Waypoint::id: u64
+pub tst_core::klv::st0601::Waypoint::info: core::option::Option<u64>
+pub tst_core::klv::st0601::Waypoint::location: core::option::Option<tst_core::klv::st0601::Location>
+pub tst_core::klv::st0601::Waypoint::prosecution_order: i16
+impl core::clone::Clone for tst_core::klv::st0601::Waypoint
+pub fn tst_core::klv::st0601::Waypoint::clone(&self) -> tst_core::klv::st0601::Waypoint
+impl core::cmp::PartialEq for tst_core::klv::st0601::Waypoint
+pub fn tst_core::klv::st0601::Waypoint::eq(&self, &tst_core::klv::st0601::Waypoint) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::Waypoint
+pub fn tst_core::klv::st0601::Waypoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::Waypoint
+impl core::marker::Freeze for tst_core::klv::st0601::Waypoint
+impl core::marker::Send for tst_core::klv::st0601::Waypoint
+impl core::marker::Sync for tst_core::klv::st0601::Waypoint
+impl core::marker::Unpin for tst_core::klv::st0601::Waypoint
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Waypoint
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Waypoint
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Waypoint
+pub struct tst_core::klv::st0601::WeaponsStore
+pub tst_core::klv::st0601::WeaponsStore::carriage_id: u64
+pub tst_core::klv::st0601::WeaponsStore::hardpoint_id: u64
+pub tst_core::klv::st0601::WeaponsStore::station_id: u64
+pub tst_core::klv::st0601::WeaponsStore::status_raw: u64
+pub tst_core::klv::st0601::WeaponsStore::store_id: u64
+pub tst_core::klv::st0601::WeaponsStore::weapon_type: alloc::string::String
+impl tst_core::klv::st0601::WeaponsStore
+pub fn tst_core::klv::st0601::WeaponsStore::fuze_enabled(&self) -> bool
+pub fn tst_core::klv::st0601::WeaponsStore::general_status(&self) -> u8
+pub fn tst_core::klv::st0601::WeaponsStore::laser_enabled(&self) -> bool
+pub fn tst_core::klv::st0601::WeaponsStore::target_enabled(&self) -> bool
+pub fn tst_core::klv::st0601::WeaponsStore::weapon_armed(&self) -> bool
+impl core::clone::Clone for tst_core::klv::st0601::WeaponsStore
+pub fn tst_core::klv::st0601::WeaponsStore::clone(&self) -> tst_core::klv::st0601::WeaponsStore
+impl core::cmp::PartialEq for tst_core::klv::st0601::WeaponsStore
+pub fn tst_core::klv::st0601::WeaponsStore::eq(&self, &tst_core::klv::st0601::WeaponsStore) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::WeaponsStore
+pub fn tst_core::klv::st0601::WeaponsStore::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::WeaponsStore
+impl core::marker::Freeze for tst_core::klv::st0601::WeaponsStore
+impl core::marker::Send for tst_core::klv::st0601::WeaponsStore
+impl core::marker::Sync for tst_core::klv::st0601::WeaponsStore
+impl core::marker::Unpin for tst_core::klv::st0601::WeaponsStore
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::WeaponsStore
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::WeaponsStore
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::WeaponsStore
 pub fn tst_core::klv::st0601::decode(&[u8]) -> core::result::Result<tst_core::UasDatalinkLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0601::decode_strict(&[u8]) -> core::result::Result<tst_core::UasDatalinkLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0601::decode_strict_compliance(&[u8]) -> core::result::Result<tst_core::UasDatalinkLs, tst_core::error::KlvDecodeError>
@@ -6784,6 +7017,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub struct tst_core::UasDatalinkLs
 pub tst_core::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::active_wavelengths: core::option::Option<alloc::vec::Vec<u64>>
+pub tst_core::UasDatalinkLs::airbase_locations: core::option::Option<tst_core::klv::st0601::AirbaseLocations>
 pub tst_core::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
@@ -6817,6 +7051,7 @@ pub tst_core::UasDatalinkLs::corner_lon_p2_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lon_p3_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lon_p4_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::correction_offset_us: core::option::Option<i64>
+pub tst_core::UasDatalinkLs::country_codes: core::option::Option<tst_core::klv::st0601::CountryCodes>
 pub tst_core::UasDatalinkLs::declared_version: u8
 pub tst_core::UasDatalinkLs::density_altitude_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::density_altitude_m: core::option::Option<f64>
@@ -6846,6 +7081,7 @@ pub tst_core::UasDatalinkLs::navsats_in_view: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::operational_base: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::operational_mode: core::option::Option<tst_core::klv::st0601::OperationalMode>
 pub tst_core::UasDatalinkLs::outside_air_temp_c: core::option::Option<i8>
+pub tst_core::UasDatalinkLs::payload_list: core::option::Option<tst_core::klv::st0601::PayloadList>
 pub tst_core::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_angle_of_attack_full_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
@@ -6915,9 +7151,13 @@ pub tst_core::UasDatalinkLs::transmission_frequency_mhz: core::option::Option<f6
 pub tst_core::UasDatalinkLs::uas_ls_version: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::universal_label: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::UasDatalinkLs::unknown: alloc::vec::Vec<tst_core::klv::pack::OwnedRawField>
+pub tst_core::UasDatalinkLs::view_domain: core::option::Option<tst_core::klv::st0601::ViewDomain>
 pub tst_core::UasDatalinkLs::vmti: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::UasDatalinkLs::wavelengths_list: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::WavelengthRecord>>
+pub tst_core::UasDatalinkLs::waypoint_list: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::Waypoint>>
 pub tst_core::UasDatalinkLs::weapon_fired: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::weapon_load: core::option::Option<u16>
+pub tst_core::UasDatalinkLs::weapons_stores: core::option::Option<alloc::vec::Vec<tst_core::klv::st0601::WeaponsStore>>
 pub tst_core::UasDatalinkLs::wind_direction_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::wind_speed: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::zoom_percentage: core::option::Option<f64>

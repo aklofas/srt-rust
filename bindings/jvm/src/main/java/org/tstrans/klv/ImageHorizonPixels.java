@@ -9,6 +9,13 @@ package org.tstrans.klv;
  * DLP convention) — any of them may be absent independently of the others,
  * per the Rust {@code ImageHorizonPixels} rustdoc's sentinel-fill contract.
  *
+ * <p>Instances are immutable; use {@link Builder} to construct. The
+ * canonical constructor is two runs of four same-typed positional
+ * arguments (four {@code int} percentages, then four boxed {@code Double}
+ * degrees) — easy to silently transpose (e.g. {@code x0Pct}/{@code y0Pct},
+ * or a start/end lat/lon swap) in a bare positional call. The Builder's
+ * named setters remove that risk; prefer it over the canonical constructor.
+ *
  * @param x0Pct       start-point x, percent of image width (0-255 wire byte)
  * @param y0Pct       start-point y, percent of image height
  * @param x1Pct       end-point x, percent of image width
@@ -27,4 +34,40 @@ public record ImageHorizonPixels(
         Double startLonDeg,
         Double endLatDeg,
         Double endLonDeg
-) {}
+) {
+
+    /**
+     * Fluent mutable builder for {@link ImageHorizonPixels}. No field is
+     * mandatory at construction time (unset percentages default to 0,
+     * matching the Rust side's own default); the point is naming every
+     * field explicitly rather than relying on positional order.
+     */
+    public static final class Builder {
+        private int x0Pct;
+        private int y0Pct;
+        private int x1Pct;
+        private int y1Pct;
+        private Double startLatDeg;
+        private Double startLonDeg;
+        private Double endLatDeg;
+        private Double endLonDeg;
+
+        public Builder() {}
+
+        public Builder x0Pct(int v) { this.x0Pct = v; return this; }
+        public Builder y0Pct(int v) { this.y0Pct = v; return this; }
+        public Builder x1Pct(int v) { this.x1Pct = v; return this; }
+        public Builder y1Pct(int v) { this.y1Pct = v; return this; }
+        public Builder startLatDeg(double v) { this.startLatDeg = v; return this; }
+        public Builder startLonDeg(double v) { this.startLonDeg = v; return this; }
+        public Builder endLatDeg(double v) { this.endLatDeg = v; return this; }
+        public Builder endLonDeg(double v) { this.endLonDeg = v; return this; }
+
+        /** Build an immutable {@link ImageHorizonPixels}. */
+        public ImageHorizonPixels build() {
+            return new ImageHorizonPixels(
+                    x0Pct, y0Pct, x1Pct, y1Pct,
+                    startLatDeg, startLonDeg, endLatDeg, endLonDeg);
+        }
+    }
+}

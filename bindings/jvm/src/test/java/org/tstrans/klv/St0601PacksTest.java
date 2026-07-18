@@ -546,6 +546,61 @@ class St0601PacksTest {
         assertTrue(decoded.unknown().stream().noneMatch(f -> f.tag() == 102L));
     }
 
+    @Test
+    void sdccFlpFieldLongPrecedingTagsRoundTripsWithoutAborting()
+            throws KlvDecodeException, KlvEncodeException {
+        // Regression for a JNI local-ref leak: read_sdcc_flp_field's
+        // precedingTags loop previously called .get(i) per iteration with
+        // NO per-item local frame, while itself running inside the fixed
+        // 16-slot with_local_frame that wraps each sdccFlps list item — a
+        // precedingTags list with more entries than that frame's spare
+        // capacity exhausted the JNI local-ref table and aborted the JVM
+        // (not a catchable Java exception). 64 entries is comfortably past
+        // the old ~13-entry threshold. Fixed by routing through the shared
+        // jutil::read_long_list helper, which applies its own per-item frame.
+        //
+        // NOTE: `precedingTags` is a DECODE-DERIVED capture, not literal
+        // wire data — the Rust SdccFlpField rustdoc's "ascending-order
+        // emission caveat" says encode only ever re-emits `bytes`
+        // verbatim, never `precedingTags` itself (decode recomputes it
+        // fresh from whatever wire-order tags actually precede the
+        // occurrence). So a hand-constructed 64-entry list is not expected
+        // to survive unchanged; what this test proves is that
+        // `Klv.encodeUasDatalink` (which reads it back via
+        // `read_sdcc_flp_field`) does not crash the JVM, and that `bytes`
+        // (which IS re-emitted verbatim) does survive.
+        List<Long> preceding = new ArrayList<>();
+        for (long i = 0; i < 64; i++) {
+            preceding.add(i);
+        }
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ByteBuffer.wrap(UL))
+                .sdccFlps(List.of(new SdccFlpField(preceding, ByteBuffer.wrap(hex("038404")))))
+                .build();
+        byte[] encoded = Klv.encodeUasDatalink(rec); // must not crash the JVM
+        UasDatalinkLs back = Klv.decodeUasDatalink(encoded);
+        assertEquals(1, back.sdccFlps().size());
+        assertArrayEquals(hex("038404"), readByteBuffer(back.sdccFlps().get(0).bytes()));
+    }
+
+    @Test
+    void controlCommandVerificationLongListRoundTripsWithoutAborting()
+            throws KlvDecodeException, KlvEncodeException {
+        // Same class of fix as the precedingTags regression above, applied
+        // to controlCommandVerification's (and activeWavelengths') own
+        // read_long_list call site.
+        List<Long> ids = new ArrayList<>();
+        for (long i = 0; i < 64; i++) {
+            ids.add(i);
+        }
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ByteBuffer.wrap(UL))
+                .controlCommandVerification(ids)
+                .build();
+        UasDatalinkLs back = Klv.decodeUasDatalink(Klv.encodeUasDatalink(rec));
+        assertEquals(ids, back.controlCommandVerification());
+    }
+
     // -----------------------------------------------------------------------
     // WP-C carry-forward: is_st0601_typed_tag predicate covers every WP-C tag
     // -----------------------------------------------------------------------
@@ -731,10 +786,206 @@ class St0601PacksTest {
         PayloadList pl = new PayloadList(1, List.of(new PayloadRecord(0, PayloadType.SAR.code(), "x")));
         assertEquals(PayloadType.SAR, pl.records().get(0).payloadType());
 
-        WeaponsStore ws = new WeaponsStore(1, 1, 1, 3, 0b0000_0001_0000_0011, "Harpoon"); // fuze bit set
+        // WeaponsStore built via its Builder (named setters), not the
+        // canonical constructor's four consecutive `long` ids — the
+        // Builder exists specifically to avoid transposing them.
+        WeaponsStore ws = new WeaponsStore.Builder()
+                .stationId(1)
+                .hardpointId(1)
+                .carriageId(1)
+                .storeId(3)
+                .statusRaw(0b0000_0001_0000_0011) // fuze bit set
+                .weaponType("Harpoon")
+                .build();
+        assertEquals(1L, ws.stationId());
+        assertEquals(1L, ws.hardpointId());
+        assertEquals(1L, ws.carriageId());
+        assertEquals(3L, ws.storeId());
         assertEquals(0b0000_0011, ws.generalStatus());
         assertTrue(ws.fuzeEnabled());
         assertFalse(ws.laserEnabled());
+        assertEquals("Harpoon", ws.weaponType());
+    }
+
+    @Test
+    void imageHorizonPixelsBuilderConstruction() {
+        // Built via named setters, not the canonical constructor's two
+        // 4-long same-typed runs — the Builder exists specifically to
+        // avoid transposing e.g. x0Pct/y0Pct or start/end lat/lon.
+        ImageHorizonPixels h = new ImageHorizonPixels.Builder()
+                .x0Pct(10)
+                .y0Pct(20)
+                .x1Pct(30)
+                .y1Pct(40)
+                .startLatDeg(1.0)
+                .startLonDeg(-2.0)
+                .endLatDeg(3.0)
+                .endLonDeg(-4.0)
+                .build();
+        assertEquals(10, h.x0Pct());
+        assertEquals(20, h.y0Pct());
+        assertEquals(30, h.x1Pct());
+        assertEquals(40, h.y1Pct());
+        assertEquals(1.0, h.startLatDeg());
+        assertEquals(-2.0, h.startLonDeg());
+        assertEquals(3.0, h.endLatDeg());
+        assertEquals(-4.0, h.endLonDeg());
+    }
+
+    // -----------------------------------------------------------------------
+    // JNI local-ref capacity — empirical check (review IMPORTANT 2)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void fullyPopulatedWpcFieldsRoundTrip() throws KlvDecodeException, KlvEncodeException {
+        // Every optional WP-C field set simultaneously, with multi-item
+        // lists on every Vec-shaped field — exercises build_uas_datalink's
+        // and read_uas_datalink's ensure_local_capacity(320) empirically
+        // (a shortfall aborts the JVM outright, not a catchable exception),
+        // rather than resting on the module doc's hand-derived tally alone.
+        ImageHorizonPixels horizon = new ImageHorizonPixels.Builder()
+                .x0Pct(1).y0Pct(2).x1Pct(3).y1Pct(4)
+                .startLatDeg(10.0).startLonDeg(-20.0).endLatDeg(30.0).endLonDeg(-40.0)
+                .build();
+        List<ControlCommand> commands = List.of(
+                new ControlCommand(1, "cmd-1", 100L),
+                new ControlCommand(2, "cmd-2", null),
+                new ControlCommand(3, "cmd-3", 300L));
+        List<Long> verification = List.of(1L, 2L, 3L);
+        List<Long> wavelengths = List.of(4L, 5L);
+        SensorFrameRate frameRate = new SensorFrameRate(30000, 1001);
+        MetadataSubstreamId substreamId =
+                new MetadataSubstreamId(0, hex("00112233445566778899aabbccddeeff"));
+        CountryCodes countryCodes = new CountryCodes(14, "CAN", "USA", "FRA");
+        List<WavelengthRecord> wavelengthRecords = List.of(
+                new WavelengthRecord(1, 400.0, 700.0, "visible"),
+                new WavelengthRecord(2, 8000.0, 14000.0, "LWIR"));
+        AirbaseLocations airbase = new AirbaseLocations(
+                new Location(38.8, -77.0, 100.0), new Location(39.9, -75.0, 200.0));
+        PayloadList payloadList = new PayloadList(2, List.of(
+                new PayloadRecord(0, PayloadType.ELECTRO_OPTICAL.code(), "EO Camera"),
+                new PayloadRecord(1, PayloadType.LIDAR.code(), "Lidar Sensor")));
+        List<WeaponsStore> stores = List.of(
+                new WeaponsStore.Builder().stationId(1).hardpointId(1).carriageId(1).storeId(1)
+                        .statusRaw(3).weaponType("Harpoon").build(),
+                new WeaponsStore.Builder().stationId(2).hardpointId(2).carriageId(2).storeId(2)
+                        .statusRaw(4).weaponType("Hellfire").build());
+        List<Waypoint> waypoints = List.of(
+                new Waypoint(1, 1, 3L, new Location(38.9, -77.0, 200.0)),
+                new Waypoint(2, 2, null, null));
+        ViewDomain viewDomain = new ViewDomain(
+                new ViewDomainPair(210.0, 300.0),
+                new ViewDomainPair(-75.0, 50.0),
+                new ViewDomainPair(350.0, 20.0));
+        List<SdccFlpField> sdccFlps = List.of(
+                new SdccFlpField(List.of(1L, 2L, 3L), ByteBuffer.wrap(hex("038404"))),
+                new SdccFlpField(List.of(4L, 5L), ByteBuffer.wrap(hex("038404"))));
+
+        UasDatalinkLs rec = new UasDatalinkLs.Builder()
+                .universalLabel(ByteBuffer.wrap(UL))
+                .imageHorizon(horizon)
+                .controlCommands(commands)
+                .controlCommandVerification(verification)
+                .activeWavelengths(wavelengths)
+                .sensorFrameRate(frameRate)
+                .metadataSubstreamId(substreamId)
+                .countryCodes(countryCodes)
+                .wavelengthsList(wavelengthRecords)
+                .airbaseLocations(airbase)
+                .payloadList(payloadList)
+                .weaponsStores(stores)
+                .waypointList(waypoints)
+                .viewDomain(viewDomain)
+                .sdccFlps(sdccFlps)
+                .build();
+
+        byte[] encoded = Klv.encodeUasDatalink(rec);
+        UasDatalinkLs decoded = Klv.decodeUasDatalink(encoded);
+
+        // Exact fields (BER-OID ids / strings / booleans — no wire
+        // quantization involved).
+        assertEquals(commands, decoded.controlCommands());
+        assertEquals(verification, decoded.controlCommandVerification());
+        assertEquals(wavelengths, decoded.activeWavelengths());
+        assertEquals(frameRate, decoded.sensorFrameRate());
+        // MetadataSubstreamId.uuid is a byte[] record component — the
+        // record's auto-generated equals() compares arrays by reference,
+        // not content, so compare fields individually rather than via
+        // assertEquals on the whole object (same reason SdccFlp's
+        // double[]/boolean[] fields are never compared via assertEquals
+        // elsewhere in this suite).
+        assertEquals(substreamId.localId(), decoded.metadataSubstreamId().localId());
+        assertArrayEquals(substreamId.uuid(), decoded.metadataSubstreamId().uuid());
+        assertEquals(countryCodes, decoded.countryCodes());
+        assertEquals(payloadList, decoded.payloadList());
+        assertEquals(stores, decoded.weaponsStores());
+        assertEquals(2, decoded.sdccFlps().size());
+
+        // Lossy fields (IMAPB / linear-range int32 wire quantization —
+        // compare with an epsilon, same as the Table C1 spec-vector tests
+        // above; an exact assertEquals on these fails on quantization
+        // noise, not a real bug).
+        assertImageHorizonCloseTo(horizon, decoded.imageHorizon());
+        assertEquals(wavelengthRecords.size(), decoded.wavelengthsList().size());
+        for (int i = 0; i < wavelengthRecords.size(); i++) {
+            WavelengthRecord exp = wavelengthRecords.get(i);
+            WavelengthRecord act = decoded.wavelengthsList().get(i);
+            assertEquals(exp.id(), act.id());
+            assertEquals(exp.minNm(), act.minNm(), 1.0);
+            assertEquals(exp.maxNm(), act.maxNm(), 1.0);
+            assertEquals(exp.name(), act.name());
+        }
+        assertLocationCloseTo(airbase.takeOff(), decoded.airbaseLocations().takeOff());
+        assertLocationCloseTo(airbase.recovery(), decoded.airbaseLocations().recovery());
+        assertEquals(waypoints.size(), decoded.waypointList().size());
+        for (int i = 0; i < waypoints.size(); i++) {
+            Waypoint exp = waypoints.get(i);
+            Waypoint act = decoded.waypointList().get(i);
+            assertEquals(exp.id(), act.id());
+            assertEquals(exp.prosecutionOrder(), act.prosecutionOrder());
+            assertEquals(exp.info(), act.info());
+            if (exp.location() == null) {
+                assertNull(act.location());
+            } else {
+                assertLocationCloseTo(exp.location(), act.location());
+            }
+        }
+        assertViewDomainPairCloseTo(viewDomain.azimuth(), decoded.viewDomain().azimuth());
+        assertViewDomainPairCloseTo(viewDomain.elevation(), decoded.viewDomain().elevation());
+        assertViewDomainPairCloseTo(viewDomain.roll(), decoded.viewDomain().roll());
+
+        // Round-trip again through a full decode -> re-encode -> decode
+        // cycle to exercise BOTH read_uas_datalink (encode direction) and
+        // build_uas_datalink (decode direction) with every field
+        // populated — the empirical capacity check itself; the exact
+        // fields are sufficient evidence nothing was dropped or crashed.
+        UasDatalinkLs again = Klv.decodeUasDatalink(Klv.encodeUasDatalink(decoded));
+        assertEquals(decoded.controlCommands(), again.controlCommands());
+        assertEquals(decoded.weaponsStores(), again.weaponsStores());
+        assertEquals(decoded.waypointList().size(), again.waypointList().size());
+        assertEquals(decoded.sdccFlps().size(), again.sdccFlps().size());
+    }
+
+    private static void assertImageHorizonCloseTo(ImageHorizonPixels expected, ImageHorizonPixels actual) {
+        assertEquals(expected.x0Pct(), actual.x0Pct());
+        assertEquals(expected.y0Pct(), actual.y0Pct());
+        assertEquals(expected.x1Pct(), actual.x1Pct());
+        assertEquals(expected.y1Pct(), actual.y1Pct());
+        assertEquals(expected.startLatDeg(), actual.startLatDeg(), 1e-4);
+        assertEquals(expected.startLonDeg(), actual.startLonDeg(), 1e-4);
+        assertEquals(expected.endLatDeg(), actual.endLatDeg(), 1e-4);
+        assertEquals(expected.endLonDeg(), actual.endLonDeg(), 1e-4);
+    }
+
+    private static void assertLocationCloseTo(Location expected, Location actual) {
+        assertEquals(expected.latDeg(), actual.latDeg(), 1e-4);
+        assertEquals(expected.lonDeg(), actual.lonDeg(), 1e-4);
+        assertEquals(expected.haeM(), actual.haeM(), 0.1);
+    }
+
+    private static void assertViewDomainPairCloseTo(ViewDomainPair expected, ViewDomainPair actual) {
+        assertEquals(expected.startDeg(), actual.startDeg(), 0.1);
+        assertEquals(expected.rangeDeg(), actual.rangeDeg(), 0.1);
     }
 
     /** Read a {@link ByteBuffer}'s remaining bytes without mutating its position. */

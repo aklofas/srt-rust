@@ -9,6 +9,13 @@ package org.tstrans.klv;
  * (preserved verbatim, not masked away, in case a future revision widens
  * the field). The accessor methods below decode its sub-fields.
  *
+ * <p>Instances are immutable; use {@link Builder} to construct. The
+ * canonical constructor's first four positional arguments are all
+ * {@code long} ids ({@code stationId}/{@code hardpointId}/{@code carriageId}/
+ * {@code storeId}) — easy to silently transpose (e.g. putting a weapon on
+ * the wrong hardpoint) in a bare positional call. The Builder's named
+ * setters remove that risk; prefer it over the canonical constructor.
+ *
  * @param stationId   BER-OID station id
  * @param hardpointId BER-OID hardpoint id
  * @param carriageId  BER-OID carriage id
@@ -48,5 +55,35 @@ public record WeaponsStore(
     /** §Table 22 bit position 4. */
     public boolean weaponArmed() {
         return (statusRaw & 0x800) != 0;
+    }
+
+    /**
+     * Fluent mutable builder for {@link WeaponsStore}. No field is
+     * mandatory at construction time (unset ids/status default to 0,
+     * unset {@code weaponType} to {@code null}); the point is naming every
+     * field explicitly rather than relying on positional order for the
+     * four consecutive {@code long} ids.
+     */
+    public static final class Builder {
+        private long stationId;
+        private long hardpointId;
+        private long carriageId;
+        private long storeId;
+        private long statusRaw;
+        private String weaponType;
+
+        public Builder() {}
+
+        public Builder stationId(long v) { this.stationId = v; return this; }
+        public Builder hardpointId(long v) { this.hardpointId = v; return this; }
+        public Builder carriageId(long v) { this.carriageId = v; return this; }
+        public Builder storeId(long v) { this.storeId = v; return this; }
+        public Builder statusRaw(long v) { this.statusRaw = v; return this; }
+        public Builder weaponType(String v) { this.weaponType = v; return this; }
+
+        /** Build an immutable {@link WeaponsStore}. */
+        public WeaponsStore build() {
+            return new WeaponsStore(stationId, hardpointId, carriageId, storeId, statusRaw, weaponType);
+        }
     }
 }

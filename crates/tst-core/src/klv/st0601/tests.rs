@@ -9,7 +9,7 @@ use super::model::{
     EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName, UasDatalinkLs,
 };
 use super::patch::patch;
-use super::tags::TAGS;
+use super::tags::{Encoding, TAGS};
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
 use crate::klv::checksum::checksum_running_sum_16;
 use crate::klv::pack::OwnedRawField;
@@ -196,10 +196,12 @@ fn out_of_range_corner_offset_names_the_absolute_corners() {
 
 #[test]
 fn out_of_range_without_twin_has_no_hint() {
-    // Tag 22 (Target Width, 0..10000 m) has no full-range twin; the error
-    // message must NOT carry a hint (no ';' appended).
+    // Tag 13 (Sensor Latitude, +/-90 deg) has no full-range twin; the error
+    // message must NOT carry a hint (no ';' appended). (Moved off Tag 22
+    // in WP-B: Tag 22 now has a range_hint pointing at its new IMAPB twin,
+    // Tag 96 Target Width Extended.)
     let rec = UasDatalinkLs {
-        target_width_m: Some(12_089.0),
+        sensor_lat_deg: Some(95.0),
         ..UasDatalinkLs::default()
     };
     let err = encode_to_vec(&rec).unwrap_err();
@@ -214,7 +216,10 @@ fn encode_string_too_long_rejects() {
     };
     let mut buf = vec![0u8; 512];
     let err = encode(&r, &mut buf).unwrap_err();
-    matches!(err, KlvEncodeError::StringTooLong { tag: 59, max: 127 });
+    assert!(matches!(
+        err,
+        KlvEncodeError::StringTooLong { tag: 59, max: 127 }
+    ));
 }
 
 // --- Reserved/typed-tag-in-unknown filter (validate-1 E3) ------------------
@@ -720,9 +725,19 @@ fn every_typed_tag_round_trips() {
             129 => record.target_id = Some("A123".to_string()),
             135 => record.communications_method = Some("Frequency Modulation".to_string()),
             _ => {
-                // Ranged numeric: pick a value at the midpoint of the spec range.
-                let r = spec.range.expect("ranged tag has range");
-                let midpoint = (r.min + r.max) / 2.0;
+                // Ranged numeric: pick a value at the midpoint of the spec
+                // range. LinearRange tags carry their range in `spec.range`;
+                // Imapb (WP-B) tags carry it in `spec.encoding` instead.
+                let (min, max) = match (spec.range, spec.encoding) {
+                    (Some(r), _) => (r.min, r.max),
+                    (None, Encoding::Imapb { min, max, .. }) => (min, max),
+                    (None, _) => panic!(
+                        "tag {} ({}) is neither LinearRange nor Imapb — \
+                         every_typed_tag_round_trips needs a new arm",
+                        spec.id, spec.name
+                    ),
+                };
+                let midpoint = (min + max) / 2.0;
                 assign_ranged(&mut record, spec.id as u32, midpoint);
                 // Sanity-check: the field actually got set.
                 let mut probe = UasDatalinkLs::default();
@@ -1416,10 +1431,13 @@ fn patch_reencodes_every_occurrence_of_a_duplicated_tag_and_mirrors_missing_chec
 
 #[test]
 fn patch_unknown_escape_hatch_replaces_vendor_tlv() {
+    // Tag 66 is a durable untyped stand-in (ST 0601 skips it between 65
+    // and 67; WP-A/WP-B have since typed most other former gaps out from
+    // under earlier stand-ins — see reference_klv_typed_set_conventions).
     let rec = UasDatalinkLs {
         timestamp_us: Some(1),
         unknown: vec![OwnedRawField {
-            tag: 103,
+            tag: 66,
             value: vec![0xDE, 0xAD],
         }],
         ..UasDatalinkLs::default()
@@ -1427,7 +1445,7 @@ fn patch_unknown_escape_hatch_replaces_vendor_tlv() {
     let raw = encode_to_vec(&rec).unwrap();
     let edits = UasDatalinkLs {
         unknown: vec![OwnedRawField {
-            tag: 103,
+            tag: 66,
             value: vec![0x01, 0x02, 0x03],
         }],
         ..UasDatalinkLs::default()
@@ -1437,7 +1455,7 @@ fn patch_unknown_escape_hatch_replaces_vendor_tlv() {
     assert_eq!(
         dec.unknown,
         vec![OwnedRawField {
-            tag: 103,
+            tag: 66,
             value: vec![0x01, 0x02, 0x03],
         }]
     );
@@ -2121,6 +2139,112 @@ fn wpa_ranged_spec_vectors() {
             "tag {tag}: wire bytes != spec example"
         );
     }
+}
+
+// ============================================================================
+// WP-B: IMAPB extended-range fields (Table B1 spec vectors)
+// ============================================================================
+
+/// Decode a single-TLV ST 0601 record where `tag` may need the 2-byte
+/// BER-OID encoding (id >= 128, e.g. Tags 132/134 in Table B1). Sibling of
+/// [`decode_with_single_tlv`], which only writes 1-byte tags.
+fn decode_with_single_tlv_ber_oid(tag: u32, value: &[u8]) -> UasDatalinkLs {
+    let mut tag_buf = [0u8; 5];
+    let n = crate::klv::length::write_ber_oid(tag, &mut tag_buf).expect("tag fits BER-OID");
+    let mut tlv = tag_buf[..n].to_vec();
+    tlv.push(value.len() as u8);
+    tlv.extend_from_slice(value);
+    decode(&wrap_st0601(&tlv)).expect("single-tlv fixture must decode")
+}
+
+/// MISB ST 0601.19 §8 worked examples for the 14 WP-B Table B1 IMAPB
+/// items — spec bytes, not round-trip (closed-loop tests can't catch a
+/// wrong wire formula).
+#[test]
+fn wpb_imapb_spec_vectors() {
+    // (tag, example value, value bytes at the item's example/default length).
+    let vectors: &[(u8, f64, &[u8])] = &[
+        (96, 13_898.546_3, &[0x00, 0xD9, 0x2A]),
+        (103, 23_456.24, &[0x2F, 0x92, 0x1E]),
+        (104, 23_456.24, &[0x2F, 0x92, 0x1E]),
+        (105, 23_456.24, &[0x2F, 0x92, 0x1E]),
+        (109, 1.625, &[0x00, 0x01, 0xA0]),
+        (112, 125.0, &[0x1F, 0x40]),
+        (113, 2150.0, &[0x05, 0xF5, 0x00]),
+        (114, 2154.50, &[0x05, 0xF7, 0x40]),
+        (117, 1.0, &[0x3E, 0x90]),
+        (118, 0.004176, &[0x3E, 0x80, 0x11]),
+        (119, -50.0, &[0x3B, 0x60]),
+        (120, 72.0, &[0x48, 0x00]),
+        (132, 2400.0, &[0x02, 0x57, 0xC0]),
+        (134, 55.0, &[0x37, 0x00]),
+    ];
+    for &(tag, value, bytes) in vectors {
+        let ls = decode_with_single_tlv_ber_oid(tag as u32, bytes);
+        let entry = crate::klv::st0601::decode::ranged_entry(tag).expect("ranged entry");
+        let got = (entry.get)(&ls).expect("value decoded");
+        let Encoding::Imapb { min, max, .. } =
+            crate::klv::st0601::tags::lookup(tag).unwrap().encoding
+        else {
+            panic!("tag {tag} is not Imapb-encoded");
+        };
+        // Tolerance: one quantization step at the example wire length.
+        let step = (max - min)
+            / 2f64.powi((8 * bytes.len() - 1) as i32 - (max - min).log2().ceil() as i32);
+        assert!((got - value).abs() <= step, "tag {tag}: {got} vs {value}");
+        // Encode at default_len must reproduce the spec bytes exactly
+        // (default_len == the example length by Table B1 construction).
+        let mut rec = UasDatalinkLs::default();
+        (entry.set)(&mut rec, value);
+        let out = crate::klv::st0601::encode_to_vec(&rec).unwrap();
+        assert_eq!(tlv_value(&out, tag), Some(bytes.to_vec()), "tag {tag}");
+    }
+}
+
+/// IMAPB decode accepts any wire length in `1..=max_len` (not just
+/// `default_len`), and ST 1201.5 special values land in
+/// [`UasDatalinkLs::imapb_specials`] rather than the typed field or
+/// `field_errors`. Specials re-emit on encode when the field stays
+/// `None` — value wins otherwise, mirroring `sentinel_tags`.
+#[test]
+fn wpb_imapb_variable_length_decode_and_specials() {
+    // Any length 1..=max_len decodes (2-byte Tag 104 value):
+    let ls = decode_with_single_tlv(104, &[0x2F, 0x92]);
+    assert!(ls.sensor_ellipsoid_height_extended_m.is_some());
+    // ST 1201 AboveMax special (0xE1, zero-filled) -> side channel, field None:
+    let ls = decode_with_single_tlv(104, &[0xE1, 0x00, 0x00]);
+    assert_eq!(ls.sensor_ellipsoid_height_extended_m, None);
+    assert_eq!(
+        ls.imapb_specials,
+        vec![(104u32, crate::klv::ImapbSpecial::AboveMax)]
+    );
+    assert!(ls.field_errors.is_empty());
+    // Specials re-emit on encode when the field stays None (value wins otherwise):
+    let out = crate::klv::st0601::encode_to_vec(&ls).unwrap();
+    assert_eq!(tlv_value(&out, 104), Some(vec![0xE1, 0x00, 0x00]));
+}
+
+/// `OutOfRangePolicy::Indicator` for IMAPB fields: the default `Error`
+/// policy rejects with the real tag id (not a placeholder), and
+/// `Indicator` emits the ST 1201.5 `IMAP_ABOVE_MAXIMUM` special at
+/// `default_len` instead of erroring.
+#[test]
+fn wpb_imapb_indicator_policy() {
+    // > 40000 max
+    let rec = UasDatalinkLs {
+        altitude_agl_m: Some(50_000.0),
+        ..UasDatalinkLs::default()
+    };
+    // Default policy errors with the real tag id:
+    let err = crate::klv::st0601::encode_to_vec(&rec).unwrap_err();
+    assert!(matches!(err, KlvEncodeError::OutOfRange { tag: 113, .. }));
+    // Indicator emits IMAP_ABOVE_MAXIMUM at default_len:
+    let cfg = EncodeConfig {
+        out_of_range_policy: OutOfRangePolicy::Indicator,
+        ..Default::default()
+    };
+    let out = crate::klv::st0601::encode_to_vec_with(&rec, &cfg).unwrap();
+    assert_eq!(tlv_value(&out, 113), Some(vec![0xE1, 0x00, 0x00]));
 }
 
 // ============================================================================

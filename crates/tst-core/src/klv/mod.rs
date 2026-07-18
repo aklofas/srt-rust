@@ -37,6 +37,7 @@ pub mod st0903;
 pub mod st1204;
 pub mod universal_label;
 
+pub use imapb::ImapbSpecial;
 pub use pack::{OwnedRawField, RawField};
 pub use st0102::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SECURITY_LS_UL,

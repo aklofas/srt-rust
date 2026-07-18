@@ -199,6 +199,12 @@ pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeConfig) -> usize {
     for &st in &record.sentinel_tags {
         body_len += sentinel_field_len(record, st);
     }
+    // IMAPB specials: each (tag, special) in `imapb_specials` whose typed
+    // field is None re-emits the special's bytes. Value wins: a populated
+    // field is already counted by `each_typed_field` above.
+    for &(tag, _) in &record.imapb_specials {
+        body_len += imapb_special_field_len(record, tag);
+    }
     for f in &record.unknown {
         body_len += ber_oid_len(f.tag) + ber_len(f.value.len()) + f.value.len();
     }
@@ -231,6 +237,29 @@ fn sentinel_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
     }
     let vlen = range.byte_length;
     ber_oid_len(tag) + ber_len(vlen) + vlen
+}
+
+/// Return the TLV byte size that an IMAPB special entry for `tag`
+/// contributes, or 0 if the tag is not IMAPB-encoded, is unrecognized, or
+/// its typed field is already populated (value wins over the special).
+/// Sibling of `sentinel_field_len` for the WP-B IMAPB fields.
+fn imapb_special_field_len(record: &UasDatalinkLs, tag: u32) -> usize {
+    let Ok(tag_u8) = u8::try_from(tag) else {
+        return 0;
+    };
+    let Some(spec) = lookup_tag(tag_u8) else {
+        return 0;
+    };
+    let Encoding::Imapb { default_len, .. } = spec.encoding else {
+        return 0;
+    };
+    if super::decode::ranged_entry(tag_u8)
+        .and_then(|e| (e.get)(record))
+        .is_some()
+    {
+        return 0;
+    }
+    ber_oid_len(tag) + ber_len(default_len) + default_len
 }
 
 /// Visit each typed field that will be emitted, calling `visit(tag_id, value_len)`.
@@ -305,10 +334,24 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .communications_method
                 .as_ref()
                 .map(|s| str_wire_len(s)),
-            // All 69 ranged Option<f64> fields — driven from RANGED_FIELDS so
-            // that `byte_length` comes from the single `tags::TAGS` source.
+            // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS
+            // so that `byte_length` comes from the single `tags::TAGS` source.
             _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
                 .and_then(|e| (e.get)(record).map(|_| spec.range.as_ref().unwrap().byte_length)),
+            // The 14 WP-B IMAPB extended-range fields — always sized at
+            // default_len whether the eventual bytes are a normal-range
+            // encode or (under OutOfRangePolicy::Indicator) a special;
+            // both are default_len bytes. An Error-policy out-of-range
+            // value still sizes here — `encode_tag_value` is what surfaces
+            // the actual OutOfRange error during emission.
+            _ if matches!(spec.encoding, Encoding::Imapb { .. }) => {
+                super::decode::ranged_entry(spec.id).and_then(|e| {
+                    let Encoding::Imapb { default_len, .. } = spec.encoding else {
+                        unreachable!()
+                    };
+                    (e.get)(record).map(|_| default_len)
+                })
+            }
             _ => None,
         };
         if let Some(len) = len {
@@ -414,13 +457,38 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(135, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
-        // All 69 ranged Option<f64> fields — driven from RANGED_FIELDS so the
-        // tag→field mapping is the single source of truth across decode + encode.
+        // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS so
+        // the tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
             if let Some(entry) = super::decode::ranged_entry(spec.id) {
                 encode_ranged((entry.get)(record), spec, &mut scratch, policy)?
             } else {
                 None
+            }
+        }
+        // The 14 WP-B IMAPB extended-range fields (Table B1) — share the
+        // RANGED_FIELDS accessor table with the LinearRange fields above;
+        // the wire format is what differs (encode_imapb_field vs encode_ranged).
+        _ if matches!(spec.encoding, Encoding::Imapb { .. }) => {
+            let Encoding::Imapb {
+                min,
+                max,
+                default_len,
+                ..
+            } = spec.encoding
+            else {
+                unreachable!()
+            };
+            match super::decode::ranged_entry(spec.id) {
+                Some(entry) => encode_imapb_field(
+                    (entry.get)(record),
+                    spec.id as u32,
+                    min,
+                    max,
+                    default_len,
+                    policy,
+                )?,
+                None => None,
             }
         }
         _ => None,
@@ -443,6 +511,7 @@ fn write_typed_fields(
         }
     }
     write_sentinel_tags(record, body)?;
+    write_imapb_specials(record, body)?;
     Ok(())
 }
 
@@ -483,6 +552,36 @@ fn write_sentinel_tags(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(),
     Ok(())
 }
 
+/// Emit the ST 1201.5 special-value bytes for each `(tag, special)` in
+/// `record.imapb_specials` whose typed field is currently `None`. If the
+/// typed field is `Some(v)`, `encode_tag_value` has already emitted it
+/// above (value wins over the special entry) — mirror of
+/// `write_sentinel_tags` for the WP-B IMAPB fields.
+fn write_imapb_specials(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    for &(tag, special) in &record.imapb_specials {
+        let Ok(tag_u8) = u8::try_from(tag) else {
+            continue;
+        };
+        let Some(spec) = lookup_tag(tag_u8) else {
+            continue;
+        };
+        let Encoding::Imapb { default_len, .. } = spec.encoding else {
+            continue;
+        };
+        // Value wins: only re-emit the special when the typed field is absent.
+        if super::decode::ranged_entry(tag_u8)
+            .and_then(|e| (e.get)(record))
+            .is_some()
+        {
+            continue;
+        }
+        let mut buf = vec![0u8; default_len];
+        crate::klv::imapb::encode_imapb_special(special, default_len, &mut buf)?;
+        emit_ber_oid_tlv(tag, &buf, body)?;
+    }
+    Ok(())
+}
+
 fn write_unknown_fields(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     for f in &record.unknown {
         // Reject reserved/typed tags before emitting. Without this guard,
@@ -513,6 +612,51 @@ fn encode_ranged(
         .expect("ranged tag must have LinearRange");
     encode_fixed_range(r, spec.id as u32, v, &mut scratch[..r.byte_length], policy)?;
     Ok(Some(scratch[..r.byte_length].to_vec()))
+}
+
+/// Encode one WP-B ST 1201.5 IMAPB extended-range field — the IMAPB
+/// sibling of `encode_ranged`. In-range values encode normally at
+/// `default_len`; out-of-range values either error (default policy) or,
+/// under [`OutOfRangePolicy::Indicator`], emit the tag's `BelowMin` /
+/// `AboveMax` special at `default_len` instead. Non-finite input always
+/// errors regardless of policy.
+fn encode_imapb_field(
+    value: Option<f64>,
+    tag: u32,
+    min: f64,
+    max: f64,
+    default_len: usize,
+    policy: OutOfRangePolicy,
+) -> Result<Option<Vec<u8>>, KlvEncodeError> {
+    let Some(v) = value else { return Ok(None) };
+    let mut buf = vec![0u8; default_len];
+    if v.is_finite() && v >= min && v <= max {
+        let p = crate::klv::imapb::ImapbParams {
+            min,
+            max,
+            length: default_len,
+        };
+        crate::klv::imapb::encode_imapb(&p, v, &mut buf)?;
+        return Ok(Some(buf));
+    }
+    if policy == OutOfRangePolicy::Indicator && v.is_finite() {
+        let special = if v < min {
+            crate::klv::imapb::ImapbSpecial::BelowMin
+        } else {
+            crate::klv::imapb::ImapbSpecial::AboveMax
+        };
+        crate::klv::imapb::encode_imapb_special(special, default_len, &mut buf)?;
+        return Ok(Some(buf));
+    }
+    // Extended items have no LinearRange twin of their own to name in a
+    // hint (`mapping::range_hint` only covers LinearRange fields).
+    Err(KlvEncodeError::OutOfRange {
+        tag,
+        value: v,
+        min,
+        max,
+        hint: None,
+    })
 }
 
 /// Wire byte count for a UTF-8 string: empty → 1 (NUL signal), else `s.len()`.

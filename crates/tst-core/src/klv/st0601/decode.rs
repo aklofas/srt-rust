@@ -496,15 +496,64 @@ fn apply_typed_tag(
                 None => record.sentinel_tags.push(tag),
             }
         }
+        Encoding::Imapb {
+            min, max, max_len, ..
+        } => {
+            // `max_len` is a per-tag business-rule cap (Table B1) narrower
+            // than the substrate's fixed L<=8 ceiling that `decode_imapb`
+            // itself enforces — check it here so an over-long wire value
+            // for a narrow-max_len tag surfaces as InvalidLength rather
+            // than silently being accepted up to 8 bytes.
+            if f.value.is_empty() || f.value.len() > max_len {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: max_len,
+                    got: f.value.len(),
+                });
+            }
+            let params = crate::klv::imapb::ImapbParams {
+                min,
+                max,
+                length: f.value.len(),
+            };
+            match crate::klv::imapb::decode_imapb(&params, f.value)? {
+                crate::klv::imapb::DecodedImapb::Value(v) => assign_ranged(record, tag, v),
+                crate::klv::imapb::DecodedImapb::Special(s) => {
+                    record.imapb_specials.push((tag, s));
+                }
+                // Both non-conformant outcomes below are producer errors
+                // from this typed consumer's view (see the
+                // `imapb_specials` field rustdoc) — recorded in
+                // `field_errors`, not preserved as raw bytes.
+                crate::klv::imapb::DecodedImapb::ReservedSpecial { .. } => {
+                    return Err(KlvFieldError::OutOfRange {
+                        tag,
+                        value: f64::NAN,
+                        min,
+                        max,
+                    });
+                }
+                crate::klv::imapb::DecodedImapb::OutOfRange { decoded } => {
+                    return Err(KlvFieldError::OutOfRange {
+                        tag,
+                        value: decoded,
+                        min,
+                        max,
+                    });
+                }
+            }
+        }
     }
     Ok(())
 }
 
-/// Per-tag accessor for the 69 uniform `Option<f64>` ranged fields.
+/// Per-tag accessor for the 83 uniform `Option<f64>` ranged fields — the
+/// 69 LinearRange fields from WP-A plus the 14 ST 1201.5 IMAPB extended
+/// items from WP-B (Table B1).
 ///
 /// Drives `assign_ranged` (decode) and the ranged arms of
 /// `encode_tag_value` / `each_typed_field` (encode) from one place,
-/// eliminating three parallel 69-arm dispatch tables. `fn` pointers are
+/// eliminating parallel per-field dispatch tables. `fn` pointers are
 /// `const`-safe and work in `no_std` context; field names remain greppable.
 pub(super) struct RangedEntry {
     pub(super) id: u8,
@@ -512,8 +561,11 @@ pub(super) struct RangedEntry {
     pub(super) set: fn(&mut UasDatalinkLs, f64),
 }
 
-/// All 69 ST 0601 ranged `Option<f64>` fields in tag-ascending order.
-/// The encode path derives value_len from `tags::TAGS[id].range.byte_length`;
+/// All 83 ST 0601 ranged `Option<f64>` fields in tag-ascending order —
+/// 69 fixed-width LinearRange fields (tags 5-93) plus 14 ST 1201.5 IMAPB
+/// extended-range fields (tags 96-134, WP-B Table B1). The encode path
+/// derives value_len from `tags::TAGS[id].range.byte_length` for the
+/// LinearRange rows, or `Encoding::Imapb.default_len` for the IMAPB rows;
 /// the decode path calls `set`; the encode path calls `get`.
 pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
     RangedEntry {
@@ -860,6 +912,79 @@ pub(super) static RANGED_FIELDS: &[RangedEntry] = &[
         id: 93,
         get: |r| r.platform_sideslip_full_deg,
         set: |r, v| r.platform_sideslip_full_deg = Some(v),
+    },
+    // WP-B Table B1: ST 1201.5 IMAPB extended-range items. `spec.range`
+    // is `None` for these (encoding dispatch happens on `Encoding::Imapb`
+    // instead), but they share this same `Option<f64>` accessor table.
+    RangedEntry {
+        id: 96,
+        get: |r| r.target_width_extended_m,
+        set: |r, v| r.target_width_extended_m = Some(v),
+    },
+    RangedEntry {
+        id: 103,
+        get: |r| r.density_altitude_extended_m,
+        set: |r, v| r.density_altitude_extended_m = Some(v),
+    },
+    RangedEntry {
+        id: 104,
+        get: |r| r.sensor_ellipsoid_height_extended_m,
+        set: |r, v| r.sensor_ellipsoid_height_extended_m = Some(v),
+    },
+    RangedEntry {
+        id: 105,
+        get: |r| r.alternate_platform_ellipsoid_height_extended_m,
+        set: |r, v| r.alternate_platform_ellipsoid_height_extended_m = Some(v),
+    },
+    RangedEntry {
+        id: 109,
+        get: |r| r.range_to_recovery_km,
+        set: |r, v| r.range_to_recovery_km = Some(v),
+    },
+    RangedEntry {
+        id: 112,
+        get: |r| r.platform_course_angle_deg,
+        set: |r, v| r.platform_course_angle_deg = Some(v),
+    },
+    RangedEntry {
+        id: 113,
+        get: |r| r.altitude_agl_m,
+        set: |r, v| r.altitude_agl_m = Some(v),
+    },
+    RangedEntry {
+        id: 114,
+        get: |r| r.radar_altimeter_m,
+        set: |r, v| r.radar_altimeter_m = Some(v),
+    },
+    RangedEntry {
+        id: 117,
+        get: |r| r.sensor_azimuth_rate_dps,
+        set: |r, v| r.sensor_azimuth_rate_dps = Some(v),
+    },
+    RangedEntry {
+        id: 118,
+        get: |r| r.sensor_elevation_rate_dps,
+        set: |r, v| r.sensor_elevation_rate_dps = Some(v),
+    },
+    RangedEntry {
+        id: 119,
+        get: |r| r.sensor_roll_rate_dps,
+        set: |r, v| r.sensor_roll_rate_dps = Some(v),
+    },
+    RangedEntry {
+        id: 120,
+        get: |r| r.mi_storage_percent_full,
+        set: |r, v| r.mi_storage_percent_full = Some(v),
+    },
+    RangedEntry {
+        id: 132,
+        get: |r| r.transmission_frequency_mhz,
+        set: |r, v| r.transmission_frequency_mhz = Some(v),
+    },
+    RangedEntry {
+        id: 134,
+        get: |r| r.zoom_percentage,
+        set: |r, v| r.zoom_percentage = Some(v),
     },
 ];
 

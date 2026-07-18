@@ -15,6 +15,7 @@ use super::mapping::decode_fixed_range;
 use super::model::{
     IcingDetected, OperationalMode, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
 };
+use super::packs;
 use super::tags::{Encoding, lookup};
 
 /// Decode a UAS Datalink Local Set per MISB ST 0601.
@@ -242,9 +243,15 @@ fn strict_body_walk(body: &[u8], body_offset_in_buf: usize) -> Result<Vec<u32>, 
             });
         }
         // Duplicate-tag check (E1) — only meaningful for typed tags
-        // that fit in u8 AND are present in the ST 0601 table.
+        // that fit in u8 AND are present in the ST 0601 table. Tags 115
+        // and 102 are exempted: they are the spec's only two items with
+        // "Multiples Allowed" = Yes (ST 0601.19 Table 1), so repeating
+        // them is conformant, not a violation of the once-per-packet
+        // rule. (Tag 102's typed capture lands in a later WP-C task;
+        // the exemption is written now so that task doesn't need to
+        // revisit this walker.)
         if let Ok(tag_u8) = u8::try_from(tag) {
-            if lookup(tag_u8).is_some() {
+            if lookup(tag_u8).is_some() && tag_u8 != 115 && tag_u8 != 102 {
                 if seen[tag_u8 as usize] {
                     return Err(KlvDecodeError::DuplicateTag {
                         tag,
@@ -603,6 +610,21 @@ fn apply_typed_tag(
                 _ => unreachable!(),
             }
         }
+        Encoding::Pack => match tag {
+            81 => record.image_horizon = Some(packs::parse_image_horizon(f.value)?),
+            // MULTI-INSTANCE (ST 0601.19 Table 1 "Multiples Allowed" =
+            // Yes) — every occurrence appends, it never overwrites.
+            115 => record
+                .control_commands
+                .push(packs::parse_control_command(f.value)?),
+            116 => record.control_command_verification = Some(packs::parse_id_list(f.value, 116)?),
+            121 => record.active_wavelengths = Some(packs::parse_id_list(f.value, 121)?),
+            127 => record.sensor_frame_rate = Some(packs::parse_sensor_frame_rate(f.value)?),
+            143 => {
+                record.metadata_substream_id = Some(packs::parse_metadata_substream_id(f.value)?)
+            }
+            _ => unreachable!(),
+        },
     }
     Ok(())
 }

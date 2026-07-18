@@ -108,6 +108,7 @@ pub(crate) mod encode;
 pub(crate) mod mapping;
 pub(crate) mod mismms;
 pub(crate) mod model;
+pub(crate) mod packs;
 pub(crate) mod patch;
 pub(crate) mod tags;
 
@@ -125,4 +126,5 @@ pub use model::{
     Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, IcingDetected, OperationalMode,
     OutOfRangePolicy, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
 };
+pub use packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
 pub use patch::patch;

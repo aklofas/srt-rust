@@ -9,6 +9,7 @@ use super::model::{
     EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
     SensorControlMode, SensorFovName, UasDatalinkLs,
 };
+use super::packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
 use super::patch::patch;
 use super::tags::{Encoding, TAGS};
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
@@ -773,6 +774,37 @@ fn every_typed_tag_round_trips() {
             136 => record.leap_seconds = Some(30),
             137 => record.correction_offset_us = Some(5_025_678_901),
             139 => record.active_payloads = Some(vec![0x0B]),
+            81 => {
+                record.image_horizon = Some(ImageHorizonPixels {
+                    x0_pct: 10,
+                    y0_pct: 20,
+                    x1_pct: 30,
+                    y1_pct: 40,
+                    start_lat_deg: Some(10.0),
+                    start_lon_deg: Some(-20.0),
+                    end_lat_deg: Some(30.0),
+                    end_lon_deg: Some(-40.0),
+                })
+            }
+            115 => record.control_commands.push(ControlCommand {
+                id: 42,
+                command: "TEST".to_string(),
+                time_us: Some(1234),
+            }),
+            116 => record.control_command_verification = Some(vec![3, 7]),
+            121 => record.active_wavelengths = Some(vec![1, 3]),
+            127 => {
+                record.sensor_frame_rate = Some(SensorFrameRate {
+                    numerator: 60000,
+                    denominator: 1001,
+                })
+            }
+            143 => {
+                record.metadata_substream_id = Some(MetadataSubstreamId {
+                    local_id: 5,
+                    uuid: None,
+                })
+            }
             _ => {
                 // Ranged numeric: pick a value at the midpoint of the spec
                 // range. LinearRange tags carry their range in `spec.range`;
@@ -852,6 +884,12 @@ fn every_typed_tag_round_trips() {
             136 => back.leap_seconds.is_some(),
             137 => back.correction_offset_us.is_some(),
             139 => back.active_payloads.is_some(),
+            81 => back.image_horizon.is_some(),
+            115 => !back.control_commands.is_empty(),
+            116 => back.control_command_verification.is_some(),
+            121 => back.active_wavelengths.is_some(),
+            127 => back.sensor_frame_rate.is_some(),
+            143 => back.metadata_substream_id.is_some(),
             2 => back.timestamp_us.is_some(),
             _ => {
                 // For ranged numeric, presence == any of our ranged fields is set.
@@ -2876,4 +2914,145 @@ fn wpb_active_payload_ids_multi_byte_extends_upward() {
 
     let ls = UasDatalinkLs::default();
     assert_eq!(ls.active_payload_ids().count(), 0);
+}
+
+// ============================================================================
+// WP-C Task C2: pack substrate + simple DLP packs (81/115/116/121/127/143)
+// ============================================================================
+
+/// Strip whitespace and parse a hex string into bytes — WP-C pack spec
+/// vectors (mirrors the identical helper in `klv::st1010`'s test module).
+fn hex(s: &str) -> Vec<u8> {
+    let clean: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    (0..clean.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&clean[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+/// Build one canonical `[BER-OID tag][BER length][value]` TLV. Unlike
+/// [`decode_with_single_tlv`] (which writes `tag` as a single raw byte —
+/// only correct for `tag < 128`), this goes through
+/// [`crate::klv::pack::emit_ber_oid_tlv`] so it also handles the
+/// 2-byte-BER-OID tags (e.g. 143) correctly. Used to build multi-TLV
+/// bodies (e.g. two Tag-115 occurrences) for [`decode_body`].
+fn tlv(tag: u8, value: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    crate::klv::pack::emit_ber_oid_tlv(tag as u32, value, &mut out).unwrap();
+    out
+}
+
+/// Decode a full LS body (already TLV-framed, e.g. via repeated [`tlv`]
+/// calls) by wrapping it with the UL + outer length + checksum
+/// ([`wrap_st0601`]) and calling [`decode_unchecked`].
+fn decode_body(body: &[u8]) -> UasDatalinkLs {
+    decode_unchecked(&wrap_st0601(body)).expect("multi-tlv fixture must decode")
+}
+
+/// ST 0601.19 §8 worked examples for the 6 WP-C Task C2 pack/list items —
+/// spec bytes, not round-trip (closed-loop tests can't catch a wrong wire
+/// formula).
+#[test]
+fn wpc_simple_pack_spec_vectors() {
+    // Tag 81 — geo-truncated example: (0,36)->(56,0), no optional geo fields.
+    let ls = decode_with_single_tlv(81, &[0x00, 0x24, 0x38, 0x00]);
+    let h = ls.image_horizon.unwrap();
+    assert_eq!((h.x0_pct, h.y0_pct, h.x1_pct, h.y1_pct), (0, 36, 56, 0));
+    assert_eq!(h.start_lat_deg, None);
+    assert_eq!(h.start_lon_deg, None);
+    assert_eq!(h.end_lat_deg, None);
+    assert_eq!(h.end_lon_deg, None);
+    let re_encoded = encode_with_field(|r| r.image_horizon = Some(h));
+    assert_eq!(
+        tlv_value(&re_encoded, 81),
+        Some(vec![0x00, 0x24, 0x38, 0x00])
+    );
+
+    // Tag 115 — (5, "Fly to Waypoint 1"), time truncated; MULTI-INSTANCE
+    // accumulates: two occurrences append two `ControlCommand`s.
+    let v115a = hex("05 11 466C7920746F20576179706F696E742031");
+    let v115b = hex("07 03 41 42 43"); // second command (7, "ABC")
+    let mut body = tlv(115, &v115a);
+    body.extend(tlv(115, &v115b));
+    let ls = decode_body(&body);
+    assert_eq!(ls.control_commands.len(), 2);
+    assert_eq!(ls.control_commands[0].id, 5);
+    assert_eq!(ls.control_commands[0].command, "Fly to Waypoint 1");
+    assert_eq!(ls.control_commands[0].time_us, None);
+    assert_eq!(ls.control_commands[1].id, 7);
+    assert_eq!(ls.control_commands[1].command, "ABC");
+    assert_eq!(ls.control_commands[1].time_us, None);
+    let re_encoded = encode_with_field(|r| r.control_commands = ls.control_commands.clone());
+    assert_eq!(tlv_value(&re_encoded, 115), Some(v115a));
+    // `tlv_value`/`find_tag` locate the FIRST Tag 115 TLV only. Nothing
+    // else is set on this record, so the second `ControlCommand` is
+    // emitted immediately after the first one's value bytes end (the
+    // multi-instance encode special-case appends both back-to-back) —
+    // verify the second full TLV (tag+length+value) starts right there.
+    let (off, len) = find_tag(&re_encoded, 115).unwrap();
+    let second_tlv = tlv(115, &v115b);
+    assert_eq!(
+        &re_encoded[off + len..off + len + second_tlv.len()],
+        second_tlv.as_slice()
+    );
+
+    // Tag 116: [3,7]; Tag 121: [1,3].
+    assert_eq!(
+        decode_with_single_tlv(116, &[0x03, 0x07]).control_command_verification,
+        Some(vec![3, 7])
+    );
+    let encoded116 = encode_with_field(|r| r.control_command_verification = Some(vec![3, 7]));
+    assert_eq!(tlv_value(&encoded116, 116), Some(vec![0x03, 0x07]));
+
+    assert_eq!(
+        decode_with_single_tlv(121, &[0x01, 0x03]).active_wavelengths,
+        Some(vec![1, 3])
+    );
+    let encoded121 = encode_with_field(|r| r.active_wavelengths = Some(vec![1, 3]));
+    assert_eq!(tlv_value(&encoded121, 121), Some(vec![0x01, 0x03]));
+
+    // Tag 127: 60000/1001, and denominator-truncated (defaults to 1).
+    let fr = decode_with_single_tlv(127, &hex("83 D4 60 87 69"))
+        .sensor_frame_rate
+        .unwrap();
+    assert_eq!((fr.numerator, fr.denominator), (60000, 1001));
+    let encoded127 = encode_with_field(|r| r.sensor_frame_rate = Some(fr));
+    assert_eq!(tlv_value(&encoded127, 127), Some(hex("83 D4 60 87 69")));
+
+    let fr = decode_with_single_tlv(127, &hex("1E"))
+        .sensor_frame_rate
+        .unwrap();
+    assert_eq!((fr.numerator, fr.denominator), (30, 1));
+    let encoded127b = encode_with_field(|r| r.sensor_frame_rate = Some(fr));
+    assert_eq!(tlv_value(&encoded127b, 127), Some(hex("1E")));
+
+    // Tag 143: local 0 + uuid (2-byte BER-OID tag, id=0x8F=143).
+    let v143 = hex("00 8DC4F462 3EA25A85 9C5D0AF0 C95E8C39");
+    let ls = decode_with_single_tlv_ber_oid(143, &v143);
+    let ms = ls.metadata_substream_id.unwrap();
+    assert_eq!(ms.local_id, 0);
+    assert_eq!(ms.uuid.unwrap()[0], 0x8D);
+    let encoded143 = encode_with_field(|r| r.metadata_substream_id = Some(ms));
+    assert_eq!(tlv_value(&encoded143, 143), Some(v143));
+}
+
+/// Duplicate Tag 115 (Multiples Allowed = Yes, ST 0601.19 Table 1) must
+/// NOT trip `decode_strict_compliance`'s once-per-packet `DuplicateTag`
+/// check. Built with Tag2-first / Tag65 / checksum-last, mirroring
+/// `decode_strict_compliance_allows_duplicate_unknown_tag`'s strict
+/// fixture shape.
+#[test]
+fn wpc_strict_allows_repeated_115_and_102() {
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+    body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+    body.extend(tlv(115, &hex("05 11 466C7920746F20576179706F696E742031")));
+    body.extend(tlv(115, &hex("07 03 41 42 43")));
+    body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1 placeholder
+    let buf = wrap_st0601_with_inline_checksum(&body);
+
+    let record = decode_strict_compliance(&buf)
+        .expect("repeated Tag 115 (Multiples Allowed) must not be rejected as a duplicate");
+    assert_eq!(record.control_commands.len(), 2);
 }

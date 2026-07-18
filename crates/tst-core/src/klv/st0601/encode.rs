@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 
 use super::mapping::encode_fixed_range;
 use super::model::{EncodeConfig, OutOfRangePolicy, UasDatalinkLs};
+use super::packs;
 use super::tags::{Encoding, TAGS, TagSpec, lookup as lookup_tag};
 
 /// Encode a UAS Datalink Local Set into the caller-provided buffer per
@@ -282,6 +283,9 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
         if spec.id == 1 {
             continue; // checksum is appended after
         }
+        if spec.id == 115 {
+            continue; // MULTI-INSTANCE — handled below, one visit() call per Vec entry
+        }
         let len = match spec.id {
             2 => record.timestamp_us.map(|_| 8),
             3 => record.mission_id.as_ref().map(|s| str_wire_len(s)),
@@ -367,6 +371,23 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .correction_offset_us
                 .map(crate::klv::length::var_int_min_len),
             139 => record.active_payloads.as_ref().map(|v| v.len()),
+            // WP-C Table C1 pack/list items (single-instance; Tag 115 is
+            // multi-instance and is handled after this loop).
+            81 => record.image_horizon.map(|h| packs::image_horizon_len(&h)),
+            116 => record
+                .control_command_verification
+                .as_ref()
+                .map(|ids| packs::id_list_len(ids)),
+            121 => record
+                .active_wavelengths
+                .as_ref()
+                .map(|ids| packs::id_list_len(ids)),
+            127 => record
+                .sensor_frame_rate
+                .map(|fr| packs::sensor_frame_rate_len(&fr)),
+            143 => record
+                .metadata_substream_id
+                .map(|ms| packs::metadata_substream_id_len(&ms)),
             // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS
             // so that `byte_length` comes from the single `tags::TAGS` source.
             _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
@@ -390,6 +411,12 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
         if let Some(len) = len {
             visit(spec.id, len);
         }
+    }
+    // Tag 115 (Control Command) is MULTI-INSTANCE (ST 0601.19 Table 1
+    // "Multiples Allowed" = Yes) — one TLV per `control_commands` entry,
+    // which the once-per-tag TAGS loop above cannot express.
+    for cmd in &record.control_commands {
+        visit(115, packs::control_command_len(cmd));
     }
 }
 
@@ -522,6 +549,48 @@ pub(super) fn encode_tag_value(
             .correction_offset_us
             .map(crate::klv::length::write_var_int_min),
         139 => record.active_payloads.clone(),
+        // WP-C Table C1 pack/list items (single-instance). Tag 115 is
+        // MULTI-INSTANCE and falls to the `_ => None` arm below — its
+        // TLVs are emitted directly by `write_typed_fields`'s inline
+        // loop over `record.control_commands`, bypassing this
+        // once-per-tag function entirely.
+        81 => record
+            .image_horizon
+            .map(|h| {
+                let mut buf = Vec::with_capacity(packs::image_horizon_len(&h));
+                packs::emit_image_horizon(&h, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        116 => record
+            .control_command_verification
+            .as_ref()
+            .map(|ids| {
+                let mut buf = Vec::with_capacity(packs::id_list_len(ids));
+                packs::emit_id_list(ids, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        121 => record
+            .active_wavelengths
+            .as_ref()
+            .map(|ids| {
+                let mut buf = Vec::with_capacity(packs::id_list_len(ids));
+                packs::emit_id_list(ids, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        127 => record
+            .sensor_frame_rate
+            .map(|fr| {
+                let mut buf = Vec::with_capacity(packs::sensor_frame_rate_len(&fr));
+                packs::emit_sensor_frame_rate(&fr, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        143 => record
+            .metadata_substream_id
+            .map(|ms| {
+                let mut buf = Vec::with_capacity(packs::metadata_substream_id_len(&ms));
+                packs::emit_metadata_substream_id(&ms, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
         // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS so
         // the tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {
@@ -569,11 +638,22 @@ fn write_typed_fields(
         if spec.id == 1 {
             continue;
         }
+        if spec.id == 115 {
+            continue; // MULTI-INSTANCE — handled below
+        }
         if let Some(value) =
             encode_tag_value(record, spec, Some(opts.version), opts.out_of_range_policy)?
         {
             emit_ber_oid_tlv(spec.id as u32, &value, body)?;
         }
+    }
+    // Tag 115 (Control Command) is MULTI-INSTANCE — one TLV per
+    // `record.control_commands` entry, in push order. Mirror of the
+    // `each_typed_field` special-case above.
+    for cmd in &record.control_commands {
+        let mut buf = Vec::with_capacity(packs::control_command_len(cmd));
+        packs::emit_control_command(cmd, &mut buf)?;
+        emit_ber_oid_tlv(115, &buf, body)?;
     }
     write_sentinel_tags(record, body)?;
     write_imapb_specials(record, body)?;

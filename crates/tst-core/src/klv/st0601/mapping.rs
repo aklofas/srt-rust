@@ -115,6 +115,7 @@ fn range_hint(tag: u8) -> Option<&'static str> {
     match tag {
         6 => Some("for extended range use platform_pitch_full_deg (Tag 90, +/-90 deg)"),
         7 => Some("for extended range use platform_roll_full_deg (Tag 91, +/-90 deg)"),
+        22 => Some("for extended range use target_width_extended_m (Tag 96, 0-1500000 m)"),
         26..=33 => Some(
             "for out-of-range corner offsets use the absolute corner fields \
              corner_lat_p1_deg..corner_lon_p4_deg (Tags 82-89)",

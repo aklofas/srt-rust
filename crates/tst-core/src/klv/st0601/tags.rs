@@ -27,6 +27,15 @@ pub(crate) enum Encoding {
     RawBytes,
     /// Raw 8-byte big-endian unsigned (e.g. timestamp_us).
     U64,
+    /// ST 1201.5 IMAPB variable-length float (ST 0601 extended items).
+    /// Decode accepts any wire length in 1..=max_len; encode emits default_len
+    /// (the spec's own example length for the item).
+    Imapb {
+        min: f64,
+        max: f64,
+        max_len: usize,
+        default_len: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -954,6 +963,17 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 96,
+        name: "Target Width Extended",
+        encoding: Encoding::Imapb {
+            min: 0.0,
+            max: 1_500_000.0,
+            max_len: 8,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
         id: 97,
         name: "Range Image Local Set",
         encoding: Encoding::RawBytes,
@@ -984,6 +1004,39 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 103,
+        name: "Density Altitude Extended",
+        encoding: Encoding::Imapb {
+            min: -900.0,
+            max: 40_000.0,
+            max_len: 8,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 104,
+        name: "Sensor Ellipsoid Height Extended",
+        encoding: Encoding::Imapb {
+            min: -900.0,
+            max: 40_000.0,
+            max_len: 8,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 105,
+        name: "Alternate Platform Ellipsoid Height Extended",
+        encoding: Encoding::Imapb {
+            min: -900.0,
+            max: 40_000.0,
+            max_len: 8,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
         id: 106,
         name: "Stream Designator",
         encoding: Encoding::Utf8 { max_bytes: 127 },
@@ -1002,9 +1055,119 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 109,
+        name: "Range To Recovery Location",
+        encoding: Encoding::Imapb {
+            min: 0.0,
+            max: 21_000.0,
+            max_len: 4,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 112,
+        name: "Platform Course Angle",
+        encoding: Encoding::Imapb {
+            min: 0.0,
+            max: 360.0,
+            max_len: 8,
+            default_len: 2,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 113,
+        name: "Altitude AGL",
+        encoding: Encoding::Imapb {
+            min: -900.0,
+            max: 40_000.0,
+            max_len: 4,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 114,
+        name: "Radar Altimeter",
+        encoding: Encoding::Imapb {
+            min: -900.0,
+            max: 40_000.0,
+            max_len: 4,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 117,
+        name: "Sensor Azimuth Rate",
+        encoding: Encoding::Imapb {
+            min: -1000.0,
+            max: 1000.0,
+            max_len: 4,
+            default_len: 2,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 118,
+        name: "Sensor Elevation Rate",
+        encoding: Encoding::Imapb {
+            min: -1000.0,
+            max: 1000.0,
+            max_len: 4,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 119,
+        name: "Sensor Roll Rate",
+        encoding: Encoding::Imapb {
+            min: -1000.0,
+            max: 1000.0,
+            max_len: 4,
+            default_len: 2,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 120,
+        name: "On-board MI Storage Percent Full",
+        encoding: Encoding::Imapb {
+            min: 0.0,
+            max: 100.0,
+            max_len: 3,
+            default_len: 2,
+        },
+        range: None,
+    },
+    TagSpec {
         id: 129,
         name: "Target ID",
         encoding: Encoding::Utf8 { max_bytes: 32 },
+        range: None,
+    },
+    TagSpec {
+        id: 132,
+        name: "Transmission Frequency",
+        encoding: Encoding::Imapb {
+            min: 1.0,
+            max: 99_999.0,
+            max_len: 4,
+            default_len: 3,
+        },
+        range: None,
+    },
+    TagSpec {
+        id: 134,
+        name: "Zoom Percentage",
+        encoding: Encoding::Imapb {
+            min: 0.0,
+            max: 100.0,
+            max_len: 4,
+            default_len: 2,
+        },
         range: None,
     },
     TagSpec {
@@ -1053,6 +1216,35 @@ mod tests {
                         spec.name
                     );
                 }
+                Encoding::Imapb {
+                    min,
+                    max,
+                    max_len,
+                    default_len,
+                } => {
+                    assert!(
+                        spec.range.is_none(),
+                        "tag {} ({}) is Imapb but also carries a LinearRange",
+                        spec.id,
+                        spec.name
+                    );
+                    assert!(
+                        min < max,
+                        "tag {} ({}) has non-strict imapb range [{}, {}]",
+                        spec.id,
+                        spec.name,
+                        min,
+                        max
+                    );
+                    assert!(
+                        default_len >= 1 && default_len <= max_len && max_len <= 8,
+                        "tag {} ({}) has invalid imapb lengths: default_len={} max_len={}",
+                        spec.id,
+                        spec.name,
+                        default_len,
+                        max_len
+                    );
+                }
                 _ => {}
             }
         }
@@ -1093,9 +1285,13 @@ mod tests {
     // --- KLV-1 accessor-table completeness ---
 
     /// Every TAGS entry with `range: Some(...)` (excluding Tag 1, which is
-    /// raw U16 not a float field) must appear in RANGED_FIELDS exactly once.
-    /// RANGED_FIELDS must not contain entries that don't have a corresponding
-    /// ranged TAGS entry.
+    /// raw U16 not a float field) OR `encoding: Encoding::Imapb { .. }`
+    /// must appear in RANGED_FIELDS exactly once. RANGED_FIELDS must not
+    /// contain entries that don't have a corresponding ranged/Imapb TAGS
+    /// entry. Imapb tags share the same `Option<f64>` accessor table as
+    /// the LinearRange tags even though `spec.range` stays `None` for
+    /// them — the ENCODING dispatch (not `spec.range`) distinguishes
+    /// linear vs IMAPB wire formats.
     #[test]
     fn ranged_fields_table_complete_and_injective() {
         let ranged_table = crate::klv::st0601::decode::RANGED_FIELDS;
@@ -1112,13 +1308,14 @@ mod tests {
             );
         }
 
-        // Each ranged TAGS entry must appear exactly once in the table.
+        // Each ranged-or-Imapb TAGS entry must appear exactly once in the table.
         let mut ranged_tag_count = 0usize;
         for spec in TAGS {
             if spec.id == 1 {
                 continue; // Checksum: U16Range encoding but no float range
             }
-            if spec.range.is_none() {
+            let is_ranged = spec.range.is_some() || matches!(spec.encoding, Encoding::Imapb { .. });
+            if !is_ranged {
                 continue;
             }
             ranged_tag_count += 1;

@@ -70,7 +70,9 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_alt_m: Option<f64>,
     /// Item 75: Sensor Ellipsoid Height (WGS84) — encode range [-900, 19000] m (uint16).
-    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
+    /// for the extended [-900, 40000] m range use
+    /// [`Self::sensor_ellipsoid_height_extended_m`] (Item 104, IMAPB).
     pub sensor_ellipsoid_height_m: Option<f64>,
     /// Item 16: Sensor Horizontal FOV — encode range [0, 180] deg (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -93,7 +95,9 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub slant_range_m: Option<f64>,
     /// Item 22: Target Width — encode range [0, 10000] m (uint16).
-    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
+    /// for the extended [0, 1500000] m range use
+    /// [`Self::target_width_extended_m`] (Item 96, IMAPB).
     pub target_width_m: Option<f64>,
     /// Item 23: Frame Center Latitude — encode range [-90, 90] deg (int32).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -211,7 +215,9 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub static_pressure_mbar: Option<f64>,
     /// Item 38: Density Altitude — encode range [-900, 19000] m (uint16).
-    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
+    /// for the extended [-900, 40000] m range use
+    /// [`Self::density_altitude_extended_m`] (Item 103, IMAPB).
     pub density_altitude_m: Option<f64>,
     /// Item 49: Differential Pressure — encode range [0, 5000] mbar (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -263,13 +269,21 @@ pub struct UasDatalinkLs {
     pub alternate_platform_lon_deg: Option<f64>,
     /// Item 69: Alternate Platform Altitude — encode range [-900, 19000] m (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Not to be confused with [`Self::alternate_platform_ellipsoid_height_extended_m`]
+    /// (Item 105) — Item 105 extends Item 76 (Alternate Platform Ellipsoid
+    /// Height, a WGS84 ellipsoid-height item), not this plain-altitude item;
+    /// Item 69 has no IMAPB extended-range twin of its own. Per ST 0601.19
+    /// §8.105, legacy systems preferring one representation should favor
+    /// Item 105 over Item 76 over this item.
     pub alternate_platform_alt_m: Option<f64>,
     /// Item 71: Alternate Platform Heading — encode range [0, 360] deg (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub alternate_platform_heading_deg: Option<f64>,
     /// Item 76: Alternate Platform Ellipsoid Height (WGS84) — encode range
     /// [-900, 19000] m (uint16). Values outside raise
-    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    /// [`crate::error::KlvEncodeError::OutOfRange`]; for the extended
+    /// [-900, 40000] m range use
+    /// [`Self::alternate_platform_ellipsoid_height_extended_m`] (Item 105, IMAPB).
     pub alternate_platform_ellipsoid_height_m: Option<f64>,
 
     // Sensor velocity (tags 79-80)
@@ -279,6 +293,93 @@ pub struct UasDatalinkLs {
     /// Item 80: Sensor East Velocity — encode range [-327, 327] m/s (int16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     pub sensor_east_velocity: Option<f64>,
+
+    // Extended-range items (ST 1201.5 IMAPB-encoded, tags 96-134) — WP-B
+    // Table B1. Unlike the fixed-width LinearRange fields above, IMAPB
+    // wire values decode at any length 1..=max_len and encode at
+    // default_len; out-of-range encodes error by default or, under
+    // `OutOfRangePolicy::Indicator`, emit the tag's ST 1201.5
+    // BelowMin/AboveMax special (see `Self::imapb_specials`).
+    /// Item 96: Target Width Extended — ST 1201.5 IMAPB range
+    /// [0, 1500000] m, wire length 1..=8 bytes (encode emits 3 bytes).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Extended-range twin of [`Self::target_width_m`] (Item 22, uint16,
+    /// [0, 10000] m).
+    pub target_width_extended_m: Option<f64>,
+    /// Item 103: Density Altitude Extended — ST 1201.5 IMAPB range
+    /// [-900, 40000] m, wire length 1..=8 bytes (encode emits 3 bytes).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Extended-range twin of [`Self::density_altitude_m`] (Item 38,
+    /// uint16, [-900, 19000] m).
+    pub density_altitude_extended_m: Option<f64>,
+    /// Item 104: Sensor Ellipsoid Height Extended — ST 1201.5 IMAPB range
+    /// [-900, 40000] m, wire length 1..=8 bytes (encode emits 3 bytes).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    /// Extended-range twin of [`Self::sensor_ellipsoid_height_m`]
+    /// (Item 75, uint16, [-900, 19000] m).
+    pub sensor_ellipsoid_height_extended_m: Option<f64>,
+    /// Item 105: Alternate Platform Ellipsoid Height Extended —
+    /// ST 1201.5 IMAPB range [-900, 40000] m, wire length 1..=8 bytes
+    /// (encode emits 3 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`]. Extended-range twin
+    /// of [`Self::alternate_platform_ellipsoid_height_m`] (Item 76,
+    /// uint16, [-900, 19000] m); see also [`Self::alternate_platform_alt_m`]
+    /// (Item 69) for the disambiguation from plain (non-ellipsoid) altitude.
+    pub alternate_platform_ellipsoid_height_extended_m: Option<f64>,
+    /// Item 109: Range To Recovery Location — distance from current
+    /// position to airframe recovery position. ST 1201.5 IMAPB range
+    /// [0, 21000] km, wire length 1..=4 bytes (encode emits 3 bytes).
+    /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub range_to_recovery_km: Option<f64>,
+    /// Item 112: Platform Course Angle — direction the aircraft is
+    /// moving relative to True North. ST 1201.5 IMAPB range [0, 360] deg,
+    /// wire length 1..=8 bytes (encode emits 2 bytes). Values outside
+    /// raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub platform_course_angle_deg: Option<f64>,
+    /// Item 113: Altitude AGL — Above Ground Level height above the
+    /// ground/water. ST 1201.5 IMAPB range [-900, 40000] m, wire length
+    /// 1..=4 bytes (encode emits 3 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub altitude_agl_m: Option<f64>,
+    /// Item 114: Radar Altimeter — height above the ground/water as
+    /// reported by a RADAR altimeter (AGL, see [`Self::altitude_agl_m`]).
+    /// ST 1201.5 IMAPB range [-900, 40000] m, wire length 1..=4 bytes
+    /// (encode emits 3 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub radar_altimeter_m: Option<f64>,
+    /// Item 117: Sensor Azimuth Rate — rate the sensor's azimuth angle
+    /// is changing. ST 1201.5 IMAPB range [-1000, 1000] deg/s, wire
+    /// length 1..=4 bytes (encode emits 2 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub sensor_azimuth_rate_dps: Option<f64>,
+    /// Item 118: Sensor Elevation Rate — rate the sensor's elevation
+    /// angle is changing. ST 1201.5 IMAPB range [-1000, 1000] deg/s,
+    /// wire length 1..=4 bytes (encode emits 3 bytes). Values outside
+    /// raise [`crate::error::KlvEncodeError::OutOfRange`].
+    pub sensor_elevation_rate_dps: Option<f64>,
+    /// Item 119: Sensor Roll Rate — rate the sensor's roll angle is
+    /// changing. ST 1201.5 IMAPB range [-1000, 1000] deg/s, wire length
+    /// 1..=4 bytes (encode emits 2 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub sensor_roll_rate_dps: Option<f64>,
+    /// Item 120: On-board MI Storage Percent Full — amount of on-board
+    /// Motion Imagery storage used, as a percentage of total storage.
+    /// ST 1201.5 IMAPB range [0, 100] %, wire length 1..=3 bytes (encode
+    /// emits 2 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub mi_storage_percent_full: Option<f64>,
+    /// Item 132: Transmission Frequency — radio frequency used to
+    /// transmit the Motion Imagery. ST 1201.5 IMAPB range [1, 99999] MHz,
+    /// wire length 1..=4 bytes (encode emits 3 bytes). Values outside
+    /// raise [`crate::error::KlvEncodeError::OutOfRange`]. First IMAPB
+    /// item whose own tag number is 2-byte BER-OID encoded (like Items
+    /// 129/135 in the raw/UTF-8 set).
+    pub transmission_frequency_mhz: Option<f64>,
+    /// Item 134: Zoom Percentage — for a variable-zoom system, the
+    /// percentage of zoom. ST 1201.5 IMAPB range [0, 100] %, wire length
+    /// 1..=4 bytes (encode emits 2 bytes). Values outside raise
+    /// [`crate::error::KlvEncodeError::OutOfRange`].
+    pub zoom_percentage: Option<f64>,
 
     // Misc
     /// Item 47: Generic Flag Data — bitfield per ST 0601.19 Table 3:
@@ -364,6 +465,38 @@ pub struct UasDatalinkLs {
     /// but the emission order is: typed fields in ascending tag order, then
     /// `sentinel_tags` entries, then `unknown` fields in caller order.
     pub sentinel_tags: Vec<u32>,
+
+    /// Tags whose ST 1201.5 IMAPB wire value decoded to a spec-defined
+    /// special value (§7.2.3 — `+∞`/`−∞`, NaN families, the
+    /// MISB-defined `BelowMin`/`AboveMax` overflow signals, or a
+    /// user-defined signal) rather than a normal-range float. The
+    /// corresponding typed `Option<f64>` field is left `None` and the
+    /// tag+special pair is recorded here instead. Use
+    /// [`crate::klv::ImapbSpecial`] to inspect which special was
+    /// signaled.
+    ///
+    /// **Encode semantics:** mirrors [`Self::sentinel_tags`] — encoding a
+    /// record re-emits the special's bytes (at the tag's `default_len`)
+    /// for each `(tag, special)` entry whose typed field is currently
+    /// `None`. If the typed field is `Some(v)`, the value wins and the
+    /// special entry is not re-emitted.
+    ///
+    /// **Decode semantics for the two IMAPB outcomes NOT carried here:**
+    /// a wire integer in ST 1201.5's reserved-but-unrecognized
+    /// special-value space (`DecodedImapb::ReservedSpecial`) or one that
+    /// arithmetic-decodes outside the tag's `[min, max]`
+    /// (`DecodedImapb::OutOfRange`) are both treated as producer
+    /// non-conformance from this typed consumer's view: they are NOT
+    /// pushed here, and the raw wire bytes are NOT preserved. Instead
+    /// they are recorded in [`Self::field_errors`] as
+    /// [`crate::error::KlvFieldError::OutOfRange`] — `value: f64::NAN`
+    /// for `ReservedSpecial` (no arithmetic decode exists for a
+    /// non-conformant bit pattern), or the raw arithmetic decode for
+    /// `OutOfRange`. This differs from `unknown`/`patch()`, which
+    /// preserve raw bytes verbatim for genuinely untyped tags — these
+    /// tags ARE typed, so a malformed value is a decode error, not a
+    /// pass-through.
+    pub imapb_specials: Vec<(u32, crate::klv::imapb::ImapbSpecial)>,
 }
 
 impl Default for UasDatalinkLs {
@@ -449,6 +582,20 @@ impl Default for UasDatalinkLs {
             alternate_platform_ellipsoid_height_m: None,
             sensor_north_velocity: None,
             sensor_east_velocity: None,
+            target_width_extended_m: None,
+            density_altitude_extended_m: None,
+            sensor_ellipsoid_height_extended_m: None,
+            alternate_platform_ellipsoid_height_extended_m: None,
+            range_to_recovery_km: None,
+            platform_course_angle_deg: None,
+            altitude_agl_m: None,
+            radar_altimeter_m: None,
+            sensor_azimuth_rate_dps: None,
+            sensor_elevation_rate_dps: None,
+            sensor_roll_rate_dps: None,
+            mi_storage_percent_full: None,
+            transmission_frequency_mhz: None,
+            zoom_percentage: None,
             generic_flag_data: None,
             security_local_set: None,
             rvt: None,
@@ -476,6 +623,7 @@ impl Default for UasDatalinkLs {
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),
+            imapb_specials: Vec::new(),
         }
     }
 }

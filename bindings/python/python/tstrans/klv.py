@@ -1255,6 +1255,35 @@ class SdccFlp:
     correlations: tuple[float, ...] = ()
     correlation_present: tuple[bool, ...] = ()
 
+    def correlation(self, i: int, j: int) -> float:
+        """rho(i,j) with symmetry; sigma via std_devs[i] on the diagonal.
+        Pure-Python port of the Rust `SdccFlp::correlation` (5-line
+        row-major upper-triangle index) — no FFI crossing needed.
+
+        Raises `IndexError` if `i` or `j` is `>= matrix_size` (the
+        natural Python equivalent of the Rust panic), or on a diagonal
+        query (`i == j`) if this pack has no standard-deviation data at
+        all (`Slen == 0` — spec-legal, see the `std_devs` field doc).
+        Off-diagonal queries never hit that second case — `correlations`
+        is always sized to the full triangle regardless of `Clen`."""
+        n = self.matrix_size
+        if not (0 <= i < n and 0 <= j < n):
+            raise IndexError(
+                f"SdccFlp.correlation index out of bounds: ({i}, {j}) for matrix_size {n}"
+            )
+        if i == j:
+            if i >= len(self.std_devs):
+                raise IndexError(
+                    f"SdccFlp.correlation({i}, {i}): no standard-deviation value "
+                    "available (Slen==0 / an empty std_devs for this pack)"
+                )
+            return self.std_devs[i]
+        lo, hi = (i, j) if i < j else (j, i)
+        offset = 0
+        for k in range(lo):
+            offset += n - 1 - k
+        return self.correlations[offset + (hi - lo - 1)]
+
 
 decode_sdcc_flp = _native_mod.decode_sdcc_flp
 encode_sdcc_flp_mode2 = _native_mod.encode_sdcc_flp_mode2

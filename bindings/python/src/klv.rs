@@ -1259,7 +1259,7 @@ fn imapb_special_from_code(code: &str, payload: u64) -> PyResult<RustImapbSpecia
 // ---------------------------------------------------------------------------
 
 /// Translate a Rust `UasDatalinkLs` to a Python `tstrans.klv.UasDatalinkLs`
-/// dataclass instance. Mechanical 107-field projection.
+/// dataclass instance. Mechanical 133-field projection.
 #[allow(clippy::cognitive_complexity)]
 fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;

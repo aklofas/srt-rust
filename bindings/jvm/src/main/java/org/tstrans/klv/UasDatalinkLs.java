@@ -241,9 +241,9 @@ public record UasDatalinkLs(
         Long correctionOffsetUs,
         /**
          * Tag 139 — Active Payloads, bitmask of active Payload IDs
-         * (LSB-first within each byte; multi-byte extends upward). Use
-         * {@link Klv} or hand-unpack the bits; no typed accessor iterator
-         * on this binding (mirrors tst-py, which also left it unmirrored).
+         * (LSB-first within each byte; multi-byte extends upward). Hand-unpack
+         * the bits; no typed accessor iterator on this binding (mirrors tst-py,
+         * which also left it unmirrored).
          */
         ByteBuffer activePayloads,
 

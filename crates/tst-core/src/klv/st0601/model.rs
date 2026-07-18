@@ -583,7 +583,8 @@ pub struct UasDatalinkLs {
     /// record re-emits the special's bytes (at the tag's `default_len`)
     /// for each `(tag, special)` entry whose typed field is currently
     /// `None`. If the typed field is `Some(v)`, the value wins and the
-    /// special entry is not re-emitted.
+    /// special entry is not re-emitted. Entries whose tag is not an IMAPB-encoded
+    /// item are silently skipped on encode.
     ///
     /// **Decode semantics for the two IMAPB outcomes NOT carried here:**
     /// a wire integer in ST 1201.5's reserved-but-unrecognized

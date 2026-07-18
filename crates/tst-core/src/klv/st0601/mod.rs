@@ -52,13 +52,14 @@
 //!   are the first typed tags whose own tag number is 2-byte BER-OID
 //!   encoded).
 //! - **Extended-range items (ST 1201.5 IMAPB, WP-B):** tags 96,
-//!   103–105, 109, 112–114, 117–120, 132, 134 (14 fields; each is the
-//!   wider-range twin of an existing fixed-width scalar — see the
-//!   field docs for the ST 0601.19 restricted-vs-extended precedence
-//!   rule). Out-of-range values under [`OutOfRangePolicy::Indicator`]
-//!   and any producer-supplied special value (`+/-Infinity`, NaN
-//!   families) round-trip through [`UasDatalinkLs::imapb_specials`],
-//!   the IMAPB counterpart of [`UasDatalinkLs::sentinel_tags`].
+//!   103–105, 109, 112–114, 117–120, 132, 134 (14 fields: four are
+//!   wider-range twins of existing restricted items 22, 38, 75, 76;
+//!   the remaining ten are new standalone items — see the field docs
+//!   for the ST 0601.19 restricted-vs-extended precedence rule).
+//!   Out-of-range values under [`OutOfRangePolicy::Indicator`] and
+//!   any producer-supplied special value (`+/-Infinity`, NaN families)
+//!   round-trip through [`UasDatalinkLs::imapb_specials`], the IMAPB
+//!   counterpart of [`UasDatalinkLs::sentinel_tags`].
 //! - **Var-length int/enum items (WP-B):** tags 110–111, 123–126, 131,
 //!   133, 136–137, 139 (11 fields: navigation/propulsion/positioning
 //!   counters, two new coded enums [`PlatformStatus`] (tag 125) and

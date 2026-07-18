@@ -86,13 +86,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - 25 more previously-passthrough MISB ST 0601 tags are now typed
   `UasDatalinkLs` fields — 128 of 143 spec items modeled, up from 103:
-  - 14 ST 1201.5 IMAPB (variable-length float) items, the "extended
-    range" twins the WP-A fixed-linear items left unmodeled: target
-    width, density altitude, sensor and alternate-platform ellipsoid
-    height, range to recovery, platform course angle, altitude AGL,
-    radar altimeter, sensor azimuth/elevation/roll rate, MI storage
-    percent full, transmission frequency, and zoom percentage (tags 96,
-    103–105, 109, 112–114, 117–120, 132, 134).
+  - 14 ST 1201.5 IMAPB (variable-length float) items: four are
+    extended-range twins of existing restricted items (target width,
+    density altitude, sensor and alternate-platform ellipsoid height —
+    tags 96, 103–105 twinning items 22, 38, 75, 76); the remaining ten
+    are new standalone items (range to recovery, platform course angle,
+    altitude AGL, radar altimeter, sensor azimuth/elevation/roll rate,
+    MI storage percent full, transmission frequency, zoom percentage —
+    tags 109, 112–114, 117–120, 132, 134).
   - 10 MISB variable-length truncatable-int items (tags 110–111,
     123–126, 131, 133, 136–137): navsats in view, positioning method
     source, two new coded enums (`PlatformStatus` and

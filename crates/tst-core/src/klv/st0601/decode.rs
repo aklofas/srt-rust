@@ -13,7 +13,8 @@ use alloc::vec::Vec;
 
 use super::mapping::decode_fixed_range;
 use super::model::{
-    IcingDetected, OperationalMode, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
+    IcingDetected, OperationalMode, PlatformStatus, SdccFlpField, SensorControlMode, SensorFovName,
+    UasDatalinkLs,
 };
 use super::packs;
 use super::tags::{Encoding, lookup};
@@ -247,9 +248,9 @@ fn strict_body_walk(body: &[u8], body_offset_in_buf: usize) -> Result<Vec<u32>, 
         // and 102 are exempted: they are the spec's only two items with
         // "Multiples Allowed" = Yes (ST 0601.19 Table 1), so repeating
         // them is conformant, not a violation of the once-per-packet
-        // rule. (Tag 102's typed capture lands in a later WP-C task;
-        // the exemption is written now so that task doesn't need to
-        // revisit this walker.)
+        // rule. (Tag 102 is typed via `UasDatalinkLs::sdcc_flps` —
+        // see `decode_inner`'s running tag-list capture in
+        // `apply_typed_tag`.)
         if let Ok(tag_u8) = u8::try_from(tag) {
             if lookup(tag_u8).is_some() && tag_u8 != 115 && tag_u8 != 102 {
                 if seen[tag_u8 as usize] {
@@ -310,6 +311,15 @@ fn decode_inner(
 
     let mut declared_checksum: Option<(u16, usize)> = None; // (value, offset_into_buf_of_value)
 
+    // Wire-order item tags seen so far (Tag 102's "Refined Source List"
+    // positional capture needs to know which items immediately precede
+    // each occurrence — see `apply_typed_tag`'s `102` arm). Tag 1
+    // (checksum) is excluded below since it is handled separately and
+    // never reaches `apply_typed_tag`; Tag 102 itself is excluded inside
+    // `apply_typed_tag` (it is not one of the "sources" a later
+    // occurrence could refine).
+    let mut tags_seen: Vec<u32> = Vec::new();
+
     for r in Iter::local_set(body) {
         let f = r?;
         if f.tag == 1 {
@@ -328,7 +338,7 @@ fn decode_inner(
             declared_checksum = Some((cksum, value_offset_in_buf));
             continue;
         }
-        if let Err(field_err) = apply_typed_tag(&mut record, &f) {
+        if let Err(field_err) = apply_typed_tag(&mut record, &f, &mut tags_seen) {
             record.field_errors.push(field_err);
         }
     }
@@ -359,8 +369,18 @@ fn decode_inner(
 fn apply_typed_tag(
     record: &mut UasDatalinkLs,
     f: &crate::klv::pack::RawField<'_>,
+    tags_seen: &mut Vec<u32>,
 ) -> Result<(), KlvFieldError> {
     let tag = f.tag;
+    // Running tag-list capture for Tag 102's positional "Refined Source
+    // List" binding (ST 0601.19 §8.102): push every item tag as
+    // encountered — known or unknown, but never Tag 102 itself (it is
+    // not one of the "sources" a later occurrence could refine). Pushed
+    // unconditionally up front so a field that goes on to fail decode
+    // below still counts as "encountered" for a later Tag 102 occurrence.
+    if tag != 102 {
+        tags_seen.push(tag);
+    }
     // Per MISB ST 0107.3-04 the decoder shall skip unknown LS values
     // without impacting the decoding of known items. ST 0107.5 §6.3.1
     // specifies BER-OID tags so the wire-format tag space is unlimited —
@@ -614,6 +634,21 @@ fn apply_typed_tag(
             81 => record.image_horizon = Some(packs::parse_image_horizon(f.value)?),
             // MULTI-INSTANCE (ST 0601.19 Table 1 "Multiples Allowed" =
             // Yes) — every occurrence appends, it never overwrites.
+            // Positional capture, not a full `st1010::decode_sdcc_flp`
+            // parse: only the Matrix Size (Element 1) needs peeking here
+            // to know how many of `tags_seen`'s most-recent entries this
+            // occurrence refines; the raw bytes are kept verbatim so a
+            // malformed-but-peekable pack still round-trips, and callers
+            // decode the pack itself on demand.
+            102 => {
+                let n = crate::klv::st1010::peek_matrix_size(f.value)
+                    .ok_or(KlvFieldError::TruncatedField { tag })?;
+                let start = tags_seen.len().saturating_sub(n);
+                record.sdcc_flps.push(SdccFlpField {
+                    preceding_tags: tags_seen[start..].to_vec(),
+                    bytes: f.value.to_vec(),
+                });
+            }
             115 => record
                 .control_commands
                 .push(packs::parse_control_command(f.value)?),

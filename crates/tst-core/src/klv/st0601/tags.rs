@@ -1031,6 +1031,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 102,
+        name: "SDCC-FLP",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 103,
         name: "Density Altitude Extended",
         encoding: Encoding::Imapb {

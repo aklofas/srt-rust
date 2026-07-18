@@ -9,6 +9,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — ST 0601 Tag 102 SDCC-FLP positional capture (1 new item, 142 of 143 total)
+
+- MISB ST 0601 Tag 102 (SDCC-FLP, Standard Deviation and Correlation
+  Coefficient, Floating-Point) is now a typed `UasDatalinkLs` field,
+  `sdcc_flps: Vec<SdccFlpField>` — up from 141. Tag 102 is MULTI-INSTANCE
+  with positional row-to-item semantics (the "Refined Source List"
+  binding, ST 0601.19 §8.102): each occurrence refines the accuracy of
+  the `N` Local Set items immediately preceding it on the wire, where
+  `N` is the occurrence's own SDCC-FLP matrix size. Decode maintains a
+  running wire-order tag list and captures, per occurrence,
+  `preceding_tags` (the refined items) plus the raw pack `bytes`
+  (decode with the new `klv::st1010::decode_sdcc_flp`); encode re-emits
+  every entry verbatim, grouped together in tag-ascending position —
+  the original interleaving with `preceding_tags` is documented as NOT
+  reproduced on re-encode (`SdccFlpField`'s adjacency caveat).
+- Only 1 of 143 spec items remains untyped: Tag 66 (deprecated,
+  permanently unknown-passthrough by design).
+
 ### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
 
 - 7 previously-passthrough MISB ST 0601 tags encoded as "Variable-Length

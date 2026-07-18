@@ -283,6 +283,9 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
         if spec.id == 1 {
             continue; // checksum is appended after
         }
+        if spec.id == 102 {
+            continue; // MULTI-INSTANCE — handled below, one visit() call per Vec entry
+        }
         if spec.id == 115 {
             continue; // MULTI-INSTANCE — handled below, one visit() call per Vec entry
         }
@@ -371,8 +374,8 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .correction_offset_us
                 .map(crate::klv::length::var_int_min_len),
             139 => record.active_payloads.as_ref().map(|v| v.len()),
-            // WP-C Table C1 pack/list items (single-instance; Tag 115 is
-            // multi-instance and is handled after this loop).
+            // WP-C Table C1 pack/list items (single-instance; Tags 102
+            // and 115 are multi-instance and are handled after this loop).
             81 => record.image_horizon.map(|h| packs::image_horizon_len(&h)),
             116 => record
                 .control_command_verification
@@ -429,6 +432,12 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
         if let Some(len) = len {
             visit(spec.id, len);
         }
+    }
+    // Tag 102 (SDCC-FLP) is also MULTI-INSTANCE (ST 0601.19 Table 1
+    // "Multiples Allowed" = Yes) — one TLV per `sdcc_flps` entry, sized
+    // by its already-captured raw bytes (no re-derivation).
+    for field in &record.sdcc_flps {
+        visit(102, field.bytes.len());
     }
     // Tag 115 (Control Command) is MULTI-INSTANCE (ST 0601.19 Table 1
     // "Multiples Allowed" = Yes) — one TLV per `control_commands` entry,
@@ -567,11 +576,11 @@ pub(super) fn encode_tag_value(
             .correction_offset_us
             .map(crate::klv::length::write_var_int_min),
         139 => record.active_payloads.clone(),
-        // WP-C Table C1 pack/list items (single-instance). Tag 115 is
-        // MULTI-INSTANCE and falls to the `_ => None` arm below — its
-        // TLVs are emitted directly by `write_typed_fields`'s inline
-        // loop over `record.control_commands`, bypassing this
-        // once-per-tag function entirely.
+        // WP-C Table C1 pack/list items (single-instance). Tags 102 and
+        // 115 are MULTI-INSTANCE and fall to the `_ => None` arm below —
+        // their TLVs are emitted directly by `write_typed_fields`'s
+        // inline loops over `record.sdcc_flps` / `record.control_commands`,
+        // bypassing this once-per-tag function entirely.
         81 => record
             .image_horizon
             .map(|h| {
@@ -710,6 +719,9 @@ fn write_typed_fields(
         if spec.id == 1 {
             continue;
         }
+        if spec.id == 102 {
+            continue; // MULTI-INSTANCE — handled below
+        }
         if spec.id == 115 {
             continue; // MULTI-INSTANCE — handled below
         }
@@ -718,6 +730,15 @@ fn write_typed_fields(
         {
             emit_ber_oid_tlv(spec.id as u32, &value, body)?;
         }
+    }
+    // Tag 102 (SDCC-FLP) is MULTI-INSTANCE — one TLV per
+    // `record.sdcc_flps` entry, emitted verbatim (the raw captured
+    // bytes, not re-derived from a parsed `SdccFlp`). Ascending-order
+    // emission caveat: see `SdccFlpField`'s doc — grouping every
+    // occurrence together here does not reproduce the original wire
+    // interleaving with the Local Set items named in `preceding_tags`.
+    for field in &record.sdcc_flps {
+        emit_ber_oid_tlv(102, &field.bytes, body)?;
     }
     // Tag 115 (Control Command) is MULTI-INSTANCE — one TLV per
     // `record.control_commands` entry, in push order. Mirror of the

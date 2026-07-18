@@ -584,6 +584,13 @@ pub struct UasDatalinkLs {
     pub waypoint_list: Option<Vec<Waypoint>>,
     /// Item 142: View Domain. See [`ViewDomain`].
     pub view_domain: Option<ViewDomain>,
+    /// Item 102: SDCC-FLP (Standard Deviation and Correlation
+    /// Coefficient, Floating-Point). MULTI-INSTANCE per ST 0601.19
+    /// Table 1 ("Multiples Allowed" = Yes) — the "Refined Source List"
+    /// binding: every wire occurrence appends one [`SdccFlpField`],
+    /// capturing which preceding items it refines. See [`SdccFlpField`]
+    /// for the capture rule and the encode-side adjacency caveat.
+    pub sdcc_flps: Vec<SdccFlpField>,
 
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
@@ -640,6 +647,44 @@ pub struct UasDatalinkLs {
     /// tags ARE typed, so a malformed value is a decode error, not a
     /// pass-through.
     pub imapb_specials: Vec<(u32, crate::klv::imapb::ImapbSpecial)>,
+}
+
+/// One captured ST 0601 Item 102 (SDCC-FLP) occurrence, with its
+/// "Refined Source List" positional context (ST 0601.19 §8.102).
+///
+/// Tag 102 is MULTI-INSTANCE (ST 0601.19 Table 1 "Multiples Allowed" =
+/// Yes): each occurrence's SDCC-FLP pack (MISB ST 1010.3 — parse with
+/// [`crate::klv::st1010::decode_sdcc_flp`]) refines the accuracy of the
+/// Local Set items that immediately precede it on the wire. This struct
+/// keeps the raw pack bytes rather than a parsed
+/// [`crate::klv::st1010::SdccFlp`] so a malformed or foreign-encoder
+/// pack still round-trips byte-exact even when this crate cannot parse
+/// its interior.
+///
+/// **Capture semantics (decode):** `preceding_tags` is the `N` wire-order
+/// item tags — known or unknown, but never another Tag 102 — immediately
+/// before this occurrence, where `N` is this pack's own parsed matrix
+/// size (fewer if the Local Set had fewer prior items).
+///
+/// **Ascending-order emission caveat (encode):** every `sdcc_flps` entry
+/// is re-emitted verbatim from one place in tag-ascending order, grouping
+/// all occurrences together. This means the *original* interleaving with
+/// `preceding_tags` (e.g. tags 13/14/15 followed by one Tag 102
+/// occurrence, then tags 5/6/7 followed by another) is generally NOT
+/// reproduced on re-encode — the re-encoded wire carries both
+/// occurrences back to back instead. `preceding_tags` therefore records
+/// what the *original* wire order was, not a guarantee about the
+/// re-encoded one; the pack `bytes` themselves are still byte-exact.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdccFlpField {
+    /// Wire-order item tags immediately preceding this occurrence (see
+    /// struct doc for the capture rule). Empty if this occurrence had no
+    /// preceding items (matrix size 0, or fewer prior items than the
+    /// matrix size — spec-legal-but-degenerate, not an error).
+    pub preceding_tags: Vec<u32>,
+    /// Raw SDCC-FLP pack bytes, exactly as they appeared on the wire —
+    /// parse with [`crate::klv::st1010::decode_sdcc_flp`].
+    pub bytes: Vec<u8>,
 }
 
 impl Default for UasDatalinkLs {
@@ -787,6 +832,7 @@ impl Default for UasDatalinkLs {
             weapons_stores: None,
             waypoint_list: None,
             view_domain: None,
+            sdcc_flps: Vec::new(),
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),

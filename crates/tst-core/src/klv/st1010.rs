@@ -74,14 +74,26 @@ pub struct SdccFlp {
     /// Diagonal σ values, length == matrix_size (empty when Slen == 0).
     pub std_devs: Vec<f64>,
     /// Upper-triangle correlations, row-major (i<j), ABSENT slots as 0.0
-    /// (sparse-mode zeros are reconstituted). Empty when Clen == 0.
+    /// (sparse-mode zeros are reconstituted). Unlike `std_devs`, this is
+    /// ALWAYS the full `matrix_size*(matrix_size-1)/2` length regardless of
+    /// `Clen` — a `Clen==0` pack (no correlation data at all) still gets a
+    /// zero-filled vector of that length, not an empty one. Only empty
+    /// when `matrix_size <= 1` (no possible correlation slots).
     pub correlations: Vec<f64>,
     /// True where the wire actually carried the slot (all-true in full mode).
     pub correlation_present: Vec<bool>,
 }
 
 impl SdccFlp {
-    /// ρ(i,j) with symmetry; σ via `std_devs[i]`. Panics if i/j >= matrix_size.
+    /// ρ(i,j) with symmetry; σ via `std_devs[i]`.
+    ///
+    /// Panics if `i` or `j` is `>= matrix_size`. Additionally, for a
+    /// diagonal query (`i==j`) only: panics if this pack has no
+    /// standard-deviation data at all (`Slen==0` — spec-legal, see the
+    /// `std_devs` field doc; a manually-constructed `SdccFlp` can also
+    /// hit this if `std_devs.len() < matrix_size`). Off-diagonal queries
+    /// never hit that second case — `correlations` is always sized to the
+    /// full triangle regardless of `Clen` (see its field doc).
     pub fn correlation(&self, i: usize, j: usize) -> f64 {
         let n = self.matrix_size as usize;
         assert!(
@@ -89,6 +101,11 @@ impl SdccFlp {
             "SdccFlp::correlation index out of bounds: ({i}, {j}) for matrix_size {n}"
         );
         if i == j {
+            assert!(
+                i < self.std_devs.len(),
+                "SdccFlp::correlation({i}, {i}): no standard-deviation value \
+                 available (Slen==0 / an empty std_devs for this pack)"
+            );
             return self.std_devs[i];
         }
         let (lo, hi) = if i < j { (i, j) } else { (j, i) };
@@ -443,11 +460,51 @@ mod tests {
 
     #[test]
     fn sdcc_parse_control_spec_examples() {
-        // Fig 7 (Mode 1): 0x4B -> Slen 4, sparse, Clen 3.
-        // Exercised through a full pack? Mode 1 needs values; assert via decode error-free path below.
+        // Fig 7 (Mode 1): 0x4B -> Slen 4, sparse, Clen 3. Full end-to-end
+        // Mode-1 decode is covered separately by
+        // sdcc_mode1_full_3x3_golden (a different PC byte, 0x43, chosen so
+        // the full pack has a clean non-sparse correlation set that's
+        // hand-derivable without a bit vector).
         // Fig 9 (Mode 2): 0xB3 0x08 -> sparse, Cf=ST1201, Clen 3, Sf=IEEE, Slen 8.
         // Pinned indirectly by the goldens; direct unit tests target the (private) pc parser:
         assert_eq!(parse_mode2(0xB3, 0x08), (true, true, 3, false, 8)); // (cs, cf_imap, clen, sf_imap, slen)
+    }
+
+    #[test]
+    fn sdcc_mode1_full_3x3_golden() {
+        // Hand-derived Mode-1 golden — Mode 1 has no encode path in this
+        // module, so this is NOT round-tripped through our own encoder;
+        // every byte below is derived directly from the spec algorithm.
+        //
+        // PC = 0x43 = 0100_0011: F=0 (Mode 1, bit7==0), Slen=4 (bits 6-4 =
+        // 0100), CS=0 (bit3, not sparse), Clen=3 (bits 2-0 = 011). Mode 1
+        // correlations are ALWAYS ST 1201 (never IEEE, per spec); std-dev
+        // format is assumed IEEE (module doc — Parent-Document-defined,
+        // undocumented by the spec itself for Mode 1).
+        //
+        // Std devs: IEEE binary32 for 1.0/2.0/4.0 — standard, independently
+        // verifiable bit patterns (sign=0, biased exponent 127/128/129,
+        // zero mantissa): 0x3F800000 / 0x40000000 / 0x40800000.
+        //
+        // Correlations: IMAPB(-1.0, 1.0, Clen=3) per ST 1010.3 §6.3.2.3.
+        // ST 1201.5 §8.9: dPow = 8*3-1 = 23; bPow = ceil(log2(max-min)) =
+        // ceil(log2(2)) = 1; sF = 2^(dPow-bPow) = 2^22 = 4194304. Zoffset =
+        // frac(sF*min) = frac(-4194304) = 0 (min<0<max, but sF*min is
+        // already an integer). Encode: y = floor(sF*(x-min) + Zoffset) =
+        // floor(2^22*(x+1)):
+        //   x=0.5  -> y = floor(2^22 * 1.5) = 6291456 = 0x600000
+        //   x=0.0  -> y = floor(2^22 * 1.0) = 4194304 = 0x400000
+        //   x=-0.5 -> y = floor(2^22 * 0.5) = 2097152 = 0x200000
+        let bytes = hex(concat!(
+            "03 43",
+            "3F800000 40000000 40800000",
+            "600000 400000 200000",
+        ));
+        let m = decode_sdcc_flp(&bytes).unwrap();
+        assert_eq!(m.matrix_size, 3);
+        assert_eq!(m.std_devs, alloc::vec![1.0, 2.0, 4.0]);
+        assert_eq!(m.correlations, alloc::vec![0.5, 0.0, -0.5]);
+        assert_eq!(m.correlation_present, alloc::vec![true, true, true]);
     }
 
     #[test]
@@ -497,6 +554,47 @@ mod tests {
         let m = decode_sdcc_flp(&bytes).unwrap();
         assert_eq!(m.std_devs, alloc::vec![1.0, 2.0, 4.0]);
         assert!((m.correlations[0] - 0.5).abs() < 1e-3); // IMAPB(-1,1,2) quantization
+    }
+
+    #[test]
+    fn sdcc_correlation_diagonal_returns_std_dev() {
+        // Diagonal access (i==j) returns std_devs[i] — previously
+        // uncovered. Reuses the full 3x3 IEEE golden's known sigmas.
+        let bytes = hex(concat!(
+            "03 84 04",
+            "3F800000 40000000 40800000",
+            "3F000000 00000000 BF000000",
+        ));
+        let m = decode_sdcc_flp(&bytes).unwrap();
+        assert_eq!(m.correlation(0, 0), 1.0);
+        assert_eq!(m.correlation(1, 1), 2.0);
+        assert_eq!(m.correlation(2, 2), 4.0);
+    }
+
+    #[test]
+    fn sdcc_slen_zero_offdiagonal_correlation_still_works() {
+        // Mode 2, N=3, Slen=0 (no std-dev data at all — spec-legal, Table 4:
+        // std devs "present iff Slen>0"), Clen=4 IEEE correlations.
+        // PC = 0x84 0x00: byte1 F1=1,CS=0,Cf=0(IEEE),Clen=4 = 1000_0100;
+        // byte2 Sf=0,Slen=0 = 0x00 (Sf is irrelevant when Slen==0 — no
+        // std-dev bytes are ever read).
+        let bytes = hex("03 84 00 3F000000 00000000 BF000000");
+        let m = decode_sdcc_flp(&bytes).unwrap();
+        assert!(m.std_devs.is_empty());
+        // `correlations` is always full-triangle-sized regardless of
+        // Slen, so off-diagonal access must succeed even with no std devs.
+        assert_eq!(m.correlation(0, 1), 0.5);
+        assert_eq!(m.correlation(2, 0), 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "no standard-deviation value")]
+    fn sdcc_slen_zero_diagonal_correlation_panics() {
+        let bytes = hex("03 84 00 3F000000 00000000 BF000000");
+        let m = decode_sdcc_flp(&bytes).unwrap();
+        // i==0 is well within matrix_size=3 — this must be the documented
+        // "no std-dev data" panic, not an index-out-of-bounds one.
+        let _ = m.correlation(0, 0);
     }
 
     #[test]

@@ -2188,9 +2188,11 @@ fn wpb_imapb_spec_vectors() {
         else {
             panic!("tag {tag} is not Imapb-encoded");
         };
-        // Tolerance: one quantization step at the example wire length.
-        let step = (max - min)
-            / 2f64.powi((8 * bytes.len() - 1) as i32 - (max - min).log2().ceil() as i32);
+        // Tolerance: one quantization step (sR = 1/sF, ST 1201.5 §8.9) at
+        // the example wire length — NOT (max-min)/sF, which is (max-min)
+        // times too loose and would make this assertion near-vacuous for
+        // the wide-range tags (e.g. Tag 96 spans 1,500,000 m).
+        let step = 1.0 / 2f64.powi((8 * bytes.len() - 1) as i32 - (max - min).log2().ceil() as i32);
         assert!((got - value).abs() <= step, "tag {tag}: {got} vs {value}");
         // Encode at default_len must reproduce the spec bytes exactly
         // (default_len == the example length by Table B1 construction).
@@ -2222,6 +2224,72 @@ fn wpb_imapb_variable_length_decode_and_specials() {
     // Specials re-emit on encode when the field stays None (value wins otherwise):
     let out = crate::klv::st0601::encode_to_vec(&ls).unwrap();
     assert_eq!(tlv_value(&out, 104), Some(vec![0xE1, 0x00, 0x00]));
+}
+
+/// The two non-conformant IMAPB decode outcomes — a top-two-bits-set
+/// pattern that doesn't match any recognized special family
+/// (`DecodedImapb::ReservedSpecial`), and a normal-pattern integer that
+/// arithmetic-decodes outside `[min, max]` (`DecodedImapb::OutOfRange`) —
+/// are producer errors from this typed consumer's view: they land in
+/// `field_errors`, NOT `imapb_specials`, and the typed field stays `None`.
+/// See the `imapb_specials` field rustdoc for the policy rationale.
+#[test]
+fn wpb_imapb_reserved_and_out_of_range_land_in_field_errors() {
+    // ReservedSpecial: top byte 0xCC (0b1100_1100) matches the 5-bit
+    // PositiveInfinity prefix (0b11001) but carries a non-zero payload
+    // (0x1234), which the +Inf family requires to be zero-filled — so it
+    // is an unrecognized/reserved pattern, not +Inf (mirrors imapb.rs's
+    // own `decode_special_rejects_non_zero_fill` pinning). Tag 104
+    // (Sensor Ellipsoid Height Extended) at its 3-byte example length.
+    let ls = decode_with_single_tlv(104, &[0xCC, 0x12, 0x34]);
+    assert_eq!(ls.sensor_ellipsoid_height_extended_m, None);
+    assert!(
+        ls.imapb_specials.is_empty(),
+        "ReservedSpecial must not populate imapb_specials, got {:?}",
+        ls.imapb_specials
+    );
+    assert_eq!(ls.field_errors.len(), 1);
+    match ls.field_errors[0] {
+        crate::error::KlvFieldError::OutOfRange {
+            tag: 104,
+            value,
+            min: -900.0,
+            max: 40_000.0,
+        } => {
+            assert!(
+                value.is_nan(),
+                "ReservedSpecial must carry NaN, got {value}"
+            );
+        }
+        ref other => panic!("expected OutOfRange{{tag:104,value:NaN,..}}, got {other:?}"),
+    }
+
+    // OutOfRange: 0xBFFFFF is a normal-pattern integer (top two bits
+    // `10`, not `11`, so it takes the arithmetic-decode path rather than
+    // the special-value path) that decodes past Tag 104's max=40000 —
+    // the ST 1201.5 §8.6 Eq.12 inter-band reserved integer space.
+    let ls = decode_with_single_tlv(104, &[0xBF, 0xFF, 0xFF]);
+    assert_eq!(ls.sensor_ellipsoid_height_extended_m, None);
+    assert!(
+        ls.imapb_specials.is_empty(),
+        "OutOfRange must not populate imapb_specials, got {:?}",
+        ls.imapb_specials
+    );
+    assert_eq!(ls.field_errors.len(), 1);
+    match ls.field_errors[0] {
+        crate::error::KlvFieldError::OutOfRange {
+            tag: 104,
+            value,
+            min: -900.0,
+            max: 40_000.0,
+        } => {
+            assert!(
+                (value - 97_403.992_187_5).abs() < 1e-6,
+                "expected the raw arithmetic decode ~97403.99, got {value}"
+            );
+        }
+        ref other => panic!("expected OutOfRange{{tag:104,value:~97403.99,..}}, got {other:?}"),
+    }
 }
 
 /// `OutOfRangePolicy::Indicator` for IMAPB fields: the default `Error`

@@ -479,6 +479,40 @@ mod tests {
     }
 
     #[test]
+    fn wpb_mismms_typed_96_104() {
+        // WP-B: the extended-range IMAPB items (96/104) are wired into
+        // presence via `each_typed_field`'s generic Imapb match arm — no
+        // mismms.rs change was needed. This pins that: typed-only 96/104
+        // satisfy the 22|96 and 15|75|104 groups, and setting both 75 and
+        // 104 reaches the pre-existing exclusive-or conflict.
+        let mut rec = full_mismms_record();
+        rec.target_width_m = None;
+        rec.target_width_extended_m = Some(100.0); // 22|96 satisfied via typed 96
+        rec.sensor_alt_m = None;
+        rec.sensor_ellipsoid_height_m = None;
+        rec.sensor_ellipsoid_height_extended_m = Some(1500.0); // 15|75|104 via typed 104
+        assert!(
+            validate_mismms(&rec).is_empty(),
+            "typed 96/104 alone should satisfy MISMMS presence; got: {:?}",
+            validate_mismms(&rec)
+        );
+
+        // 75 XOR 104 conflict now reachable with BOTH typed.
+        rec.sensor_ellipsoid_height_m = Some(1500.0);
+        let v = validate_mismms(&rec);
+        assert!(
+            v.iter().any(|vi| matches!(
+                vi,
+                MismmsViolation::AlternationConflict {
+                    tag_a: 75,
+                    tag_b: 104,
+                }
+            )),
+            "both Tag 75 and Tag 104 typed-present should produce AlternationConflict; got: {v:?}"
+        );
+    }
+
+    #[test]
     fn security_ls_missing_caveats() {
         // Build a Security LS without caveats (Tag 5).
         let sec = SecurityLs {

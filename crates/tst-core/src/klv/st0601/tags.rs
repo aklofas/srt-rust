@@ -51,6 +51,12 @@ pub(crate) enum Encoding {
     VarInt {
         max_len: usize,
     },
+    /// Marker for a MISB pack/list item (WP-C Appendix Table C1) — a
+    /// small positional structure or flat list rather than one scalar.
+    /// Carries no length/range metadata of its own; decode/encode
+    /// dispatch on `spec.id` to the dedicated parse/emit fns in
+    /// `packs.rs`.
+    Pack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -832,6 +838,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
             max: 327.0,
         }),
     },
+    TagSpec {
+        id: 81,
+        name: "Image Horizon Pixels",
+        encoding: Encoding::Pack,
+        range: None,
+    },
     // Image corners — full lat/lon (tags 82-89, added in ST 0601.13)
     TagSpec {
         id: 82,
@@ -1126,6 +1138,18 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 115,
+        name: "Control Command",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
+        id: 116,
+        name: "Control Command Verification List",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 117,
         name: "Sensor Azimuth Rate",
         encoding: Encoding::Imapb {
@@ -1170,6 +1194,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 121,
+        name: "Active Wavelength List",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 123,
         name: "Number of NAVSATs in View",
         encoding: Encoding::VarUint { max_len: 1 },
@@ -1191,6 +1221,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         id: 126,
         name: "Sensor Control Mode",
         encoding: Encoding::VarUint { max_len: 1 },
+        range: None,
+    },
+    TagSpec {
+        id: 127,
+        name: "Sensor Frame Rate Pack",
+        encoding: Encoding::Pack,
         range: None,
     },
     TagSpec {
@@ -1255,6 +1291,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         id: 139,
         name: "Active Payloads",
         encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 143,
+        name: "Metadata Substream Id",
+        encoding: Encoding::Pack,
         range: None,
     },
 ];
@@ -1339,6 +1381,18 @@ mod tests {
                         spec.id,
                         spec.name,
                         max_len
+                    );
+                }
+                Encoding::Pack => {
+                    // WP-C pack/list marker: no length/range metadata of
+                    // its own (the per-tag wire shape lives in
+                    // `packs.rs`) — pin that it never accidentally
+                    // carries a LinearRange.
+                    assert!(
+                        spec.range.is_none(),
+                        "tag {} ({}) is Pack-encoded but also carries a LinearRange",
+                        spec.id,
+                        spec.name
                     );
                 }
                 _ => {}

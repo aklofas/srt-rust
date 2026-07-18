@@ -2127,6 +2127,24 @@ impl core::marker::Unpin for tst_core::klv::st0601::Attitude
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Attitude
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Attitude
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Attitude
+pub struct tst_core::klv::st0601::ControlCommand
+pub tst_core::klv::st0601::ControlCommand::command: alloc::string::String
+pub tst_core::klv::st0601::ControlCommand::id: u64
+pub tst_core::klv::st0601::ControlCommand::time_us: core::option::Option<u64>
+impl core::clone::Clone for tst_core::klv::st0601::ControlCommand
+pub fn tst_core::klv::st0601::ControlCommand::clone(&self) -> tst_core::klv::st0601::ControlCommand
+impl core::cmp::PartialEq for tst_core::klv::st0601::ControlCommand
+pub fn tst_core::klv::st0601::ControlCommand::eq(&self, &tst_core::klv::st0601::ControlCommand) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::ControlCommand
+pub fn tst_core::klv::st0601::ControlCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::ControlCommand
+impl core::marker::Freeze for tst_core::klv::st0601::ControlCommand
+impl core::marker::Send for tst_core::klv::st0601::ControlCommand
+impl core::marker::Sync for tst_core::klv::st0601::ControlCommand
+impl core::marker::Unpin for tst_core::klv::st0601::ControlCommand
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::ControlCommand
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::ControlCommand
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::ControlCommand
 pub struct tst_core::klv::st0601::Corners
 pub tst_core::klv::st0601::Corners::p1: (f64, f64)
 pub tst_core::klv::st0601::Corners::p2: (f64, f64)
@@ -2205,8 +2223,74 @@ impl core::marker::Unpin for tst_core::klv::st0601::GeoPoint
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::GeoPoint
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::GeoPoint
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::GeoPoint
+pub struct tst_core::klv::st0601::ImageHorizonPixels
+pub tst_core::klv::st0601::ImageHorizonPixels::end_lat_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::ImageHorizonPixels::end_lon_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::ImageHorizonPixels::start_lat_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::ImageHorizonPixels::start_lon_deg: core::option::Option<f64>
+pub tst_core::klv::st0601::ImageHorizonPixels::x0_pct: u8
+pub tst_core::klv::st0601::ImageHorizonPixels::x1_pct: u8
+pub tst_core::klv::st0601::ImageHorizonPixels::y0_pct: u8
+pub tst_core::klv::st0601::ImageHorizonPixels::y1_pct: u8
+impl core::clone::Clone for tst_core::klv::st0601::ImageHorizonPixels
+pub fn tst_core::klv::st0601::ImageHorizonPixels::clone(&self) -> tst_core::klv::st0601::ImageHorizonPixels
+impl core::cmp::PartialEq for tst_core::klv::st0601::ImageHorizonPixels
+pub fn tst_core::klv::st0601::ImageHorizonPixels::eq(&self, &tst_core::klv::st0601::ImageHorizonPixels) -> bool
+impl core::default::Default for tst_core::klv::st0601::ImageHorizonPixels
+pub fn tst_core::klv::st0601::ImageHorizonPixels::default() -> tst_core::klv::st0601::ImageHorizonPixels
+impl core::fmt::Debug for tst_core::klv::st0601::ImageHorizonPixels
+pub fn tst_core::klv::st0601::ImageHorizonPixels::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::Freeze for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::Send for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::Sync for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::Unpin for tst_core::klv::st0601::ImageHorizonPixels
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::ImageHorizonPixels
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::ImageHorizonPixels
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::ImageHorizonPixels
+pub struct tst_core::klv::st0601::MetadataSubstreamId
+pub tst_core::klv::st0601::MetadataSubstreamId::local_id: u64
+pub tst_core::klv::st0601::MetadataSubstreamId::uuid: core::option::Option<[u8; 16]>
+impl core::clone::Clone for tst_core::klv::st0601::MetadataSubstreamId
+pub fn tst_core::klv::st0601::MetadataSubstreamId::clone(&self) -> tst_core::klv::st0601::MetadataSubstreamId
+impl core::cmp::Eq for tst_core::klv::st0601::MetadataSubstreamId
+impl core::cmp::PartialEq for tst_core::klv::st0601::MetadataSubstreamId
+pub fn tst_core::klv::st0601::MetadataSubstreamId::eq(&self, &tst_core::klv::st0601::MetadataSubstreamId) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::MetadataSubstreamId
+pub fn tst_core::klv::st0601::MetadataSubstreamId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::Freeze for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::Send for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::Sync for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::Unpin for tst_core::klv::st0601::MetadataSubstreamId
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::MetadataSubstreamId
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::MetadataSubstreamId
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::MetadataSubstreamId
+pub struct tst_core::klv::st0601::SensorFrameRate
+pub tst_core::klv::st0601::SensorFrameRate::denominator: u64
+pub tst_core::klv::st0601::SensorFrameRate::numerator: u64
+impl tst_core::klv::st0601::SensorFrameRate
+pub fn tst_core::klv::st0601::SensorFrameRate::fps(&self) -> f64
+impl core::clone::Clone for tst_core::klv::st0601::SensorFrameRate
+pub fn tst_core::klv::st0601::SensorFrameRate::clone(&self) -> tst_core::klv::st0601::SensorFrameRate
+impl core::cmp::PartialEq for tst_core::klv::st0601::SensorFrameRate
+pub fn tst_core::klv::st0601::SensorFrameRate::eq(&self, &tst_core::klv::st0601::SensorFrameRate) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::SensorFrameRate
+pub fn tst_core::klv::st0601::SensorFrameRate::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::Freeze for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::Send for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::Sync for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::Unpin for tst_core::klv::st0601::SensorFrameRate
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::SensorFrameRate
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::SensorFrameRate
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::SensorFrameRate
 pub struct tst_core::klv::st0601::UasDatalinkLs
 pub tst_core::klv::st0601::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::klv::st0601::UasDatalinkLs::active_wavelengths: core::option::Option<alloc::vec::Vec<u64>>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
@@ -2221,6 +2305,8 @@ pub tst_core::klv::st0601::UasDatalinkLs::amend_local_set: core::option::Option<
 pub tst_core::klv::st0601::UasDatalinkLs::broadcast_source: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::communications_method: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::composite_imaging_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::klv::st0601::UasDatalinkLs::control_command_verification: core::option::Option<alloc::vec::Vec<u64>>
+pub tst_core::klv::st0601::UasDatalinkLs::control_commands: alloc::vec::Vec<tst_core::klv::st0601::ControlCommand>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lat_offset_p1_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lat_offset_p2_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::corner_lat_offset_p3_deg: core::option::Option<f64>
@@ -2253,10 +2339,12 @@ pub tst_core::klv::st0601::UasDatalinkLs::geo_registration_local_set: core::opti
 pub tst_core::klv::st0601::UasDatalinkLs::ground_range_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::icing_detected: core::option::Option<tst_core::klv::st0601::IcingDetected>
 pub tst_core::klv::st0601::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::image_horizon: core::option::Option<tst_core::klv::st0601::ImageHorizonPixels>
 pub tst_core::klv::st0601::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::imapb_specials: alloc::vec::Vec<(u32, tst_core::klv::imapb::ImapbSpecial)>
 pub tst_core::klv::st0601::UasDatalinkLs::laser_prf_code: core::option::Option<u16>
 pub tst_core::klv::st0601::UasDatalinkLs::leap_seconds: core::option::Option<i32>
+pub tst_core::klv::st0601::UasDatalinkLs::metadata_substream_id: core::option::Option<tst_core::klv::st0601::MetadataSubstreamId>
 pub tst_core::klv::st0601::UasDatalinkLs::mi_storage_capacity_gb: core::option::Option<u32>
 pub tst_core::klv::st0601::UasDatalinkLs::mi_storage_percent_full: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::miis_core_id: core::option::Option<alloc::vec::Vec<u8>>
@@ -2303,6 +2391,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::sensor_elevation_rate_dps: core::optio
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_fov_name: core::option::Option<tst_core::klv::st0601::SensorFovName>
+pub tst_core::klv::st0601::UasDatalinkLs::sensor_frame_rate: core::option::Option<tst_core::klv::st0601::SensorFrameRate>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_hfov_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_lat_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_lon_deg: core::option::Option<f64>
@@ -6694,6 +6783,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::SrtCancelHan
 impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub struct tst_core::UasDatalinkLs
 pub tst_core::UasDatalinkLs::active_payloads: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::UasDatalinkLs::active_wavelengths: core::option::Option<alloc::vec::Vec<u64>>
 pub tst_core::UasDatalinkLs::airfield_barometric_pressure_mbar: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::airfield_elevation_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::alternate_platform_alt_m: core::option::Option<f64>
@@ -6708,6 +6798,8 @@ pub tst_core::UasDatalinkLs::amend_local_set: core::option::Option<alloc::vec::V
 pub tst_core::UasDatalinkLs::broadcast_source: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::communications_method: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::composite_imaging_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::UasDatalinkLs::control_command_verification: core::option::Option<alloc::vec::Vec<u64>>
+pub tst_core::UasDatalinkLs::control_commands: alloc::vec::Vec<tst_core::klv::st0601::ControlCommand>
 pub tst_core::UasDatalinkLs::corner_lat_offset_p1_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lat_offset_p2_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lat_offset_p3_deg: core::option::Option<f64>
@@ -6740,10 +6832,12 @@ pub tst_core::UasDatalinkLs::geo_registration_local_set: core::option::Option<al
 pub tst_core::UasDatalinkLs::ground_range_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::icing_detected: core::option::Option<tst_core::klv::st0601::IcingDetected>
 pub tst_core::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::image_horizon: core::option::Option<tst_core::klv::st0601::ImageHorizonPixels>
 pub tst_core::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::imapb_specials: alloc::vec::Vec<(u32, tst_core::klv::imapb::ImapbSpecial)>
 pub tst_core::UasDatalinkLs::laser_prf_code: core::option::Option<u16>
 pub tst_core::UasDatalinkLs::leap_seconds: core::option::Option<i32>
+pub tst_core::UasDatalinkLs::metadata_substream_id: core::option::Option<tst_core::klv::st0601::MetadataSubstreamId>
 pub tst_core::UasDatalinkLs::mi_storage_capacity_gb: core::option::Option<u32>
 pub tst_core::UasDatalinkLs::mi_storage_percent_full: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::miis_core_id: core::option::Option<alloc::vec::Vec<u8>>
@@ -6790,6 +6884,7 @@ pub tst_core::UasDatalinkLs::sensor_elevation_rate_dps: core::option::Option<f64
 pub tst_core::UasDatalinkLs::sensor_ellipsoid_height_extended_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_ellipsoid_height_m: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_fov_name: core::option::Option<tst_core::klv::st0601::SensorFovName>
+pub tst_core::UasDatalinkLs::sensor_frame_rate: core::option::Option<tst_core::klv::st0601::SensorFrameRate>
 pub tst_core::UasDatalinkLs::sensor_hfov_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_lat_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::sensor_lon_deg: core::option::Option<f64>

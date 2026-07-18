@@ -8,6 +8,8 @@ use crate::klv::universal_label::UniversalLabel;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use super::packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
+
 #[must_use]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UasDatalinkLs {
@@ -547,6 +549,25 @@ pub struct UasDatalinkLs {
     /// See [`OperationalMode`].
     pub operational_mode: Option<OperationalMode>,
 
+    // Pack & list items (WP-C Table C1)
+    /// Item 81: Image Horizon Pixels. See [`ImageHorizonPixels`].
+    pub image_horizon: Option<ImageHorizonPixels>,
+    /// Item 115: Control Command — MULTI-INSTANCE (ST 0601.19 Table 1
+    /// "Multiples Allowed" = Yes); every wire occurrence appends one
+    /// [`ControlCommand`]. Empty means none were present.
+    pub control_commands: Vec<ControlCommand>,
+    /// Item 116: Control Command Verification List — BER-OID command ids
+    /// the platform has acknowledged/verified.
+    pub control_command_verification: Option<Vec<u64>>,
+    /// Item 121: Active Wavelength List — BER-OID wavelength ids
+    /// currently active (`0` = none active, exclusive per ST 0601.19
+    /// §8.121).
+    pub active_wavelengths: Option<Vec<u64>>,
+    /// Item 127: Sensor Frame Rate Pack. See [`SensorFrameRate`].
+    pub sensor_frame_rate: Option<SensorFrameRate>,
+    /// Item 143: Metadata Substream Id. See [`MetadataSubstreamId`].
+    pub metadata_substream_id: Option<MetadataSubstreamId>,
+
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
     pub field_errors: Vec<KlvFieldError>,
@@ -736,6 +757,12 @@ impl Default for UasDatalinkLs {
             icing_detected: None,
             sensor_fov_name: None,
             operational_mode: None,
+            image_horizon: None,
+            control_commands: Vec::new(),
+            control_command_verification: None,
+            active_wavelengths: None,
+            sensor_frame_rate: None,
+            metadata_substream_id: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),

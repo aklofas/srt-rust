@@ -17,18 +17,55 @@
 //!
 //! ### JNI local-ref capacity (CRITICAL for 147-field set)
 //!
-//! `build_uas_datalink` calls `env.ensure_local_capacity(256)` at the top.
-//! With 12 String fields + ~110 Double/Long/Integer/ByteBuffer fields (WP-A's
-//! 51 new fields pushed the total from 56 to 107; WP-B's 25 new fields + the
-//! `imapbSpecials` list pushed it to 133) + WP-C's 14 pack/list fields (each a
-//! nested-record build, some with their own trailing lists) pushed it to 147,
-//! 256 slots safely covers the worst-case fully-populated record.
-//! Skipping this call WILL crash the JVM for records with many populated fields.
+//! `build_uas_datalink` and `read_uas_datalink` both call
+//! `env.ensure_local_capacity(320)` at the top. Bumped from 256 (WP-C's
+//! first cut — its sizing arithmetic was self-contradictory and left
+//! effectively zero margin, caught in review) to leave REAL headroom, not a
+//! tight fit. With 12 String fields + ~110 Double/Long/Integer/ByteBuffer
+//! fields (WP-A's 51 new fields pushed the total from 56 to 107; WP-B's 25
+//! new fields + the `imapbSpecials` list pushed it to 133), the pre-WP-C
+//! baseline already needed all 224 of its slots — there was little slack
+//! even before WP-C's 14 new fields. Honest per-field tally of WP-C's OWN
+//! additional outer-frame refs (excludes anything reclaimed inside a
+//! per-item `with_local_frame`, per the table below):
 //!
-//! `read_uas_datalink` gets its OWN `env.ensure_local_capacity(256)` call as of
-//! WP-C — it never had one before (pre-existing debt: every boxed-accessor
-//! `read_nullable_*` call mints a local ref that lives until the function
-//! returns, and the WP-C pack fields multiply that pressure further).
+//! | Field | Outer-frame refs (build ≈ read) |
+//! |---|---|
+//! | `imageHorizon` | 5 (4 boxed `Double` + 1 record) |
+//! | `controlCommands` (list) | 1 (outer `ArrayList`; items reclaimed) |
+//! | `controlCommandVerification` | 1 (outer `ArrayList` via `build_long_list`/`read_long_list`; items reclaimed) |
+//! | `activeWavelengths` | 1 (same shape as `controlCommandVerification`) |
+//! | `sensorFrameRate` | 1 (record only — both fields are primitives, no boxing) |
+//! | `metadataSubstreamId` | 2 (`byte[]` uuid + record) |
+//! | `countryCodes` | 4 (3 `String` + record) |
+//! | `wavelengthsList` (list) | 1 (outer `ArrayList`; items reclaimed) |
+//! | `airbaseLocations` | 9 (2 × nested `Location` @ up to 4 refs each + record) |
+//! | `payloadList` | 2 (records `ArrayList` + record; items reclaimed) |
+//! | `weaponsStores` (list) | 1 (outer `ArrayList`; items reclaimed) |
+//! | `waypointList` (list) | 1 (outer `ArrayList`; items reclaimed) |
+//! | `viewDomain` | 4 (3 × nested `ViewDomainPair` + record) |
+//! | `sdccFlps` (list) | 1 (outer `ArrayList`; items reclaimed) |
+//!
+//! Sum: ~34 additional outer-frame refs at worst case. Of the 14 rows, 7 are
+//! `ArrayList`-shaped (5 holding nested records — `controlCommands`,
+//! `wavelengthsList`, `weaponsStores`, `waypointList`, `sdccFlps` — and 2
+//! holding boxed `Long`s via `build_long_list`/`read_long_list` —
+//! `controlCommandVerification`, `activeWavelengths`); every one of the 7
+//! costs exactly 1 outer-frame ref regardless of which kind, so the 5-vs-7
+//! split doesn't change the total. 224 + 34 ≈ 258 is the bare-minimum
+//! requirement counting only NEW real object/array refs — it does NOT
+//! count the JNI-spec fact that every `Builder` fluent-setter call also
+//! returns (and, if discarded, still pins) one local ref for its own
+//! `this`-returning value, an overhead shared by every pre-existing scalar
+//! field too and not specific to WP-C; that mechanism is real but not
+//! cheaply hand-countable field-by-field, which is exactly why 320 leaves
+//! real margin rather than a computed-to-the-slot number, and why
+//! `St0601PacksTest.fullyPopulatedWpcFieldsRoundTrip` exercises this
+//! empirically (every optional WP-C field set, multi-item lists on every
+//! `Vec` field, plus a separate long-list stress case) rather than resting
+//! on this arithmetic
+//! alone. Skipping the capacity call entirely WILL crash the JVM for
+//! records with many populated fields.
 //!
 //! WP-C's list fields (`controlCommands`, `wavelengthsList`, `weaponsStores`,
 //! `waypointList`, `sdccFlps`, and `payloadList`'s nested `records`) follow the
@@ -36,6 +73,12 @@
 //! its own local frame so per-item refs are reclaimed before the next
 //! iteration, bounding live-ref growth to O(1) per item regardless of list
 //! length — see `build_vmti`/`read_vmti` in `st0903.rs` for the precedent.
+//! `controlCommandVerification`/`activeWavelengths`/`SdccFlpField.precedingTags`
+//! read via `jutil::read_long_list`, which applies the same per-item-frame
+//! discipline (added in review response — the original hand-rolled loops had
+//! no per-item frame, so a caller-constructed list longer than the ambient
+//! frame's spare capacity could exhaust the JNI local-ref table and abort the
+//! JVM rather than throw a catchable exception).
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
@@ -57,7 +100,7 @@ use tst_core::klv::universal_label::UniversalLabel;
 use crate::error::{map_klv_decode_error, map_klv_encode_error, throw_klv_decode};
 use crate::jutil::{
     build_field_errors, build_long_list, build_unknown_list, checked_u8, checked_u16, checked_u32,
-    checked_u64, read_byte_buffer, read_nullable_byte_buffer, read_nullable_double,
+    checked_u64, read_byte_buffer, read_long_list, read_nullable_byte_buffer, read_nullable_double,
     read_nullable_int, read_nullable_long, read_nullable_string, read_unknown_list,
     wrap_heap_byte_buffer,
 };
@@ -418,28 +461,36 @@ fn read_string(env: &mut JNIEnv, obj: &JObject, method: &str) -> jni::errors::Re
 
 // -- Item 81: Image Horizon Pixels ------------------------------------------
 
+/// Builds via `ImageHorizonPixels$Builder` (not the canonical constructor —
+/// see the Java Javadoc: the constructor's two 4-long same-typed runs risk
+/// silent transposition; the Builder's named setters remove that risk).
 fn build_image_horizon(
     env: &mut JNIEnv<'_>,
     h: &ImageHorizonPixels,
 ) -> jni::errors::Result<jobject> {
-    let start_lat = boxed_double(env, h.start_lat_deg)?;
-    let start_lon = boxed_double(env, h.start_lon_deg)?;
-    let end_lat = boxed_double(env, h.end_lat_deg)?;
-    let end_lon = boxed_double(env, h.end_lon_deg)?;
-    let obj = env.new_object(
-        "org/tstrans/klv/ImageHorizonPixels",
-        "(IIIILjava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;)V",
-        &[
-            JValue::Int(i32::from(h.x0_pct)),
-            JValue::Int(i32::from(h.y0_pct)),
-            JValue::Int(i32::from(h.x1_pct)),
-            JValue::Int(i32::from(h.y1_pct)),
-            JValue::Object(&start_lat),
-            JValue::Object(&start_lon),
-            JValue::Object(&end_lat),
-            JValue::Object(&end_lon),
-        ],
-    )?;
+    const BUILDER_CLASS: &str = "org/tstrans/klv/ImageHorizonPixels$Builder";
+    const SIG_INT: &str = "(I)Lorg/tstrans/klv/ImageHorizonPixels$Builder;";
+    const SIG_DBL: &str = "(D)Lorg/tstrans/klv/ImageHorizonPixels$Builder;";
+    let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
+    env.call_method(&b, "x0Pct", SIG_INT, &[JValue::Int(i32::from(h.x0_pct))])?;
+    env.call_method(&b, "y0Pct", SIG_INT, &[JValue::Int(i32::from(h.y0_pct))])?;
+    env.call_method(&b, "x1Pct", SIG_INT, &[JValue::Int(i32::from(h.x1_pct))])?;
+    env.call_method(&b, "y1Pct", SIG_INT, &[JValue::Int(i32::from(h.y1_pct))])?;
+    if let Some(v) = h.start_lat_deg {
+        env.call_method(&b, "startLatDeg", SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = h.start_lon_deg {
+        env.call_method(&b, "startLonDeg", SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = h.end_lat_deg {
+        env.call_method(&b, "endLatDeg", SIG_DBL, &[JValue::Double(v)])?;
+    }
+    if let Some(v) = h.end_lon_deg {
+        env.call_method(&b, "endLonDeg", SIG_DBL, &[JValue::Double(v)])?;
+    }
+    let obj = env
+        .call_method(&b, "build", "()Lorg/tstrans/klv/ImageHorizonPixels;", &[])?
+        .l()?;
     Ok(obj.into_raw())
 }
 
@@ -842,20 +893,48 @@ fn read_payload_list(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Re
 
 // -- Item 140: Weapons Stores ---------------------------------------------------
 
+/// Builds via `WeaponsStore$Builder` (not the canonical constructor — see
+/// the Java Javadoc: the constructor's four consecutive `long` id arguments
+/// risk silent transposition; the Builder's named setters remove that risk).
 fn build_weapons_store(env: &mut JNIEnv<'_>, ws: &WeaponsStore) -> jni::errors::Result<jobject> {
+    const BUILDER_CLASS: &str = "org/tstrans/klv/WeaponsStore$Builder";
+    const SIG_LONG: &str = "(J)Lorg/tstrans/klv/WeaponsStore$Builder;";
     let weapon_type = env.new_string(&ws.weapon_type)?;
-    let obj = env.new_object(
-        "org/tstrans/klv/WeaponsStore",
-        "(JJJJJLjava/lang/String;)V",
-        &[
-            JValue::Long(ws.station_id as i64),
-            JValue::Long(ws.hardpoint_id as i64),
-            JValue::Long(ws.carriage_id as i64),
-            JValue::Long(ws.store_id as i64),
-            JValue::Long(ws.status_raw as i64),
-            JValue::Object(&weapon_type),
-        ],
+    let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
+    env.call_method(
+        &b,
+        "stationId",
+        SIG_LONG,
+        &[JValue::Long(ws.station_id as i64)],
     )?;
+    env.call_method(
+        &b,
+        "hardpointId",
+        SIG_LONG,
+        &[JValue::Long(ws.hardpoint_id as i64)],
+    )?;
+    env.call_method(
+        &b,
+        "carriageId",
+        SIG_LONG,
+        &[JValue::Long(ws.carriage_id as i64)],
+    )?;
+    env.call_method(&b, "storeId", SIG_LONG, &[JValue::Long(ws.store_id as i64)])?;
+    env.call_method(
+        &b,
+        "statusRaw",
+        SIG_LONG,
+        &[JValue::Long(ws.status_raw as i64)],
+    )?;
+    env.call_method(
+        &b,
+        "weaponType",
+        "(Ljava/lang/String;)Lorg/tstrans/klv/WeaponsStore$Builder;",
+        &[JValue::Object(&weapon_type)],
+    )?;
+    let obj = env
+        .call_method(&b, "build", "()Lorg/tstrans/klv/WeaponsStore;", &[])?
+        .l()?;
     Ok(obj.into_raw())
 }
 
@@ -1031,18 +1110,8 @@ fn read_sdcc_flp_field(
     let preceding_obj = env
         .call_method(obj, "precedingTags", "()Ljava/util/List;", &[])?
         .l()?;
-    let size = env.call_method(&preceding_obj, "size", "()I", &[])?.i()?;
     let mut preceding_tags = Vec::new();
-    for i in 0..size {
-        let item = env
-            .call_method(
-                &preceding_obj,
-                "get",
-                "(I)Ljava/lang/Object;",
-                &[JValue::Int(i)],
-            )?
-            .l()?;
-        let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+    for v in read_long_list(env, &preceding_obj)? {
         preceding_tags.push(checked_u32(env, v, "SdccFlpField.precedingTags")?);
     }
     let bytes_obj = env
@@ -1274,21 +1343,20 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nSt0601SentinelMeaning<'local>(
 ///
 /// ### Local-ref capacity (MANDATORY)
 ///
-/// Calls `env.ensure_local_capacity(256)` at the top. With 147 fields (12
-/// Strings, ~83 Doubles, ~11 ByteBuffers, ~14 Integers, ~7 Longs, an
-/// `imapbSpecials` list, 14 WP-C pack/list fields — each a nested-record
-/// build, some with their own trailing lists — builder + lists), the
-/// default ~16-slot JNI local table is completely inadequate. 256 slots is
-/// the minimum safe value for a fully populated ST 0601 record (bumped from
-/// 224 when WP-C added the 14 pack/list fields; 224 was bumped from 192 when
-/// WP-B added 25 fields + the `imapbSpecials` list; 192 was bumped from 128
-/// when WP-A added 51 fields). Each WP-C list field's own items are built
-/// inside a per-item `with_local_frame`, so only the item COUNT — not the
-/// item length — affects this top-level budget.
+/// Calls `env.ensure_local_capacity(320)` at the top. The pre-WP-C baseline
+/// (133 fields: 12 Strings, ~83 Doubles, ~11 ByteBuffers, ~14 Integers, ~7
+/// Longs, an `imapbSpecials` list) already needed all 224 of its slots; WP-C
+/// adds ~34 more outer-frame refs across its 14 pack/list fields — see the
+/// module doc's per-field tally table for the honest breakdown. 224 + 34 ≈
+/// 258 is the bare-minimum requirement; 320 leaves real margin rather than a
+/// tight fit (the first-cut 256 was later found to leave effectively zero
+/// margin). Each WP-C list field's own items are built inside a per-item
+/// `with_local_frame`, so only the item COUNT — not the item length —
+/// affects this top-level budget.
 fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::Result<jobject> {
     // CRITICAL: must be called before any new_string / new_object below.
-    // 256 slots covers 147 fields + builder + lists + JNI scratch.
-    env.ensure_local_capacity(256)?;
+    // 320 slots covers 147 fields + builder + lists + JNI scratch with real margin.
+    env.ensure_local_capacity(320)?;
 
     let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
 
@@ -2584,20 +2652,21 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
 ///
 /// ### Local-ref capacity (MANDATORY, added WP-C)
 ///
-/// Calls `env.ensure_local_capacity(256)` at the top — this function had NO
+/// Calls `env.ensure_local_capacity(320)` at the top — this function had NO
 /// such call before WP-C (pre-existing debt found by the B6 review): every
 /// `read_nullable_*` accessor call mints a local ref that lives until this
 /// function returns, and the WP-C pack fields (each a nested-record read,
 /// several with their own list-of-records reads) multiply that pressure
 /// further. Sized to match `build_uas_datalink`'s budget — see that
-/// function's doc for the field-count rationale.
+/// function's doc and the module doc's per-field tally table for the
+/// field-count rationale (320, not the first-cut 256 — see the module doc).
 #[allow(clippy::field_reassign_with_default)]
 fn read_uas_datalink(
     env: &mut JNIEnv<'_>,
     rec: &JObject<'_>,
 ) -> jni::errors::Result<UasDatalinkLs> {
     // CRITICAL: must be called before any call_method / get_string below.
-    env.ensure_local_capacity(256)?;
+    env.ensure_local_capacity(320)?;
 
     let mut r = UasDatalinkLs::default();
 
@@ -3063,13 +3132,8 @@ fn read_uas_datalink(
             .call_method(rec, "controlCommandVerification", "()Ljava/util/List;", &[])?
             .l()?;
         if !obj.is_null() {
-            let size = env.call_method(&obj, "size", "()I", &[])?.i()?;
             let mut ids = Vec::new();
-            for i in 0..size {
-                let item = env
-                    .call_method(&obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
-                    .l()?;
-                let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+            for v in read_long_list(env, &obj)? {
                 ids.push(checked_u64(env, v, "controlCommandVerification")?);
             }
             r.control_command_verification = Some(ids);
@@ -3082,13 +3146,8 @@ fn read_uas_datalink(
             .call_method(rec, "activeWavelengths", "()Ljava/util/List;", &[])?
             .l()?;
         if !obj.is_null() {
-            let size = env.call_method(&obj, "size", "()I", &[])?.i()?;
             let mut ids = Vec::new();
-            for i in 0..size {
-                let item = env
-                    .call_method(&obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
-                    .l()?;
-                let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+            for v in read_long_list(env, &obj)? {
                 ids.push(checked_u64(env, v, "activeWavelengths")?);
             }
             r.active_wavelengths = Some(ids);

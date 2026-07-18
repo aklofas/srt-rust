@@ -170,6 +170,35 @@ pub fn build_long_list<'local>(
     Ok(list)
 }
 
+/// Read a `java.util.List<Long>` into a `Vec<i64>`. Sibling of
+/// [`build_long_list`] for the read (encode) direction — used by klv WP-C
+/// (`controlCommandVerification`/`activeWavelengths`/`SdccFlpField.precedingTags`).
+///
+/// Each item is read inside its own 4-slot local frame (the `.get(i)` call
+/// mints one local ref; `longValue()` returns a primitive and mints none),
+/// mirroring `build_long_list`'s per-item frame and the VTargetPack per-item
+/// `with_local_frame` idiom elsewhere in this codebase. Without this, a
+/// caller-constructed list longer than the ambient frame's spare capacity
+/// (e.g. one built inside another 16-slot per-item frame, as
+/// `SdccFlpField.precedingTags` is) exhausts the JNI local-ref table and
+/// aborts the JVM rather than throwing a catchable Java exception — the bug
+/// this helper closes. Callers narrow the raw `i64` values to their target
+/// width (`u32`/`u64`, via `checked_u32`/`checked_u64`) themselves.
+pub fn read_long_list(env: &mut JNIEnv, list: &JObject) -> jni::errors::Result<Vec<i64>> {
+    let size = env.call_method(list, "size", "()I", &[])?.i()?;
+    let mut out = Vec::with_capacity(size.max(0) as usize);
+    for i in 0..size {
+        let v = env.with_local_frame(4, |inner_env| -> jni::errors::Result<i64> {
+            let item = inner_env
+                .call_method(list, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                .l()?;
+            inner_env.call_method(&item, "longValue", "()J", &[])?.j()
+        })?;
+        out.push(v);
+    }
+    Ok(out)
+}
+
 /// Read a `java.util.List<KlvUnknownField>` back into a `Vec<OwnedRawField>`,
 /// dropping any entry whose tag collides with a typed tag (typed wins). Used by klv
 /// Tasks 2–4 (call sites assign the result back to `record.unknown`).

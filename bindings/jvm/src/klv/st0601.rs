@@ -15,32 +15,51 @@
 //! `nEncodeUasDatalinkStrictCompliance(UasDatalinkLs) -> byte[]` — same read path,
 //! calls `encode_strict_compliance` instead.
 //!
-//! ### JNI local-ref capacity (CRITICAL for 133-field set)
+//! ### JNI local-ref capacity (CRITICAL for 147-field set)
 //!
-//! `build_uas_datalink` calls `env.ensure_local_capacity(224)` at the top.
+//! `build_uas_datalink` calls `env.ensure_local_capacity(256)` at the top.
 //! With 12 String fields + ~110 Double/Long/Integer/ByteBuffer fields (WP-A's
 //! 51 new fields pushed the total from 56 to 107; WP-B's 25 new fields + the
-//! `imapbSpecials` list pushed it to 133) + builder + lists + JNI scratch,
-//! 224 slots safely covers the worst-case fully-populated record.
+//! `imapbSpecials` list pushed it to 133) + WP-C's 14 pack/list fields (each a
+//! nested-record build, some with their own trailing lists) pushed it to 147,
+//! 256 slots safely covers the worst-case fully-populated record.
 //! Skipping this call WILL crash the JVM for records with many populated fields.
+//!
+//! `read_uas_datalink` gets its OWN `env.ensure_local_capacity(256)` call as of
+//! WP-C — it never had one before (pre-existing debt: every boxed-accessor
+//! `read_nullable_*` call mints a local ref that lives until the function
+//! returns, and the WP-C pack fields multiply that pressure further).
+//!
+//! WP-C's list fields (`controlCommands`, `wavelengthsList`, `weaponsStores`,
+//! `waypointList`, `sdccFlps`, and `payloadList`'s nested `records`) follow the
+//! VTargetPack `with_local_frame` idiom: each list item is built/read inside
+//! its own local frame so per-item refs are reclaimed before the next
+//! iteration, bounding live-ref growth to O(1) per item regardless of list
+//! length — see `build_vmti`/`read_vmti` in `st0903.rs` for the precedent.
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JValue};
 use jni::sys::{jint, jlong, jobject, jstring};
+use tst_core::error::KlvFieldError;
 use tst_core::klv::ImapbSpecial;
 use tst_core::klv::st0601::{
-    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
-    SensorControlMode, SensorFovName, St0601SentinelMeaning, UasDatalinkLs,
-    decode as decode_lenient, decode_strict, decode_strict_compliance, encode_strict_compliance,
-    encode_to_vec_with, st0601_sentinel_meaning,
+    AirbaseLocations, ControlCommand, CountryCodes, EncodeConfig, IcingDetected,
+    ImageHorizonPixels, Location, MetadataSubstreamId, OperationalMode, OutOfRangePolicy,
+    PayloadList, PayloadRecord, PayloadType, PlatformStatus, SdccFlpField, SensorControlMode,
+    SensorFovName, SensorFrameRate, St0601SentinelMeaning, UasDatalinkLs, ViewDomain,
+    ViewDomainPair, WavelengthRecord, Waypoint, WeaponsStore, decode as decode_lenient,
+    decode_strict, decode_strict_compliance, encode_strict_compliance, encode_to_vec_with,
+    st0601_sentinel_meaning,
 };
+use tst_core::klv::st1010::{SdccFlp, decode_sdcc_flp, encode_sdcc_flp_mode2};
 use tst_core::klv::universal_label::UniversalLabel;
 
-use crate::error::{map_klv_decode_error, map_klv_encode_error};
+use crate::error::{map_klv_decode_error, map_klv_encode_error, throw_klv_decode};
 use crate::jutil::{
     build_field_errors, build_long_list, build_unknown_list, checked_u8, checked_u16, checked_u32,
-    read_byte_buffer, read_nullable_byte_buffer, read_nullable_double, read_nullable_int,
-    read_nullable_long, read_nullable_string, read_unknown_list, wrap_heap_byte_buffer,
+    checked_u64, read_byte_buffer, read_nullable_byte_buffer, read_nullable_double,
+    read_nullable_int, read_nullable_long, read_nullable_string, read_unknown_list,
+    wrap_heap_byte_buffer,
 };
 
 // -----------------------------------------------------------------------
@@ -56,24 +75,23 @@ const BUILDER_SIG_BUF: &str = "(Ljava/nio/ByteBuffer;)Lorg/tstrans/klv/UasDatali
 const BUILDER_SIG_LIST: &str = "(Ljava/util/List;)Lorg/tstrans/klv/UasDatalinkLs$Builder;";
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
-/// `crates/tst-core/src/klv/st0601/tags.rs` (128 entries as of WP-B: 1-65,
-/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-137, 139). Tag 66
-/// (deprecated-forever), tag 81 (Image Horizon Pixel Pack, a DLP — lands with
-/// the WP-C packs), and tag 102 (SDCC-FLP, multi-instance — lands in a later
-/// WP), plus 115-116, 121-122, 127-128, 130, 138, 140..=255, are
-/// forward-compat/deferred and may legitimately appear in `unknown`.
-/// Extended from the WP-A 103-tag set (add: 96, 103-105, 109-114, 117-120,
-/// 123-126, 131-134, 136-137, 139) — keep this in sync with `tags::TAGS` when new
-/// tags are typed, or a caller-supplied `unknown` entry for a newly-typed
-/// tag will slip past this filter and get rejected downstream by the real
-/// Rust encoder's own (stricter, canonical) check instead of being
-/// silently dropped here per the documented "typed wins" collision policy
-/// — mirrors tst-py's `is_st0601_typed_tag` fix.
+/// `crates/tst-core/src/klv/st0601/tags.rs` (142 entries as of WP-C: 1-65,
+/// 67-143). Tag 66 is the deprecated placeholder (permanently untyped by
+/// design — ST 0601.19 §8.66: "This item has been Deprecated") and
+/// 144..=255 are forward-compat; both may legitimately appear in `unknown`
+/// (66 and 200 are the durable unknown-tag test stand-ins used across this
+/// suite — never add them here). WP-C (Table C1) finished the sweep from
+/// 66's neighbors through 143, including Tag 102 (MULTI-INSTANCE SDCC-FLP,
+/// now typed via `sdccFlps`) and Tag 115 (MULTI-INSTANCE Control Command,
+/// now typed via `controlCommands`) — keep this in sync with `tags::TAGS`
+/// when new tags are typed, or a caller-supplied `unknown` entry for a
+/// newly-typed tag will slip past this filter and get rejected downstream
+/// by the real Rust encoder's own (stricter, canonical) check instead of
+/// being silently dropped here per the documented "typed wins" collision
+/// policy — mirrors tst-py's `is_st0601_typed_tag` (same decision: Tag 102
+/// IS included, matching tst-core's typed status for the tag).
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(
-        tag,
-        1..=65 | 67..=80 | 82..=101 | 103..=114 | 117..=120 | 123..=126 | 129 | 131..=137 | 139
-    )
+    matches!(tag, 1..=65 | 67..=143)
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +354,707 @@ fn checked_i8(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<
     Ok(value as i8)
 }
 
+/// Range-check a Java `int` value against the i16 range, then narrow. Local
+/// to this module (same rationale as `checked_i8` above) since ST 0601 has
+/// exactly one i16-typed field (Tag 141's `Waypoint.prosecution_order`).
+fn checked_i16(env: &mut JNIEnv, value: i64, field: &str) -> jni::errors::Result<i16> {
+    if !(-32768..=32767).contains(&value) {
+        let _ = env.throw_new(
+            "java/lang/IllegalArgumentException",
+            format!("{field} must be -32768..=32767, got {value}"),
+        );
+        return Err(jni::errors::Error::JavaException);
+    }
+    Ok(value as i16)
+}
+
+// ---------------------------------------------------------------------------
+// ST 0601 — WP-C pack & list items (Table C1), carried inside UasDatalinkLs.
+// Each nested type is a plain Java record (not a Builder — small, mostly-
+// mandatory field counts, matching the `CoreId`/`GeoPoint` precedent rather
+// than `VTargetPack`'s many-optional-field Builder): a `build_*`/`read_*`
+// pair here, one level below `build_uas_datalink`/`read_uas_datalink`.
+// Follows the VTargetPack nested-struct-list pattern for the MULTI-INSTANCE
+// / VLP list fields (`with_local_frame` per item — see the module doc).
+// Mirrors tst-py's `convert_*`/`py_to_*` functions for the same items.
+// ---------------------------------------------------------------------------
+
+/// Box an `Option<f64>` as a `java.lang.Double`, or `null` for `None`. Needed
+/// because the WP-C pack types are plain records, not Builders — there is no
+/// `if let Some(v) = ... { call_method(...) }` skip available; the canonical
+/// constructor always takes every argument positionally.
+fn boxed_double<'local>(
+    env: &mut JNIEnv<'local>,
+    v: Option<f64>,
+) -> jni::errors::Result<JObject<'local>> {
+    match v {
+        Some(v) => env.new_object("java/lang/Double", "(D)V", &[JValue::Double(v)]),
+        None => Ok(JObject::null()),
+    }
+}
+
+/// Box an `Option<u64>` as a `java.lang.Long` (bit-reinterpreted), or `null`
+/// for `None`. Sibling of [`boxed_double`].
+fn boxed_long<'local>(
+    env: &mut JNIEnv<'local>,
+    v: Option<u64>,
+) -> jni::errors::Result<JObject<'local>> {
+    match v {
+        Some(v) => env.new_object("java/lang/Long", "(J)V", &[JValue::Long(v as i64)]),
+        None => Ok(JObject::null()),
+    }
+}
+
+/// Read a MANDATORY (non-null) `String` accessor. Sibling of
+/// `jutil::read_nullable_string` for the WP-C pack fields that are always
+/// present on the Rust side (no `Option` wrapper).
+fn read_string(env: &mut JNIEnv, obj: &JObject, method: &str) -> jni::errors::Result<String> {
+    let s_obj = env
+        .call_method(obj, method, "()Ljava/lang/String;", &[])?
+        .l()?;
+    let j_str: &jni::objects::JString = (&s_obj).into();
+    env.get_string(j_str).map(Into::into)
+}
+
+// -- Item 81: Image Horizon Pixels ------------------------------------------
+
+fn build_image_horizon(
+    env: &mut JNIEnv<'_>,
+    h: &ImageHorizonPixels,
+) -> jni::errors::Result<jobject> {
+    let start_lat = boxed_double(env, h.start_lat_deg)?;
+    let start_lon = boxed_double(env, h.start_lon_deg)?;
+    let end_lat = boxed_double(env, h.end_lat_deg)?;
+    let end_lon = boxed_double(env, h.end_lon_deg)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/ImageHorizonPixels",
+        "(IIIILjava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;)V",
+        &[
+            JValue::Int(i32::from(h.x0_pct)),
+            JValue::Int(i32::from(h.y0_pct)),
+            JValue::Int(i32::from(h.x1_pct)),
+            JValue::Int(i32::from(h.y1_pct)),
+            JValue::Object(&start_lat),
+            JValue::Object(&start_lon),
+            JValue::Object(&end_lat),
+            JValue::Object(&end_lon),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_image_horizon(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<ImageHorizonPixels> {
+    let x0 = env.call_method(obj, "x0Pct", "()I", &[])?.i()?;
+    let y0 = env.call_method(obj, "y0Pct", "()I", &[])?.i()?;
+    let x1 = env.call_method(obj, "x1Pct", "()I", &[])?.i()?;
+    let y1 = env.call_method(obj, "y1Pct", "()I", &[])?.i()?;
+    Ok(ImageHorizonPixels {
+        x0_pct: checked_u8(env, i64::from(x0), "ImageHorizonPixels.x0Pct")?,
+        y0_pct: checked_u8(env, i64::from(y0), "ImageHorizonPixels.y0Pct")?,
+        x1_pct: checked_u8(env, i64::from(x1), "ImageHorizonPixels.x1Pct")?,
+        y1_pct: checked_u8(env, i64::from(y1), "ImageHorizonPixels.y1Pct")?,
+        start_lat_deg: read_nullable_double(env, obj, "startLatDeg")?,
+        start_lon_deg: read_nullable_double(env, obj, "startLonDeg")?,
+        end_lat_deg: read_nullable_double(env, obj, "endLatDeg")?,
+        end_lon_deg: read_nullable_double(env, obj, "endLonDeg")?,
+    })
+}
+
+// -- Item 115: Control Command (MULTI-INSTANCE) ------------------------------
+
+fn build_control_command(env: &mut JNIEnv<'_>, c: &ControlCommand) -> jni::errors::Result<jobject> {
+    let command = env.new_string(&c.command)?;
+    let time_us = boxed_long(env, c.time_us)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/ControlCommand",
+        "(JLjava/lang/String;Ljava/lang/Long;)V",
+        &[
+            JValue::Long(c.id as i64),
+            JValue::Object(&command),
+            JValue::Object(&time_us),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_control_command(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<ControlCommand> {
+    let id = env.call_method(obj, "id", "()J", &[])?.j()?;
+    let command = read_string(env, obj, "command")?;
+    let time_us = read_nullable_long(env, obj, "timeUs")?;
+    Ok(ControlCommand {
+        id: checked_u64(env, id, "ControlCommand.id")?,
+        command,
+        time_us: match time_us {
+            Some(v) => Some(checked_u64(env, v, "ControlCommand.timeUs")?),
+            None => None,
+        },
+    })
+}
+
+// -- Item 127: Sensor Frame Rate Pack ----------------------------------------
+
+fn build_sensor_frame_rate(
+    env: &mut JNIEnv<'_>,
+    fr: &SensorFrameRate,
+) -> jni::errors::Result<jobject> {
+    let obj = env.new_object(
+        "org/tstrans/klv/SensorFrameRate",
+        "(JJ)V",
+        &[
+            JValue::Long(fr.numerator as i64),
+            JValue::Long(fr.denominator as i64),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_sensor_frame_rate(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<SensorFrameRate> {
+    let numerator = env.call_method(obj, "numerator", "()J", &[])?.j()?;
+    let denominator = env.call_method(obj, "denominator", "()J", &[])?.j()?;
+    Ok(SensorFrameRate {
+        numerator: checked_u64(env, numerator, "SensorFrameRate.numerator")?,
+        denominator: checked_u64(env, denominator, "SensorFrameRate.denominator")?,
+    })
+}
+
+// -- Item 143: Metadata Substream Id -----------------------------------------
+
+fn build_metadata_substream_id(
+    env: &mut JNIEnv<'_>,
+    ms: &MetadataSubstreamId,
+) -> jni::errors::Result<jobject> {
+    let uuid: JObject<'_> = match ms.uuid {
+        Some(u) => env.byte_array_from_slice(&u)?.into(),
+        None => JObject::null(),
+    };
+    let obj = env.new_object(
+        "org/tstrans/klv/MetadataSubstreamId",
+        "(J[B)V",
+        &[JValue::Long(ms.local_id as i64), JValue::Object(&uuid)],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_metadata_substream_id(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<MetadataSubstreamId> {
+    let local_id = env.call_method(obj, "localId", "()J", &[])?.j()?;
+    let uuid_obj = env.call_method(obj, "uuid", "()[B", &[])?.l()?;
+    let uuid = if uuid_obj.is_null() {
+        None
+    } else {
+        let arr: JByteArray<'_> = uuid_obj.into();
+        let bytes = env.convert_byte_array(&arr)?;
+        if bytes.len() != 16 {
+            let _ = env.throw_new(
+                "java/lang/IllegalArgumentException",
+                format!(
+                    "MetadataSubstreamId.uuid must be 16 bytes; got {}",
+                    bytes.len()
+                ),
+            );
+            return Err(jni::errors::Error::JavaException);
+        }
+        let mut u = [0u8; 16];
+        u.copy_from_slice(&bytes);
+        Some(u)
+    };
+    Ok(MetadataSubstreamId {
+        local_id: checked_u64(env, local_id, "MetadataSubstreamId.localId")?,
+        uuid,
+    })
+}
+
+// -- Item 122: Country Codes --------------------------------------------------
+
+fn build_country_codes(env: &mut JNIEnv<'_>, cc: &CountryCodes) -> jni::errors::Result<jobject> {
+    let overflight: JObject<'_> = match cc.overflight.as_deref() {
+        Some(s) => env.new_string(s)?.into(),
+        None => JObject::null(),
+    };
+    let operator: JObject<'_> = match cc.operator.as_deref() {
+        Some(s) => env.new_string(s)?.into(),
+        None => JObject::null(),
+    };
+    let manufacture: JObject<'_> = match cc.manufacture.as_deref() {
+        Some(s) => env.new_string(s)?.into(),
+        None => JObject::null(),
+    };
+    let obj = env.new_object(
+        "org/tstrans/klv/CountryCodes",
+        "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        &[
+            JValue::Long(cc.coding_method as i64),
+            JValue::Object(&overflight),
+            JValue::Object(&operator),
+            JValue::Object(&manufacture),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_country_codes(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<CountryCodes> {
+    let coding_method = env.call_method(obj, "codingMethod", "()J", &[])?.j()?;
+    Ok(CountryCodes {
+        coding_method: checked_u64(env, coding_method, "CountryCodes.codingMethod")?,
+        overflight: read_nullable_string(env, obj, "overflight")?,
+        operator: read_nullable_string(env, obj, "operator")?,
+        manufacture: read_nullable_string(env, obj, "manufacture")?,
+    })
+}
+
+// -- Item 128: Wavelengths List -----------------------------------------------
+
+fn build_wavelength_record(
+    env: &mut JNIEnv<'_>,
+    w: &WavelengthRecord,
+) -> jni::errors::Result<jobject> {
+    let name = env.new_string(&w.name)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/WavelengthRecord",
+        "(JDDLjava/lang/String;)V",
+        &[
+            JValue::Long(w.id as i64),
+            JValue::Double(w.min_nm),
+            JValue::Double(w.max_nm),
+            JValue::Object(&name),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_wavelength_record(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<WavelengthRecord> {
+    let id = env.call_method(obj, "id", "()J", &[])?.j()?;
+    let min_nm = env.call_method(obj, "minNm", "()D", &[])?.d()?;
+    let max_nm = env.call_method(obj, "maxNm", "()D", &[])?.d()?;
+    let name = read_string(env, obj, "name")?;
+    Ok(WavelengthRecord {
+        id: checked_u64(env, id, "WavelengthRecord.id")?,
+        min_nm,
+        max_nm,
+        name,
+    })
+}
+
+// -- Location (shared by Item 130 and Item 141) -------------------------------
+
+fn build_location(env: &mut JNIEnv<'_>, loc: &Location) -> jni::errors::Result<jobject> {
+    let lat = boxed_double(env, loc.lat_deg)?;
+    let lon = boxed_double(env, loc.lon_deg)?;
+    let hae = boxed_double(env, loc.hae_m)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/Location",
+        "(Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Double;)V",
+        &[
+            JValue::Object(&lat),
+            JValue::Object(&lon),
+            JValue::Object(&hae),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_location(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Result<Location> {
+    Ok(Location {
+        lat_deg: read_nullable_double(env, obj, "latDeg")?,
+        lon_deg: read_nullable_double(env, obj, "lonDeg")?,
+        hae_m: read_nullable_double(env, obj, "haeM")?,
+    })
+}
+
+// -- Item 130: Airbase Locations ----------------------------------------------
+
+fn build_airbase_locations(
+    env: &mut JNIEnv<'_>,
+    al: &AirbaseLocations,
+) -> jni::errors::Result<jobject> {
+    let take_off: JObject<'_> = match al.take_off {
+        Some(loc) => unsafe { JObject::from_raw(build_location(env, &loc)?) },
+        None => JObject::null(),
+    };
+    let recovery: JObject<'_> = match al.recovery {
+        Some(loc) => unsafe { JObject::from_raw(build_location(env, &loc)?) },
+        None => JObject::null(),
+    };
+    let obj = env.new_object(
+        "org/tstrans/klv/AirbaseLocations",
+        "(Lorg/tstrans/klv/Location;Lorg/tstrans/klv/Location;)V",
+        &[JValue::Object(&take_off), JValue::Object(&recovery)],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_airbase_locations(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<AirbaseLocations> {
+    let take_off_obj = env
+        .call_method(obj, "takeOff", "()Lorg/tstrans/klv/Location;", &[])?
+        .l()?;
+    let take_off = if take_off_obj.is_null() {
+        None
+    } else {
+        Some(read_location(env, &take_off_obj)?)
+    };
+    let recovery_obj = env
+        .call_method(obj, "recovery", "()Lorg/tstrans/klv/Location;", &[])?
+        .l()?;
+    let recovery = if recovery_obj.is_null() {
+        None
+    } else {
+        Some(read_location(env, &recovery_obj)?)
+    };
+    Ok(AirbaseLocations { take_off, recovery })
+}
+
+// -- Item 138: Payload List ----------------------------------------------------
+//
+// `PayloadType::to_wire`/`from_wire` are `pub(crate)`-scoped to tst-core (same
+// rationale as the WP-A coded-enum comment above `icing_detected_to_code`) —
+// the tiny wire-code table is duplicated locally here. Unlike `IcingDetected`'s
+// narrow wire byte, `PayloadType::Other` carries the type code's full BER-OID
+// `u64` range, so the Java crossing (`PayloadRecord.payloadTypeCode`) is a
+// `long`, not an `int`. Mirrors tst-py's `convert_payload_type`/
+// `payload_type_from_wire`.
+
+fn payload_type_to_code(v: PayloadType) -> u64 {
+    match v {
+        PayloadType::ElectroOptical => 0,
+        PayloadType::Lidar => 1,
+        PayloadType::Radar => 2,
+        PayloadType::Sigint => 3,
+        PayloadType::Sar => 4,
+        PayloadType::Other(code) => code,
+        // `#[non_exhaustive]` in tst-core: no current variant reaches here.
+        _ => unreachable!("tst-core added a PayloadType variant not yet mirrored in tst-jni"),
+    }
+}
+
+fn payload_type_from_code(code: u64) -> PayloadType {
+    match code {
+        0 => PayloadType::ElectroOptical,
+        1 => PayloadType::Lidar,
+        2 => PayloadType::Radar,
+        3 => PayloadType::Sigint,
+        4 => PayloadType::Sar,
+        other => PayloadType::Other(other),
+    }
+}
+
+fn build_payload_record(env: &mut JNIEnv<'_>, r: &PayloadRecord) -> jni::errors::Result<jobject> {
+    let name = env.new_string(&r.name)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/PayloadRecord",
+        "(JJLjava/lang/String;)V",
+        &[
+            JValue::Long(r.id as i64),
+            JValue::Long(payload_type_to_code(r.payload_type) as i64),
+            JValue::Object(&name),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_payload_record(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<PayloadRecord> {
+    let id = env.call_method(obj, "id", "()J", &[])?.j()?;
+    let type_code = env.call_method(obj, "payloadTypeCode", "()J", &[])?.j()?;
+    let name = read_string(env, obj, "name")?;
+    Ok(PayloadRecord {
+        id: checked_u64(env, id, "PayloadRecord.id")?,
+        payload_type: payload_type_from_code(checked_u64(
+            env,
+            type_code,
+            "PayloadRecord.payloadTypeCode",
+        )?),
+        name,
+    })
+}
+
+fn build_payload_list(env: &mut JNIEnv<'_>, pl: &PayloadList) -> jni::errors::Result<jobject> {
+    let records_list = env.new_object("java/util/ArrayList", "()V", &[])?;
+    for r in &pl.records {
+        // 16 slots: covers PayloadRecord's id+typeCode+name refs + JNI scratch.
+        env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+            let raw = build_payload_record(inner_env, r)?;
+            let obj = unsafe { JObject::from_raw(raw) };
+            inner_env.call_method(
+                &records_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&obj)],
+            )?;
+            Ok(())
+        })?;
+    }
+    let obj = env.new_object(
+        "org/tstrans/klv/PayloadList",
+        "(JLjava/util/List;)V",
+        &[JValue::Long(pl.count as i64), JValue::Object(&records_list)],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_payload_list(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Result<PayloadList> {
+    let count = env.call_method(obj, "count", "()J", &[])?.j()?;
+    let records_obj = env
+        .call_method(obj, "records", "()Ljava/util/List;", &[])?
+        .l()?;
+    let size = env.call_method(&records_obj, "size", "()I", &[])?.i()?;
+    let mut records = Vec::new();
+    for i in 0..size {
+        env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+            let item = inner_env
+                .call_method(
+                    &records_obj,
+                    "get",
+                    "(I)Ljava/lang/Object;",
+                    &[JValue::Int(i)],
+                )?
+                .l()?;
+            records.push(read_payload_record(inner_env, &item)?);
+            Ok(())
+        })?;
+    }
+    Ok(PayloadList {
+        count: checked_u64(env, count, "PayloadList.count")?,
+        records,
+    })
+}
+
+// -- Item 140: Weapons Stores ---------------------------------------------------
+
+fn build_weapons_store(env: &mut JNIEnv<'_>, ws: &WeaponsStore) -> jni::errors::Result<jobject> {
+    let weapon_type = env.new_string(&ws.weapon_type)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/WeaponsStore",
+        "(JJJJJLjava/lang/String;)V",
+        &[
+            JValue::Long(ws.station_id as i64),
+            JValue::Long(ws.hardpoint_id as i64),
+            JValue::Long(ws.carriage_id as i64),
+            JValue::Long(ws.store_id as i64),
+            JValue::Long(ws.status_raw as i64),
+            JValue::Object(&weapon_type),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_weapons_store(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<WeaponsStore> {
+    let station_id = env.call_method(obj, "stationId", "()J", &[])?.j()?;
+    let hardpoint_id = env.call_method(obj, "hardpointId", "()J", &[])?.j()?;
+    let carriage_id = env.call_method(obj, "carriageId", "()J", &[])?.j()?;
+    let store_id = env.call_method(obj, "storeId", "()J", &[])?.j()?;
+    let status_raw = env.call_method(obj, "statusRaw", "()J", &[])?.j()?;
+    let weapon_type = read_string(env, obj, "weaponType")?;
+    Ok(WeaponsStore {
+        station_id: checked_u64(env, station_id, "WeaponsStore.stationId")?,
+        hardpoint_id: checked_u64(env, hardpoint_id, "WeaponsStore.hardpointId")?,
+        carriage_id: checked_u64(env, carriage_id, "WeaponsStore.carriageId")?,
+        store_id: checked_u64(env, store_id, "WeaponsStore.storeId")?,
+        status_raw: checked_u64(env, status_raw, "WeaponsStore.statusRaw")?,
+        weapon_type,
+    })
+}
+
+// -- Item 141: Waypoint List ------------------------------------------------------
+
+fn build_waypoint(env: &mut JNIEnv<'_>, wp: &Waypoint) -> jni::errors::Result<jobject> {
+    let info = boxed_long(env, wp.info)?;
+    let location: JObject<'_> = match wp.location {
+        Some(loc) => unsafe { JObject::from_raw(build_location(env, &loc)?) },
+        None => JObject::null(),
+    };
+    let obj = env.new_object(
+        "org/tstrans/klv/Waypoint",
+        "(JILjava/lang/Long;Lorg/tstrans/klv/Location;)V",
+        &[
+            JValue::Long(wp.id as i64),
+            JValue::Int(i32::from(wp.prosecution_order)),
+            JValue::Object(&info),
+            JValue::Object(&location),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_waypoint(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Result<Waypoint> {
+    let id = env.call_method(obj, "id", "()J", &[])?.j()?;
+    let prosecution_order = env.call_method(obj, "prosecutionOrder", "()I", &[])?.i()?;
+    let info = read_nullable_long(env, obj, "info")?;
+    let location_obj = env
+        .call_method(obj, "location", "()Lorg/tstrans/klv/Location;", &[])?
+        .l()?;
+    let location = if location_obj.is_null() {
+        None
+    } else {
+        Some(read_location(env, &location_obj)?)
+    };
+    Ok(Waypoint {
+        id: checked_u64(env, id, "Waypoint.id")?,
+        prosecution_order: checked_i16(
+            env,
+            i64::from(prosecution_order),
+            "Waypoint.prosecutionOrder",
+        )?,
+        info: match info {
+            Some(v) => Some(checked_u64(env, v, "Waypoint.info")?),
+            None => None,
+        },
+        location,
+    })
+}
+
+// -- Item 142: View Domain -----------------------------------------------------
+
+fn build_view_domain_pair(
+    env: &mut JNIEnv<'_>,
+    p: &ViewDomainPair,
+) -> jni::errors::Result<jobject> {
+    let obj = env.new_object(
+        "org/tstrans/klv/ViewDomainPair",
+        "(DD)V",
+        &[JValue::Double(p.start_deg), JValue::Double(p.range_deg)],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_view_domain_pair(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<ViewDomainPair> {
+    let start_deg = env.call_method(obj, "startDeg", "()D", &[])?.d()?;
+    let range_deg = env.call_method(obj, "rangeDeg", "()D", &[])?.d()?;
+    Ok(ViewDomainPair {
+        start_deg,
+        range_deg,
+    })
+}
+
+fn build_view_domain(env: &mut JNIEnv<'_>, vd: &ViewDomain) -> jni::errors::Result<jobject> {
+    let azimuth: JObject<'_> = match vd.azimuth {
+        Some(p) => unsafe { JObject::from_raw(build_view_domain_pair(env, &p)?) },
+        None => JObject::null(),
+    };
+    let elevation: JObject<'_> = match vd.elevation {
+        Some(p) => unsafe { JObject::from_raw(build_view_domain_pair(env, &p)?) },
+        None => JObject::null(),
+    };
+    let roll: JObject<'_> = match vd.roll {
+        Some(p) => unsafe { JObject::from_raw(build_view_domain_pair(env, &p)?) },
+        None => JObject::null(),
+    };
+    let obj = env.new_object(
+        "org/tstrans/klv/ViewDomain",
+        "(Lorg/tstrans/klv/ViewDomainPair;Lorg/tstrans/klv/ViewDomainPair;Lorg/tstrans/klv/ViewDomainPair;)V",
+        &[
+            JValue::Object(&azimuth),
+            JValue::Object(&elevation),
+            JValue::Object(&roll),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_view_domain(env: &mut JNIEnv<'_>, obj: &JObject<'_>) -> jni::errors::Result<ViewDomain> {
+    let azimuth_obj = env
+        .call_method(obj, "azimuth", "()Lorg/tstrans/klv/ViewDomainPair;", &[])?
+        .l()?;
+    let azimuth = if azimuth_obj.is_null() {
+        None
+    } else {
+        Some(read_view_domain_pair(env, &azimuth_obj)?)
+    };
+    let elevation_obj = env
+        .call_method(obj, "elevation", "()Lorg/tstrans/klv/ViewDomainPair;", &[])?
+        .l()?;
+    let elevation = if elevation_obj.is_null() {
+        None
+    } else {
+        Some(read_view_domain_pair(env, &elevation_obj)?)
+    };
+    let roll_obj = env
+        .call_method(obj, "roll", "()Lorg/tstrans/klv/ViewDomainPair;", &[])?
+        .l()?;
+    let roll = if roll_obj.is_null() {
+        None
+    } else {
+        Some(read_view_domain_pair(env, &roll_obj)?)
+    };
+    Ok(ViewDomain {
+        azimuth,
+        elevation,
+        roll,
+    })
+}
+
+// -- Item 102: SDCC-FLP (MULTI-INSTANCE positional capture) ---------------------
+
+fn build_sdcc_flp_field(env: &mut JNIEnv<'_>, f: &SdccFlpField) -> jni::errors::Result<jobject> {
+    let preceding = build_long_list(env, f.preceding_tags.iter().map(|&t| i64::from(t)))?;
+    let bytes =
+        wrap_heap_byte_buffer(env, &f.bytes).map_err(|()| jni::errors::Error::JavaException)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/SdccFlpField",
+        "(Ljava/util/List;Ljava/nio/ByteBuffer;)V",
+        &[JValue::Object(&preceding), JValue::Object(&bytes)],
+    )?;
+    Ok(obj.into_raw())
+}
+
+fn read_sdcc_flp_field(
+    env: &mut JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> jni::errors::Result<SdccFlpField> {
+    let preceding_obj = env
+        .call_method(obj, "precedingTags", "()Ljava/util/List;", &[])?
+        .l()?;
+    let size = env.call_method(&preceding_obj, "size", "()I", &[])?.i()?;
+    let mut preceding_tags = Vec::new();
+    for i in 0..size {
+        let item = env
+            .call_method(
+                &preceding_obj,
+                "get",
+                "(I)Ljava/lang/Object;",
+                &[JValue::Int(i)],
+            )?
+            .l()?;
+        let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+        preceding_tags.push(checked_u32(env, v, "SdccFlpField.precedingTags")?);
+    }
+    let bytes_obj = env
+        .call_method(obj, "bytes", "()Ljava/nio/ByteBuffer;", &[])?
+        .l()?;
+    let bytes = read_byte_buffer(env, &bytes_obj)?;
+    Ok(SdccFlpField {
+        preceding_tags,
+        bytes,
+    })
+}
+
 // -----------------------------------------------------------------------
 // Decode entry point
 // -----------------------------------------------------------------------
@@ -555,17 +1274,21 @@ pub extern "system" fn Java_org_tstrans_klv_Klv_nSt0601SentinelMeaning<'local>(
 ///
 /// ### Local-ref capacity (MANDATORY)
 ///
-/// Calls `env.ensure_local_capacity(224)` at the top. With 133 fields (12
+/// Calls `env.ensure_local_capacity(256)` at the top. With 147 fields (12
 /// Strings, ~83 Doubles, ~11 ByteBuffers, ~14 Integers, ~7 Longs, an
-/// `imapbSpecials` list, builder + lists), the default ~16-slot JNI local
-/// table is completely inadequate. 224 slots is the minimum safe value for
-/// a fully populated ST 0601 record (bumped from 192 when WP-B added 25
-/// fields + the `imapbSpecials` list; 192 was bumped from 128 when WP-A
-/// added 51 fields).
+/// `imapbSpecials` list, 14 WP-C pack/list fields — each a nested-record
+/// build, some with their own trailing lists — builder + lists), the
+/// default ~16-slot JNI local table is completely inadequate. 256 slots is
+/// the minimum safe value for a fully populated ST 0601 record (bumped from
+/// 224 when WP-C added the 14 pack/list fields; 224 was bumped from 192 when
+/// WP-B added 25 fields + the `imapbSpecials` list; 192 was bumped from 128
+/// when WP-A added 51 fields). Each WP-C list field's own items are built
+/// inside a per-item `with_local_frame`, so only the item COUNT — not the
+/// item length — affects this top-level budget.
 fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::Result<jobject> {
     // CRITICAL: must be called before any new_string / new_object below.
-    // 224 slots covers 133 fields + builder + lists + JNI scratch.
-    env.ensure_local_capacity(224)?;
+    // 256 slots covers 147 fields + builder + lists + JNI scratch.
+    env.ensure_local_capacity(256)?;
 
     let b = env.new_object(BUILDER_CLASS, "()V", &[])?;
 
@@ -1556,6 +2279,233 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
         )?;
     }
 
+    // --- WP-C Table C1: pack & list items ---
+
+    // Item 81 — imageHorizon
+    if let Some(ref h) = r.image_horizon {
+        let raw = build_image_horizon(env, h)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "imageHorizon",
+            "(Lorg/tstrans/klv/ImageHorizonPixels;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 115 — controlCommands (MULTI-INSTANCE; always set, even if empty).
+    // Each item is built inside its own local frame (VTargetPack idiom) so
+    // per-item refs are reclaimed before the next iteration.
+    let control_commands_list = env.new_object("java/util/ArrayList", "()V", &[])?;
+    for c in &r.control_commands {
+        env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+            let raw = build_control_command(inner_env, c)?;
+            let obj = unsafe { JObject::from_raw(raw) };
+            inner_env.call_method(
+                &control_commands_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&obj)],
+            )?;
+            Ok(())
+        })?;
+    }
+    env.call_method(
+        &b,
+        "controlCommands",
+        BUILDER_SIG_LIST,
+        &[JValue::Object(&control_commands_list)],
+    )?;
+
+    // Item 116 — controlCommandVerification (Option<Vec<u64>>)
+    if let Some(ref ids) = r.control_command_verification {
+        let list = build_long_list(env, ids.iter().map(|&v| v as i64))?;
+        env.call_method(
+            &b,
+            "controlCommandVerification",
+            BUILDER_SIG_LIST,
+            &[JValue::Object(&list)],
+        )?;
+    }
+
+    // Item 121 — activeWavelengths (Option<Vec<u64>>)
+    if let Some(ref ids) = r.active_wavelengths {
+        let list = build_long_list(env, ids.iter().map(|&v| v as i64))?;
+        env.call_method(
+            &b,
+            "activeWavelengths",
+            BUILDER_SIG_LIST,
+            &[JValue::Object(&list)],
+        )?;
+    }
+
+    // Item 127 — sensorFrameRate
+    if let Some(ref fr) = r.sensor_frame_rate {
+        let raw = build_sensor_frame_rate(env, fr)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "sensorFrameRate",
+            "(Lorg/tstrans/klv/SensorFrameRate;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 143 — metadataSubstreamId
+    if let Some(ref ms) = r.metadata_substream_id {
+        let raw = build_metadata_substream_id(env, ms)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "metadataSubstreamId",
+            "(Lorg/tstrans/klv/MetadataSubstreamId;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 122 — countryCodes
+    if let Some(ref cc) = r.country_codes {
+        let raw = build_country_codes(env, cc)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "countryCodes",
+            "(Lorg/tstrans/klv/CountryCodes;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 128 — wavelengthsList (Option<Vec<WavelengthRecord>>)
+    if let Some(ref list) = r.wavelengths_list {
+        let jlist = env.new_object("java/util/ArrayList", "()V", &[])?;
+        for w in list {
+            env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                let raw = build_wavelength_record(inner_env, w)?;
+                let obj = unsafe { JObject::from_raw(raw) };
+                inner_env.call_method(
+                    &jlist,
+                    "add",
+                    "(Ljava/lang/Object;)Z",
+                    &[JValue::Object(&obj)],
+                )?;
+                Ok(())
+            })?;
+        }
+        env.call_method(
+            &b,
+            "wavelengthsList",
+            BUILDER_SIG_LIST,
+            &[JValue::Object(&jlist)],
+        )?;
+    }
+
+    // Item 130 — airbaseLocations
+    if let Some(ref al) = r.airbase_locations {
+        let raw = build_airbase_locations(env, al)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "airbaseLocations",
+            "(Lorg/tstrans/klv/AirbaseLocations;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 138 — payloadList (its own `records` list is built inside
+    // `build_payload_list`'s per-item local frames)
+    if let Some(ref pl) = r.payload_list {
+        let raw = build_payload_list(env, pl)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "payloadList",
+            "(Lorg/tstrans/klv/PayloadList;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 140 — weaponsStores (Option<Vec<WeaponsStore>>)
+    if let Some(ref list) = r.weapons_stores {
+        let jlist = env.new_object("java/util/ArrayList", "()V", &[])?;
+        for ws in list {
+            env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                let raw = build_weapons_store(inner_env, ws)?;
+                let obj = unsafe { JObject::from_raw(raw) };
+                inner_env.call_method(
+                    &jlist,
+                    "add",
+                    "(Ljava/lang/Object;)Z",
+                    &[JValue::Object(&obj)],
+                )?;
+                Ok(())
+            })?;
+        }
+        env.call_method(
+            &b,
+            "weaponsStores",
+            BUILDER_SIG_LIST,
+            &[JValue::Object(&jlist)],
+        )?;
+    }
+
+    // Item 141 — waypointList (Option<Vec<Waypoint>>)
+    if let Some(ref list) = r.waypoint_list {
+        let jlist = env.new_object("java/util/ArrayList", "()V", &[])?;
+        for wp in list {
+            env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                let raw = build_waypoint(inner_env, wp)?;
+                let obj = unsafe { JObject::from_raw(raw) };
+                inner_env.call_method(
+                    &jlist,
+                    "add",
+                    "(Ljava/lang/Object;)Z",
+                    &[JValue::Object(&obj)],
+                )?;
+                Ok(())
+            })?;
+        }
+        env.call_method(
+            &b,
+            "waypointList",
+            BUILDER_SIG_LIST,
+            &[JValue::Object(&jlist)],
+        )?;
+    }
+
+    // Item 142 — viewDomain
+    if let Some(ref vd) = r.view_domain {
+        let raw = build_view_domain(env, vd)?;
+        let obj = unsafe { JObject::from_raw(raw) };
+        env.call_method(
+            &b,
+            "viewDomain",
+            "(Lorg/tstrans/klv/ViewDomain;)Lorg/tstrans/klv/UasDatalinkLs$Builder;",
+            &[JValue::Object(&obj)],
+        )?;
+    }
+
+    // Item 102 — sdccFlps (MULTI-INSTANCE; always set, even if empty)
+    let sdcc_list = env.new_object("java/util/ArrayList", "()V", &[])?;
+    for f in &r.sdcc_flps {
+        env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+            let raw = build_sdcc_flp_field(inner_env, f)?;
+            let obj = unsafe { JObject::from_raw(raw) };
+            inner_env.call_method(
+                &sdcc_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[JValue::Object(&obj)],
+            )?;
+            Ok(())
+        })?;
+    }
+    env.call_method(
+        &b,
+        "sdccFlps",
+        BUILDER_SIG_LIST,
+        &[JValue::Object(&sdcc_list)],
+    )?;
+
     // --- fieldErrors — always set (even if empty) ---
     let fe_list = build_field_errors(env, &r.field_errors)?;
     env.call_method(
@@ -1631,11 +2581,24 @@ fn build_uas_datalink(env: &mut JNIEnv<'_>, r: &UasDatalinkLs) -> jni::errors::R
 /// - 16-byte UL validation (raises RuntimeException on wrong length)
 /// - `is_st0601_typed_tag` collision-drop on `unknown`
 /// - `field_errors` not round-tripped (decoder-only diagnostic)
+///
+/// ### Local-ref capacity (MANDATORY, added WP-C)
+///
+/// Calls `env.ensure_local_capacity(256)` at the top — this function had NO
+/// such call before WP-C (pre-existing debt found by the B6 review): every
+/// `read_nullable_*` accessor call mints a local ref that lives until this
+/// function returns, and the WP-C pack fields (each a nested-record read,
+/// several with their own list-of-records reads) multiply that pressure
+/// further. Sized to match `build_uas_datalink`'s budget — see that
+/// function's doc for the field-count rationale.
 #[allow(clippy::field_reassign_with_default)]
 fn read_uas_datalink(
     env: &mut JNIEnv<'_>,
     rec: &JObject<'_>,
 ) -> jni::errors::Result<UasDatalinkLs> {
+    // CRITICAL: must be called before any call_method / get_string below.
+    env.ensure_local_capacity(256)?;
+
     let mut r = UasDatalinkLs::default();
 
     // --- universal_label: ByteBuffer → UniversalLabel([u8;16]) ---
@@ -2059,6 +3022,235 @@ fn read_uas_datalink(
         r.operational_mode = Some(operational_mode_from_code(c));
     }
 
+    // --- WP-C Table C1: pack & list items ---
+
+    // Item 81 — imageHorizon
+    {
+        let obj = env
+            .call_method(
+                rec,
+                "imageHorizon",
+                "()Lorg/tstrans/klv/ImageHorizonPixels;",
+                &[],
+            )?
+            .l()?;
+        if !obj.is_null() {
+            r.image_horizon = Some(read_image_horizon(env, &obj)?);
+        }
+    }
+
+    // Item 115 — controlCommands (List<ControlCommand>, MULTI-INSTANCE)
+    {
+        let list_obj = env
+            .call_method(rec, "controlCommands", "()Ljava/util/List;", &[])?
+            .l()?;
+        let size = env.call_method(&list_obj, "size", "()I", &[])?.i()?;
+        for i in 0..size {
+            env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                let item = inner_env
+                    .call_method(&list_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                r.control_commands
+                    .push(read_control_command(inner_env, &item)?);
+                Ok(())
+            })?;
+        }
+    }
+
+    // Item 116 — controlCommandVerification (nullable List<Long>)
+    {
+        let obj = env
+            .call_method(rec, "controlCommandVerification", "()Ljava/util/List;", &[])?
+            .l()?;
+        if !obj.is_null() {
+            let size = env.call_method(&obj, "size", "()I", &[])?.i()?;
+            let mut ids = Vec::new();
+            for i in 0..size {
+                let item = env
+                    .call_method(&obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+                ids.push(checked_u64(env, v, "controlCommandVerification")?);
+            }
+            r.control_command_verification = Some(ids);
+        }
+    }
+
+    // Item 121 — activeWavelengths (nullable List<Long>)
+    {
+        let obj = env
+            .call_method(rec, "activeWavelengths", "()Ljava/util/List;", &[])?
+            .l()?;
+        if !obj.is_null() {
+            let size = env.call_method(&obj, "size", "()I", &[])?.i()?;
+            let mut ids = Vec::new();
+            for i in 0..size {
+                let item = env
+                    .call_method(&obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                let v = env.call_method(&item, "longValue", "()J", &[])?.j()?;
+                ids.push(checked_u64(env, v, "activeWavelengths")?);
+            }
+            r.active_wavelengths = Some(ids);
+        }
+    }
+
+    // Item 127 — sensorFrameRate
+    {
+        let obj = env
+            .call_method(
+                rec,
+                "sensorFrameRate",
+                "()Lorg/tstrans/klv/SensorFrameRate;",
+                &[],
+            )?
+            .l()?;
+        if !obj.is_null() {
+            r.sensor_frame_rate = Some(read_sensor_frame_rate(env, &obj)?);
+        }
+    }
+
+    // Item 143 — metadataSubstreamId
+    {
+        let obj = env
+            .call_method(
+                rec,
+                "metadataSubstreamId",
+                "()Lorg/tstrans/klv/MetadataSubstreamId;",
+                &[],
+            )?
+            .l()?;
+        if !obj.is_null() {
+            r.metadata_substream_id = Some(read_metadata_substream_id(env, &obj)?);
+        }
+    }
+
+    // Item 122 — countryCodes
+    {
+        let obj = env
+            .call_method(rec, "countryCodes", "()Lorg/tstrans/klv/CountryCodes;", &[])?
+            .l()?;
+        if !obj.is_null() {
+            r.country_codes = Some(read_country_codes(env, &obj)?);
+        }
+    }
+
+    // Item 128 — wavelengthsList (nullable List<WavelengthRecord>)
+    {
+        let list_obj = env
+            .call_method(rec, "wavelengthsList", "()Ljava/util/List;", &[])?
+            .l()?;
+        if !list_obj.is_null() {
+            let size = env.call_method(&list_obj, "size", "()I", &[])?.i()?;
+            let mut list = Vec::new();
+            for i in 0..size {
+                env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                    let item = inner_env
+                        .call_method(&list_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                        .l()?;
+                    list.push(read_wavelength_record(inner_env, &item)?);
+                    Ok(())
+                })?;
+            }
+            r.wavelengths_list = Some(list);
+        }
+    }
+
+    // Item 130 — airbaseLocations
+    {
+        let obj = env
+            .call_method(
+                rec,
+                "airbaseLocations",
+                "()Lorg/tstrans/klv/AirbaseLocations;",
+                &[],
+            )?
+            .l()?;
+        if !obj.is_null() {
+            r.airbase_locations = Some(read_airbase_locations(env, &obj)?);
+        }
+    }
+
+    // Item 138 — payloadList (its own `records` list is read inside
+    // `read_payload_list`'s per-item local frames)
+    {
+        let obj = env
+            .call_method(rec, "payloadList", "()Lorg/tstrans/klv/PayloadList;", &[])?
+            .l()?;
+        if !obj.is_null() {
+            r.payload_list = Some(read_payload_list(env, &obj)?);
+        }
+    }
+
+    // Item 140 — weaponsStores (nullable List<WeaponsStore>)
+    {
+        let list_obj = env
+            .call_method(rec, "weaponsStores", "()Ljava/util/List;", &[])?
+            .l()?;
+        if !list_obj.is_null() {
+            let size = env.call_method(&list_obj, "size", "()I", &[])?.i()?;
+            let mut list = Vec::new();
+            for i in 0..size {
+                env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                    let item = inner_env
+                        .call_method(&list_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                        .l()?;
+                    list.push(read_weapons_store(inner_env, &item)?);
+                    Ok(())
+                })?;
+            }
+            r.weapons_stores = Some(list);
+        }
+    }
+
+    // Item 141 — waypointList (nullable List<Waypoint>)
+    {
+        let list_obj = env
+            .call_method(rec, "waypointList", "()Ljava/util/List;", &[])?
+            .l()?;
+        if !list_obj.is_null() {
+            let size = env.call_method(&list_obj, "size", "()I", &[])?.i()?;
+            let mut list = Vec::new();
+            for i in 0..size {
+                env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                    let item = inner_env
+                        .call_method(&list_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                        .l()?;
+                    list.push(read_waypoint(inner_env, &item)?);
+                    Ok(())
+                })?;
+            }
+            r.waypoint_list = Some(list);
+        }
+    }
+
+    // Item 142 — viewDomain
+    {
+        let obj = env
+            .call_method(rec, "viewDomain", "()Lorg/tstrans/klv/ViewDomain;", &[])?
+            .l()?;
+        if !obj.is_null() {
+            r.view_domain = Some(read_view_domain(env, &obj)?);
+        }
+    }
+
+    // Item 102 — sdccFlps (List<SdccFlpField>, MULTI-INSTANCE, always set)
+    {
+        let list_obj = env
+            .call_method(rec, "sdccFlps", "()Ljava/util/List;", &[])?
+            .l()?;
+        let size = env.call_method(&list_obj, "size", "()I", &[])?.i()?;
+        for i in 0..size {
+            env.with_local_frame(16, |inner_env| -> jni::errors::Result<()> {
+                let item = inner_env
+                    .call_method(&list_obj, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?
+                    .l()?;
+                r.sdcc_flps.push(read_sdcc_flp_field(inner_env, &item)?);
+                Ok(())
+            })?;
+        }
+    }
+
     // --- unknown: List<KlvUnknownField> with is_st0601_typed_tag collision-drop ---
     {
         let unk_obj = env
@@ -2134,4 +3326,147 @@ pub fn read_uas_datalink_for_validate(
     rec: &JObject<'_>,
 ) -> jni::errors::Result<UasDatalinkLs> {
     read_uas_datalink(env, rec)
+}
+
+// ---------------------------------------------------------------------------
+// klv::st1010 SDCC-FLP — general-purpose, standalone entry points. NOT
+// ST 0601-specific (see the `SdccFlp`/`SdccFlpField` module docs) — kept in
+// this file per the WP-C task brief rather than a new module, since the only
+// caller-visible surface is `Klv.decodeSdccFlp`/`Klv.encodeSdccFlpMode2`.
+// ---------------------------------------------------------------------------
+
+/// Map a standalone Rust `KlvFieldError` — e.g. from `decode_sdcc_flp`, which
+/// returns one directly rather than embedding it in a `KlvDecodeError` — to a
+/// `KlvDecodeException`. Mirrors `map_klv_decode_error`'s
+/// `FieldError(_) => "MALFORMED_BYTES"` bucket: this function's caller sees
+/// exactly one field-level failure with no surrounding local-set context, so
+/// every variant folds to that bucket except the substrate-framing one.
+/// Mirrors tst-py's `klv_field_error_to_pyerr`.
+fn map_sdcc_field_error(env: &mut JNIEnv, e: &KlvFieldError) {
+    let msg = e.to_string();
+    let kind = match e {
+        KlvFieldError::TruncatedField { .. } => "TRUNCATED_SET",
+        _ => "MALFORMED_BYTES",
+    };
+    throw_klv_decode(env, kind, &msg);
+}
+
+/// Build a `org.tstrans.klv.SdccFlp` Java record from a decoded Rust `SdccFlp`.
+fn build_sdcc_flp(env: &mut JNIEnv<'_>, m: &SdccFlp) -> jni::errors::Result<jobject> {
+    let std_devs_arr = env.new_double_array(m.std_devs.len() as i32)?;
+    env.set_double_array_region(&std_devs_arr, 0, &m.std_devs)?;
+    let correlations_arr = env.new_double_array(m.correlations.len() as i32)?;
+    env.set_double_array_region(&correlations_arr, 0, &m.correlations)?;
+    let presence: Vec<u8> = m.correlation_present.iter().map(|&b| u8::from(b)).collect();
+    let presence_arr = env.new_boolean_array(presence.len() as i32)?;
+    env.set_boolean_array_region(&presence_arr, 0, &presence)?;
+    let obj = env.new_object(
+        "org/tstrans/klv/SdccFlp",
+        "(J[D[D[Z)V",
+        &[
+            JValue::Long(m.matrix_size as i64),
+            JValue::Object(&std_devs_arr),
+            JValue::Object(&correlations_arr),
+            JValue::Object(&presence_arr),
+        ],
+    )?;
+    Ok(obj.into_raw())
+}
+
+/// Read a Java `double[]` into a `Vec<f64>`.
+fn read_double_array(
+    env: &mut JNIEnv,
+    arr: &jni::objects::JDoubleArray,
+) -> jni::errors::Result<Vec<f64>> {
+    let len = env.get_array_length(arr)?;
+    let mut buf = vec![0.0f64; len as usize];
+    env.get_double_array_region(arr, 0, &mut buf)?;
+    Ok(buf)
+}
+
+/// `org.tstrans.klv.Klv.decodeSdccFlpNative(byte[]) -> SdccFlp`
+///
+/// Decodes a MISB ST 1010.3 SDCC-FLP pack (Mode 1 and Mode 2). `buf` is the
+/// pack bytes starting at Element 1 (Matrix Size) — no outer TLV framing and
+/// no leading Universal Label. General-purpose: not ST 0601-specific.
+/// Mirrors tst-py's `decode_sdcc_flp(buf)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_decodeSdccFlpNative<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    buf: JByteArray<'local>,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let bytes = match env.convert_byte_array(&buf) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("decodeSdccFlpNative: byte[] read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        match decode_sdcc_flp(&bytes) {
+            Ok(m) => build_sdcc_flp(env, &m).unwrap_or_else(|_| JObject::null().into_raw()),
+            Err(e) => {
+                map_sdcc_field_error(env, &e);
+                JObject::null().into_raw()
+            }
+        }
+    })
+}
+
+/// `org.tstrans.klv.Klv.encodeSdccFlpMode2Native(double[], double[], int) -> byte[]`
+///
+/// Encodes a Mode-2 SDCC-FLP: standard deviations as IEEE binary32,
+/// correlations as ST 1201 IMAPB(-1, 1, `clen`). Sparse mode + Bit Vector are
+/// chosen automatically when zero-correlations make it pay. Mirrors tst-py's
+/// `encode_sdcc_flp_mode2(std_devs, correlations, clen)`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_tstrans_klv_Klv_encodeSdccFlpMode2Native<'local>(
+    mut env: JNIEnv<'local>,
+    _c: JClass<'local>,
+    std_devs: jni::objects::JDoubleArray<'local>,
+    correlations: jni::objects::JDoubleArray<'local>,
+    clen: jint,
+) -> jobject {
+    crate::panic::jni_catch(&mut env, std::ptr::null_mut(), |env| {
+        let std_devs_vec = match read_double_array(env, &std_devs) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("encodeSdccFlpMode2Native: stdDevs read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        let correlations_vec = match read_double_array(env, &correlations) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("encodeSdccFlpMode2Native: correlations read failed: {e}"),
+                );
+                return JObject::null().into_raw();
+            }
+        };
+        match encode_sdcc_flp_mode2(&std_devs_vec, &correlations_vec, clen as usize) {
+            Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+                Ok(arr) => arr.into_raw(),
+                Err(e) => {
+                    let _ = env.throw_new(
+                        "java/lang/RuntimeException",
+                        format!("encodeSdccFlpMode2Native: byte_array_from_slice failed: {e}"),
+                    );
+                    JObject::null().into_raw()
+                }
+            },
+            Err(e) => {
+                map_klv_encode_error(env, &e);
+                JObject::null().into_raw()
+            }
+        }
+    })
 }

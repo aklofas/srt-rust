@@ -538,6 +538,58 @@ public final class Klv {
     private static native List<MismmsViolation> validateMismmsNative(UasDatalinkLs record);
 
     // -----------------------------------------------------------------------
+    // ST 1010 — SDCC-FLP (general-purpose; carried inside ST 0601 Item 102,
+    // but not ST 0601-specific — see the SdccFlp/SdccFlpField Javadoc)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode a MISB ST 1010.3 SDCC-FLP pack (Mode 1 and Mode 2, §6-§7).
+     *
+     * <p>{@code buf} is the pack bytes starting at Element 1 (Matrix Size) —
+     * no outer TLV framing and no leading Universal Label. General-purpose:
+     * not ST 0601-specific. Mirrors tst-py's {@code decode_sdcc_flp(buf)}.
+     *
+     * @param buf raw SDCC-FLP pack bytes
+     * @return the decoded {@link SdccFlp}
+     * @throws org.tstrans.KlvDecodeException if the buffer is truncated or malformed
+     */
+    public static SdccFlp decodeSdccFlp(byte[] buf) throws org.tstrans.KlvDecodeException {
+        return decodeSdccFlpNative(buf);
+    }
+
+    /**
+     * Encode a Mode-2 MISB ST 1010.3 SDCC-FLP: standard deviations as IEEE
+     * binary32, correlations as ST 1201 IMAPB(-1, 1, {@code clen}). Sparse
+     * mode + Bit Vector are chosen automatically when zero-correlations make
+     * it pay (Appendix A cost model).
+     *
+     * <p>{@code correlations.length} must equal
+     * {@code stdDevs.length * (stdDevs.length - 1) / 2} (the upper-triangle
+     * slot count for a matrix of size {@code stdDevs.length}), in row-major
+     * ({@code i < j}) order. Mirrors tst-py's
+     * {@code encode_sdcc_flp_mode2(std_devs, correlations, clen)}.
+     *
+     * @param stdDevs      diagonal &sigma; values
+     * @param correlations upper-triangle &rho; values, row-major (i&lt;j)
+     * @param clen         IMAPB byte length for the correlation values, {@code 1..=8}
+     * @return the encoded pack bytes
+     * @throws org.tstrans.KlvEncodeException if {@code correlations.length}
+     *         doesn't match the matrix size implied by {@code stdDevs}, if
+     *         {@code clen} is outside {@code 1..=8}, or if any correlation
+     *         is outside {@code [-1.0, 1.0]}
+     */
+    public static byte[] encodeSdccFlpMode2(double[] stdDevs, double[] correlations, int clen)
+            throws org.tstrans.KlvEncodeException {
+        return encodeSdccFlpMode2Native(stdDevs, correlations, clen);
+    }
+
+    private static native SdccFlp decodeSdccFlpNative(byte[] buf)
+            throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] encodeSdccFlpMode2Native(double[] stdDevs, double[] correlations, int clen)
+            throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
     // UL dispatcher
     // -----------------------------------------------------------------------
 

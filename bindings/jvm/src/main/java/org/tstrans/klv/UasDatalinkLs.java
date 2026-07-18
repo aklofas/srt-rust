@@ -8,7 +8,7 @@ import java.util.Optional;
 /**
  * MISB ST 0601 UAS Datalink Local Set typed view.
  *
- * <p>Mirror of the 133-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
+ * <p>Mirror of the 147-field Rust {@code tst_core::klv::st0601::UasDatalinkLs}
  * flat struct. Composite views (sensor position, attitude, FOV, corners) are
  * accessor methods that return {@link Optional#empty()} when any of the
  * underlying primitive fields is absent.
@@ -289,6 +289,57 @@ public record UasDatalinkLs(
         Integer sensorFovNameCode,
         Integer operationalModeCode,
 
+        // ---------------------------------------------------------------
+        // WP-C Table C1 — pack & list items (tags 81/102/115/116/121/122/
+        // 127/128/130/138/140/141/142/143)
+        // ---------------------------------------------------------------
+        /** Item 81: Image Horizon Pixels. */
+        ImageHorizonPixels imageHorizon,
+        /**
+         * Item 115: Control Command — MULTI-INSTANCE (ST 0601.19 Table 1
+         * "Multiples Allowed" = Yes); every wire occurrence appends one
+         * {@link ControlCommand}. Empty means none were present.
+         */
+        List<ControlCommand> controlCommands,
+        /**
+         * Item 116: Control Command Verification List — BER-OID command
+         * ids the platform has acknowledged/verified, or {@code null} if
+         * the tag was absent.
+         */
+        List<Long> controlCommandVerification,
+        /**
+         * Item 121: Active Wavelength List — BER-OID wavelength ids
+         * currently active ({@code 0} = none active, exclusive per
+         * ST 0601.19 §8.121), or {@code null} if the tag was absent.
+         */
+        List<Long> activeWavelengths,
+        /** Item 127: Sensor Frame Rate Pack. */
+        SensorFrameRate sensorFrameRate,
+        /** Item 143: Metadata Substream Id. */
+        MetadataSubstreamId metadataSubstreamId,
+        /** Item 122: Country Codes. */
+        CountryCodes countryCodes,
+        /** Item 128: Wavelengths List, or {@code null} if the tag was absent. */
+        List<WavelengthRecord> wavelengthsList,
+        /** Item 130: Airbase Locations. */
+        AirbaseLocations airbaseLocations,
+        /** Item 138: Payload List. */
+        PayloadList payloadList,
+        /** Item 140: Weapons Stores, or {@code null} if the tag was absent. */
+        List<WeaponsStore> weaponsStores,
+        /** Item 141: Waypoint List, or {@code null} if the tag was absent. */
+        List<Waypoint> waypointList,
+        /** Item 142: View Domain. */
+        ViewDomain viewDomain,
+        /**
+         * Item 102: SDCC-FLP (Standard Deviation and Correlation
+         * Coefficient, Floating-Point). MULTI-INSTANCE per ST 0601.19
+         * Table 1 ("Multiples Allowed" = Yes) — the "Refined Source List"
+         * binding: every wire occurrence appends one {@link SdccFlpField},
+         * capturing which preceding items it refines.
+         */
+        List<SdccFlpField> sdccFlps,
+
         // Pass-through
         List<KlvUnknownField> unknown,
         List<KlvFieldError> fieldErrors,
@@ -329,6 +380,9 @@ public record UasDatalinkLs(
         fieldErrors = fieldErrors == null ? Collections.emptyList() : Collections.unmodifiableList(fieldErrors);
         sentinelTags = sentinelTags == null ? Collections.emptyList() : Collections.unmodifiableList(sentinelTags);
         imapbSpecials = imapbSpecials == null ? Collections.emptyList() : Collections.unmodifiableList(imapbSpecials);
+        controlCommands = controlCommands == null
+                ? Collections.emptyList() : Collections.unmodifiableList(controlCommands);
+        sdccFlps = sdccFlps == null ? Collections.emptyList() : Collections.unmodifiableList(sdccFlps);
     }
 
     // -----------------------------------------------------------------------
@@ -628,6 +682,22 @@ public record UasDatalinkLs(
         private Integer sensorFovNameCode;
         private Integer operationalModeCode;
 
+        // WP-C Table C1 — pack & list items
+        private ImageHorizonPixels imageHorizon;
+        private List<ControlCommand> controlCommands = Collections.emptyList();
+        private List<Long> controlCommandVerification;
+        private List<Long> activeWavelengths;
+        private SensorFrameRate sensorFrameRate;
+        private MetadataSubstreamId metadataSubstreamId;
+        private CountryCodes countryCodes;
+        private List<WavelengthRecord> wavelengthsList;
+        private AirbaseLocations airbaseLocations;
+        private PayloadList payloadList;
+        private List<WeaponsStore> weaponsStores;
+        private List<Waypoint> waypointList;
+        private ViewDomain viewDomain;
+        private List<SdccFlpField> sdccFlps = Collections.emptyList();
+
         private List<KlvUnknownField> unknown = Collections.emptyList();
         private List<KlvFieldError> fieldErrors = Collections.emptyList();
         private List<Long> sentinelTags = Collections.emptyList();
@@ -778,6 +848,22 @@ public record UasDatalinkLs(
         public Builder sensorFovNameCode(int v) { this.sensorFovNameCode = v; return this; }
         public Builder operationalModeCode(int v) { this.operationalModeCode = v; return this; }
 
+        // WP-C Table C1 — pack & list items
+        public Builder imageHorizon(ImageHorizonPixels v) { this.imageHorizon = v; return this; }
+        public Builder controlCommands(List<ControlCommand> v) { this.controlCommands = v; return this; }
+        public Builder controlCommandVerification(List<Long> v) { this.controlCommandVerification = v; return this; }
+        public Builder activeWavelengths(List<Long> v) { this.activeWavelengths = v; return this; }
+        public Builder sensorFrameRate(SensorFrameRate v) { this.sensorFrameRate = v; return this; }
+        public Builder metadataSubstreamId(MetadataSubstreamId v) { this.metadataSubstreamId = v; return this; }
+        public Builder countryCodes(CountryCodes v) { this.countryCodes = v; return this; }
+        public Builder wavelengthsList(List<WavelengthRecord> v) { this.wavelengthsList = v; return this; }
+        public Builder airbaseLocations(AirbaseLocations v) { this.airbaseLocations = v; return this; }
+        public Builder payloadList(PayloadList v) { this.payloadList = v; return this; }
+        public Builder weaponsStores(List<WeaponsStore> v) { this.weaponsStores = v; return this; }
+        public Builder waypointList(List<Waypoint> v) { this.waypointList = v; return this; }
+        public Builder viewDomain(ViewDomain v) { this.viewDomain = v; return this; }
+        public Builder sdccFlps(List<SdccFlpField> v) { this.sdccFlps = v; return this; }
+
         public Builder unknown(List<KlvUnknownField> v) { this.unknown = v; return this; }
         public Builder fieldErrors(List<KlvFieldError> v) { this.fieldErrors = v; return this; }
         public Builder sentinelTags(List<Long> v) { this.sentinelTags = v; return this; }
@@ -845,6 +931,9 @@ public record UasDatalinkLs(
                     streamDesignator, operationalBase, broadcastSource,
                     targetId, communicationsMethod,
                     icingDetectedCode, sensorFovNameCode, operationalModeCode,
+                    imageHorizon, controlCommands, controlCommandVerification, activeWavelengths,
+                    sensorFrameRate, metadataSubstreamId, countryCodes, wavelengthsList,
+                    airbaseLocations, payloadList, weaponsStores, waypointList, viewDomain, sdccFlps,
                     unknown, fieldErrors,
                     sentinelTags, imapbSpecials
             );

@@ -50,6 +50,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   caller-supplied `unknown` entry at any WP-C tag is now silently
   dropped (typed wins) rather than surviving into the encoded record.
 
+### Added — JVM bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
+
+- `org.tstrans.klv` gains a Java record (or enum) mirroring every WP-C
+  `UasDatalinkLs` pack/list field: `ImageHorizonPixels`, `ControlCommand`,
+  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
+  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
+  (codepoint enum, wire codes crossing as `long` — unlike `IcingDetected`'s
+  narrow byte, `PayloadType::Other` carries the full BER-OID `u64` range)
+  plus `PayloadRecord`/`PayloadList`, `WeaponsStore` (with
+  `generalStatus`/`fuzeEnabled`/`laserEnabled`/`targetEnabled`/
+  `weaponArmed` accessors), `Waypoint`, `ViewDomainPair`/`ViewDomain`, and
+  `SdccFlpField` — all wired through `Klv.decodeUasDatalink`/
+  `Klv.encodeUasDatalink`. Unlike `VTargetPack`'s many-optional-field
+  Builder, these small (&le;8 field) types use a plain canonical
+  constructor, matching the `CoreId`/`GeoPoint` precedent; list fields
+  (`controlCommands`, `wavelengthsList`, `weaponsStores`, `waypointList`,
+  `sdccFlps`, and `payloadList`'s nested `records`) still follow the
+  `VTargetPack` `with_local_frame`-per-item idiom on the JNI side.
+- New standalone `org.tstrans.klv.SdccFlp` record plus
+  `Klv.decodeSdccFlp`/`Klv.encodeSdccFlpMode2` entry points mirroring the
+  general-purpose `klv::st1010` module; `SdccFlp.correlation(i, j)` is a
+  pure-Java port of the Rust accessor (no JNI crossing).
+- `is_st0601_typed_tag` (the internal predicate gating the JVM binding's
+  `unknown` collision-drop on encode) now covers every WP-C tag, including
+  Tag 102 — same decision as the Python binding. A caller-supplied
+  `unknown` entry at any WP-C tag is now silently dropped (typed wins)
+  rather than surviving into the encoded record.
+- `read_uas_datalink` (the JNI encode-direction field reader) now calls
+  `env.ensure_local_capacity(256)` — it had NO such call before this WP
+  (pre-existing debt: every `read_nullable_*` accessor mints a local ref
+  that lives until the function returns). `build_uas_datalink`'s own
+  capacity bumped 224 &rarr; 256 for the same 14 new fields.
+
 ### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
 
 - 7 previously-passthrough MISB ST 0601 tags encoded as "Variable-Length

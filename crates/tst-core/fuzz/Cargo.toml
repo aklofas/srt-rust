@@ -68,6 +68,13 @@ doc               = false
 bench             = false
 
 [[bin]]
+name              = "klv_st1010_decode"
+path              = "fuzz_targets/klv_st1010_decode.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
 name              = "klv_imapb"
 path              = "fuzz_targets/klv_imapb.rs"
 test              = false

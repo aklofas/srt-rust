@@ -1200,6 +1200,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 122,
+        name: "Country Codes",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 123,
         name: "Number of NAVSATs in View",
         encoding: Encoding::VarUint { max_len: 1 },
@@ -1230,9 +1236,21 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 128,
+        name: "Wavelengths List",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 129,
         name: "Target ID",
         encoding: Encoding::Utf8 { max_bytes: 32 },
+        range: None,
+    },
+    TagSpec {
+        id: 130,
+        name: "Airbase Locations",
+        encoding: Encoding::Pack,
         range: None,
     },
     TagSpec {
@@ -1288,9 +1306,33 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 138,
+        name: "Payload List",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
         id: 139,
         name: "Active Payloads",
         encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
+        id: 140,
+        name: "Weapons Stores",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
+        id: 141,
+        name: "Waypoint List",
+        encoding: Encoding::Pack,
+        range: None,
+    },
+    TagSpec {
+        id: 142,
+        name: "View Domain",
+        encoding: Encoding::Pack,
         range: None,
     },
     TagSpec {

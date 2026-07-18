@@ -5,18 +5,23 @@
 //! `Encoding::Pack` marker (`tags.rs`); this module owns the per-tag wire
 //! shape only.
 //!
-//! Tags covered here (Task C2 — the simple DLP packs): 81 (Image Horizon
+//! Tags covered here: Task C2's simple DLP packs — 81 (Image Horizon
 //! Pixels), 115 (Control Command, MULTI-INSTANCE), 116 (Control Command
 //! Verification List), 121 (Active Wavelength List), 127 (Sensor Frame
-//! Rate Pack), 143 (Metadata Substream Id). The remaining WP-C pack tags
-//! (122/128/130/138/140/141/142) and Tag 102 (SDCC-FLP, `klv::st1010`)
-//! land in later WP-C tasks.
+//! Rate Pack), 143 (Metadata Substream Id) — plus Task C3's VLP series
+//! packs: 122 (Country Codes), 128 (Wavelengths List), 130 (Airbase
+//! Locations), 138 (Payload List), 140 (Weapons Stores), 141 (Waypoint
+//! List), 142 (View Domain). Tag 102 (SDCC-FLP) lives in `klv::st1010`
+//! instead (a general-purpose MISB construct, not ST 0601-specific).
 
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
+use crate::klv::imapb::{
+    DecodedImapb, ImapbParams, ImapbSpecial, decode_imapb, encode_imapb, encode_imapb_special,
+};
 use crate::klv::length::{
     ber_len, ber_oid_len_u64, read_ber, read_ber_oid_u64, read_var_uint, var_uint_min_len,
     write_ber, write_ber_oid_u64, write_var_uint_min,
@@ -415,6 +420,1074 @@ pub(crate) fn emit_metadata_substream_id(
     out.extend_from_slice(&buf[..n]);
     if let Some(uuid) = ms.uuid {
         out.extend_from_slice(&uuid);
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Task C3 shared substrate: `[BER length][value bytes]` fields
+// ============================================================================
+
+/// Read one `[BER length][value bytes]` field, returning `(value_bytes,
+/// rest)`. Shared substrate for every VLP that precedes each sub-value
+/// (or sub-record) with its own BER length: Country Codes (§8.122),
+/// Wavelengths List / Payload List / Weapons Stores / Waypoint List
+/// record framing (§8.128/.138/.140/.141), and Airbase Locations'
+/// per-site framing (§8.130).
+fn read_len_prefixed(bytes: &[u8], tag: u32) -> Result<(&[u8], &[u8]), KlvFieldError> {
+    let (len, rest) = read_ber(bytes).map_err(truncated(tag))?;
+    if rest.len() < len {
+        return Err(KlvFieldError::TruncatedField { tag });
+    }
+    Ok((&rest[..len], &rest[len..]))
+}
+
+/// Accumulate a byte slice as a big-endian unsigned integer (empty ⇒ 0).
+fn be_uint(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0u64, |acc, &b| (acc << 8) | u64::from(b))
+}
+
+/// Interpret a `[BER length][value bytes]` UTF-8 field: length 0 means
+/// "unknown" (ST 0107.5 §6.3.3.2's absent-value convention, reused
+/// per-field here rather than per-tag).
+fn len_prefixed_utf8(bytes: &[u8], tag: u32) -> Result<Option<String>, KlvFieldError> {
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        core::str::from_utf8(bytes)
+            .map_err(|_| KlvFieldError::InvalidUtf8 { tag })?
+            .to_owned(),
+    ))
+}
+
+/// Decode a MANDATORY IMAPB field, mapping any non-[`DecodedImapb::Value`]
+/// outcome (special / reserved-special / out-of-range) to an error.
+/// Sibling of [`decode_imapb_optional`] for fields that have no side
+/// channel to carry a producer-signaled special.
+fn decode_imapb_required(p: &ImapbParams, bytes: &[u8], tag: u32) -> Result<f64, KlvFieldError> {
+    match decode_imapb(p, bytes)? {
+        DecodedImapb::Value(v) => Ok(v),
+        DecodedImapb::OutOfRange { decoded } => Err(KlvFieldError::OutOfRange {
+            tag,
+            value: decoded,
+            min: p.min,
+            max: p.max,
+        }),
+        DecodedImapb::Special(_) | DecodedImapb::ReservedSpecial { .. } => {
+            Err(KlvFieldError::OutOfRange {
+                tag,
+                value: f64::NAN,
+                min: p.min,
+                max: p.max,
+            })
+        }
+    }
+}
+
+/// Decode an OPTIONAL IMAPB field, mapping any non-`Value` outcome
+/// (special / reserved-special / out-of-range) to `None` rather than an
+/// error. Used by [`parse_location`], which repurposes the IMAPB
+/// special-value space as a filler for an "interior absent" field a
+/// later field's presence forces onto the wire (see that function's
+/// rustdoc) — there is no separate side channel to carry which special
+/// was signaled, so any of the three non-`Value` outcomes collapses to
+/// the same `None`.
+fn decode_imapb_optional(p: &ImapbParams, bytes: &[u8]) -> Result<Option<f64>, KlvFieldError> {
+    Ok(match decode_imapb(p, bytes)? {
+        DecodedImapb::Value(v) => Some(v),
+        DecodedImapb::Special(_)
+        | DecodedImapb::ReservedSpecial { .. }
+        | DecodedImapb::OutOfRange { .. } => None,
+    })
+}
+
+/// Item 122: Country Codes (ST 0601.19 §8.122) — country-code metadata
+/// about the platform's operation and manufacture. VLP of four
+/// `[BER length][value]` fields in strict order: `coding_method`
+/// (mandatory uint — an enumeration from MISB ST 0102 Table 2 Item 12),
+/// `overflight` (mandatory utf8 — though its own length may be 0,
+/// meaning "unknown"), `operator` (optional utf8), `manufacture`
+/// (optional utf8).
+///
+/// Per §8.122.1: "if one of the country values is unknown, set the
+/// length for the country code to zero (0) and do not include the
+/// country code string" — length-0 always means "unknown", never a
+/// distinct empty string. Truncation removes a length-value pair
+/// ENTIRELY from the end ("When truncating a value, the length-value
+/// pair are both removed") — distinct from the length-0 marker, which
+/// still writes a (zero) length byte. Re-encode canonicalizes a
+/// length-0 `manufacture` immediately followed by nothing else down to
+/// plain truncation (no `operator`/`manufacture` bytes at all) when
+/// both are absent; an absent `operator` with a present `manufacture`
+/// still gets its own length-0 marker so `manufacture` is never
+/// silently swallowed by truncation.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CountryCodes {
+    pub coding_method: u64,
+    pub overflight: Option<String>,
+    pub operator: Option<String>,
+    pub manufacture: Option<String>,
+}
+
+/// Index of the last `Some` among `[operator, manufacture]`, or `None`
+/// if both are absent. Shared by [`country_codes_len`] and
+/// [`emit_country_codes`] so their stopping point can't drift apart —
+/// same pattern as `image_horizon_last_some`.
+fn country_codes_last_some(cc: &CountryCodes) -> Option<usize> {
+    [cc.operator.is_some(), cc.manufacture.is_some()]
+        .iter()
+        .rposition(|&b| b)
+}
+
+pub(crate) fn parse_country_codes(bytes: &[u8]) -> Result<CountryCodes, KlvFieldError> {
+    let (coding_bytes, rest) = read_len_prefixed(bytes, 122)?;
+    let coding_method = be_uint(coding_bytes);
+    let (overflight_bytes, rest) = read_len_prefixed(rest, 122)?;
+    let overflight = len_prefixed_utf8(overflight_bytes, 122)?;
+    let mut cc = CountryCodes {
+        coding_method,
+        overflight,
+        operator: None,
+        manufacture: None,
+    };
+    if rest.is_empty() {
+        return Ok(cc);
+    }
+    let (operator_bytes, rest) = read_len_prefixed(rest, 122)?;
+    cc.operator = len_prefixed_utf8(operator_bytes, 122)?;
+    if rest.is_empty() {
+        return Ok(cc);
+    }
+    let (manufacture_bytes, rest) = read_len_prefixed(rest, 122)?;
+    cc.manufacture = len_prefixed_utf8(manufacture_bytes, 122)?;
+    if !rest.is_empty() {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 122,
+            expected: bytes.len() - rest.len(),
+            got: bytes.len(),
+        });
+    }
+    Ok(cc)
+}
+
+pub(crate) fn country_codes_len(cc: &CountryCodes) -> usize {
+    let coding_bytes_len = var_uint_min_len(cc.coding_method);
+    let mut n = ber_len(coding_bytes_len)
+        + coding_bytes_len
+        + ber_len(str_len_opt(&cc.overflight))
+        + str_len_opt(&cc.overflight);
+    if let Some(last) = country_codes_last_some(cc) {
+        let opts = [&cc.operator, &cc.manufacture];
+        for opt in &opts[..=last] {
+            let l = str_len_opt(opt);
+            n += ber_len(l) + l;
+        }
+    }
+    n
+}
+
+fn str_len_opt(opt: &Option<String>) -> usize {
+    opt.as_ref().map(String::len).unwrap_or(0)
+}
+
+pub(crate) fn emit_country_codes(
+    cc: &CountryCodes,
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    emit_len_prefixed(&write_var_uint_min(cc.coding_method), out)?;
+    emit_len_prefixed(cc.overflight.as_deref().unwrap_or("").as_bytes(), out)?;
+    let Some(last) = country_codes_last_some(cc) else {
+        return Ok(());
+    };
+    let opts = [&cc.operator, &cc.manufacture];
+    for opt in &opts[..=last] {
+        emit_len_prefixed(opt.as_deref().unwrap_or("").as_bytes(), out)?;
+    }
+    Ok(())
+}
+
+fn emit_len_prefixed(value: &[u8], out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut len_buf = [0u8; 9];
+    let n = write_ber(value.len(), &mut len_buf)?;
+    out.extend_from_slice(&len_buf[..n]);
+    out.extend_from_slice(value);
+    Ok(())
+}
+
+// ============================================================================
+// `Location` — shared by Tag 130 (Airbase Locations) and Tag 141
+// (Waypoint List)
+// ============================================================================
+
+/// A WGS84 geodetic point: latitude, longitude, and Height Above
+/// Ellipsoid (HAE), each ST 1201.5 IMAPB-encoded. Shared substrate for
+/// Item 130 (Airbase Locations, ST 0601.19 §8.130) and the per-waypoint
+/// location in Item 141 (Waypoint List, §8.141).
+///
+/// Wire shape (truncatable DLP, per §8.130.1 bullet 4): `lat`
+/// IMAPB(-90,90,4) + `lon` IMAPB(-180,180,4) + `hae` IMAPB(-900,9000,3)
+/// (NB 9000 max, not the 40000 used by the ST 0601 items with their own
+/// tag — this is the ST 0601.19 Table 16 range, distinct from e.g. Item
+/// 113's Altitude AGL). `lat`/`lon` are mandatory once any bytes are
+/// present; only the trailing `hae` is truncatable.
+///
+/// **Encode semantics for an interior-absent field** (e.g. `lat: None`
+/// while `hae: Some(..)`): IMAPB has no INT_MIN-style sentinel of its
+/// own, so this repurposes the ST 1201.5 special-value space —
+/// specifically `ImapbSpecial::UserDefined { signal: 0 }` — as an
+/// "absent" filler at that field's wire position, matching decode's
+/// `decode_imapb_optional`, which maps ANY special/reserved/out-of-range
+/// pattern back to `None`. This is spec-legal (§7.2.3's special-value
+/// space is defined at the IMAPB layer, independent of the ST 0601 item
+/// using it) even though it is not itself a case ST 0601.19 §8.130
+/// describes — the spec only ever truncates `hae` from the end, never
+/// leaves `lat`/`lon` absent with `hae` present. Only a trailing `None`
+/// (or all three `None`) truncates the pack.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Location {
+    pub lat_deg: Option<f64>,
+    pub lon_deg: Option<f64>,
+    pub hae_m: Option<f64>,
+}
+
+const LOCATION_PARAMS: [ImapbParams; 3] = [
+    ImapbParams {
+        min: -90.0,
+        max: 90.0,
+        length: 4,
+    },
+    ImapbParams {
+        min: -180.0,
+        max: 180.0,
+        length: 4,
+    },
+    ImapbParams {
+        min: -900.0,
+        max: 9000.0,
+        length: 3,
+    },
+];
+
+fn location_optional_values(loc: &Location) -> [Option<f64>; 3] {
+    [loc.lat_deg, loc.lon_deg, loc.hae_m]
+}
+
+fn location_setters() -> [fn(&mut Location, Option<f64>); 3] {
+    [
+        |l, v| l.lat_deg = v,
+        |l, v| l.lon_deg = v,
+        |l, v| l.hae_m = v,
+    ]
+}
+
+fn location_last_some(loc: &Location) -> Option<usize> {
+    location_optional_values(loc)
+        .iter()
+        .rposition(|v| v.is_some())
+}
+
+pub(crate) fn parse_location(bytes: &[u8], tag: u32) -> Result<Location, KlvFieldError> {
+    let mut loc = Location::default();
+    let setters = location_setters();
+    let mut offset = 0usize;
+    for (params, setter) in LOCATION_PARAMS.into_iter().zip(setters) {
+        if offset + params.length > bytes.len() {
+            break; // clean truncation — no more optional fields on the wire
+        }
+        let v = decode_imapb_optional(&params, &bytes[offset..offset + params.length])?;
+        setter(&mut loc, v);
+        offset += params.length;
+    }
+    if offset != bytes.len() {
+        return Err(KlvFieldError::InvalidLength {
+            tag,
+            expected: offset,
+            got: bytes.len(),
+        });
+    }
+    Ok(loc)
+}
+
+pub(crate) fn location_len(loc: &Location) -> usize {
+    match location_last_some(loc) {
+        Some(last) => LOCATION_PARAMS[..=last].iter().map(|p| p.length).sum(),
+        None => 0,
+    }
+}
+
+pub(crate) fn emit_location(loc: &Location, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let Some(last) = location_last_some(loc) else {
+        return Ok(());
+    };
+    let values = location_optional_values(loc);
+    for (i, (value, params)) in values.into_iter().zip(LOCATION_PARAMS).enumerate() {
+        if i > last {
+            break;
+        }
+        let mut buf = [0u8; 4];
+        match value {
+            Some(v) => encode_imapb(&params, v, &mut buf[..params.length])?,
+            // Interior-absent filler — see the struct rustdoc.
+            None => encode_imapb_special(
+                ImapbSpecial::UserDefined { signal: 0 },
+                params.length,
+                &mut buf[..params.length],
+            )?,
+        }
+        out.extend_from_slice(&buf[..params.length]);
+    }
+    Ok(())
+}
+
+/// Item 130: Airbase Locations (ST 0601.19 §8.130) — the take-off and
+/// recovery site locations. VLP: `[BER length][Location]` × 2 (take-off,
+/// then recovery).
+///
+/// Per §8.130.1's bandwidth optimizations: a [`Location`] slot whose own
+/// length is 0 decodes to `None` ("unknown"); recovery ABSENT from the
+/// wire ENTIRELY (no second length-value pair at all, not even a
+/// length-0 one) decodes to `Some(take_off)` — "if the Recovery Location
+/// is absent then the Recovery Location is set equal to the Take-Off
+/// location". Encode mirrors this: when `recovery == take_off` the
+/// second pair is omitted entirely (canonicalizing bullet-1's
+/// optimization); a `recovery` that differs from `take_off` — including
+/// `None` while `take_off` is `Some` (deliberately unknown, not
+/// "same-as-take-off") — always gets its own explicit pair, so the two
+/// cases stay distinguishable through a round trip.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct AirbaseLocations {
+    pub take_off: Option<Location>,
+    pub recovery: Option<Location>,
+}
+
+pub(crate) fn parse_airbase_locations(bytes: &[u8]) -> Result<AirbaseLocations, KlvFieldError> {
+    let (loc1_bytes, rest) = read_len_prefixed(bytes, 130)?;
+    let take_off = if loc1_bytes.is_empty() {
+        None
+    } else {
+        Some(parse_location(loc1_bytes, 130)?)
+    };
+    if rest.is_empty() {
+        // Recovery entirely absent -> same as take-off (§8.130.1 bullet 1).
+        return Ok(AirbaseLocations {
+            take_off,
+            recovery: take_off,
+        });
+    }
+    let (loc2_bytes, rest) = read_len_prefixed(rest, 130)?;
+    if !rest.is_empty() {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 130,
+            expected: bytes.len() - rest.len(),
+            got: bytes.len(),
+        });
+    }
+    let recovery = if loc2_bytes.is_empty() {
+        None
+    } else {
+        Some(parse_location(loc2_bytes, 130)?)
+    };
+    Ok(AirbaseLocations { take_off, recovery })
+}
+
+pub(crate) fn airbase_locations_len(al: &AirbaseLocations) -> usize {
+    let take_off_len = al.take_off.map(|loc| location_len(&loc)).unwrap_or(0);
+    let mut n = ber_len(take_off_len) + take_off_len;
+    if al.recovery != al.take_off {
+        let recovery_len = al.recovery.map(|loc| location_len(&loc)).unwrap_or(0);
+        n += ber_len(recovery_len) + recovery_len;
+    }
+    n
+}
+
+pub(crate) fn emit_airbase_locations(
+    al: &AirbaseLocations,
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    let take_off_len = al.take_off.map(|loc| location_len(&loc)).unwrap_or(0);
+    let mut len_buf = [0u8; 9];
+    let n = write_ber(take_off_len, &mut len_buf)?;
+    out.extend_from_slice(&len_buf[..n]);
+    if let Some(loc) = al.take_off {
+        emit_location(&loc, out)?;
+    }
+    if al.recovery != al.take_off {
+        let recovery_len = al.recovery.map(|loc| location_len(&loc)).unwrap_or(0);
+        let n2 = write_ber(recovery_len, &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..n2]);
+        if let Some(loc) = al.recovery {
+            emit_location(&loc, out)?;
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Item 128: Wavelengths List
+// ============================================================================
+
+/// One record of Item 128, Wavelengths List (ST 0601.19 §8.128) — a
+/// sensor wavelength band definition. `min_nm`/`max_nm` are ST 1201.5
+/// IMAPB(0,1e9,4)-encoded, giving ~½ nm precision across the full
+/// X-ray-to-VHF spectrum span the spec cites.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WavelengthRecord {
+    pub id: u64,
+    pub min_nm: f64,
+    pub max_nm: f64,
+    pub name: String,
+}
+
+const WAVELENGTH_IMAPB: ImapbParams = ImapbParams {
+    min: 0.0,
+    max: 1e9,
+    length: 4,
+};
+
+fn parse_wavelength_record(bytes: &[u8]) -> Result<WavelengthRecord, KlvFieldError> {
+    let (id, rest) = read_ber_oid_u64(bytes).map_err(truncated(128))?;
+    if rest.len() < 8 {
+        return Err(KlvFieldError::TruncatedField { tag: 128 });
+    }
+    let min_nm = decode_imapb_required(&WAVELENGTH_IMAPB, &rest[0..4], 128)?;
+    let max_nm = decode_imapb_required(&WAVELENGTH_IMAPB, &rest[4..8], 128)?;
+    let name = core::str::from_utf8(&rest[8..])
+        .map_err(|_| KlvFieldError::InvalidUtf8 { tag: 128 })?
+        .to_owned();
+    Ok(WavelengthRecord {
+        id,
+        min_nm,
+        max_nm,
+        name,
+    })
+}
+
+fn wavelength_record_len(w: &WavelengthRecord) -> usize {
+    ber_oid_len_u64(w.id) + 4 + 4 + w.name.len()
+}
+
+fn emit_wavelength_record(w: &WavelengthRecord, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 10];
+    let n = write_ber_oid_u64(w.id, &mut buf)?;
+    out.extend_from_slice(&buf[..n]);
+    let mut fbuf = [0u8; 4];
+    encode_imapb(&WAVELENGTH_IMAPB, w.min_nm, &mut fbuf)?;
+    out.extend_from_slice(&fbuf);
+    encode_imapb(&WAVELENGTH_IMAPB, w.max_nm, &mut fbuf)?;
+    out.extend_from_slice(&fbuf);
+    out.extend_from_slice(w.name.as_bytes());
+    Ok(())
+}
+
+/// Item 128 value: `[BER length][WavelengthRecord]` repeated until the
+/// value bytes are exhausted — no leading count field (unlike Item 138).
+pub(crate) fn parse_wavelengths_list(bytes: &[u8]) -> Result<Vec<WavelengthRecord>, KlvFieldError> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let (rec_bytes, r) = read_len_prefixed(rest, 128)?;
+        out.push(parse_wavelength_record(rec_bytes)?);
+        rest = r;
+    }
+    Ok(out)
+}
+
+pub(crate) fn wavelengths_list_len(list: &[WavelengthRecord]) -> usize {
+    list.iter()
+        .map(|w| {
+            let l = wavelength_record_len(w);
+            ber_len(l) + l
+        })
+        .sum()
+}
+
+pub(crate) fn emit_wavelengths_list(
+    list: &[WavelengthRecord],
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    for w in list {
+        let l = wavelength_record_len(w);
+        let mut len_buf = [0u8; 9];
+        let n = write_ber(l, &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..n]);
+        emit_wavelength_record(w, out)?;
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Item 138: Payload List
+// ============================================================================
+
+/// Item 138 §Table 17 Payload Type enumeration.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PayloadType {
+    ElectroOptical,
+    Lidar,
+    Radar,
+    Sigint,
+    Sar,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u64),
+}
+
+impl PayloadType {
+    pub(crate) fn from_wire(code: u64) -> Self {
+        match code {
+            0 => Self::ElectroOptical,
+            1 => Self::Lidar,
+            2 => Self::Radar,
+            3 => Self::Sigint,
+            4 => Self::Sar,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u64 {
+        match self {
+            Self::ElectroOptical => 0,
+            Self::Lidar => 1,
+            Self::Radar => 2,
+            Self::Sigint => 3,
+            Self::Sar => 4,
+            Self::Other(code) => code,
+        }
+    }
+}
+
+/// One record of Item 138, Payload List (ST 0601.19 §8.138).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayloadRecord {
+    pub id: u64,
+    pub payload_type: PayloadType,
+    pub name: String,
+}
+
+fn parse_payload_record(bytes: &[u8]) -> Result<PayloadRecord, KlvFieldError> {
+    let (id, rest) = read_ber_oid_u64(bytes).map_err(truncated(138))?;
+    let (type_code, rest) = read_ber_oid_u64(rest).map_err(truncated(138))?;
+    let (name_bytes, rest) = read_len_prefixed(rest, 138)?;
+    if !rest.is_empty() {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 138,
+            expected: bytes.len() - rest.len(),
+            got: bytes.len(),
+        });
+    }
+    let name = core::str::from_utf8(name_bytes)
+        .map_err(|_| KlvFieldError::InvalidUtf8 { tag: 138 })?
+        .to_owned();
+    Ok(PayloadRecord {
+        id,
+        payload_type: PayloadType::from_wire(type_code),
+        name,
+    })
+}
+
+fn payload_record_len(r: &PayloadRecord) -> usize {
+    ber_oid_len_u64(r.id)
+        + ber_oid_len_u64(r.payload_type.to_wire())
+        + ber_len(r.name.len())
+        + r.name.len()
+}
+
+fn emit_payload_record(r: &PayloadRecord, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 10];
+    let n = write_ber_oid_u64(r.id, &mut buf)?;
+    out.extend_from_slice(&buf[..n]);
+    let n2 = write_ber_oid_u64(r.payload_type.to_wire(), &mut buf)?;
+    out.extend_from_slice(&buf[..n2]);
+    emit_len_prefixed(r.name.as_bytes(), out)?;
+    Ok(())
+}
+
+/// Item 138 value (ST 0601.19 §8.138): `count` (BER-OID Payload Count)
+/// followed by a VLP of `[BER length][PayloadRecord]` entries.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayloadList {
+    pub count: u64,
+    pub records: Vec<PayloadRecord>,
+}
+
+pub(crate) fn parse_payload_list(bytes: &[u8]) -> Result<PayloadList, KlvFieldError> {
+    let (count, mut rest) = read_ber_oid_u64(bytes).map_err(truncated(138))?;
+    let mut records = Vec::new();
+    while !rest.is_empty() {
+        let (rec_bytes, r) = read_len_prefixed(rest, 138)?;
+        records.push(parse_payload_record(rec_bytes)?);
+        rest = r;
+    }
+    Ok(PayloadList { count, records })
+}
+
+pub(crate) fn payload_list_len(pl: &PayloadList) -> usize {
+    ber_oid_len_u64(pl.count)
+        + pl.records
+            .iter()
+            .map(|r| {
+                let l = payload_record_len(r);
+                ber_len(l) + l
+            })
+            .sum::<usize>()
+}
+
+pub(crate) fn emit_payload_list(pl: &PayloadList, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 10];
+    let n = write_ber_oid_u64(pl.count, &mut buf)?;
+    out.extend_from_slice(&buf[..n]);
+    for r in &pl.records {
+        let l = payload_record_len(r);
+        let mut len_buf = [0u8; 9];
+        let ln = write_ber(l, &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..ln]);
+        emit_payload_record(r, out)?;
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Item 140: Weapons Stores
+// ============================================================================
+
+/// One record of Item 140, Weapons Stores (ST 0601.19 §8.140) — a single
+/// weapon's physical address, status, and type. `status_raw` packs the
+/// spec's 14-bit Status BER-OID value verbatim: the low 8 bits are the
+/// §Table 21 General Status enumeration, the next 4 bits are the
+/// §Table 22 Engagement Status flags, and any remaining high bits are
+/// spec-reserved (preserved verbatim, not masked away, in case a future
+/// revision widens the field).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WeaponsStore {
+    pub station_id: u64,
+    pub hardpoint_id: u64,
+    pub carriage_id: u64,
+    pub store_id: u64,
+    pub status_raw: u64,
+    pub weapon_type: String,
+}
+
+impl WeaponsStore {
+    /// §Table 21 General Status code (low 8 bits of `status_raw`).
+    pub fn general_status(&self) -> u8 {
+        (self.status_raw & 0xFF) as u8
+    }
+    /// §Table 22 bit position 1.
+    pub fn fuze_enabled(&self) -> bool {
+        self.status_raw & 0x100 != 0
+    }
+    /// §Table 22 bit position 2.
+    pub fn laser_enabled(&self) -> bool {
+        self.status_raw & 0x200 != 0
+    }
+    /// §Table 22 bit position 3.
+    pub fn target_enabled(&self) -> bool {
+        self.status_raw & 0x400 != 0
+    }
+    /// §Table 22 bit position 4.
+    pub fn weapon_armed(&self) -> bool {
+        self.status_raw & 0x800 != 0
+    }
+}
+
+fn parse_weapons_store(bytes: &[u8]) -> Result<WeaponsStore, KlvFieldError> {
+    let (station_id, rest) = read_ber_oid_u64(bytes).map_err(truncated(140))?;
+    let (hardpoint_id, rest) = read_ber_oid_u64(rest).map_err(truncated(140))?;
+    let (carriage_id, rest) = read_ber_oid_u64(rest).map_err(truncated(140))?;
+    let (store_id, rest) = read_ber_oid_u64(rest).map_err(truncated(140))?;
+    let (status_raw, rest) = read_ber_oid_u64(rest).map_err(truncated(140))?;
+    let (type_bytes, rest) = read_len_prefixed(rest, 140)?;
+    if !rest.is_empty() {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 140,
+            expected: bytes.len() - rest.len(),
+            got: bytes.len(),
+        });
+    }
+    let weapon_type = core::str::from_utf8(type_bytes)
+        .map_err(|_| KlvFieldError::InvalidUtf8 { tag: 140 })?
+        .to_owned();
+    Ok(WeaponsStore {
+        station_id,
+        hardpoint_id,
+        carriage_id,
+        store_id,
+        status_raw,
+        weapon_type,
+    })
+}
+
+fn weapons_store_len(ws: &WeaponsStore) -> usize {
+    ber_oid_len_u64(ws.station_id)
+        + ber_oid_len_u64(ws.hardpoint_id)
+        + ber_oid_len_u64(ws.carriage_id)
+        + ber_oid_len_u64(ws.store_id)
+        + ber_oid_len_u64(ws.status_raw)
+        + ber_len(ws.weapon_type.len())
+        + ws.weapon_type.len()
+}
+
+fn emit_weapons_store(ws: &WeaponsStore, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 10];
+    for id in [
+        ws.station_id,
+        ws.hardpoint_id,
+        ws.carriage_id,
+        ws.store_id,
+        ws.status_raw,
+    ] {
+        let n = write_ber_oid_u64(id, &mut buf)?;
+        out.extend_from_slice(&buf[..n]);
+    }
+    emit_len_prefixed(ws.weapon_type.as_bytes(), out)?;
+    Ok(())
+}
+
+/// Item 140 value: `[BER length][WeaponsStore]` repeated until the value
+/// bytes are exhausted.
+pub(crate) fn parse_weapons_stores(bytes: &[u8]) -> Result<Vec<WeaponsStore>, KlvFieldError> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let (rec_bytes, r) = read_len_prefixed(rest, 140)?;
+        out.push(parse_weapons_store(rec_bytes)?);
+        rest = r;
+    }
+    Ok(out)
+}
+
+pub(crate) fn weapons_stores_len(list: &[WeaponsStore]) -> usize {
+    list.iter()
+        .map(|ws| {
+            let l = weapons_store_len(ws);
+            ber_len(l) + l
+        })
+        .sum()
+}
+
+pub(crate) fn emit_weapons_stores(
+    list: &[WeaponsStore],
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    for ws in list {
+        let l = weapons_store_len(ws);
+        let mut len_buf = [0u8; 9];
+        let n = write_ber(l, &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..n]);
+        emit_weapons_store(ws, out)?;
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Item 141: Waypoint List
+// ============================================================================
+
+/// One record of Item 141, Waypoint List (ST 0601.19 §8.141).
+///
+/// `info` (the Mode/Source bitfield) and `location` are both optional
+/// trailing fields, but only `location` is self-delimiting by its own
+/// wire length the way [`Location`]'s internal truncation is — `info`
+/// is a self-delimiting BER-OID (so its presence never needs an
+/// external marker), and this decoder distinguishes "info present" from
+/// "info absent, straight to location" by checking whether the
+/// remaining byte count already matches a valid [`Location`] length
+/// (`0 | 4 | 8 | 11`, per [`Location`]'s truncation rule) BEFORE
+/// attempting to consume an `info` BER-OID. This is unambiguous only
+/// because no two members of `{0, 4, 8, 11}` differ by exactly the 1
+/// byte a conformant `info` value occupies (values 0-3 per §8.141's
+/// 2-bit Mode/Source field) — a future revision that widened `info`
+/// enough to need e.g. 4 BER-OID bytes could collide with a location-
+/// only remainder and misparse; not a concern for the field as
+/// currently defined.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Waypoint {
+    pub id: u64,
+    pub prosecution_order: i16,
+    pub info: Option<u64>,
+    pub location: Option<Location>,
+}
+
+fn is_valid_location_len(n: usize) -> bool {
+    matches!(n, 0 | 4 | 8 | 11)
+}
+
+fn parse_waypoint(bytes: &[u8]) -> Result<Waypoint, KlvFieldError> {
+    let (id, rest) = read_ber_oid_u64(bytes).map_err(truncated(141))?;
+    if rest.len() < 2 {
+        return Err(KlvFieldError::TruncatedField { tag: 141 });
+    }
+    let prosecution_order = i16::from_be_bytes([rest[0], rest[1]]);
+    let rest = &rest[2..];
+    let (info, rest) = if is_valid_location_len(rest.len()) {
+        (None, rest)
+    } else {
+        let (v, r) = read_ber_oid_u64(rest).map_err(truncated(141))?;
+        (Some(v), r)
+    };
+    if !is_valid_location_len(rest.len()) {
+        // Malformed: after accounting for `info`, what's left doesn't
+        // match any valid Location length (0/4/8/11).
+        return Err(KlvFieldError::InvalidLength {
+            tag: 141,
+            expected: 11,
+            got: rest.len(),
+        });
+    }
+    let location = if rest.is_empty() {
+        None
+    } else {
+        Some(parse_location(rest, 141)?)
+    };
+    Ok(Waypoint {
+        id,
+        prosecution_order,
+        info,
+        location,
+    })
+}
+
+fn waypoint_len(wp: &Waypoint) -> usize {
+    ber_oid_len_u64(wp.id)
+        + 2
+        + wp.info.map(ber_oid_len_u64).unwrap_or(0)
+        + wp.location.map(|loc| location_len(&loc)).unwrap_or(0)
+}
+
+fn emit_waypoint(wp: &Waypoint, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let mut buf = [0u8; 10];
+    let n = write_ber_oid_u64(wp.id, &mut buf)?;
+    out.extend_from_slice(&buf[..n]);
+    out.extend_from_slice(&wp.prosecution_order.to_be_bytes());
+    if let Some(info) = wp.info {
+        let n2 = write_ber_oid_u64(info, &mut buf)?;
+        out.extend_from_slice(&buf[..n2]);
+    }
+    if let Some(loc) = wp.location {
+        emit_location(&loc, out)?;
+    }
+    Ok(())
+}
+
+/// Item 141 value: `[BER length][Waypoint]` repeated until the value
+/// bytes are exhausted.
+pub(crate) fn parse_waypoints(bytes: &[u8]) -> Result<Vec<Waypoint>, KlvFieldError> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let (rec_bytes, r) = read_len_prefixed(rest, 141)?;
+        out.push(parse_waypoint(rec_bytes)?);
+        rest = r;
+    }
+    Ok(out)
+}
+
+pub(crate) fn waypoints_len(list: &[Waypoint]) -> usize {
+    list.iter()
+        .map(|wp| {
+            let l = waypoint_len(wp);
+            ber_len(l) + l
+        })
+        .sum()
+}
+
+pub(crate) fn emit_waypoints(list: &[Waypoint], out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    for wp in list {
+        let l = waypoint_len(wp);
+        let mut len_buf = [0u8; 9];
+        let n = write_ber(l, &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..n]);
+        emit_waypoint(wp, out)?;
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Item 142: View Domain
+// ============================================================================
+
+/// One `(start, range)` pair of Item 142, View Domain (ST 0601.19
+/// §8.142). `start` uses the axis-specific IMAPB range (see
+/// [`ViewDomain`]'s azimuth/elevation/roll fields); `range` always uses
+/// IMAPB(0,360) — "the
+/// angular range specifies the limit from the starting point to the
+/// sensor's maximum value; numerically the angular range is always a
+/// positive value". Both fields of a pair always share the same IMAPB
+/// byte length (whatever the producer chose; this crate encodes at 3
+/// bytes).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ViewDomainPair {
+    pub start_deg: f64,
+    pub range_deg: f64,
+}
+
+/// Item 142 value (ST 0601.19 §8.142): up to three [`ViewDomainPair`]s
+/// — azimuth, elevation, roll, in that fixed order — each preceded by a
+/// BER pair-length. A pair-length of 0 means "unknown" (the pair is
+/// absent, but a byte was still spent saying so); the pack is also a
+/// truncation pack, so trailing pairs may be dropped from the wire
+/// entirely (no pair-length byte at all).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ViewDomain {
+    pub azimuth: Option<ViewDomainPair>,
+    pub elevation: Option<ViewDomainPair>,
+    pub roll: Option<ViewDomainPair>,
+}
+
+/// Byte width this crate uses to encode each field of a
+/// [`ViewDomainPair`] (start and range always share one width). ST
+/// 0601.19 §8.142.1: "the IMAPB length is determined at runtime to
+/// adjust to the data producer's desired precision" — decode accepts
+/// any even pair-length; this is only the encode-side default.
+const VIEW_DOMAIN_PAIR_ENCODE_LEN: usize = 3;
+
+/// `(start_min, start_max)` for each axis, in wire order — azimuth and
+/// roll share Item 18/20's `[0, 360]`, elevation uses Item 19's
+/// `[-180, 180]` (§8.142.1 Table 25).
+const VIEW_DOMAIN_AXES: [(f64, f64); 3] = [(0.0, 360.0), (-180.0, 180.0), (0.0, 360.0)];
+
+fn view_domain_setters() -> [fn(&mut ViewDomain, Option<ViewDomainPair>); 3] {
+    [
+        |v, p| v.azimuth = p,
+        |v, p| v.elevation = p,
+        |v, p| v.roll = p,
+    ]
+}
+
+fn view_domain_values(vd: &ViewDomain) -> [Option<ViewDomainPair>; 3] {
+    [vd.azimuth, vd.elevation, vd.roll]
+}
+
+fn view_domain_last_some(vd: &ViewDomain) -> Option<usize> {
+    view_domain_values(vd).iter().rposition(|p| p.is_some())
+}
+
+fn parse_view_domain_pair(
+    bytes: &[u8],
+    start_min: f64,
+    start_max: f64,
+    tag: u32,
+) -> Result<ViewDomainPair, KlvFieldError> {
+    if bytes.is_empty() || bytes.len() % 2 != 0 {
+        return Err(KlvFieldError::InvalidLength {
+            tag,
+            expected: bytes.len() + 1,
+            got: bytes.len(),
+        });
+    }
+    let half = bytes.len() / 2;
+    let start_params = ImapbParams {
+        min: start_min,
+        max: start_max,
+        length: half,
+    };
+    let range_params = ImapbParams {
+        min: 0.0,
+        max: 360.0,
+        length: half,
+    };
+    let start_deg = decode_imapb_required(&start_params, &bytes[..half], tag)?;
+    let range_deg = decode_imapb_required(&range_params, &bytes[half..], tag)?;
+    Ok(ViewDomainPair {
+        start_deg,
+        range_deg,
+    })
+}
+
+fn emit_view_domain_pair(
+    p: &ViewDomainPair,
+    start_min: f64,
+    start_max: f64,
+    out: &mut Vec<u8>,
+) -> Result<(), KlvEncodeError> {
+    let start_params = ImapbParams {
+        min: start_min,
+        max: start_max,
+        length: VIEW_DOMAIN_PAIR_ENCODE_LEN,
+    };
+    let range_params = ImapbParams {
+        min: 0.0,
+        max: 360.0,
+        length: VIEW_DOMAIN_PAIR_ENCODE_LEN,
+    };
+    let mut buf = [0u8; VIEW_DOMAIN_PAIR_ENCODE_LEN];
+    encode_imapb(&start_params, p.start_deg, &mut buf)?;
+    out.extend_from_slice(&buf);
+    encode_imapb(&range_params, p.range_deg, &mut buf)?;
+    out.extend_from_slice(&buf);
+    Ok(())
+}
+
+pub(crate) fn parse_view_domain(bytes: &[u8]) -> Result<ViewDomain, KlvFieldError> {
+    let mut vd = ViewDomain::default();
+    let setters = view_domain_setters();
+    let mut rest = bytes;
+    for ((start_min, start_max), setter) in VIEW_DOMAIN_AXES.into_iter().zip(setters) {
+        if rest.is_empty() {
+            break; // trailing truncation
+        }
+        let (pair_len, r) = read_ber(rest).map_err(truncated(142))?;
+        rest = r;
+        if pair_len > 0 {
+            if rest.len() < pair_len {
+                return Err(KlvFieldError::TruncatedField { tag: 142 });
+            }
+            let pair = parse_view_domain_pair(&rest[..pair_len], start_min, start_max, 142)?;
+            setter(&mut vd, Some(pair));
+            rest = &rest[pair_len..];
+        }
+        // pair_len == 0: "unknown" marker -- axis stays None, continue.
+    }
+    if !rest.is_empty() {
+        return Err(KlvFieldError::InvalidLength {
+            tag: 142,
+            expected: bytes.len() - rest.len(),
+            got: bytes.len(),
+        });
+    }
+    Ok(vd)
+}
+
+pub(crate) fn view_domain_len(vd: &ViewDomain) -> usize {
+    match view_domain_last_some(vd) {
+        None => 0,
+        Some(last) => {
+            let pair_bytes = 2 * VIEW_DOMAIN_PAIR_ENCODE_LEN;
+            view_domain_values(vd)[..=last]
+                .iter()
+                .map(|p| {
+                    let plen = if p.is_some() { pair_bytes } else { 0 };
+                    ber_len(plen) + plen
+                })
+                .sum()
+        }
+    }
+}
+
+pub(crate) fn emit_view_domain(vd: &ViewDomain, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
+    let Some(last) = view_domain_last_some(vd) else {
+        return Ok(());
+    };
+    let mut len_buf = [0u8; 9];
+    for (i, ((start_min, start_max), pair)) in VIEW_DOMAIN_AXES
+        .into_iter()
+        .zip(view_domain_values(vd))
+        .enumerate()
+    {
+        if i > last {
+            break;
+        }
+        match pair {
+            Some(p) => {
+                let plen = 2 * VIEW_DOMAIN_PAIR_ENCODE_LEN;
+                let n = write_ber(plen, &mut len_buf)?;
+                out.extend_from_slice(&len_buf[..n]);
+                emit_view_domain_pair(&p, start_min, start_max, out)?;
+            }
+            // Interior "unknown" marker (pair-len 0) — see the struct rustdoc.
+            None => out.push(0x00),
+        }
     }
     Ok(())
 }

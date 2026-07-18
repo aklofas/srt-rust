@@ -8,7 +8,10 @@ use crate::klv::universal_label::UniversalLabel;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use super::packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
+use super::packs::{
+    AirbaseLocations, ControlCommand, CountryCodes, ImageHorizonPixels, MetadataSubstreamId,
+    PayloadList, SensorFrameRate, ViewDomain, WavelengthRecord, Waypoint, WeaponsStore,
+};
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq)]
@@ -567,6 +570,20 @@ pub struct UasDatalinkLs {
     pub sensor_frame_rate: Option<SensorFrameRate>,
     /// Item 143: Metadata Substream Id. See [`MetadataSubstreamId`].
     pub metadata_substream_id: Option<MetadataSubstreamId>,
+    /// Item 122: Country Codes. See [`CountryCodes`].
+    pub country_codes: Option<CountryCodes>,
+    /// Item 128: Wavelengths List. See [`WavelengthRecord`].
+    pub wavelengths_list: Option<Vec<WavelengthRecord>>,
+    /// Item 130: Airbase Locations. See [`AirbaseLocations`].
+    pub airbase_locations: Option<AirbaseLocations>,
+    /// Item 138: Payload List. See [`PayloadList`].
+    pub payload_list: Option<PayloadList>,
+    /// Item 140: Weapons Stores. See [`WeaponsStore`].
+    pub weapons_stores: Option<Vec<WeaponsStore>>,
+    /// Item 141: Waypoint List. See [`Waypoint`].
+    pub waypoint_list: Option<Vec<Waypoint>>,
+    /// Item 142: View Domain. See [`ViewDomain`].
+    pub view_domain: Option<ViewDomain>,
 
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
@@ -763,6 +780,13 @@ impl Default for UasDatalinkLs {
             active_wavelengths: None,
             sensor_frame_rate: None,
             metadata_substream_id: None,
+            country_codes: None,
+            wavelengths_list: None,
+            airbase_locations: None,
+            payload_list: None,
+            weapons_stores: None,
+            waypoint_list: None,
+            view_domain: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
             sentinel_tags: Vec::new(),

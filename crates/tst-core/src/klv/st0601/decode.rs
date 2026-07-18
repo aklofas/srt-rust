@@ -619,7 +619,14 @@ fn apply_typed_tag(
                 .push(packs::parse_control_command(f.value)?),
             116 => record.control_command_verification = Some(packs::parse_id_list(f.value, 116)?),
             121 => record.active_wavelengths = Some(packs::parse_id_list(f.value, 121)?),
+            122 => record.country_codes = Some(packs::parse_country_codes(f.value)?),
             127 => record.sensor_frame_rate = Some(packs::parse_sensor_frame_rate(f.value)?),
+            128 => record.wavelengths_list = Some(packs::parse_wavelengths_list(f.value)?),
+            130 => record.airbase_locations = Some(packs::parse_airbase_locations(f.value)?),
+            138 => record.payload_list = Some(packs::parse_payload_list(f.value)?),
+            140 => record.weapons_stores = Some(packs::parse_weapons_stores(f.value)?),
+            141 => record.waypoint_list = Some(packs::parse_waypoints(f.value)?),
+            142 => record.view_domain = Some(packs::parse_view_domain(f.value)?),
             143 => {
                 record.metadata_substream_id = Some(packs::parse_metadata_substream_id(f.value)?)
             }

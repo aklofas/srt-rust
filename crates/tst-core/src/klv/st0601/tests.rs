@@ -9,7 +9,9 @@ use super::model::{
     EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
     SensorControlMode, SensorFovName, UasDatalinkLs,
 };
-use super::packs::{ControlCommand, ImageHorizonPixels, MetadataSubstreamId, SensorFrameRate};
+use super::packs::{
+    ControlCommand, ImageHorizonPixels, MetadataSubstreamId, PayloadType, SensorFrameRate,
+};
 use super::patch::patch;
 use super::tags::{Encoding, TAGS};
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvPatchError};
@@ -805,6 +807,74 @@ fn every_typed_tag_round_trips() {
                     uuid: None,
                 })
             }
+            122 => {
+                record.country_codes = Some(super::packs::CountryCodes {
+                    coding_method: 14,
+                    overflight: Some("CAN".to_string()),
+                    operator: None,
+                    manufacture: Some("FRA".to_string()),
+                })
+            }
+            128 => {
+                record.wavelengths_list = Some(vec![super::packs::WavelengthRecord {
+                    id: 21,
+                    min_nm: 1000.0,
+                    max_nm: 2000.0,
+                    name: "NNIR".to_string(),
+                }])
+            }
+            130 => {
+                record.airbase_locations = Some(super::packs::AirbaseLocations {
+                    take_off: Some(super::packs::Location {
+                        lat_deg: Some(38.8),
+                        lon_deg: Some(-77.0),
+                        hae_m: Some(3.0),
+                    }),
+                    recovery: None,
+                })
+            }
+            138 => {
+                record.payload_list = Some(super::packs::PayloadList {
+                    count: 1,
+                    records: vec![super::packs::PayloadRecord {
+                        id: 0,
+                        payload_type: super::packs::PayloadType::ElectroOptical,
+                        name: "VIS Nose Camera".to_string(),
+                    }],
+                })
+            }
+            140 => {
+                record.weapons_stores = Some(vec![super::packs::WeaponsStore {
+                    station_id: 1,
+                    hardpoint_id: 1,
+                    carriage_id: 1,
+                    store_id: 3,
+                    status_raw: 0x103,
+                    weapon_type: "Harpoon".to_string(),
+                }])
+            }
+            141 => {
+                record.waypoint_list = Some(vec![super::packs::Waypoint {
+                    id: 0,
+                    prosecution_order: 1,
+                    info: Some(3),
+                    location: Some(super::packs::Location {
+                        lat_deg: Some(38.889422),
+                        lon_deg: Some(-77.035162),
+                        hae_m: Some(200.0),
+                    }),
+                }])
+            }
+            142 => {
+                record.view_domain = Some(super::packs::ViewDomain {
+                    azimuth: Some(super::packs::ViewDomainPair {
+                        start_deg: 210.0,
+                        range_deg: 300.0,
+                    }),
+                    elevation: None,
+                    roll: None,
+                })
+            }
             _ => {
                 // Ranged numeric: pick a value at the midpoint of the spec
                 // range. LinearRange tags carry their range in `spec.range`;
@@ -890,6 +960,13 @@ fn every_typed_tag_round_trips() {
             121 => back.active_wavelengths.is_some(),
             127 => back.sensor_frame_rate.is_some(),
             143 => back.metadata_substream_id.is_some(),
+            122 => back.country_codes.is_some(),
+            128 => back.wavelengths_list.is_some(),
+            130 => back.airbase_locations.is_some(),
+            138 => back.payload_list.is_some(),
+            140 => back.weapons_stores.is_some(),
+            141 => back.waypoint_list.is_some(),
+            142 => back.view_domain.is_some(),
             2 => back.timestamp_us.is_some(),
             _ => {
                 // For ranged numeric, presence == any of our ranged fields is set.
@@ -3055,4 +3132,286 @@ fn wpc_strict_allows_repeated_115_and_102() {
     let record = decode_strict_compliance(&buf)
         .expect("repeated Tag 115 (Multiples Allowed) must not be rejected as a duplicate");
     assert_eq!(record.control_commands.len(), 2);
+}
+
+// ============================================================================
+// WP-C Task C3: VLP series packs (122/128/130/138/140/141/142)
+// ============================================================================
+
+/// ST 0601.19 §8.122 worked example (transcribed from the cached spec PDF,
+/// not just the plan's summary): Coding Method 14 (GENC 3-letter),
+/// Overflight "CAN", Operator unknown (length-0 marker), Manufacture
+/// "FRA". Byte-fidelity re-encode.
+#[test]
+fn wpc_country_codes_vector() {
+    let v = hex("01 0E 03 43414E 00 03 465241");
+    let cc = decode_with_single_tlv(122, &v).country_codes.unwrap();
+    assert_eq!(cc.coding_method, 14);
+    assert_eq!(cc.overflight.as_deref(), Some("CAN"));
+    assert_eq!(cc.operator, None); // len-0 = unknown
+    assert_eq!(cc.manufacture.as_deref(), Some("FRA"));
+
+    let re_encoded = encode_with_field(|r| r.country_codes = Some(cc.clone()));
+    assert_eq!(tlv_value(&re_encoded, 122), Some(v));
+}
+
+/// §8.122.1's two truncation cases: Manufacture-only truncated (stop
+/// after Operator), and both Operator+Manufacture truncated (stop after
+/// Overflight). Truncation removes the length-value pair ENTIRELY (no
+/// trailing length-0 byte at all) — distinct from the length-0 "unknown"
+/// marker pinned above.
+#[test]
+fn wpc_country_codes_truncation_cases() {
+    // Manufacture unknown (explicit length-0 marker) with Operator
+    // present. The field VALUES round-trip, but canonicalizing re-encode
+    // drops the now-redundant trailing zero-length Manufacture pair —
+    // no `Some` field follows it, so there is nothing to protect by
+    // keeping the explicit marker (same canonicalization precedent as
+    // `sensor_frame_rate_explicit_denominator_one_canonicalizes_away`).
+    let v = hex("01 0E 03 43414E 03 465241 00");
+    let cc = decode_with_single_tlv(122, &v).country_codes.unwrap();
+    assert_eq!(cc.operator.as_deref(), Some("FRA"));
+    assert_eq!(cc.manufacture, None);
+    let re_encoded = encode_with_field(|r| r.country_codes = Some(cc.clone()));
+    assert_eq!(
+        tlv_value(&re_encoded, 122),
+        Some(hex("01 0E 03 43414E 03 465241")),
+        "trailing explicit zero-length Manufacture pair canonicalizes away"
+    );
+
+    // Fully truncated: only coding_method + overflight on the wire.
+    let v2 = hex("01 0E 03 43414E");
+    let cc2 = decode_with_single_tlv(122, &v2).country_codes.unwrap();
+    assert_eq!(cc2.operator, None);
+    assert_eq!(cc2.manufacture, None);
+    let re_encoded2 = encode_with_field(|r| r.country_codes = Some(cc2.clone()));
+    assert_eq!(tlv_value(&re_encoded2, 122), Some(v2));
+}
+
+/// ST 0601.19 §8.128 worked example (transcribed from the cached spec
+/// PDF): one Wavelength Record, id=21 ("NNIR"), min/max raw-IMAPB bytes
+/// `0x000007D0`/`0x00000FA0` under IMAPB(0,1e9,4). Per the controller's
+/// note, assert the field equals OUR OWN standalone `decode_imapb` of
+/// those same raw bytes (cross-check), not the spec prose's "1000/2000
+/// nm" reading.
+#[test]
+fn wpc_wavelengths_list_vector() {
+    let v = hex("0D 15 0000 07D0 0000 0FA0 4E4E 4952");
+    let list = decode_with_single_tlv_ber_oid(128, &v)
+        .wavelengths_list
+        .unwrap();
+    assert_eq!(list.len(), 1);
+    let w = &list[0];
+    assert_eq!(w.id, 21);
+    assert_eq!(w.name, "NNIR");
+
+    let imapb_params = crate::klv::imapb::ImapbParams {
+        min: 0.0,
+        max: 1e9,
+        length: 4,
+    };
+    let expect_field =
+        |bytes: &[u8]| match crate::klv::imapb::decode_imapb(&imapb_params, bytes).unwrap() {
+            crate::klv::imapb::DecodedImapb::Value(x) => x,
+            other => panic!("expected Value, got {other:?}"),
+        };
+    assert_eq!(w.min_nm, expect_field(&hex("000007D0")));
+    assert_eq!(w.max_nm, expect_field(&hex("00000FA0")));
+
+    let re_encoded = encode_with_field(|r| r.wavelengths_list = Some(list.clone()));
+    assert_eq!(tlv_value(&re_encoded, 128), Some(v));
+}
+
+/// ST 0601.19 §8.130 worked example (transcribed from the cached spec
+/// PDF): two full Location DLPs (take-off, recovery), each lat+lon+hae.
+#[test]
+fn wpc_airbase_locations_vector() {
+    let v = hex("0B406BC20919BDA554070E000B40783CB819A2927407C600");
+    let al = decode_with_single_tlv_ber_oid(130, &v)
+        .airbase_locations
+        .unwrap();
+    let take_off = al.take_off.unwrap();
+    assert!((take_off.lat_deg.unwrap() - 38.841859).abs() < 1e-4);
+    assert!((take_off.lon_deg.unwrap() - -77.036784).abs() < 1e-4);
+    assert!((take_off.hae_m.unwrap() - 3.0).abs() < 0.1);
+    let recovery = al.recovery.unwrap();
+    assert!((recovery.lat_deg.unwrap() - 38.939353).abs() < 1e-4);
+    assert!((recovery.lon_deg.unwrap() - -77.459811).abs() < 1e-4);
+    assert!((recovery.hae_m.unwrap() - 95.0).abs() < 0.1);
+
+    let re_encoded = encode_with_field(|r| r.airbase_locations = Some(al));
+    assert_eq!(tlv_value(&re_encoded, 130), Some(v));
+}
+
+/// Recovery ABSENT entirely on the wire (no second length-value pair at
+/// all) must decode to `Some(take_off)` per §8.130.1 bullet 1's "same as
+/// take-off" rule — and canonicalizing re-encode must reproduce the
+/// SAME truncated wire form (recovery omitted again), matching the
+/// `sensor_frame_rate_explicit_denominator_one_canonicalizes_away`
+/// canonicalization precedent.
+#[test]
+fn wpc_airbase_locations_recovery_omitted_defaults_to_take_off() {
+    let v = hex("0B406BC20919BDA554070E00"); // take-off only, no recovery pair
+    let al = decode_with_single_tlv_ber_oid(130, &v)
+        .airbase_locations
+        .unwrap();
+    assert_eq!(al.recovery, al.take_off);
+
+    let re_encoded = encode_with_field(|r| r.airbase_locations = Some(al));
+    assert_eq!(tlv_value(&re_encoded, 130), Some(v));
+}
+
+/// ST 0601.19 §8.138 worked example — the 63-byte 3-record vector
+/// transcribed from the cached spec PDF (`reference/ST0601.19.pdf`
+/// §8.138 "Example KLV Item (All Hex)"): Payload Count 3, records
+/// (0,EO,"VIS Nose Camera"), (1,EO,"ACME VIS Model 123"),
+/// (2,EO,"ACME IR Model 456").
+#[test]
+fn wpc_payload_list_vector() {
+    let v = hex("03 12 0000 0F56 4953 204E 6F73 6520 4361 6D65 7261
+         15 01 0012 4143 4D45 2056 4953 204D 6F64 656C 2031 3233
+         14 02 0011 4143 4D45 2049 5220 4D6F 6465 6C20 3435 36");
+    assert_eq!(v.len(), 63, "the §8.138 example value is 63 bytes");
+    let pl = decode_with_single_tlv_ber_oid(138, &v)
+        .payload_list
+        .unwrap();
+    assert_eq!(pl.count, 3);
+    assert_eq!(pl.records.len(), 3);
+    assert_eq!(pl.records[0].id, 0);
+    assert_eq!(pl.records[0].payload_type, PayloadType::ElectroOptical);
+    assert_eq!(pl.records[0].name, "VIS Nose Camera");
+    assert_eq!(pl.records[1].id, 1);
+    assert_eq!(pl.records[1].name, "ACME VIS Model 123");
+    assert_eq!(pl.records[2].id, 2);
+    assert_eq!(pl.records[2].name, "ACME IR Model 456");
+
+    let re_encoded = encode_with_field(|r| r.payload_list = Some(pl.clone()));
+    assert_eq!(tlv_value(&re_encoded, 138), Some(v));
+}
+
+/// ST 0601.19 §8.140 PER-RECORD vectors, transcribed and independently
+/// recomputed from the cached spec PDF's 3-record example: (Harpoon,
+/// general=3/fuze), (Hellfire, general=4/all-engagement-bits),
+/// (GBU-15, general=3/no-engagement). The whole-item spec vector has a
+/// KNOWN 1-byte length discrepancy (declared len 0x2D=45, but the three
+/// records' own length prefixes only total 44 bytes) — pin per-record
+/// vectors and build the outer VLP ourselves rather than trusting the
+/// spec's stated outer length.
+#[test]
+fn wpc_weapons_stores_vector() {
+    let r1 = hex("0E 01 01 01 03 82 03 07 48 61 72 70 6F 6F 6E"); // Harpoon
+    let r2 = hex("0F 01 01 02 02 9E 04 08 48 65 6C 6C 66 69 72 65"); // Hellfire
+    let r3 = hex("0C 01 02 01 01 03 06 47 42 55 2D 31 35"); // GBU-15
+    let mut v = r1.clone();
+    v.extend(&r2);
+    v.extend(&r3);
+    assert_eq!(v.len(), 44, "3 records' own length prefixes total 44 bytes");
+
+    let stores = decode_with_single_tlv_ber_oid(140, &v)
+        .weapons_stores
+        .unwrap();
+    assert_eq!(stores.len(), 3);
+
+    let harpoon = &stores[0];
+    assert_eq!(
+        (
+            harpoon.station_id,
+            harpoon.hardpoint_id,
+            harpoon.carriage_id,
+            harpoon.store_id
+        ),
+        (1, 1, 1, 3)
+    );
+    assert_eq!(harpoon.general_status(), 3);
+    assert!(harpoon.fuze_enabled());
+    assert!(!harpoon.laser_enabled());
+    assert!(!harpoon.target_enabled());
+    assert!(!harpoon.weapon_armed());
+    assert_eq!(harpoon.weapon_type, "Harpoon");
+
+    let hellfire = &stores[1];
+    assert_eq!(hellfire.general_status(), 4);
+    assert!(hellfire.fuze_enabled());
+    assert!(hellfire.laser_enabled());
+    assert!(hellfire.target_enabled());
+    assert!(hellfire.weapon_armed());
+    assert_eq!(hellfire.weapon_type, "Hellfire");
+
+    let gbu15 = &stores[2];
+    assert_eq!((gbu15.station_id, gbu15.hardpoint_id), (1, 2));
+    assert_eq!(gbu15.general_status(), 3);
+    assert!(!gbu15.fuze_enabled());
+    assert_eq!(gbu15.weapon_type, "GBU-15");
+
+    let re_encoded = encode_with_field(|r| r.weapons_stores = Some(stores.clone()));
+    assert_eq!(tlv_value(&re_encoded, 140), Some(v));
+}
+
+/// ST 0601.19 §8.141 worked example (transcribed verbatim from the
+/// cached spec PDF, matching the plan's vector exactly): four Waypoint
+/// Records exercising all four `prosecution_order` cases (current,
+/// planned, cancelled, historical) plus a full Location on every
+/// record.
+#[test]
+fn wpc_waypoint_list_vector() {
+    let v = hex("0F 00 0001 03 4071D894 19BDBFE7 089800
+         0F 01 0002 02 4071D388 19BCCE24 08FC00
+         0F 02 7FFF 01 4071E308 19BF2C1B 07D000
+         0F 03 FFFE 00 4071E5AF 19BF5AA7 096000");
+    let wps = decode_with_single_tlv_ber_oid(141, &v)
+        .waypoint_list
+        .unwrap();
+    assert_eq!(wps.len(), 4);
+    assert_eq!(wps[0].prosecution_order, 1);
+    assert_eq!(wps[1].prosecution_order, 2);
+    assert_eq!(wps[2].prosecution_order, 0x7FFF); // cancelled
+    assert_eq!(wps[3].prosecution_order, -2); // historical
+    assert_eq!(wps[0].info, Some(3));
+    assert_eq!(wps[3].info, Some(0));
+
+    let loc = wps[0].location.unwrap();
+    assert!((loc.lat_deg.unwrap() - 38.889422).abs() < 1e-5);
+    assert!((loc.lon_deg.unwrap() - -77.035162).abs() < 1e-5);
+    assert!((loc.hae_m.unwrap() - 200.0).abs() < 0.1);
+
+    let loc3 = wps[3].location.unwrap();
+    assert!((loc3.lat_deg.unwrap() - 38.889822).abs() < 1e-5);
+    assert!((loc3.hae_m.unwrap() - 300.0).abs() < 0.1);
+
+    let re_encoded = encode_with_field(|r| r.waypoint_list = Some(wps.clone()));
+    assert_eq!(tlv_value(&re_encoded, 141), Some(v));
+}
+
+/// ST 0601.19 §8.142 worked example (transcribed verbatim from the
+/// cached spec PDF, matching the plan's vector exactly): azimuth domain
+/// (210, 300), elevation domain (-75, 50), roll domain truncated away
+/// entirely (trailing truncation — no pair-length byte at all).
+#[test]
+fn wpc_view_domain_truncated_roll() {
+    let v = hex("06 348000 4B0000 06 1A4000 0C8000");
+    let vd = decode_with_single_tlv_ber_oid(142, &v).view_domain.unwrap();
+    assert!((vd.azimuth.unwrap().start_deg - 210.0).abs() < 0.01);
+    assert!((vd.azimuth.unwrap().range_deg - 300.0).abs() < 0.01);
+    assert!((vd.elevation.unwrap().start_deg + 75.0).abs() < 0.01);
+    assert!((vd.elevation.unwrap().range_deg - 50.0).abs() < 0.01);
+    assert_eq!(vd.roll, None);
+
+    let re_encoded = encode_with_field(|r| r.view_domain = Some(vd));
+    assert_eq!(tlv_value(&re_encoded, 142), Some(v));
+}
+
+/// A pair-length of zero ("unknown") for the FIRST pair, followed by
+/// present elevation and roll pairs — pins that an interior "unknown"
+/// marker does not stop the walk (mirrors §8.142 Figure 89).
+#[test]
+fn wpc_view_domain_leading_unknown_pair() {
+    let v = hex("00 06 1A4000 0C8000 06 578000 050000");
+    let vd = decode_with_single_tlv_ber_oid(142, &v).view_domain.unwrap();
+    assert_eq!(vd.azimuth, None);
+    assert!((vd.elevation.unwrap().start_deg + 75.0).abs() < 0.01);
+    assert!((vd.roll.unwrap().start_deg - 350.0).abs() < 0.1);
+    assert!((vd.roll.unwrap().range_deg - 20.0).abs() < 0.1);
+
+    let re_encoded = encode_with_field(|r| r.view_domain = Some(vd));
+    assert_eq!(tlv_value(&re_encoded, 142), Some(v));
 }

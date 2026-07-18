@@ -382,9 +382,27 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .active_wavelengths
                 .as_ref()
                 .map(|ids| packs::id_list_len(ids)),
+            122 => record.country_codes.as_ref().map(packs::country_codes_len),
             127 => record
                 .sensor_frame_rate
                 .map(|fr| packs::sensor_frame_rate_len(&fr)),
+            128 => record
+                .wavelengths_list
+                .as_ref()
+                .map(|l| packs::wavelengths_list_len(l)),
+            130 => record
+                .airbase_locations
+                .map(|al| packs::airbase_locations_len(&al)),
+            138 => record.payload_list.as_ref().map(packs::payload_list_len),
+            140 => record
+                .weapons_stores
+                .as_ref()
+                .map(|l| packs::weapons_stores_len(l)),
+            141 => record
+                .waypoint_list
+                .as_ref()
+                .map(|l| packs::waypoints_len(l)),
+            142 => record.view_domain.map(|vd| packs::view_domain_len(&vd)),
             143 => record
                 .metadata_substream_id
                 .map(|ms| packs::metadata_substream_id_len(&ms)),
@@ -577,11 +595,65 @@ pub(super) fn encode_tag_value(
                 packs::emit_id_list(ids, &mut buf).map(|_| buf)
             })
             .transpose()?,
+        122 => record
+            .country_codes
+            .as_ref()
+            .map(|cc| {
+                let mut buf = Vec::with_capacity(packs::country_codes_len(cc));
+                packs::emit_country_codes(cc, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
         127 => record
             .sensor_frame_rate
             .map(|fr| {
                 let mut buf = Vec::with_capacity(packs::sensor_frame_rate_len(&fr));
                 packs::emit_sensor_frame_rate(&fr, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        128 => record
+            .wavelengths_list
+            .as_ref()
+            .map(|l| {
+                let mut buf = Vec::with_capacity(packs::wavelengths_list_len(l));
+                packs::emit_wavelengths_list(l, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        130 => record
+            .airbase_locations
+            .map(|al| {
+                let mut buf = Vec::with_capacity(packs::airbase_locations_len(&al));
+                packs::emit_airbase_locations(&al, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        138 => record
+            .payload_list
+            .as_ref()
+            .map(|pl| {
+                let mut buf = Vec::with_capacity(packs::payload_list_len(pl));
+                packs::emit_payload_list(pl, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        140 => record
+            .weapons_stores
+            .as_ref()
+            .map(|l| {
+                let mut buf = Vec::with_capacity(packs::weapons_stores_len(l));
+                packs::emit_weapons_stores(l, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        141 => record
+            .waypoint_list
+            .as_ref()
+            .map(|l| {
+                let mut buf = Vec::with_capacity(packs::waypoints_len(l));
+                packs::emit_waypoints(l, &mut buf).map(|_| buf)
+            })
+            .transpose()?,
+        142 => record
+            .view_domain
+            .map(|vd| {
+                let mut buf = Vec::with_capacity(packs::view_domain_len(&vd));
+                packs::emit_view_domain(&vd, &mut buf).map(|_| buf)
             })
             .transpose()?,
         143 => record

@@ -36,6 +36,21 @@ pub(crate) enum Encoding {
         max_len: usize,
         default_len: usize,
     },
+    /// MISB variable-length unsigned int (ST 0601 WP-B Table B2 items):
+    /// length-prefixed truncatable big-endian encoding — the TLV length
+    /// IS the byte count, NOT BER-OID (see `crate::klv::length::read_var_uint`).
+    /// Decode accepts any wire length in `1..=max_len`; encode always emits
+    /// [`crate::klv::length::write_var_uint_min`]'s shortest form, which may
+    /// be shorter than `max_len`.
+    VarUint {
+        max_len: usize,
+    },
+    /// Signed twin of [`Encoding::VarUint`] — two's complement,
+    /// sign-extended from the MSB (`crate::klv::length::read_var_int` /
+    /// `write_var_int_min`).
+    VarInt {
+        max_len: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1066,6 +1081,18 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 110,
+        name: "Time Airborne",
+        encoding: Encoding::VarUint { max_len: 4 },
+        range: None,
+    },
+    TagSpec {
+        id: 111,
+        name: "Propulsion Unit Speed",
+        encoding: Encoding::VarUint { max_len: 4 },
+        range: None,
+    },
+    TagSpec {
         id: 112,
         name: "Platform Course Angle",
         encoding: Encoding::Imapb {
@@ -1143,9 +1170,39 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 123,
+        name: "Number of NAVSATs in View",
+        encoding: Encoding::VarUint { max_len: 1 },
+        range: None,
+    },
+    TagSpec {
+        id: 124,
+        name: "Positioning Method Source",
+        encoding: Encoding::VarUint { max_len: 1 },
+        range: None,
+    },
+    TagSpec {
+        id: 125,
+        name: "Platform Status",
+        encoding: Encoding::VarUint { max_len: 1 },
+        range: None,
+    },
+    TagSpec {
+        id: 126,
+        name: "Sensor Control Mode",
+        encoding: Encoding::VarUint { max_len: 1 },
+        range: None,
+    },
+    TagSpec {
         id: 129,
         name: "Target ID",
         encoding: Encoding::Utf8 { max_bytes: 32 },
+        range: None,
+    },
+    TagSpec {
+        id: 131,
+        name: "Take-off Time",
+        encoding: Encoding::VarUint { max_len: 8 },
         range: None,
     },
     TagSpec {
@@ -1157,6 +1214,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
             max_len: 4,
             default_len: 3,
         },
+        range: None,
+    },
+    TagSpec {
+        id: 133,
+        name: "On-board MI Storage Capacity",
+        encoding: Encoding::VarUint { max_len: 4 },
         range: None,
     },
     TagSpec {
@@ -1174,6 +1237,24 @@ pub(crate) const TAGS: &[TagSpec] = &[
         id: 135,
         name: "Communications Method",
         encoding: Encoding::Utf8 { max_bytes: 127 },
+        range: None,
+    },
+    TagSpec {
+        id: 136,
+        name: "Leap Seconds",
+        encoding: Encoding::VarInt { max_len: 4 },
+        range: None,
+    },
+    TagSpec {
+        id: 137,
+        name: "Correction Offset",
+        encoding: Encoding::VarInt { max_len: 8 },
+        range: None,
+    },
+    TagSpec {
+        id: 139,
+        name: "Active Payloads",
+        encoding: Encoding::RawBytes,
         range: None,
     },
 ];
@@ -1242,6 +1323,21 @@ mod tests {
                         spec.id,
                         spec.name,
                         default_len,
+                        max_len
+                    );
+                }
+                Encoding::VarUint { max_len } | Encoding::VarInt { max_len } => {
+                    assert!(
+                        spec.range.is_none(),
+                        "tag {} ({}) is var-length int but also carries a LinearRange",
+                        spec.id,
+                        spec.name
+                    );
+                    assert!(
+                        (1..=8).contains(&max_len),
+                        "tag {} ({}) has invalid var-len max_len={}",
+                        spec.id,
+                        spec.name,
                         max_len
                     );
                 }

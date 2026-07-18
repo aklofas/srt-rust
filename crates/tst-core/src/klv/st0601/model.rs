@@ -381,6 +381,75 @@ pub struct UasDatalinkLs {
     /// [`crate::error::KlvEncodeError::OutOfRange`].
     pub zoom_percentage: Option<f64>,
 
+    // Var-length int/enum items (ST 0601 WP-B Table B2, tags 110-139) —
+    // MISB variable-length truncatable integer encoding (see
+    // `crate::klv::length::{read_var_uint, read_var_int}`): the TLV
+    // length IS the byte count (not BER-OID), decode accepts any wire
+    // length 1..=max_len, encode always emits the shortest form. Direct
+    // integers/enums, not IMAPB-scaled floats.
+    /// Item 110: Time Airborne — cumulative time the platform has been
+    /// airborne. MISB var-length uint, wire length 1..=4 bytes (seconds).
+    pub time_airborne_s: Option<u32>,
+    /// Item 111: Propulsion Unit Speed — rotational speed of the
+    /// platform's propulsion unit. MISB var-length uint, wire length
+    /// 1..=4 bytes (RPM).
+    pub propulsion_unit_speed_rpm: Option<u32>,
+    /// Item 123: Number of NAVSATs in View — count of navigation
+    /// satellites contributing to the platform's position solution.
+    /// MISB var-length uint, wire length 1 byte.
+    pub navsats_in_view: Option<u8>,
+    /// Item 124: Positioning Method Source — bitfield naming which
+    /// satellite positioning system(s) contributed to the platform's
+    /// position solution. MISB var-length uint, wire length 1 byte.
+    ///
+    /// | Bit | System |
+    /// |---:|---|
+    /// | 0 | INS |
+    /// | 1 | GPS |
+    /// | 2 | Galileo |
+    /// | 3 | QZSS |
+    /// | 4 | NAVIC |
+    /// | 5 | GLONASS |
+    /// | 6 | BeiDou-1 |
+    /// | 7 | BeiDou-2 |
+    ///
+    /// Per ST 0601.19 §8.124 a conformant producer sets at least one bit
+    /// (an all-zero value is out of the item's declared `1..255` range);
+    /// decode stays lenient and does not reject `0x00`.
+    pub positioning_method_source: Option<u8>,
+    /// Item 125: Platform Status — operational status of the platform.
+    /// MISB var-length uint, wire length 1 byte. See [`PlatformStatus`].
+    pub platform_status: Option<PlatformStatus>,
+    /// Item 126: Sensor Control Mode — what is currently controlling
+    /// the sensor. MISB var-length uint, wire length 1 byte. See
+    /// [`SensorControlMode`].
+    pub sensor_control_mode: Option<SensorControlMode>,
+    /// Item 131: Take-off Time — MISB ST 0603 timestamp of the
+    /// platform's take-off. MISB var-length uint, wire length 1..=8
+    /// bytes (microseconds).
+    pub take_off_time_us: Option<u64>,
+    /// Item 133: On-board MI Storage Capacity — total on-board Motion
+    /// Imagery storage capacity (compare
+    /// [`Self::mi_storage_percent_full`], Item 120, the *used*
+    /// percentage of that capacity). MISB var-length uint, wire length
+    /// 1..=4 bytes (gigabytes).
+    pub mi_storage_capacity_gb: Option<u32>,
+    /// Item 136: Leap Seconds — the TAI-UTC leap-second offset in
+    /// effect for [`Self::timestamp_us`]. MISB var-length int, wire
+    /// length 1..=4 bytes (seconds).
+    pub leap_seconds: Option<i32>,
+    /// Item 137: Correction Offset — signed correction applied to a
+    /// platform time source (e.g. GPS-disciplined clock drift). MISB
+    /// var-length int, wire length 1..=8 bytes (microseconds).
+    pub correction_offset_us: Option<i64>,
+    /// Item 139: Active Payloads — bitmask of which Payload IDs (Item
+    /// 138, Payload List — not yet typed-modeled) are currently active.
+    /// Raw bytes, LSB-first within each byte: bit *i* of byte 0 is
+    /// Payload ID *i* (0-7), byte 1 covers IDs 8-15, and so on
+    /// (multi-byte extends upward). Use [`Self::active_payload_ids`] to
+    /// iterate the set IDs instead of unpacking the bits by hand.
+    pub active_payloads: Option<Vec<u8>>,
+
     // Misc
     /// Item 47: Generic Flag Data — bitfield per ST 0601.19 Table 3:
     /// bit 0 laser range on, bit 1 auto-track on, bit 2 IR polarity
@@ -596,6 +665,17 @@ impl Default for UasDatalinkLs {
             mi_storage_percent_full: None,
             transmission_frequency_mhz: None,
             zoom_percentage: None,
+            time_airborne_s: None,
+            propulsion_unit_speed_rpm: None,
+            navsats_in_view: None,
+            positioning_method_source: None,
+            platform_status: None,
+            sensor_control_mode: None,
+            take_off_time_us: None,
+            mi_storage_capacity_gb: None,
+            leap_seconds: None,
+            correction_offset_us: None,
+            active_payloads: None,
             generic_flag_data: None,
             security_local_set: None,
             rvt: None,
@@ -796,6 +876,140 @@ impl OperationalMode {
     }
 }
 
+/// Item 125: Platform Status (ST 0601.19 §8.125) — indicates the
+/// operational status of the platform.
+///
+/// | Code | Meaning |
+/// |---:|---|
+/// | 0 | `Active` |
+/// | 1 | `PreFlight` |
+/// | 2 | `PreFlightTaxiing` |
+/// | 3 | `RunUp` |
+/// | 4 | `TakeOff` |
+/// | 5 | `Ingress` |
+/// | 6 | `ManualOperation` |
+/// | 7 | `AutomatedOrbit` |
+/// | 8 | `Transitioning` |
+/// | 9 | `Egress` |
+/// | 10 | `Landing` |
+/// | 11 | `LandedTaxiing` |
+/// | 12 | `LandedParked` |
+/// | other | `Other(code)` — wire-unknown, round-trips byte-exact |
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlatformStatus {
+    Active,
+    PreFlight,
+    PreFlightTaxiing,
+    RunUp,
+    TakeOff,
+    Ingress,
+    ManualOperation,
+    AutomatedOrbit,
+    Transitioning,
+    Egress,
+    Landing,
+    LandedTaxiing,
+    LandedParked,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u8),
+}
+
+impl PlatformStatus {
+    pub(crate) fn from_wire(b: u8) -> Self {
+        match b {
+            0 => Self::Active,
+            1 => Self::PreFlight,
+            2 => Self::PreFlightTaxiing,
+            3 => Self::RunUp,
+            4 => Self::TakeOff,
+            5 => Self::Ingress,
+            6 => Self::ManualOperation,
+            7 => Self::AutomatedOrbit,
+            8 => Self::Transitioning,
+            9 => Self::Egress,
+            10 => Self::Landing,
+            11 => Self::LandedTaxiing,
+            12 => Self::LandedParked,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u8 {
+        match self {
+            Self::Active => 0,
+            Self::PreFlight => 1,
+            Self::PreFlightTaxiing => 2,
+            Self::RunUp => 3,
+            Self::TakeOff => 4,
+            Self::Ingress => 5,
+            Self::ManualOperation => 6,
+            Self::AutomatedOrbit => 7,
+            Self::Transitioning => 8,
+            Self::Egress => 9,
+            Self::Landing => 10,
+            Self::LandedTaxiing => 11,
+            Self::LandedParked => 12,
+            Self::Other(b) => b,
+        }
+    }
+}
+
+/// Item 126: Sensor Control Mode (ST 0601.19 §8.126) — indicates what is
+/// currently controlling the sensor.
+///
+/// | Code | Meaning |
+/// |---:|---|
+/// | 0 | `Off` |
+/// | 1 | `HomePosition` |
+/// | 2 | `Uncontrolled` |
+/// | 3 | `ManualControl` |
+/// | 4 | `Calibrating` |
+/// | 5 | `AutoHoldingPosition` |
+/// | 6 | `AutoTracking` |
+/// | other | `Other(code)` — wire-unknown, round-trips byte-exact |
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorControlMode {
+    Off,
+    HomePosition,
+    Uncontrolled,
+    ManualControl,
+    Calibrating,
+    AutoHoldingPosition,
+    AutoTracking,
+    /// Wire-unknown codepoint; round-trips byte-exact through encode.
+    Other(u8),
+}
+
+impl SensorControlMode {
+    pub(crate) fn from_wire(b: u8) -> Self {
+        match b {
+            0 => Self::Off,
+            1 => Self::HomePosition,
+            2 => Self::Uncontrolled,
+            3 => Self::ManualControl,
+            4 => Self::Calibrating,
+            5 => Self::AutoHoldingPosition,
+            6 => Self::AutoTracking,
+            other => Self::Other(other),
+        }
+    }
+
+    pub(crate) fn to_wire(self) -> u8 {
+        match self {
+            Self::Off => 0,
+            Self::HomePosition => 1,
+            Self::Uncontrolled => 2,
+            Self::ManualControl => 3,
+            Self::Calibrating => 4,
+            Self::AutoHoldingPosition => 5,
+            Self::AutoTracking => 6,
+            Self::Other(b) => b,
+        }
+    }
+}
+
 /// What the `encode*` entry points do when a ranged value falls outside
 /// its ST 0601 mapped range.
 #[non_exhaustive]
@@ -959,5 +1173,21 @@ impl UasDatalinkLs {
             p3: (lat0 + dl3, lon0 + do3),
             p4: (lat0 + dl4, lon0 + do4),
         })
+    }
+
+    /// Iterate the Payload IDs marked active in [`Self::active_payloads`]
+    /// (Item 139), decoding the LSB-first bitmask. Empty (or absent)
+    /// bytes yield an empty iterator, never a panic.
+    pub fn active_payload_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.active_payloads
+            .iter()
+            .flatten()
+            .copied()
+            .enumerate()
+            .flat_map(|(byte_i, b): (usize, u8)| {
+                (0u32..8)
+                    .filter(move |bit| b & (1 << bit) != 0)
+                    .map(move |bit| byte_i as u32 * 8 + bit)
+            })
     }
 }

@@ -2,7 +2,9 @@
 //! lenient/strict/compliance lineage.
 
 use crate::error::{KlvDecodeError, KlvFieldError};
-use crate::klv::length::{read_ber, read_ber_oid_strict, read_ber_strict};
+use crate::klv::length::{
+    read_ber, read_ber_oid_strict, read_ber_strict, read_var_int, read_var_uint,
+};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::universal_label::UniversalLabel;
 use alloc::borrow::ToOwned;
@@ -10,7 +12,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::mapping::decode_fixed_range;
-use super::model::{IcingDetected, OperationalMode, SensorFovName, UasDatalinkLs};
+use super::model::{
+    IcingDetected, OperationalMode, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
+};
 use super::tags::{Encoding, lookup};
 
 /// Decode a UAS Datalink Local Set per MISB ST 0601.
@@ -481,6 +485,7 @@ fn apply_typed_tag(
             99 => record.composite_imaging_local_set = Some(f.value.to_vec()),
             100 => record.segment_local_set = Some(f.value.to_vec()),
             101 => record.amend_local_set = Some(f.value.to_vec()),
+            139 => record.active_payloads = Some(f.value.to_vec()),
             _ => unreachable!(),
         },
         Encoding::U8Range
@@ -541,6 +546,53 @@ fn apply_typed_tag(
                         max,
                     });
                 }
+            }
+        }
+        Encoding::VarUint { max_len } => {
+            let raw = read_var_uint(f.value, max_len, tag)?;
+            let narrow_u32 = |v: u64| {
+                u32::try_from(v).map_err(|_| KlvFieldError::InvalidLength {
+                    tag,
+                    expected: max_len,
+                    got: f.value.len(),
+                })
+            };
+            let narrow_u8 = |v: u64| {
+                u8::try_from(v).map_err(|_| KlvFieldError::InvalidLength {
+                    tag,
+                    expected: max_len,
+                    got: f.value.len(),
+                })
+            };
+            match tag {
+                110 => record.time_airborne_s = Some(narrow_u32(raw)?),
+                111 => record.propulsion_unit_speed_rpm = Some(narrow_u32(raw)?),
+                123 => record.navsats_in_view = Some(narrow_u8(raw)?),
+                124 => record.positioning_method_source = Some(narrow_u8(raw)?),
+                125 => record.platform_status = Some(PlatformStatus::from_wire(narrow_u8(raw)?)),
+                126 => {
+                    record.sensor_control_mode = Some(SensorControlMode::from_wire(narrow_u8(raw)?))
+                }
+                131 => record.take_off_time_us = Some(raw),
+                133 => record.mi_storage_capacity_gb = Some(narrow_u32(raw)?),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::VarInt { max_len } => {
+            let raw = read_var_int(f.value, max_len, tag)?;
+            match tag {
+                136 => {
+                    record.leap_seconds =
+                        Some(
+                            i32::try_from(raw).map_err(|_| KlvFieldError::InvalidLength {
+                                tag,
+                                expected: max_len,
+                                got: f.value.len(),
+                            })?,
+                        )
+                }
+                137 => record.correction_offset_us = Some(raw),
+                _ => unreachable!(),
             }
         }
     }

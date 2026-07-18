@@ -323,6 +323,125 @@ class SensorControlMode(enum.Enum):
     AUTO_TRACKING = 6
 
 # ---------------------------------------------------------------------------
+# ST 0601.19 WP-C pack & list items (Table C1)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class ImageHorizonPixels:
+    x0_pct: int
+    y0_pct: int
+    x1_pct: int
+    y1_pct: int
+    start_lat_deg: Optional[float] = ...
+    start_lon_deg: Optional[float] = ...
+    end_lat_deg: Optional[float] = ...
+    end_lon_deg: Optional[float] = ...
+
+@dataclass(frozen=True, slots=True)
+class ControlCommand:
+    id: int
+    command: str
+    time_us: Optional[int] = ...
+
+@dataclass(frozen=True, slots=True)
+class SensorFrameRate:
+    numerator: int
+    denominator: int
+    @property
+    def fps(self) -> float: ...
+
+@dataclass(frozen=True, slots=True)
+class MetadataSubstreamId:
+    local_id: int
+    uuid: Optional[bytes] = ...
+    def __post_init__(self) -> None: ...
+
+@dataclass(frozen=True, slots=True)
+class CountryCodes:
+    coding_method: int
+    overflight: Optional[str] = ...
+    operator: Optional[str] = ...
+    manufacture: Optional[str] = ...
+
+@dataclass(frozen=True, slots=True)
+class WavelengthRecord:
+    id: int
+    min_nm: float
+    max_nm: float
+    name: str
+
+@dataclass(frozen=True, slots=True)
+class Location:
+    lat_deg: Optional[float] = ...
+    lon_deg: Optional[float] = ...
+    hae_m: Optional[float] = ...
+
+@dataclass(frozen=True, slots=True)
+class AirbaseLocations:
+    take_off: Optional[Location] = ...
+    recovery: Optional[Location] = ...
+
+class PayloadType(enum.Enum):
+    ELECTRO_OPTICAL = 0
+    LIDAR = 1
+    RADAR = 2
+    SIGINT = 3
+    SAR = 4
+
+@dataclass(frozen=True, slots=True)
+class PayloadRecord:
+    id: int
+    payload_type: Union[PayloadType, int]
+    name: str
+
+@dataclass(frozen=True, slots=True)
+class PayloadList:
+    count: int
+    records: Tuple[PayloadRecord, ...] = ...
+
+@dataclass(frozen=True, slots=True)
+class WeaponsStore:
+    station_id: int
+    hardpoint_id: int
+    carriage_id: int
+    store_id: int
+    status_raw: int
+    weapon_type: str
+    @property
+    def general_status(self) -> int: ...
+    @property
+    def fuze_enabled(self) -> bool: ...
+    @property
+    def laser_enabled(self) -> bool: ...
+    @property
+    def target_enabled(self) -> bool: ...
+    @property
+    def weapon_armed(self) -> bool: ...
+
+@dataclass(frozen=True, slots=True)
+class Waypoint:
+    id: int
+    prosecution_order: int
+    info: Optional[int] = ...
+    location: Optional[Location] = ...
+
+@dataclass(frozen=True, slots=True)
+class ViewDomainPair:
+    start_deg: float
+    range_deg: float
+
+@dataclass(frozen=True, slots=True)
+class ViewDomain:
+    azimuth: Optional[ViewDomainPair] = ...
+    elevation: Optional[ViewDomainPair] = ...
+    roll: Optional[ViewDomainPair] = ...
+
+@dataclass(frozen=True, slots=True)
+class SdccFlpField:
+    preceding_tags: Tuple[int, ...]
+    bytes: bytes
+
+# ---------------------------------------------------------------------------
 # ST 0601 UAS Datalink Local Set
 # ---------------------------------------------------------------------------
 
@@ -518,6 +637,20 @@ class UasDatalinkLs:
     icing_detected: Union[IcingDetected, int, None] = ...
     sensor_fov_name: Union[SensorFovName, int, None] = ...
     operational_mode: Union[OperationalMode, int, None] = ...
+    image_horizon: Optional[ImageHorizonPixels] = ...
+    control_commands: Tuple[ControlCommand, ...] = ...
+    control_command_verification: Optional[Tuple[int, ...]] = ...
+    active_wavelengths: Optional[Tuple[int, ...]] = ...
+    sensor_frame_rate: Optional[SensorFrameRate] = ...
+    metadata_substream_id: Optional[MetadataSubstreamId] = ...
+    country_codes: Optional[CountryCodes] = ...
+    wavelengths_list: Optional[Tuple[WavelengthRecord, ...]] = ...
+    airbase_locations: Optional[AirbaseLocations] = ...
+    payload_list: Optional[PayloadList] = ...
+    weapons_stores: Optional[Tuple[WeaponsStore, ...]] = ...
+    waypoint_list: Optional[Tuple[Waypoint, ...]] = ...
+    view_domain: Optional[ViewDomain] = ...
+    sdcc_flps: Tuple[SdccFlpField, ...] = ...
     unknown: Tuple[Tuple[int, bytes], ...] = ...
     field_errors: Tuple[KlvFieldError, ...] = ...
     sentinel_tags: Tuple[int, ...] = ...
@@ -601,6 +734,22 @@ def encode_core_id(core_id: CoreId) -> bytes: ...
 def core_id_text(core_id: CoreId) -> str: ...
 
 # ---------------------------------------------------------------------------
+# ST 1010.3 SDCC-FLP (general-purpose; carried inside ST 0601 Item 102)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class SdccFlp:
+    matrix_size: int
+    std_devs: Tuple[float, ...] = ...
+    correlations: Tuple[float, ...] = ...
+    correlation_present: Tuple[bool, ...] = ...
+
+def decode_sdcc_flp(buf: _BytesLike) -> SdccFlp: ...
+def encode_sdcc_flp_mode2(
+    std_devs: list[float], correlations: list[float], clen: int
+) -> bytes: ...
+
+# ---------------------------------------------------------------------------
 # ST 0902.8 Minimum Metadata Set (MISMMS) violation
 # ---------------------------------------------------------------------------
 
@@ -654,6 +803,22 @@ __all__ = [
     "OperationalMode",
     "PlatformStatus",
     "SensorControlMode",
+    "ImageHorizonPixels",
+    "ControlCommand",
+    "SensorFrameRate",
+    "MetadataSubstreamId",
+    "CountryCodes",
+    "WavelengthRecord",
+    "Location",
+    "AirbaseLocations",
+    "PayloadType",
+    "PayloadRecord",
+    "PayloadList",
+    "WeaponsStore",
+    "Waypoint",
+    "ViewDomainPair",
+    "ViewDomain",
+    "SdccFlpField",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",
@@ -667,6 +832,9 @@ __all__ = [
     "decode_core_id",
     "encode_core_id",
     "core_id_text",
+    "SdccFlp",
+    "decode_sdcc_flp",
+    "encode_sdcc_flp_mode2",
     "MismmsViolation",
     "validate_mismms",
 ]

@@ -13,6 +13,14 @@ Decode surface:
 - `UasDatalinkLs` (alias `Klv0601`) — ST 0601 UAS Datalink LS
 - `IdType` — ST 1204.3 sensor/platform UUID source type enum
 - `CoreId` — ST 1204.3 MIIS Core Identifier
+- `ImageHorizonPixels`, `ControlCommand`, `SensorFrameRate`,
+  `MetadataSubstreamId`, `CountryCodes`, `WavelengthRecord`, `Location`,
+  `AirbaseLocations`, `PayloadType`, `PayloadRecord`, `PayloadList`,
+  `WeaponsStore`, `Waypoint`, `ViewDomainPair`, `ViewDomain`,
+  `SdccFlpField` — ST 0601 §8 WP-C pack & list items (carried on
+  `UasDatalinkLs`)
+- `SdccFlp` — MISB ST 1010.3 SDCC-FLP pack (general-purpose; decode with
+  `decode_sdcc_flp`, encode Mode 2 with `encode_sdcc_flp_mode2`)
 - `MismmsViolation` — ST 0902.8 Minimum Metadata Set violation
 - `IcingDetected`, `SensorFovName`, `OperationalMode` — ST 0601 §8.34/
   §8.63/§8.77 coded-value enums
@@ -581,6 +589,255 @@ class SensorControlMode(enum.Enum):
 
 
 # ---------------------------------------------------------------------------
+# ST 0601.19 WP-C pack & list items (Table C1), carried on UasDatalinkLs.
+# Follows the VTargetPack nested-struct-list pattern.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ImageHorizonPixels:
+    """ST 0601.19 §8.81 Item 81 — Image Horizon Pixels: screen-space
+    horizon line endpoints as percentages of image width/height, plus an
+    optional geodetic pair for each endpoint. The four ``*_deg`` fields
+    are a truncatable trailing group — any of them may be absent."""
+
+    x0_pct: int
+    y0_pct: int
+    x1_pct: int
+    y1_pct: int
+    start_lat_deg: float | None = None
+    start_lon_deg: float | None = None
+    end_lat_deg: float | None = None
+    end_lon_deg: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ControlCommand:
+    """ST 0601.19 §8.115 Item 115 — Control Command. MULTI-INSTANCE
+    (ST 0601.19 Table 1 "Multiples Allowed" = Yes): every wire
+    occurrence appends one ``ControlCommand`` to
+    ``UasDatalinkLs.control_commands``."""
+
+    id: int
+    command: str
+    time_us: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SensorFrameRate:
+    """ST 0601.19 §8.127 Item 127 — Sensor Frame Rate Pack: frame rate as
+    a numerator/denominator ratio."""
+
+    numerator: int
+    denominator: int
+
+    @property
+    def fps(self) -> float:
+        """Frames per second as ``numerator / denominator``."""
+        return self.numerator / self.denominator
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataSubstreamId:
+    """ST 0601.19 §8.143 Item 143 — Metadata Substream Id. Per §8.143,
+    ``uuid`` is REQUIRED when ``local_id == 0`` and OMITTED when
+    ``local_id > 0``; this binding is lenient and stores whatever
+    combination the wire carries."""
+
+    local_id: int
+    uuid: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.uuid is not None and len(self.uuid) != 16:
+            raise ValueError(
+                f"MetadataSubstreamId.uuid must be 16 bytes; got {len(self.uuid)}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class CountryCodes:
+    """ST 0601.19 §8.122 Item 122 — Country Codes metadata about the
+    platform's operation and manufacture. Per §8.122.1, a length-0 wire
+    value means "unknown" (``None`` here), not a distinct empty string."""
+
+    coding_method: int
+    overflight: str | None = None
+    operator: str | None = None
+    manufacture: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WavelengthRecord:
+    """One record of ST 0601.19 §8.128 Item 128, Wavelengths List — a
+    sensor wavelength band definition (``min_nm``/``max_nm`` decoded via
+    ST 1201.5 IMAPB(0, 1e9, 4))."""
+
+    id: int
+    min_nm: float
+    max_nm: float
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class Location:
+    """A WGS84 geodetic point: latitude, longitude, and Height Above
+    Ellipsoid (HAE). Shared by ST 0601.19 §8.130 (Airbase Locations) and
+    §8.141 (Waypoint List). ``lat_deg``/``lon_deg`` are a mandatory
+    both-or-neither pair on the wire; only ``hae_m`` truncates
+    independently — see the Rust ``Location`` rustdoc for the full
+    wire-shape contract this binding's encoder enforces."""
+
+    lat_deg: float | None = None
+    lon_deg: float | None = None
+    hae_m: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AirbaseLocations:
+    """ST 0601.19 §8.130 Item 130 — the take-off and recovery site
+    locations. Per §8.130.1, a ``recovery`` absent entirely from the
+    wire means "same as take-off" — decode reflects that by setting
+    ``recovery`` equal to ``take_off`` (only an explicit, *different*
+    ``recovery`` — including ``None`` while ``take_off`` is set — is
+    distinguishable from that default)."""
+
+    take_off: Location | None = None
+    recovery: Location | None = None
+
+
+class PayloadType(enum.Enum):
+    """ST 0601.19 §8.138 Table 17 Payload Type enumeration.
+
+    Rust adds an ``Other(u64)`` catch-all for forward-compat; on the
+    Python side, unknown codepoints surface as the raw ``int`` on
+    ``PayloadRecord.payload_type`` rather than an enum instance (same
+    asymmetric pattern as ``IcingDetected``)."""
+
+    ELECTRO_OPTICAL = 0
+    LIDAR = 1
+    RADAR = 2
+    SIGINT = 3
+    SAR = 4
+
+
+@dataclass(frozen=True, slots=True)
+class PayloadRecord:
+    """One record of ST 0601.19 §8.138 Item 138, Payload List."""
+
+    id: int
+    payload_type: PayloadType | int
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class PayloadList:
+    """ST 0601.19 §8.138 Item 138 — Payload List: a declared ``count``
+    plus the payload records themselves."""
+
+    count: int
+    records: tuple[PayloadRecord, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WeaponsStore:
+    """One record of ST 0601.19 §8.140 Item 140, Weapons Stores — a
+    single weapon's physical address, status, and type. ``status_raw``
+    packs the spec's 14-bit Status BER-OID value verbatim; the
+    ``@property`` accessors below decode its sub-fields (§Table 21
+    General Status in the low 8 bits, §Table 22 Engagement Status flags
+    in the next 4)."""
+
+    station_id: int
+    hardpoint_id: int
+    carriage_id: int
+    store_id: int
+    status_raw: int
+    weapon_type: str
+
+    @property
+    def general_status(self) -> int:
+        """§Table 21 General Status code (low 8 bits of ``status_raw``)."""
+        return self.status_raw & 0xFF
+
+    @property
+    def fuze_enabled(self) -> bool:
+        """§Table 22 bit position 1."""
+        return (self.status_raw & 0x100) != 0
+
+    @property
+    def laser_enabled(self) -> bool:
+        """§Table 22 bit position 2."""
+        return (self.status_raw & 0x200) != 0
+
+    @property
+    def target_enabled(self) -> bool:
+        """§Table 22 bit position 3."""
+        return (self.status_raw & 0x400) != 0
+
+    @property
+    def weapon_armed(self) -> bool:
+        """§Table 22 bit position 4."""
+        return (self.status_raw & 0x800) != 0
+
+
+@dataclass(frozen=True, slots=True)
+class Waypoint:
+    """One record of ST 0601.19 §8.141 Item 141, Waypoint List.
+    ``prosecution_order``: 0 = current, > 0 = planned, < 0 = historical,
+    ``0x7FFF`` = cancelled. ``info`` is the Mode/Source bitfield
+    (b0 = manual mode, b1 = adhoc source)."""
+
+    id: int
+    prosecution_order: int
+    info: int | None = None
+    location: Location | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ViewDomainPair:
+    """One ``(start, range)`` pair of ST 0601.19 §8.142 Item 142, View
+    Domain. ``range_deg`` is always non-negative — "the angular range
+    specifies the limit from the starting point to the sensor's maximum
+    value"."""
+
+    start_deg: float
+    range_deg: float
+
+
+@dataclass(frozen=True, slots=True)
+class ViewDomain:
+    """ST 0601.19 §8.142 Item 142 — up to three ``ViewDomainPair``s
+    (azimuth, elevation, roll, in that fixed order); a pair absent from
+    the wire (either an explicit zero-length marker or trailing
+    truncation) decodes to ``None``."""
+
+    azimuth: ViewDomainPair | None = None
+    elevation: ViewDomainPair | None = None
+    roll: ViewDomainPair | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SdccFlpField:
+    """One captured ST 0601.19 §8.102 Item 102 (SDCC-FLP) occurrence, on
+    ``UasDatalinkLs.sdcc_flps``. MULTI-INSTANCE (Table 1 "Multiples
+    Allowed" = Yes): each wire occurrence refines the accuracy of the
+    Local Set items that immediately precede it. ``preceding_tags`` is
+    the wire-order item tags (known or unknown, but never another Item
+    102) immediately before this occurrence; ``bytes`` is the raw
+    SDCC-FLP pack — decode it with ``decode_sdcc_flp``.
+
+    ``bytes`` round-trips byte-exact even for a malformed or
+    foreign-encoder pack this binding cannot parse; re-encoding a record
+    re-emits every ``sdcc_flps`` entry verbatim, grouped together in
+    tag-ascending position (the *original* interleaving recorded by
+    ``preceding_tags`` is therefore not guaranteed to be reproduced on
+    re-encode — see the Rust ``SdccFlpField`` rustdoc)."""
+
+    preceding_tags: tuple[int, ...]
+    bytes: bytes
+
+
+# ---------------------------------------------------------------------------
 # ST 0601 UAS Datalink Local Set
 # ---------------------------------------------------------------------------
 
@@ -766,6 +1023,22 @@ class UasDatalinkLs:
     icing_detected: IcingDetected | int | None = None
     sensor_fov_name: SensorFovName | int | None = None
     operational_mode: OperationalMode | int | None = None
+    # Pack & list items (WP-C Table C1, tags 81/102/115/116/121/122/127/
+    # 128/130/138/140/141/142/143)
+    image_horizon: ImageHorizonPixels | None = None
+    control_commands: tuple[ControlCommand, ...] = ()
+    control_command_verification: tuple[int, ...] | None = None
+    active_wavelengths: tuple[int, ...] | None = None
+    sensor_frame_rate: SensorFrameRate | None = None
+    metadata_substream_id: MetadataSubstreamId | None = None
+    country_codes: CountryCodes | None = None
+    wavelengths_list: tuple[WavelengthRecord, ...] | None = None
+    airbase_locations: AirbaseLocations | None = None
+    payload_list: PayloadList | None = None
+    weapons_stores: tuple[WeaponsStore, ...] | None = None
+    waypoint_list: tuple[Waypoint, ...] | None = None
+    view_domain: ViewDomain | None = None
+    sdcc_flps: tuple[SdccFlpField, ...] = ()
     # Pass-through
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
@@ -953,6 +1226,38 @@ class CoreId:
 decode_core_id = _native_mod.decode_core_id
 encode_core_id = _native_mod.encode_core_id
 core_id_text = _native_mod.core_id_text
+
+
+# ---------------------------------------------------------------------------
+# ST 1010.3 SDCC-FLP (Standard Deviation and Correlation Coefficient
+# pack, Floating-Point variant) — general-purpose, not ST 0601-specific.
+# Carried inside ST 0601 Item 102 (see ``SdccFlpField``), but usable by
+# any Parent Document.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SdccFlp:
+    """One parsed SDCC-FLP (ST 1010.3 §6-§7): an N×N symmetric matrix —
+    N standard deviations on the diagonal, N(N-1)/2 correlation
+    coefficients in the upper triangle (row-major, i<j).
+
+    ``correlations`` is always the full ``matrix_size * (matrix_size - 1)
+    / 2``-length triangle regardless of how many the wire actually
+    carried — absent (sparse-mode-omitted) slots are reconstituted as
+    ``0.0``; ``correlation_present`` marks which slots the wire actually
+    carried (all ``True`` in full/non-sparse mode). ``std_devs`` is empty
+    when the wire carried no standard-deviation data at all (``Slen==0``
+    — spec-legal)."""
+
+    matrix_size: int
+    std_devs: tuple[float, ...] = ()
+    correlations: tuple[float, ...] = ()
+    correlation_present: tuple[bool, ...] = ()
+
+
+decode_sdcc_flp = _native_mod.decode_sdcc_flp
+encode_sdcc_flp_mode2 = _native_mod.encode_sdcc_flp_mode2
 
 
 # ---------------------------------------------------------------------------
@@ -1179,6 +1484,22 @@ __all__: list[str] = [
     "OperationalMode",
     "PlatformStatus",
     "SensorControlMode",
+    "ImageHorizonPixels",
+    "ControlCommand",
+    "SensorFrameRate",
+    "MetadataSubstreamId",
+    "CountryCodes",
+    "WavelengthRecord",
+    "Location",
+    "AirbaseLocations",
+    "PayloadType",
+    "PayloadRecord",
+    "PayloadList",
+    "WeaponsStore",
+    "Waypoint",
+    "ViewDomainPair",
+    "ViewDomain",
+    "SdccFlpField",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",
@@ -1192,6 +1513,9 @@ __all__: list[str] = [
     "decode_core_id",
     "encode_core_id",
     "core_id_text",
+    "SdccFlp",
+    "decode_sdcc_flp",
+    "encode_sdcc_flp_mode2",
     "MismmsViolation",
     "validate_mismms",
 ]

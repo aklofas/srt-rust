@@ -27,6 +27,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Only 1 of 143 spec items remains untyped: Tag 66 (deprecated,
   permanently unknown-passthrough by design).
 
+### Added — Python bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
+
+- `tstrans.klv` gains frozen dataclasses mirroring every WP-C
+  `UasDatalinkLs` pack/list field, following the existing `VTargetPack`
+  nested-struct-list pattern: `ImageHorizonPixels`, `ControlCommand`,
+  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
+  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
+  (codepoint enum) plus `PayloadRecord`/`PayloadList`, `WeaponsStore`
+  (with `general_status`/`fuze_enabled`/`laser_enabled`/
+  `target_enabled`/`weapon_armed` properties), `Waypoint`,
+  `ViewDomainPair`/`ViewDomain`, and `SdccFlpField` — all wired through
+  `decode_uas_datalink`/`encode_uas_datalink`.
+- New standalone `tstrans.klv.SdccFlp` dataclass plus `decode_sdcc_flp`/
+  `encode_sdcc_flp_mode2` entry points mirroring the general-purpose
+  `klv::st1010` module (usable independent of ST 0601 — see the module
+  docstring).
+- `is_st0601_typed_tag` (the internal predicate gating the Python
+  binding's `unknown` collision-drop on encode) now covers every WP-C
+  tag, including Tag 102 — whose predicate status was deferred pending
+  its multi-instance modeling, which landed in Task C4. A
+  caller-supplied `unknown` entry at any WP-C tag is now silently
+  dropped (typed wins) rather than surviving into the encoded record.
+
 ### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
 
 - 7 previously-passthrough MISB ST 0601 tags encoded as "Variable-Length

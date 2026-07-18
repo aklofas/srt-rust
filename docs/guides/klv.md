@@ -211,6 +211,25 @@ verifying decoders, missing mandatory tags under
 For the complete typed-item list — which tags are typed, which are still
 pass-through — see [reference/compatibility.md](/docs/reference/compatibility.md).
 
+### Restricted vs extended items
+
+Four ST 0601 items have an extended-range IMAPB twin added in a later
+revision: Item 22 (Target Width) / Item 96, Item 38 (Density Altitude) /
+Item 103, Item 75 (Sensor Ellipsoid Height) / Item 104, and Item 76
+(Alternate Platform Ellipsoid Height) / Item 105. Both members of each
+pair map the same real-world quantity — the extended item just widens
+the encodable range (e.g. Target Width grows from `[0, 10000]` m to
+`[0, 1500000]` m) using ST 1201.5 IMAPB instead of a fixed-width
+`uint16`. Per ST 0601.19 requirements 0601.9-20/-21, a decoder that
+understands the extended item shall use it and ignore the restricted
+twin when both are present in a record. `UasDatalinkLs` decodes and
+populates *both* fields when both tags are present — it does not drop
+the restricted one — but callers reading a decoded record and encoders
+producing a new one should prefer the extended field. Item 69 (Alternate
+Platform Altitude) is a related but distinct plain-altitude item with no
+IMAPB twin of its own; see its rustdoc for the disambiguation from the
+76/105 ellipsoid-height pair.
+
 ## Encoding
 
 `encode_to_vec(&record) -> Result<Vec<u8>, KlvEncodeError>` is the happy

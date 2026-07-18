@@ -73,6 +73,11 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
     /// for the extended [-900, 40000] m range use
     /// [`Self::sensor_ellipsoid_height_extended_m`] (Item 104, IMAPB).
+    /// Per ST 0601.19 requirements 0601.9-20/-21, a decoder that
+    /// understands Item 104 shall use it and ignore this restricted
+    /// twin when both are present; this struct populates both fields
+    /// on decode — prefer [`Self::sensor_ellipsoid_height_extended_m`]
+    /// when producing new records.
     pub sensor_ellipsoid_height_m: Option<f64>,
     /// Item 16: Sensor Horizontal FOV — encode range [0, 180] deg (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -98,6 +103,11 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
     /// for the extended [0, 1500000] m range use
     /// [`Self::target_width_extended_m`] (Item 96, IMAPB).
+    /// Per ST 0601.19 requirements 0601.9-20/-21, a decoder that
+    /// understands Item 96 shall use it and ignore this restricted
+    /// twin when both are present; this struct populates both fields
+    /// on decode — prefer [`Self::target_width_extended_m`] when
+    /// producing new records.
     pub target_width_m: Option<f64>,
     /// Item 23: Frame Center Latitude — encode range [-90, 90] deg (int32).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -218,6 +228,11 @@ pub struct UasDatalinkLs {
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`];
     /// for the extended [-900, 40000] m range use
     /// [`Self::density_altitude_extended_m`] (Item 103, IMAPB).
+    /// Per ST 0601.19 requirements 0601.9-20/-21, a decoder that
+    /// understands Item 103 shall use it and ignore this restricted
+    /// twin when both are present; this struct populates both fields
+    /// on decode — prefer [`Self::density_altitude_extended_m`] when
+    /// producing new records.
     pub density_altitude_m: Option<f64>,
     /// Item 49: Differential Pressure — encode range [0, 5000] mbar (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -274,7 +289,9 @@ pub struct UasDatalinkLs {
     /// Height, a WGS84 ellipsoid-height item), not this plain-altitude item;
     /// Item 69 has no IMAPB extended-range twin of its own. Per ST 0601.19
     /// §8.105, legacy systems preferring one representation should favor
-    /// Item 105 over Item 76 over this item.
+    /// Item 105 over Item 76 over this item — consistent with the
+    /// requirements 0601.9-20/-21 extended-representation precedence rule
+    /// on the 76/105 pair (see [`Self::alternate_platform_ellipsoid_height_m`]).
     pub alternate_platform_alt_m: Option<f64>,
     /// Item 71: Alternate Platform Heading — encode range [0, 360] deg (uint16).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
@@ -284,6 +301,12 @@ pub struct UasDatalinkLs {
     /// [`crate::error::KlvEncodeError::OutOfRange`]; for the extended
     /// [-900, 40000] m range use
     /// [`Self::alternate_platform_ellipsoid_height_extended_m`] (Item 105, IMAPB).
+    /// Per ST 0601.19 requirements 0601.9-20/-21, a decoder that
+    /// understands Item 105 shall use it and ignore this restricted
+    /// twin when both are present; this struct populates both fields
+    /// on decode — prefer
+    /// [`Self::alternate_platform_ellipsoid_height_extended_m`] when
+    /// producing new records.
     pub alternate_platform_ellipsoid_height_m: Option<f64>,
 
     // Sensor velocity (tags 79-80)
@@ -304,26 +327,33 @@ pub struct UasDatalinkLs {
     /// [0, 1500000] m, wire length 1..=8 bytes (encode emits 3 bytes).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     /// Extended-range twin of [`Self::target_width_m`] (Item 22, uint16,
-    /// [0, 10000] m).
+    /// [0, 10000] m) — see that field's docs for the ST 0601.19
+    /// extended-representation precedence rule (prefer this field).
     pub target_width_extended_m: Option<f64>,
     /// Item 103: Density Altitude Extended — ST 1201.5 IMAPB range
     /// [-900, 40000] m, wire length 1..=8 bytes (encode emits 3 bytes).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     /// Extended-range twin of [`Self::density_altitude_m`] (Item 38,
-    /// uint16, [-900, 19000] m).
+    /// uint16, [-900, 19000] m) — see that field's docs for the
+    /// ST 0601.19 extended-representation precedence rule (prefer this
+    /// field).
     pub density_altitude_extended_m: Option<f64>,
     /// Item 104: Sensor Ellipsoid Height Extended — ST 1201.5 IMAPB range
     /// [-900, 40000] m, wire length 1..=8 bytes (encode emits 3 bytes).
     /// Values outside raise [`crate::error::KlvEncodeError::OutOfRange`].
     /// Extended-range twin of [`Self::sensor_ellipsoid_height_m`]
-    /// (Item 75, uint16, [-900, 19000] m).
+    /// (Item 75, uint16, [-900, 19000] m) — see that field's docs for
+    /// the ST 0601.19 extended-representation precedence rule (prefer
+    /// this field).
     pub sensor_ellipsoid_height_extended_m: Option<f64>,
     /// Item 105: Alternate Platform Ellipsoid Height Extended —
     /// ST 1201.5 IMAPB range [-900, 40000] m, wire length 1..=8 bytes
     /// (encode emits 3 bytes). Values outside raise
     /// [`crate::error::KlvEncodeError::OutOfRange`]. Extended-range twin
     /// of [`Self::alternate_platform_ellipsoid_height_m`] (Item 76,
-    /// uint16, [-900, 19000] m); see also [`Self::alternate_platform_alt_m`]
+    /// uint16, [-900, 19000] m) — see that field's docs for the
+    /// ST 0601.19 extended-representation precedence rule (prefer this
+    /// field); see also [`Self::alternate_platform_alt_m`]
     /// (Item 69) for the disambiguation from plain (non-ellipsoid) altitude.
     pub alternate_platform_ellipsoid_height_extended_m: Option<f64>,
     /// Item 109: Range To Recovery Location — distance from current

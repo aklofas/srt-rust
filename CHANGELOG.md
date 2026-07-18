@@ -49,7 +49,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     parse/encode already exist at `klv::st1010`, multi-instance
     positional capture into the model is a separate pending task).
 
-### Added — ST 0601 pack/list substrate + 6 simple DLP items typed (128 of 143 total)
+### Added — ST 0601 pack/list substrate + 6 simple DLP items typed (134 of 143 total)
 
 - New pack/list dispatch (`Encoding::Pack` in `tags.rs`, per-tag
   parse/emit functions in the new `klv::st0601::packs` module) for

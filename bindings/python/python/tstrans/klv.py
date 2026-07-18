@@ -546,6 +546,41 @@ class OperationalMode(enum.Enum):
 
 
 # ---------------------------------------------------------------------------
+# ST 0601.19 WP-B coded enums (Items 125, 126)
+# ---------------------------------------------------------------------------
+
+
+class PlatformStatus(enum.Enum):
+    """ST 0601.19 §8.125 Item 125 — operational status of the platform."""
+
+    ACTIVE = 0
+    PRE_FLIGHT = 1
+    PRE_FLIGHT_TAXIING = 2
+    RUN_UP = 3
+    TAKE_OFF = 4
+    INGRESS = 5
+    MANUAL_OPERATION = 6
+    AUTOMATED_ORBIT = 7
+    TRANSITIONING = 8
+    EGRESS = 9
+    LANDING = 10
+    LANDED_TAXIING = 11
+    LANDED_PARKED = 12
+
+
+class SensorControlMode(enum.Enum):
+    """ST 0601.19 §8.126 Item 126 — what is currently controlling the sensor."""
+
+    OFF = 0
+    HOME_POSITION = 1
+    UNCONTROLLED = 2
+    MANUAL_CONTROL = 3
+    CALIBRATING = 4
+    AUTO_HOLDING_POSITION = 5
+    AUTO_TRACKING = 6
+
+
+# ---------------------------------------------------------------------------
 # ST 0601 UAS Datalink Local Set
 # ---------------------------------------------------------------------------
 
@@ -675,6 +710,34 @@ class UasDatalinkLs:
     # Sensor velocity (tags 79-80)
     sensor_north_velocity: float | None = None
     sensor_east_velocity: float | None = None
+    # IMAPB extended items (ST 1201.5, tags 96, 103-105, 109, 112-114,
+    # 117-120, 132, 134)
+    target_width_extended_m: float | None = None
+    density_altitude_extended_m: float | None = None
+    sensor_ellipsoid_height_extended_m: float | None = None
+    alternate_platform_ellipsoid_height_extended_m: float | None = None
+    range_to_recovery_km: float | None = None
+    platform_course_angle_deg: float | None = None
+    altitude_agl_m: float | None = None
+    radar_altimeter_m: float | None = None
+    sensor_azimuth_rate_dps: float | None = None
+    sensor_elevation_rate_dps: float | None = None
+    sensor_roll_rate_dps: float | None = None
+    mi_storage_percent_full: float | None = None
+    transmission_frequency_mhz: float | None = None
+    zoom_percentage: float | None = None
+    # Var-length int/enum items (ST 0601 WP-B Table B2, tags 110-139)
+    time_airborne_s: int | None = None
+    propulsion_unit_speed_rpm: int | None = None
+    navsats_in_view: int | None = None
+    positioning_method_source: int | None = None  # bitfield: see Rust rustdoc for bit table
+    platform_status: PlatformStatus | int | None = None
+    sensor_control_mode: SensorControlMode | int | None = None
+    take_off_time_us: int | None = None
+    mi_storage_capacity_gb: int | None = None
+    leap_seconds: int | None = None
+    correction_offset_us: int | None = None
+    active_payloads: bytes | None = None  # Tag 139 bitmask, LSB-first
     # Misc
     generic_flag_data: int | None = None
     security_local_set: bytes | None = None  # Tag 48 → ST 0102
@@ -707,6 +770,16 @@ class UasDatalinkLs:
     unknown: tuple[tuple[int, bytes], ...] = ()
     field_errors: tuple[KlvFieldError, ...] = ()
     sentinel_tags: tuple[int, ...] = ()
+    # Tags whose ST 1201.5 IMAPB wire value decoded to a spec-defined
+    # special value rather than a normal-range float. Each entry is
+    # ``(tag, code, payload)`` where ``code`` is one of ``"below_min"``,
+    # ``"above_max"``, ``"pos_infinity"``, ``"neg_infinity"``,
+    # ``"pos_quiet_nan"``, ``"neg_quiet_nan"``, ``"pos_signaling_nan"``,
+    # ``"neg_signaling_nan"``, ``"user_defined"``, and ``payload`` is the
+    # NaN-id/signal value (0 for the payload-less codes). Mirrors
+    # ``sentinel_tags`` encode semantics: a non-None typed field wins over
+    # a matching ``imapb_specials`` entry.
+    imapb_specials: tuple[tuple[int, str, int], ...] = ()
 
     def with_(self, **changes: object) -> "UasDatalinkLs":
         """Return a copy with the named fields replaced. The typed sets
@@ -924,7 +997,7 @@ def patch_uas_datalink(raw: bytes, edits: UasDatalinkLs | dict[str, object]) -> 
     (e.g. ``{"corner_lat_p1_deg": 33.99}``) or a partial
     ``UasDatalinkLs`` itself — ``None`` fields leave the input
     untouched. Tags outside the typed model can be replaced through the
-    ``unknown`` field: ``{"unknown": ((103, b"..."),)}``. Edited tags
+    ``unknown`` field: ``{"unknown": ((200, b"..."),)}``. Edited tags
     absent from the input are inserted before the trailing checksum.
     Bytes after the declared outer length are preserved verbatim.
     ``universal_label`` and ``declared_version`` are accepted but
@@ -1104,6 +1177,8 @@ __all__: list[str] = [
     "IcingDetected",
     "SensorFovName",
     "OperationalMode",
+    "PlatformStatus",
+    "SensorControlMode",
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",

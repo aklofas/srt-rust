@@ -8,6 +8,8 @@ from tstrans.klv import (
     IcingDetected,
     OperationalMode,
     OutOfRangePolicy,
+    PlatformStatus,
+    SensorControlMode,
     SensorFovName,
     UasDatalinkLs,
     decode_uas_datalink,
@@ -418,3 +420,183 @@ def test_sentinel_meaning_lookup_reserved_and_not_available_tags():
     # "not_available" too.
     for tag in list(range(26, 34)) + list(range(82, 90)):
         assert st0601_sentinel_meaning(tag) == "not_available", tag
+
+
+# ---------------------------------------------------------------------------
+# WP-B: Table B1 IMAPB f64 fields — round-trip within quantization tolerance
+# ---------------------------------------------------------------------------
+
+# (field, example value from Table B1, tolerance ~2x the field's fixed-point
+# IMAPB quantization step at its default_len). Wire-level byte correctness
+# is already covered by the tst-core spec-vector tests (Task B2); this is a
+# Python <-> Rust marshalling check, same rationale as the WP-A _F64_FIELDS
+# table above.
+_IMAPB_F64_FIELDS = [
+    ("target_width_extended_m", 13898.5463, 0.5),
+    ("density_altitude_extended_m", 23456.24, 0.015625),
+    ("sensor_ellipsoid_height_extended_m", 23456.24, 0.015625),
+    ("alternate_platform_ellipsoid_height_extended_m", 23456.24, 0.015625),
+    ("range_to_recovery_km", 1.625, 0.0078125),
+    ("platform_course_angle_deg", 125.0, 0.03125),
+    ("altitude_agl_m", 2150.0, 0.015625),
+    ("radar_altimeter_m", 2154.50, 0.015625),
+    ("sensor_azimuth_rate_dps", 1.0, 0.125),
+    ("sensor_elevation_rate_dps", 0.004176, 0.00048828125),
+    ("sensor_roll_rate_dps", -50.0, 0.125),
+    ("mi_storage_percent_full", 72.0, 0.0078125),
+    ("transmission_frequency_mhz", 2400.0, 0.03125),
+    ("zoom_percentage", 55.0, 0.0078125),
+]
+
+
+@pytest.mark.parametrize("field,value,tol", _IMAPB_F64_FIELDS)
+def test_wpb_imapb_f64_field_round_trip(field, value, tol):
+    """Table B1: every IMAPB f64 field survives encode -> decode within
+    its fixed-point quantization step."""
+    rec = UasDatalinkLs(**{field: value})
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    got = getattr(back, field)
+    assert got is not None, f"{field} must round-trip non-None"
+    assert abs(got - value) < tol, f"{field}: got {got}, want {value} (tol {tol})"
+    assert back.field_errors == ()
+
+
+# ---------------------------------------------------------------------------
+# WP-B: Table B2 var-length int fields — exact round-trip
+# ---------------------------------------------------------------------------
+
+_VARINT_FIELDS = [
+    ("time_airborne_s", 19887),
+    ("propulsion_unit_speed_rpm", 3000),
+    ("navsats_in_view", 7),
+    ("positioning_method_source", 3),
+    ("take_off_time_us", 1_529_588_637_122_999),
+    ("mi_storage_capacity_gb", 10000),
+    ("leap_seconds", 30),
+    ("correction_offset_us", 5025678901),
+]
+
+
+@pytest.mark.parametrize("field,value", _VARINT_FIELDS)
+def test_wpb_varint_field_round_trip_exact(field, value):
+    """Table B2: var-length int fields are not fixed-point quantized —
+    they round-trip byte-exact."""
+    rec = UasDatalinkLs(**{field: value})
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert getattr(back, field) == value
+    assert back.field_errors == ()
+
+
+def test_wpb_active_payloads_bytes_round_trip_exact():
+    rec = UasDatalinkLs(active_payloads=b"\x0b")
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.active_payloads == b"\x0b"
+    assert isinstance(back.active_payloads, bytes)
+
+
+# ---------------------------------------------------------------------------
+# WP-B: Table B2 coded enums (platform_status, sensor_control_mode)
+# ---------------------------------------------------------------------------
+
+
+def test_platform_status_known_round_trip():
+    rec = UasDatalinkLs(platform_status=PlatformStatus.EGRESS)
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.platform_status == PlatformStatus.EGRESS
+
+
+def test_platform_status_unknown_int_round_trip():
+    rec = UasDatalinkLs(platform_status=222)
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.platform_status == 222
+    assert isinstance(back.platform_status, int)
+    assert not isinstance(back.platform_status, PlatformStatus)
+
+
+def test_sensor_control_mode_known_round_trip():
+    rec = UasDatalinkLs(sensor_control_mode=SensorControlMode.AUTO_TRACKING)
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.sensor_control_mode == SensorControlMode.AUTO_TRACKING
+
+
+def test_sensor_control_mode_unknown_int_round_trip():
+    rec = UasDatalinkLs(sensor_control_mode=201)
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.sensor_control_mode == 201
+    assert isinstance(back.sensor_control_mode, int)
+
+
+# ---------------------------------------------------------------------------
+# WP-B: imapb_specials side-channel — both directions
+# ---------------------------------------------------------------------------
+
+
+def test_imapb_specials_payload_less_code_round_trips():
+    """tag 113 (altitude_agl_m) carrying the BelowMin special: the typed
+    field stays None and the special re-appears in imapb_specials."""
+    rec = UasDatalinkLs(imapb_specials=((113, "below_min", 0),))
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.altitude_agl_m is None
+    assert (113, "below_min", 0) in back.imapb_specials
+
+
+def test_imapb_specials_payload_carrying_code_round_trips_losslessly():
+    """tag 96 (target_width_extended_m) carrying a positive quiet NaN with
+    a non-zero payload — the payload must survive exactly."""
+    rec = UasDatalinkLs(imapb_specials=((96, "pos_quiet_nan", 5),))
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.target_width_extended_m is None
+    assert (96, "pos_quiet_nan", 5) in back.imapb_specials
+
+
+def test_imapb_specials_value_wins_over_special_entry():
+    """Mirrors sentinel_tags: if the typed field is also set, the value
+    wins and the special entry is not re-emitted."""
+    rec = UasDatalinkLs(
+        altitude_agl_m=1234.0,
+        imapb_specials=((113, "above_max", 0),),
+    )
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    assert back.altitude_agl_m is not None
+    assert abs(back.altitude_agl_m - 1234.0) < 0.02
+    assert not any(t == 113 for t, _c, _p in back.imapb_specials)
+
+
+def test_imapb_specials_all_nine_codes_round_trip():
+    # One IMAPB tag per code (a wire record can carry at most one TLV per
+    # tag, so distinct tags avoid any duplicate-tag ambiguity while still
+    # exercising every code string in both crossing directions).
+    tag_code_payload = [
+        (96, "below_min", 0),
+        (103, "above_max", 0),
+        (104, "pos_infinity", 0),
+        (105, "neg_infinity", 0),
+        (109, "pos_quiet_nan", 5),
+        (112, "neg_quiet_nan", 5),
+        (113, "pos_signaling_nan", 5),
+        (114, "neg_signaling_nan", 5),
+        (117, "user_defined", 3),
+    ]
+    rec = UasDatalinkLs(imapb_specials=tuple(tag_code_payload))
+    back = decode_uas_datalink(encode_uas_datalink(rec))
+    for entry in tag_code_payload:
+        assert entry in back.imapb_specials, f"missing {entry} in {back.imapb_specials}"
+
+
+# ---------------------------------------------------------------------------
+# WP-B: OutOfRangePolicy.INDICATOR for IMAPB fields (tag 113)
+# ---------------------------------------------------------------------------
+
+
+def test_encode_imapb_out_of_range_indicator_policy():
+    """tag 113 (altitude_agl_m, range [-900, 40000]): 50_000.0 is above
+    max. Default policy raises; INDICATOR emits the AboveMax special
+    (wire bytes E1 00 00 at default_len=3) instead."""
+    rec = UasDatalinkLs(altitude_agl_m=50_000.0)
+    with pytest.raises(KlvEncodeError):
+        encode_uas_datalink(rec)
+    raw = encode_uas_datalink(rec, out_of_range_policy=OutOfRangePolicy.INDICATOR)
+    assert isinstance(raw, bytes)
+    back = decode_uas_datalink(raw)
+    assert back.altitude_agl_m is None, "IMAPB special field must be None after decode"
+    assert (113, "above_max", 0) in back.imapb_specials

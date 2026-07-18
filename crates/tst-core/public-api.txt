@@ -2388,6 +2388,23 @@ impl core::marker::Unpin for tst_core::klv::st0601::PayloadRecord
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::PayloadRecord
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::PayloadRecord
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::PayloadRecord
+pub struct tst_core::klv::st0601::SdccFlpField
+pub tst_core::klv::st0601::SdccFlpField::bytes: alloc::vec::Vec<u8>
+pub tst_core::klv::st0601::SdccFlpField::preceding_tags: alloc::vec::Vec<u32>
+impl core::clone::Clone for tst_core::klv::st0601::SdccFlpField
+pub fn tst_core::klv::st0601::SdccFlpField::clone(&self) -> tst_core::klv::st0601::SdccFlpField
+impl core::cmp::PartialEq for tst_core::klv::st0601::SdccFlpField
+pub fn tst_core::klv::st0601::SdccFlpField::eq(&self, &tst_core::klv::st0601::SdccFlpField) -> bool
+impl core::fmt::Debug for tst_core::klv::st0601::SdccFlpField
+pub fn tst_core::klv::st0601::SdccFlpField::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::SdccFlpField
+impl core::marker::Freeze for tst_core::klv::st0601::SdccFlpField
+impl core::marker::Send for tst_core::klv::st0601::SdccFlpField
+impl core::marker::Sync for tst_core::klv::st0601::SdccFlpField
+impl core::marker::Unpin for tst_core::klv::st0601::SdccFlpField
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::SdccFlpField
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::SdccFlpField
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::SdccFlpField
 pub struct tst_core::klv::st0601::SensorFrameRate
 pub tst_core::klv::st0601::SensorFrameRate::denominator: u64
 pub tst_core::klv::st0601::SensorFrameRate::numerator: u64
@@ -2504,6 +2521,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::range_to_recovery_km: core::option::Op
 pub tst_core::klv::st0601::UasDatalinkLs::relative_humidity_pct: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::rvt: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::sar_mi_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::klv::st0601::UasDatalinkLs::sdcc_flps: alloc::vec::Vec<tst_core::klv::st0601::SdccFlpField>
 pub tst_core::klv::st0601::UasDatalinkLs::security_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::segment_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::klv::st0601::UasDatalinkLs::sensor_alt_m: core::option::Option<f64>
@@ -7110,6 +7128,7 @@ pub tst_core::UasDatalinkLs::range_to_recovery_km: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::relative_humidity_pct: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::rvt: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::sar_mi_local_set: core::option::Option<alloc::vec::Vec<u8>>
+pub tst_core::UasDatalinkLs::sdcc_flps: alloc::vec::Vec<tst_core::klv::st0601::SdccFlpField>
 pub tst_core::UasDatalinkLs::security_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::segment_local_set: core::option::Option<alloc::vec::Vec<u8>>
 pub tst_core::UasDatalinkLs::sensor_alt_m: core::option::Option<f64>

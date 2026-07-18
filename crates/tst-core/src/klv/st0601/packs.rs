@@ -11,8 +11,11 @@
 //! Rate Pack), 143 (Metadata Substream Id) — plus Task C3's VLP series
 //! packs: 122 (Country Codes), 128 (Wavelengths List), 130 (Airbase
 //! Locations), 138 (Payload List), 140 (Weapons Stores), 141 (Waypoint
-//! List), 142 (View Domain). Tag 102 (SDCC-FLP) lives in `klv::st1010`
-//! instead (a general-purpose MISB construct, not ST 0601-specific).
+//! List), 142 (View Domain). Tag 102 (SDCC-FLP, `UasDatalinkLs::sdcc_flps`,
+//! Task C4) is NOT here: its wire-format parser lives in `klv::st1010`
+//! instead (a general-purpose MISB construct, not ST 0601-specific), and
+//! its multi-instance positional-capture dispatch lives directly in
+//! `decode.rs`/`encode.rs` rather than a `packs::parse_*`/`emit_*` pair.
 
 use alloc::borrow::ToOwned;
 use alloc::string::String;

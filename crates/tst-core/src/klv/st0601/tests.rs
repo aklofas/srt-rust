@@ -6,7 +6,7 @@ use super::encode::{
     encoded_len_with,
 };
 use super::model::{
-    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus, SdccFlpField,
     SensorControlMode, SensorFovName, UasDatalinkLs,
 };
 use super::packs::{
@@ -776,6 +776,14 @@ fn every_typed_tag_round_trips() {
             136 => record.leap_seconds = Some(30),
             137 => record.correction_offset_us = Some(5_025_678_901),
             139 => record.active_payloads = Some(vec![0x0B]),
+            102 => record.sdcc_flps.push(SdccFlpField {
+                preceding_tags: vec![13],
+                bytes: hex(concat!(
+                    "03 84 04",
+                    "3F800000 40000000 40800000",
+                    "3F000000 00000000 BF000000",
+                )),
+            }),
             81 => {
                 record.image_horizon = Some(ImageHorizonPixels {
                     x0_pct: 10,
@@ -954,6 +962,7 @@ fn every_typed_tag_round_trips() {
             136 => back.leap_seconds.is_some(),
             137 => back.correction_offset_us.is_some(),
             139 => back.active_payloads.is_some(),
+            102 => !back.sdcc_flps.is_empty(),
             81 => back.image_horizon.is_some(),
             115 => !back.control_commands.is_empty(),
             116 => back.control_command_verification.is_some(),
@@ -3490,4 +3499,118 @@ fn wpc_view_domain_leading_unknown_pair() {
 
     let re_encoded = encode_with_field(|r| r.view_domain = Some(vd));
     assert_eq!(tlv_value(&re_encoded, 142), Some(v));
+}
+
+// ============================================================================
+// WP-C Task C4: Tag 102 SDCC-FLP positional capture
+// ============================================================================
+
+/// Tag 13 (Sensor Latitude): signed 4-byte, [-90, 90].
+fn enc_lat(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 4];
+    let r = super::tags::lookup(13).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 13, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 14 (Sensor Longitude): signed 4-byte, [-180, 180].
+fn enc_lon(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 4];
+    let r = super::tags::lookup(14).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 14, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 15 (Sensor True Altitude): unsigned 2-byte, [-900, 19000].
+fn enc_alt(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 2];
+    let r = super::tags::lookup(15).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 15, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 5 (Platform Heading Angle): unsigned 2-byte, [0, 360].
+fn enc_heading(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 2];
+    let r = super::tags::lookup(5).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 5, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 6 (Platform Pitch Angle): signed 2-byte, [-20, 20].
+fn enc_pitch(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 2];
+    let r = super::tags::lookup(6).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 6, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 7 (Platform Roll Angle): signed 2-byte, [-50, 50].
+fn enc_roll(v: f64) -> Vec<u8> {
+    let mut out = vec![0u8; 2];
+    let r = super::tags::lookup(7).unwrap().range.unwrap();
+    super::mapping::encode_fixed_range(&r, 7, v, &mut out, OutOfRangePolicy::Error).unwrap();
+    out
+}
+
+/// Tag 102 is MULTI-INSTANCE with positional row->item semantics (the
+/// "Refined Source List" binding, ST 0601.19 §8.102): each occurrence
+/// refines the accuracy of the N Local Set items immediately preceding
+/// it in wire order. Two occurrences over two disjoint preceding-item
+/// groups prove per-occurrence capture (not a single running list).
+#[test]
+fn wpc_sdcc_positional_capture() {
+    // Body: tag13, tag14, tag15 values then a 3x3 SDCC pack (the C1 full
+    // golden), twice with different members to prove per-occurrence
+    // capture.
+    let pack = hex("03 84 04 3F800000 40000000 40800000 3F000000 00000000 BF000000");
+    let mut body = tlv(13, &enc_lat(34.0));
+    body.extend(tlv(14, &enc_lon(-118.0)));
+    body.extend(tlv(15, &enc_alt(1500.0)));
+    body.extend(tlv(102, &pack));
+    body.extend(tlv(5, &enc_heading(90.0)));
+    body.extend(tlv(6, &enc_pitch(1.0)));
+    body.extend(tlv(7, &enc_roll(0.5)));
+    body.extend(tlv(102, &pack));
+    let ls = decode_body(&body);
+    assert_eq!(ls.sdcc_flps.len(), 2);
+    assert_eq!(ls.sdcc_flps[0].preceding_tags, alloc::vec![13, 14, 15]);
+    assert_eq!(ls.sdcc_flps[1].preceding_tags, alloc::vec![5, 6, 7]);
+    let m = crate::klv::st1010::decode_sdcc_flp(&ls.sdcc_flps[0].bytes).unwrap();
+    assert_eq!(m.std_devs, alloc::vec![1.0, 2.0, 4.0]);
+    // Byte-fidelity re-encode:
+    let out = crate::klv::st0601::encode_to_vec(&ls).unwrap();
+    let re = crate::klv::st0601::decode(&out).unwrap();
+    assert_eq!(re.sdcc_flps.len(), 2);
+    assert_eq!(re.sdcc_flps[0].bytes, ls.sdcc_flps[0].bytes);
+}
+
+/// A malformed pack header (truncated BER-OID Matrix Size, here an empty
+/// value) cannot be peeked for N — the occurrence is dropped into
+/// `field_errors` rather than panicking or silently capturing a bogus
+/// zero-length window.
+#[test]
+fn wpc_sdcc_malformed_header_is_field_error_not_panic() {
+    let ls = decode_with_single_tlv(102, &[]);
+    assert!(ls.sdcc_flps.is_empty());
+    assert_eq!(ls.field_errors.len(), 1);
+}
+
+/// Now that Tag 102 is typed (`sdcc_flps`), it is rejected from
+/// `unknown` on encode — the same `ReservedTagInUnknown` contract as
+/// every other typed tag (mirrors
+/// `wpa_nested_set_bytes_move_from_unknown_to_named_fields`'s per-tag
+/// check).
+#[test]
+fn wpc_sdcc_tag_rejected_from_unknown() {
+    let mut rec = UasDatalinkLs::default();
+    rec.unknown.push(OwnedRawField {
+        tag: 102,
+        value: vec![1],
+    });
+    let err = crate::klv::st0601::encode_to_vec(&rec).unwrap_err();
+    assert!(
+        matches!(err, KlvEncodeError::ReservedTagInUnknown { tag: 102 }),
+        "expected ReservedTagInUnknown, got {err:?}"
+    );
 }

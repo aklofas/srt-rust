@@ -345,11 +345,8 @@ pub(crate) fn bit_vector_slots(bitvec: &[u8], n: usize) -> Vec<bool> {
 /// Set items belong to a given SDCC-FLP occurrence. Returns `None` on a
 /// truncated/malformed BER-OID; does not validate the rest of the pack.
 ///
-/// Staged ahead of its consumer (WP-C Task C4, the ST 0601 Tag 102 walker,
-/// per the plan) — only exercised by this module's own test today, so
-/// `dead_code` needs an explicit allow until C4 wires it in. Remove the
-/// allow once that call site lands.
-#[allow(dead_code)]
+/// Consumer: `st0601::decode::apply_typed_tag`'s Tag 102 positional
+/// capture (WP-C Task C4).
 pub(crate) fn peek_matrix_size(bytes: &[u8]) -> Option<usize> {
     read_ber_oid(bytes).ok().map(|(n, _)| n as usize)
 }

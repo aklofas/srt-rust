@@ -2768,6 +2768,22 @@ item = "tst_core::klv::st0601::ControlCommand::fmt"
 reason = "derive impl for the WP-C tag 115 pack struct; exercised the same way"
 
 [[exempt]]
+item = "tst_core::klv::st0601::SdccFlpField"
+reason = "WP-C Task C4 tag 102 pack item (MULTI-INSTANCE, positional capture); round-trips + malformed-header + unknown-rejection in st0601::tests::wpc_sdcc_positional_capture, wpc_sdcc_malformed_header_is_field_error_not_panic, wpc_sdcc_tag_rejected_from_unknown"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SdccFlpField::clone"
+reason = "derive impl for the WP-C tag 102 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SdccFlpField::eq"
+reason = "derive impl for the WP-C tag 102 pack struct; exercised the same way"
+
+[[exempt]]
+item = "tst_core::klv::st0601::SdccFlpField::fmt"
+reason = "derive impl for the WP-C tag 102 pack struct; exercised the same way"
+
+[[exempt]]
 item = "tst_core::klv::st0601::SensorFrameRate"
 reason = "WP-C Task C2 tag 127 pack item; wire byte-vectors + round-trips in st0601::tests::wpc_simple_pack_spec_vectors and st0601::packs::tests"
 

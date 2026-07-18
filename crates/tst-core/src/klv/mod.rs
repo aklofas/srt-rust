@@ -34,6 +34,7 @@ pub mod st0102;
 pub mod st0601;
 pub mod st0605;
 pub mod st0903;
+pub mod st1010;
 pub mod st1204;
 pub mod universal_label;
 
@@ -45,4 +46,5 @@ pub use st0102::{
 };
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
 pub use st0903::{VMTI_LS_UL, VTargetPack, VTargetPackError, VmtiLs};
+pub use st1010::{SdccFlp, decode_sdcc_flp, encode_sdcc_flp_mode2};
 pub use universal_label::UniversalLabel;

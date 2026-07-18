@@ -334,6 +334,39 @@ pub(super) fn each_typed_field<F: FnMut(u8, usize)>(
                 .communications_method
                 .as_ref()
                 .map(|s| str_wire_len(s)),
+            // WP-B Table B2 var-length int/enum fields — shortest-form
+            // length, computed without allocating the value bytes.
+            110 => record
+                .time_airborne_s
+                .map(|v| crate::klv::length::var_uint_min_len(v as u64)),
+            111 => record
+                .propulsion_unit_speed_rpm
+                .map(|v| crate::klv::length::var_uint_min_len(v as u64)),
+            123 => record
+                .navsats_in_view
+                .map(|v| crate::klv::length::var_uint_min_len(v as u64)),
+            124 => record
+                .positioning_method_source
+                .map(|v| crate::klv::length::var_uint_min_len(v as u64)),
+            125 => record
+                .platform_status
+                .map(|v| crate::klv::length::var_uint_min_len(v.to_wire() as u64)),
+            126 => record
+                .sensor_control_mode
+                .map(|v| crate::klv::length::var_uint_min_len(v.to_wire() as u64)),
+            131 => record
+                .take_off_time_us
+                .map(crate::klv::length::var_uint_min_len),
+            133 => record
+                .mi_storage_capacity_gb
+                .map(|v| crate::klv::length::var_uint_min_len(v as u64)),
+            136 => record
+                .leap_seconds
+                .map(|v| crate::klv::length::var_int_min_len(v as i64)),
+            137 => record
+                .correction_offset_us
+                .map(crate::klv::length::var_int_min_len),
+            139 => record.active_payloads.as_ref().map(|v| v.len()),
             // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS
             // so that `byte_length` comes from the single `tags::TAGS` source.
             _ if spec.range.is_some() => super::decode::ranged_entry(spec.id)
@@ -457,6 +490,38 @@ pub(super) fn encode_tag_value(
             .as_ref()
             .map(|s| check_string(135, s, &spec.encoding).map(|_| str_to_bytes(s)))
             .transpose()?,
+        // WP-B Table B2 var-length int/enum fields — always shortest-form.
+        110 => record
+            .time_airborne_s
+            .map(|v| crate::klv::length::write_var_uint_min(v as u64)),
+        111 => record
+            .propulsion_unit_speed_rpm
+            .map(|v| crate::klv::length::write_var_uint_min(v as u64)),
+        123 => record
+            .navsats_in_view
+            .map(|v| crate::klv::length::write_var_uint_min(v as u64)),
+        124 => record
+            .positioning_method_source
+            .map(|v| crate::klv::length::write_var_uint_min(v as u64)),
+        125 => record
+            .platform_status
+            .map(|v| crate::klv::length::write_var_uint_min(v.to_wire() as u64)),
+        126 => record
+            .sensor_control_mode
+            .map(|v| crate::klv::length::write_var_uint_min(v.to_wire() as u64)),
+        131 => record
+            .take_off_time_us
+            .map(crate::klv::length::write_var_uint_min),
+        133 => record
+            .mi_storage_capacity_gb
+            .map(|v| crate::klv::length::write_var_uint_min(v as u64)),
+        136 => record
+            .leap_seconds
+            .map(|v| crate::klv::length::write_var_int_min(v as i64)),
+        137 => record
+            .correction_offset_us
+            .map(crate::klv::length::write_var_int_min),
+        139 => record.active_payloads.clone(),
         // All 69 LinearRange Option<f64> fields — driven from RANGED_FIELDS so
         // the tag→field mapping is the single source of truth across decode + encode.
         _ if spec.range.is_some() => {

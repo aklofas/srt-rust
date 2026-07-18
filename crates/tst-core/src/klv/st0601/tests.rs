@@ -6,7 +6,8 @@ use super::encode::{
     encoded_len_with,
 };
 use super::model::{
-    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, SensorFovName, UasDatalinkLs,
+    EncodeConfig, IcingDetected, OperationalMode, OutOfRangePolicy, PlatformStatus,
+    SensorControlMode, SensorFovName, UasDatalinkLs,
 };
 use super::patch::patch;
 use super::tags::{Encoding, TAGS};
@@ -724,6 +725,17 @@ fn every_typed_tag_round_trips() {
             108 => record.broadcast_source = Some("HOME".to_string()),
             129 => record.target_id = Some("A123".to_string()),
             135 => record.communications_method = Some("Frequency Modulation".to_string()),
+            110 => record.time_airborne_s = Some(19887),
+            111 => record.propulsion_unit_speed_rpm = Some(3000),
+            123 => record.navsats_in_view = Some(7),
+            124 => record.positioning_method_source = Some(3),
+            125 => record.platform_status = Some(PlatformStatus::Egress),
+            126 => record.sensor_control_mode = Some(SensorControlMode::AutoHoldingPosition),
+            131 => record.take_off_time_us = Some(1_529_588_637_122_999),
+            133 => record.mi_storage_capacity_gb = Some(10000),
+            136 => record.leap_seconds = Some(30),
+            137 => record.correction_offset_us = Some(5_025_678_901),
+            139 => record.active_payloads = Some(vec![0x0B]),
             _ => {
                 // Ranged numeric: pick a value at the midpoint of the spec
                 // range. LinearRange tags carry their range in `spec.range`;
@@ -791,6 +803,17 @@ fn every_typed_tag_round_trips() {
             108 => back.broadcast_source.is_some(),
             129 => back.target_id.is_some(),
             135 => back.communications_method.is_some(),
+            110 => back.time_airborne_s.is_some(),
+            111 => back.propulsion_unit_speed_rpm.is_some(),
+            123 => back.navsats_in_view.is_some(),
+            124 => back.positioning_method_source.is_some(),
+            125 => back.platform_status.is_some(),
+            126 => back.sensor_control_mode.is_some(),
+            131 => back.take_off_time_us.is_some(),
+            133 => back.mi_storage_capacity_gb.is_some(),
+            136 => back.leap_seconds.is_some(),
+            137 => back.correction_offset_us.is_some(),
+            139 => back.active_payloads.is_some(),
             2 => back.timestamp_us.is_some(),
             _ => {
                 // For ranged numeric, presence == any of our ranged fields is set.
@@ -2657,4 +2680,162 @@ fn wpa_new_signed_tags_populate_sentinels_and_indicator() {
     let mut rec = UasDatalinkLs::default();
     rec.alternate_platform_lat_deg = Some(95.0);
     assert!(crate::klv::st0601::encode_to_vec_with(&rec, &cfg).is_err());
+}
+
+// ============================================================================
+// WP-B: var-length int/enum fields — new tags 110/111/123-126/131/133/
+// 136/137 + Tag 139 Active Payloads (Table B2 spec vectors)
+// ============================================================================
+
+/// MISB ST 0601.19 §8 worked examples for the 10 WP-B Table B2
+/// var-length int/enum items plus Tag 139 — spec bytes in both
+/// directions (identity big-endian encodings, no quantization tolerance
+/// needed, matching the rigor of `wpa_raw_spec_vectors`). All ten
+/// integer example byte strings are already the encoder's shortest
+/// form, so decode-then-reencode reproduces them exactly.
+#[test]
+fn wpb_var_len_spec_vectors() {
+    let ls = decode_with_single_tlv(110, &[0x4D, 0xAF]);
+    assert_eq!(ls.time_airborne_s, Some(19887));
+    let encoded = encode_with_field(|r| r.time_airborne_s = Some(19887));
+    assert_eq!(tlv_value(&encoded, 110), Some(vec![0x4D, 0xAF]));
+
+    let ls = decode_with_single_tlv(111, &[0x0B, 0xB8]);
+    assert_eq!(ls.propulsion_unit_speed_rpm, Some(3000));
+    let encoded = encode_with_field(|r| r.propulsion_unit_speed_rpm = Some(3000));
+    assert_eq!(tlv_value(&encoded, 111), Some(vec![0x0B, 0xB8]));
+
+    let ls = decode_with_single_tlv(123, &[0x07]);
+    assert_eq!(ls.navsats_in_view, Some(7));
+    let encoded = encode_with_field(|r| r.navsats_in_view = Some(7));
+    assert_eq!(tlv_value(&encoded, 123), Some(vec![0x07]));
+
+    let ls = decode_with_single_tlv(124, &[0x03]);
+    assert_eq!(ls.positioning_method_source, Some(3));
+    let encoded = encode_with_field(|r| r.positioning_method_source = Some(3));
+    assert_eq!(tlv_value(&encoded, 124), Some(vec![0x03]));
+
+    let ls = decode_with_single_tlv(125, &[0x09]);
+    assert_eq!(ls.platform_status, Some(PlatformStatus::Egress));
+    let encoded = encode_with_field(|r| r.platform_status = Some(PlatformStatus::Egress));
+    assert_eq!(tlv_value(&encoded, 125), Some(vec![0x09]));
+
+    let ls = decode_with_single_tlv(126, &[0x05]);
+    assert_eq!(
+        ls.sensor_control_mode,
+        Some(SensorControlMode::AutoHoldingPosition)
+    );
+    let encoded =
+        encode_with_field(|r| r.sensor_control_mode = Some(SensorControlMode::AutoHoldingPosition));
+    assert_eq!(tlv_value(&encoded, 126), Some(vec![0x05]));
+
+    // Tags 131/133/136/137/139 are all >= 128 — need the 2-byte BER-OID
+    // tag helper (`decode_with_single_tlv` only writes a literal 1-byte
+    // tag, which a value >= 0x80 would misparse as a BER-OID continuation
+    // byte). Same reason Table B1's tags 132/134 used this helper.
+    let bytes131 = [0x05, 0x6F, 0x27, 0x1B, 0x5E, 0x41, 0xB7];
+    let ls = decode_with_single_tlv_ber_oid(131, &bytes131);
+    assert_eq!(ls.take_off_time_us, Some(1_529_588_637_122_999));
+    let encoded = encode_with_field(|r| r.take_off_time_us = Some(1_529_588_637_122_999));
+    assert_eq!(tlv_value(&encoded, 131), Some(bytes131.to_vec()));
+
+    let ls = decode_with_single_tlv_ber_oid(133, &[0x27, 0x10]);
+    assert_eq!(ls.mi_storage_capacity_gb, Some(10000));
+    let encoded = encode_with_field(|r| r.mi_storage_capacity_gb = Some(10000));
+    assert_eq!(tlv_value(&encoded, 133), Some(vec![0x27, 0x10]));
+
+    let ls = decode_with_single_tlv_ber_oid(136, &[0x1E]);
+    assert_eq!(ls.leap_seconds, Some(30));
+    let encoded = encode_with_field(|r| r.leap_seconds = Some(30));
+    assert_eq!(tlv_value(&encoded, 136), Some(vec![0x1E]));
+    // Negative shortest-form pin: -30 -> 0xE2.
+    let encoded = encode_with_field(|r| r.leap_seconds = Some(-30));
+    assert_eq!(tlv_value(&encoded, 136), Some(vec![0xE2]));
+
+    let bytes137 = [0x01, 0x2B, 0x8D, 0xC6, 0x35];
+    let ls = decode_with_single_tlv_ber_oid(137, &bytes137);
+    assert_eq!(ls.correction_offset_us, Some(5_025_678_901));
+    let encoded = encode_with_field(|r| r.correction_offset_us = Some(5_025_678_901));
+    assert_eq!(tlv_value(&encoded, 137), Some(bytes137.to_vec()));
+
+    // Tag 139 — Active Payloads: RawBytes, bit i (LSB-first) = Payload ID i.
+    let ls = decode_with_single_tlv_ber_oid(139, &[0x0B]);
+    assert_eq!(ls.active_payloads.as_deref(), Some(&[0x0B][..]));
+    assert_eq!(
+        ls.active_payload_ids().collect::<Vec<_>>(),
+        vec![0u32, 1, 3]
+    );
+    let encoded = encode_with_field(|r| r.active_payloads = Some(vec![0x0B]));
+    assert_eq!(tlv_value(&encoded, 139), Some(vec![0x0B]));
+}
+
+/// Var-length int decode accepts any wire length in `1..=max_len` (not
+/// just the spec example length) — mirrors
+/// `wpb_imapb_variable_length_decode_and_specials` for the Table B2
+/// substrate. An over-`max_len` wire value is a per-field decode error
+/// collected in `field_errors`, not a fatal `decode()` failure. Tag
+/// 124's all-zero bitfield is non-conformant per spec (§8.124 declares
+/// range `1..255`, i.e. at least one bit must be set) but decode stays
+/// lenient and does not reject it.
+#[test]
+fn wpb_var_len_variable_length_decode_and_invalid_length() {
+    // Tag 110 (max_len=4): a 1-byte wire value decodes fine.
+    let ls = decode_with_single_tlv(110, &[0x07]);
+    assert_eq!(ls.time_airborne_s, Some(7));
+
+    // Tag 123 (max_len=1): 2 wire bytes exceeds max_len -> a per-field
+    // InvalidLength error; decode() still returns Ok with the field left
+    // None (same lenient-collection contract as every other typed tag).
+    let tlv = vec![123u8, 2, 0x00, 0x07];
+    let ls = decode(&wrap_st0601(&tlv)).expect("decode collects field errors, does not fail");
+    assert_eq!(ls.navsats_in_view, None);
+    assert_eq!(ls.field_errors.len(), 1);
+    assert!(matches!(
+        ls.field_errors[0],
+        crate::error::KlvFieldError::InvalidLength {
+            tag: 123,
+            expected: 1,
+            got: 2,
+        }
+    ));
+
+    // Tag 124's all-zero bitfield: decode-lenient, no error.
+    let ls = decode_with_single_tlv(124, &[0x00]);
+    assert_eq!(ls.positioning_method_source, Some(0));
+    assert!(ls.field_errors.is_empty());
+}
+
+/// `PlatformStatus`/`SensorControlMode` keep the same `Other(code)`
+/// wire-unknown fallback as the WP-A coded enums (Tags 34/63/77) —
+/// round-trips byte-exact.
+#[test]
+fn wpb_platform_status_and_sensor_control_mode_other_round_trip() {
+    let ls = decode_with_single_tlv(125, &[0xFE]);
+    assert_eq!(ls.platform_status, Some(PlatformStatus::Other(0xFE)));
+    let encoded = encode_with_field(|r| r.platform_status = Some(PlatformStatus::Other(0xFE)));
+    assert_eq!(tlv_value(&encoded, 125), Some(vec![0xFE]));
+
+    let ls = decode_with_single_tlv(126, &[0xFE]);
+    assert_eq!(ls.sensor_control_mode, Some(SensorControlMode::Other(0xFE)));
+    let encoded =
+        encode_with_field(|r| r.sensor_control_mode = Some(SensorControlMode::Other(0xFE)));
+    assert_eq!(tlv_value(&encoded, 126), Some(vec![0xFE]));
+}
+
+/// `active_payload_ids` bit i (LSB-first within a byte) = Payload ID i;
+/// additional bytes extend the ID space upward (byte 1 covers IDs
+/// 8-15). An absent `active_payloads` yields an empty iterator.
+#[test]
+fn wpb_active_payload_ids_multi_byte_extends_upward() {
+    let ls = decode_with_single_tlv_ber_oid(139, &[0x00, 0x01]);
+    assert_eq!(ls.active_payload_ids().collect::<Vec<_>>(), vec![8u32]);
+
+    let ls = decode_with_single_tlv_ber_oid(139, &[0xFF, 0x02]);
+    assert_eq!(
+        ls.active_payload_ids().collect::<Vec<_>>(),
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 9]
+    );
+
+    let ls = UasDatalinkLs::default();
+    assert_eq!(ls.active_payload_ids().count(), 0);
 }

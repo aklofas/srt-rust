@@ -108,6 +108,6 @@ pub use mapping::{St0601SentinelMeaning, st0601_sentinel_meaning};
 pub use mismms::{MismmsViolation, validate_mismms};
 pub use model::{
     Attitude, Corners, EncodeConfig, FieldOfView, GeoPoint, IcingDetected, OperationalMode,
-    OutOfRangePolicy, SensorFovName, UasDatalinkLs,
+    OutOfRangePolicy, PlatformStatus, SensorControlMode, SensorFovName, UasDatalinkLs,
 };
 pub use patch::patch;

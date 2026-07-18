@@ -252,7 +252,6 @@ pub fn write_ber_oid(value: u32, out: &mut [u8]) -> Result<usize, KlvEncodeError
 /// longer inputs are rejected as `InvalidLength` regardless of how permissive
 /// the caller's `max_len` is (a `max_len > 8` must not re-enable silent
 /// leading-byte truncation).
-#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
 pub(crate) fn read_var_uint(bytes: &[u8], max_len: usize, tag: u32) -> Result<u64, KlvFieldError> {
     if bytes.is_empty() || bytes.len() > max_len || bytes.len() > 8 {
         return Err(KlvFieldError::InvalidLength {
@@ -269,23 +268,28 @@ pub(crate) fn read_var_uint(bytes: &[u8], max_len: usize, tag: u32) -> Result<u6
 /// Inherits the 8-byte substrate cap (the `i64` width) via [`read_var_uint`]
 /// delegation — inputs over 8 bytes are rejected regardless of `max_len`,
 /// which also keeps the sign-extension shift below in `0..=56`.
-#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
 pub(crate) fn read_var_int(bytes: &[u8], max_len: usize, tag: u32) -> Result<i64, KlvFieldError> {
     let raw = read_var_uint(bytes, max_len, tag)?;
     let shift = 64 - 8 * bytes.len() as u32;
     Ok(((raw << shift) as i64) >> shift)
 }
 
+/// Byte count [`write_var_uint_min`] would emit for `v` (>= 1). Split out
+/// so a sizing pass (e.g. st0601 `encode::each_typed_field`) can compute
+/// the wire length without allocating a throwaway `Vec`.
+pub(crate) fn var_uint_min_len(v: u64) -> usize {
+    (8 - (v.leading_zeros() / 8) as usize).max(1)
+}
+
 /// Shortest-form big-endian emit (>= 1 byte).
-#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
 pub(crate) fn write_var_uint_min(v: u64) -> alloc::vec::Vec<u8> {
-    let n = (8 - (v.leading_zeros() / 8) as usize).max(1);
+    let n = var_uint_min_len(v);
     v.to_be_bytes()[8 - n..].to_vec()
 }
 
-/// Minimal two's-complement emit preserving the sign bit (>= 1 byte).
-#[allow(dead_code)] // consumed by st0601 WP-B tags (next commit)
-pub(crate) fn write_var_int_min(v: i64) -> alloc::vec::Vec<u8> {
+/// Byte count [`write_var_int_min`] would emit for `v` (>= 1). Sizing
+/// sibling of [`var_uint_min_len`].
+pub(crate) fn var_int_min_len(v: i64) -> usize {
     let bytes = v.to_be_bytes();
     let mut n = 8;
     // Drop redundant leading 0x00 (positive) / 0xFF (negative) while the
@@ -299,7 +303,13 @@ pub(crate) fn write_var_int_min(v: i64) -> alloc::vec::Vec<u8> {
             break;
         }
     }
-    bytes[8 - n..].to_vec()
+    n
+}
+
+/// Minimal two's-complement emit preserving the sign bit (>= 1 byte).
+pub(crate) fn write_var_int_min(v: i64) -> alloc::vec::Vec<u8> {
+    let n = var_int_min_len(v);
+    v.to_be_bytes()[8 - n..].to_vec()
 }
 
 #[cfg(test)]

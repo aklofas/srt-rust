@@ -10626,3 +10626,55 @@ reason = "derive impl for st1204 error; covered by error-path tests"
 [[exempt]]
 item = "tst_core::klv::st1204::St1204Error::fmt"
 reason = "derive impl for st1204 error; covered by error-path tests"
+
+[[surface]]
+item = "tst_core::klv::st1010::SdccFlp"
+owning_tests = ["crates/tst-core/src/klv/st1010.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1010::SdccFlp::correlation"
+owning_tests = ["crates/tst-core/src/klv/st1010.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1010::decode_sdcc_flp"
+owning_tests = ["crates/tst-core/src/klv/st1010.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st1010::encode_sdcc_flp_mode2"
+owning_tests = ["crates/tst-core/src/klv/st1010.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_core::klv::st1010::SdccFlp::clone"
+reason = "derive impl for st1010 SdccFlp; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1010::SdccFlp::eq"
+reason = "derive impl for st1010 SdccFlp; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::st1010::SdccFlp::fmt"
+reason = "derive impl for st1010 SdccFlp; covered by decode/encode tests"
+
+[[exempt]]
+item = "tst_core::klv::SdccFlp"
+reason = "top-level re-export of tst_core::klv::st1010::SdccFlp; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::decode_sdcc_flp"
+reason = "top-level re-export of tst_core::klv::st1010::decode_sdcc_flp; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::encode_sdcc_flp_mode2"
+reason = "top-level re-export of tst_core::klv::st1010::encode_sdcc_flp_mode2; see that entry for coverage"

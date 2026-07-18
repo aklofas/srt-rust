@@ -199,23 +199,30 @@ fn out_of_range_corner_offset_names_the_absolute_corners() {
 fn out_of_range_restricted_tags_name_their_imapb_twins() {
     // The three remaining WP-B restricted/extended twin pairs (38→103,
     // 75→104, 76→105) must hint at their IMAPB twins, same as 22→96.
-    let cases: &[(fn(&mut UasDatalinkLs), &str)] = &[
+    let cases = [
         (
-            |r| r.density_altitude_m = Some(50_000.0),
+            UasDatalinkLs {
+                density_altitude_m: Some(50_000.0),
+                ..UasDatalinkLs::default()
+            },
             "density_altitude_extended_m",
         ),
         (
-            |r| r.sensor_ellipsoid_height_m = Some(50_000.0),
+            UasDatalinkLs {
+                sensor_ellipsoid_height_m: Some(50_000.0),
+                ..UasDatalinkLs::default()
+            },
             "sensor_ellipsoid_height_extended_m",
         ),
         (
-            |r| r.alternate_platform_ellipsoid_height_m = Some(50_000.0),
+            UasDatalinkLs {
+                alternate_platform_ellipsoid_height_m: Some(50_000.0),
+                ..UasDatalinkLs::default()
+            },
             "alternate_platform_ellipsoid_height_extended_m",
         ),
     ];
-    for (set, twin) in cases {
-        let mut rec = UasDatalinkLs::default();
-        set(&mut rec);
+    for (rec, twin) in cases {
         let err = encode_to_vec(&rec).unwrap_err();
         let msg = err.to_string();
         assert!(

@@ -27,6 +27,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Only 1 of 143 spec items remains untyped: Tag 66 (deprecated,
   permanently unknown-passthrough by design).
 
+### Fixed — `klv::st1010::decode_sdcc_flp` hostile Matrix Size abort
+
+- A crafted Element 1 Matrix Size (the BER-OID `N`, attacker-controlled up
+  to `u32::MAX`) could make `decode_sdcc_flp` size its correlation vectors
+  by `N(N-1)/2` *before* reading any correlation byte — a 7-byte input
+  claiming `N` &asymp; `u32::MAX` demanded a ~9.2 EiB allocation and
+  **aborted the process** rather than returning an `Err`. `N` is now
+  bounded against the wire bytes actually remaining (std-dev/correlation
+  byte requirements, or the Bit Vector's bit capacity in sparse mode)
+  before any allocation is sized by it. Reachable from all three typed
+  entry points (Rust `decode_sdcc_flp`, Python, JVM `Klv.decodeSdccFlp`)
+  via the ST 0601 Tag 102 workflow above. New fuzz target
+  `klv_st1010_decode`.
+
 ### Added — Python bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
 
 - `tstrans.klv` gains frozen dataclasses mirroring every WP-C

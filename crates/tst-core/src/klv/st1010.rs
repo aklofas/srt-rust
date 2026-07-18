@@ -152,6 +152,11 @@ pub fn decode_sdcc_flp(bytes: &[u8]) -> Result<SdccFlp, KlvFieldError> {
         parse_mode2(pc1, pc2_buf[0])
     };
 
+    // Bound N *before* any allocation sized by it — see
+    // `check_matrix_size_fits`. Must run ahead of every `corr_slots(n)`
+    // usize computation below (32-bit targets overflow it for large N).
+    check_matrix_size_fits(n_raw, rest.len(), slen, clen, cs)?;
+
     // Element 3: Bit Vector (iff CS==1; §6.3.4). Read unconditionally on
     // `cs` per the Table-4 element order — independent of Clen, which is
     // handled below (a CS==1 + Clen==0 combination is spec-malformed, but
@@ -306,6 +311,61 @@ pub fn encode_sdcc_flp_mode2(
 /// `n==0` (`saturating_sub`).
 fn corr_slots(n: usize) -> usize {
     n.saturating_sub(1) * n / 2
+}
+
+/// Rejects a Matrix Size `N` whose implied Std-Dev / Correlation vectors
+/// could not possibly be backed by `remaining` — the wire bytes still
+/// unread after Elements 1-2 (Matrix Size + Parse Control).
+///
+/// `N` is attacker-controlled via the Element-1 BER-OID (`read_ber_oid`
+/// accepts any value up to `u32::MAX`), and `corr_slots(N) = N(N-1)/2`
+/// grows quadratically. Sizing a `Vec` by that count *before* reading any
+/// correlation byte lets a ~7-byte input demand a multi-exabyte
+/// allocation, which aborts the process rather than returning an `Err`.
+/// This must run before any `usize`-typed use of `N`/`corr_slots(N)`: on a
+/// 32-bit target (thumbv7em/riscv32) that multiplication overflows `usize`
+/// for `N` anywhere near `u32::MAX`, so every size here is computed in
+/// `u64` (always safe — `corr_slots` of `u32::MAX` is a few percent under
+/// `u64::MAX`) and only narrowed to `usize` once a passing bound proves it
+/// small.
+fn check_matrix_size_fits(
+    n_raw: u32,
+    remaining: usize,
+    slen: usize,
+    clen: usize,
+    cs: bool,
+) -> Result<(), KlvFieldError> {
+    let n64 = u64::from(n_raw);
+    let remaining64 = remaining as u64;
+    let slots64 = n64.saturating_sub(1).saturating_mul(n64) / 2;
+
+    // Element 4: N * Slen std-dev bytes, present iff Slen>0 (Table 4).
+    if slen > 0 && n64.saturating_mul(slen as u64) > remaining64 {
+        return Err(KlvFieldError::TruncatedField { tag: 0 });
+    }
+
+    // Element 5, full mode: corr_slots(N) * Clen bytes, present iff
+    // Clen>0 and not sparse — sparse mode transmits only the present
+    // slots (popcount of the Bit Vector), not the full triangle, so this
+    // bound would false-reject a legitimately-sparse large matrix.
+    if clen > 0 && !cs && slots64.saturating_mul(clen as u64) > remaining64 {
+        return Err(KlvFieldError::TruncatedField { tag: 0 });
+    }
+
+    // Element 3 (Bit Vector, read whenever CS==1 regardless of Clen —
+    // see the Element-3 comment below) needs ceil(corr_slots(N)/8) bytes,
+    // i.e. corr_slots(N) <= remaining*8. Applied UNCONDITIONALLY, not
+    // only when CS==1: it is also the only wire-derived anchor for the
+    // Slen==0 && Clen==0 && CS==0 combination — a spec-legal, data-free
+    // pack (Table 4: both are "present iff >0") that transmits zero bytes
+    // for either element, yet still has `present`/`correlations` sized to
+    // `corr_slots(N)` below. Without this unconditional check that
+    // combination would leave N completely unbounded.
+    if slots64 > remaining64.saturating_mul(8) {
+        return Err(KlvFieldError::TruncatedField { tag: 0 });
+    }
+
+    Ok(())
 }
 
 /// Row-major upper-triangular slot index for `(i, j)` with `i < j` in an
@@ -592,6 +652,47 @@ mod tests {
         // i==0 is well within matrix_size=3 — this must be the documented
         // "no std-dev data" panic, not an index-out-of-bounds one.
         let _ = m.correlation(0, 0);
+    }
+
+    #[test]
+    fn sdcc_hostile_matrix_size_returns_err_not_abort() {
+        // Reviewer-confirmed abort vector: BER-OID N ≈ u32::MAX
+        // (8F FF FF FF 7F), Mode 2 PC (84 00: cs=false, clen=4, slen=0).
+        // Pre-fix this aborted the process via a ~9.2 EiB `Vec<bool>`
+        // allocation (`corr_slots(N)` sized before any correlation byte
+        // was read); it must now return an Err.
+        let bytes = hex("8F FF FF FF 7F 84 00");
+        assert!(decode_sdcc_flp(&bytes).is_err());
+    }
+
+    #[test]
+    fn sdcc_matrix_size_exact_fit_and_one_byte_short() {
+        // N=4 (m=6 correlation slots), Mode 2, cs=false, cf_imap=true
+        // (IMAPB, Clen=1), Slen=0. Exactly 6 correlation bytes fits the
+        // new pre-allocation size guard; removing the last byte must
+        // still Err — same truncation outcome as before the fix, just
+        // caught one step earlier — proving the guard's boundary is
+        // exact, not over-conservative.
+        let fits = hex("04 91 00 00 00 00 00 00 00");
+        let m = decode_sdcc_flp(&fits).unwrap();
+        assert_eq!(m.matrix_size, 4);
+        assert_eq!(m.correlations.len(), 6);
+
+        let short = hex("04 91 00 00 00 00 00 00"); // one byte short
+        assert!(decode_sdcc_flp(&short).is_err());
+    }
+
+    #[test]
+    fn sdcc_correlation_special_folds_to_zero() {
+        // N=2, Mode 2, cs=false, cf_imap=true (IMAPB), Clen=4, Slen=0.
+        // Correlation bytes E0 00 00 00 = ImapbSpecial::BelowMin, which
+        // `decode_correlation`'s documented fold collapses to 0.0 (the
+        // "no correlation" absent-value semantic, §8.102.1) rather than
+        // propagating an OutOfRange/Special distinction this pack format
+        // has no slot for.
+        let bytes = hex("02 94 00 E0000000");
+        let m = decode_sdcc_flp(&bytes).unwrap();
+        assert_eq!(m.correlations, alloc::vec![0.0]);
     }
 
     #[test]

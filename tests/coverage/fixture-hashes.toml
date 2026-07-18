@@ -440,5 +440,5 @@ sha256 = "f301c06541cddfd763700ba9962c89331b80b5f6494ddbd14792ec760d97a72c"
 
 [[file]]
 path = "tests/coverage/fuzz-targets.toml"
-sha256 = "cbb983f670e72df4514c88e017e629bb825dda8131ca0a959d93c88c7cf46a04"
+sha256 = "c70c194e0c48af923638f08b672f5f91ae2e37cc9e9832cf41d930ceb0ce211e"
 

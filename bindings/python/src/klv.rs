@@ -22,6 +22,7 @@ use pyo3::types::PyDict;
 use tst_core::error::KlvDecodeError;
 use tst_core::error::KlvFieldError as RustKlvFieldError;
 use tst_core::error::KlvPatchError;
+use tst_core::klv::ImapbSpecial as RustImapbSpecial;
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
@@ -33,7 +34,8 @@ use tst_core::klv::st0102::{
 use tst_core::klv::st0601::{
     EncodeConfig as St0601EncodeConfig, IcingDetected as RustIcingDetected,
     MismmsViolation as RustMismmsViolation, OperationalMode as RustOperationalMode,
-    OutOfRangePolicy as RustOutOfRangePolicy, SensorFovName as RustSensorFovName,
+    OutOfRangePolicy as RustOutOfRangePolicy, PlatformStatus as RustPlatformStatus,
+    SensorControlMode as RustSensorControlMode, SensorFovName as RustSensorFovName,
     St0601SentinelMeaning, UasDatalinkLs, decode as decode_st0601_lenient,
     decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
@@ -277,17 +279,22 @@ fn is_st0102_typed_tag(tag: u32) -> bool {
 }
 
 /// ST 0601 LS typed + reserved tags — mirrors `tags::TAGS` in
-/// `crates/tst-core/src/klv/st0601/tags.rs` (103 entries as of WP-A: 1-65,
-/// 67-80, 82-95, 97-101, 106-108, 129, 135). Tags 66, 81, 96,
-/// 102-105, 109-128, 130-134, 136..=255 are forward-compat and may
-/// legitimately appear in `unknown`. WP-A (Tables A1-A4) extended the
-/// range past 91 — keep this in sync with `tags::TAGS` when new tags are
-/// typed, or a caller-supplied `unknown` entry for a newly-typed tag will
-/// slip past this filter and get rejected downstream by the real Rust
-/// encoder's own (stricter, canonical) check instead of being silently
-/// dropped here per the documented "typed wins" collision policy.
+/// `crates/tst-core/src/klv/st0601/tags.rs` (128 entries as of WP-B: 1-65,
+/// 67-80, 82-101, 103-114, 117-120, 123-126, 129, 131-137, 139). Tags 66,
+/// 81, 102, 115, 116, 121, 122, 127, 128, 130, 138, 140..=255 are
+/// forward-compat and may legitimately appear in `unknown` (66 and 200 are
+/// the durable unknown-tag test stand-ins used across this suite — never
+/// add them here). WP-B (Tables B1-B2) extended the range past 101 — keep
+/// this in sync with `tags::TAGS` when new tags are typed, or a
+/// caller-supplied `unknown` entry for a newly-typed tag will slip past
+/// this filter and get rejected downstream by the real Rust encoder's own
+/// (stricter, canonical) check instead of being silently dropped here per
+/// the documented "typed wins" collision policy.
 fn is_st0601_typed_tag(tag: u32) -> bool {
-    matches!(tag, 1..=65 | 67..=80 | 82..=95 | 97..=101 | 106..=108 | 129 | 135)
+    matches!(
+        tag,
+        1..=65 | 67..=80 | 82..=101 | 103..=114 | 117..=120 | 123..=126 | 129 | 131..=137 | 139
+    )
 }
 
 /// ST 0903.6 VMTI LS typed tags: 1 (Checksum), 2..=13, 101..=103.
@@ -1095,6 +1102,153 @@ fn operational_mode_from_wire(b: u8) -> RustOperationalMode {
 }
 
 // ---------------------------------------------------------------------------
+// ST 0601 — Tags 125/126 coded enums (WP-B Table B2)
+// ---------------------------------------------------------------------------
+//
+// Same pattern as the Table A3 enums above: `PlatformStatus`/
+// `SensorControlMode::to_wire`/`from_wire` are `pub(crate)`-scoped to
+// tst-core, so the wire-code tables are duplicated locally here.
+
+/// Translate a Rust `PlatformStatus` to the matching Python
+/// `tstrans.klv.PlatformStatus` enum instance for known codepoints, or a
+/// raw `int` for `Other(code)`.
+fn convert_platform_status(py: Python<'_>, v: RustPlatformStatus) -> PyResult<PyObject> {
+    let code = match v {
+        RustPlatformStatus::Active => 0u8,
+        RustPlatformStatus::PreFlight => 1,
+        RustPlatformStatus::PreFlightTaxiing => 2,
+        RustPlatformStatus::RunUp => 3,
+        RustPlatformStatus::TakeOff => 4,
+        RustPlatformStatus::Ingress => 5,
+        RustPlatformStatus::ManualOperation => 6,
+        RustPlatformStatus::AutomatedOrbit => 7,
+        RustPlatformStatus::Transitioning => 8,
+        RustPlatformStatus::Egress => 9,
+        RustPlatformStatus::Landing => 10,
+        RustPlatformStatus::LandedTaxiing => 11,
+        RustPlatformStatus::LandedParked => 12,
+        RustPlatformStatus::Other(b) => return Ok(b.into_py(py)),
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown PlatformStatus variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "PlatformStatus"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_platform_status`.
+fn platform_status_from_wire(b: u8) -> RustPlatformStatus {
+    match b {
+        0 => RustPlatformStatus::Active,
+        1 => RustPlatformStatus::PreFlight,
+        2 => RustPlatformStatus::PreFlightTaxiing,
+        3 => RustPlatformStatus::RunUp,
+        4 => RustPlatformStatus::TakeOff,
+        5 => RustPlatformStatus::Ingress,
+        6 => RustPlatformStatus::ManualOperation,
+        7 => RustPlatformStatus::AutomatedOrbit,
+        8 => RustPlatformStatus::Transitioning,
+        9 => RustPlatformStatus::Egress,
+        10 => RustPlatformStatus::Landing,
+        11 => RustPlatformStatus::LandedTaxiing,
+        12 => RustPlatformStatus::LandedParked,
+        other => RustPlatformStatus::Other(other),
+    }
+}
+
+/// Translate a Rust `SensorControlMode` to the matching Python
+/// `tstrans.klv.SensorControlMode` enum instance for known codepoints, or a
+/// raw `int` for `Other(code)`.
+fn convert_sensor_control_mode(py: Python<'_>, v: RustSensorControlMode) -> PyResult<PyObject> {
+    let code = match v {
+        RustSensorControlMode::Off => 0u8,
+        RustSensorControlMode::HomePosition => 1,
+        RustSensorControlMode::Uncontrolled => 2,
+        RustSensorControlMode::ManualControl => 3,
+        RustSensorControlMode::Calibrating => 4,
+        RustSensorControlMode::AutoHoldingPosition => 5,
+        RustSensorControlMode::AutoTracking => 6,
+        RustSensorControlMode::Other(b) => return Ok(b.into_py(py)),
+        _ => {
+            return Err(PyValueError::new_err(
+                "unknown SensorControlMode variant crossing the binding",
+            ));
+        }
+    };
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "SensorControlMode"))?;
+    Ok(cls.call1((code,))?.unbind())
+}
+
+/// Inverse of `convert_sensor_control_mode`.
+fn sensor_control_mode_from_wire(b: u8) -> RustSensorControlMode {
+    match b {
+        0 => RustSensorControlMode::Off,
+        1 => RustSensorControlMode::HomePosition,
+        2 => RustSensorControlMode::Uncontrolled,
+        3 => RustSensorControlMode::ManualControl,
+        4 => RustSensorControlMode::Calibrating,
+        5 => RustSensorControlMode::AutoHoldingPosition,
+        6 => RustSensorControlMode::AutoTracking,
+        other => RustSensorControlMode::Other(other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ST 1201.5 — imapb_specials side channel (WP-B)
+// ---------------------------------------------------------------------------
+//
+// Crossing shape (DECIDED, shared with the JVM binding): a tuple of
+// `(tag: int, code: str, payload: int)` triples. `code` names the
+// `ImapbSpecial` family; `payload` is the NaN-id/signal value (0 for the
+// payload-less BelowMin/AboveMax/Infinity codes).
+
+/// Translate a Rust `ImapbSpecial` to its `(code, payload)` wire-string
+/// pair for the `imapb_specials` crossing.
+fn imapb_special_to_code(s: RustImapbSpecial) -> (&'static str, u64) {
+    match s {
+        RustImapbSpecial::BelowMin => ("below_min", 0),
+        RustImapbSpecial::AboveMax => ("above_max", 0),
+        RustImapbSpecial::PositiveInfinity => ("pos_infinity", 0),
+        RustImapbSpecial::NegativeInfinity => ("neg_infinity", 0),
+        RustImapbSpecial::PositiveQuietNaN { nan_id } => ("pos_quiet_nan", nan_id),
+        RustImapbSpecial::NegativeQuietNaN { nan_id } => ("neg_quiet_nan", nan_id),
+        RustImapbSpecial::PositiveSignalingNaN { signal } => ("pos_signaling_nan", signal),
+        RustImapbSpecial::NegativeSignalingNaN { signal } => ("neg_signaling_nan", signal),
+        RustImapbSpecial::UserDefined { signal } => ("user_defined", signal),
+        // #[non_exhaustive] in tst-core: no current variant reaches here.
+        _ => ("user_defined", 0),
+    }
+}
+
+/// Inverse of `imapb_special_to_code`. Raises `ValueError` for a code
+/// string outside the 9-member set (audit #6 "validate-don't-drop" —
+/// same stance as `py_to_vtarget_pack`'s `target_color` length check).
+fn imapb_special_from_code(code: &str, payload: u64) -> PyResult<RustImapbSpecial> {
+    Ok(match code {
+        "below_min" => RustImapbSpecial::BelowMin,
+        "above_max" => RustImapbSpecial::AboveMax,
+        "pos_infinity" => RustImapbSpecial::PositiveInfinity,
+        "neg_infinity" => RustImapbSpecial::NegativeInfinity,
+        "pos_quiet_nan" => RustImapbSpecial::PositiveQuietNaN { nan_id: payload },
+        "neg_quiet_nan" => RustImapbSpecial::NegativeQuietNaN { nan_id: payload },
+        "pos_signaling_nan" => RustImapbSpecial::PositiveSignalingNaN { signal: payload },
+        "neg_signaling_nan" => RustImapbSpecial::NegativeSignalingNaN { signal: payload },
+        "user_defined" => RustImapbSpecial::UserDefined { signal: payload },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown imapb_specials code {other:?}; expected one of below_min, above_max, \
+                 pos_infinity, neg_infinity, pos_quiet_nan, neg_quiet_nan, pos_signaling_nan, \
+                 neg_signaling_nan, user_defined"
+            )));
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // ST 0601 — UAS Datalink LS
 // ---------------------------------------------------------------------------
 
@@ -1245,6 +1399,46 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
     op!("sensor_north_velocity", r.sensor_north_velocity);
     op!("sensor_east_velocity", r.sensor_east_velocity);
 
+    // WP-B Table B1 — IMAPB f64 fields (tags 96, 103-105, 109, 112-114,
+    // 117-120, 132, 134).
+    op!("target_width_extended_m", r.target_width_extended_m);
+    op!("density_altitude_extended_m", r.density_altitude_extended_m);
+    op!(
+        "sensor_ellipsoid_height_extended_m",
+        r.sensor_ellipsoid_height_extended_m
+    );
+    op!(
+        "alternate_platform_ellipsoid_height_extended_m",
+        r.alternate_platform_ellipsoid_height_extended_m
+    );
+    op!("range_to_recovery_km", r.range_to_recovery_km);
+    op!("platform_course_angle_deg", r.platform_course_angle_deg);
+    op!("altitude_agl_m", r.altitude_agl_m);
+    op!("radar_altimeter_m", r.radar_altimeter_m);
+    op!("sensor_azimuth_rate_dps", r.sensor_azimuth_rate_dps);
+    op!("sensor_elevation_rate_dps", r.sensor_elevation_rate_dps);
+    op!("sensor_roll_rate_dps", r.sensor_roll_rate_dps);
+    op!("mi_storage_percent_full", r.mi_storage_percent_full);
+    op!("transmission_frequency_mhz", r.transmission_frequency_mhz);
+    op!("zoom_percentage", r.zoom_percentage);
+
+    // WP-B Table B2 — var-length int/enum fields (tags 110-139).
+    op!("time_airborne_s", r.time_airborne_s);
+    op!("propulsion_unit_speed_rpm", r.propulsion_unit_speed_rpm);
+    op!("navsats_in_view", r.navsats_in_view);
+    op!("positioning_method_source", r.positioning_method_source);
+    if let Some(v) = r.platform_status {
+        kwargs.set_item("platform_status", convert_platform_status(py, v)?)?;
+    }
+    if let Some(v) = r.sensor_control_mode {
+        kwargs.set_item("sensor_control_mode", convert_sensor_control_mode(py, v)?)?;
+    }
+    op!("take_off_time_us", r.take_off_time_us);
+    op!("mi_storage_capacity_gb", r.mi_storage_capacity_gb);
+    op!("leap_seconds", r.leap_seconds);
+    op!("correction_offset_us", r.correction_offset_us);
+    ob!("active_payloads", r.active_payloads);
+
     // WP-A Table A4 — named nested-set raw fields (tags 73, 95, 97-101).
     ob!("rvt", r.rvt);
     ob!("sar_mi_local_set", r.sar_mi_local_set);
@@ -1287,6 +1481,25 @@ fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObje
     let sentinel_tuple =
         pyo3::types::PyTuple::new_bound(py, r.sentinel_tags.iter().map(|&t| t as u64));
     kwargs.set_item("sentinel_tags", sentinel_tuple)?;
+
+    // imapb_specials: Vec<(u32, ImapbSpecial)> -> tuple[tuple[int, str, int], ...].
+    let specials_items: Vec<PyObject> = r
+        .imapb_specials
+        .iter()
+        .map(|&(tag, special)| {
+            let (code, payload) = imapb_special_to_code(special);
+            pyo3::types::PyTuple::new_bound(
+                py,
+                &[tag.into_py(py), code.into_py(py), payload.into_py(py)],
+            )
+            .unbind()
+            .into()
+        })
+        .collect();
+    kwargs.set_item(
+        "imapb_specials",
+        pyo3::types::PyTuple::new_bound(py, specials_items),
+    )?;
 
     Ok(cls.call((), Some(&kwargs))?.unbind())
 }
@@ -1488,6 +1701,45 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     op!(sensor_north_velocity, f64);
     op!(sensor_east_velocity, f64);
 
+    // WP-B Table B1 — IMAPB f64 fields.
+    op!(target_width_extended_m, f64);
+    op!(density_altitude_extended_m, f64);
+    op!(sensor_ellipsoid_height_extended_m, f64);
+    op!(alternate_platform_ellipsoid_height_extended_m, f64);
+    op!(range_to_recovery_km, f64);
+    op!(platform_course_angle_deg, f64);
+    op!(altitude_agl_m, f64);
+    op!(radar_altimeter_m, f64);
+    op!(sensor_azimuth_rate_dps, f64);
+    op!(sensor_elevation_rate_dps, f64);
+    op!(sensor_roll_rate_dps, f64);
+    op!(mi_storage_percent_full, f64);
+    op!(transmission_frequency_mhz, f64);
+    op!(zoom_percentage, f64);
+
+    // WP-B Table B2 — var-length int/enum fields.
+    op!(time_airborne_s, u32);
+    op!(propulsion_unit_speed_rpm, u32);
+    op!(navsats_in_view, u8);
+    op!(positioning_method_source, u8);
+    let platform_status_obj = p.getattr(intern!(p.py(), "platform_status"))?;
+    if !platform_status_obj.is_none() {
+        r.platform_status = Some(platform_status_from_wire(enum_field_to_u8(
+            &platform_status_obj,
+        )?));
+    }
+    let sensor_control_mode_obj = p.getattr(intern!(p.py(), "sensor_control_mode"))?;
+    if !sensor_control_mode_obj.is_none() {
+        r.sensor_control_mode = Some(sensor_control_mode_from_wire(enum_field_to_u8(
+            &sensor_control_mode_obj,
+        )?));
+    }
+    op!(take_off_time_us, u64);
+    op!(mi_storage_capacity_gb, u32);
+    op!(leap_seconds, i32);
+    op!(correction_offset_us, i64);
+    ob!(active_payloads);
+
     // WP-A Table A4 — named nested-set raw fields.
     ob!(rvt);
     ob!(sar_mi_local_set);
@@ -1532,6 +1784,14 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     r.sentinel_tags = p
         .getattr(intern!(p.py(), "sentinel_tags"))?
         .extract::<Vec<u32>>()?;
+
+    // imapb_specials: tuple[tuple[int, str, int], ...] → Vec<(u32, ImapbSpecial)>.
+    let specials_obj = p.getattr(intern!(p.py(), "imapb_specials"))?;
+    for item in specials_obj.iter()? {
+        let (tag, code, payload): (u32, String, u64) = item?.extract()?;
+        r.imapb_specials
+            .push((tag, imapb_special_from_code(&code, payload)?));
+    }
 
     Ok(r)
 }

@@ -221,14 +221,13 @@ def test_core_id_is_dataclass():
 
 def test_validate_mismms_alternation_conflict_tag75_and_104():
     """Tags 75 and 104 are mutually exclusive (15|75|104 group).
-    Build a record with tag 75 (sensor_ellipsoid_height_m) and inject
-    tag 104 via the unknown field."""
-    # Start with a full compliant record, then add tag 75 and inject tag 104.
+    Build a record with tag 75 (sensor_ellipsoid_height_m) and tag 104
+    (sensor_ellipsoid_height_extended_m, a WP-B typed field — this used
+    to be injected via `unknown` before tag 104 was typed-modeled)."""
+    # Start with a full compliant record, then set both tags 75 and 104.
     record = _full_mismms_record().with_(
         sensor_ellipsoid_height_m=100.5,  # Tag 75
-        # Inject tag 104 as an unknown entry: (tag_number, raw_tlv_bytes).
-        # Tag 104 requires a TLV with length and value; use a minimal 4-byte float value.
-        unknown=((104, b'\x04\x41\x20\x00\x00'),),  # Tag 104, length 4, value 0x41200000
+        sensor_ellipsoid_height_extended_m=1500.0,  # Tag 104
     )
     violations = validate_mismms(record)
     # Should contain exactly one alternation_conflict violation.

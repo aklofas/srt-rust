@@ -17,6 +17,8 @@ from tstrans.klv import (
     IcingDetected,
     Klv0601,
     OperationalMode,
+    PlatformStatus,
+    SensorControlMode,
     SensorFovName,
     UasDatalinkLs,
     decode_uas_datalink,
@@ -241,3 +243,68 @@ def test_operational_mode_enum_members():
     assert OperationalMode.EXERCISE.value == 3
     assert OperationalMode.MAINTENANCE.value == 4
     assert OperationalMode.TEST.value == 5
+
+
+# ---------------------------------------------------------------------------
+# WP-B: new fields default to None + coded enum member sanity
+# ---------------------------------------------------------------------------
+
+
+def test_wpb_new_fields_default_to_none():
+    """A bare UasDatalinkLs() leaves every WP-B field unset."""
+    rec = UasDatalinkLs()
+    for name in (
+        "target_width_extended_m",
+        "density_altitude_extended_m",
+        "sensor_ellipsoid_height_extended_m",
+        "alternate_platform_ellipsoid_height_extended_m",
+        "range_to_recovery_km",
+        "platform_course_angle_deg",
+        "altitude_agl_m",
+        "radar_altimeter_m",
+        "sensor_azimuth_rate_dps",
+        "sensor_elevation_rate_dps",
+        "sensor_roll_rate_dps",
+        "mi_storage_percent_full",
+        "transmission_frequency_mhz",
+        "zoom_percentage",
+        "time_airborne_s",
+        "propulsion_unit_speed_rpm",
+        "navsats_in_view",
+        "positioning_method_source",
+        "platform_status",
+        "sensor_control_mode",
+        "take_off_time_us",
+        "mi_storage_capacity_gb",
+        "leap_seconds",
+        "correction_offset_us",
+        "active_payloads",
+    ):
+        assert getattr(rec, name) is None, f"{name} should default to None"
+    assert rec.imapb_specials == ()
+
+
+def test_platform_status_enum_members():
+    assert PlatformStatus.ACTIVE.value == 0
+    assert PlatformStatus.PRE_FLIGHT.value == 1
+    assert PlatformStatus.PRE_FLIGHT_TAXIING.value == 2
+    assert PlatformStatus.RUN_UP.value == 3
+    assert PlatformStatus.TAKE_OFF.value == 4
+    assert PlatformStatus.INGRESS.value == 5
+    assert PlatformStatus.MANUAL_OPERATION.value == 6
+    assert PlatformStatus.AUTOMATED_ORBIT.value == 7
+    assert PlatformStatus.TRANSITIONING.value == 8
+    assert PlatformStatus.EGRESS.value == 9
+    assert PlatformStatus.LANDING.value == 10
+    assert PlatformStatus.LANDED_TAXIING.value == 11
+    assert PlatformStatus.LANDED_PARKED.value == 12
+
+
+def test_sensor_control_mode_enum_members():
+    assert SensorControlMode.OFF.value == 0
+    assert SensorControlMode.HOME_POSITION.value == 1
+    assert SensorControlMode.UNCONTROLLED.value == 2
+    assert SensorControlMode.MANUAL_CONTROL.value == 3
+    assert SensorControlMode.CALIBRATING.value == 4
+    assert SensorControlMode.AUTO_HOLDING_POSITION.value == 5
+    assert SensorControlMode.AUTO_TRACKING.value == 6

@@ -9,6 +9,58 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — MISB ST 0805.1 KLV → Cursor-on-Target conversion (`klv::st0805`)
+
+- New module `klv::st0805` converts a decoded ST 0601 UAS Datalink LS
+  record (`UasDatalinkLs`) to Cursor-on-Target (CoT) XML: a **Platform
+  Position** event (`platform_position_xml`, configurable `type`,
+  default `a-f-A-M-F`) and a **Sensor Point of Interest** event
+  (`sensor_point_of_interest_xml`, fixed `type="b-m-p-s-p-i"`), linked
+  back to the platform event via `detail/link`. Both events use
+  `how="m-p"` and `event/@version="2.0"` per ST 0805.1 §5.
+- `uid` is a deterministic concatenation of KLV tags, never a UUID (a
+  replayed file must reproduce byte-identical CoT): `platform_uid` =
+  `"{tag10}_{tag3}"`, `spi_uid` = `"{tag10}_{tag3}_{tag11}"`. Platform
+  point uses tags 13/14 + HAE; SPI point prefers tags 40/41 (falling
+  back to the frame-center tags 23/24), with elevation preferring the
+  HAE-native tag (75 platform / 78 frame-center) over MSL tag 42/25 +
+  configurable `geoid_undulation_m`. `point/@ce`/`@le` are the fixed
+  sentinel `9999999` for the Platform event, and for SPI are `tag45 /
+  2.146` / `tag46 / 1.645` (falling back to the same sentinel when the
+  source tag is absent). The Platform event's `sensor` sub-element maps
+  `azimuth = (tag5 + tag18) mod 360`, `fov`=tag16, `vfov`=tag17,
+  `model`=tag11, `range`=tag21. `<_flow-tags_>` generation time is a
+  caller-supplied argument (`generated_us`), not wall-clock, keeping the
+  module `no_std` and its output deterministic. New `CotConfig`
+  (`platform_type`, `update_interval_us`, `producer`,
+  `geoid_undulation_m`, `how`) and `CotError` (joins `KlvDecodeError`/
+  `KlvEncodeError` in `error.rs`) types. ST 0805.1 defines no CoT→KLV
+  reverse mapping — out of scope (see `docs/project/deferred-features.md`).
+- Goldens validated against MITRE's CoT Base-Event Schema (PUBLIC
+  RELEASE, Case #11-3895) and CoT Flow-Tags Schema (PUBLIC RELEASE,
+  Case #11-3899), fetched from the DoD/DISA ATAK-CIV open-source mirror
+  since `cot.mitre.org` does not resolve from the build environment.
+  Validated with `lxml.etree.XMLSchema`; both event goldens and the
+  isolated `_flow-tags_` fragment pass. XSDs not vendored into the
+  repo.
+- This is a pure conversion over an already-decoded record, not a KLV
+  byte parser, so it adds no fuzz target.
+
+### Added — Python bindings: `klv::st0805` KLV → Cursor-on-Target conversion
+
+- `tstrans.klv` gains `CotConfig`, `platform_position_xml`,
+  `sensor_point_of_interest_xml`, `platform_uid`, and `spi_uid`,
+  mirroring the Rust surface 1:1 (`config=` keyword-only, defaults
+  matching `CotConfig::default()`).
+
+### Added — JVM bindings: `klv::st0805` KLV → Cursor-on-Target conversion
+
+- `org.tstrans.klv.Klv` gains `platformPositionXml` /
+  `sensorPointOfInterestXml` (each with a `CotConfig`-defaulted
+  2-argument overload and an explicit-`CotConfig` 3-argument overload)
+  and `platformUid` / `spiUid`; new `org.tstrans.klv.CotConfig` value
+  type with a `Builder`.
+
 ### Added — MISB ST 0806.4 Remote Video Terminal (RVT) Local Set typed layer (`klv::st0806`)
 
 - New sibling-layer module `klv::st0806` types the RVT Local Set carried

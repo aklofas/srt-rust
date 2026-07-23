@@ -13,7 +13,7 @@
 //! `"{tag10}_{tag3}"`, [`spi_uid`] = `"{tag10}_{tag3}_{tag11}"`.
 //!
 //! This module implements KLV→CoT only — ST 0805.1 defines no reverse
-//! (CoT→KLV) mapping (see `docs/deferred-features.md`).
+//! (CoT→KLV) mapping (see `docs/project/deferred-features.md`).
 //!
 //! This is a pure conversion over an already-decoded record, not a KLV byte
 //! parser, so it has no fuzz target.

@@ -390,8 +390,8 @@ The item table typed in five stages:
 
 - The ST 0601 encode-range table on the Python `.pyi` stub and the JVM
   Javadoc surface covered 39 of the 83 ranged fields; it now covers all
-  83 (30 linear-mapped + 14 IMAPB, plus twin-tag annotations), matching
-  Rust rustdoc.
+  83 (the 44 new rows: 30 linear-mapped + 14 IMAPB, plus twin-tag
+  annotations), matching Rust rustdoc.
 - `Klv.java` carried six false `@throws` claims that encoding an
   `unknown` entry at a reserved/typed tag raises an exception from
   those methods — unreachable, since both bindings' encode paths

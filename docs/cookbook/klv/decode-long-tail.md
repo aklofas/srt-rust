@@ -83,6 +83,7 @@ fn walk_long_tail(buf: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
 ```python
 from tstrans.klv import decode_uas_datalink, decode_sdcc_flp
 
+# buf: raw ST 0601 Local Set bytes — see the decode-ladder recipe linked above.
 ls = decode_uas_datalink(buf)
 
 # Item 141: Waypoint List.

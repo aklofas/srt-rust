@@ -53,7 +53,8 @@ cfg = CotConfig(
 )
 generated_us = int(time.time() * 1_000_000)
 
-# Config and generated_us are keyword-only.
+# record: a decoded UasDatalinkLs — see the Related recipe. Config and
+# generated_us are keyword-only.
 platform_xml = platform_position_xml(record, config=cfg, generated_us=generated_us)
 spi_xml = sensor_point_of_interest_xml(record, config=cfg, generated_us=generated_us)
 ```

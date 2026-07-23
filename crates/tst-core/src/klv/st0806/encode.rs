@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use crate::error::KlvEncodeError;
 use crate::klv::crc32::crc32_mpeg2;
 use crate::klv::length::{ber_len, write_ber};
-use crate::klv::pack::emit_ber_oid_tlv;
+use crate::klv::pack::{emit_ber_oid_tlv, is_typed_tag};
 use crate::klv::st0601::OutOfRangePolicy;
 use crate::klv::st0601::mapping::encode_fixed_range;
 use crate::klv::st0601::tags::LinearRange;
@@ -37,6 +37,10 @@ use super::model::{RVT_LS_UL, RvtAoi, RvtLs, RvtPoi, RvtUserData};
 /// - [`KlvEncodeError::OutOfRange`] if a MGRS easting/northing (uint24)
 ///   exceeds 99,999, or a POI lat/lon/altitude value cannot be mapped
 ///   into its declared range.
+/// - [`KlvEncodeError::ReservedTagInUnknown`] if `ls.unknown` (or a
+///   nested [`RvtPoi::unknown`] / [`RvtAoi::unknown`]) carries a tag
+///   already covered by a typed field — emitting it would produce a
+///   non-conformant duplicate.
 pub fn encode_to_vec(ls: &RvtLs) -> Result<Vec<u8>, KlvEncodeError> {
     let mut body = Vec::with_capacity(64);
     write_body(ls, &mut body)?;
@@ -117,6 +121,14 @@ fn write_body(ls: &RvtLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
         emit_ber_oid_tlv(13, &body, out)?;
     }
     for f in &ls.unknown {
+        // Reject a typed tag before emitting it: without this guard, a
+        // caller-constructed entry at e.g. Tag 2 in `unknown` would
+        // produce a duplicate timestamp that silently overwrites the
+        // typed field on decode (mirrors st0601::encode's
+        // `write_unknown_fields` guard).
+        if is_typed_tag(f.tag, super::tags::lookup) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: f.tag });
+        }
         emit_ber_oid_tlv(f.tag, &f.value, out)?;
     }
     Ok(())
@@ -175,6 +187,13 @@ fn encode_poi(poi: &RvtPoi) -> Result<Vec<u8>, KlvEncodeError> {
     emit_iso7(9, poi.label.as_deref(), 16, &mut body)?;
     emit_iso7(10, poi.operation_id.as_deref(), 127, &mut body)?;
     for f in &poi.unknown {
+        // POI has no `tags.rs` table to run `is_typed_tag` against, so
+        // the guard is the same 1..=10 range Table 8-2 defines (see
+        // `apply_poi_tag`'s match arms) — same rationale as `write_body`'s
+        // guard above.
+        if (1..=10).contains(&f.tag) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: f.tag });
+        }
         emit_ber_oid_tlv(f.tag, &f.value, &mut body)?;
     }
     Ok(body)
@@ -258,6 +277,11 @@ fn encode_aoi(aoi: &RvtAoi) -> Result<Vec<u8>, KlvEncodeError> {
     emit_iso7(9, aoi.label.as_deref(), 16, &mut body)?;
     emit_iso7(10, aoi.operation_id.as_deref(), 127, &mut body)?;
     for f in &aoi.unknown {
+        // AOI has no `tags.rs` table either; same 1..=10 range guard as
+        // `encode_poi` (Table 8-3 defines the same tag-id universe).
+        if (1..=10).contains(&f.tag) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: f.tag });
+        }
         emit_ber_oid_tlv(f.tag, &f.value, &mut body)?;
     }
     Ok(body)

@@ -168,7 +168,9 @@ pub fn map_klv_decode_error(env: &mut JNIEnv, e: &KlvDecodeError) {
         KlvDecodeError::UnexpectedUniversalLabel { .. } => {
             throw_klv_decode(env, "BAD_UNIVERSAL_LABEL", &msg)
         }
-        KlvDecodeError::ChecksumMismatch { .. } => throw_klv_decode(env, "CHECKSUM_MISMATCH", &msg),
+        KlvDecodeError::ChecksumMismatch { .. } | KlvDecodeError::Crc32Mismatch { .. } => {
+            throw_klv_decode(env, "CHECKSUM_MISMATCH", &msg)
+        }
         KlvDecodeError::DuplicateTag { .. } => throw_klv_decode(env, "DUPLICATE_TAG", &msg),
         KlvDecodeError::Tag2NotFirst
         | KlvDecodeError::Tag1NotLast

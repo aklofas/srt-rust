@@ -590,6 +590,88 @@ public final class Klv {
             throws org.tstrans.KlvEncodeException;
 
     // -----------------------------------------------------------------------
+    // ST 0806 — RVT (Remote Video Terminal) Local Set
+    // -----------------------------------------------------------------------
+
+    /**
+     * Decode an RVT Local Set body (ST 0806.4 Table 8-1) — the form carried
+     * as the value of ST 0601 Tag 73.
+     *
+     * <p>{@code buf} is body-only — no Universal Label or outer BER length
+     * wrapper. Lenient mode: unknown tags are preserved verbatim in
+     * {@link RvtLs#unknown()}, per-field validation failures are collected
+     * in {@link RvtLs#fieldErrors()} instead of aborting the whole record.
+     * Mirrors tst-py's {@code decode_rvt(buf)}.
+     *
+     * @param buf ST 0806.4 RVT body bytes (no UL / outer BER length)
+     * @return the decoded {@link RvtLs}
+     * @throws org.tstrans.KlvDecodeException if the buffer is structurally malformed
+     */
+    public static RvtLs decodeRvt(byte[] buf) throws org.tstrans.KlvDecodeException {
+        return nDecodeRvt(buf);
+    }
+
+    /**
+     * Decode a standalone RVT Local Set: 16-byte UL + BER length + body,
+     * verifying the CRC-32/MPEG-2 checksum (Tag 1) when present.
+     *
+     * <p>Absence of Tag 1 is not an error — an embedded RVT LS never
+     * carries one, and this method accepts standalone captures that omit
+     * it too. Mirrors tst-py's {@code decode_rvt_standalone(buf)}.
+     *
+     * @param buf the full standalone RVT wire record (UL + BER length + body)
+     * @return the decoded {@link RvtLs}
+     * @throws org.tstrans.KlvDecodeException with {@code kind = BAD_UNIVERSAL_LABEL} if the
+     *         leading 16 bytes are not the RVT LS UL, or
+     *         {@code kind = CHECKSUM_MISMATCH} if a declared Tag 1 value does not match
+     *         the recomputed CRC-32/MPEG-2
+     */
+    public static RvtLs decodeRvtStandalone(byte[] buf) throws org.tstrans.KlvDecodeException {
+        return nDecodeRvtStandalone(buf);
+    }
+
+    /**
+     * Encode an {@link RvtLs} to RVT body bytes (embedded form).
+     *
+     * <p>Returns body-only bytes — no Universal Label, no outer BER length,
+     * and no Tag 1 CRC (an embedded RVT LS never carries one). Use for
+     * carriage inside ST 0601 Tag 73. Mirrors tst-py's {@code encode_rvt(record)}.
+     *
+     * @param record the RVT LS to encode
+     * @return ST 0806.4 embedded body bytes
+     * @throws org.tstrans.KlvEncodeException if a nested {@link RvtPoi}/{@link RvtAoi} omits a
+     *         mandatory item, a string field exceeds its byte cap, an MGRS easting/northing
+     *         exceeds 99,999, or a reserved tag appears in an {@code unknown} list
+     */
+    public static byte[] encodeRvt(RvtLs record) throws org.tstrans.KlvEncodeException {
+        return nEncodeRvt(record);
+    }
+
+    /**
+     * Encode an {@link RvtLs} as a standalone RVT wire record:
+     * {@code [RVT_LS_UL:16][outer BER length][Tag 2 timestamp first][body]
+     * [Tag 1 CRC-32/MPEG-2 last]} per ST 0806.4-02/-04. Mirrors tst-py's
+     * {@code encode_rvt_standalone(record)}.
+     *
+     * @param record the RVT LS to encode
+     * @return the full standalone RVT wire record
+     * @throws org.tstrans.KlvEncodeException with {@code kind = MISSING_MANDATORY_ITEM} and
+     *         {@code tag = 2} if {@link RvtLs#timestampUs()} is unset, or any other error
+     *         {@link #encodeRvt(RvtLs)} can raise from the same body composition
+     */
+    public static byte[] encodeRvtStandalone(RvtLs record) throws org.tstrans.KlvEncodeException {
+        return nEncodeRvtStandalone(record);
+    }
+
+    private static native RvtLs nDecodeRvt(byte[] buf) throws org.tstrans.KlvDecodeException;
+
+    private static native RvtLs nDecodeRvtStandalone(byte[] buf) throws org.tstrans.KlvDecodeException;
+
+    private static native byte[] nEncodeRvt(RvtLs record) throws org.tstrans.KlvEncodeException;
+
+    private static native byte[] nEncodeRvtStandalone(RvtLs record) throws org.tstrans.KlvEncodeException;
+
+    // -----------------------------------------------------------------------
     // UL dispatcher
     // -----------------------------------------------------------------------
 

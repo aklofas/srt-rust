@@ -7,6 +7,7 @@
 pub mod st0102;
 pub mod st0601;
 pub mod st0605;
+pub mod st0806;
 pub mod st0903;
 pub mod st1204;
 

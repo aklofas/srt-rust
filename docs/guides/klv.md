@@ -615,6 +615,17 @@ platform_xml = platform_position_xml(record, generated_us=generated_us)
 spi_xml = sensor_point_of_interest_xml(record, generated_us=generated_us)
 ```
 
+Altitude source precedence differs by event, and `geoid_undulation_m` is
+only ever consulted on the MSL-referenced fallback path — never when an
+ellipsoid-height field is already present. Platform Position's `point/@hae`
+prefers Sensor Ellipsoid Height Extended (Item 104, IMAPB) over Sensor
+Ellipsoid Height (Item 75), falling back to Sensor True Altitude (Item 15,
+MSL) plus `geoid_undulation_m` only when neither ellipsoid-height field is
+set. Sensor Point of Interest prefers Target Location (Items 40-42, MSL
+plus `geoid_undulation_m`) when present; falling back to Frame Center, it
+prefers the HAE-native Frame Center Ellipsoid Height (Item 78) over Frame
+Center Elevation (Item 25, MSL plus `geoid_undulation_m`).
+
 ## SDCC error covariance (ST 1010)
 
 MISB ST 1010.3 SDCC-FLP is a general-purpose standard-deviation +

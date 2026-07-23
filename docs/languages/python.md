@@ -212,7 +212,10 @@ the general-purpose ST 1010.3 SDCC-FLP error-covariance pack (ST 0601 Tag
 one-way `platform_position_xml` / `sensor_point_of_interest_xml` ST 0805.1
 KLV → Cursor-on-Target conversion, configured via the `CotConfig` dataclass
 (a plain `dataclasses.dataclass`, not a PyO3 type — same pattern as
-`DemuxerConfig`).
+`DemuxerConfig`). `CotConfig.producer` is an XML attribute *name* stamped
+verbatim into `<detail><_flow-tags_ .../>` — a Name production (an
+attribute name, not a value), neither validated nor escaped, so an
+invalid value produces malformed XML.
 
 ```python
 from tstrans.klv import decode_rvt, decode_sdcc_flp, platform_position_xml

@@ -136,17 +136,34 @@ pub fn decode_standalone(bytes: &[u8]) -> Result<RvtLs, KlvDecodeError> {
         if f.tag == 1 && f.value.len() == 4 {
             let mut a = [0u8; 4];
             a.copy_from_slice(f.value);
-            let value_offset = (f.value.as_ptr() as usize).wrapping_sub(bytes.as_ptr() as usize);
+            // `f.value` is guaranteed by `Iter::local_set(body)` to be a
+            // subslice of `body` itself, so this subtraction can't
+            // underflow. `body_offset` (computed above from slice lengths,
+            // no pointer math) is `body`'s own start within `bytes`, so
+            // summing the two gives the value bytes' offset in `bytes`
+            // without diffing pointers across the `bytes`/`after_len`/
+            // `body` slicing chain.
+            let offset_in_body = (f.value.as_ptr() as usize) - (body.as_ptr() as usize);
+            let value_offset = body_offset + offset_in_body;
             declared_crc = Some((u32::from_be_bytes(a), value_offset));
         }
     }
     if let Some((expected, value_offset)) = declared_crc {
-        let computed = crate::klv::crc32::crc32_mpeg2(&bytes[..value_offset]);
-        if computed != expected {
-            return Err(KlvDecodeError::Crc32Mismatch {
-                expected,
-                found: computed,
-            });
+        // Defensive bounds check: `value_offset + 4 <= bytes.len()` always
+        // holds today (the 4 CRC value bytes are themselves inside
+        // `bytes`), but skip verification rather than panic on a future
+        // refactor that breaks the invariant above.
+        let in_bounds = value_offset
+            .checked_add(4)
+            .is_some_and(|end| end <= bytes.len());
+        if in_bounds {
+            let computed = crate::klv::crc32::crc32_mpeg2(&bytes[..value_offset]);
+            if computed != expected {
+                return Err(KlvDecodeError::Crc32Mismatch {
+                    expected,
+                    found: computed,
+                });
+            }
         }
     }
 

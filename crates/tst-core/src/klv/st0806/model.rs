@@ -69,7 +69,6 @@ impl RvtPoiType {
             o => Self::Other(o),
         }
     }
-    #[allow(dead_code)] // wired by encode, landing in a later WP-D task
     pub(super) fn to_wire(self) -> u8 {
         match self {
             Self::Friendly => 1,
@@ -90,7 +89,6 @@ impl RvtAoiType {
             o => Self::Other(o),
         }
     }
-    #[allow(dead_code)] // wired by encode, landing in a later WP-D task
     pub(super) fn to_wire(self) -> u8 {
         match self {
             Self::Friendly => 1,

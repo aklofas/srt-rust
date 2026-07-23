@@ -3248,6 +3248,20 @@ bindings = []
 scenario_ids = []
 tier = "A"
 
+[[surface]]
+item = "tst_core::klv::st0806::encode_to_vec"
+owning_tests = ["crates/tst-core/src/klv/st0806/tests.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st0806::encode_to_vec_standalone"
+owning_tests = ["crates/tst-core/src/klv/st0806/tests.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
 [[exempt]]
 item = "tst_core::klv::RvtAoi"
 reason = "top-level re-export of tst_core::klv::st0806::RvtAoi; see that entry for coverage"

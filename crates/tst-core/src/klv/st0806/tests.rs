@@ -147,3 +147,102 @@ fn decode_aoi_type_three_is_reserved_poi_type_three_is_target() {
         Some(RvtAoiType::Reserved)
     );
 }
+
+#[test]
+fn round_trip_body_form() {
+    let mut ls = RvtLs {
+        timestamp_us: Some(1_700_000_000_000_000),
+        frag_circle_radius_m: Some(250),
+        ..RvtLs::default()
+    };
+    ls.points_of_interest.push(RvtPoi {
+        number: Some(7),
+        lat_deg: Some(45.0),
+        lon_deg: Some(-90.0),
+        label: Some("ALPHA".into()),
+        ..RvtPoi::default()
+    });
+    let bytes = encode_to_vec(&ls).unwrap();
+    let back = decode(&bytes).unwrap();
+    assert_eq!(back.timestamp_us, ls.timestamp_us);
+    assert_eq!(back.frag_circle_radius_m, Some(250));
+    assert_eq!(back.points_of_interest[0].number, Some(7));
+    assert_eq!(back.points_of_interest[0].label.as_deref(), Some("ALPHA"));
+}
+
+#[test]
+fn standalone_emits_ul_timestamp_first_crc_last_and_reverifies() {
+    let ls = RvtLs {
+        timestamp_us: Some(1),
+        video_data_rate: Some(2_000_000),
+        ..RvtLs::default()
+    };
+    let bytes = encode_to_vec_standalone(&ls).unwrap();
+    assert_eq!(&bytes[..16], &RVT_LS_UL.0);
+    let reparsed = decode_standalone(&bytes).unwrap(); // CRC verify is the assertion
+    assert_eq!(reparsed.video_data_rate, Some(2_000_000));
+    // Tag 2 first / Tag 1 last in the body:
+    let (_, after) = crate::klv::length::read_ber(&bytes[16..]).unwrap();
+    assert_eq!(after[0], 0x02);
+    assert_eq!(after[after.len() - 6], 0x01); // tag1, len4, 4 value bytes
+}
+
+#[test]
+fn standalone_without_timestamp_is_missing_mandatory() {
+    let ls = RvtLs::default();
+    assert!(matches!(
+        encode_to_vec_standalone(&ls).unwrap_err(),
+        crate::error::KlvEncodeError::MissingMandatoryItem { tag: 2, .. }
+    ));
+}
+
+#[test]
+fn poi_missing_latitude_rejected() {
+    let mut ls = RvtLs::default();
+    ls.points_of_interest.push(RvtPoi {
+        number: Some(1),
+        lon_deg: Some(0.0),
+        ..RvtPoi::default()
+    });
+    assert!(matches!(
+        encode_to_vec(&ls).unwrap_err(),
+        crate::error::KlvEncodeError::MissingMandatoryItem { tag: 2, .. } // POI Tag 2 = latitude
+    ));
+}
+
+#[test]
+fn sentinel_error_value_reemits_on_encode() {
+    let b = [0x0C, 0x06, 0x02, 0x04, 0x80, 0x00, 0x00, 0x00];
+    let mut ls = decode(&b).unwrap();
+    // Satisfy POI encode mandatories around the sentinel'd latitude:
+    ls.points_of_interest[0].number = Some(1);
+    ls.points_of_interest[0].lon_deg = Some(10.0);
+    let bytes = encode_to_vec(&ls).unwrap();
+    let back = decode(&bytes).unwrap();
+    assert_eq!(back.points_of_interest[0].sentinel_tags, alloc::vec![2]);
+}
+
+#[test]
+fn rvt_uls_are_pairwise_distinct_and_pinned_at_byte_12() {
+    // D3-review fold-in: the manifest [[surface]] entries for
+    // RVT_POI_LS_UL/RVT_AOI_LS_UL/RVT_USER_DEFINED_LS_UL cited this file
+    // as their owning test without ever naming the constants — this test
+    // makes that cataloguing honest AND pins the four wire constants.
+    let uls = [
+        (RVT_LS_UL, 0x02u8),
+        (RVT_POI_LS_UL, 0x0C),
+        (RVT_AOI_LS_UL, 0x0D),
+        (RVT_USER_DEFINED_LS_UL, 0x0F),
+    ];
+    for (ul, expected_byte_12) in uls {
+        assert_eq!(ul.0[12], expected_byte_12);
+    }
+    for i in 0..uls.len() {
+        for j in (i + 1)..uls.len() {
+            assert_ne!(
+                uls[i].0, uls[j].0,
+                "UL {i} and {j} must be pairwise distinct"
+            );
+        }
+    }
+}

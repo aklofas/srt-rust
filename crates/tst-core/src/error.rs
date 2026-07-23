@@ -208,6 +208,19 @@ pub enum KlvEncodeError {
     ReservedTagInUnknown { tag: u32 },
 }
 
+/// Error from [`crate::klv::st0805`]: a KLV tag required by MISB ST 0805.1's
+/// field mapping for the requested CoT event is missing from the input
+/// record.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum CotError {
+    /// `tag` is the ST 0601 tag number; `name` is its human-readable item
+    /// label for diagnostics. See `klv::st0805` for which tags are
+    /// mandatory per event type.
+    #[error("KLV tag {tag} ({name}) required for CoT conversion is missing")]
+    MissingField { tag: u32, name: &'static str },
+}
+
 /// Error from [`crate::klv::st0601::patch`]: either the input local set
 /// is malformed (decode side) or an edited value cannot be encoded
 /// (encode side).

@@ -1224,6 +1224,28 @@ impl core::marker::UnsafeUnpin for tst_core::codec::Rational
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::Rational
 impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::Rational
 pub mod tst_core::error
+#[non_exhaustive] pub enum tst_core::error::CotError
+pub tst_core::error::CotError::MissingField
+pub tst_core::error::CotError::MissingField::name: &'static str
+pub tst_core::error::CotError::MissingField::tag: u32
+impl core::clone::Clone for tst_core::error::CotError
+pub fn tst_core::error::CotError::clone(&self) -> tst_core::error::CotError
+impl core::cmp::Eq for tst_core::error::CotError
+impl core::cmp::PartialEq for tst_core::error::CotError
+pub fn tst_core::error::CotError::eq(&self, &tst_core::error::CotError) -> bool
+impl core::error::Error for tst_core::error::CotError
+impl core::fmt::Debug for tst_core::error::CotError
+pub fn tst_core::error::CotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::error::CotError
+pub fn tst_core::error::CotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::error::CotError
+impl core::marker::Freeze for tst_core::error::CotError
+impl core::marker::Send for tst_core::error::CotError
+impl core::marker::Sync for tst_core::error::CotError
+impl core::marker::Unpin for tst_core::error::CotError
+impl core::marker::UnsafeUnpin for tst_core::error::CotError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::CotError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::error::CotError
 #[non_exhaustive] pub enum tst_core::error::DemuxError
 pub tst_core::error::DemuxError::MalformedPes
 pub tst_core::error::DemuxError::MalformedPes::pid: u16
@@ -2764,6 +2786,31 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::TimeStatus
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::TimeStatus
 pub fn tst_core::klv::st0605::decode(&[u8]) -> core::result::Result<tst_core::klv::PrecisionTimeStampPack, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0605::encode(&tst_core::klv::PrecisionTimeStampPack) -> [u8; 26]
+pub mod tst_core::klv::st0805
+pub struct tst_core::klv::st0805::CotConfig
+pub tst_core::klv::st0805::CotConfig::geoid_undulation_m: core::option::Option<f64>
+pub tst_core::klv::st0805::CotConfig::how: alloc::string::String
+pub tst_core::klv::st0805::CotConfig::platform_type: alloc::string::String
+pub tst_core::klv::st0805::CotConfig::producer: alloc::string::String
+pub tst_core::klv::st0805::CotConfig::update_interval_us: u64
+impl core::clone::Clone for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::clone(&self) -> tst_core::klv::st0805::CotConfig
+impl core::cmp::PartialEq for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::eq(&self, &tst_core::klv::st0805::CotConfig) -> bool
+impl core::default::Default for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::default() -> Self
+impl core::fmt::Debug for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0805::CotConfig
+impl core::marker::Freeze for tst_core::klv::st0805::CotConfig
+impl core::marker::Send for tst_core::klv::st0805::CotConfig
+impl core::marker::Sync for tst_core::klv::st0805::CotConfig
+impl core::marker::Unpin for tst_core::klv::st0805::CotConfig
+impl core::marker::UnsafeUnpin for tst_core::klv::st0805::CotConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0805::CotConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::platform_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
+pub fn tst_core::klv::st0805::spi_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub mod tst_core::klv::st0806
 #[non_exhaustive] pub enum tst_core::klv::st0806::RvtAoiType
 pub tst_core::klv::st0806::RvtAoiType::Friendly
@@ -3457,6 +3504,28 @@ impl core::marker::Unpin for tst_core::klv::VTargetPackError
 impl core::marker::UnsafeUnpin for tst_core::klv::VTargetPackError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::VTargetPackError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::VTargetPackError
+pub struct tst_core::klv::CotConfig
+pub tst_core::klv::CotConfig::geoid_undulation_m: core::option::Option<f64>
+pub tst_core::klv::CotConfig::how: alloc::string::String
+pub tst_core::klv::CotConfig::platform_type: alloc::string::String
+pub tst_core::klv::CotConfig::producer: alloc::string::String
+pub tst_core::klv::CotConfig::update_interval_us: u64
+impl core::clone::Clone for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::clone(&self) -> tst_core::klv::st0805::CotConfig
+impl core::cmp::PartialEq for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::eq(&self, &tst_core::klv::st0805::CotConfig) -> bool
+impl core::default::Default for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::default() -> Self
+impl core::fmt::Debug for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::CotConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::klv::st0805::CotConfig
+impl core::marker::Freeze for tst_core::klv::st0805::CotConfig
+impl core::marker::Send for tst_core::klv::st0805::CotConfig
+impl core::marker::Sync for tst_core::klv::st0805::CotConfig
+impl core::marker::Unpin for tst_core::klv::st0805::CotConfig
+impl core::marker::UnsafeUnpin for tst_core::klv::st0805::CotConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0805::CotConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0805::CotConfig
 pub struct tst_core::klv::OwnedRawField
 pub tst_core::klv::OwnedRawField::tag: u32
 pub tst_core::klv::OwnedRawField::value: alloc::vec::Vec<u8>
@@ -3850,6 +3919,8 @@ pub const tst_core::klv::SECURITY_LS_UL: [u8; 16]
 pub const tst_core::klv::VMTI_LS_UL: [u8; 16]
 pub fn tst_core::klv::decode_sdcc_flp(&[u8]) -> core::result::Result<tst_core::klv::st1010::SdccFlp, tst_core::error::KlvFieldError>
 pub fn tst_core::klv::encode_sdcc_flp_mode2(&[f64], &[f64], usize) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::platform_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
+pub fn tst_core::klv::spi_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub mod tst_core::mpegts
 pub mod tst_core::mpegts::au_cell
 #[non_exhaustive] pub enum tst_core::mpegts::au_cell::AuCellError
@@ -6981,6 +7052,28 @@ pub fn tst_core::url::is_multicast_v4(core::net::ip_addr::Ipv4Addr) -> bool
 pub fn tst_core::url::is_multicast_v6(core::net::ip_addr::Ipv6Addr) -> bool
 pub fn tst_core::url::parse_host_port(&str) -> core::result::Result<(core::net::ip_addr::IpAddr, u16), tst_core::url::common::UrlError>
 pub fn tst_core::url::parse_url(&str) -> core::result::Result<tst_core::url::common::ParsedUrl<'_>, tst_core::url::common::UrlError>
+#[non_exhaustive] pub enum tst_core::CotError
+pub tst_core::CotError::MissingField
+pub tst_core::CotError::MissingField::name: &'static str
+pub tst_core::CotError::MissingField::tag: u32
+impl core::clone::Clone for tst_core::error::CotError
+pub fn tst_core::error::CotError::clone(&self) -> tst_core::error::CotError
+impl core::cmp::Eq for tst_core::error::CotError
+impl core::cmp::PartialEq for tst_core::error::CotError
+pub fn tst_core::error::CotError::eq(&self, &tst_core::error::CotError) -> bool
+impl core::error::Error for tst_core::error::CotError
+impl core::fmt::Debug for tst_core::error::CotError
+pub fn tst_core::error::CotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::error::CotError
+pub fn tst_core::error::CotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::error::CotError
+impl core::marker::Freeze for tst_core::error::CotError
+impl core::marker::Send for tst_core::error::CotError
+impl core::marker::Sync for tst_core::error::CotError
+impl core::marker::Unpin for tst_core::error::CotError
+impl core::marker::UnsafeUnpin for tst_core::error::CotError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::CotError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::error::CotError
 #[non_exhaustive] pub enum tst_core::DemuxError
 pub tst_core::DemuxError::MalformedPes
 pub tst_core::DemuxError::MalformedPes::pid: u16

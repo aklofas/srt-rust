@@ -3,6 +3,7 @@
 //! exercises).
 
 use super::*;
+use crate::klv::pack::OwnedRawField;
 use crate::klv::st0806::model::*;
 
 /// Body-form fixture: timestamp + true airspeed + one POI (number/lat/lon).
@@ -220,6 +221,129 @@ fn sentinel_error_value_reemits_on_encode() {
     let bytes = encode_to_vec(&ls).unwrap();
     let back = decode(&bytes).unwrap();
     assert_eq!(back.points_of_interest[0].sentinel_tags, alloc::vec![2]);
+}
+
+#[test]
+fn unknown_tag_clobbering_timestamp_rejected() {
+    // D4 fix-round regression: without a duplicate-tag guard, a
+    // caller-stuffed `unknown` entry at a typed tag id silently
+    // overwrites the typed field on round-trip with no error. Exact
+    // scenario from the task review: Tag 2 (timestamp) is both set via
+    // the typed field AND stuffed into `unknown`.
+    let ls = RvtLs {
+        timestamp_us: Some(1),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 2,
+            value: alloc::vec![0, 0, 0, 0, 0, 0, 0, 99],
+        }],
+        ..RvtLs::default()
+    };
+    assert!(matches!(
+        encode_to_vec(&ls).unwrap_err(),
+        crate::error::KlvEncodeError::ReservedTagInUnknown { tag: 2 }
+    ));
+}
+
+#[test]
+fn poi_unknown_tag_clobbering_number_rejected() {
+    // Same clobber class as `unknown_tag_clobbering_timestamp_rejected`,
+    // one layer down: POI/AOI have no `tags.rs` table of their own, so
+    // the guard there is a literal 1..=10 range check rather than
+    // `is_typed_tag`.
+    let mut ls = RvtLs::default();
+    ls.points_of_interest.push(RvtPoi {
+        number: Some(7),
+        lat_deg: Some(10.0),
+        lon_deg: Some(20.0),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 1,
+            value: alloc::vec![0x00, 0x63],
+        }],
+        ..RvtPoi::default()
+    });
+    assert!(matches!(
+        encode_to_vec(&ls).unwrap_err(),
+        crate::error::KlvEncodeError::ReservedTagInUnknown { tag: 1 }
+    ));
+}
+
+#[test]
+fn aoi_unknown_tag_clobbering_type_rejected() {
+    let mut ls = RvtLs::default();
+    ls.areas_of_interest.push(RvtAoi {
+        number: Some(1),
+        corner_lat_p1_deg: Some(1.0),
+        corner_lon_p1_deg: Some(2.0),
+        corner_lat_p3_deg: Some(3.0),
+        corner_lon_p3_deg: Some(4.0),
+        aoi_type: Some(RvtAoiType::Friendly),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 6,
+            value: alloc::vec![0x02],
+        }],
+        ..RvtAoi::default()
+    });
+    assert!(matches!(
+        encode_to_vec(&ls).unwrap_err(),
+        crate::error::KlvEncodeError::ReservedTagInUnknown { tag: 6 }
+    ));
+}
+
+#[test]
+fn unknown_fields_pass_through_when_not_typed() {
+    // A genuinely unrecognized tag (200 is outside both the top-level
+    // 1..=21 table and the POI/AOI 1..=10 range) must still pass through
+    // verbatim and round-trip — the new guard must not reject tags it
+    // doesn't own.
+    let mut ls = RvtLs {
+        timestamp_us: Some(1),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 200,
+            value: alloc::vec![0xAA, 0xBB],
+        }],
+        ..RvtLs::default()
+    };
+    ls.points_of_interest.push(RvtPoi {
+        number: Some(1),
+        lat_deg: Some(10.0),
+        lon_deg: Some(20.0),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 200,
+            value: alloc::vec![0xCC],
+        }],
+        ..RvtPoi::default()
+    });
+    ls.areas_of_interest.push(RvtAoi {
+        number: Some(2),
+        corner_lat_p1_deg: Some(1.0),
+        corner_lon_p1_deg: Some(2.0),
+        corner_lat_p3_deg: Some(3.0),
+        corner_lon_p3_deg: Some(4.0),
+        aoi_type: Some(RvtAoiType::Friendly),
+        unknown: alloc::vec![OwnedRawField {
+            tag: 200,
+            value: alloc::vec![0xDD],
+        }],
+        ..RvtAoi::default()
+    });
+
+    let bytes = encode_to_vec(&ls).unwrap();
+    let back = decode(&bytes).unwrap();
+    assert_eq!(back.unknown.len(), 1);
+    assert_eq!(back.unknown[0].tag, 200);
+    assert_eq!(back.unknown[0].value, alloc::vec![0xAA, 0xBB]);
+    assert_eq!(back.points_of_interest[0].unknown.len(), 1);
+    assert_eq!(back.points_of_interest[0].unknown[0].tag, 200);
+    assert_eq!(
+        back.points_of_interest[0].unknown[0].value,
+        alloc::vec![0xCC]
+    );
+    assert_eq!(back.areas_of_interest[0].unknown.len(), 1);
+    assert_eq!(back.areas_of_interest[0].unknown[0].tag, 200);
+    assert_eq!(
+        back.areas_of_interest[0].unknown[0].value,
+        alloc::vec![0xDD]
+    );
 }
 
 #[test]

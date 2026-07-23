@@ -81,7 +81,11 @@ pub fn decode(bytes: &[u8]) -> Result<RvtLs, KlvDecodeError> {
 /// including) the CRC's own 4 value bytes — the last well-formed Tag 1
 /// occurrence wins if the (non-conformant) input repeats it. Absence of
 /// Tag 1 is not an error: an embedded RVT LS never carries one, and this
-/// function accepts standalone captures that omit it too.
+/// function accepts standalone captures that omit it too. ST 0806.4 does
+/// not explicitly state whether the covered span includes the CRC's own
+/// value bytes; excluding them is the universal-practice reading here,
+/// pending a real-capture check (spec ambiguity, not yet resolved) — the
+/// same caveat class as the POI Label field's, see [`RvtPoi::label`].
 ///
 /// # Errors
 /// - [`KlvDecodeError::Truncated`] if `bytes` is shorter than the UL, or

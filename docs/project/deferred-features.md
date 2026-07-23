@@ -1961,3 +1961,36 @@ the trigger that would unblock it.
   `metadata_service_id`, or the next binding-surface wave that touches
   `DemuxEvent.Metadata` anyway; (3) an audio codec with dts≠pts
   joining the mux surface.
+
+## CoT→KLV reverse conversion
+
+- **Status:** Not implemented. `klv::st0805` (and its Python/JVM
+  mirrors) convert a decoded ST 0601 UAS Datalink LS record to
+  Cursor-on-Target XML in one direction only. There is no function that
+  parses a CoT event and produces (or patches) ST 0601 KLV fields.
+- **Why deferred:** ST 0805.1 itself defines only the KLV→CoT mapping —
+  a reverse mapping isn't a spec gap we're filling, it would be a new
+  design with no spec to anchor field choices (CoT's `detail` schema is
+  intentionally open-ended per-producer, so a generic CoT→KLV mapping
+  has no single canonical source). No current consumer ingests CoT and
+  needs it turned back into KLV.
+- **Trigger to revisit:** A consumer needs to ingest CoT (e.g. from a
+  TAK server or another CoT-emitting sensor) and re-encode it as ST
+  0601 KLV for downstream MPEG-TS muxing.
+
+## CoT UDP egress
+
+- **Status:** Not implemented. `klv::st0805` produces CoT XML strings
+  only; nothing in the crate opens a socket or sends them anywhere. CoT
+  is conventionally distributed over UDP multicast/broadcast (the
+  ATAK/TAK ecosystem's usual transport), but that's a transport
+  concern, not a KLV-conversion concern.
+- **Why deferred:** Layering — `klv::st0805` stays a pure,
+  `no_std`-clean conversion function with no I/O, matching every other
+  `klv::` submodule (`st0601`, `st0806`, `st1010`, ...). Wiring a sender
+  belongs in a transport-facing crate or binding (mirroring how
+  `tst-udp`/`tst-tcp` already own egress for TS bytes), not in
+  `tst-core::klv`, and no current consumer has asked for one.
+- **Trigger to revisit:** A consumer asks for a wired CoT sender (e.g.
+  "give me a `CotSender` that takes a `UasDatalinkLs` and multicasts
+  the Platform Position event every N seconds").

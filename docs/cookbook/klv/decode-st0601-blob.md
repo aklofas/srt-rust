@@ -30,3 +30,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Runnable: [examples/klv-metadata/extract_klv.rs](/examples/klv-metadata/extract_klv.rs) and [examples/klv-metadata/klv_decode_file.rs](/examples/klv-metadata/klv_decode_file.rs).
+
+`decode`'s `UasDatalinkLs` now types 142 of the 143 active ST 0601.19
+items — the long tail (atmospheric/wind, target location, alternate
+platform, sensor velocity, repeated-record packs like Waypoint List
+and Weapons Stores, and the SDCC-FLP covariance pack) is all field
+reads away, not a separate decode step. For the repeated-record and
+covariance shapes specifically, see [Reading waypoint lists, weapons
+stores, and SDCC covariance](/docs/cookbook/klv/decode-long-tail.md).

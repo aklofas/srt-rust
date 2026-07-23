@@ -61,6 +61,8 @@ Receiving a stream and want video + telemetry as one record? This is the section
 - **[Encode ST 0601 from typed values](/docs/cookbook/klv/encode-st0601.md)** — Synthesize KLV for tests, fixtures, or gateway translation.
 - **[Decode security metadata from an ST 0601 record](/docs/cookbook/klv/decode-security-metadata.md)** — Tag 48 → ST 0102 classification, country codes, version info.
 - **[Decode VMTI per-target detections from an ST 0601 stream](/docs/cookbook/klv/decode-vmti.md)** — Surface detected/tracked targets per frame via Tag 74.
+- **[Reading waypoint lists, weapons stores, and SDCC covariance](/docs/cookbook/klv/decode-long-tail.md)** — Typed access to the ST 0601 long tail's repeated-record and cross-referenced-pack items.
+- **[Converting ST 0601 to Cursor-on-Target](/docs/cookbook/klv/klv-to-cot.md)** — MISB ST 0805.1 KLV→CoT for ATAK/WinTAK/other TAK-family consumers.
 - **[Build a STANAG 4609-conformant stream](/docs/cookbook/klv/stanag-4609-stream.md)** — ST 0604 MISP timestamps + ST 0902 MISMMS gate + strict-compliance encode + Tag 94 Core ID.
 
 ## 🎞 Codecs — parse video and audio elementary streams

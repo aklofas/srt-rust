@@ -1,7 +1,7 @@
 # KLV Codec Guide
 
 
-> **Who this is for:** You need to encode or decode MISB KLV metadata (ST 0601 FMV, ST 0102 security, ST 0605 amend tags, ST 0903 VMTI, ST 0806 RVT, ST 1010 SDCC error covariance, ST 0805 KLV→CoT conversion) — typed Rust structs in, bytes out, or the inverse.
+> **Who this is for:** You need to encode or decode MISB KLV metadata (ST 0601 FMV, ST 0102 security, ST 0605 amend tags, ST 0903 VMTI, ST 0806 RVT, ST 1010 SDCC error covariance) — typed Rust structs in, bytes out, or the inverse. A one-way ST 0805 layer additionally converts a decoded ST 0601 record to Cursor-on-Target XML (strings out, not KLV bytes).
 
 > **You will learn:**
 > - The substrate: SMPTE UL tags, BER length, the encode/decode round-trip

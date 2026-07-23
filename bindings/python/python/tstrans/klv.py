@@ -1670,6 +1670,50 @@ encode_rvt = _native_mod.encode_rvt
 encode_rvt_standalone = _native_mod.encode_rvt_standalone
 
 
+# ---------------------------------------------------------------------------
+# ST 0805.1 KLV -> Cursor-on-Target (CoT) conversion
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CotConfig:
+    """Configuration for ST 0805.1 KLV -> CoT conversion
+    (`platform_position_xml` / `sensor_point_of_interest_xml`). Defaults
+    match the Rust `CotConfig::default()`.
+
+    - `platform_type` — CoT `type` for the Platform Position event. ST
+      0805.1 §5 gives `a-f-A-M-F` as the fixed-wing example and requires
+      it be overridable per platform (rotary-wing, manned pods, ...). The
+      Sensor Point of Interest event's `type` is fixed at `b-m-p-s-p-i`
+      by the spec and is not configurable.
+    - `update_interval_us` — `stale = time + update_interval_us`. ST
+      0805.1 defines `stale` as "time of next message" but gives no
+      concrete interval — this default is an implementation choice, not
+      a spec value.
+    - `producer` — XML attribute *name* stamped verbatim into
+      `<detail><_flow-tags_ .../>`. It is a Name production (an
+      attribute name, not a value): neither validated nor escaped, so an
+      invalid value produces malformed XML.
+    - `geoid_undulation_m` — geoid undulation (HAE - MSL) applied when
+      only an MSL-referenced altitude tag is available. `None` emits the
+      MSL value as-is.
+    - `how` — CoT `how` attribute. ST 0805.1 §5 fixes this at `m-p`
+      (machine-passed) for both event types.
+    """
+
+    platform_type: str = "a-f-A-M-F"
+    update_interval_us: int = 5_000_000
+    producer: str = "ST0601CoT"
+    geoid_undulation_m: float | None = None
+    how: str = "m-p"
+
+
+platform_position_xml = _native_mod.platform_position_xml
+sensor_point_of_interest_xml = _native_mod.sensor_point_of_interest_xml
+platform_uid = _native_mod.platform_uid
+spi_uid = _native_mod.spi_uid
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -1754,4 +1798,9 @@ __all__: list[str] = [
     "decode_rvt_standalone",
     "encode_rvt",
     "encode_rvt_standalone",
+    "CotConfig",
+    "platform_position_xml",
+    "sensor_point_of_interest_xml",
+    "platform_uid",
+    "spi_uid",
 ]

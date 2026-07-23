@@ -11210,3 +11210,86 @@ reason = "top-level re-export of tst_core::klv::st1010::decode_sdcc_flp; see tha
 [[exempt]]
 item = "tst_core::klv::encode_sdcc_flp_mode2"
 reason = "top-level re-export of tst_core::klv::st1010::encode_sdcc_flp_mode2; see that entry for coverage"
+
+[[surface]]
+item = "tst_core::klv::st0805::CotConfig"
+owning_tests = ["crates/tst-core/src/klv/st0805.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st0805::platform_position_xml"
+owning_tests = ["crates/tst-core/src/klv/st0805.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st0805::platform_uid"
+owning_tests = ["crates/tst-core/src/klv/st0805.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st0805::sensor_point_of_interest_xml"
+owning_tests = ["crates/tst-core/src/klv/st0805.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[surface]]
+item = "tst_core::klv::st0805::spi_uid"
+owning_tests = ["crates/tst-core/src/klv/st0805.rs"]
+bindings = []
+scenario_ids = []
+tier = "A"
+
+[[exempt]]
+item = "tst_core::klv::CotConfig"
+reason = "top-level re-export of tst_core::klv::st0805::CotConfig; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::platform_position_xml"
+reason = "top-level re-export of tst_core::klv::st0805::platform_position_xml; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::platform_uid"
+reason = "top-level re-export of tst_core::klv::st0805::platform_uid; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::sensor_point_of_interest_xml"
+reason = "top-level re-export of tst_core::klv::st0805::sensor_point_of_interest_xml; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::spi_uid"
+reason = "top-level re-export of tst_core::klv::st0805::spi_uid; see that entry for coverage"
+
+[[exempt]]
+item = "tst_core::klv::st0805::CotConfig::clone"
+reason = "derive impl for st0805 CotConfig; see tst_core::klv::st0805::CotConfig entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::st0805::CotConfig::eq"
+reason = "derive impl for st0805 CotConfig; see tst_core::klv::st0805::CotConfig entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::st0805::CotConfig::default"
+reason = "derive impl for st0805 CotConfig; see tst_core::klv::st0805::CotConfig entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::klv::st0805::CotConfig::fmt"
+reason = "derive impl for st0805 CotConfig; see tst_core::klv::st0805::CotConfig entry — graduate alongside it"
+
+[[exempt]]
+item = "tst_core::error::CotError::clone"
+reason = "derive impl for st0805 CotError; covered by error-path tests"
+
+[[exempt]]
+item = "tst_core::error::CotError::eq"
+reason = "derive impl for st0805 CotError; covered by error-path tests"
+
+[[exempt]]
+item = "tst_core::error::CotError::fmt"
+reason = "derive impl for st0805 CotError; covered by error-path tests"

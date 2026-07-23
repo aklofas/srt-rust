@@ -52,6 +52,10 @@ name = "klv_st0601_patch"
 
 [[target]]
 crate = "tst-core"
+name = "klv_st0806_decode"
+
+[[target]]
+crate = "tst-core"
 name = "klv_st0903_decode"
 
 [[target]]

@@ -172,5 +172,12 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "klv_st0806_decode"
+path              = "fuzz_targets/klv_st0806_decode.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

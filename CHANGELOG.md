@@ -31,7 +31,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   final XOR) — a new `klv::crc32` substrate, and a real divergence from
   the ST 0601 16-bit running-sum. A mismatch raises the new
   `KlvDecodeError::Crc32Mismatch { expected, found }` variant. An
-  embedded RVT LS carries neither Tag 1 nor Tag 2.
+  embedded RVT LS is not required to carry Tag 1 or Tag 2.
 - Encoding a typed tag through the `unknown` pass-through bucket (RVT
   LS top level, or nested in `RvtPoi`/`RvtAoi`) is rejected with the
   existing `KlvEncodeError::ReservedTagInUnknown`, mirroring

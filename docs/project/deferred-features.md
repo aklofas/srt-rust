@@ -264,6 +264,25 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer ingesting archival / file-based
   VMTI-bearing streams that use the Universal Set encoding.
 
+## Typed ST 0601 nested local sets (ST 1206 / ST 1002 / ST 1601 / ST 1602 / ST 1607 Segment + Amend)
+
+- **Status:** Pass-through. The six remaining named-but-opaque nested
+  Local Sets on `UasDatalinkLs` are `Option<Vec<u8>>` raw bytes today:
+  tag 95 (`sar_mi_local_set`, ST 1206 SAR Motion Imagery), tag 97
+  (`range_image_local_set`, ST 1002 Range Image), tag 98
+  (`geo_registration_local_set`, ST 1601 Geo-Registration), tag 99
+  (`composite_imaging_local_set`, ST 1602 Composite Imaging), and
+  tags 100–101 (`segment_local_set` / `amend_local_set`, ST 1607
+  Segment and Amend). Tag 73 (RVT / ST 0806) is no longer on this
+  list — see the `klv::st0806` typed-layer entry below.
+- **Why deferred:** Same reasoning as the VMTI nested-LS entry above —
+  the substrate supports typing each one, but every set is its own
+  per-tag table to write and maintain, and no consumer has asked for
+  typed access to any of the six.
+- **Trigger to revisit:** A consumer asks for typed access to SAR
+  motion imagery, range imagery, geo-registration, composite imaging,
+  or segment/amend metadata.
+
 ## `klv::st0806` RVT typed layer — SHIPPED
 
 - **Status:** SHIPPED. `klv::st0806` types the MISB ST 0806.4 Remote
@@ -280,7 +299,7 @@ the trigger that would unblock it.
 
 - **Status:** Consumer-side dispatch. Consumers carrying a standalone
   RVT LS on its own KLV PID (the ST 0806.4-01/-03 independent form)
-  match `data.starts_with(&klv::st0806::RVT_LS_UL)` themselves and call
+  match `data.starts_with(&klv::st0806::RVT_LS_UL.0)` themselves and call
   `klv::st0806::decode_standalone` on the inner bytes. The demuxer's
   `MetadataKind` enum has no RVT-aware variant — same shape as the
   VMTI standalone-PID entry above.

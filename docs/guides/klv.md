@@ -244,9 +244,10 @@ estimates (Items 40–46), extended platform state (51–52, 56–58, 64,
 (79–80), coded enums with an `Other(code)` fallback (`IcingDetected`,
 `SensorFovName`, `OperationalMode` — Items 34, 63, 77), var-length
 int/enum items (Items 110–111, 123–126, 131, 133, 136–137, 139), and
-the ST 1201.5 IMAPB extended-range twins (Items 96, 103–105, 109,
-112–114, 117–120, 132, 134) — see the extended-range precedence rule
-above. Full per-tag table: [reference/compatibility.md](/docs/reference/compatibility.md).
+the ST 1201.5 IMAPB extended-range items (Items 96/103–105 twinning
+22/38/75/76 — see the precedence rule above — plus standalone Items
+109, 112–114, 117–120, 132, 134, which have no restricted twin). Full
+per-tag table: [reference/compatibility.md](/docs/reference/compatibility.md).
 
 ```rust,no_run
 use tst_core::klv::st0601::{decode, UasDatalinkLs};
@@ -611,6 +612,7 @@ fn to_cot(ls: &UasDatalinkLs, generated_us: u64) -> Result<(String, String), Box
 ```python
 from tstrans.klv import platform_position_xml, sensor_point_of_interest_xml
 
+# record: a decoded UasDatalinkLs — see the CoT cookbook recipe.
 platform_xml = platform_position_xml(record, generated_us=generated_us)
 spi_xml = sensor_point_of_interest_xml(record, generated_us=generated_us)
 ```
@@ -650,8 +652,12 @@ use tst_core::klv::st1010::decode_sdcc_flp;
 fn dump_covariance(ls: &UasDatalinkLs) -> Result<(), Box<dyn std::error::Error>> {
     for field in &ls.sdcc_flps {
         let m = decode_sdcc_flp(&field.bytes)?;
-        for i in 0..m.matrix_size as usize {
-            println!("sigma[{i}] = {:.3}", m.correlation(i, i));
+        // Slen==0 is spec-legal and leaves std_devs empty; correlation(i, i)
+        // panics in that case, so skip the diagonal walk entirely.
+        if !m.std_devs.is_empty() {
+            for i in 0..m.matrix_size as usize {
+                println!("sigma[{i}] = {:.3}", m.correlation(i, i));
+            }
         }
     }
     Ok(())

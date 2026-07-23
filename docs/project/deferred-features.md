@@ -2033,9 +2033,10 @@ the trigger that would unblock it.
   "Typed nested VMTI Local Sets" entry above, which is a different
   construct and not affected by this entry). ST 0903.6 — the version
   `klv::st0903` implements — formally **removed VTrack LS** (its own
-  Revision History: "Removed VTrack LS"); every VTrack-LS-related
-  requirement in the ST 0903.6 text (ST 0903.4-95/-96/-97,
-  ST 0903.5-109 through -115) is marked `(Deprecated)`.
+  Revision History: "Removed VTrack LS"). ST 0903.4-97 and
+  ST 0903.5-109 through -115 are marked `(Deprecated)` inline;
+  ST 0903.4-95/-96 are tagged `[VTrack related]` instead and fall
+  under the revision history's VTrack removal.
 - **Why deferred:** This isn't a coverage gap in the ST 0903.6
   decoder — VTrack LS is withdrawn from the spec version this crate
   targets, so `klv::st0903` correctly does not model it. The only

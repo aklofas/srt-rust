@@ -9,7 +9,320 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — MISB ST 0805.1 KLV → Cursor-on-Target conversion (`klv::st0805`)
+### MISB full-tag-compliance arc: ST 0601 exhaustive coverage, `klv::st0806`, `klv::st0805` (PRs #116–#120)
+
+MISB ST 0601 is now typed end to end: 142 of the 143 UAS Datalink LS spec
+items model onto `UasDatalinkLs` as typed fields, up from 52 before this
+arc; only Tag 66 (deprecated) remains permanently unknown-passthrough by
+design. The arc also adds two new sibling KLV modules that round out the
+surface: `klv::st0806` (Remote Video Terminal Local Set) and `klv::st0805`
+(KLV → Cursor-on-Target conversion). Landed in five work packages across
+PRs #116–#120; grouped below by topic rather than by landing PR.
+
+#### Added — ST 0601 full-tag coverage (142 of 143 items typed, up from 52; `klv::st0601`)
+
+The item table typed in five stages:
+
+- **51 fixed-encoding items** (52→103 of 143): 30 fixed-linear-mapped
+  scalars closing the tags 35–93 gap (target location, track-gate
+  width/height, CE90/LE90 error estimates, weather/atmospheric fields,
+  alternate-platform position/heading/height, sensor north/east velocity,
+  and the full-range twins of platform angle-of-attack/sideslip — tags
+  92/93); 11 raw scalar/string items (I8/U16/U64 raw encodings plus 6
+  UTF-8 strings, including the first two typed tags whose own tag number
+  is itself 2-byte BER-OID encoded — 129 Target ID, 135 Communications
+  Method); 3 coded enums (`IcingDetected`, `SensorFovName`,
+  `OperationalMode`, each keeping an `Other(code)` fallback that
+  round-trips unrecognized wire codepoints byte-exact); and 7 named
+  nested-local-set byte fields (see the *Changed* entry below). Also
+  closes the `OutOfRangePolicy::Indicator` known gap from the v0.3.0
+  field-feedback arc (PR #92): all 11 sentinel-eligible tags (6, 7, 50,
+  51, 52, 79, 80, 90–93) are now encodable typed fields, not just 5.
+- **25 extended-encoding IMAPB items** (103→128 of 143): 14 ST 1201.5
+  IMAPB (variable-length float) items — 4 extended-range twins of
+  existing restricted items (target width, density altitude, sensor and
+  alternate-platform ellipsoid height — tags 96, 103–105 twinning items
+  22, 38, 75, 76) and 10 new standalone items (range to recovery,
+  platform course angle, altitude AGL, radar altimeter, sensor
+  azimuth/elevation/roll rate, MI storage percent full, transmission
+  frequency, zoom percentage — tags 109, 112–114, 117–120, 132, 134); 10
+  MISB variable-length truncatable-int items (navsats in view,
+  positioning method source, two new coded enums `PlatformStatus` and
+  `SensorControlMode`, time airborne, propulsion unit speed, take-off
+  time, on-board MI storage capacity, leap seconds, GPS/UTC correction
+  offset — tags 110–111, 123–126, 131, 133, 136–137), plus tag 139
+  (`active_payloads`, a raw multi-byte payload-active bitmask). A new
+  `imapb_specials: Vec<(u32, ImapbSpecial)>` field (re-exported as
+  `klv::ImapbSpecial`) carries out-of-band ST 1201.5 special values
+  (`+/-Infinity`, NaN families, `BelowMin`/`AboveMax`) for the 14 new
+  IMAPB items, mirroring the existing `sentinel_tags` mechanism: a
+  populated typed field always wins over a same-tag `imapb_specials`
+  entry on encode. `OutOfRangePolicy::Indicator` now covers these 14
+  items too.
+- **Pack/list substrate + 6 simple DLP items** (128→134 of 143): new
+  `Encoding::Pack` dispatch in `tags.rs` plus a `klv::st0601::packs`
+  module for items whose wire value is a small positional structure or
+  flat list rather than one scalar. Tag 81 `image_horizon`
+  (`ImageHorizonPixels`), Tag 115 `control_commands`
+  (`Vec<ControlCommand>`, MULTI-INSTANCE per ST 0601.19 Table 1), Tag 116
+  `control_command_verification` and Tag 121 `active_wavelengths`
+  (BER-OID id lists), Tag 127 `sensor_frame_rate` (`SensorFrameRate`),
+  Tag 143 `metadata_substream_id` (`MetadataSubstreamId`).
+  `strict_body_walk`'s once-per-packet duplicate-tag check now exempts
+  tags 115 and 102 — the spec's only two "Multiples Allowed" items. New
+  general-purpose `klv::st1010` module (MISB ST 1010 SDCC-FLP
+  parser/encoder, Mode 1 + Mode 2, sparse bit-vector support), used by
+  Tag 102 below.
+- **7 VLP series items** (134→141 of 143): Tag 122 `country_codes`
+  (`CountryCodes`: coding method + up to three length-value UTF-8
+  country codes, with per-§8.122.1 truncation — a trailing length-value
+  pair drops entirely — distinct from the length-0 "unknown" marker,
+  which still writes the length byte); Tag 128 `wavelengths_list`
+  (`Vec<WavelengthRecord>`: BER-OID id + two IMAPB(0,1e9,4) bounds +
+  UTF-8 name); Tag 130 `airbase_locations` (`AirbaseLocations`, sharing
+  the new `Location` DLP with Tag 141: take-off + recovery WGS84 sites;
+  a wire-absent recovery pair decodes to "same as take-off" per
+  §8.130.1, distinguishable from an explicit length-0 "unknown"
+  recovery); Tag 138 `payload_list` (`PayloadList`: Payload Count
+  (BER-OID) plus a VLP of Payload Records — id, `PayloadType` enum,
+  UTF-8 name); Tag 140 `weapons_stores` (`Vec<WeaponsStore>`: weapon
+  physical address + packed 14-bit status, with Table 22 engagement-bit
+  accessors `fuze_enabled`/`laser_enabled`/`target_enabled`/
+  `weapon_armed`, + weapon type string — the whole-item spec vector has
+  a known 1-byte length discrepancy, so the test pins the three
+  per-record vectors and reconstructs the outer VLP directly); Tag 141
+  `waypoint_list` (`Vec<Waypoint>`: waypoint id, signed 16-bit
+  prosecution order, optional Mode/Source info bitfield, optional
+  `Location`); Tag 142 `view_domain` (`ViewDomain`: up to three
+  azimuth/elevation/roll `(start, range)` IMAPB pairs, each
+  independently truncatable or explicitly marked "unknown"). All seven
+  pinned against MISB ST 0601.19 §8 worked examples transcribed from the
+  cached spec PDF (including the §8.138 63-byte Payload List example).
+- **Tag 102 SDCC-FLP positional capture** (141→142 of 143, the arc's
+  final item): Tag 102 (`sdcc_flps: Vec<SdccFlpField>`) is MULTI-INSTANCE
+  with positional row-to-item semantics (the "Refined Source List"
+  binding, ST 0601.19 §8.102) — each occurrence refines the accuracy of
+  the `N` Local Set items immediately preceding it on the wire, where `N`
+  is the occurrence's own SDCC-FLP matrix size. Decode maintains a
+  running wire-order tag list and captures, per occurrence,
+  `preceding_tags` (the refined items) plus the raw pack `bytes` (via
+  `klv::st1010::decode_sdcc_flp`); encode re-emits every entry verbatim,
+  grouped together in tag-ascending position — the original interleaving
+  with `preceding_tags` is documented as NOT reproduced on re-encode
+  (`SdccFlpField`'s adjacency caveat). **This is the arc's final item:
+  only Tag 66 (deprecated, permanently unknown-passthrough by design)
+  remains untyped.**
+- All 142 items are mirrored field-for-field through the Python and JVM
+  bindings, including every new enum. The WP-C pack/list dataclasses/
+  records and the standalone `klv::st1010` mirror are large enough to
+  warrant their own entries below.
+
+#### Changed — nested local-set tags decode into named fields, not `unknown`
+
+- Tags 73, 95, 97, 98, 99, 100, 101 (RVT / SAR Motion Imagery / Range
+  Image / Geo-Registration / Composite Imaging / Segment / Amend local
+  sets) now decode into their own named `Option<Vec<u8>>` field (`rvt`,
+  `sar_mi_local_set`, `range_image_local_set`,
+  `geo_registration_local_set`, `composite_imaging_local_set`,
+  `segment_local_set`, `amend_local_set`) instead of the generic
+  `unknown` bucket. The bytes are unchanged and wire output is
+  byte-identical — interior typing of each nested set's contents is
+  still future work; this only changes where a caller finds the bytes
+  on the decoded struct.
+
+#### Added — `st0601_sentinel_meaning` lookup in Python and JVM
+
+- `tstrans.klv.st0601_sentinel_meaning(tag)` (Python) and
+  `org.tstrans.klv.Klv.st0601SentinelMeaning(tag)` (JVM) expose the Rust
+  `klv::st0601::st0601_sentinel_meaning` lookup (Out of Range / Reserved
+  / Not Available per tag) to binding callers.
+
+#### Added — ST 0601 restricted-vs-extended item precedence documented
+
+- Four pairs of tags carry the same real-world quantity at two
+  precisions: Item 22 / Item 96 (target width), Item 38 / Item 103
+  (density altitude), Item 75 / Item 104 (sensor ellipsoid height), and
+  Item 76 / Item 105 (alternate-platform ellipsoid height). Per ST
+  0601.19 requirements 0601.9-20/-21, a decoder that understands the
+  extended (IMAPB) item should prefer it over its restricted twin when
+  both are present on the wire. `UasDatalinkLs` decodes both fields
+  independently (it does not drop either), so this is now documented on
+  each field's rustdoc and in the KLV guide (`docs/guides/klv.md`) as
+  caller guidance, not enforced by the decoder.
+
+#### Fixed — Python/JVM `unknown` predicate was stale against the newly-typed tags
+
+- The Python and JVM bindings' internal `is_st0601_typed_tag` predicate
+  gates the *encode* direction only: it drops a caller-supplied
+  `unknown` entry before it reaches tst-core's encoder whenever the
+  predicate considers the entry's tag typed (typed field wins). The
+  predicate was stale relative to the 51 newly-typed tags above: Python
+  was missing tags 3 and 4 (Mission ID, Platform Tail Number), and JVM
+  was additionally missing tag 94 (MIIS Core Identifier). A
+  caller-supplied `unknown` entry for one of those tags was *not*
+  dropped by the filter, so it reached tst-core's encoder and was
+  rejected with `KlvEncodeError::ReservedTagInUnknown` instead of being
+  silently discarded per the documented "typed wins" collision policy.
+  Fixed as part of widening the predicate for the 51 newly-typed tags
+  above.
+- **Behavior change:** the old predicate's over-broad `5..=91` span
+  also covered tags 66 and 81, which remain untyped. A caller-supplied
+  `unknown` entry at tag 66 or 81 was therefore silently dropped by the
+  old filter before ever reaching the encoder. The corrected, exact
+  predicate no longer covers 66/81, so `unknown` entries at those tags
+  now encode onto the wire like any other forward-compat tag, instead
+  of silently vanishing.
+- `is_st0601_typed_tag` was widened again as each later stage above
+  landed (WP-B's 25 extended items, WP-C's pack/list items including
+  Tag 102), keeping the predicate's coverage exact rather than a range
+  approximation. A caller-supplied `unknown` entry at any typed tag is
+  silently dropped (typed wins) rather than surviving into the encoded
+  record.
+
+#### Fixed — JVM `precedingTags`/`controlCommandVerification`/`activeWavelengths` local-ref leak
+
+- `read_sdcc_flp_field`'s `precedingTags` loop (and the same-shaped
+  `controlCommandVerification`/`activeWavelengths` loops) called the list
+  accessor once per iteration with no per-item local frame, while itself
+  running inside the fixed 16-slot `with_local_frame` that wraps each
+  `sdccFlps` list item — a caller-supplied list longer than that frame's
+  spare capacity exhausted the JNI local-ref table and **aborted the JVM
+  outright** (not a catchable exception). Fixed by routing all three call
+  sites through a new shared `jutil::read_long_list` helper (mirrors the
+  existing `build_long_list`), which applies its own per-item frame. Two
+  new 64-entry regression tests
+  (`sdccFlpFieldLongPrecedingTagsRoundTripsWithoutAborting`,
+  `controlCommandVerificationLongListRoundTripsWithoutAborting`) exercise
+  past the old ~13-entry abort threshold.
+
+#### Fixed — `klv::st1010::decode_sdcc_flp` hostile Matrix Size abort
+
+- A crafted Element 1 Matrix Size (the BER-OID `N`, attacker-controlled up
+  to `u32::MAX`) could make `decode_sdcc_flp` size its correlation vectors
+  by `N(N-1)/2` *before* reading any correlation byte — a 7-byte input
+  claiming `N` &asymp; `u32::MAX` demanded a ~9.2 EiB allocation and
+  **aborted the process** rather than returning an `Err`. `N` is now
+  bounded against the wire bytes actually remaining (std-dev/correlation
+  byte requirements, or the Bit Vector's bit capacity in sparse mode)
+  before any allocation is sized by it. Reachable from all three typed
+  entry points (Rust `decode_sdcc_flp`, Python, JVM `Klv.decodeSdccFlp`)
+  via the ST 0601 Tag 102 workflow above. New fuzz target
+  `klv_st1010_decode`.
+
+#### Added — Python bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
+
+- `tstrans.klv` gains frozen dataclasses mirroring every WP-C
+  `UasDatalinkLs` pack/list field, following the existing `VTargetPack`
+  nested-struct-list pattern: `ImageHorizonPixels`, `ControlCommand`,
+  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
+  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
+  (codepoint enum) plus `PayloadRecord`/`PayloadList`, `WeaponsStore`
+  (with `general_status`/`fuze_enabled`/`laser_enabled`/
+  `target_enabled`/`weapon_armed` properties), `Waypoint`,
+  `ViewDomainPair`/`ViewDomain`, and `SdccFlpField` — all wired through
+  `decode_uas_datalink`/`encode_uas_datalink`.
+- New standalone `tstrans.klv.SdccFlp` dataclass plus `decode_sdcc_flp`/
+  `encode_sdcc_flp_mode2` entry points mirroring the general-purpose
+  `klv::st1010` module (usable independent of ST 0601 — see the module
+  docstring).
+- `is_st0601_typed_tag` (the internal predicate gating the Python
+  binding's `unknown` collision-drop on encode) now covers every WP-C
+  tag, including Tag 102 — whose predicate status was deferred pending
+  its multi-instance modeling, which landed in Task C4. A
+  caller-supplied `unknown` entry at any WP-C tag is now silently
+  dropped (typed wins) rather than surviving into the encoded record.
+
+#### Added — JVM bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
+
+- `org.tstrans.klv` gains a Java record (or enum) mirroring every WP-C
+  `UasDatalinkLs` pack/list field: `ImageHorizonPixels`, `ControlCommand`,
+  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
+  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
+  (codepoint enum, wire codes crossing as `long` — unlike `IcingDetected`'s
+  narrow byte, `PayloadType::Other` carries the full BER-OID `u64` range)
+  plus `PayloadRecord`/`PayloadList`, `WeaponsStore` (with
+  `generalStatus`/`fuzeEnabled`/`laserEnabled`/`targetEnabled`/
+  `weaponArmed` accessors), `Waypoint`, `ViewDomainPair`/`ViewDomain`, and
+  `SdccFlpField` — all wired through `Klv.decodeUasDatalink`/
+  `Klv.encodeUasDatalink`. Unlike `VTargetPack`'s many-optional-field
+  Builder, most of these small (&le;8 field) types use a plain canonical
+  constructor, matching the `CoreId`/`GeoPoint` precedent; `ImageHorizonPixels`
+  and `WeaponsStore` are the two exceptions, each also gaining a `Builder`
+  (named setters over 4 consecutive same-typed positional fields — a
+  transposition hazard the review round called out for both: image-horizon
+  percentages/lat-lon pairs and weapon station/hardpoint/carriage/store
+  BER-OID ids). List fields (`controlCommands`, `wavelengthsList`,
+  `weaponsStores`, `waypointList`, `sdccFlps`, and `payloadList`'s nested
+  `records`) still follow the `VTargetPack` `with_local_frame`-per-item
+  idiom on the JNI side.
+- New standalone `org.tstrans.klv.SdccFlp` record plus
+  `Klv.decodeSdccFlp`/`Klv.encodeSdccFlpMode2` entry points mirroring the
+  general-purpose `klv::st1010` module; `SdccFlp.correlation(i, j)` is a
+  pure-Java port of the Rust accessor (no JNI crossing).
+- `is_st0601_typed_tag` (the internal predicate gating the JVM binding's
+  `unknown` collision-drop on encode) now covers every WP-C tag, including
+  Tag 102 — same decision as the Python binding. A caller-supplied
+  `unknown` entry at any WP-C tag is now silently dropped (typed wins)
+  rather than surviving into the encoded record.
+- `read_uas_datalink` (the JNI encode-direction field reader) now calls
+  `env.ensure_local_capacity(320)` — it had NO such call before this WP
+  (pre-existing debt: every `read_nullable_*` accessor mints a local ref
+  that lives until the function returns). `build_uas_datalink`'s own
+  capacity bumped 224 &rarr; 320 for the same 14 new fields (a first-cut
+  256 left effectively zero margin — bumped again after review to leave
+  real headroom, verified empirically by
+  `St0601PacksTest.fullyPopulatedWpcFieldsRoundTrip`).
+
+#### Added — MISB ST 0806.4 Remote Video Terminal (RVT) Local Set typed layer (`klv::st0806`)
+
+- New sibling-layer module `klv::st0806` types the RVT Local Set carried
+  by ST 0601 Tag 73: both the nested body form (`decode`/`encode_to_vec`,
+  no UL, embedded via `UasDatalinkLs::rvt`) and the standalone
+  independent form (`decode_standalone`/`encode_to_vec_standalone`, own
+  16-byte UL, timestamp-first Tag 2, checksum-last Tag 1 per
+  ST 0806.4-02/-04). `UasDatalinkLs::rvt`'s rustdoc now points to the
+  typed layer, mirroring the `vmti` field's pointer to `klv::st0903`.
+- Two repeatable nested Local Sets — Point of Interest (`RvtPoi`, Tag
+  12) and Area of Interest (`RvtAoi`, Tag 13) — and one repeatable User
+  Defined LS (`RvtUserData`, Tag 11) round out the schema (ST 0806.4
+  Tables 8-2/8-3/8-4); POI/AOI lat-lon/altitude use the same
+  symmetric-mapped range + `0x80000000` "error"-sentinel machinery as
+  ST 0601. POI Type and AOI Type share a wire key but diverge at value
+  3 ("Target" vs. "Reserved"), so each gets its own `RvtPoiType`/
+  `RvtAoiType` enum (plus `RvtUserDataType`).
+- The standalone form's checksum (Tag 1) is CRC-32/MPEG-2 (ISO/IEC
+  13818-1: poly `0x04C11DB7`, init `0xFFFFFFFF`, no reflection, no
+  final XOR) — a new `klv::crc32` substrate, and a real divergence from
+  the ST 0601 16-bit running-sum. A mismatch raises the new
+  `KlvDecodeError::Crc32Mismatch { expected, found }` variant. An
+  embedded RVT LS is not required to carry Tag 1 or Tag 2.
+- Encoding a typed tag through the `unknown` pass-through bucket (RVT
+  LS top level, or nested in `RvtPoi`/`RvtAoi`) is rejected with the
+  existing `KlvEncodeError::ReservedTagInUnknown`, mirroring
+  `klv::st0601::encode`'s guard.
+- New fuzz target `klv_st0806_decode` (29 fuzz targets total across the
+  workspace).
+
+#### Added — Python bindings: `klv::st0806` RVT Local Set mirror
+
+- `tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData` frozen
+  dataclasses (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums)
+  and `decode_rvt`/`decode_rvt_standalone`/`encode_rvt`/
+  `encode_rvt_standalone` entry points. A CRC-32 mismatch on the
+  standalone form raises `KlvError` with the existing
+  `CHECKSUM_MISMATCH` kind (reused, not a new kind) and the declared/
+  computed values in hex.
+
+#### Added — JVM bindings: `klv::st0806` RVT Local Set mirror
+
+- `org.tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData`
+  records (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums) and
+  `Klv.decodeRvt`/`decodeRvtStandalone`/`encodeRvt`/
+  `encodeRvtStandalone`. A CRC-32 mismatch on the standalone form
+  throws `KlvDecodeException` with the existing `CHECKSUM_MISMATCH`
+  kind (reused, not a new kind).
+
+#### Added — MISB ST 0805.1 KLV → Cursor-on-Target conversion (`klv::st0805`)
 
 - New module `klv::st0805` converts a decoded ST 0601 UAS Datalink LS
   record (`UasDatalinkLs`) to Cursor-on-Target (CoT) XML: a **Platform
@@ -52,14 +365,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - This is a pure conversion over an already-decoded record, not a KLV
   byte parser, so it adds no fuzz target.
 
-### Added — Python bindings: `klv::st0805` KLV → Cursor-on-Target conversion
+#### Added — Python bindings: `klv::st0805` KLV → Cursor-on-Target conversion
 
 - `tstrans.klv` gains `CotConfig`, `platform_position_xml`,
   `sensor_point_of_interest_xml`, `platform_uid`, and `spi_uid`,
   mirroring the Rust surface 1:1 (`config=` keyword-only, defaults
   matching `CotConfig::default()`).
 
-### Added — JVM bindings: `klv::st0805` KLV → Cursor-on-Target conversion
+#### Added — JVM bindings: `klv::st0805` KLV → Cursor-on-Target conversion
 
 - `org.tstrans.klv.Klv` gains `platformPositionXml` /
   `sensorPointOfInterestXml` (each with a `CotConfig`-defaulted
@@ -67,351 +380,51 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `platformUid` / `spiUid`; new `org.tstrans.klv.CotConfig` value
   type with a `Builder`.
 
-### Added — MISB ST 0806.4 Remote Video Terminal (RVT) Local Set typed layer (`klv::st0806`)
+#### Added — Fuzz coverage: `klv_st1204_decode` + `klv_st0605_decode` (31 targets total)
 
-- New sibling-layer module `klv::st0806` types the RVT Local Set carried
-  by ST 0601 Tag 73: both the nested body form (`decode`/`encode_to_vec`,
-  no UL, embedded via `UasDatalinkLs::rvt`) and the standalone
-  independent form (`decode_standalone`/`encode_to_vec_standalone`, own
-  16-byte UL, timestamp-first Tag 2, checksum-last Tag 1 per
-  ST 0806.4-02/-04). `UasDatalinkLs::rvt`'s rustdoc now points to the
-  typed layer, mirroring the `vmti` field's pointer to `klv::st0903`.
-- Two repeatable nested Local Sets — Point of Interest (`RvtPoi`, Tag
-  12) and Area of Interest (`RvtAoi`, Tag 13) — and one repeatable User
-  Defined LS (`RvtUserData`, Tag 11) round out the schema (ST 0806.4
-  Tables 8-2/8-3/8-4); POI/AOI lat-lon/altitude use the same
-  symmetric-mapped range + `0x80000000` "error"-sentinel machinery as
-  ST 0601. POI Type and AOI Type share a wire key but diverge at value
-  3 ("Target" vs. "Reserved"), so each gets its own `RvtPoiType`/
-  `RvtAoiType` enum (plus `RvtUserDataType`).
-- The standalone form's checksum (Tag 1) is CRC-32/MPEG-2 (ISO/IEC
-  13818-1: poly `0x04C11DB7`, init `0xFFFFFFFF`, no reflection, no
-  final XOR) — a new `klv::crc32` substrate, and a real divergence from
-  the ST 0601 16-bit running-sum. A mismatch raises the new
-  `KlvDecodeError::Crc32Mismatch { expected, found }` variant. An
-  embedded RVT LS is not required to carry Tag 1 or Tag 2.
-- Encoding a typed tag through the `unknown` pass-through bucket (RVT
-  LS top level, or nested in `RvtPoi`/`RvtAoi`) is rejected with the
-  existing `KlvEncodeError::ReservedTagInUnknown`, mirroring
-  `klv::st0601::encode`'s guard.
-- New fuzz target `klv_st0806_decode` (29 fuzz targets total across the
-  workspace).
+- Two new fuzz targets close the arc's fuzz-coverage riders: MIIS Core
+  Identifier binary decode (`klv_st1204_decode`) and Precision Time
+  Stamp Pack decode (`klv_st0605_decode`) — workspace total 29→31.
 
-### Added — Python bindings: `klv::st0806` RVT Local Set mirror
+#### Fixed — binding-doc falsehoods and staleness left across the arc
 
-- `tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData` frozen
-  dataclasses (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums)
-  and `decode_rvt`/`decode_rvt_standalone`/`encode_rvt`/
-  `encode_rvt_standalone` entry points. A CRC-32 mismatch on the
-  standalone form raises `KlvError` with the existing
-  `CHECKSUM_MISMATCH` kind (reused, not a new kind) and the declared/
-  computed values in hex.
+- The ST 0601 encode-range table on the Python `.pyi` stub and the JVM
+  Javadoc surface covered 39 of the 83 ranged fields; it now covers all
+  83 (30 linear-mapped + 14 IMAPB, plus twin-tag annotations), matching
+  Rust rustdoc.
+- `Klv.java` carried six false `@throws` claims that encoding an
+  `unknown` entry at a reserved/typed tag raises an exception from
+  those methods — unreachable, since both bindings' encode paths
+  silently filter typed tags out of `unknown` before the Rust encoder
+  ever sees them; the same false claim in `exceptions.py` is fixed too.
+- The `klv::st0806`/JVM/Python "an embedded RVT LS never carries
+  Tag 1/2" absolutes are corrected to ST 0806.4's actual "not required
+  to carry" scope (the wording already used in the `klv::st0806` entry
+  above) across Rust, Python, and JVM.
+- A drifted `model.rs:80-86` file:line citation in the `klv::st0805`
+  rustdoc is replaced with an intra-doc link.
+- A JVM silent-null-on-null-input behavior shared by 5 JNI natives is
+  now documented rather than left unstated.
+- Stale typed-tag/pack/list enumerations that predated the
+  st0605/st0805/st0806/st1010/st1204 additions are corrected across
+  module docs.
 
-### Added — JVM bindings: `klv::st0806` RVT Local Set mirror
+#### Added — cookbook: long-tail KLV decode + KLV→CoT recipes
 
-- `org.tstrans.klv` gains `RvtLs`/`RvtPoi`/`RvtAoi`/`RvtUserData`
-  records (plus `RvtPoiType`/`RvtAoiType`/`RvtUserDataType` enums) and
-  `Klv.decodeRvt`/`decodeRvtStandalone`/`encodeRvt`/
-  `encodeRvtStandalone`. A CRC-32 mismatch on the standalone form
-  throws `KlvDecodeException` with the existing `CHECKSUM_MISMATCH`
-  kind (reused, not a new kind).
+- `docs/cookbook/klv/decode-long-tail.md` ("Reading waypoint lists,
+  weapons stores, and SDCC covariance") and
+  `docs/cookbook/klv/klv-to-cot.md` ("Converting ST 0601 to
+  Cursor-on-Target") join the cookbook index.
 
-### Added — ST 0601 Tag 102 SDCC-FLP positional capture (1 new item, 142 of 143 total)
+#### Added — deferred-features entries: SDCC-FLP encode adjacency, ST 0903 VTrack
 
-- MISB ST 0601 Tag 102 (SDCC-FLP, Standard Deviation and Correlation
-  Coefficient, Floating-Point) is now a typed `UasDatalinkLs` field,
-  `sdcc_flps: Vec<SdccFlpField>` — up from 141. Tag 102 is MULTI-INSTANCE
-  with positional row-to-item semantics (the "Refined Source List"
-  binding, ST 0601.19 §8.102): each occurrence refines the accuracy of
-  the `N` Local Set items immediately preceding it on the wire, where
-  `N` is the occurrence's own SDCC-FLP matrix size. Decode maintains a
-  running wire-order tag list and captures, per occurrence,
-  `preceding_tags` (the refined items) plus the raw pack `bytes`
-  (decode with the new `klv::st1010::decode_sdcc_flp`); encode re-emits
-  every entry verbatim, grouped together in tag-ascending position —
-  the original interleaving with `preceding_tags` is documented as NOT
-  reproduced on re-encode (`SdccFlpField`'s adjacency caveat).
-- Only 1 of 143 spec items remains untyped: Tag 66 (deprecated,
-  permanently unknown-passthrough by design).
-
-### Fixed — `klv::st1010::decode_sdcc_flp` hostile Matrix Size abort
-
-- A crafted Element 1 Matrix Size (the BER-OID `N`, attacker-controlled up
-  to `u32::MAX`) could make `decode_sdcc_flp` size its correlation vectors
-  by `N(N-1)/2` *before* reading any correlation byte — a 7-byte input
-  claiming `N` &asymp; `u32::MAX` demanded a ~9.2 EiB allocation and
-  **aborted the process** rather than returning an `Err`. `N` is now
-  bounded against the wire bytes actually remaining (std-dev/correlation
-  byte requirements, or the Bit Vector's bit capacity in sparse mode)
-  before any allocation is sized by it. Reachable from all three typed
-  entry points (Rust `decode_sdcc_flp`, Python, JVM `Klv.decodeSdccFlp`)
-  via the ST 0601 Tag 102 workflow above. New fuzz target
-  `klv_st1010_decode`.
-
-### Added — Python bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
-
-- `tstrans.klv` gains frozen dataclasses mirroring every WP-C
-  `UasDatalinkLs` pack/list field, following the existing `VTargetPack`
-  nested-struct-list pattern: `ImageHorizonPixels`, `ControlCommand`,
-  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
-  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
-  (codepoint enum) plus `PayloadRecord`/`PayloadList`, `WeaponsStore`
-  (with `general_status`/`fuze_enabled`/`laser_enabled`/
-  `target_enabled`/`weapon_armed` properties), `Waypoint`,
-  `ViewDomainPair`/`ViewDomain`, and `SdccFlpField` — all wired through
-  `decode_uas_datalink`/`encode_uas_datalink`.
-- New standalone `tstrans.klv.SdccFlp` dataclass plus `decode_sdcc_flp`/
-  `encode_sdcc_flp_mode2` entry points mirroring the general-purpose
-  `klv::st1010` module (usable independent of ST 0601 — see the module
-  docstring).
-- `is_st0601_typed_tag` (the internal predicate gating the Python
-  binding's `unknown` collision-drop on encode) now covers every WP-C
-  tag, including Tag 102 — whose predicate status was deferred pending
-  its multi-instance modeling, which landed in Task C4. A
-  caller-supplied `unknown` entry at any WP-C tag is now silently
-  dropped (typed wins) rather than surviving into the encoded record.
-
-### Added — JVM bindings: WP-C pack & list items + `klv::st1010` SDCC-FLP
-
-- `org.tstrans.klv` gains a Java record (or enum) mirroring every WP-C
-  `UasDatalinkLs` pack/list field: `ImageHorizonPixels`, `ControlCommand`,
-  `SensorFrameRate`, `MetadataSubstreamId`, `CountryCodes`,
-  `WavelengthRecord`, `Location`, `AirbaseLocations`, `PayloadType`
-  (codepoint enum, wire codes crossing as `long` — unlike `IcingDetected`'s
-  narrow byte, `PayloadType::Other` carries the full BER-OID `u64` range)
-  plus `PayloadRecord`/`PayloadList`, `WeaponsStore` (with
-  `generalStatus`/`fuzeEnabled`/`laserEnabled`/`targetEnabled`/
-  `weaponArmed` accessors), `Waypoint`, `ViewDomainPair`/`ViewDomain`, and
-  `SdccFlpField` — all wired through `Klv.decodeUasDatalink`/
-  `Klv.encodeUasDatalink`. Unlike `VTargetPack`'s many-optional-field
-  Builder, most of these small (&le;8 field) types use a plain canonical
-  constructor, matching the `CoreId`/`GeoPoint` precedent; `ImageHorizonPixels`
-  and `WeaponsStore` are the two exceptions, each also gaining a `Builder`
-  (named setters over 4 consecutive same-typed positional fields — a
-  transposition hazard the review round called out for both: image-horizon
-  percentages/lat-lon pairs and weapon station/hardpoint/carriage/store
-  BER-OID ids). List fields (`controlCommands`, `wavelengthsList`,
-  `weaponsStores`, `waypointList`, `sdccFlps`, and `payloadList`'s nested
-  `records`) still follow the `VTargetPack` `with_local_frame`-per-item
-  idiom on the JNI side.
-- New standalone `org.tstrans.klv.SdccFlp` record plus
-  `Klv.decodeSdccFlp`/`Klv.encodeSdccFlpMode2` entry points mirroring the
-  general-purpose `klv::st1010` module; `SdccFlp.correlation(i, j)` is a
-  pure-Java port of the Rust accessor (no JNI crossing).
-- `is_st0601_typed_tag` (the internal predicate gating the JVM binding's
-  `unknown` collision-drop on encode) now covers every WP-C tag, including
-  Tag 102 — same decision as the Python binding. A caller-supplied
-  `unknown` entry at any WP-C tag is now silently dropped (typed wins)
-  rather than surviving into the encoded record.
-- `read_uas_datalink` (the JNI encode-direction field reader) now calls
-  `env.ensure_local_capacity(320)` — it had NO such call before this WP
-  (pre-existing debt: every `read_nullable_*` accessor mints a local ref
-  that lives until the function returns). `build_uas_datalink`'s own
-  capacity bumped 224 &rarr; 320 for the same 14 new fields (a first-cut
-  256 left effectively zero margin — bumped again after review to leave
-  real headroom, verified empirically by
-  `St0601PacksTest.fullyPopulatedWpcFieldsRoundTrip`).
-
-### Fixed — JVM `precedingTags`/`controlCommandVerification`/`activeWavelengths` local-ref leak
-
-- `read_sdcc_flp_field`'s `precedingTags` loop (and the same-shaped
-  `controlCommandVerification`/`activeWavelengths` loops) called the list
-  accessor once per iteration with no per-item local frame, while itself
-  running inside the fixed 16-slot `with_local_frame` that wraps each
-  `sdccFlps` list item — a caller-supplied list longer than that frame's
-  spare capacity exhausted the JNI local-ref table and **aborted the JVM
-  outright** (not a catchable exception). Fixed by routing all three call
-  sites through a new shared `jutil::read_long_list` helper (mirrors the
-  existing `build_long_list`), which applies its own per-item frame. Two
-  new 64-entry regression tests
-  (`sdccFlpFieldLongPrecedingTagsRoundTripsWithoutAborting`,
-  `controlCommandVerificationLongListRoundTripsWithoutAborting`) exercise
-  past the old ~13-entry abort threshold.
-
-### Added — ST 0601 VLP series packs fully typed (7 new items, 141 of 143 total)
-
-- 7 previously-passthrough MISB ST 0601 tags encoded as "Variable-Length
-  Pack" (VLP) structures — each precedes every sub-value or sub-record
-  with its own BER length — are now typed `UasDatalinkLs` fields, up
-  from 134:
-  - Tag 122 `country_codes` (`CountryCodes`): coding method + up to
-    three length-value UTF-8 country codes, with per-§8.122.1
-    truncation (a trailing length-value pair drops entirely) versus the
-    length-0 "unknown" marker (which still writes the length byte).
-  - Tag 128 `wavelengths_list` (`Vec<WavelengthRecord>`): sensor
-    wavelength band records (BER-OID id + two IMAPB(0,1e9,4) bounds +
-    UTF-8 name).
-  - Tag 130 `airbase_locations` (`AirbaseLocations`, sharing the new
-    `Location` DLP with Tag 141): take-off + recovery WGS84 sites; a
-    wire-absent recovery pair decodes to "same as take-off" per
-    §8.130.1, distinguishable from an explicit length-0 "unknown"
-    recovery.
-  - Tag 138 `payload_list` (`PayloadList`): Payload Count (BER-OID) plus
-    a VLP of Payload Records (id, `PayloadType` enum, UTF-8 name).
-  - Tag 140 `weapons_stores` (`Vec<WeaponsStore>`): weapon physical
-    address + packed 14-bit status (general status + Table 22
-    engagement-bit accessors `fuze_enabled`/`laser_enabled`/
-    `target_enabled`/`weapon_armed`) + weapon type string.
-  - Tag 141 `waypoint_list` (`Vec<Waypoint>`): waypoint id, signed
-    16-bit prosecution order (current/planned/cancelled/historical),
-    optional Mode/Source info bitfield, optional `Location`.
-  - Tag 142 `view_domain` (`ViewDomain`): up to three azimuth/
-    elevation/roll `(start, range)` IMAPB pairs, each independently
-    truncatable or explicitly marked "unknown" (pair-length 0).
-  - All seven pinned against MISB ST 0601.19 §8 worked examples
-    transcribed from the cached spec PDF (including the §8.138 63-byte
-    Payload List example); Tag 140's whole-item spec vector has a known
-    1-byte length discrepancy, so its test pins the three per-record
-    vectors and reconstructs the outer VLP directly.
-  - Only 2 of 143 spec items remain untyped: Tag 66 (deprecated,
-    permanently unknown-passthrough by design) and Tag 102 (SDCC-FLP;
-    parse/encode already exist at `klv::st1010`, multi-instance
-    positional capture into the model is a separate pending task).
-
-### Added — ST 0601 pack/list substrate + 6 simple DLP items typed (134 of 143 total)
-
-- New pack/list dispatch (`Encoding::Pack` in `tags.rs`, per-tag
-  parse/emit functions in the new `klv::st0601::packs` module) for
-  MISB ST 0601 items whose wire value is a small positional structure
-  or flat list rather than one scalar. Six simple Defined-Length Pack
-  (DLP) items are now typed `UasDatalinkLs` fields: Tag 81
-  `image_horizon` (`ImageHorizonPixels`), Tag 115 `control_commands`
-  (`Vec<ControlCommand>`, MULTI-INSTANCE per ST 0601.19 Table 1), Tag
-  116 `control_command_verification` and Tag 121 `active_wavelengths`
-  (BER-OID id lists), Tag 127 `sensor_frame_rate`
-  (`SensorFrameRate`), Tag 143 `metadata_substream_id`
-  (`MetadataSubstreamId`).
-- `strict_body_walk`'s once-per-packet duplicate-tag check now exempts
-  tags 115 and 102 — the spec's only two "Multiples Allowed" items.
-- New `klv::st1010` module: MISB ST 1010 SDCC-FLP parser/encoder (Mode
-  1 + Mode 2, sparse bit-vector support) — a general-purpose construct
-  usable beyond ST 0601, used by Tag 102's still-pending multi-instance
-  capture.
-
-### Added — ST 0601 fixed-encoding items fully typed (51 new fields, 103 of 143 total)
-
-- 51 previously-passthrough MISB ST 0601 tags are now typed
-  `UasDatalinkLs` fields — 103 of 143 spec items modeled, up from 52:
-  - 30 fixed-linear-mapped scalars closing the tags 35–93 gap: target
-    location + track-gate width/height + CE90/LE90 error estimates,
-    weather/atmospheric (wind, pressure, density altitude, humidity),
-    alternate-platform position/heading/height, sensor north/east
-    velocity, and the full-range twins of platform angle-of-attack and
-    sideslip (tags 92/93).
-  - 11 raw scalar/string items: I8/U16/U64 raw encodings (outside air
-    temperature, weapon load/fired, laser PRF code, event start time)
-    plus 6 UTF-8 strings, including the first two typed tags whose own
-    tag number is 2-byte BER-OID encoded (129 Target ID, 135
-    Communications Method).
-  - 3 coded enums: `IcingDetected` (tag 34), `SensorFovName` (tag 63),
-    `OperationalMode` (tag 77) — each keeps an `Other(code)` fallback
-    that round-trips unrecognized wire codepoints byte-exact.
-  - 7 named nested-local-set byte fields, given their own struct field
-    instead of riding in `unknown` (see the *Changed* entry below).
-  - Closes the `OutOfRangePolicy::Indicator` known gap noted in the
-    v0.3.0 field-feedback arc (PR #92): all 11 sentinel-eligible tags
-    (6, 7, 50, 51, 52, 79, 80, 90–93) are now encodable typed fields,
-    not just 5 of them.
-  - A new pinning test wave covers every new field's encode/decode spec
-    bytes, including the `Indicator` sentinel path for the newly-typed
-    full-range tags.
-- Mirrored in full through the Python and JVM bindings (51 fields ×
-  both bindings), including the 3 coded enums.
-
-### Fixed — Python/JVM `unknown` predicate was stale against the newly-typed tags
-
-- The Python and JVM bindings' internal `is_st0601_typed_tag` predicate
-  gates the *encode* direction only: it drops a caller-supplied
-  `unknown` entry before it reaches tst-core's encoder whenever the
-  predicate considers the entry's tag typed (typed field wins). The
-  predicate was stale relative to the 51 newly-typed tags above: Python
-  was missing tags 3 and 4 (Mission ID, Platform Tail Number), and JVM
-  was additionally missing tag 94 (MIIS Core Identifier). A
-  caller-supplied `unknown` entry for one of those tags was *not*
-  dropped by the filter, so it reached tst-core's encoder and was
-  rejected with `KlvEncodeError::ReservedTagInUnknown` instead of being
-  silently discarded per the documented "typed wins" collision policy.
-  Fixed as part of widening the predicate for the 51 newly-typed tags
-  above.
-- **Behavior change:** the old predicate's over-broad `5..=91` span
-  also covered tags 66 and 81, which remain untyped. A caller-supplied
-  `unknown` entry at tag 66 or 81 was therefore silently dropped by the
-  old filter before ever reaching the encoder. The corrected, exact
-  predicate no longer covers 66/81, so `unknown` entries at those tags
-  now encode onto the wire like any other forward-compat tag, instead
-  of silently vanishing.
-
-### Changed — nested local-set tags decode into named fields, not `unknown`
-
-- Tags 73, 95, 97, 98, 99, 100, 101 (RVT / SAR Motion Imagery / Range
-  Image / Geo-Registration / Composite Imaging / Segment / Amend local
-  sets) now decode into their own named `Option<Vec<u8>>` field (`rvt`,
-  `sar_mi_local_set`, `range_image_local_set`,
-  `geo_registration_local_set`, `composite_imaging_local_set`,
-  `segment_local_set`, `amend_local_set`) instead of the generic
-  `unknown` bucket. The bytes are unchanged and wire output is
-  byte-identical — interior typing of each nested set's contents is
-  still future work; this only changes where a caller finds the bytes
-  on the decoded struct.
-
-### Added — `st0601_sentinel_meaning` lookup in Python and JVM
-
-- `tstrans.klv.st0601_sentinel_meaning(tag)` (Python) and
-  `org.tstrans.klv.Klv.st0601SentinelMeaning(tag)` (JVM) expose the Rust
-  `klv::st0601::st0601_sentinel_meaning` lookup (Out of Range / Reserved
-  / Not Available per tag) to binding callers.
-
-### Added — ST 0601 extended-encoding scalars typed (25 new fields, 128 of 143 total)
-
-- 25 more previously-passthrough MISB ST 0601 tags are now typed
-  `UasDatalinkLs` fields — 128 of 143 spec items modeled, up from 103:
-  - 14 ST 1201.5 IMAPB (variable-length float) items: four are
-    extended-range twins of existing restricted items (target width,
-    density altitude, sensor and alternate-platform ellipsoid height —
-    tags 96, 103–105 twinning items 22, 38, 75, 76); the remaining ten
-    are new standalone items (range to recovery, platform course angle,
-    altitude AGL, radar altimeter, sensor azimuth/elevation/roll rate,
-    MI storage percent full, transmission frequency, zoom percentage —
-    tags 109, 112–114, 117–120, 132, 134).
-  - 10 MISB variable-length truncatable-int items (tags 110–111,
-    123–126, 131, 133, 136–137): navsats in view, positioning method
-    source, two new coded enums (`PlatformStatus` and
-    `SensorControlMode`, tags 125 and 126), time airborne, propulsion
-    unit speed, take-off time, on-board MI storage capacity, leap
-    seconds, and the GPS/UTC correction offset — plus tag 139
-    (`active_payloads`, a raw multi-byte payload-active bitmask).
-  - A new `imapb_specials: Vec<(u32, ImapbSpecial)>` field (re-exported
-    as `klv::ImapbSpecial`) carries out-of-band special values
-    (`+/-Infinity`, NaN families, `BelowMin`/`AboveMax`) for the 14 new
-    IMAPB items, mirroring the existing `sentinel_tags` mechanism: on
-    encode, a populated typed field always wins over a same-tag
-    `imapb_specials` entry, which is only re-emitted when the typed
-    field is `None`.
-  - `OutOfRangePolicy::Indicator` now also covers the 14 new IMAPB
-    items: an out-of-range typed value under `Indicator` encodes as the
-    ST 1201.5 `BelowMin`/`AboveMax` special instead of erroring.
-  - A new pinning test wave covers every new field's encode/decode spec
-    bytes from the ST 1201.5 / ST 0601.19 worked examples, including
-    the `imapb_specials` special-value path and the `Indicator` path.
-- Mirrored in full through the Python and JVM bindings (25 fields ×
-  both bindings, plus both new enums). `imapb_specials` crosses as a
-  `(tag, code, payload)` triple in both bindings (Python: a
-  `tuple[int, str, int]` alongside `sentinel_tags`; JVM: the new
-  `ImapbSpecialEntry` record), using 9 named code strings for the
-  special-value families.
-
-### Added — ST 0601 restricted-vs-extended item precedence documented
-
-- Four pairs of tags carry the same real-world quantity at two
-  precisions: Item 22 / Item 96 (target width), Item 38 / Item 103
-  (density altitude), Item 75 / Item 104 (sensor ellipsoid height), and
-  Item 76 / Item 105 (alternate-platform ellipsoid height). Per ST
-  0601.19 requirements 0601.9-20/-21, a decoder that understands the
-  extended (IMAPB) item should prefer it over its restricted twin when
-  both are present on the wire. `UasDatalinkLs` decodes both fields
-  independently (it does not drop either), so this is now documented
-  on each field's rustdoc and in the KLV guide (`docs/guides/klv.md`)
-  as caller guidance, not enforced by the decoder.
+- `docs/project/deferred-features.md` gains two entries: SDCC-FLP
+  wire-adjacency preservation on encode (the ascending-order grouping
+  caveat lives in ST 0601's Tag 102 field writer, not in
+  `st1010::encode_sdcc_flp_mode2` itself, which has no adjacency
+  concept — see the Tag 102 entry above) and ST 0903 VTrack, which
+  MISB ST 0903.6 formally withdrew per its own revision history and is
+  recorded as withdrawn rather than implied as a pending coverage gap.
 
 ### Changed — RTSP server refuses TLS config on a plaintext bind
 

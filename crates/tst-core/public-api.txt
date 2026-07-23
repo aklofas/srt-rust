@@ -2809,7 +2809,9 @@ impl core::marker::Unpin for tst_core::klv::st0805::CotConfig
 impl core::marker::UnsafeUnpin for tst_core::klv::st0805::CotConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0805::CotConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0805::CotConfig
+pub fn tst_core::klv::st0805::platform_position_xml(&tst_core::UasDatalinkLs, &tst_core::klv::st0805::CotConfig, u64) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub fn tst_core::klv::st0805::platform_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
+pub fn tst_core::klv::st0805::sensor_point_of_interest_xml(&tst_core::UasDatalinkLs, &tst_core::klv::st0805::CotConfig, u64) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub fn tst_core::klv::st0805::spi_uid(&tst_core::UasDatalinkLs) -> core::result::Result<alloc::string::String, tst_core::error::CotError>
 pub mod tst_core::klv::st0806
 #[non_exhaustive] pub enum tst_core::klv::st0806::RvtAoiType

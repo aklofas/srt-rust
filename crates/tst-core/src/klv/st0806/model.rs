@@ -60,7 +60,6 @@ pub enum RvtUserDataType {
 }
 
 impl RvtPoiType {
-    #[allow(dead_code)] // wired by decode, landing in a later WP-D task
     pub(super) fn from_wire(v: u8) -> Self {
         match v {
             1 => Self::Friendly,
@@ -82,7 +81,6 @@ impl RvtPoiType {
     }
 }
 impl RvtAoiType {
-    #[allow(dead_code)] // wired by decode, landing in a later WP-D task
     pub(super) fn from_wire(v: u8) -> Self {
         match v {
             1 => Self::Friendly,

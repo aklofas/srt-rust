@@ -16,9 +16,14 @@
 //! and one nested repeatable User Defined LS (Tag 11 [`RvtUserData`])
 //! round out the schema (ST 0806.4 Tables 8-2/8-3/8-4).
 
+pub(crate) mod decode;
 pub(crate) mod model;
 pub(crate) mod tags;
 
+#[cfg(test)]
+mod tests;
+
+pub use decode::{decode, decode_standalone};
 pub use model::{
     RVT_AOI_LS_UL, RVT_LS_UL, RVT_POI_LS_UL, RVT_USER_DEFINED_LS_UL, RvtAoi, RvtAoiType, RvtLs,
     RvtPoi, RvtPoiType, RvtUserData, RvtUserDataType,

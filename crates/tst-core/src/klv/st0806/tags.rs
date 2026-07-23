@@ -2,7 +2,6 @@
 //! dispatched explicitly in decode/encode; this table covers the scalar
 //! items and drives once-only duplicate detection.
 
-#[allow(dead_code)] // wired by decode/encode, landing in a later WP-D task
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum RvtEncoding {
     U8,                        // tags 5, 8, 14, 18
@@ -14,14 +13,13 @@ pub(super) enum RvtEncoding {
     Nested,                    // tags 11, 12, 13 — repeatable, dispatched by tag id
 }
 
-#[allow(dead_code)] // wired by decode/encode, landing in a later WP-D task
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct RvtTagSpec {
     pub(super) id: u8,
     pub(super) name: &'static str,
     pub(super) encoding: RvtEncoding,
 }
 
-#[allow(dead_code)] // wired by decode/encode, landing in a later WP-D task
 pub(super) const RVT_TAGS: &[RvtTagSpec] = &[
     RvtTagSpec {
         id: 1,
@@ -130,7 +128,6 @@ pub(super) const RVT_TAGS: &[RvtTagSpec] = &[
     },
 ];
 
-#[allow(dead_code)] // wired by decode/encode, landing in a later WP-D task
 pub(super) fn lookup(id: u8) -> Option<&'static RvtTagSpec> {
     RVT_TAGS.iter().find(|t| t.id == id)
 }

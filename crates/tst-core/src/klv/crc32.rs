@@ -4,7 +4,6 @@
 //! no final XOR — the §9 reference implementation returns the accumulator
 //! directly.
 
-#[allow(dead_code)]
 const fn make_table() -> [u32; 256] {
     let mut table = [0u32; 256];
     let mut i = 0;
@@ -25,10 +24,8 @@ const fn make_table() -> [u32; 256] {
     table
 }
 
-#[allow(dead_code)]
 static TABLE: [u32; 256] = make_table();
 
-#[allow(dead_code)]
 pub(crate) fn crc32_mpeg2(bytes: &[u8]) -> u32 {
     bytes.iter().fold(0xFFFF_FFFF_u32, |acc, &b| {
         (acc << 8) ^ TABLE[(((acc >> 24) ^ b as u32) & 0xFF) as usize]

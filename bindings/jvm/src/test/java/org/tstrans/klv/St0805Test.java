@@ -217,4 +217,25 @@ class St0805Test {
         String xml = Klv.platformPositionXml(record, cfg, GENERATED_US);
         assertTrue(xml.contains("hae=\"1524.5\""));
     }
+
+    // -----------------------------------------------------------------------
+    // Negative jlong -> u64 wrap guards (Copilot round)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void negativeGeneratedUsThrows() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> Klv.platformPositionXml(fixture(), -1L));
+        assertTrue(ex.getMessage().contains("generatedUs"),
+                "expected message to mention generatedUs; got: " + ex.getMessage());
+    }
+
+    @Test
+    void negativeUpdateIntervalUsThrows() {
+        CotConfig cfg = CotConfig.builder().updateIntervalUs(-5L).build();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> Klv.platformPositionXml(fixture(), cfg, GENERATED_US));
+        assertTrue(ex.getMessage().contains("updateIntervalUs"),
+                "expected message to mention updateIntervalUs; got: " + ex.getMessage());
+    }
 }

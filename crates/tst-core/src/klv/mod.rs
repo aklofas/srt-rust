@@ -27,6 +27,7 @@
 //! the crate root via `crate::lib.rs`.
 
 pub mod checksum;
+pub(crate) mod crc32;
 pub mod imapb;
 pub mod length;
 pub mod pack;

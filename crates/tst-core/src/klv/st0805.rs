@@ -64,7 +64,10 @@ pub struct CotConfig {
     /// "time of next message" but gives no concrete interval — this default
     /// is an implementation choice, not a spec value.
     pub update_interval_us: u64,
-    /// XML attribute name stamped in `<detail><_flow-tags_ .../>`.
+    /// XML attribute name stamped in `<detail><_flow-tags_ .../>`. Written
+    /// verbatim as an XML `Name` production (an attribute *name*, not an
+    /// *value*) — it must be a syntactically valid XML Name. It is neither
+    /// validated nor escaped; an invalid value produces malformed XML.
     pub producer: String,
     /// Geoid undulation (HAE − MSL) applied when only an MSL-referenced
     /// altitude tag is available. `None` emits the MSL value as-is.
@@ -522,5 +525,18 @@ mod tests {
             platform_position_xml(&ls, &CotConfig::default(), 0).unwrap_err(),
             CotError::MissingField { tag: 2, .. }
         ));
+    }
+
+    #[test]
+    fn sensor_element_omits_individually_absent_attributes() {
+        // Tags 5/18 (heading/rel-az) still present → the sensor element is
+        // still emitted, but `range` is dropped since its source tag
+        // (slant_range_m, Tag 21) is absent — omission is per-attribute,
+        // not all-or-nothing like the azimuth-driven whole-element case.
+        let mut ls = fixture();
+        ls.slant_range_m = None;
+        let xml = platform_position_xml(&ls, &CotConfig::default(), 798_039_895_000_000).unwrap();
+        assert!(xml.contains(r#"<sensor azimuth="30" fov="2.5" vfov="1.9" model="EO"/>"#));
+        assert!(!xml.contains("range="));
     }
 }

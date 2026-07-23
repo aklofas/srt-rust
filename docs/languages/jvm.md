@@ -472,7 +472,10 @@ String customXml = Klv.platformPositionXml(ls, cfg, generatedUs);      // explic
 sampled internally — a replayed-file CoT run must be byte-identical to a
 live one (ST 0805.1 §1). Both conversions throw unchecked
 `IllegalArgumentException` naming the missing KLV tag when a
-mapping-required field is absent from `ls`.
+mapping-required field is absent from `ls`. `CotConfig.producer` is an
+XML attribute *name* stamped verbatim into `<detail><_flow-tags_ .../>` —
+a Name production (an attribute name, not a value): neither validated
+nor escaped, so an invalid value produces malformed XML.
 
 **ST 1010 — SDCC-FLP error covariance** (general-purpose; carried inside
 ST 0601 Tag 102, but not ST 0601-specific):

@@ -8,7 +8,7 @@
 > - How to install `tstrans` (with or without the pandas extra)
 > - How to read a `.ts` file and inspect typed `DemuxEvent` items in ~5 lines
 > - How to build a `.ts` file by pushing video + KLV through the `Muxer`
-> - How to encode and decode all 4 MISB KLV sets (ST 0601 / 0102 / 0605 / 0903)
+> - How to encode and decode all 4 MISB KLV sets (ST 0601 / 0102 / 0605 / 0903), plus ST 0806 RVT, ST 1010 SDCC error covariance, and the ST 0805 KLV → CoT conversion layer
 > - How to send and receive live MPEG-TS over UDP, TCP, RTP/RTSP, SRT, and RIST
 > - How to pair video with synchronized KLV via `tstrans.pipeline.Pairer`
 > - How to drive bulk KLV → pandas DataFrame ETL with the optional `[pandas]` extra
@@ -51,7 +51,8 @@ in a `--no-default-features` source build that omits `hls`.
 > **Status:** `tstrans` ships the full surface — offline file inspection
 > + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV
 > decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with
-> `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC /
+> `VTargetPack`), ST 0806 RVT, ST 1010 SDCC-FLP, and the ST 0805
+> KLV → CoT conversion layer, codec parsers for H.264 / H.265 / H.266 / AV1 / AAC /
 > MPEG-2 audio, optional pandas DataFrame adapters + NumPy snapshot views
 > via `pip install tstrans[pandas]`, the live transports
 > `tstrans.{srt,rtp,udp,tcp,rist}` (with RTSP client + server and SRT
@@ -199,6 +200,41 @@ accumulates per-field errors on `.field_errors`; strict mode raises
 `encode_*_strict_compliance` (opt-in strict)) round-trip parsed records
 back to wire bytes.
 See the `tstrans.klv` module docstring for the full type listing.
+
+### RVT, SDCC error covariance, and KLV → CoT (ST 0806 / ST 1010 / ST 0805)
+
+Three more typed layers ship alongside the core four: `decode_rvt` /
+`decode_rvt_standalone` (+ `encode_rvt` / `encode_rvt_standalone`) for the
+ST 0806.4 Remote Video Terminal Local Set (`UasDatalinkLs.rvt` carries the
+pass-through Tag 73 bytes); `decode_sdcc_flp` / `encode_sdcc_flp_mode2` for
+the general-purpose ST 1010.3 SDCC-FLP error-covariance pack (ST 0601 Tag
+102 embeds one occurrence per `UasDatalinkLs.sdcc_flps` entry); and the
+one-way `platform_position_xml` / `sensor_point_of_interest_xml` ST 0805.1
+KLV → Cursor-on-Target conversion, configured via the `CotConfig` dataclass
+(a plain `dataclasses.dataclass`, not a PyO3 type — same pattern as
+`DemuxerConfig`).
+
+```python
+from tstrans.klv import decode_rvt, decode_sdcc_flp, platform_position_xml
+
+if record.rvt is not None:
+    rvt = decode_rvt(record.rvt)  # ST 0601 Tag 73 pass-through bytes
+    for poi in rvt.points_of_interest:
+        print(poi.number, poi.text)
+
+for field in record.sdcc_flps:
+    m = decode_sdcc_flp(field.bytes)
+    print(m.matrix_size, m.std_devs)
+
+# generated_us is keyword-only and required — no wall-clock sampling,
+# see the determinism note in guides/klv.md.
+xml = platform_position_xml(record, generated_us=generated_us)
+```
+
+`decode_rvt` / `decode_sdcc_flp` raise `tstrans.exceptions.KlvError` on
+malformed bytes, same as the core four. `platform_position_xml` /
+`sensor_point_of_interest_xml` raise `ValueError` (not `KlvError`) when a
+required source KLV tag is absent from `record`.
 
 ### DemuxEvent variant reference
 

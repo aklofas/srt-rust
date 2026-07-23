@@ -367,7 +367,8 @@ while let Some(au) = rx.recv_au()? {
 - [`/docs/guides/srt.md`](/docs/guides/srt.md) — full SRT surface:
   encryption, latency, stats, error model, URL parsing.
 - [`/docs/guides/klv.md`](/docs/guides/klv.md) — generic KLV substrate
-  plus typed ST 0601 / ST 0102 / ST 0605 / ST 0903 layers.
+  plus typed ST 0601 / ST 0102 / ST 0605 / ST 0903 layers, ST 0806 RVT,
+  ST 1010 SDCC error covariance, and the ST 0805 KLV→CoT conversion layer.
 - [`/docs/guides/codec.md`](/docs/guides/codec.md) — stateless H.264 /
   H.265 / H.266 / AV1 parameter-set parsers off demuxer NAL / OBU bytes.
 - [`/docs/troubleshooting.md`](/docs/troubleshooting.md) — symptom →

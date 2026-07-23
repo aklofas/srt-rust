@@ -9,7 +9,7 @@
 > - How to read a `.ts` file and dispatch typed `DemuxEvent` items
 > - How to mux a single-program `.ts` offline with the `Muxer` + config builder (video / KLV / audio / subtitle / private-data streams)
 > - How to configure the demuxer with a fluent `DemuxerConfig` builder
-> - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`
+> - How to decode / encode typed KLV sets (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv`, plus ST 0806 RVT, ST 1010 SDCC error covariance, and the ST 0805 KLV → CoT conversion layer
 > - How to use the file I/O helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`)
 > - How to send and receive MPEG-TS over RTP and SRT (`org.tstrans.rtp` / `org.tstrans.srt`) — pre-muxed bytes or the `MuxSender`/`DemuxReceiver` shells — and how to drive RTSP (client + server)
 > - How to pair video with KLV metadata by PTS using `org.tstrans.pipeline.Pairer`
@@ -433,6 +433,60 @@ System.out.println(vmtiLenient.targets().size() + " targets");
 
 byte[] body = Klv.encodeVmti(vmtiLenient);               // body only (no UL / BER / checksum)
 byte[] framed = Klv.encodeVmtiStandalone(vmtiLenient);   // full [UL][BER][body][Tag1 checksum]
+```
+
+**ST 0806 — RVT (Remote Video Terminal) Local Set** (body bytes carried in
+`UasDatalinkLs.rvt()`, ST 0601 Tag 73):
+
+```java
+ByteBuffer rvtBytes = ls.rvt();
+if (rvtBytes != null) {
+    ByteBuffer view = rvtBytes.duplicate();
+    byte[] buf = new byte[view.remaining()];
+    view.get(buf);
+    RvtLs rvt = Klv.decodeRvt(buf);  // throws org.tstrans.KlvDecodeException
+    System.out.println("airspeed: " + rvt.platformTrueAirspeed() + " m/s");
+    for (RvtPoi poi : rvt.pointsOfInterest()) {
+        System.out.println("  POI #" + poi.number() + ": " + poi.text());
+    }
+}
+```
+
+RVT is also standalone-capable — `Klv.decodeRvtStandalone` parses the
+16-byte UL + BER length + body and verifies the Tag 1 CRC-32/MPEG-2
+checksum when present; the embedded (Tag 73) form is not required to
+carry it.
+
+**ST 0805 — KLV → Cursor-on-Target (CoT) conversion** (one-way; not a KLV
+wire format):
+
+```java
+String platformXml = Klv.platformPositionXml(ls, generatedUs);         // CotConfig.defaults()
+String spiXml = Klv.sensorPointOfInterestXml(ls, generatedUs);
+
+CotConfig cfg = CotConfig.builder().platformType("a-f-A-M-H").build();
+String customXml = Klv.platformPositionXml(ls, cfg, generatedUs);      // explicit CotConfig
+```
+
+`generatedUs` (POSIX epoch microseconds) is a required argument, not
+sampled internally — a replayed-file CoT run must be byte-identical to a
+live one (ST 0805.1 §1). Both conversions throw unchecked
+`IllegalArgumentException` naming the missing KLV tag when a
+mapping-required field is absent from `ls`.
+
+**ST 1010 — SDCC-FLP error covariance** (general-purpose; carried inside
+ST 0601 Tag 102, but not ST 0601-specific):
+
+```java
+for (SdccFlpField f : ls.sdccFlps()) {
+    ByteBuffer view = f.bytes().duplicate();
+    byte[] buf = new byte[view.remaining()];
+    view.get(buf);
+    SdccFlp m = Klv.decodeSdccFlp(buf);  // throws org.tstrans.KlvDecodeException
+    for (int i = 0; i < m.matrixSize(); i++) {
+        System.out.println("sigma[" + i + "] = " + m.correlation(i, i));
+    }
+}
 ```
 
 ### Field-error model
@@ -1597,7 +1651,8 @@ Gotchas:
   the offline `org.tstrans.mpegts.Muxer` send path (config builder → push
   family → `pull` / `writeFile`), the full `org.tstrans.klv` typed-KLV
   surface (ST 0601 / 0102 / 0605 / 0903 decode + encode + `parseUniversal`
-  dispatcher), the `org.tstrans.codec` elementary-stream parsers (H.264 /
+  dispatcher, plus ST 0806 RVT, ST 1010 SDCC-FLP, and the ST 0805
+  KLV → CoT conversion layer), the `org.tstrans.codec` elementary-stream parsers (H.264 /
   H.265 / H.266 / AV1 / AAC / MPEG-2 audio), the `org.tstrans.io` file
   helpers (`parseFile`, `probe`, `extractKlv`), the `org.tstrans.srt` SRT
   transport surface (`Sender`/`Receiver` pipeline shells + the low-level
@@ -1629,7 +1684,7 @@ Python binding's gaps.
   cargo → cdylib → Gradle → Java → JNI build pipeline and native loader.
 - **mpegts demux (`org.tstrans.mpegts.Demuxer` + `DemuxEvent` + `DemuxerConfig`) — SHIPPED.**
 - **mpegts mux (`org.tstrans.mpegts.Muxer` + `MuxerConfig` + push family + `pull`) — SHIPPED.**
-- **klv** — typed KLV decode/encode (ST 0601 / 0102 / 0605 / 0903) under `org.tstrans.klv` — **SHIPPED.**
+- **klv** — typed KLV decode/encode (ST 0601 / 0102 / 0605 / 0903, plus ST 0806 RVT, ST 1010 SDCC-FLP, and the ST 0805 KLV → CoT conversion layer) under `org.tstrans.klv` — **SHIPPED.**
 - **codec** — H.264 / H.265 / H.266 / AV1 + audio parsers under
   `org.tstrans.codec`; typed elementary-stream payloads (NAL / OBU / ADTS) — **SHIPPED.**
 - **io** — file inspection helpers (`Io.parseFile`, `probe`, `extractKlv`, `Muxer.writeFile`) — **SHIPPED.**
